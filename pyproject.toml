@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentos"
+version = "0.1.0"
+description = "Core library and CLI primitives for agentic workflows (tape, refs, mdblocks, prefix, skills)."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "pereiro" }]
+dependencies = []
+
+[project.scripts]
+agentos = "agentos.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentos"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
