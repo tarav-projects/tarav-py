@@ -14,7 +14,7 @@ from agentos._core.project import (
     local_storage_paths,
     resolve_scope_storage_paths,
 )
-from agentos.skills.commands import list_skill_names, resolve_project_root, skills_dir
+from agentos.utils.skills import list_skill_names, resolve_project_root, skills_dir
 
 
 def _serialize_path_map(payload: dict[str, Path]) -> dict[str, str]:

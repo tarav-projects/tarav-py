@@ -57,6 +57,7 @@ Initialize project and tape:
 uv run agentos init --scope project --root .
 uv run agentos tape init --tape bla --naming sequential --max-records-per-segment 1000
 uv run agentos tape init --tape bla --tape-class events.demo --data-schema-json '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["k"],"properties":{"k":{"type":"string"}},"additionalProperties":false}'
+uv run agentos tape init --tape bla --allowed-classes-json '["event.alpha","event.beta"]'
 ```
 
 Append one record:
@@ -104,6 +105,7 @@ Read committed or best-effort:
 ```sh
 uv run agentos tape query --tape bla --mode committed --count
 uv run agentos tape query --tape bla --mode best_effort --with-source --last 20
+uv run agentos tape query --tape bla --mode best_effort --jmes "[?data.task_id=='task-123']"
 # one-call convenience: consolidate before querying committed view
 uv run agentos tape query --tape bla --mode committed --count --consolidate
 ```

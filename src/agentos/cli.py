@@ -12,7 +12,6 @@ from agentos.project import register_project_commands
 from agentos.refs import register_refs_commands
 from agentos.skills import register_skills_commands
 from agentos.system import register_system_commands
-from agentos.tmp_folder import register_tmp_folder_commands
 from agentos.tape import register_tape_commands
 from agentos.utils import register_utils_commands
 
@@ -35,7 +34,6 @@ def build_parser() -> argparse.ArgumentParser:
     register_refs_commands(subparsers)
     register_skills_commands(subparsers)
     register_prefix_commands(subparsers)
-    register_tmp_folder_commands(subparsers)
     register_utils_commands(subparsers)
     register_mdblocks_commands(subparsers)
     return parser

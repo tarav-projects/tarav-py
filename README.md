@@ -10,6 +10,13 @@ Current baseline includes:
 `agentos` is the core Python package/library.
 `agentos` is the CLI entrypoint/layer.
 
+## Utils CLI
+
+`agentos utils` exposes small agent-facing helpers:
+
+- `uuid`: generate one or more UUIDv4 values (`--count`, `--json`)
+- `tmp-folder new`: allocate a unique path under `<project>/.agentos/tmp/` (`--create` optional)
+
 ## Tape CLI (folder-backed default)
 
 `agentos tape` uses a single interface for folder-backed JSONL tapes.
@@ -45,12 +52,14 @@ Quick examples:
 # project-scoped tape
 uv run agentos tape init --tape bla
 uv run agentos tape init --tape bla --tape-class events.demo --data-schema-json '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["k"],"properties":{"k":{"type":"string"}},"additionalProperties":false}'
+uv run agentos tape init --tape bla --allowed-classes-json '["event.alpha","event.beta"]'
 uv run agentos tape append --tape bla --writer-id proc-a --class event.alpha
 uv run agentos tape append --tape bla --writer-id proc-a --class event.alpha --data-json '{"k":"v"}'
 uv run agentos tape append --tape bla --writer-id proc-a --class event.alpha --override-created-at 2026-03-01T10:11:12Z
 uv run agentos tape consolidate --tape bla
 uv run agentos tape query --tape bla --mode best_effort --count
 uv run agentos tape query --tape bla --mode committed --count --consolidate
+uv run agentos tape query --tape bla --mode best_effort --jmes "[?data.task_id=='task-123']"
 uv run agentos tape config --tape bla
 uv run agentos tape doctor --tape bla
 

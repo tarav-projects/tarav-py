@@ -91,6 +91,95 @@ def test_blocks_supports_split_tmp_output_mode(tmp_path: Path, capsys) -> None:
     assert manifest_path.is_file()
 
 
+def test_blocks_respects_line_region(tmp_path: Path, capsys) -> None:
+    md_path = tmp_path / "doc.md"
+    _write(
+        md_path,
+        "\n".join(
+            [
+                "****",
+                "## first",
+                "first body",
+                "****",
+                "## second",
+                "second body",
+                "****",
+                "## third",
+                "third body",
+                "",
+            ]
+        ),
+    )
+
+    assert (
+        main(
+            [
+                "mdblocks",
+                "blocks",
+                str(md_path),
+                "--root",
+                str(tmp_path),
+                "--start-line",
+                "4",
+                "--end-line",
+                "7",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["start_line"] == 4
+    assert payload["end_line"] == 7
+    assert payload["block_count"] == 1
+    file_payload = payload["files"][0]
+    assert file_payload["scan_start_line"] == 4
+    assert file_payload["scan_end_line"] == 7
+    assert file_payload["blocks"][0]["title"] == "second"
+    assert file_payload["blocks"][0]["start_line"] == 5
+
+
+def test_find_respects_line_region(tmp_path: Path, capsys) -> None:
+    md_path = tmp_path / "doc.md"
+    _write(
+        md_path,
+        "\n".join(
+            [
+                "****",
+                "## alpha",
+                "payload alpha",
+                "****",
+                "## beta",
+                "payload beta",
+                "",
+            ]
+        ),
+    )
+
+    assert (
+        main(
+            [
+                "mdblocks",
+                "find",
+                str(md_path),
+                "--root",
+                str(tmp_path),
+                "--start-line",
+                "4",
+                "--query",
+                "alpha",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["start_line"] == 4
+    assert payload["match_count"] == 0
+
+
 def test_lint_reports_separator_outside_semantics_as_error(tmp_path: Path, capsys) -> None:
     md_path = tmp_path / "doc.md"
     _write(
@@ -132,6 +221,11 @@ def test_lint_enforces_hard_25_line_block_limit(tmp_path: Path, capsys) -> None:
 def test_cli_rejects_min_level_below_two(capsys) -> None:
     with pytest.raises(SystemExit, match="--min-level must be between 2 and 6"):
         main(["mdblocks", "blocks", "--min-level", "1"])
+
+
+def test_cli_rejects_invalid_line_region(capsys) -> None:
+    with pytest.raises(SystemExit, match="--start-line cannot be greater than --end-line"):
+        main(["mdblocks", "blocks", "--start-line", "10", "--end-line", "2"])
 
 
 def test_lint_help_does_not_expose_max_block_lines_flag(capsys) -> None:

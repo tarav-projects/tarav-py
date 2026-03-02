@@ -19,6 +19,7 @@ from .core import (
     lint_markdown_blocks,
     scan_markdown_blocks,
     validate_markdown_level_range,
+    validate_markdown_scan_window,
 )
 
 
@@ -26,6 +27,7 @@ def _build_markdown_scan_config(args: argparse.Namespace) -> MarkdownScanConfig:
     root = resolve_root_dir(args.root)
     try:
         validate_markdown_level_range(args.min_level, args.max_level)
+        validate_markdown_scan_window(args.start_line, args.end_line)
     except ValueError as exc:
         raise SystemExit(f"error: {exc}") from exc
 
@@ -42,6 +44,8 @@ def _build_markdown_scan_config(args: argparse.Namespace) -> MarkdownScanConfig:
         excludes=excludes,
         min_level=args.min_level,
         max_level=args.max_level,
+        start_line=args.start_line,
+        end_line=args.end_line,
         recursive=not args.no_recursive,
         include_content=args.with_content,
     )
@@ -57,6 +61,8 @@ def _cmd_md_blocks(args: argparse.Namespace) -> int:
         "recursive": config.recursive,
         "min_level": config.min_level,
         "max_level": config.max_level,
+        "start_line": config.start_line,
+        "end_line": config.end_line,
         "separator": BLOCK_SEPARATOR,
         "excludes": list(config.excludes),
         "file_count": len(files),
@@ -132,6 +138,8 @@ def _cmd_md_links(args: argparse.Namespace) -> int:
     payload = {
         "root": str(config.root),
         "targets": [str(path.relative_to(config.root)) for path in config.targets],
+        "start_line": config.start_line,
+        "end_line": config.end_line,
         "separator": BLOCK_SEPARATOR,
         "link_count": len(links),
         "links": links,
@@ -157,6 +165,8 @@ def _cmd_md_lint(args: argparse.Namespace) -> int:
         "root": str(config.root),
         "targets": [str(path.relative_to(config.root)) for path in config.targets],
         "recursive": config.recursive,
+        "start_line": config.start_line,
+        "end_line": config.end_line,
         "separator": BLOCK_SEPARATOR,
         "hard_max_block_lines": HARD_MAX_BLOCK_LINES,
         "excludes": list(config.excludes),
@@ -213,6 +223,8 @@ def _cmd_md_find(args: argparse.Namespace) -> int:
         "recursive": config.recursive,
         "min_level": config.min_level,
         "max_level": config.max_level,
+        "start_line": config.start_line,
+        "end_line": config.end_line,
         "separator": BLOCK_SEPARATOR,
         "excludes": list(config.excludes),
         **find_payload,
@@ -283,6 +295,18 @@ def _add_md_scan_arguments(parser: argparse.ArgumentParser) -> None:
             f"Maximum block-anchor heading level to include in scan "
             f"({DEFAULT_MIN_HEADING_LEVEL}-{DEFAULT_MAX_HEADING_LEVEL})."
         ),
+    )
+    parser.add_argument(
+        "--start-line",
+        type=int,
+        default=None,
+        help="Optional 1-based start line for region-of-interest scanning.",
+    )
+    parser.add_argument(
+        "--end-line",
+        type=int,
+        default=None,
+        help="Optional 1-based end line for region-of-interest scanning.",
     )
 
 

@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from agentos._core.errors import CliError
-from agentos._core.utils import _utc_now_iso, validate_string_for_path
+from agentos._core.clock import utc_now_iso as _utc_now_iso
+from agentos._core.ids import normalize_or_generate_uuid
+from agentos._core.path_validation import validate_string_for_path
 
 AGENTOS_DIRNAME = ".agentos"
 PROJECT_MARKER_FILENAME = "project.json"
@@ -213,12 +215,7 @@ def load_global_config(config_path: Path) -> dict[str, object]:
 
 
 def _normalize_project_id(project_id: str | None) -> str:
-    value = str(project_id).strip() if project_id is not None else str(uuid4())
-    try:
-        UUID(value)
-    except ValueError as exc:
-        raise CliError(f"invalid project id (expected UUID): {value}") from exc
-    return value
+    return normalize_or_generate_uuid(project_id, field_name="project id")
 
 
 def _ensure_json_file(path: Path, payload: dict[str, object]) -> bool:

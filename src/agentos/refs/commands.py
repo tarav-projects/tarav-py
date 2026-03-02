@@ -5,18 +5,20 @@ import json
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos._core.utils import (
-    _build_line_starts,
-    _extract_text_from_span,
-    _find_all_fragment_spans,
-    _find_fragment_span,
-    _load_json_input,
-    _offset_to_line_column,
-    _resolve_repo_file,
-    _resolve_repo_relative_path,
-    _resolve_repo_root,
-    _run_git,
-    _validate_span,
+from agentos._core.git_ops import (
+    resolve_repo_file as _resolve_repo_file,
+    resolve_repo_relative_path as _resolve_repo_relative_path,
+    resolve_repo_root as _resolve_repo_root,
+    run_git as _run_git,
+)
+from agentos._core.json_input import load_json_input as _load_json_input
+from agentos._core.text_span import (
+    build_line_starts as _build_line_starts,
+    extract_text_from_span as _extract_text_from_span,
+    find_all_fragment_spans as _find_all_fragment_spans,
+    find_fragment_span as _find_fragment_span,
+    offset_to_line_column as _offset_to_line_column,
+    validate_span as _validate_span,
 )
 from .ref_path import build_ref_path_uri, parse_ref_path_uri
 

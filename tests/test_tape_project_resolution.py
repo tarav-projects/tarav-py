@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from agentos._core.errors import CliError
-from agentos._core.utils import validate_string_for_path
+from agentos._core.path_validation import validate_string_for_path
 from agentos.cli import main
 
 
@@ -236,6 +236,7 @@ def test_tape_config_reports_defaults_and_current_config(
     assert payload["defaults"]["naming_strategy"] == "sequential"
     assert payload["defaults"]["max_records_per_segment"] == 1000
     assert payload["defaults"]["tape.class"] is None
+    assert payload["defaults"]["allowed_classes"] is None
     assert payload["defaults"]["data_schema"] is None
     assert payload["warning_policy"]["missing_tape_on_write_without_init"] == "error"
     assert payload["config"]["naming_strategy"] == "monthly"
@@ -351,6 +352,161 @@ def test_tape_query_with_consolidate_processes_staging_before_read(
     assert payload["consolidated"]["processed_count"] == 1
 
 
+def test_tape_query_jmes_filters_entries_and_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["tape", "init", "--tape", "bla"]) == 0
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "tape",
+                "append",
+                "--tape",
+                "bla",
+                "--writer-id",
+                "proc-a",
+                "--class",
+                "task.update",
+                "--data-json",
+                '{"task_id":"task-123","status":"open"}',
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "tape",
+                "append",
+                "--tape",
+                "bla",
+                "--writer-id",
+                "proc-b",
+                "--class",
+                "event.beta",
+                "--data-json",
+                '{"task_id":"task-999","status":"open"}',
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "tape",
+                "query",
+                "--tape",
+                "bla",
+                "--mode",
+                "best_effort",
+                "--jmes",
+                "[?data.task_id=='task-123']",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["jmes"]["expression"] == "[?data.task_id=='task-123']"
+    assert payload["jmes"]["input"] == "entries"
+    assert payload["total_matched"] == 2
+    assert payload["returned"] == 1
+    assert payload["entries"][0]["class"] == "task.update"
+
+    assert (
+        main(
+            [
+                "tape",
+                "query",
+                "--tape",
+                "bla",
+                "--mode",
+                "best_effort",
+                "--count",
+                "--jmes",
+                "[?data.task_id=='task-123']",
+            ]
+        )
+        == 0
+    )
+    count_payload = json.loads(capsys.readouterr().out)
+    assert count_payload["count"] == 1
+    assert count_payload["jmes"]["expression"] == "[?data.task_id=='task-123']"
+
+
+def test_tape_query_jmes_rejects_invalid_expression_and_non_array_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["tape", "init", "--tape", "bla"]) == 0
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "tape",
+                "append",
+                "--tape",
+                "bla",
+                "--writer-id",
+                "proc-a",
+                "--class",
+                "task.update",
+                "--data-json",
+                '{"task_id":"task-123"}',
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    invalid_expr = main(
+        [
+            "tape",
+            "query",
+            "--tape",
+            "bla",
+            "--mode",
+            "best_effort",
+            "--jmes",
+            "[?",
+        ]
+    )
+    assert invalid_expr == 1
+    assert "invalid --jmes expression" in capsys.readouterr().err
+
+    non_array_expr = main(
+        [
+            "tape",
+            "query",
+            "--tape",
+            "bla",
+            "--mode",
+            "best_effort",
+            "--jmes",
+            "[0]",
+        ]
+    )
+    assert non_array_expr == 1
+    assert "must return a JSON array" in capsys.readouterr().err
+
+
 def test_append_batch_rejects_unknown_record_fields(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -397,6 +553,8 @@ def test_init_accepts_tape_class_and_data_schema(
                 "bla",
                 "--tape-class",
                 "events.demo",
+                "--allowed-classes-json",
+                '["event.alpha","event.beta"]',
                 "--data-schema-json",
                 '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["k"],"properties":{"k":{"type":"string"}},"additionalProperties":false}',
             ]
@@ -405,6 +563,7 @@ def test_init_accepts_tape_class_and_data_schema(
     )
     payload = json.loads(capsys.readouterr().out)
     assert payload["config"]["tape.class"] == "events.demo"
+    assert payload["config"]["allowed_classes"] == ["event.alpha", "event.beta"]
     assert payload["config"]["data_schema"]["type"] == "object"
     assert payload["config"]["data_schema"]["required"] == ["k"]
 
@@ -469,3 +628,60 @@ def test_append_validates_record_data_with_data_schema(
     )
     assert invalid_code == 1
     assert "does not match data_schema" in capsys.readouterr().err
+
+
+def test_append_rejects_class_not_in_allowed_classes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.chdir(tmp_path)
+    assert (
+        main(
+            [
+                "tape",
+                "init",
+                "--tape",
+                "bla",
+                "--allowed-classes-json",
+                '["event.alpha"]',
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "tape",
+                "append",
+                "--tape",
+                "bla",
+                "--writer-id",
+                "proc-a",
+                "--class",
+                "event.alpha",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    rejected = main(
+        [
+            "tape",
+            "append",
+            "--tape",
+            "bla",
+            "--writer-id",
+            "proc-a",
+            "--class",
+            "event.beta",
+        ]
+    )
+    assert rejected == 1
+    assert "record class is not allowed" in capsys.readouterr().err

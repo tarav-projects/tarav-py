@@ -10,8 +10,9 @@ from typing import Iterable
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import SchemaError, ValidationError
 
+from agentos._core.clock import utc_now_iso as _utc_now_iso
 from agentos._core.errors import CliError
-from agentos._core.utils import _utc_now_iso, validate_string_for_path
+from agentos._core.path_validation import validate_string_for_path
 from agentos.tape.naming import period_prefix_for_strategy
 
 MANIFEST_FILENAME = "tape.manifest.json"
@@ -37,6 +38,7 @@ class TapeFolderConfig:
     naming_strategy: str
     max_records_per_segment: int
     tape_class: str | None = None
+    allowed_classes: list[str] | None = None
     data_schema: dict[str, object] | None = None
     format_version: str = "1"
 
@@ -56,6 +58,7 @@ def bootstrap_tape_folder(
     naming_strategy: str,
     max_records_per_segment: int,
     tape_class: str | None = None,
+    allowed_classes: list[str] | None = None,
     data_schema: dict[str, object] | None = None,
     ensure: bool = False,
 ) -> tuple[TapeFolderConfig, bool]:
@@ -64,6 +67,7 @@ def bootstrap_tape_folder(
     _validate_naming_strategy(naming_strategy)
     _validate_max_records_per_segment(max_records_per_segment)
     normalized_tape_class = _normalize_tape_class(tape_class)
+    normalized_allowed_classes = _normalize_allowed_classes(allowed_classes)
     normalized_data_schema = _normalize_data_schema(data_schema)
 
     if root.exists() and not root.is_dir():
@@ -85,6 +89,7 @@ def bootstrap_tape_folder(
         naming_strategy=naming_strategy,
         max_records_per_segment=max_records_per_segment,
         tape_class=normalized_tape_class,
+        allowed_classes=normalized_allowed_classes,
         data_schema=normalized_data_schema,
     )
     _write_manifest(root, config)
@@ -116,6 +121,7 @@ def load_tape_folder_config(root_path: Path) -> TapeFolderConfig:
     naming_strategy = str(config_obj.get("naming_strategy", "")).strip()
     max_records_raw = config_obj.get("max_records_per_segment")
     tape_class_raw = config_obj.get("tape.class")
+    allowed_classes_raw = config_obj.get("allowed_classes")
     data_schema_raw = config_obj.get("data_schema")
     format_version = str(payload.get("format_version", "1")).strip() or "1"
 
@@ -125,6 +131,7 @@ def load_tape_folder_config(root_path: Path) -> TapeFolderConfig:
         raise CliError("tape manifest config.max_records_per_segment must be an integer")
     _validate_max_records_per_segment(max_records_raw)
     normalized_tape_class = _normalize_tape_class(tape_class_raw)
+    normalized_allowed_classes = _normalize_allowed_classes(allowed_classes_raw)
     normalized_data_schema = _normalize_data_schema(data_schema_raw)
 
     segments_dir = root / SEGMENTS_DIRNAME
@@ -139,6 +146,7 @@ def load_tape_folder_config(root_path: Path) -> TapeFolderConfig:
         naming_strategy=naming_strategy,
         max_records_per_segment=max_records_raw,
         tape_class=normalized_tape_class,
+        allowed_classes=normalized_allowed_classes,
         data_schema=normalized_data_schema,
         format_version=format_version,
     )
@@ -186,6 +194,7 @@ def append_staging_record(
     if normalized_data is not None:
         record["data"] = normalized_data
     _validate_minimal_record(record)
+    _validate_record_class_allowed(normalized_class, allowed_classes=config.allowed_classes)
     _validate_record_data_schema(record, data_schema=config.data_schema)
     _append_jsonl_line(staging_path, record)
     return staging_path, record
@@ -304,6 +313,155 @@ def verify_segment_headers(root_path: Path) -> dict[str, object]:
     }
 
 
+def lint_minimal_schema(root_path: Path, *, max_findings: int = 200) -> dict[str, object]:
+    config = load_tape_folder_config(root_path)
+    root = root_path.expanduser().resolve()
+    segments_dir = root / SEGMENTS_DIRNAME
+    staging_dir = root / STAGING_DIRNAME
+
+    if max_findings <= 0:
+        raise CliError("max_findings must be > 0")
+
+    findings: list[dict[str, object]] = []
+    truncated = False
+    dropped_findings = 0
+    total_records = 0
+    valid_records = 0
+
+    def add_finding(
+        *,
+        code: str,
+        message: str,
+        source_kind: str,
+        source_file: Path,
+        line_no: int,
+    ) -> None:
+        nonlocal truncated, dropped_findings
+        if len(findings) >= max_findings:
+            truncated = True
+            dropped_findings += 1
+            return
+        findings.append(
+            {
+                "severity": "error",
+                "code": code,
+                "message": message,
+                "source_kind": source_kind,
+                "source_file": source_file.as_posix(),
+                "line_no": line_no,
+            }
+        )
+
+    segment_paths = sorted(path for path in segments_dir.iterdir() if path.name.endswith(".jsonl"))
+    for segment_path in segment_paths:
+        try:
+            _ = _validate_segment_header(segment_path)
+        except CliError as exc:
+            add_finding(
+                code="invalid-segment-header",
+                message=str(exc),
+                source_kind="committed",
+                source_file=segment_path,
+                line_no=1,
+            )
+            continue
+
+        with segment_path.open("r", encoding="utf-8") as handle:
+            for line_no, raw_line in enumerate(handle, start=1):
+                if line_no == 1:
+                    continue
+                stripped = raw_line.strip()
+                if not stripped:
+                    continue
+                total_records += 1
+                try:
+                    record = _parse_json_object_line(stripped, path=segment_path, line_no=line_no)
+                    _validate_minimal_record(record)
+                    _validate_record_class_allowed(
+                        str(record.get("class", "")).strip(),
+                        allowed_classes=config.allowed_classes,
+                    )
+                except CliError as exc:
+                    add_finding(
+                        code="invalid-record",
+                        message=str(exc),
+                        source_kind="committed",
+                        source_file=segment_path,
+                        line_no=line_no,
+                    )
+                    continue
+                valid_records += 1
+
+    staging_paths = sorted(path for path in staging_dir.iterdir() if path.name.endswith(".jsonl"))
+    for staging_path in staging_paths:
+        try:
+            if not staging_path.exists():
+                raise CliError(f"staging file does not exist: {staging_path}")
+            if not staging_path.is_file():
+                raise CliError(f"staging path is not a file: {staging_path}")
+
+            with staging_path.open("r", encoding="utf-8") as handle:
+                first_line = handle.readline()
+            if not first_line:
+                raise CliError(f"staging file is empty: {staging_path}")
+
+            metadata = _parse_json_object_line(first_line, path=staging_path, line_no=1)
+            if metadata.get("class") != STAGING_METADATA_CLASS:
+                raise CliError(f"first staging record must be class={STAGING_METADATA_CLASS}: {staging_path}")
+            declared = str(metadata.get("staging_filename", "")).strip()
+            if declared != staging_path.name:
+                raise CliError(
+                    f"staging metadata filename mismatch: declared={declared} actual={staging_path.name}"
+                )
+        except CliError as exc:
+            add_finding(
+                code="invalid-staging-header",
+                message=str(exc),
+                source_kind="staging",
+                source_file=staging_path,
+                line_no=1,
+            )
+            continue
+
+        with staging_path.open("r", encoding="utf-8") as handle:
+            for line_no, raw_line in enumerate(handle, start=1):
+                if line_no == 1:
+                    continue
+                stripped = raw_line.strip()
+                if not stripped:
+                    continue
+                total_records += 1
+                try:
+                    record = _parse_json_object_line(stripped, path=staging_path, line_no=line_no)
+                    _validate_minimal_record(record)
+                    _validate_record_class_allowed(
+                        str(record.get("class", "")).strip(),
+                        allowed_classes=config.allowed_classes,
+                    )
+                except CliError as exc:
+                    add_finding(
+                        code="invalid-record",
+                        message=str(exc),
+                        source_kind="staging",
+                        source_file=staging_path,
+                        line_no=line_no,
+                    )
+                    continue
+                valid_records += 1
+
+    errors = len(findings)
+    return {
+        "total_records": total_records,
+        "valid_records": valid_records,
+        "findings": findings,
+        "summary": {
+            "errors": errors,
+            "truncated": truncated,
+            "dropped_findings": dropped_findings,
+        },
+    }
+
+
 def locate_records_for_mode(root_path: Path, *, mode: str) -> list[LocatedRecord]:
     normalized_mode = str(mode).strip()
     if normalized_mode == "committed":
@@ -349,6 +507,8 @@ def _write_manifest(root: Path, config: TapeFolderConfig) -> None:
     }
     if config.tape_class is not None:
         payload["config"]["tape.class"] = config.tape_class
+    if config.allowed_classes is not None:
+        payload["config"]["allowed_classes"] = config.allowed_classes
     if config.data_schema is not None:
         payload["config"]["data_schema"] = config.data_schema
     manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -434,6 +594,33 @@ def _normalize_tape_class(value: object | None) -> str | None:
     if not normalized:
         raise CliError("tape.class must not be empty when provided")
     return normalized
+
+
+def _normalize_allowed_classes(value: object | None) -> list[str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise CliError("tape manifest config.allowed_classes must be a JSON array of strings")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for idx, item in enumerate(value, start=1):
+        if not isinstance(item, str):
+            raise CliError(f"allowed_classes[{idx}] must be a string")
+        item_class = _normalize_record_class(item)
+        if item_class in seen:
+            continue
+        normalized.append(item_class)
+        seen.add(item_class)
+    return normalized
+
+
+def _validate_record_class_allowed(record_class: str, *, allowed_classes: list[str] | None) -> None:
+    if allowed_classes is None:
+        return
+    if record_class not in allowed_classes:
+        allowed = ", ".join(allowed_classes) if allowed_classes else "<none>"
+        raise CliError(f"record class is not allowed: {record_class} (allowed_classes: {allowed})")
 
 
 def _normalize_data_schema(value: object | None) -> dict[str, object] | None:

@@ -25,6 +25,8 @@ class MarkdownScanConfig:
     excludes: tuple[str, ...]
     min_level: int = DEFAULT_MIN_HEADING_LEVEL
     max_level: int = DEFAULT_MAX_HEADING_LEVEL
+    start_line: int | None = None
+    end_line: int | None = None
     recursive: bool = True
     include_content: bool = False
 
@@ -49,8 +51,18 @@ def validate_markdown_level_range(min_level: int, max_level: int) -> None:
         raise ValueError("--min-level cannot be greater than --max-level")
 
 
+def validate_markdown_scan_window(start_line: int | None, end_line: int | None) -> None:
+    if start_line is not None and start_line < 1:
+        raise ValueError("--start-line must be >= 1")
+    if end_line is not None and end_line < 1:
+        raise ValueError("--end-line must be >= 1")
+    if start_line is not None and end_line is not None and start_line > end_line:
+        raise ValueError("--start-line cannot be greater than --end-line")
+
+
 def _validate_scan_config(config: MarkdownScanConfig) -> None:
     validate_markdown_level_range(config.min_level, config.max_level)
+    validate_markdown_scan_window(config.start_line, config.end_line)
 
 
 def _sanitize_heading_title(raw_title: str) -> str:
@@ -76,7 +88,11 @@ def _discover_markdown_files(config: MarkdownScanConfig) -> list[Path]:
     return sorted(discovered, key=lambda path: path.relative_to(config.root).as_posix())
 
 
-def _extract_headings_and_separators(lines: list[str]) -> tuple[list[_Heading], list[int], bool]:
+def _extract_headings_and_separators(
+    lines: list[str],
+    *,
+    base_line: int = 1,
+) -> tuple[list[_Heading], list[int], bool]:
     headings: list[_Heading] = []
     separators: list[int] = []
     in_fence = False
@@ -97,7 +113,7 @@ def _extract_headings_and_separators(lines: list[str]) -> tuple[list[_Heading], 
                 break
         return (char, count)
 
-    for line_no, line in enumerate(lines, start=1):
+    for line_no, line in enumerate(lines, start=base_line):
         stripped_left = line.lstrip()
         run_char, run_len = _fence_run(stripped_left)
 
@@ -132,12 +148,12 @@ def _extract_headings_and_separators(lines: list[str]) -> tuple[list[_Heading], 
     return headings, separators, in_fence
 
 
-def _count_preamble_nonempty_lines(lines: list[str], first_anchor_line: int | None) -> int:
-    if first_anchor_line is None or first_anchor_line <= 1:
+def _count_preamble_nonempty_lines(lines: list[str], first_anchor_local_line: int | None) -> int:
+    if first_anchor_local_line is None or first_anchor_local_line <= 1:
         return 0
 
     start_index = 0
-    limit_index = first_anchor_line - 1
+    limit_index = first_anchor_local_line - 1
 
     if lines and lines[0].strip() == "---":
         front_matter_closed = False
@@ -160,7 +176,7 @@ def _count_preamble_nonempty_lines(lines: list[str], first_anchor_line: int | No
 def _build_block_payload(
     *,
     rel_path: str,
-    lines: list[str],
+    source_lines: list[str],
     heading: _Heading,
     open_separator_line: int,
     close_separator_line: int | None,
@@ -193,7 +209,7 @@ def _build_block_payload(
     }
 
     if include_content:
-        block_data["content"] = "\n".join(lines[start_line - 1 : block_end]).rstrip("\n")
+        block_data["content"] = "\n".join(source_lines[start_line - 1 : block_end]).rstrip("\n")
 
     return block_data
 
@@ -203,13 +219,31 @@ def _parse_file_blocks(
     file_path: Path,
     min_level: int,
     max_level: int,
+    config_start_line: int | None,
+    config_end_line: int | None,
     include_content: bool,
 ) -> dict[str, Any]:
     text = file_path.read_text(encoding="utf-8")
-    lines = text.splitlines()
+    source_lines = text.splitlines()
     rel_path = file_path.relative_to(root).as_posix()
+    source_line_count = len(source_lines)
 
-    headings, separator_lines, has_unclosed_fence = _extract_headings_and_separators(lines)
+    requested_start = config_start_line if config_start_line is not None else 1
+    requested_end = config_end_line if config_end_line is not None else source_line_count
+    effective_start = max(1, requested_start)
+    effective_end = min(requested_end, source_line_count)
+
+    if source_line_count == 0 or effective_start > source_line_count or effective_start > effective_end:
+        scan_lines: list[str] = []
+        effective_start = min(effective_start, source_line_count + 1)
+        effective_end = max(effective_start - 1, 0)
+    else:
+        scan_lines = source_lines[effective_start - 1 : effective_end]
+
+    headings, separator_lines, has_unclosed_fence = _extract_headings_and_separators(
+        scan_lines,
+        base_line=effective_start,
+    )
     heading_by_line = {heading.start_line: heading for heading in headings}
     separator_set = set(separator_lines)
 
@@ -222,12 +256,12 @@ def _parse_file_blocks(
     active_heading: _Heading | None = None
     active_open_separator_line: int | None = None
 
-    for line_no in range(1, len(lines) + 1):
+    for line_no in range(effective_start, effective_end + 1):
         if line_no in separator_set:
             if active_heading is not None and active_open_separator_line is not None:
                 block = _build_block_payload(
                     rel_path=rel_path,
-                    lines=lines,
+                    source_lines=source_lines,
                     heading=active_heading,
                     open_separator_line=active_open_separator_line,
                     close_separator_line=line_no,
@@ -267,7 +301,7 @@ def _parse_file_blocks(
             active_open_separator_line = open_separator_line
             continue
 
-        if lines[line_no - 1].strip() == "":
+        if source_lines[line_no - 1].strip() == "":
             continue
 
         if not waiting_separator_is_semantic:
@@ -278,11 +312,11 @@ def _parse_file_blocks(
     if active_heading is not None and active_open_separator_line is not None:
         block = _build_block_payload(
             rel_path=rel_path,
-            lines=lines,
+            source_lines=source_lines,
             heading=active_heading,
             open_separator_line=active_open_separator_line,
             close_separator_line=None,
-            end_line=len(lines),
+            end_line=effective_end,
             include_content=include_content,
             index=len(blocks) + 1,
         )
@@ -306,16 +340,25 @@ def _parse_file_blocks(
         block["parent"] = parent
 
     first_anchor_line = int(blocks[0]["start_line"]) if blocks else None
+    first_anchor_local_line = (
+        (first_anchor_line - effective_start + 1) if first_anchor_line is not None else None
+    )
 
     return {
         "path": rel_path,
         "absolute_path": str(file_path),
-        "line_count": len(lines),
+        "line_count": source_line_count,
+        "scanned_line_count": len(scan_lines),
         "heading_count": len(headings),
         "block_count": len(blocks),
+        "scan_start_line": effective_start,
+        "scan_end_line": effective_end,
         "first_heading_line": headings[0].start_line if headings else None,
         "first_block_line": first_anchor_line,
-        "preamble_nonempty_line_count": _count_preamble_nonempty_lines(lines, first_anchor_line),
+        "preamble_nonempty_line_count": _count_preamble_nonempty_lines(
+            scan_lines,
+            first_anchor_local_line,
+        ),
         "separator": BLOCK_SEPARATOR,
         "separator_count": len(separator_lines),
         "separator_lines": separator_lines,
@@ -339,6 +382,8 @@ def scan_markdown_blocks(config: MarkdownScanConfig) -> list[dict[str, Any]]:
                 file_path=file_path,
                 min_level=config.min_level,
                 max_level=config.max_level,
+                config_start_line=config.start_line,
+                config_end_line=config.end_line,
                 include_content=config.include_content,
             )
         )
@@ -483,6 +528,8 @@ def find_markdown_blocks(
         excludes=config.excludes,
         min_level=config.min_level,
         max_level=config.max_level,
+        start_line=config.start_line,
+        end_line=config.end_line,
         recursive=config.recursive,
         include_content=True,
     )
@@ -585,6 +632,8 @@ def lint_markdown_blocks(
         excludes=config.excludes,
         min_level=config.min_level,
         max_level=config.max_level,
+        start_line=config.start_line,
+        end_line=config.end_line,
         recursive=config.recursive,
         include_content=False,
     )

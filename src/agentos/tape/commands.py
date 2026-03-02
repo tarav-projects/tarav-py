@@ -4,9 +4,12 @@ import argparse
 import json
 from pathlib import Path
 
+import jmespath
+from jmespath.exceptions import JMESPathError
+
 from agentos._core.errors import CliError
+from agentos._core.json_input import load_json_arg as _load_json_arg
 from agentos._core.project import resolve_project_tape_dir
-from agentos._core.utils import _load_json_arg
 from agentos.tape.folder_core import (
     TapeFolderConfig,
     append_staging_record,
@@ -14,6 +17,7 @@ from agentos.tape.folder_core import (
     consolidate_staging_records,
     get_manifest_path,
     get_supported_naming_strategies,
+    lint_minimal_schema,
     load_tape_folder_config,
     locate_records_for_mode,
     serialize_located_record,
@@ -67,6 +71,7 @@ def _config_to_payload(config: TapeFolderConfig) -> dict[str, object]:
         "type": DEFAULT_TAPE_TYPE,
         "tape_name": config.tape_name,
         "tape.class": config.tape_class,
+        "allowed_classes": config.allowed_classes,
         "naming_strategy": config.naming_strategy,
         "max_records_per_segment": config.max_records_per_segment,
         "data_schema": config.data_schema,
@@ -78,6 +83,7 @@ def _default_config_payload() -> dict[str, object]:
     return {
         "type": DEFAULT_TAPE_TYPE,
         "tape.class": None,
+        "allowed_classes": None,
         "naming_strategy": DEFAULT_NAMING_STRATEGY,
         "max_records_per_segment": DEFAULT_MAX_RECORDS_PER_SEGMENT,
         "data_schema": None,
@@ -114,6 +120,42 @@ def _load_optional_json_object_arg(
     return payload
 
 
+def _load_optional_json_string_array_arg(
+    json_value: str | None,
+    file_value: str | None,
+    *,
+    field_name: str,
+) -> list[str] | None:
+    if json_value is None and file_value is None:
+        return None
+    payload = _load_json_arg(json_value, file_value, field_name=field_name)
+    if not isinstance(payload, list):
+        raise CliError(f"{field_name} must be a JSON array of strings")
+    normalized: list[str] = []
+    for idx, item in enumerate(payload, start=1):
+        if not isinstance(item, str):
+            raise CliError(f"{field_name}[{idx}] must be a string")
+        normalized.append(item)
+    return normalized
+
+
+def _apply_jmes_query_to_entries(entries: list[object], *, expression: str) -> list[object]:
+    normalized_expression = str(expression).strip()
+    if not normalized_expression:
+        raise CliError("--jmes must not be empty")
+
+    try:
+        result = jmespath.search(normalized_expression, entries)
+    except JMESPathError as exc:
+        raise CliError(f"invalid --jmes expression: {exc}") from exc
+
+    if result is None:
+        return []
+    if not isinstance(result, list):
+        raise CliError("--jmes expression must return a JSON array when applied to entries")
+    return result
+
+
 def _build_write_init_options(
     args: argparse.Namespace,
     *,
@@ -127,6 +169,11 @@ def _build_write_init_options(
     init_max_records = getattr(args, "init_max_records_per_segment", None)
     init_tape_name = getattr(args, "init_tape_name", None)
     init_tape_class = getattr(args, "init_tape_class", None)
+    init_allowed_classes = _load_optional_json_string_array_arg(
+        getattr(args, "init_allowed_classes_json", None),
+        getattr(args, "init_allowed_classes_file", None),
+        field_name="init allowed_classes",
+    )
     init_data_schema = _load_optional_json_object_arg(
         getattr(args, "init_data_schema_json", None),
         getattr(args, "init_data_schema_file", None),
@@ -143,6 +190,8 @@ def _build_write_init_options(
         explicit["tape_name"] = str(init_tape_name)
     if init_tape_class is not None:
         explicit["tape.class"] = str(init_tape_class)
+    if init_allowed_classes is not None:
+        explicit["allowed_classes"] = init_allowed_classes
     if init_data_schema is not None:
         explicit["data_schema"] = init_data_schema
 
@@ -156,6 +205,7 @@ def _build_write_init_options(
         "type": DEFAULT_TAPE_TYPE,
         "tape_name": str(explicit.get("tape_name", default_tape_name)),
         "tape.class": explicit.get("tape.class"),
+        "allowed_classes": explicit.get("allowed_classes"),
         "naming_strategy": str(explicit.get("naming_strategy", DEFAULT_NAMING_STRATEGY)),
         "max_records_per_segment": int(
             explicit.get("max_records_per_segment", DEFAULT_MAX_RECORDS_PER_SEGMENT)
@@ -218,6 +268,11 @@ def _warning_list_for_existing_tape(
                 f"(requested={explicit_init_options['tape.class']} existing={existing.tape_class})"
             )
 
+        if "allowed_classes" in explicit_init_options and explicit_init_options["allowed_classes"] != (
+            existing.allowed_classes
+        ):
+            warnings.append("init option mismatch: allowed_classes differs from existing config")
+
         if "data_schema" in explicit_init_options and explicit_init_options["data_schema"] != existing.data_schema:
             warnings.append("init option mismatch: data_schema differs from existing config")
 
@@ -231,6 +286,7 @@ def _warning_list_for_existing_tape(
         existing.naming_strategy != DEFAULT_NAMING_STRATEGY
         or max_records_non_default
         or existing.tape_class is not None
+        or existing.allowed_classes is not None
         or existing.data_schema is not None
     )
     if is_non_default:
@@ -241,6 +297,8 @@ def _warning_list_for_existing_tape(
             details.append("max_records_per_segment ignored for this naming strategy")
         if existing.tape_class is not None:
             details.append(f"tape.class={existing.tape_class}")
+        if existing.allowed_classes is not None:
+            details.append(f"allowed_classes={len(existing.allowed_classes)}")
         if existing.data_schema is not None:
             details.append("data_schema=present")
         warnings.append("tape uses non-default config (" + ", ".join(details) + ")")
@@ -268,6 +326,7 @@ def _ensure_tape_for_write(
             naming_strategy=str(init_values["naming_strategy"]),
             max_records_per_segment=int(init_values["max_records_per_segment"]),
             tape_class=init_values.get("tape.class"),
+            allowed_classes=init_values.get("allowed_classes"),
             data_schema=init_values.get("data_schema"),
             ensure=False,
         )
@@ -354,6 +413,11 @@ def _cmd_tape_init(args: argparse.Namespace) -> int:
         args.data_schema_file,
         field_name="data_schema",
     )
+    allowed_classes = _load_optional_json_string_array_arg(
+        args.allowed_classes_json,
+        args.allowed_classes_file,
+        field_name="allowed_classes",
+    )
     tape_display_name = (
         str(args.tape_display_name)
         if args.tape_display_name is not None
@@ -366,6 +430,7 @@ def _cmd_tape_init(args: argparse.Namespace) -> int:
         naming_strategy=str(args.naming_strategy),
         max_records_per_segment=int(args.max_records_per_segment),
         tape_class=args.tape_class,
+        allowed_classes=allowed_classes,
         data_schema=data_schema,
         ensure=bool(args.ensure),
     )
@@ -524,6 +589,15 @@ def _cmd_tape_query(args: argparse.Namespace) -> int:
     elif args.last_n is not None:
         matched = matched[-args.last_n :] if args.last_n < len(matched) else matched
 
+    entries: list[object]
+    if args.with_source:
+        entries = [serialize_located_record(item) for item in matched]
+    else:
+        entries = [item.record for item in matched]
+
+    if args.jmes_expr is not None:
+        entries = _apply_jmes_query_to_entries(entries, expression=args.jmes_expr)
+
     output: dict[str, object] = {
         "status": "ok",
         "command": "tape query",
@@ -533,16 +607,18 @@ def _cmd_tape_query(args: argparse.Namespace) -> int:
     }
     if consolidate_payload is not None:
         output["consolidated"] = consolidate_payload
+    if args.jmes_expr is not None:
+        output["jmes"] = {
+            "expression": args.jmes_expr,
+            "input": "entries",
+        }
 
     if args.count_only:
-        output["count"] = total_matched
+        output["count"] = len(entries) if args.jmes_expr is not None else total_matched
     else:
         output["total_matched"] = total_matched
-        output["returned"] = len(matched)
-        if args.with_source:
-            output["entries"] = [serialize_located_record(item) for item in matched]
-        else:
-            output["entries"] = [item.record for item in matched]
+        output["returned"] = len(entries)
+        output["entries"] = entries
 
     print(json.dumps(output))
     return 0
@@ -624,6 +700,30 @@ def _cmd_tape_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_tape_lint(args: argparse.Namespace) -> int:
+    root_path, resolution = _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+    )
+    if args.max_findings <= 0:
+        raise CliError("--max-findings must be > 0")
+
+    report = lint_minimal_schema(
+        root_path,
+        max_findings=int(args.max_findings),
+    )
+
+    output = {
+        "status": "ok",
+        "command": "tape lint",
+        "root_path": str(root_path),
+        **resolution,
+        **report,
+    }
+    print(json.dumps(output))
+    return 1 if int(report["summary"]["errors"]) > 0 else 0
+
+
 def _add_tape_target_group(parser: argparse.ArgumentParser) -> None:
     target_group = parser.add_mutually_exclusive_group(required=True)
     target_group.add_argument(
@@ -678,6 +778,19 @@ def _add_write_init_options(parser: argparse.ArgumentParser) -> None:
         dest="init_tape_class",
         help="Tape class stored as config field `tape.class` when --init creates a new tape.",
     )
+    init_allowed_classes_group = parser.add_mutually_exclusive_group(required=False)
+    init_allowed_classes_group.add_argument(
+        "--init-allowed-classes-json",
+        default=None,
+        dest="init_allowed_classes_json",
+        help="JSON array of allowed record classes for tape writes.",
+    )
+    init_allowed_classes_group.add_argument(
+        "--init-allowed-classes-file",
+        default=None,
+        dest="init_allowed_classes_file",
+        help="Path to JSON file with allowed record classes array.",
+    )
     init_data_schema_group = parser.add_mutually_exclusive_group(required=False)
     init_data_schema_group.add_argument(
         "--init-data-schema-json",
@@ -725,6 +838,19 @@ def register_tape_commands(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         dest="tape_class",
         help="Tape class stored as config field `tape.class`.",
+    )
+    init_allowed_classes_group = init_parser.add_mutually_exclusive_group(required=False)
+    init_allowed_classes_group.add_argument(
+        "--allowed-classes-json",
+        default=None,
+        dest="allowed_classes_json",
+        help="JSON array of allowed record classes for tape writes.",
+    )
+    init_allowed_classes_group.add_argument(
+        "--allowed-classes-file",
+        default=None,
+        dest="allowed_classes_file",
+        help="Path to JSON file with allowed record classes array.",
     )
     init_parser.add_argument(
         "--naming",
@@ -891,6 +1017,12 @@ def register_tape_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="with_source",
         help="Include source filename and line number per record.",
     )
+    query_parser.add_argument(
+        "--jmes",
+        default=None,
+        dest="jmes_expr",
+        help="Apply JMESPath expression to entries array after built-in filters.",
+    )
     query_parser.set_defaults(handler=_cmd_tape_query)
 
     verify_parser = tape_subparsers.add_parser(
@@ -913,3 +1045,17 @@ def register_tape_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_tape_target_group(doctor_parser)
     doctor_parser.set_defaults(handler=_cmd_tape_doctor)
+
+    lint_parser = tape_subparsers.add_parser(
+        "lint",
+        help="Lint folder-backed tape records against minimal schema.",
+    )
+    _add_tape_target_group(lint_parser)
+    lint_parser.add_argument(
+        "--max-findings",
+        default=200,
+        type=int,
+        dest="max_findings",
+        help="Maximum number of findings to keep in the report.",
+    )
+    lint_parser.set_defaults(handler=_cmd_tape_lint)
