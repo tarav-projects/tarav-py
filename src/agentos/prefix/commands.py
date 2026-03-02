@@ -4,34 +4,23 @@ import argparse
 import json
 from pathlib import Path
 
+from agentos._core.scan import resolve_relative_paths_under_root, resolve_root_dir
+
 from .core import DEFAULT_EXCLUDES, PrefixScanConfig, collect_prefixes, format_prefix, next_prefix_value
 
 
 def _cmd_prefix_next(args: argparse.Namespace) -> int:
-    root = args.root.expanduser().resolve()
-    if not root.exists():
-        raise SystemExit(f"error: root path does not exist: {root}")
-    if not root.is_dir():
-        raise SystemExit(f"error: root path is not a directory: {root}")
+    root = resolve_root_dir(args.root)
     if args.min < 0:
         raise SystemExit("error: --min must be >= 0")
     if args.width < 1:
         raise SystemExit("error: --width must be >= 1")
 
-    normalized_includes: list[str] = []
-    for include in args.include:
-        include_path = Path(include)
-        if include_path.is_absolute():
-            raise SystemExit("error: --include paths must be relative to --root")
-
-        resolved = (root / include_path).resolve()
-        try:
-            resolved.relative_to(root)
-        except ValueError as exc:
-            raise SystemExit(f"error: include path escapes --root: {include}") from exc
-        normalized_includes.append(str(include_path))
-
-    includes = tuple(normalized_includes)
+    includes = resolve_relative_paths_under_root(
+        root,
+        args.include,
+        option_name="include",
+    )
     excludes: tuple[str, ...]
     if args.no_default_excludes:
         excludes = tuple(args.exclude)

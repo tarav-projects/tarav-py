@@ -1,32 +1,32 @@
 # AgentOS CLI current interface & capabilities (tutorial)
 
-This is about the **AgentOS CLI**, whose executable is **`agentcli`**.
+This is about the **AgentOS CLI**, whose executable is **`agentos`**.
 
 Verified from current code/help in this repo (`agentos` v0.1.0).
 
 ## 1) What is the CLI entrypoint?
 
 - Package: `agentos`
-- Script entrypoint: `agentcli = "agentos.cli:main"`
+- Script entrypoint: `agentos = "agentos.cli:main"`
 - Alternate invocation: `uv run python -m agentos ...`
 
 ## 2) Quick start
 
 ```sh
 uv sync
-uv run agentcli --help
+uv run agentos --help
 ```
 
 Sanity checks:
 
 ```sh
-uv run agentcli doctor
-uv run agentcli test --json
+uv run agentos doctor
+uv run agentos test --json
 ```
 
 ## 3) Current top-level interface
 
-`agentcli` currently exposes these command groups:
+`agentos` currently exposes these command groups:
 
 1. `doctor` — environment and project diagnostics
 2. `test` — smoke test for CLI wiring
@@ -41,7 +41,7 @@ uv run agentcli test --json
 ### `doctor`
 
 ```sh
-uv run agentcli doctor
+uv run agentos doctor
 ```
 
 Prints structured environment info (version, python, platform, project root, skills path/count).
@@ -49,7 +49,7 @@ Prints structured environment info (version, python, platform, project root, ski
 ### `test`
 
 ```sh
-uv run agentcli test --json
+uv run agentos test --json
 ```
 
 Returns machine-readable smoke-test status.
@@ -57,9 +57,9 @@ Returns machine-readable smoke-test status.
 ### `skills`
 
 ```sh
-uv run agentcli skills list --json
-uv run agentcli skills path
-uv run agentcli skills path todo-miner
+uv run agentos skills list --json
+uv run agentos skills path
+uv run agentos skills path todo-miner
 ```
 
 Capabilities:
@@ -69,7 +69,7 @@ Capabilities:
 ### `prefix`
 
 ```sh
-uv run agentcli prefix next --root . --include notes/live --min 500 --width 3
+uv run agentos prefix next --root . --include notes/live --min 500 --width 3
 ```
 
 Capabilities:
@@ -79,10 +79,10 @@ Capabilities:
 ### `mdblocks`
 
 ```sh
-uv run agentcli mdblocks blocks notes --json
-uv run agentcli mdblocks links notes --json
-uv run agentcli mdblocks lint notes --fail-on error
-uv run agentcli mdblocks find notes --query "tape" --top-k 10 --json
+uv run agentos mdblocks blocks notes --json
+uv run agentos mdblocks links notes --json
+uv run agentos mdblocks lint notes --fail-on error
+uv run agentos mdblocks find notes --query "tape" --top-k 10 --json
 ```
 
 Capabilities:

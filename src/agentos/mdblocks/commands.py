@@ -4,54 +4,32 @@ import argparse
 import json
 import tempfile
 from pathlib import Path
-from typing import Sequence
+
+from agentos._core.scan import resolve_root_dir, resolve_targets_under_root
 
 from .core import (
+    BLOCK_SEPARATOR,
     DEFAULT_MARKDOWN_EXCLUDES,
+    DEFAULT_MAX_HEADING_LEVEL,
+    DEFAULT_MIN_HEADING_LEVEL,
+    HARD_MAX_BLOCK_LINES,
     MarkdownScanConfig,
     collect_block_links,
     find_markdown_blocks,
     lint_markdown_blocks,
     scan_markdown_blocks,
+    validate_markdown_level_range,
 )
 
 
-def _resolve_scan_targets(root: Path, raw_targets: Sequence[str]) -> tuple[Path, ...]:
-    if not raw_targets:
-        raw_targets = ["."]
-
-    resolved_targets: list[Path] = []
-    for raw_target in raw_targets:
-        candidate = Path(raw_target).expanduser()
-        if candidate.is_absolute():
-            resolved = candidate.resolve()
-        else:
-            resolved = (root / candidate).resolve()
-        if not resolved.exists():
-            raise SystemExit(f"error: target path does not exist: {raw_target}")
-        try:
-            resolved.relative_to(root)
-        except ValueError as exc:
-            raise SystemExit(f"error: target path escapes --root: {raw_target}") from exc
-        resolved_targets.append(resolved)
-
-    return tuple(resolved_targets)
-
-
 def _build_markdown_scan_config(args: argparse.Namespace) -> MarkdownScanConfig:
-    root = args.root.expanduser().resolve()
-    if not root.exists():
-        raise SystemExit(f"error: root path does not exist: {root}")
-    if not root.is_dir():
-        raise SystemExit(f"error: root path is not a directory: {root}")
-    if args.min_level < 1 or args.min_level > 6:
-        raise SystemExit("error: --min-level must be between 1 and 6")
-    if args.max_level < 1 or args.max_level > 6:
-        raise SystemExit("error: --max-level must be between 1 and 6")
-    if args.min_level > args.max_level:
-        raise SystemExit("error: --min-level cannot be greater than --max-level")
+    root = resolve_root_dir(args.root)
+    try:
+        validate_markdown_level_range(args.min_level, args.max_level)
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
 
-    targets = _resolve_scan_targets(root, args.targets)
+    targets = resolve_targets_under_root(root, args.targets)
     excludes: tuple[str, ...]
     if args.no_default_excludes:
         excludes = tuple(args.exclude)
@@ -79,12 +57,13 @@ def _cmd_md_blocks(args: argparse.Namespace) -> int:
         "recursive": config.recursive,
         "min_level": config.min_level,
         "max_level": config.max_level,
+        "separator": BLOCK_SEPARATOR,
         "excludes": list(config.excludes),
         "file_count": len(files),
         "block_count": sum(file_data["block_count"] for file_data in files),
     }
 
-    if args.output_mode == "split-temp":
+    if args.output_mode == "split-tmp":
         output_root = Path(tempfile.mkdtemp(prefix="agentos-md-blocks-"))
         files_root = output_root / "files"
         file_entries: list[dict[str, object]] = []
@@ -105,7 +84,7 @@ def _cmd_md_blocks(args: argparse.Namespace) -> int:
 
         manifest = {
             **summary,
-            "output_mode": "split-temp",
+            "output_mode": "split-tmp",
             "files": file_entries,
         }
         manifest_path = output_root / "manifest.json"
@@ -113,7 +92,7 @@ def _cmd_md_blocks(args: argparse.Namespace) -> int:
 
         payload = {
             **summary,
-            "output_mode": "split-temp",
+            "output_mode": "split-tmp",
             "output_dir": str(output_root),
             "manifest_path": str(manifest_path),
             "manifest_file_count": len(file_entries),
@@ -153,6 +132,7 @@ def _cmd_md_links(args: argparse.Namespace) -> int:
     payload = {
         "root": str(config.root),
         "targets": [str(path.relative_to(config.root)) for path in config.targets],
+        "separator": BLOCK_SEPARATOR,
         "link_count": len(links),
         "links": links,
     }
@@ -171,18 +151,14 @@ def _cmd_md_links(args: argparse.Namespace) -> int:
 
 
 def _cmd_md_lint(args: argparse.Namespace) -> int:
-    if args.max_block_lines < 1:
-        raise SystemExit("error: --max-block-lines must be >= 1")
-
     config = _build_markdown_scan_config(args)
-    lint_payload = lint_markdown_blocks(
-        config=config,
-        max_block_lines=args.max_block_lines,
-    )
+    lint_payload = lint_markdown_blocks(config=config)
     payload = {
         "root": str(config.root),
         "targets": [str(path.relative_to(config.root)) for path in config.targets],
         "recursive": config.recursive,
+        "separator": BLOCK_SEPARATOR,
+        "hard_max_block_lines": HARD_MAX_BLOCK_LINES,
         "excludes": list(config.excludes),
         **lint_payload,
     }
@@ -191,9 +167,7 @@ def _cmd_md_lint(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2))
     else:
         if payload["issue_count"] == 0:
-            print(
-                f"No markdown lint issues found across {payload['file_count']} file(s)."
-            )
+            print(f"No markdown lint issues found across {payload['file_count']} file(s).")
         else:
             print(
                 f"Scanned {payload['file_count']} file(s): "
@@ -239,6 +213,7 @@ def _cmd_md_find(args: argparse.Namespace) -> int:
         "recursive": config.recursive,
         "min_level": config.min_level,
         "max_level": config.max_level,
+        "separator": BLOCK_SEPARATOR,
         "excludes": list(config.excludes),
         **find_payload,
     }
@@ -294,27 +269,33 @@ def _add_md_scan_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--min-level",
         type=int,
-        default=1,
-        help="Minimum heading level to include in scan (1-6).",
+        default=DEFAULT_MIN_HEADING_LEVEL,
+        help=(
+            f"Minimum block-anchor heading level to include in scan "
+            f"({DEFAULT_MIN_HEADING_LEVEL}-{DEFAULT_MAX_HEADING_LEVEL})."
+        ),
     )
     parser.add_argument(
         "--max-level",
         type=int,
-        default=6,
-        help="Maximum heading level to include in scan (1-6).",
+        default=DEFAULT_MAX_HEADING_LEVEL,
+        help=(
+            f"Maximum block-anchor heading level to include in scan "
+            f"({DEFAULT_MIN_HEADING_LEVEL}-{DEFAULT_MAX_HEADING_LEVEL})."
+        ),
     )
 
 
 def register_mdblocks_commands(subparsers: argparse._SubParsersAction) -> None:
     md_parser = subparsers.add_parser(
         "mdblocks",
-        help="Markdown block utilities for block-oriented workflows.",
+        help="Markdown block utilities for separator-anchored workflows.",
     )
     md_subparsers = md_parser.add_subparsers(dest="md_command")
 
     md_blocks_parser = md_subparsers.add_parser(
         "blocks",
-        help="Parse markdown headings into deterministic blocks.",
+        help=f"Parse deterministic blocks anchored by `{BLOCK_SEPARATOR}` + h2..h6 headings.",
     )
     _add_md_scan_arguments(md_blocks_parser)
     md_blocks_parser.add_argument(
@@ -329,15 +310,15 @@ def register_mdblocks_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     md_blocks_parser.add_argument(
         "--output-mode",
-        choices=("inline", "split-temp"),
+        choices=("inline", "split-tmp"),
         default="inline",
-        help="`inline` prints one combined payload; `split-temp` writes per-file JSON + manifest to a temp folder.",
+        help="`inline` prints one combined payload; `split-tmp` writes per-file JSON + manifest to a tmp folder.",
     )
     md_blocks_parser.set_defaults(handler=_cmd_md_blocks)
 
     md_links_parser = md_subparsers.add_parser(
         "links",
-        help="Emit companion links for markdown blocks.",
+        help="Emit companion links for separator-anchored markdown blocks.",
     )
     _add_md_scan_arguments(md_links_parser)
     md_links_parser.add_argument(
@@ -349,15 +330,12 @@ def register_mdblocks_commands(subparsers: argparse._SubParsersAction) -> None:
 
     md_lint_parser = md_subparsers.add_parser(
         "lint",
-        help="Scan markdown block structure and report deterministic errors/warnings.",
+        help=(
+            f"Lint separator-anchored markdown blocks (`{BLOCK_SEPARATOR}` + h2..h6). "
+            f"Hard block length limit: {HARD_MAX_BLOCK_LINES} lines."
+        ),
     )
     _add_md_scan_arguments(md_lint_parser)
-    md_lint_parser.add_argument(
-        "--max-block-lines",
-        type=int,
-        default=30,
-        help="Warn when a block exceeds this line span.",
-    )
     md_lint_parser.add_argument(
         "--fail-on",
         choices=("none", "error", "warning"),
@@ -373,7 +351,7 @@ def register_mdblocks_commands(subparsers: argparse._SubParsersAction) -> None:
 
     md_find_parser = md_subparsers.add_parser(
         "find",
-        help="Find best-matching markdown blocks for a query.",
+        help="Find best-matching separator-anchored markdown blocks for a query.",
     )
     _add_md_scan_arguments(md_find_parser)
     md_find_parser.add_argument(

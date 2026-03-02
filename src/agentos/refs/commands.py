@@ -18,6 +18,7 @@ from agentos._core.utils import (
     _run_git,
     _validate_span,
 )
+from .ref_path import build_ref_path_uri, parse_ref_path_uri
 
 
 def _collect_batch_entries(payload: object) -> list[object]:
@@ -49,9 +50,9 @@ def _extract_reference_from_entry(entry: object) -> dict[str, object]:
 
 def _normalize_git_line_span_reference(raw_reference: dict[str, object]) -> dict[str, object]:
     try:
-        kind = str(raw_reference["kind"])
-        if kind != "git_line_span":
-            raise CliError(f"unsupported reference kind: {kind}")
+        ref_class = str(raw_reference["class"])
+        if ref_class != "git_line_span":
+            raise CliError(f"unsupported reference class: {ref_class}")
 
         path = str(raw_reference["path"])
         if not path:
@@ -76,7 +77,7 @@ def _normalize_git_line_span_reference(raw_reference: dict[str, object]) -> dict
         raise CliError(f"invalid reference field type: {exc}") from exc
 
     return {
-        "kind": "git_line_span",
+        "class": "git_line_span",
         "path": path,
         "commit": commit,
         "start": {"line": start_line, "column": start_column},
@@ -117,7 +118,7 @@ def _resolve_normalized_reference(
 
     extracted_text = _extract_text_from_span(lines, start_line, end_line, start_column, end_column)
     return {
-        "kind": "git_line_span",
+        "class": "git_line_span",
         "repo_root": str(repo_root),
         "commit": str(normalized_reference["commit"]),
         "path": relative_path,
@@ -126,10 +127,132 @@ def _resolve_normalized_reference(
     }, extracted_text
 
 
+def _resolve_repo_hash(repo_root: Path) -> str:
+    try:
+        roots_raw = _run_git(repo_root, "rev-list", "--max-parents=0", "HEAD", "--reverse")
+    except CliError as exc:
+        raise CliError(f"cannot compute repo hash for repository: {repo_root} ({exc})") from exc
+
+    roots = [line.strip() for line in roots_raw.splitlines() if line.strip()]
+    if not roots:
+        raise CliError(f"cannot compute repo hash for repository: {repo_root} (no root commit found)")
+    return roots[0]
+
+
+def _emit_single_reference_output(
+    args: argparse.Namespace,
+    payload: dict[str, object],
+    *,
+    repo_root: Path,
+) -> int:
+    reference = payload.get("reference")
+    if not isinstance(reference, dict):
+        raise CliError("internal error: payload reference must be a JSON object")
+
+    repo_hash = _resolve_repo_hash(repo_root)
+    ref_path = build_ref_path_uri(repo_hash, reference)
+    if bool(args.output_ref_path):
+        print(ref_path)
+        return 0
+
+    payload["repo_hash"] = repo_hash
+    payload["ref_path"] = ref_path
+    print(json.dumps(payload))
+    return 0
+
+
+def _emit_match_list_output(
+    args: argparse.Namespace,
+    payload: dict[str, object],
+    *,
+    repo_root: Path,
+) -> int:
+    matches = payload.get("matches")
+    if not isinstance(matches, list):
+        raise CliError("internal error: payload matches must be a JSON array")
+
+    repo_hash = _resolve_repo_hash(repo_root)
+    ref_paths: list[str] = []
+    for match in matches:
+        if not isinstance(match, dict):
+            raise CliError("internal error: match entry must be a JSON object")
+        reference = match.get("reference")
+        if not isinstance(reference, dict):
+            raise CliError("internal error: match reference must be a JSON object")
+        ref_path = build_ref_path_uri(repo_hash, reference)
+        match["ref_path"] = ref_path
+        ref_paths.append(ref_path)
+
+    if bool(args.output_ref_path):
+        if ref_paths:
+            print("\n".join(ref_paths))
+        return 0
+
+    payload["repo_hash"] = repo_hash
+    print(json.dumps(payload))
+    return 0
+
+
+def _add_ref_output_arguments(parser: argparse.ArgumentParser) -> None:
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--output-json",
+        action="store_true",
+        help="Emit structured JSON output (default).",
+    )
+    output_group.add_argument(
+        "--output-ref-path",
+        action="store_true",
+        help="Emit git-ref URI output. For ref-list-text-matches, prints one URI per line.",
+    )
+
+
+def _git_path_is_dirty(repo_root: Path, relative_path: str) -> bool:
+    porcelain = _run_git(repo_root, "status", "--porcelain", "--", relative_path)
+    return bool(porcelain.strip())
+
+
+def _resolve_reference_commit(
+    repo_root: Path,
+    relative_path: str,
+    *,
+    allow_commit: bool,
+) -> tuple[str, bool, bool]:
+    dirty_before = _git_path_is_dirty(repo_root, relative_path)
+    if not dirty_before:
+        return _run_git(repo_root, "rev-parse", "HEAD"), False, False
+
+    if not allow_commit:
+        raise CliError(
+            "target file has uncommitted changes: "
+            f"{relative_path} (pass --commit to add/commit this file and produce an updated reference)"
+        )
+
+    try:
+        _run_git(repo_root, "add", "--", relative_path)
+        _run_git(
+            repo_root,
+            "commit",
+            "-m",
+            f"chore(agentos): update {relative_path} for git-refs",
+            "--",
+            relative_path,
+        )
+    except CliError as exc:
+        raise CliError(f"failed to commit dirty target file {relative_path}: {exc}") from exc
+
+    return _run_git(repo_root, "rev-parse", "HEAD"), True, True
+
+
 def _cmd_refs_from_span(args: argparse.Namespace) -> int:
     repo_root = _resolve_repo_root(args.repo)
-    commit = _run_git(repo_root, "rev-parse", "HEAD")
     target_file = _resolve_repo_file(repo_root, args.file_path)
+    relative_path = str(target_file.relative_to(repo_root).as_posix())
+    commit, auto_committed, dirty_before = _resolve_reference_commit(
+        repo_root,
+        relative_path,
+        allow_commit=bool(args.commit),
+    )
 
     lines = target_file.read_text(encoding="utf-8").splitlines()
     if not lines:
@@ -154,25 +277,31 @@ def _cmd_refs_from_span(args: argparse.Namespace) -> int:
 
     payload = {
         "status": "ok",
-        "command": "git-refs from-span",
+        "command": "git-refs ref-from-span",
         "reference": {
-            "kind": "git_line_span",
+            "class": "git_line_span",
             "repo_root": str(repo_root),
             "commit": commit,
-            "path": str(target_file.relative_to(repo_root).as_posix()),
+            "path": relative_path,
             "start": {"line": start_line, "column": start_column},
             "end": {"line": end_line, "column": end_column},
         },
         "extracted_text": extracted_text,
+        "auto_committed": auto_committed,
+        "dirty_before": dirty_before,
     }
-    print(json.dumps(payload))
-    return 0
+    return _emit_single_reference_output(args, payload, repo_root=repo_root)
 
 
 def _cmd_refs_from_text(args: argparse.Namespace) -> int:
     repo_root = _resolve_repo_root(args.repo)
-    commit = _run_git(repo_root, "rev-parse", "HEAD")
     target_file = _resolve_repo_file(repo_root, args.file_path)
+    relative_path = str(target_file.relative_to(repo_root).as_posix())
+    commit, auto_committed, dirty_before = _resolve_reference_commit(
+        repo_root,
+        relative_path,
+        allow_commit=bool(args.commit),
+    )
 
     full_text = target_file.read_text(encoding="utf-8")
     if not full_text:
@@ -185,20 +314,21 @@ def _cmd_refs_from_text(args: argparse.Namespace) -> int:
 
     payload = {
         "status": "ok",
-        "command": "git-refs from-text",
+        "command": "git-refs ref-from-text",
         "reference": {
-            "kind": "git_line_span",
+            "class": "git_line_span",
             "repo_root": str(repo_root),
             "commit": commit,
-            "path": str(target_file.relative_to(repo_root).as_posix()),
+            "path": relative_path,
             "start": {"line": start_line, "column": start_column},
             "end": {"line": end_line, "column": end_column},
         },
         "extracted_text": full_text[start_offset:end_offset],
         "match": {"occurrence": args.occurrence},
+        "auto_committed": auto_committed,
+        "dirty_before": dirty_before,
     }
-    print(json.dumps(payload))
-    return 0
+    return _emit_single_reference_output(args, payload, repo_root=repo_root)
 
 
 def _cmd_refs_list_text_matches(args: argparse.Namespace) -> int:
@@ -206,8 +336,13 @@ def _cmd_refs_list_text_matches(args: argparse.Namespace) -> int:
         raise CliError("max matches must be >= 1")
 
     repo_root = _resolve_repo_root(args.repo)
-    commit = _run_git(repo_root, "rev-parse", "HEAD")
     target_file = _resolve_repo_file(repo_root, args.file_path)
+    relative_path = str(target_file.relative_to(repo_root).as_posix())
+    commit, auto_committed, dirty_before = _resolve_reference_commit(
+        repo_root,
+        relative_path,
+        allow_commit=bool(args.commit),
+    )
 
     full_text = target_file.read_text(encoding="utf-8")
     if not full_text:
@@ -216,7 +351,6 @@ def _cmd_refs_list_text_matches(args: argparse.Namespace) -> int:
     all_matches = _find_all_fragment_spans(full_text, args.fragment)
     limited_matches = all_matches[: args.max_matches]
     line_starts = _build_line_starts(full_text)
-    relative_path = str(target_file.relative_to(repo_root).as_posix())
 
     match_payloads = []
     for idx, (start_offset, end_offset) in enumerate(limited_matches, start=1):
@@ -226,7 +360,7 @@ def _cmd_refs_list_text_matches(args: argparse.Namespace) -> int:
             {
                 "occurrence": idx,
                 "reference": {
-                    "kind": "git_line_span",
+                    "class": "git_line_span",
                     "repo_root": str(repo_root),
                     "commit": commit,
                     "path": relative_path,
@@ -239,7 +373,7 @@ def _cmd_refs_list_text_matches(args: argparse.Namespace) -> int:
 
     payload = {
         "status": "ok",
-        "command": "git-refs list-text-matches",
+        "command": "git-refs ref-list-text-matches",
         "query": {
             "text": args.fragment,
             "max_matches": args.max_matches,
@@ -248,9 +382,10 @@ def _cmd_refs_list_text_matches(args: argparse.Namespace) -> int:
         "returned_matches": len(match_payloads),
         "truncated": len(all_matches) > len(match_payloads),
         "matches": match_payloads,
+        "auto_committed": auto_committed,
+        "dirty_before": dirty_before,
     }
-    print(json.dumps(payload))
-    return 0
+    return _emit_match_list_output(args, payload, repo_root=repo_root)
 
 
 def _cmd_refs_resolve_batch(args: argparse.Namespace) -> int:
@@ -308,7 +443,7 @@ def _cmd_refs_resolve_batch(args: argparse.Namespace) -> int:
 
     output = {
         "status": "ok",
-        "command": "git-refs resolve-batch",
+        "command": "git-refs deref-batch",
         "repo_root": str(repo_root),
         "head_commit": head_commit,
         "resolve_commit": resolve_commit,
@@ -329,8 +464,13 @@ def _cmd_refs_resolve_batch(args: argparse.Namespace) -> int:
 
 def _cmd_refs_from_markers(args: argparse.Namespace) -> int:
     repo_root = _resolve_repo_root(args.repo)
-    commit = _run_git(repo_root, "rev-parse", "HEAD")
     target_file = _resolve_repo_file(repo_root, args.file_path)
+    relative_path = str(target_file.relative_to(repo_root).as_posix())
+    commit, auto_committed, dirty_before = _resolve_reference_commit(
+        repo_root,
+        relative_path,
+        allow_commit=bool(args.commit),
+    )
 
     full_text = target_file.read_text(encoding="utf-8")
     if not full_text:
@@ -360,16 +500,18 @@ def _cmd_refs_from_markers(args: argparse.Namespace) -> int:
 
     payload = {
         "status": "ok",
-        "command": "git-refs from-markers",
+        "command": "git-refs ref-from-markers",
         "reference": {
-            "kind": "git_line_span",
+            "class": "git_line_span",
             "repo_root": str(repo_root),
             "commit": commit,
-            "path": str(target_file.relative_to(repo_root).as_posix()),
+            "path": relative_path,
             "start": {"line": start_line, "column": start_column},
             "end": {"line": end_line, "column": end_column},
         },
         "extracted_text": full_text[start_offset:end_end_offset],
+        "auto_committed": auto_committed,
+        "dirty_before": dirty_before,
         "match": {
             "start_text": args.start_fragment,
             "start_occurrence": args.start_occurrence,
@@ -378,7 +520,66 @@ def _cmd_refs_from_markers(args: argparse.Namespace) -> int:
             "end_match_start_offset": end_offset,
         },
     }
-    print(json.dumps(payload))
+    return _emit_single_reference_output(args, payload, repo_root=repo_root)
+
+
+def _cmd_refs_repo_hash(args: argparse.Namespace) -> int:
+    repo_root = _resolve_repo_root(args.repo)
+    repo_hash = _resolve_repo_hash(repo_root)
+    if args.output_json:
+        print(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "command": "git-refs repo-hash",
+                    "repo_root": str(repo_root),
+                    "repo_hash": repo_hash,
+                }
+            )
+        )
+        return 0
+
+    print(repo_hash)
+    return 0
+
+
+def _cmd_refs_deref_ref_path(args: argparse.Namespace) -> int:
+    repo_root = _resolve_repo_root(args.repo)
+    expected_repo_hash = _resolve_repo_hash(repo_root)
+    parsed_ref = parse_ref_path_uri(args.ref_path)
+    uri_repo_hash = str(parsed_ref["repo_hash"])
+    repo_hash_match = uri_repo_hash == expected_repo_hash
+    if not repo_hash_match and not args.allow_repo_hash_mismatch:
+        raise CliError(
+            "ref-path repo hash does not match target repository "
+            f"(uri={uri_repo_hash}, repo={expected_repo_hash})"
+        )
+
+    normalized_reference = {
+        "class": "git_line_span",
+        "path": str(parsed_ref["path"]),
+        "commit": str(parsed_ref["commit"]),
+        "start": parsed_ref["start"],
+        "end": parsed_ref["end"],
+    }
+    resolved_reference, extracted_text = _resolve_normalized_reference(
+        repo_root,
+        normalized_reference,
+        resolve_commit=str(parsed_ref["commit"]),
+    )
+
+    output = {
+        "status": "ok",
+        "command": "git-refs deref-ref-path",
+        "repo_root": str(repo_root),
+        "ref_path": args.ref_path,
+        "repo_hash": expected_repo_hash,
+        "uri_repo_hash": uri_repo_hash,
+        "repo_hash_match": repo_hash_match,
+        "reference": resolved_reference,
+        "extracted_text": extracted_text,
+    }
+    print(json.dumps(output))
     return 0
 
 
@@ -389,9 +590,50 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     refs_subparsers = refs_parser.add_subparsers(dest="refs_command", required=True)
 
+    repo_hash_parser = refs_subparsers.add_parser(
+        "repo-hash",
+        help="Print stable repository identifier (first/root commit hash).",
+    )
+    repo_hash_parser.add_argument(
+        "--repo",
+        default=".",
+        help="Path inside the target git repository (default: current directory).",
+    )
+    repo_hash_parser.add_argument(
+        "--output-json",
+        action="store_true",
+        help="Emit JSON output with repo_root and repo_hash.",
+    )
+    repo_hash_parser.set_defaults(handler=_cmd_refs_repo_hash)
+
+    deref_ref_path_parser = refs_subparsers.add_parser(
+        "deref-ref-path",
+        help="Resolve extracted text from one git-ref URI.",
+    )
+    deref_ref_path_parser.add_argument(
+        "--repo",
+        default=".",
+        help="Path inside the target git repository (default: current directory).",
+    )
+    deref_ref_path_parser.add_argument(
+        "--ref-path",
+        required=True,
+        dest="ref_path",
+        help=(
+            "git-ref URI to resolve "
+            "(format: git-ref://<repo-hash>/blob/<commit>/<path>#LxCy-LzCw)."
+        ),
+    )
+    deref_ref_path_parser.add_argument(
+        "--allow-repo-hash-mismatch",
+        action="store_true",
+        help="Resolve even when URI repo hash differs from the target repository hash.",
+    )
+    deref_ref_path_parser.set_defaults(handler=_cmd_refs_deref_ref_path)
+
     from_span_parser = refs_subparsers.add_parser(
-        "from-span",
-        help="Build a formal reference JSON from a file line span.",
+        "ref-from-span",
+        help="Create one formal reference JSON from a file line span.",
     )
     from_span_parser.add_argument(
         "--repo",
@@ -403,6 +645,12 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
         required=True,
         dest="file_path",
         help="Target file path (absolute or repository-relative).",
+    )
+    _add_ref_output_arguments(from_span_parser)
+    from_span_parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="If target file is dirty, git add/commit it before creating the reference.",
     )
     from_span_parser.add_argument(
         "--start-line",
@@ -433,8 +681,8 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
     from_span_parser.set_defaults(handler=_cmd_refs_from_span)
 
     from_text_parser = refs_subparsers.add_parser(
-        "from-text",
-        help="Find a text fragment in a file and return a formal reference JSON.",
+        "ref-from-text",
+        help="Create one formal reference JSON from a text fragment in a file.",
     )
     from_text_parser.add_argument(
         "--repo",
@@ -446,6 +694,12 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
         required=True,
         dest="file_path",
         help="Target file path (absolute or repository-relative).",
+    )
+    _add_ref_output_arguments(from_text_parser)
+    from_text_parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="If target file is dirty, git add/commit it before creating the reference.",
     )
     from_text_parser.add_argument(
         "--text",
@@ -463,8 +717,8 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
     from_text_parser.set_defaults(handler=_cmd_refs_from_text)
 
     list_matches_parser = refs_subparsers.add_parser(
-        "list-text-matches",
-        help="List all matches for a text fragment in a file with formal references.",
+        "ref-list-text-matches",
+        help="Create references for all matches of a text fragment in a file.",
     )
     list_matches_parser.add_argument(
         "--repo",
@@ -476,6 +730,12 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
         required=True,
         dest="file_path",
         help="Target file path (absolute or repository-relative).",
+    )
+    _add_ref_output_arguments(list_matches_parser)
+    list_matches_parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="If target file is dirty, git add/commit it before creating references.",
     )
     list_matches_parser.add_argument(
         "--text",
@@ -493,7 +753,7 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
     list_matches_parser.set_defaults(handler=_cmd_refs_list_text_matches)
 
     resolve_batch_parser = refs_subparsers.add_parser(
-        "resolve-batch",
+        "deref-batch",
         help="Resolve a batch of git_line_span references into extracted text.",
     )
     resolve_batch_parser.add_argument(
@@ -527,8 +787,8 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
     resolve_batch_parser.set_defaults(handler=_cmd_refs_resolve_batch)
 
     from_markers_parser = refs_subparsers.add_parser(
-        "from-markers",
-        help="Find a block delimited by start/end marker text and return its reference JSON.",
+        "ref-from-markers",
+        help="Create one reference from start/end marker text delimiting a block.",
     )
     from_markers_parser.add_argument(
         "--repo",
@@ -540,6 +800,12 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
         required=True,
         dest="file_path",
         help="Target file path (absolute or repository-relative).",
+    )
+    _add_ref_output_arguments(from_markers_parser)
+    from_markers_parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="If target file is dirty, git add/commit it before creating the reference.",
     )
     from_markers_parser.add_argument(
         "--start-text",

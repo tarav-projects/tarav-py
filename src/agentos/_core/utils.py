@@ -29,6 +29,23 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def validate_string_for_path(value: str, *, field_name: str = "value") -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise CliError(f"{field_name} must not be empty")
+
+    if "/" in normalized or "\\" in normalized:
+        raise CliError(f"{field_name} must not contain path separators")
+
+    if normalized in {".", ".."}:
+        raise CliError(f"{field_name} must not be '.' or '..'")
+
+    if "\x00" in normalized:
+        raise CliError(f"{field_name} must not contain null bytes")
+
+    return normalized
+
+
 def _build_writer_payload(args: argparse.Namespace) -> dict[str, str]:
     return {
         "agent": str(args.writer_agent),

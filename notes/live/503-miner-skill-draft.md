@@ -13,7 +13,7 @@ This is a guide for building miner skills, not a referenceable base. Each concre
 
 - A miner's job is to **find** things. Not to dedup, not to orchestrate, not to log.
 - The cognitive work (deciding what is a finding) belongs to the agent.
-- The deterministic work (querying tapes, writing entries) belongs to `agentcli`.
+- The deterministic work (querying tapes, writing entries) belongs to `agentos`.
 - Reading sources uses the agent's built-in tools (Read, Glob, Grep in Claude Code/Codex) — not custom CLI commands.
 
 ## Entry Type Convention
@@ -48,7 +48,7 @@ Best for: exploratory miners, broad sweeps, first-run scenarios.
 
 ```
 Agent uses Glob/Grep/Read to find and select targets autonomously.
-No agentcli command involved.
+No agentos command involved.
 ```
 
 **AgentOS dependency:** none.
@@ -75,7 +75,7 @@ Best for: orchestrated workflows where a prior step curates targets.
 
 ```sh
 # Example: a prior step produces a target list
-agentcli targets resolve --root {root} --include "src/**/*.py" --exclude "**/vendor/**" > /tmp/targets.jsonl
+agentos targets resolve --root {root} --include "src/**/*.py" --exclude "**/vendor/**" > /tmp/targets.jsonl
 
 # Miner reads the target list
 # (agent reads /tmp/targets.jsonl and scans each entry)
@@ -91,7 +91,7 @@ Best for: chained miners, composable workflows, narrowing down from a broad scan
 
 ```sh
 # Load targets from another tape's entries
-agentcli tape list --tape {source_tape} --entry-type {source_type} --last N
+agentos tape list --tape {source_tape} --entry-type {source_type} --last N
 # Agent extracts file paths from the returned entries and scans them
 ```
 
@@ -105,10 +105,10 @@ Best for: incremental mining, CI-triggered scans, change-aware miners.
 
 ```sh
 # Example: list files changed vs main branch
-agentcli git diff-files --base main
+agentos git diff-files --base main
 
 # Example: list files changed in last N commits
-agentcli git diff-files --commits N
+agentos git diff-files --commits N
 
 # Agent scans only the returned files
 ```

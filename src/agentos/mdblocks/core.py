@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
+from agentos._core.scan import DEFAULT_SCAN_EXCLUDES, iter_target_files
 
-DEFAULT_MARKDOWN_EXCLUDES = (
-    ".git",
-    ".venv",
-    "__pycache__",
-    ".mypy_cache",
-    ".pytest_cache",
-    "node_modules",
-)
+
+DEFAULT_MARKDOWN_EXCLUDES = DEFAULT_SCAN_EXCLUDES
+
+BLOCK_SEPARATOR = "****"
+DEFAULT_MIN_HEADING_LEVEL = 2
+DEFAULT_MAX_HEADING_LEVEL = 6
+HARD_MAX_BLOCK_LINES = 25
 
 _HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.+?)\s*$")
 
@@ -24,8 +23,8 @@ class MarkdownScanConfig:
     root: Path
     targets: tuple[Path, ...]
     excludes: tuple[str, ...]
-    min_level: int = 1
-    max_level: int = 6
+    min_level: int = DEFAULT_MIN_HEADING_LEVEL
+    max_level: int = DEFAULT_MAX_HEADING_LEVEL
     recursive: bool = True
     include_content: bool = False
 
@@ -37,30 +36,21 @@ class _Heading:
     title: str
 
 
-def _normalize_rel(rel: PurePosixPath) -> str:
-    value = rel.as_posix()
-    return "" if value == "." else value
+def validate_markdown_level_range(min_level: int, max_level: int) -> None:
+    if min_level < DEFAULT_MIN_HEADING_LEVEL or min_level > DEFAULT_MAX_HEADING_LEVEL:
+        raise ValueError(
+            f"--min-level must be between {DEFAULT_MIN_HEADING_LEVEL} and {DEFAULT_MAX_HEADING_LEVEL}"
+        )
+    if max_level < DEFAULT_MIN_HEADING_LEVEL or max_level > DEFAULT_MAX_HEADING_LEVEL:
+        raise ValueError(
+            f"--max-level must be between {DEFAULT_MIN_HEADING_LEVEL} and {DEFAULT_MAX_HEADING_LEVEL}"
+        )
+    if min_level > max_level:
+        raise ValueError("--min-level cannot be greater than --max-level")
 
 
-def _should_exclude(rel_path: PurePosixPath, patterns: tuple[str, ...]) -> bool:
-    rel_value = _normalize_rel(rel_path)
-    rel_parts = set(rel_path.parts)
-
-    for raw_pattern in patterns:
-        pattern = raw_pattern.strip().strip("/")
-        if not pattern:
-            continue
-
-        if rel_value == pattern or rel_value.startswith(f"{pattern}/"):
-            return True
-
-        # A bare directory name excludes that folder anywhere in the tree.
-        if "/" not in pattern and pattern in rel_parts:
-            return True
-
-        if rel_value and PurePosixPath(rel_value).match(pattern):
-            return True
-    return False
+def _validate_scan_config(config: MarkdownScanConfig) -> None:
+    validate_markdown_level_range(config.min_level, config.max_level)
 
 
 def _sanitize_heading_title(raw_title: str) -> str:
@@ -74,56 +64,21 @@ def _discover_markdown_files(config: MarkdownScanConfig) -> list[Path]:
     discovered: set[Path] = set()
 
     for target in config.targets:
-        if target.is_file():
-            rel_target = PurePosixPath(target.relative_to(config.root).as_posix())
-            if target.suffix.lower() == ".md" and not _should_exclude(rel_target, config.excludes):
-                discovered.add(target)
-            continue
-
-        if not target.is_dir():
-            continue
-
-        if config.recursive:
-            for dirpath, dirnames, filenames in os.walk(target):
-                current = Path(dirpath)
-                rel_current = PurePosixPath(
-                    _normalize_rel(PurePosixPath(current.relative_to(config.root).as_posix()))
-                )
-                if _should_exclude(rel_current, config.excludes):
-                    dirnames[:] = []
-                    continue
-
-                pruned: list[str] = []
-                for dirname in dirnames:
-                    rel_dir = PurePosixPath(
-                        _normalize_rel(
-                            PurePosixPath((current / dirname).relative_to(config.root).as_posix())
-                        )
-                    )
-                    if not _should_exclude(rel_dir, config.excludes):
-                        pruned.append(dirname)
-                dirnames[:] = pruned
-
-                for filename in filenames:
-                    if not filename.lower().endswith(".md"):
-                        continue
-                    file_path = current / filename
-                    rel_file = PurePosixPath(file_path.relative_to(config.root).as_posix())
-                    if not _should_exclude(rel_file, config.excludes):
-                        discovered.add(file_path)
-        else:
-            for child in target.iterdir():
-                if not child.is_file() or child.suffix.lower() != ".md":
-                    continue
-                rel_file = PurePosixPath(child.relative_to(config.root).as_posix())
-                if not _should_exclude(rel_file, config.excludes):
-                    discovered.add(child)
+        for file_path in iter_target_files(
+            root=config.root,
+            target=target,
+            excludes=config.excludes,
+            recursive=config.recursive,
+        ):
+            if file_path.suffix.lower() == ".md":
+                discovered.add(file_path)
 
     return sorted(discovered, key=lambda path: path.relative_to(config.root).as_posix())
 
 
-def _extract_headings(lines: list[str]) -> tuple[list[_Heading], bool]:
+def _extract_headings_and_separators(lines: list[str]) -> tuple[list[_Heading], list[int], bool]:
     headings: list[_Heading] = []
+    separators: list[int] = []
     in_fence = False
     fence_char = ""
     fence_len = 0
@@ -143,8 +98,8 @@ def _extract_headings(lines: list[str]) -> tuple[list[_Heading], bool]:
         return (char, count)
 
     for line_no, line in enumerate(lines, start=1):
-        stripped = line.lstrip()
-        run_char, run_len = _fence_run(stripped)
+        stripped_left = line.lstrip()
+        run_char, run_len = _fence_run(stripped_left)
 
         if not in_fence and run_len >= 3:
             in_fence = True
@@ -153,10 +108,18 @@ def _extract_headings(lines: list[str]) -> tuple[list[_Heading], bool]:
             continue
 
         if in_fence:
-            if run_char == fence_char and run_len >= fence_len and stripped[run_len:].strip() == "":
+            if (
+                run_char == fence_char
+                and run_len >= fence_len
+                and stripped_left[run_len:].strip() == ""
+            ):
                 in_fence = False
                 fence_char = ""
                 fence_len = 0
+            continue
+
+        if line.strip() == BLOCK_SEPARATOR:
+            separators.append(line_no)
             continue
 
         match = _HEADING_RE.match(line)
@@ -165,15 +128,16 @@ def _extract_headings(lines: list[str]) -> tuple[list[_Heading], bool]:
         level = len(match.group(1))
         title = _sanitize_heading_title(match.group(2))
         headings.append(_Heading(start_line=line_no, level=level, title=title))
-    return headings, in_fence
+
+    return headings, separators, in_fence
 
 
-def _count_preamble_nonempty_lines(lines: list[str], first_heading_line: int | None) -> int:
-    if first_heading_line is None or first_heading_line <= 1:
+def _count_preamble_nonempty_lines(lines: list[str], first_anchor_line: int | None) -> int:
+    if first_anchor_line is None or first_anchor_line <= 1:
         return 0
 
     start_index = 0
-    limit_index = first_heading_line - 1
+    limit_index = first_anchor_line - 1
 
     if lines and lines[0].strip() == "---":
         front_matter_closed = False
@@ -188,9 +152,50 @@ def _count_preamble_nonempty_lines(lines: list[str], first_heading_line: int | N
     count = 0
     for line in lines[start_index:limit_index]:
         stripped = line.strip()
-        if stripped and stripped != "***":
+        if stripped and stripped != BLOCK_SEPARATOR:
             count += 1
     return count
+
+
+def _build_block_payload(
+    *,
+    rel_path: str,
+    lines: list[str],
+    heading: _Heading,
+    open_separator_line: int,
+    close_separator_line: int | None,
+    end_line: int,
+    include_content: bool,
+    index: int,
+) -> dict[str, Any]:
+    start_line = heading.start_line
+    block_end = max(start_line, end_line)
+    body_start = start_line + 1
+    has_body = body_start <= block_end
+    body_end = block_end if has_body else body_start - 1
+
+    block_data: dict[str, Any] = {
+        "index": index,
+        "id": f"{rel_path}#L{start_line}-L{block_end}",
+        "path": rel_path,
+        "link": f"{rel_path}#L{start_line}",
+        "path_line": f"{rel_path}:{start_line}",
+        "title": heading.title,
+        "level": heading.level,
+        "start_line": start_line,
+        "end_line": block_end,
+        "body_start_line": body_start,
+        "body_end_line": body_end,
+        "has_body": has_body,
+        "separator_open_line": open_separator_line,
+        "separator_close_line": close_separator_line,
+        "parent": None,
+    }
+
+    if include_content:
+        block_data["content"] = "\n".join(lines[start_line - 1 : block_end]).rstrip("\n")
+
+    return block_data
 
 
 def _parse_file_blocks(
@@ -204,61 +209,103 @@ def _parse_file_blocks(
     lines = text.splitlines()
     rel_path = file_path.relative_to(root).as_posix()
 
-    headings, has_unclosed_fence = _extract_headings(lines)
+    headings, separator_lines, has_unclosed_fence = _extract_headings_and_separators(lines)
+    heading_by_line = {heading.start_line: heading for heading in headings}
+    separator_set = set(separator_lines)
+
     blocks: list[dict[str, Any]] = []
+    semantic_separator_lines: set[int] = set()
+    orphan_separator_lines: list[int] = []
 
-    for index, heading in enumerate(headings):
-        next_boundary = len(lines)
-        for candidate in headings[index + 1 :]:
-            if candidate.level <= heading.level:
-                next_boundary = candidate.start_line - 1
-                break
+    waiting_separator_line: int | None = None
+    waiting_separator_is_semantic = False
+    active_heading: _Heading | None = None
+    active_open_separator_line: int | None = None
 
-        parent_heading: _Heading | None = None
-        for candidate in reversed(headings[:index]):
-            if candidate.level < heading.level:
-                parent_heading = candidate
-                break
+    for line_no in range(1, len(lines) + 1):
+        if line_no in separator_set:
+            if active_heading is not None and active_open_separator_line is not None:
+                block = _build_block_payload(
+                    rel_path=rel_path,
+                    lines=lines,
+                    heading=active_heading,
+                    open_separator_line=active_open_separator_line,
+                    close_separator_line=line_no,
+                    end_line=line_no - 1,
+                    include_content=include_content,
+                    index=len(blocks) + 1,
+                )
+                blocks.append(block)
+                semantic_separator_lines.add(line_no)
 
-        if not (min_level <= heading.level <= max_level):
+                active_heading = None
+                active_open_separator_line = None
+                waiting_separator_line = line_no
+                waiting_separator_is_semantic = True
+                continue
+
+            if waiting_separator_line is not None and not waiting_separator_is_semantic:
+                orphan_separator_lines.append(waiting_separator_line)
+            waiting_separator_line = line_no
+            waiting_separator_is_semantic = False
             continue
 
-        start_line = heading.start_line
-        end_line = max(start_line, next_boundary)
-        body_start = start_line + 1
-        has_body = body_start <= end_line
-        body_end = end_line if has_body else body_start - 1
+        if active_heading is not None:
+            continue
 
-        block_data: dict[str, Any] = {
-            "index": len(blocks) + 1,
-            "id": f"{rel_path}#L{start_line}-L{end_line}",
-            "path": rel_path,
-            "link": f"{rel_path}#L{start_line}",
-            "path_line": f"{rel_path}:{start_line}",
-            "title": heading.title,
-            "level": heading.level,
-            "start_line": start_line,
-            "end_line": end_line,
-            "body_start_line": body_start,
-            "body_end_line": body_end,
-            "has_body": has_body,
-            "parent": None
-            if parent_heading is None
-            else {
-                "title": parent_heading.title,
-                "level": parent_heading.level,
-                "start_line": parent_heading.start_line,
-                "path_line": f"{rel_path}:{parent_heading.start_line}",
-                "link": f"{rel_path}#L{parent_heading.start_line}",
-            },
-        }
+        if waiting_separator_line is None:
+            continue
 
-        if include_content:
-            block_data["content"] = "\n".join(lines[start_line - 1 : end_line]).rstrip("\n")
+        heading = heading_by_line.get(line_no)
+        if heading is not None and min_level <= heading.level <= max_level:
+            open_separator_line = waiting_separator_line
+            semantic_separator_lines.add(open_separator_line)
 
-        blocks.append(block_data)
+            waiting_separator_line = None
+            waiting_separator_is_semantic = False
+            active_heading = heading
+            active_open_separator_line = open_separator_line
+            continue
 
-    first_heading_line = headings[0].start_line if headings else None
+        if lines[line_no - 1].strip() == "":
+            continue
+
+        if not waiting_separator_is_semantic:
+            orphan_separator_lines.append(waiting_separator_line)
+        waiting_separator_line = None
+        waiting_separator_is_semantic = False
+
+    if active_heading is not None and active_open_separator_line is not None:
+        block = _build_block_payload(
+            rel_path=rel_path,
+            lines=lines,
+            heading=active_heading,
+            open_separator_line=active_open_separator_line,
+            close_separator_line=None,
+            end_line=len(lines),
+            include_content=include_content,
+            index=len(blocks) + 1,
+        )
+        blocks.append(block)
+
+    if waiting_separator_line is not None and not waiting_separator_is_semantic:
+        orphan_separator_lines.append(waiting_separator_line)
+
+    for index, block in enumerate(blocks):
+        parent: dict[str, Any] | None = None
+        for candidate in reversed(blocks[:index]):
+            if int(candidate["level"]) < int(block["level"]):
+                parent = {
+                    "title": candidate["title"],
+                    "level": candidate["level"],
+                    "start_line": candidate["start_line"],
+                    "path_line": candidate["path_line"],
+                    "link": candidate["link"],
+                }
+                break
+        block["parent"] = parent
+
+    first_anchor_line = int(blocks[0]["start_line"]) if blocks else None
 
     return {
         "path": rel_path,
@@ -266,14 +313,23 @@ def _parse_file_blocks(
         "line_count": len(lines),
         "heading_count": len(headings),
         "block_count": len(blocks),
-        "first_heading_line": first_heading_line,
-        "preamble_nonempty_line_count": _count_preamble_nonempty_lines(lines, first_heading_line),
+        "first_heading_line": headings[0].start_line if headings else None,
+        "first_block_line": first_anchor_line,
+        "preamble_nonempty_line_count": _count_preamble_nonempty_lines(lines, first_anchor_line),
+        "separator": BLOCK_SEPARATOR,
+        "separator_count": len(separator_lines),
+        "separator_lines": separator_lines,
+        "semantic_separator_count": len(semantic_separator_lines),
+        "semantic_separator_lines": sorted(semantic_separator_lines),
+        "orphan_separator_count": len(orphan_separator_lines),
+        "orphan_separator_lines": sorted(set(orphan_separator_lines)),
         "has_unclosed_fence": has_unclosed_fence,
         "blocks": blocks,
     }
 
 
 def scan_markdown_blocks(config: MarkdownScanConfig) -> list[dict[str, Any]]:
+    _validate_scan_config(config)
     files = _discover_markdown_files(config)
     parsed: list[dict[str, Any]] = []
     for file_path in files:
@@ -414,6 +470,7 @@ def find_markdown_blocks(
     use_regex: bool = False,
     case_sensitive: bool = False,
 ) -> dict[str, Any]:
+    _validate_scan_config(config)
     query_text = query.strip()
     if not query_text:
         raise ValueError("--query cannot be empty")
@@ -518,86 +575,10 @@ def _make_lint_issue(
     return issue
 
 
-def _is_block_separator_line(value: str) -> bool:
-    return value.strip() == "***"
-
-
-def _separator_lines(lines: list[str]) -> list[int]:
-    return [index + 1 for index, line in enumerate(lines) if _is_block_separator_line(line)]
-
-
-def _separator_pairs(separator_lines: list[int]) -> list[tuple[int, int]]:
-    pairs: list[tuple[int, int]] = []
-    for index in range(0, len(separator_lines) - 1, 2):
-        pairs.append((separator_lines[index], separator_lines[index + 1]))
-    return pairs
-
-
-def _is_line_inside_separator_pairs(line: int, pairs: list[tuple[int, int]]) -> bool:
-    for start, end in pairs:
-        if start < line < end:
-            return True
-    return False
-
-
-def _nearest_separator_bounds(line: int, separator_lines: list[int]) -> tuple[int | None, int | None]:
-    before: int | None = None
-    after: int | None = None
-    for separator_line in separator_lines:
-        if separator_line < line:
-            before = separator_line
-            continue
-        if separator_line > line:
-            after = separator_line
-            break
-    return before, after
-
-
-def _lint_separator_block_flatness(
-    *,
-    lines: list[str],
-    block_start_line: int,
-    block_end_line: int,
-    path: str,
-) -> dict[str, Any] | None:
-    # Inspect text between separators, excluding the separator lines themselves.
-    inner_start = block_start_line + 1
-    inner_end = block_end_line - 1
-    if inner_start > inner_end:
-        return None
-
-    segment = lines[inner_start - 1 : inner_end]
-    headings, _ = _extract_headings(segment)
-    if len(headings) <= 1:
-        return None
-
-    level_counts: dict[int, int] = {}
-    for heading in headings:
-        level_counts[heading.level] = level_counts.get(heading.level, 0) + 1
-
-    # "Flat" means headings in the separator block stay at one level.
-    if len(level_counts) == 1:
-        return None
-
-    first_heading = headings[0]
-    return _make_lint_issue(
-        severity="warning",
-        code="nonflat_separator_block",
-        path=path,
-        line=inner_start + first_heading.start_line - 1,
-        message=(
-            "Content between `***` separators is not flat: multiple heading levels were found."
-        ),
-        details={
-            "separator_start_line": block_start_line,
-            "separator_end_line": block_end_line,
-            "heading_levels": sorted(level_counts.keys()),
-            "heading_count": len(headings),
-        },
-    )
-
-
-def lint_markdown_blocks(config: MarkdownScanConfig, max_block_lines: int = 30) -> dict[str, Any]:
+def lint_markdown_blocks(
+    config: MarkdownScanConfig,
+) -> dict[str, Any]:
+    _validate_scan_config(config)
     lint_config = MarkdownScanConfig(
         root=config.root,
         targets=config.targets,
@@ -616,13 +597,6 @@ def lint_markdown_blocks(config: MarkdownScanConfig, max_block_lines: int = 30) 
         file_path = file_data["path"]
         blocks = sorted(file_data["blocks"], key=lambda item: int(item["start_line"]))
         file_issues: list[dict[str, Any]] = []
-        lines: list[str] = []
-        absolute_path = file_data.get("absolute_path")
-        if isinstance(absolute_path, str):
-            try:
-                lines = Path(absolute_path).read_text(encoding="utf-8").splitlines()
-            except OSError:
-                lines = []
 
         if file_data["heading_count"] == 0:
             file_issues.append(
@@ -651,61 +625,35 @@ def lint_markdown_blocks(config: MarkdownScanConfig, max_block_lines: int = 30) 
             file_issues.append(
                 _make_lint_issue(
                     severity="warning",
-                    code="preamble_text_before_first_heading",
+                    code="preamble_text_before_first_block",
                     path=file_path,
                     line=1,
-                    message="File contains non-empty text before the first heading.",
+                    message="File contains non-empty text before the first block anchor.",
                     details={"nonempty_line_count": preamble_nonempty},
                 )
             )
 
-        if lines:
-            separator_lines = _separator_lines(lines)
-            separator_pairs = _separator_pairs(separator_lines)
-
-            if len(separator_lines) % 2 != 0:
-                file_issues.append(
-                    _make_lint_issue(
-                        severity="warning",
-                        code="unpaired_block_separator",
-                        path=file_path,
-                        line=separator_lines[-1],
-                        message=(
-                            "Unpaired `***` separator found; separators should come in open/close pairs."
-                        ),
-                    )
-                )
-
-            for block_start, block_end in separator_pairs:
-                issue = _lint_separator_block_flatness(
-                    lines=lines,
-                    block_start_line=block_start,
-                    block_end_line=block_end,
+        for separator_line in file_data.get("orphan_separator_lines", []):
+            file_issues.append(
+                _make_lint_issue(
+                    severity="error",
+                    code="separator_outside_block_semantics",
                     path=file_path,
+                    line=int(separator_line),
+                    message=(
+                        "`****` separator is outside block semantics (not consumed as a block "
+                        "opening/closing boundary)."
+                    ),
                 )
-                if issue is not None:
-                    file_issues.append(issue)
+            )
 
         seen_titles: dict[tuple[int, str], int] = {}
-        previous_level: int | None = None
 
         for block in blocks:
             start_line = int(block["start_line"])
             end_line = int(block["end_line"])
             level = int(block["level"])
             title = str(block["title"]).strip()
-
-            if previous_level is not None and level > previous_level + 1:
-                file_issues.append(
-                    _make_lint_issue(
-                        severity="warning",
-                        code="heading_level_jump",
-                        path=file_path,
-                        line=start_line,
-                        message=f"Heading level jumps from h{previous_level} to h{level}.",
-                    )
-                )
-            previous_level = level
 
             if not title:
                 file_issues.append(
@@ -719,44 +667,23 @@ def lint_markdown_blocks(config: MarkdownScanConfig, max_block_lines: int = 30) 
                 )
 
             line_span = end_line - start_line + 1
-            if max_block_lines > 0 and line_span > max_block_lines:
+            if line_span > HARD_MAX_BLOCK_LINES:
                 file_issues.append(
                     _make_lint_issue(
-                        severity="warning",
+                        severity="error",
                         code="block_too_long",
                         path=file_path,
                         line=start_line,
-                        message=f"Block spans {line_span} lines; threshold is {max_block_lines}.",
+                        message=(
+                            f"Block spans {line_span} lines; hard limit is {HARD_MAX_BLOCK_LINES}."
+                        ),
                         details={
                             "line_span": line_span,
-                            "max_block_lines": max_block_lines,
+                            "max_block_lines": HARD_MAX_BLOCK_LINES,
                             "end_line": end_line,
                         },
                     )
                 )
-
-            if lines:
-                if not _is_line_inside_separator_pairs(start_line, separator_pairs):
-                    before_separator, after_separator = _nearest_separator_bounds(
-                        start_line, separator_lines
-                    )
-                    details: dict[str, Any] = {}
-                    if before_separator is not None:
-                        details["nearest_separator_before_line"] = before_separator
-                    if after_separator is not None:
-                        details["nearest_separator_after_line"] = after_separator
-                    file_issues.append(
-                        _make_lint_issue(
-                            severity="warning",
-                            code="missing_block_separators",
-                            path=file_path,
-                            line=start_line,
-                            message=(
-                                "Heading is not inside a `*** ... ***` block separator pair."
-                            ),
-                            details=details,
-                        )
-                    )
 
             if title:
                 dedupe_key = (level, title.casefold())
@@ -801,7 +728,7 @@ def lint_markdown_blocks(config: MarkdownScanConfig, max_block_lines: int = 30) 
         "issue_count": len(all_issues),
         "error_count": total_errors,
         "warning_count": total_warnings,
-        "max_block_lines": max_block_lines,
+        "max_block_lines": HARD_MAX_BLOCK_LINES,
         "files": file_reports,
         "issues": all_issues,
     }

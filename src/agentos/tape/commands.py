@@ -2,791 +2,914 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import re
-from datetime import datetime, timezone
 from pathlib import Path
-from uuid import UUID, uuid4
 
 from agentos._core.errors import CliError
-from agentos._core.utils import (
-    _build_writer_payload,
-    _load_json_arg,
-    _load_json_array_arg,
-    _load_json_object_arg,
-    _utc_now_iso,
+from agentos._core.project import resolve_project_tape_dir
+from agentos._core.utils import _load_json_arg
+from agentos.tape.folder_core import (
+    TapeFolderConfig,
+    append_staging_record,
+    bootstrap_tape_folder,
+    consolidate_staging_records,
+    get_manifest_path,
+    get_supported_naming_strategies,
+    load_tape_folder_config,
+    locate_records_for_mode,
+    serialize_located_record,
+    verify_segment_headers,
 )
 
-
-def _load_tape_metadata_entry(tape_path: Path) -> dict[str, object]:
-    if not tape_path.exists():
-        raise CliError(f"tape file does not exist: {tape_path}")
-    if not tape_path.is_file():
-        raise CliError(f"tape path is not a file: {tape_path}")
-
-    with tape_path.open("r", encoding="utf-8") as handle:
-        first_line = handle.readline()
-    if not first_line:
-        raise CliError(f"tape is empty: {tape_path}")
-
-    try:
-        metadata_entry = json.loads(first_line)
-    except json.JSONDecodeError as exc:
-        raise CliError(f"invalid metadata entry JSON in tape: {exc}") from exc
-    if not isinstance(metadata_entry, dict):
-        raise CliError("metadata entry must be a JSON object")
-    if metadata_entry.get("entry_type") != "tape.meta":
-        raise CliError("first tape entry must be entry_type=tape.meta")
-
-    cargo = metadata_entry.get("cargo")
-    if not isinstance(cargo, dict):
-        raise CliError("metadata cargo must be a JSON object")
-    tape_id = str(cargo.get("tape_id", "")).strip()
-    tape_name = str(cargo.get("tape_name", "")).strip()
-    if not tape_id:
-        raise CliError("metadata cargo.tape_id is required")
-    if not tape_name:
-        raise CliError("metadata cargo.tape_name is required")
-    try:
-        UUID(tape_id)
-    except ValueError as exc:
-        raise CliError(f"metadata cargo.tape_id is not a valid UUID: {tape_id}") from exc
-    return metadata_entry
+DEFAULT_TAPE_TYPE = "folder"
+DEFAULT_NAMING_STRATEGY = "sequential"
+DEFAULT_MAX_RECORDS_PER_SEGMENT = 1000
 
 
-def _validate_tape_entry_type(value: object) -> str:
-    entry_type = str(value).strip()
-    if not entry_type:
-        raise CliError("entry type must not be empty")
-    if entry_type == "tape.meta":
-        raise CliError("entry type tape.meta is reserved for tape init")
-    return entry_type
+def _strategy_uses_max_records_per_segment(naming_strategy: str) -> bool:
+    return naming_strategy == "sequential"
 
 
-def _normalize_tape_batch_entry(
-    raw_entry: object,
+def _resolve_tape_root(
     *,
-    workflow: str,
-    writer: dict[str, str],
-) -> dict[str, object]:
-    if not isinstance(raw_entry, dict):
-        raise CliError("batch entry must be a JSON object")
+    root_path: str | None,
+    tape_name: str | None,
+) -> tuple[Path, dict[str, object]]:
+    if root_path is not None:
+        resolved_root = Path(root_path).expanduser().resolve()
+        return (
+            resolved_root,
+            {
+                "resolution": "explicit-root",
+                "project_root": None,
+                "tape": None,
+            },
+        )
 
-    allowed_fields = {"entry_type", "cargo", "refs"}
-    extra_fields = sorted(set(raw_entry.keys()) - allowed_fields)
-    if extra_fields:
-        raise CliError(f"unsupported batch entry fields: {', '.join(extra_fields)}")
+    if tape_name is None:
+        raise CliError("either --root or --tape is required")
 
-    if "entry_type" not in raw_entry:
-        raise CliError("batch entry field entry_type is required")
-    entry_type = _validate_tape_entry_type(raw_entry["entry_type"])
-
-    cargo = raw_entry.get("cargo", {})
-    if not isinstance(cargo, dict):
-        raise CliError("batch entry field cargo must be a JSON object")
-
-    refs = raw_entry.get("refs", [])
-    if not isinstance(refs, list):
-        raise CliError("batch entry field refs must be a JSON array")
-
-    return {
-        "ts": _utc_now_iso(),
-        "writer": dict(writer),
-        "workflow": workflow,
-        "entry_type": entry_type,
-        "refs": refs,
-        "cargo": cargo,
-    }
-
-
-def _generate_tape_filename(tag: str, rotation: str, tape_dir: Path) -> tuple[str, dict[str, object]]:
-    now = datetime.now(timezone.utc)
-    if rotation == "monthly":
-        prefix = now.strftime("%Y%m")
-        return f"{prefix}-{tag}.jsonl", {"prefix": prefix}
-    if rotation == "daily":
-        prefix = now.strftime("%Y%m%d")
-        return f"{prefix}-{tag}.jsonl", {"prefix": prefix}
-    if rotation == "weekly":
-        prefix = f"{now.strftime('%G')}W{now.strftime('%V')}"
-        return f"{prefix}-{tag}.jsonl", {"prefix": prefix}
-    if rotation == "yearly":
-        prefix = now.strftime("%Y")
-        return f"{prefix}-{tag}.jsonl", {"prefix": prefix}
-    if rotation == "run":
-        prefix = now.strftime("%Y%m%d-%H%M%S")
-        return f"{prefix}-{tag}.jsonl", {"prefix": prefix}
-    if rotation == "seq":
-        prefix = _next_seq_prefix(tape_dir, tag)
-        return f"{prefix}-{tag}.jsonl", {"prefix": prefix}
-    if rotation == "random":
-        prefix = uuid4().hex[:8]
-        return f"{prefix}-{tag}.jsonl", {"prefix": prefix}
-    return f"{tag}.jsonl", {}
-
-
-def _next_seq_prefix(tape_dir: Path, tag: str) -> str:
-    max_num = -1
-    suffix = f"-{tag}.jsonl"
-    if tape_dir.is_dir():
-        for name in os.listdir(tape_dir):
-            if name.endswith(suffix):
-                prefix_part = name[: -len(suffix)]
-                if re.fullmatch(r"\d+", prefix_part):
-                    max_num = max(max_num, int(prefix_part))
-    next_num = max_num + 1
-    width = max(3, len(str(next_num)))
-    return str(next_num).zfill(width)
-
-
-def _find_tapes_by_tag(tape_dir: Path, tag: str) -> list[Path]:
-    if not tape_dir.is_dir():
-        return []
-    suffix = f"-{tag}.jsonl"
-    exact = f"{tag}.jsonl"
-    results = []
-    for name in sorted(os.listdir(tape_dir)):
-        if name.endswith(suffix) or name == exact:
-            results.append(tape_dir / name)
-    return results
-
-
-def _find_all_tapes(tape_dir: Path) -> list[Path]:
-    if not tape_dir.is_dir():
-        return []
-    return sorted(
-        tape_dir / name
-        for name in os.listdir(tape_dir)
-        if name.endswith(".jsonl")
+    resolved_root, project_root, normalized_tape = resolve_project_tape_dir(
+        tape_name,
+        start_path=Path.cwd(),
+    )
+    return (
+        resolved_root,
+        {
+            "resolution": "project-tape",
+            "project_root": str(project_root),
+            "tape": normalized_tape,
+        },
     )
 
 
-def _select_tape(candidates: list[Path], mode: str) -> Path | None:
-    if not candidates:
+def _config_to_payload(config: TapeFolderConfig) -> dict[str, object]:
+    return {
+        "type": DEFAULT_TAPE_TYPE,
+        "tape_name": config.tape_name,
+        "tape.class": config.tape_class,
+        "naming_strategy": config.naming_strategy,
+        "max_records_per_segment": config.max_records_per_segment,
+        "data_schema": config.data_schema,
+        "format_version": config.format_version,
+    }
+
+
+def _default_config_payload() -> dict[str, object]:
+    return {
+        "type": DEFAULT_TAPE_TYPE,
+        "tape.class": None,
+        "naming_strategy": DEFAULT_NAMING_STRATEGY,
+        "max_records_per_segment": DEFAULT_MAX_RECORDS_PER_SEGMENT,
+        "data_schema": None,
+    }
+
+
+def _warning_policy_payload() -> dict[str, str]:
+    return {
+        "missing_tape_on_write_without_init": "error",
+        "missing_tape_on_write_with_init": "create",
+        "existing_tape_with_explicit_init_option_mismatch": "warn",
+        "existing_non_default_tape_without_explicit_init_options": "warn",
+    }
+
+
+def _validate_tape_type(value: str, *, field_name: str = "type") -> str:
+    normalized = str(value).strip()
+    if normalized != DEFAULT_TAPE_TYPE:
+        raise CliError(f"unsupported {field_name}: {value} (only '{DEFAULT_TAPE_TYPE}' is supported)")
+    return normalized
+
+
+def _load_optional_json_object_arg(
+    json_value: str | None,
+    file_value: str | None,
+    *,
+    field_name: str,
+) -> dict[str, object] | None:
+    if json_value is None and file_value is None:
         return None
-    if mode == "first":
-        return candidates[0]
-    if mode == "last":
-        return candidates[-1]
-    if mode == "latest":
-        return max(candidates, key=lambda p: p.stat().st_mtime)
-    if mode == "oldest":
-        return min(candidates, key=lambda p: p.stat().st_mtime)
-    if mode == "smallest":
-        return min(candidates, key=lambda p: p.stat().st_size)
-    if mode == "largest":
-        return max(candidates, key=lambda p: p.stat().st_size)
-    raise CliError(f"unknown select mode: {mode}")
+    payload = _load_json_arg(json_value, file_value, field_name=field_name)
+    if not isinstance(payload, dict):
+        raise CliError(f"{field_name} must be a JSON object")
+    return payload
+
+
+def _build_write_init_options(
+    args: argparse.Namespace,
+    *,
+    resolution: dict[str, object],
+    root_path: Path,
+) -> tuple[dict[str, object], dict[str, object], bool]:
+    explicit: dict[str, object] = {}
+
+    init_type = getattr(args, "init_tape_type", None)
+    init_naming = getattr(args, "init_naming", None)
+    init_max_records = getattr(args, "init_max_records_per_segment", None)
+    init_tape_name = getattr(args, "init_tape_name", None)
+    init_tape_class = getattr(args, "init_tape_class", None)
+    init_data_schema = _load_optional_json_object_arg(
+        getattr(args, "init_data_schema_json", None),
+        getattr(args, "init_data_schema_file", None),
+        field_name="init data_schema",
+    )
+
+    if init_type is not None:
+        explicit["type"] = _validate_tape_type(init_type, field_name="init type")
+    if init_naming is not None:
+        explicit["naming_strategy"] = str(init_naming)
+    if init_max_records is not None:
+        explicit["max_records_per_segment"] = int(init_max_records)
+    if init_tape_name is not None:
+        explicit["tape_name"] = str(init_tape_name)
+    if init_tape_class is not None:
+        explicit["tape.class"] = str(init_tape_class)
+    if init_data_schema is not None:
+        explicit["data_schema"] = init_data_schema
+
+    default_tape_name = (
+        str(resolution["tape"])
+        if resolution.get("tape") is not None
+        else root_path.name
+    )
+
+    resolved = {
+        "type": DEFAULT_TAPE_TYPE,
+        "tape_name": str(explicit.get("tape_name", default_tape_name)),
+        "tape.class": explicit.get("tape.class"),
+        "naming_strategy": str(explicit.get("naming_strategy", DEFAULT_NAMING_STRATEGY)),
+        "max_records_per_segment": int(
+            explicit.get("max_records_per_segment", DEFAULT_MAX_RECORDS_PER_SEGMENT)
+        ),
+        "data_schema": explicit.get("data_schema"),
+    }
+
+    has_explicit_options = len(explicit) > 0
+    return resolved, explicit, has_explicit_options
+
+
+def _warning_list_for_existing_tape(
+    existing: TapeFolderConfig,
+    *,
+    explicit_init_options: dict[str, object],
+) -> list[str]:
+    warnings: list[str] = []
+
+    if explicit_init_options:
+        if "type" in explicit_init_options and explicit_init_options["type"] != DEFAULT_TAPE_TYPE:
+            warnings.append(
+                "init option mismatch: tape type differs from existing config "
+                f"(requested={explicit_init_options['type']} existing={DEFAULT_TAPE_TYPE})"
+            )
+
+        if (
+            "naming_strategy" in explicit_init_options
+            and str(explicit_init_options["naming_strategy"]) != existing.naming_strategy
+        ):
+            warnings.append(
+                "init option mismatch: naming_strategy differs from existing config "
+                f"(requested={explicit_init_options['naming_strategy']} existing={existing.naming_strategy})"
+            )
+
+        if (
+            "max_records_per_segment" in explicit_init_options
+            and int(explicit_init_options["max_records_per_segment"]) != existing.max_records_per_segment
+            and _strategy_uses_max_records_per_segment(existing.naming_strategy)
+            and _strategy_uses_max_records_per_segment(
+                str(explicit_init_options.get("naming_strategy", existing.naming_strategy))
+            )
+        ):
+            warnings.append(
+                "init option mismatch: max_records_per_segment differs from existing config "
+                f"(requested={explicit_init_options['max_records_per_segment']} "
+                f"existing={existing.max_records_per_segment})"
+            )
+
+        if "tape_name" in explicit_init_options and str(explicit_init_options["tape_name"]) != existing.tape_name:
+            warnings.append(
+                "init option mismatch: tape_name differs from existing config "
+                f"(requested={explicit_init_options['tape_name']} existing={existing.tape_name})"
+            )
+
+        if "tape.class" in explicit_init_options and str(explicit_init_options["tape.class"]) != str(
+            existing.tape_class
+        ):
+            warnings.append(
+                "init option mismatch: tape.class differs from existing config "
+                f"(requested={explicit_init_options['tape.class']} existing={existing.tape_class})"
+            )
+
+        if "data_schema" in explicit_init_options and explicit_init_options["data_schema"] != existing.data_schema:
+            warnings.append("init option mismatch: data_schema differs from existing config")
+
+        return warnings
+
+    max_records_non_default = (
+        _strategy_uses_max_records_per_segment(existing.naming_strategy)
+        and existing.max_records_per_segment != DEFAULT_MAX_RECORDS_PER_SEGMENT
+    )
+    is_non_default = (
+        existing.naming_strategy != DEFAULT_NAMING_STRATEGY
+        or max_records_non_default
+        or existing.tape_class is not None
+        or existing.data_schema is not None
+    )
+    if is_non_default:
+        details: list[str] = [f"naming_strategy={existing.naming_strategy}"]
+        if _strategy_uses_max_records_per_segment(existing.naming_strategy):
+            details.append(f"max_records_per_segment={existing.max_records_per_segment}")
+        else:
+            details.append("max_records_per_segment ignored for this naming strategy")
+        if existing.tape_class is not None:
+            details.append(f"tape.class={existing.tape_class}")
+        if existing.data_schema is not None:
+            details.append("data_schema=present")
+        warnings.append("tape uses non-default config (" + ", ".join(details) + ")")
+    return warnings
+
+
+def _ensure_tape_for_write(
+    root_path: Path,
+    *,
+    write_init_requested: bool,
+    init_values: dict[str, object],
+    explicit_init_options: dict[str, object],
+) -> tuple[TapeFolderConfig, bool, list[str]]:
+    manifest_path = get_manifest_path(root_path)
+    exists = manifest_path.exists()
+
+    if not exists:
+        if not write_init_requested:
+            raise CliError(
+                f"tape is not initialized: {root_path}; pass --init for implicit creation or run `agentos tape init`"
+            )
+        config, _ = bootstrap_tape_folder(
+            root_path,
+            tape_name=str(init_values["tape_name"]),
+            naming_strategy=str(init_values["naming_strategy"]),
+            max_records_per_segment=int(init_values["max_records_per_segment"]),
+            tape_class=init_values.get("tape.class"),
+            data_schema=init_values.get("data_schema"),
+            ensure=False,
+        )
+        return config, True, []
+
+    existing_config = load_tape_folder_config(root_path)
+    warnings = _warning_list_for_existing_tape(
+        existing_config,
+        explicit_init_options=explicit_init_options,
+    )
+    return existing_config, False, warnings
+
+
+def _prepare_write_context(
+    args: argparse.Namespace,
+    *,
+    resolution: dict[str, object],
+    root_path: Path,
+) -> tuple[TapeFolderConfig, bool, list[str]]:
+    init_values, explicit_init_options, has_explicit_init_options = _build_write_init_options(
+        args,
+        resolution=resolution,
+        root_path=root_path,
+    )
+    if has_explicit_init_options and not args.write_init:
+        raise CliError("init options require --init")
+
+    return _ensure_tape_for_write(
+        root_path,
+        write_init_requested=bool(args.write_init),
+        init_values=init_values,
+        explicit_init_options=explicit_init_options,
+    )
+
+
+def _parse_append_batch_entries(raw_payload: object) -> list[dict[str, object]]:
+    if not isinstance(raw_payload, list):
+        raise CliError("entries must be a JSON array")
+    if not raw_payload:
+        raise CliError("entries must not be empty")
+
+    normalized: list[dict[str, object]] = []
+    for idx, raw_entry in enumerate(raw_payload, start=1):
+        if not isinstance(raw_entry, dict):
+            raise CliError(f"entries[{idx}] must be a JSON object")
+
+        allowed = {"class", "created_at", "data"}
+        extra = sorted(set(raw_entry.keys()) - allowed)
+        if extra:
+            raise CliError(f"entries[{idx}] has unsupported fields: {', '.join(extra)}")
+
+        record_class = str(raw_entry.get("class", "")).strip()
+        if not record_class:
+            raise CliError(f"entries[{idx}].class is required")
+
+        created_at = raw_entry.get("created_at")
+        if created_at is not None and not isinstance(created_at, str):
+            raise CliError(f"entries[{idx}].created_at must be a string")
+
+        data = raw_entry.get("data")
+        if data is not None and not isinstance(data, dict):
+            raise CliError(f"entries[{idx}].data must be a JSON object")
+
+        normalized.append(
+            {
+                "class": record_class,
+                "created_at": created_at,
+                "data": data,
+            }
+        )
+
+    return normalized
 
 
 def _cmd_tape_init(args: argparse.Namespace) -> int:
-    tape_path = Path(args.tape_path).expanduser()
-    if tape_path.exists():
-        if args.ensure:
-            metadata_entry = _load_tape_metadata_entry(tape_path)
-            output = {
-                "status": "ok",
-                "command": "tape init",
-                "tape_path": str(tape_path.resolve()),
-                "entry": metadata_entry,
-                "created": False,
-            }
-            print(json.dumps(output))
-            return 0
-        raise CliError(f"tape already exists: {tape_path}")
-    tape_path.parent.mkdir(parents=True, exist_ok=True)
+    root_path, resolution = _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+    )
 
-    tape_id = args.tape_id if args.tape_id is not None else str(uuid4())
-    try:
-        UUID(str(tape_id))
-    except ValueError as exc:
-        raise CliError(f"invalid tape id (expected UUID): {tape_id}") from exc
+    _validate_tape_type(args.tape_type)
+    data_schema = _load_optional_json_object_arg(
+        args.data_schema_json,
+        args.data_schema_file,
+        field_name="data_schema",
+    )
+    tape_display_name = (
+        str(args.tape_display_name)
+        if args.tape_display_name is not None
+        else (str(resolution["tape"]) if resolution.get("tape") is not None else root_path.name)
+    )
 
-    custom_cargo = _load_json_object_arg(args.cargo_json, args.cargo_file, field_name="cargo")
-    if "tape_id" in custom_cargo or "tape_name" in custom_cargo:
-        raise CliError("custom cargo must not define tape_id or tape_name")
-
-    entry = {
-        "ts": _utc_now_iso(),
-        "writer": _build_writer_payload(args),
-        "workflow": str(args.workflow),
-        "entry_type": "tape.meta",
-        "cargo": {"tape_id": str(tape_id), "tape_name": str(args.tape_name), **custom_cargo},
-    }
-
-    with tape_path.open("x", encoding="utf-8") as handle:
-        handle.write(json.dumps(entry))
-        handle.write("\n")
+    config, created = bootstrap_tape_folder(
+        root_path,
+        tape_name=tape_display_name,
+        naming_strategy=str(args.naming_strategy),
+        max_records_per_segment=int(args.max_records_per_segment),
+        tape_class=args.tape_class,
+        data_schema=data_schema,
+        ensure=bool(args.ensure),
+    )
 
     output = {
         "status": "ok",
         "command": "tape init",
-        "tape_path": str(tape_path.resolve()),
-        "entry": entry,
-        "created": True,
+        "root_path": str(root_path),
+        "manifest_path": str(get_manifest_path(root_path)),
+        "created": created,
+        "config": _config_to_payload(config),
+        **resolution,
     }
     print(json.dumps(output))
     return 0
 
 
 def _cmd_tape_append(args: argparse.Namespace) -> int:
-    tape_path = Path(args.tape_path).expanduser()
-    metadata_entry = _load_tape_metadata_entry(tape_path)
-    metadata_cargo = metadata_entry.get("cargo")
-    if not isinstance(metadata_cargo, dict):
-        raise CliError("metadata cargo must be a JSON object")
+    root_path, resolution = _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+    )
 
-    entry_type = _validate_tape_entry_type(args.entry_type)
+    config, tape_created, warnings = _prepare_write_context(
+        args,
+        resolution=resolution,
+        root_path=root_path,
+    )
 
-    cargo = _load_json_object_arg(args.cargo_json, args.cargo_file, field_name="cargo")
-    refs = _load_json_array_arg(args.refs_json, args.refs_file, field_name="refs")
+    data = _load_optional_json_object_arg(
+        args.data_json,
+        args.data_file,
+        field_name="data",
+    )
 
-    with tape_path.open("r", encoding="utf-8") as handle:
-        entry_index = sum(1 for _ in handle) + 1
-
-    entry = {
-        "ts": _utc_now_iso(),
-        "writer": _build_writer_payload(args),
-        "workflow": str(args.workflow),
-        "entry_type": entry_type,
-        "refs": refs,
-        "cargo": cargo,
-    }
-    with tape_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(entry))
-        handle.write("\n")
+    staging_path, record = append_staging_record(
+        root_path,
+        writer_id=str(args.writer_id),
+        record_class=str(args.record_class),
+        created_at=args.created_at,
+        data=data,
+    )
 
     output = {
         "status": "ok",
         "command": "tape append",
-        "tape_path": str(tape_path.resolve()),
-        "tape_id": metadata_cargo.get("tape_id"),
-        "tape_name": metadata_cargo.get("tape_name"),
-        "entry_index": entry_index,
-        "entry": entry,
+        "root_path": str(root_path),
+        "staging_path": str(staging_path),
+        "tape_created": tape_created,
+        "config": _config_to_payload(config),
+        "record": record,
+        **resolution,
     }
+    if warnings:
+        output["warnings"] = warnings
     print(json.dumps(output))
     return 0
 
 
 def _cmd_tape_append_batch(args: argparse.Namespace) -> int:
-    tape_path = Path(args.tape_path).expanduser()
-    metadata_entry = _load_tape_metadata_entry(tape_path)
-    metadata_cargo = metadata_entry.get("cargo")
-    if not isinstance(metadata_cargo, dict):
-        raise CliError("metadata cargo must be a JSON object")
+    root_path, resolution = _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+    )
+
+    config, tape_created, warnings = _prepare_write_context(
+        args,
+        resolution=resolution,
+        root_path=root_path,
+    )
 
     payload = _load_json_arg(args.entries_json, args.entries_file, field_name="entries")
-    if not isinstance(payload, list):
-        raise CliError("entries must be a JSON array")
-    if not payload:
-        raise CliError("entries must not be empty")
+    entries = _parse_append_batch_entries(payload)
 
-    workflow = str(args.workflow)
-    writer = _build_writer_payload(args)
-    normalized_entries: list[dict[str, object]] = []
     results: list[dict[str, object]] = []
-    has_errors = False
-
-    for idx, raw_entry in enumerate(payload, start=1):
-        try:
-            normalized_entry = _normalize_tape_batch_entry(
-                raw_entry,
-                workflow=workflow,
-                writer=writer,
-            )
-            normalized_entries.append(normalized_entry)
-            results.append({"index": idx, "status": "validated"})
-        except CliError as exc:
-            has_errors = True
-            results.append({"index": idx, "status": "error", "error": str(exc)})
-
-    if has_errors:
-        for result in results:
-            if result.get("status") == "validated":
-                result["status"] = "not_appended"
-                result["error"] = "batch validation failed"
-        failed_count = sum(1 for result in results if result.get("status") == "error")
-        output = {
-            "status": "error",
-            "command": "tape append-batch",
-            "tape_path": str(tape_path.resolve()),
-            "tape_id": metadata_cargo.get("tape_id"),
-            "tape_name": metadata_cargo.get("tape_name"),
-            "input_count": len(payload),
-            "appended_count": 0,
-            "failed_count": failed_count,
-            "atomic": True,
-            "results": results,
-        }
-        print(json.dumps(output))
-        return 1
-
-    with tape_path.open("r", encoding="utf-8") as handle:
-        existing_count = sum(1 for _ in handle)
-
-    serialized_batch = "".join(f"{json.dumps(entry)}\n" for entry in normalized_entries)
-    with tape_path.open("a", encoding="utf-8") as handle:
-        handle.write(serialized_batch)
-
-    output_results: list[dict[str, object]] = []
-    for idx, entry in enumerate(normalized_entries, start=1):
-        output_results.append(
+    for idx, entry in enumerate(entries, start=1):
+        staging_path, record = append_staging_record(
+            root_path,
+            writer_id=str(args.writer_id),
+            record_class=str(entry["class"]),
+            created_at=entry["created_at"],
+            data=entry["data"],
+        )
+        results.append(
             {
                 "index": idx,
                 "status": "ok",
-                "entry_index": existing_count + idx,
-                "entry": entry,
+                "staging_path": str(staging_path),
+                "record": record,
             }
         )
 
     output = {
         "status": "ok",
         "command": "tape append-batch",
-        "tape_path": str(tape_path.resolve()),
-        "tape_id": metadata_cargo.get("tape_id"),
-        "tape_name": metadata_cargo.get("tape_name"),
-        "input_count": len(payload),
-        "appended_count": len(normalized_entries),
-        "failed_count": 0,
-        "atomic": True,
-        "results": output_results,
+        "root_path": str(root_path),
+        "tape_created": tape_created,
+        "config": _config_to_payload(config),
+        "input_count": len(entries),
+        "appended_count": len(entries),
+        "results": results,
+        **resolution,
     }
+    if warnings:
+        output["warnings"] = warnings
     print(json.dumps(output))
     return 0
 
 
-def _cmd_tape_path(args: argparse.Namespace) -> int:
-    tag = str(args.tag).strip()
-    if not tag:
-        raise CliError("tag must not be empty")
+def _cmd_tape_consolidate(args: argparse.Namespace) -> int:
+    root_path, resolution = _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+    )
 
-    tape_dir = Path(args.tape_dir).expanduser().resolve()
-    select_mode = args.select_mode
-    rotation = args.rotation
-    use_filter_tag = bool(args.filter_tag)
+    config, tape_created, warnings = _prepare_write_context(
+        args,
+        resolution=resolution,
+        root_path=root_path,
+    )
 
-    if select_mode is None and rotation is None:
-        rotation = "monthly"
-
-    selected: Path | None = None
-    candidates_count = 0
-    if select_mode is not None:
-        if use_filter_tag:
-            candidates = _find_tapes_by_tag(tape_dir, tag)
-        else:
-            candidates = _find_all_tapes(tape_dir)
-        candidates_count = len(candidates)
-        selected = _select_tape(candidates, select_mode)
-
-    if selected is not None:
-        output: dict[str, object] = {
-            "status": "ok",
-            "command": "tape path",
-            "tape_path": str(selected),
-            "filename": selected.name,
-            "source": "selected",
-            "select": select_mode,
-            "tag": tag,
-            "filter_tag": use_filter_tag,
-            "candidates": candidates_count,
-        }
-        print(json.dumps(output))
-        return 0
-
-    if rotation is None:
-        raise CliError(f"no tape found with --select {select_mode} and no --rotation fallback")
-
-    filename, rotation_info = _generate_tape_filename(tag, rotation, tape_dir)
-    tape_path = tape_dir / filename
-
+    result = consolidate_staging_records(root_path, limit=args.limit)
     output = {
         "status": "ok",
-        "command": "tape path",
-        "tape_path": str(tape_path),
-        "filename": filename,
-        "source": "generated",
-        "rotation": rotation,
-        "tag": tag,
-        **rotation_info,
+        "command": "tape consolidate",
+        "root_path": str(root_path),
+        "tape_created": tape_created,
+        "config": _config_to_payload(config),
+        **resolution,
+        **result,
     }
+    if warnings:
+        output["warnings"] = warnings
     print(json.dumps(output))
     return 0
 
 
-def _read_tape_entries(tape_path: Path) -> tuple[dict[str, object], list[dict[str, object]]]:
-    metadata_entry = _load_tape_metadata_entry(tape_path)
-    entries: list[dict[str, object]] = []
-    with tape_path.open("r", encoding="utf-8") as handle:
-        for line_num, line in enumerate(handle, start=1):
-            if line_num == 1:
-                continue
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(entry, dict):
-                entries.append(entry)
-    return metadata_entry, entries
+def _cmd_tape_query(args: argparse.Namespace) -> int:
+    root_path, resolution = _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+    )
+    consolidate_payload: dict[str, object] | None = None
+    if args.pre_consolidate:
+        consolidate_payload = consolidate_staging_records(root_path)
 
+    records = locate_records_for_mode(root_path, mode=args.read_mode)
 
-def _cmd_tape_list(args: argparse.Namespace) -> int:
-    tape_path = Path(args.tape_path).expanduser()
-    metadata_entry, entries = _read_tape_entries(tape_path)
-    metadata_cargo = metadata_entry.get("cargo", {})
-
-    entry_type_filter = getattr(args, "entry_type_filter", None)
-    cargo_contains = getattr(args, "cargo_contains", None)
-
-    matched: list[dict[str, object]] = []
-    for entry in entries:
-        if entry_type_filter is not None:
-            if entry.get("entry_type") != entry_type_filter:
-                continue
-        if cargo_contains is not None:
-            cargo_str = json.dumps(entry.get("cargo", {}))
-            if cargo_contains not in cargo_str:
-                continue
-        matched.append(entry)
+    matched = records
+    if args.record_class_filter is not None:
+        matched = [item for item in matched if item.record.get("class") == args.record_class_filter]
 
     total_matched = len(matched)
+    if args.first_n is not None:
+        matched = matched[: args.first_n]
+    elif args.last_n is not None:
+        matched = matched[-args.last_n :] if args.last_n < len(matched) else matched
 
-    first_n = getattr(args, "first_n", None)
-    last_n = getattr(args, "last_n", None)
-    if first_n is not None:
-        matched = matched[:first_n]
-    elif last_n is not None:
-        matched = matched[-last_n:] if last_n < len(matched) else matched
-
-    count_only = getattr(args, "count_only", False)
-
-    base: dict[str, object] = {
+    output: dict[str, object] = {
         "status": "ok",
-        "command": "tape list",
-        "tape_path": str(tape_path.resolve()),
-        "tape_id": metadata_cargo.get("tape_id"),
-        "tape_name": metadata_cargo.get("tape_name"),
+        "command": "tape query",
+        "root_path": str(root_path),
+        "mode": args.read_mode,
+        **resolution,
     }
+    if consolidate_payload is not None:
+        output["consolidated"] = consolidate_payload
 
-    if count_only:
-        base["count"] = total_matched
+    if args.count_only:
+        output["count"] = total_matched
     else:
-        base["total_matched"] = total_matched
-        base["returned"] = len(matched)
-        base["entries"] = matched
+        output["total_matched"] = total_matched
+        output["returned"] = len(matched)
+        if args.with_source:
+            output["entries"] = [serialize_located_record(item) for item in matched]
+        else:
+            output["entries"] = [item.record for item in matched]
 
-    print(json.dumps(base))
+    print(json.dumps(output))
     return 0
 
 
-def _cmd_tape_summary(args: argparse.Namespace) -> int:
-    tape_path = Path(args.tape_path).expanduser()
-    metadata_entry, entries = _read_tape_entries(tape_path)
-    metadata_cargo = metadata_entry.get("cargo", {})
-
-    entry_types: dict[str, int] = {}
-    first_ts: str | None = None
-    last_ts: str | None = None
-
-    for entry in entries:
-        et = str(entry.get("entry_type", ""))
-        entry_types[et] = entry_types.get(et, 0) + 1
-        ts = entry.get("ts")
-        if isinstance(ts, str) and ts:
-            if first_ts is None or ts < first_ts:
-                first_ts = ts
-            if last_ts is None or ts > last_ts:
-                last_ts = ts
-
+def _cmd_tape_verify(args: argparse.Namespace) -> int:
+    root_path, resolution = _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+    )
+    result = verify_segment_headers(root_path)
     output = {
         "status": "ok",
-        "command": "tape summary",
-        "tape_path": str(tape_path.resolve()),
-        "tape_id": metadata_cargo.get("tape_id"),
-        "tape_name": metadata_cargo.get("tape_name"),
-        "entry_count": len(entries),
-        "entry_types": entry_types,
-        "first_ts": first_ts,
-        "last_ts": last_ts,
+        "command": "tape verify",
+        "root_path": str(root_path),
+        **resolution,
+        **result,
     }
     print(json.dumps(output))
     return 0
+
+
+def _cmd_tape_config(args: argparse.Namespace) -> int:
+    root_path, resolution = _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+    )
+    config = load_tape_folder_config(root_path)
+    output = {
+        "status": "ok",
+        "command": "tape config",
+        "root_path": str(root_path),
+        "manifest_path": str(get_manifest_path(root_path)),
+        "defaults": _default_config_payload(),
+        "warning_policy": _warning_policy_payload(),
+        "config": _config_to_payload(config),
+        **resolution,
+    }
+    print(json.dumps(output))
+    return 0
+
+
+def _cmd_tape_doctor(args: argparse.Namespace) -> int:
+    root_path, resolution = _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+    )
+    config = load_tape_folder_config(root_path)
+    verify_payload = verify_segment_headers(root_path)
+    committed_count = len(locate_records_for_mode(root_path, mode="committed"))
+    best_effort_count = len(locate_records_for_mode(root_path, mode="best_effort"))
+
+    staging_dir = root_path / "staging"
+    staging_files = sorted(
+        path.name for path in staging_dir.iterdir() if path.is_file() and path.name.endswith(".jsonl")
+    )
+    warnings = _warning_list_for_existing_tape(
+        config,
+        explicit_init_options={},
+    )
+
+    output = {
+        "status": "ok",
+        "command": "tape doctor",
+        "root_path": str(root_path),
+        "manifest_path": str(get_manifest_path(root_path)),
+        "defaults": _default_config_payload(),
+        "warning_policy": _warning_policy_payload(),
+        "config": _config_to_payload(config),
+        "segment_count": verify_payload["segment_count"],
+        "committed_record_count": committed_count,
+        "best_effort_record_count": best_effort_count,
+        "staging_file_count": len(staging_files),
+        "staging_files": staging_files,
+        "warnings": warnings,
+        **resolution,
+    }
+    print(json.dumps(output))
+    return 0
+
+
+def _add_tape_target_group(parser: argparse.ArgumentParser) -> None:
+    target_group = parser.add_mutually_exclusive_group(required=True)
+    target_group.add_argument(
+        "--tape",
+        dest="tape_name",
+        help="Logical tape name resolved to <project>/.agentos/tapes/<name>/.",
+    )
+    target_group.add_argument(
+        "--root",
+        dest="root_path",
+        help="Explicit tape root directory (headless mode).",
+    )
+
+
+def _add_write_init_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        dest="write_init",
+        help="Allow first-write tape initialization when missing.",
+    )
+    parser.add_argument(
+        "--init-type",
+        default=None,
+        dest="init_tape_type",
+        choices=[DEFAULT_TAPE_TYPE],
+        help="Tape backend type used when --init creates a new tape.",
+    )
+    parser.add_argument(
+        "--init-naming",
+        default=None,
+        dest="init_naming",
+        choices=list(get_supported_naming_strategies()),
+        help="Naming strategy used when --init creates a new tape.",
+    )
+    parser.add_argument(
+        "--init-max-records-per-segment",
+        default=None,
+        type=int,
+        dest="init_max_records_per_segment",
+        help="Segment rollover limit used for sequential naming (ignored for monthly/daily).",
+    )
+    parser.add_argument(
+        "--init-tape-name",
+        default=None,
+        dest="init_tape_name",
+        help="Human-friendly tape name used when --init creates a new tape.",
+    )
+    parser.add_argument(
+        "--init-tape-class",
+        default=None,
+        dest="init_tape_class",
+        help="Tape class stored as config field `tape.class` when --init creates a new tape.",
+    )
+    init_data_schema_group = parser.add_mutually_exclusive_group(required=False)
+    init_data_schema_group.add_argument(
+        "--init-data-schema-json",
+        default=None,
+        dest="init_data_schema_json",
+        help="JSON Schema 2020-12 for record `data` payload (JSON object).",
+    )
+    init_data_schema_group.add_argument(
+        "--init-data-schema-file",
+        default=None,
+        dest="init_data_schema_file",
+        help="Path to JSON file with JSON Schema 2020-12 for record `data` payload.",
+    )
 
 
 def register_tape_commands(subparsers: argparse._SubParsersAction) -> None:
     tape_parser = subparsers.add_parser(
         "tape",
-        help="Append-only JSONL tape operations.",
+        help="Folder-backed JSONL tape operations.",
     )
     tape_subparsers = tape_parser.add_subparsers(dest="tape_command", required=True)
 
-    tape_init_parser = tape_subparsers.add_parser(
+    naming_strategies = list(get_supported_naming_strategies())
+
+    init_parser = tape_subparsers.add_parser(
         "init",
-        help="Create a new append-only tape with a metadata entry.",
+        help="Initialize a folder-backed tape.",
     )
-    tape_init_parser.add_argument(
-        "--tape",
-        required=True,
-        dest="tape_path",
-        help="Path to the JSONL tape file.",
+    _add_tape_target_group(init_parser)
+    init_parser.add_argument(
+        "--type",
+        default=DEFAULT_TAPE_TYPE,
+        dest="tape_type",
+        choices=[DEFAULT_TAPE_TYPE],
+        help="Tape backend type.",
     )
-    tape_init_parser.add_argument(
-        "--workflow",
-        required=True,
-        help="Workflow/application identifier for the metadata entry.",
-    )
-    tape_init_parser.add_argument(
+    init_parser.add_argument(
         "--tape-name",
-        required=True,
-        dest="tape_name",
-        help="Human-friendly tape name.",
-    )
-    tape_init_parser.add_argument(
-        "--writer-agent",
-        required=True,
-        dest="writer_agent",
-        help="Writer agent identifier.",
-    )
-    tape_init_parser.add_argument(
-        "--writer-skill",
-        required=True,
-        dest="writer_skill",
-        help="Writer skill identifier.",
-    )
-    tape_init_parser.add_argument(
-        "--writer-version",
-        required=True,
-        dest="writer_version",
-        help="Writer version.",
-    )
-    tape_init_parser.add_argument(
-        "--tape-id",
         default=None,
-        dest="tape_id",
-        help="Explicit tape UUID (auto-generated if omitted).",
+        dest="tape_display_name",
+        help="Human-friendly tape name (defaults to tape identifier or root basename).",
     )
-    tape_init_parser.add_argument(
+    init_parser.add_argument(
+        "--tape-class",
+        default=None,
+        dest="tape_class",
+        help="Tape class stored as config field `tape.class`.",
+    )
+    init_parser.add_argument(
+        "--naming",
+        default=DEFAULT_NAMING_STRATEGY,
+        dest="naming_strategy",
+        choices=naming_strategies,
+        help="Committed segment naming strategy.",
+    )
+    init_parser.add_argument(
+        "--max-records-per-segment",
+        default=DEFAULT_MAX_RECORDS_PER_SEGMENT,
+        type=int,
+        dest="max_records_per_segment",
+        help="Rollover limit for sequential naming (ignored for monthly/daily).",
+    )
+    init_data_schema_group = init_parser.add_mutually_exclusive_group(required=False)
+    init_data_schema_group.add_argument(
+        "--data-schema-json",
+        default=None,
+        dest="data_schema_json",
+        help="JSON Schema 2020-12 for record `data` payload (JSON object).",
+    )
+    init_data_schema_group.add_argument(
+        "--data-schema-file",
+        default=None,
+        dest="data_schema_file",
+        help="Path to JSON file with JSON Schema 2020-12 for record `data` payload.",
+    )
+    init_parser.add_argument(
         "--ensure",
         action="store_true",
         dest="ensure",
-        help="If tape exists, return its metadata instead of failing.",
+        help="If tape exists, return existing config instead of failing.",
     )
-    tape_init_cargo_group = tape_init_parser.add_mutually_exclusive_group()
-    tape_init_cargo_group.add_argument(
-        "--cargo-json",
-        dest="cargo_json",
-        help="Custom metadata cargo JSON object.",
-    )
-    tape_init_cargo_group.add_argument(
-        "--cargo-file",
-        dest="cargo_file",
-        help="Path to JSON file with custom metadata cargo object.",
-    )
-    tape_init_parser.set_defaults(handler=_cmd_tape_init)
+    init_parser.set_defaults(handler=_cmd_tape_init)
 
-    tape_append_parser = tape_subparsers.add_parser(
+    append_parser = tape_subparsers.add_parser(
         "append",
-        help="Append a new entry to an existing tape.",
+        help="Append one record to tape staging.",
     )
-    tape_append_parser.add_argument(
-        "--tape",
+    _add_tape_target_group(append_parser)
+    append_parser.add_argument(
+        "--writer-id",
         required=True,
-        dest="tape_path",
-        help="Path to the JSONL tape file.",
+        dest="writer_id",
+        help="Writer/process identifier.",
     )
-    tape_append_parser.add_argument(
-        "--workflow",
+    append_parser.add_argument(
+        "--class",
         required=True,
-        help="Workflow/application identifier for the appended entry.",
+        dest="record_class",
+        help="Record class string.",
     )
-    tape_append_parser.add_argument(
-        "--entry-type",
-        required=True,
-        dest="entry_type",
-        help="Entry type (for example: relation.proposed).",
+    append_parser.add_argument(
+        "--override-created-at",
+        default=None,
+        dest="created_at",
+        help="Override record created_at (defaults to auto UTC timestamp).",
     )
-    tape_append_parser.add_argument(
-        "--writer-agent",
-        required=True,
-        dest="writer_agent",
-        help="Writer agent identifier.",
+    append_data_group = append_parser.add_mutually_exclusive_group(required=False)
+    append_data_group.add_argument(
+        "--data-json",
+        default=None,
+        dest="data_json",
+        help="Record data JSON object (validated against tape data_schema when configured).",
     )
-    tape_append_parser.add_argument(
-        "--writer-skill",
-        required=True,
-        dest="writer_skill",
-        help="Writer skill identifier.",
+    append_data_group.add_argument(
+        "--data-file",
+        default=None,
+        dest="data_file",
+        help="Path to JSON file with record data object.",
     )
-    tape_append_parser.add_argument(
-        "--writer-version",
-        required=True,
-        dest="writer_version",
-        help="Writer version.",
-    )
-    tape_append_cargo_group = tape_append_parser.add_mutually_exclusive_group()
-    tape_append_cargo_group.add_argument(
-        "--cargo-json",
-        dest="cargo_json",
-        help="Entry cargo JSON object.",
-    )
-    tape_append_cargo_group.add_argument(
-        "--cargo-file",
-        dest="cargo_file",
-        help="Path to JSON file with entry cargo object.",
-    )
-    tape_append_refs_group = tape_append_parser.add_mutually_exclusive_group()
-    tape_append_refs_group.add_argument(
-        "--refs-json",
-        dest="refs_json",
-        help="Entry refs JSON array.",
-    )
-    tape_append_refs_group.add_argument(
-        "--refs-file",
-        dest="refs_file",
-        help="Path to JSON file with entry refs array.",
-    )
-    tape_append_parser.set_defaults(handler=_cmd_tape_append)
+    _add_write_init_options(append_parser)
+    append_parser.set_defaults(handler=_cmd_tape_append)
 
-    tape_append_batch_parser = tape_subparsers.add_parser(
+    append_batch_parser = tape_subparsers.add_parser(
         "append-batch",
-        help="Append multiple entries to an existing tape atomically.",
+        help="Append multiple records to tape staging.",
     )
-    tape_append_batch_parser.add_argument(
-        "--tape",
+    _add_tape_target_group(append_batch_parser)
+    append_batch_parser.add_argument(
+        "--writer-id",
         required=True,
-        dest="tape_path",
-        help="Path to the JSONL tape file.",
+        dest="writer_id",
+        help="Writer/process identifier.",
     )
-    tape_append_batch_parser.add_argument(
-        "--workflow",
-        required=True,
-        help="Workflow/application identifier for all appended entries.",
-    )
-    tape_append_batch_parser.add_argument(
-        "--writer-agent",
-        required=True,
-        dest="writer_agent",
-        help="Writer agent identifier.",
-    )
-    tape_append_batch_parser.add_argument(
-        "--writer-skill",
-        required=True,
-        dest="writer_skill",
-        help="Writer skill identifier.",
-    )
-    tape_append_batch_parser.add_argument(
-        "--writer-version",
-        required=True,
-        dest="writer_version",
-        help="Writer version.",
-    )
-    tape_append_batch_entries_group = tape_append_batch_parser.add_mutually_exclusive_group(
-        required=True
-    )
-    tape_append_batch_entries_group.add_argument(
+    append_batch_entries_group = append_batch_parser.add_mutually_exclusive_group(required=True)
+    append_batch_entries_group.add_argument(
         "--entries-json",
         dest="entries_json",
-        help="JSON array of entries to append.",
+        help="JSON array of records to append.",
     )
-    tape_append_batch_entries_group.add_argument(
+    append_batch_entries_group.add_argument(
         "--entries-file",
         dest="entries_file",
-        help="Path to JSON file with an array of entries to append.",
+        help="Path to JSON file with records array.",
     )
-    tape_append_batch_parser.set_defaults(handler=_cmd_tape_append_batch)
+    _add_write_init_options(append_batch_parser)
+    append_batch_parser.set_defaults(handler=_cmd_tape_append_batch)
 
-    tape_path_parser = tape_subparsers.add_parser(
-        "path",
-        help="Generate or select a tape file path.",
+    consolidate_parser = tape_subparsers.add_parser(
+        "consolidate",
+        help="Copy staged records into committed segments.",
     )
-    tape_path_parser.add_argument(
-        "--dir",
-        required=True,
-        dest="tape_dir",
-        help="Directory where tape files are stored.",
-    )
-    tape_path_parser.add_argument(
-        "--tag",
-        required=True,
-        help="Tag suffix for the tape file (e.g. miner name).",
-    )
-    tape_path_parser.add_argument(
-        "--rotation",
+    _add_tape_target_group(consolidate_parser)
+    consolidate_parser.add_argument(
+        "--limit",
         default=None,
-        choices=["monthly", "daily", "weekly", "yearly", "run", "seq", "random", "none"],
-        help="Naming generation scheme.",
+        type=int,
+        dest="limit",
+        help="Process at most N staged records in this run.",
     )
-    tape_path_parser.add_argument(
-        "--select",
-        default=None,
-        dest="select_mode",
-        choices=["first", "last", "latest", "oldest", "smallest", "largest"],
-        help="Select an existing tape from the directory.",
+    _add_write_init_options(consolidate_parser)
+    consolidate_parser.set_defaults(handler=_cmd_tape_consolidate)
+
+    query_parser = tape_subparsers.add_parser(
+        "query",
+        help="Query records from a folder-backed tape.",
     )
-    tape_path_parser.add_argument(
-        "--filter-tag",
+    _add_tape_target_group(query_parser)
+    query_parser.add_argument(
+        "--mode",
+        default="committed",
+        dest="read_mode",
+        choices=["committed", "best_effort"],
+        help="Read mode for source selection and ordering.",
+    )
+    query_parser.add_argument(
+        "--consolidate",
         action="store_true",
-        dest="filter_tag",
-        help="When selecting, only consider tapes matching --tag.",
+        dest="pre_consolidate",
+        help="Run consolidate before reading records.",
     )
-    tape_path_parser.set_defaults(handler=_cmd_tape_path)
-
-    tape_list_parser = tape_subparsers.add_parser(
-        "list",
-        help="List entries from an existing tape with optional filtering.",
-    )
-    tape_list_parser.add_argument(
-        "--tape",
-        required=True,
-        dest="tape_path",
-        help="Path to the JSONL tape file.",
-    )
-    tape_list_parser.add_argument(
-        "--entry-type",
+    query_parser.add_argument(
+        "--class",
         default=None,
-        dest="entry_type_filter",
-        help="Filter by exact entry_type match.",
+        dest="record_class_filter",
+        help="Filter by exact record class.",
     )
-    tape_list_parser.add_argument(
-        "--cargo-contains",
-        default=None,
-        dest="cargo_contains",
-        help="Filter by substring match on serialized cargo JSON.",
-    )
-    tape_list_slice_group = tape_list_parser.add_mutually_exclusive_group()
-    tape_list_slice_group.add_argument(
-        "--last",
-        type=int,
-        default=None,
-        dest="last_n",
-        help="Return only the last N matched entries.",
-    )
-    tape_list_slice_group.add_argument(
+    query_slice_group = query_parser.add_mutually_exclusive_group()
+    query_slice_group.add_argument(
         "--first",
-        type=int,
         default=None,
+        type=int,
         dest="first_n",
-        help="Return only the first N matched entries.",
+        help="Return only the first N matched records.",
     )
-    tape_list_parser.add_argument(
+    query_slice_group.add_argument(
+        "--last",
+        default=None,
+        type=int,
+        dest="last_n",
+        help="Return only the last N matched records.",
+    )
+    query_parser.add_argument(
         "--count",
         action="store_true",
         dest="count_only",
-        help="Output only the count of matched entries.",
+        help="Output only the count of matched records.",
     )
-    tape_list_parser.set_defaults(handler=_cmd_tape_list)
+    query_parser.add_argument(
+        "--with-source",
+        action="store_true",
+        dest="with_source",
+        help="Include source filename and line number per record.",
+    )
+    query_parser.set_defaults(handler=_cmd_tape_query)
 
-    tape_summary_parser = tape_subparsers.add_parser(
-        "summary",
-        help="Show a summary of tape contents.",
+    verify_parser = tape_subparsers.add_parser(
+        "verify",
+        help="Validate committed segment metadata headers.",
     )
-    tape_summary_parser.add_argument(
-        "--tape",
-        required=True,
-        dest="tape_path",
-        help="Path to the JSONL tape file.",
+    _add_tape_target_group(verify_parser)
+    verify_parser.set_defaults(handler=_cmd_tape_verify)
+
+    config_parser = tape_subparsers.add_parser(
+        "config",
+        help="Show effective config, defaults, and warning policy.",
     )
-    tape_summary_parser.set_defaults(handler=_cmd_tape_summary)
+    _add_tape_target_group(config_parser)
+    config_parser.set_defaults(handler=_cmd_tape_config)
+
+    doctor_parser = tape_subparsers.add_parser(
+        "doctor",
+        help="Inspect tape health and record/staging counts.",
+    )
+    _add_tape_target_group(doctor_parser)
+    doctor_parser.set_defaults(handler=_cmd_tape_doctor)

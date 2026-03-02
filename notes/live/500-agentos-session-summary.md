@@ -75,7 +75,7 @@ A rename was proposed and accepted:
 
 Resulting model:
 - `agentos` = library/system
-- `agentcli` = CLI for `agentos`
+- `agentos` = CLI for `agentos`
 
 ## Implementation Completed (This Session)
 
@@ -121,7 +121,7 @@ From `devcli`:
 ### CLI entrypoints
 
 Packaging now exposes:
-- `agentcli` (primary CLI)
+- `agentos` (primary CLI)
 - `agentos` Python package (core library/system)
 
 Python module/package is:

@@ -1,0 +1,4 @@
+interface:
+  display_name: "design-discussion"
+  short_description: "Iterative design discussion and convergence planning"
+  default_prompt: "Start with a first design draft, then iterate with user feedback until convergence."
