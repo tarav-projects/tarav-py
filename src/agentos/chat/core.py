@@ -407,6 +407,30 @@ def chat_session_stats(
     }
 
 
+def chat_session_resolved_stats(
+    query: str,
+    *,
+    providers: tuple[str, ...] | None = None,
+) -> dict[str, object]:
+    sessions = resolve_chat_sessions(query, providers=providers)
+    if not sessions:
+        raise CliError(f"no session matched query {query}")
+    if len(sessions) > 1:
+        raise CliError(
+            f"multiple sessions matched query {query}: {_format_resolved_session_choices(sessions)}"
+        )
+
+    session = sessions[0]
+    provider_stats = _build_provider_session_stats(session)
+    return {
+        "status": "ok",
+        "command": "chat session stats",
+        "query": query,
+        "session": _build_common_session_stats(session, query=query),
+        "provider_stats": provider_stats,
+    }
+
+
 def format_chat_session_stats_markdown(payload: dict[str, object]) -> str:
     lines = [
         "# Chat Session Stats",
@@ -477,6 +501,84 @@ def format_chat_session_stats_markdown(payload: dict[str, object]) -> str:
             if latest_session_at is not None:
                 latest_text += f" ({latest_session_at})"
             lines.append(f"- Latest: {latest_text}")
+
+    return "\n".join(lines)
+
+
+def format_chat_session_resolved_stats_markdown(payload: dict[str, object]) -> str:
+    lines = ["# Chat Session Stats", ""]
+
+    query = payload.get("query")
+    if query is not None:
+        lines.append(f"- Query: {query}")
+
+    session = payload.get("session")
+    if isinstance(session, dict):
+        provider = session.get("provider")
+        if provider is not None:
+            lines.append(f"- Provider: {provider}")
+
+        session_id = session.get("session_id")
+        if session_id is not None:
+            lines.append(f"- Session ID: {session_id}")
+
+        matched_field = session.get("matched_field")
+        if matched_field is not None:
+            lines.append(f"- Matched by: {matched_field}")
+
+        display_name = session.get("display_name")
+        if display_name is not None:
+            lines.append(f"- Name: {display_name}")
+
+        updated_at = session.get("updated_at")
+        if updated_at is not None:
+            lines.append(f"- Updated at: {updated_at}")
+
+        lines.append(f"- Extractable: {'yes' if session.get('extractable') else 'no'}")
+
+        primary_artifact_path = session.get("primary_artifact_path")
+        if primary_artifact_path is not None:
+            lines.append(f"- Primary artifact: {primary_artifact_path}")
+
+        canonical_finding_count = session.get("canonical_finding_count")
+        if canonical_finding_count is not None:
+            lines.append(f"- Canonical findings: {canonical_finding_count}")
+
+    provider_stats = payload.get("provider_stats")
+    provider_name = None
+    if isinstance(session, dict):
+        provider_name = session.get("provider")
+    if isinstance(provider_stats, dict):
+        lines.extend(["", f"## {provider_name or 'provider'}", ""])
+        for label, key in (
+            ("Rollout artifacts", "rollout_artifact_count"),
+            ("Session indexes", "session_index_count"),
+            ("Has rollout artifact", "has_rollout_artifact"),
+            ("Records", "record_count"),
+            ("Session meta records", "session_meta_count"),
+            ("Response items", "response_item_count"),
+            ("Event messages", "event_message_count"),
+            ("Messages", "message_count"),
+            ("User messages", "user_message_count"),
+            ("Assistant messages", "assistant_message_count"),
+            ("Developer messages", "developer_message_count"),
+            ("Tool calls", "tool_call_count"),
+            ("Tool call outputs", "tool_call_output_count"),
+            ("Reasoning items", "reasoning_item_count"),
+            ("Dialog turns", "dialog_turn_count"),
+            ("User turns", "user_turn_count"),
+            ("Assistant turns", "assistant_turn_count"),
+            ("First record", "first_record_at"),
+            ("Last record", "last_record_at"),
+            ("First turn", "first_turn_at"),
+            ("Last turn", "last_turn_at"),
+        ):
+            value = provider_stats.get(key)
+            if value is None:
+                continue
+            if isinstance(value, bool):
+                value = "yes" if value else "no"
+            lines.append(f"- {label}: {value}")
 
     return "\n".join(lines)
 
@@ -668,6 +770,31 @@ def _build_stats_provider_payload(
         }
     )
     return payload
+
+
+def _build_common_session_stats(
+    session: ChatSession,
+    *,
+    query: str,
+) -> dict[str, Any]:
+    return {
+        "provider": session.provider,
+        "session_id": session.session_id,
+        "display_name": _session_display_name(session),
+        "display_name_field": _session_display_field_name(session),
+        "matched_field": _matched_field_name(session, query=query),
+        "matched_value": query,
+        "updated_at": _format_stats_timestamp(session.sort_timestamp()),
+        "extractable": _session_is_extractable(session),
+        "primary_artifact_path": str(session.primary_artifact_path()) if session.primary_artifact_path() else None,
+        "canonical_finding_count": len(session.canonical_findings()),
+    }
+
+
+def _build_provider_session_stats(session: ChatSession) -> dict[str, Any]:
+    if isinstance(session, CodexChatSession):
+        return _build_codex_session_stats(session)
+    raise CliError(f"chat session stats is not implemented for provider {session.provider}")
 
 
 def _strategies_attempted(
@@ -1028,6 +1155,14 @@ def _session_display_name(session: ChatSession) -> str | None:
     return None
 
 
+def _session_display_field_name(session: ChatSession) -> str | None:
+    if isinstance(session, ClaudeCodeChatSession) and session.title is not None:
+        return "title"
+    if isinstance(session, CodexChatSession) and session.thread_name is not None:
+        return "thread_name"
+    return None
+
+
 def _session_findings(
     session: ChatSession,
     *,
@@ -1141,6 +1276,126 @@ def _session_preference_key(session: ChatSession) -> tuple[float, int, str]:
         len(session.canonical_findings()),
         str(session.primary_artifact_path() or ""),
     )
+
+
+def _build_codex_session_stats(session: CodexChatSession) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "rollout_artifact_count": len(session.artifact_paths),
+        "session_index_count": len(session.index_paths),
+        "has_rollout_artifact": _session_is_extractable(session),
+    }
+
+    artifact_path = session.primary_artifact_path()
+    if artifact_path is None or not artifact_path.is_file():
+        return payload
+
+    record_count = 0
+    session_meta_count = 0
+    response_item_count = 0
+    event_message_count = 0
+    message_count = 0
+    user_message_count = 0
+    assistant_message_count = 0
+    developer_message_count = 0
+    tool_call_count = 0
+    tool_call_output_count = 0
+    reasoning_item_count = 0
+    first_record_at: float | None = None
+    last_record_at: float | None = None
+
+    try:
+        with artifact_path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+
+                record_count += 1
+                timestamp = coerce_timestamp(obj.get("timestamp"))
+                if timestamp is not None:
+                    if first_record_at is None or timestamp < first_record_at:
+                        first_record_at = timestamp
+                    if last_record_at is None or timestamp > last_record_at:
+                        last_record_at = timestamp
+
+                record_type = obj.get("type")
+                if record_type == "session_meta":
+                    session_meta_count += 1
+                    continue
+                if record_type == "event_msg":
+                    event_message_count += 1
+                    continue
+                if record_type != "response_item":
+                    continue
+
+                response_item_count += 1
+                response_payload = obj.get("payload")
+                if not isinstance(response_payload, dict):
+                    continue
+
+                response_type = response_payload.get("type")
+                if response_type == "message":
+                    message_count += 1
+                    role = response_payload.get("role")
+                    if role == "user":
+                        user_message_count += 1
+                    elif role == "assistant":
+                        assistant_message_count += 1
+                    elif role == "developer":
+                        developer_message_count += 1
+                elif response_type == "function_call":
+                    tool_call_count += 1
+                elif response_type == "function_call_output":
+                    tool_call_output_count += 1
+                elif response_type == "reasoning":
+                    reasoning_item_count += 1
+    except OSError:
+        return payload
+
+    # Import lazily to avoid an import cycle through agentos.chat.extractors.__init__.
+    from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
+
+    turns = extract_dialog_from_codex_rollout(artifact_path, raw=False)
+    payload.update(
+        {
+            "record_count": record_count,
+            "session_meta_count": session_meta_count,
+            "response_item_count": response_item_count,
+            "event_message_count": event_message_count,
+            "message_count": message_count,
+            "user_message_count": user_message_count,
+            "assistant_message_count": assistant_message_count,
+            "developer_message_count": developer_message_count,
+            "tool_call_count": tool_call_count,
+            "tool_call_output_count": tool_call_output_count,
+            "reasoning_item_count": reasoning_item_count,
+            "dialog_turn_count": len(turns),
+            "user_turn_count": sum(1 for turn in turns if turn.role == "user"),
+            "assistant_turn_count": sum(1 for turn in turns if turn.role == "assistant"),
+            "first_record_at": _format_stats_timestamp(first_record_at),
+            "last_record_at": _format_stats_timestamp(last_record_at),
+            "first_turn_at": turns[0].timestamp if turns else None,
+            "last_turn_at": turns[-1].timestamp if turns else None,
+        }
+    )
+    return payload
+
+
+def _format_resolved_session_choices(sessions: list[ChatSession]) -> str:
+    choices: list[str] = []
+    for session in sessions:
+        display_name = _session_display_name(session)
+        choice = f"{session.provider}:{session.session_id}"
+        if display_name is not None:
+            choice += f" ({display_name})"
+        choices.append(choice)
+    return ", ".join(choices)
 
 
 def _validate_sort_choice(sort: str) -> None:
@@ -1639,8 +1894,10 @@ def _query_opencode_sessions(
 
 
 __all__ = [
+    "chat_session_resolved_stats",
     "chat_session_stats",
     "find_chat_session",
+    "format_chat_session_resolved_stats_markdown",
     "format_chat_session_stats_markdown",
     "list_chat_sessions",
     "resolve_chat_sessions",

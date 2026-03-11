@@ -6,8 +6,10 @@ import json
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos.chat.core import (
+    chat_session_resolved_stats,
     chat_session_stats,
     find_chat_session,
+    format_chat_session_resolved_stats_markdown,
     format_chat_session_stats_markdown,
     list_chat_sessions,
     supported_provider_specs,
@@ -49,9 +51,21 @@ def _cmd_chat_session_find(args: argparse.Namespace) -> int:
 
 
 def _cmd_chat_session_stats(args: argparse.Namespace) -> int:
+    providers = tuple(args.providers) if args.providers else None
+    if args.session_query is not None:
+        payload = chat_session_resolved_stats(
+            validate_string_for_path(args.session_query, field_name="session query"),
+            providers=providers,
+        )
+        if args.output_format == "markdown":
+            print(format_chat_session_resolved_stats_markdown(payload))
+            return 0
+        print(json.dumps(payload, indent=2))
+        return 0
+
     payload = chat_session_stats(
         full_output=args.full_output,
-        providers=tuple(args.providers) if args.providers else None,
+        providers=providers,
     )
     if args.output_format == "markdown":
         print(format_chat_session_stats_markdown(payload))
@@ -133,7 +147,12 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
 
     stats_parser = session_subparsers.add_parser(
         "stats",
-        help="Summarize session inventory and extractability across supported providers.",
+        help="Summarize session inventory, or one resolved session when given a query.",
+    )
+    stats_parser.add_argument(
+        "session_query",
+        nargs="?",
+        help="Optional session query string. When provided, returns stats for one resolved session.",
     )
     stats_parser.add_argument(
         "--provider",

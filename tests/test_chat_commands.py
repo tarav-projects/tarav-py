@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from agentos.cli import main
@@ -10,6 +12,12 @@ from agentos.cli import main
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def _set_iso_mtime(path: Path, timestamp: str) -> None:
+    normalized = timestamp[:-1] + "+00:00" if timestamp.endswith("Z") else timestamp
+    seconds = datetime.fromisoformat(normalized).astimezone(timezone.utc).timestamp()
+    os.utime(path, (seconds, seconds))
 
 
 def _write_codex_rollout(path: Path, *, session_id: str) -> None:
@@ -25,6 +33,23 @@ def _write_codex_rollout(path: Path, *, session_id: str) -> None:
         }
     ]
     _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(path, records[0]["timestamp"])
+
+
+def _write_codex_rollout_with_records(path: Path, *, session_id: str, records: list[dict[str, object]]) -> None:
+    base_records = [
+        {
+            "timestamp": "2026-03-08T01:08:59.089Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "originator": "codex_cli_rs",
+                "source": "cli",
+            },
+        }
+    ]
+    _write(path, "\n".join(json.dumps(record) for record in base_records + records) + "\n")
+    _set_iso_mtime(path, base_records[0]["timestamp"])
 
 
 def _write_codex_session_index(
@@ -622,6 +647,206 @@ def test_chat_session_stats_supports_markdown_output(
     assert f"- Examples: {codex_session_id}" in output
     assert f"- Named examples: {claude_session_id} ({claude_title})" in output
     assert f"{codex_session_id} ({codex_thread_name})" in output
+
+
+def test_chat_session_stats_supports_unique_codex_session_queries(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "019cd2fe-ff22-70f2-a131-2c00c0b21166"
+    thread_name = "tape-uri-discovery-refactor"
+    rollout_path = (
+        home / ".codex" / "sessions" / "2026" / "03" / "10" / f"rollout-2026-03-10T12-13-33-{session_id}.jsonl"
+    )
+    _write_codex_rollout_with_records(
+        rollout_path,
+        session_id=session_id,
+        records=[
+            {
+                "timestamp": "2026-03-08T01:09:00.000Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "hello from user"}],
+                },
+            },
+            {
+                "timestamp": "2026-03-08T01:09:10.000Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "hello from assistant"}],
+                },
+            },
+            {
+                "timestamp": "2026-03-08T01:09:20.000Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "arguments": "{\"cmd\":\"pwd\"}",
+                    "call_id": "call_1",
+                },
+            },
+            {
+                "timestamp": "2026-03-08T01:09:30.000Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call_output",
+                    "call_id": "call_1",
+                    "output": "Chunk ID: 123\nProcess exited with code 0\nOutput:\n/work\n",
+                },
+            },
+            {
+                "timestamp": "2026-03-08T01:09:35.000Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "reasoning",
+                    "summary": [],
+                    "content": None,
+                },
+            },
+            {
+                "timestamp": "2026-03-08T01:09:40.000Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {},
+                },
+            },
+        ],
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(["chat", "session", "stats", thread_name]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chat session stats"
+    assert payload["query"] == thread_name
+    assert payload["session"] == {
+        "provider": "codex",
+        "session_id": session_id,
+        "display_name": thread_name,
+        "display_name_field": "thread_name",
+        "matched_field": "thread_name",
+        "matched_value": thread_name,
+        "updated_at": "2026-03-10T12:13:33.263Z",
+        "extractable": True,
+        "primary_artifact_path": str(rollout_path.resolve()),
+        "canonical_finding_count": 1,
+    }
+    assert payload["provider_stats"] == {
+        "rollout_artifact_count": 1,
+        "session_index_count": 1,
+        "has_rollout_artifact": True,
+        "record_count": 7,
+        "session_meta_count": 1,
+        "response_item_count": 5,
+        "event_message_count": 1,
+        "message_count": 2,
+        "user_message_count": 1,
+        "assistant_message_count": 1,
+        "developer_message_count": 0,
+        "tool_call_count": 1,
+        "tool_call_output_count": 1,
+        "reasoning_item_count": 1,
+        "dialog_turn_count": 2,
+        "user_turn_count": 1,
+        "assistant_turn_count": 1,
+        "first_record_at": "2026-03-08T01:08:59.089Z",
+        "last_record_at": "2026-03-08T01:09:40.000Z",
+        "first_turn_at": "2026-03-08T01:09:00.000Z",
+        "last_turn_at": "2026-03-08T01:09:10.000Z",
+    }
+
+    assert main(["chat", "session", "stats", thread_name, "--output", "markdown"]) == 0
+    output = capsys.readouterr().out
+    assert "# Chat Session Stats" in output
+    assert f"- Query: {thread_name}" in output
+    assert "- Provider: codex" in output
+    assert f"- Session ID: {session_id}" in output
+    assert f"- Name: {thread_name}" in output
+    assert "- Tool calls: 1" in output
+    assert "- Dialog turns: 2" in output
+
+
+def test_chat_session_stats_rejects_ambiguous_session_queries(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    thread_name = "duplicate-thread-name"
+    session_ids = [
+        "019cd2fe-ff22-70f2-a131-2c00c0b21166",
+        "019cd2fe-ff22-70f2-a131-2c00c0b21167",
+    ]
+    for index, session_id in enumerate(session_ids, start=10):
+        _write_codex_rollout(
+            home / ".codex" / "sessions" / "2026" / "03" / str(index) / f"rollout-2026-03-{index}T12-13-33-{session_id}.jsonl",
+            session_id=session_id,
+        )
+        _write(
+            home / ".codex" / "session_index.jsonl",
+            "\n".join(
+                json.dumps(
+                    {
+                        "id": current_id,
+                        "thread_name": thread_name,
+                        "updated_at": "2026-03-10T12:13:33.263726Z",
+                    }
+                )
+                for current_id in session_ids[:index - 9]
+            )
+            + "\n",
+        )
+
+    assert main(["chat", "session", "stats", thread_name]) == 1
+    stderr = capsys.readouterr().err
+    assert "multiple sessions matched query duplicate-thread-name" in stderr
+
+
+def test_chat_session_stats_reports_unsupported_session_provider(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "8948fa51-ae3d-4a28-bf5c-d9d8d8069a6b"
+    title = "Claude Session Title"
+    _write_claude_desktop_session(
+        home
+        / "Library"
+        / "Application Support"
+        / "Claude"
+        / "claude-code-sessions"
+        / "workspace"
+        / f"{session_id}.json",
+        session_id=session_id,
+        title=title,
+    )
+
+    assert main(["chat", "session", "stats", title]) == 1
+    stderr = capsys.readouterr().err
+    assert "chat session stats is not implemented for provider claude-code" in stderr
 
 
 def test_chat_session_find_supports_full_gemini_session_ids(
