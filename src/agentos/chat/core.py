@@ -64,6 +64,101 @@ class ProviderSpec:
 
 
 @dataclass(frozen=True)
+class ProviderHomeSlot:
+    key: str
+    default_home: str
+    direct_relpaths: tuple[str, ...]
+    grep_relpaths: tuple[str, ...] = ()
+    sqlite_db_relpaths: tuple[str, ...] = ()
+
+    def build_paths(self, *, home: str) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+        return (
+            tuple(_join_provider_home(home, relpath) for relpath in self.direct_relpaths),
+            tuple(_join_provider_home(home, relpath) for relpath in self.grep_relpaths),
+            tuple(_join_provider_home(home, relpath) for relpath in self.sqlite_db_relpaths),
+        )
+
+
+@dataclass(frozen=True)
+class ProviderLayout:
+    provider: str
+    home_slots: tuple[ProviderHomeSlot, ...]
+
+    def supported_home_keys(self) -> tuple[str, ...]:
+        return tuple(slot.key for slot in self.home_slots)
+
+    def default_spec(self) -> ProviderSpec:
+        return self.spec_from_homes(
+            {
+                slot.key: slot.default_home
+                for slot in self.home_slots
+            },
+            index=None,
+        )
+
+    def spec_from_home(self, home: str, *, index: int | None) -> ProviderSpec:
+        if len(self.home_slots) != 1:
+            supported_keys = ", ".join(self.supported_home_keys())
+            field_name = _provider_instance_field_name(index=index, field="home")
+            homes_field_name = _provider_instance_field_name(index=index, field="homes")
+            raise CliError(
+                f"{field_name} is only supported for providers with a single home root; "
+                f"use {homes_field_name} with keys: {supported_keys}"
+            )
+        slot = self.home_slots[0]
+        return self.spec_from_homes({slot.key: home}, index=index)
+
+    def spec_from_homes(
+        self,
+        homes: dict[str, str],
+        *,
+        index: int | None,
+    ) -> ProviderSpec:
+        supported_slots = {slot.key: slot for slot in self.home_slots}
+        unsupported_keys = sorted(key for key in homes if key not in supported_slots)
+        homes_field_name = _provider_instance_field_name(index=index, field="homes")
+        if unsupported_keys:
+            supported_keys = ", ".join(self.supported_home_keys())
+            unsupported_keys_text = ", ".join(unsupported_keys)
+            raise CliError(
+                f"{homes_field_name} contains unsupported keys for provider {self.provider}: "
+                f"{unsupported_keys_text} (supported: {supported_keys})"
+            )
+
+        direct_paths: list[str] = []
+        grep_paths: list[str] = []
+        sqlite_db_paths: list[str] = []
+
+        for slot in self.home_slots:
+            raw_home = homes.get(slot.key)
+            if raw_home is None:
+                continue
+            normalized_home = _normalize_provider_home(
+                raw_home,
+                field_name=f"{homes_field_name}.{slot.key}",
+            )
+            slot_direct_paths, slot_grep_paths, slot_sqlite_db_paths = slot.build_paths(
+                home=normalized_home
+            )
+            direct_paths.extend(slot_direct_paths)
+            grep_paths.extend(slot_grep_paths)
+            sqlite_db_paths.extend(slot_sqlite_db_paths)
+
+        if not direct_paths and not sqlite_db_paths:
+            supported_keys = ", ".join(self.supported_home_keys())
+            raise CliError(
+                f"{homes_field_name} must include at least one supported home key: {supported_keys}"
+            )
+
+        return ProviderSpec(
+            provider=self.provider,
+            direct_paths=_unique_strings(tuple(direct_paths)),
+            grep_paths=_unique_strings(tuple(grep_paths)),
+            sqlite_db_paths=_unique_strings(tuple(sqlite_db_paths)),
+        )
+
+
+@dataclass(frozen=True)
 class ProviderSearchContext:
     provider_spec: ProviderSpec
     direct_targets: tuple[Path, ...]
@@ -77,66 +172,82 @@ class ProviderSearchContext:
     sqlite_missing_db_paths: tuple[Path, ...]
 
 
-def supported_provider_specs() -> tuple[ProviderSpec, ...]:
+def supported_provider_layouts() -> tuple[ProviderLayout, ...]:
     return (
-        ProviderSpec(
+        ProviderLayout(
             provider="copilot-cli",
-            direct_paths=(
-                "~/.copilot/session-state",
+            home_slots=(
+                ProviderHomeSlot(
+                    key="home",
+                    default_home="~/.copilot",
+                    direct_relpaths=("session-state",),
+                ),
             ),
         ),
-        ProviderSpec(
+        ProviderLayout(
             provider="gemini-cli",
-            direct_paths=(
-                "~/.gemini/tmp",
-                "~/.gemini/history",
+            home_slots=(
+                ProviderHomeSlot(
+                    key="home",
+                    default_home="~/.gemini",
+                    direct_relpaths=("tmp", "history"),
+                ),
             ),
         ),
-        ProviderSpec(
+        ProviderLayout(
             provider="codex",
-            direct_paths=(
-                "~/.codex/sessions",
-                "~/.codex/archived_sessions",
-                "~/.codex/session_index.jsonl",
-            ),
-            grep_paths=(
-                "~/.codex/sessions",
-                "~/.codex/archived_sessions",
-                "~/.codex/session_index.jsonl",
+            home_slots=(
+                ProviderHomeSlot(
+                    key="home",
+                    default_home="~/.codex",
+                    direct_relpaths=("sessions", "archived_sessions", "session_index.jsonl"),
+                ),
             ),
         ),
-        ProviderSpec(
+        ProviderLayout(
             provider="claude-code",
-            direct_paths=(
-                "~/.claude/projects",
-                "~/Library/Application Support/Claude/claude-code-sessions",
-            ),
-            grep_paths=(
-                "~/.claude",
-                "~/Library/Application Support/Claude/claude-code-sessions",
+            home_slots=(
+                ProviderHomeSlot(
+                    key="cli",
+                    default_home="~/.claude",
+                    direct_relpaths=("projects",),
+                    grep_relpaths=("",),
+                ),
+                ProviderHomeSlot(
+                    key="desktop",
+                    default_home="~/Library/Application Support/Claude",
+                    direct_relpaths=("claude-code-sessions",),
+                    grep_relpaths=("claude-code-sessions",),
+                ),
             ),
         ),
-        ProviderSpec(
+        ProviderLayout(
             provider="opencode",
-            direct_paths=(
-                "~/.local/share/opencode/storage/session_diff",
+            home_slots=(
+                ProviderHomeSlot(
+                    key="home",
+                    default_home="~/.local/share/opencode",
+                    direct_relpaths=("storage/session_diff",),
+                    grep_relpaths=("storage", "log"),
+                    sqlite_db_relpaths=("opencode.db",),
+                ),
             ),
-            grep_paths=(
-                "~/.local/share/opencode/storage",
-                "~/.local/share/opencode/log",
-            ),
-            sqlite_db_paths=("~/.local/share/opencode/opencode.db",),
         ),
-        ProviderSpec(
+        ProviderLayout(
             provider="openclaw",
-            direct_paths=(
-                "~/.openclaw/agents",
-            ),
-            grep_paths=(
-                "~/.openclaw/agents",
+            home_slots=(
+                ProviderHomeSlot(
+                    key="home",
+                    default_home="~/.openclaw",
+                    direct_relpaths=("agents",),
+                ),
             ),
         ),
     )
+
+
+def supported_provider_specs() -> tuple[ProviderSpec, ...]:
+    return tuple(layout.default_spec() for layout in supported_provider_layouts())
 
 
 def configured_provider_specs(*, start_path: Path | str = ".") -> tuple[ProviderSpec, ...]:
@@ -190,18 +301,26 @@ def _provider_spec_from_instance_config(raw_instance: dict[str, object], *, inde
     if not isinstance(provider, str) or not provider:
         raise CliError(f"chat.provider_instances[{index}].provider is required")
 
-    supported_providers = {spec.provider for spec in supported_provider_specs()}
-    if provider not in supported_providers:
+    layout = _provider_layout_for_provider(provider)
+    if layout is None:
+        supported_providers = ", ".join(
+            sorted(provider_layout.provider for provider_layout in supported_provider_layouts())
+        )
         raise CliError(
-            f"chat.provider_instances[{index}].provider must be one of: {', '.join(sorted(supported_providers))}"
+            f"chat.provider_instances[{index}].provider must be one of: {supported_providers}"
         )
 
     home = raw_instance.get("home")
+    raw_homes = raw_instance.get("homes")
     raw_direct_paths = raw_instance.get("direct_paths")
     raw_grep_paths = raw_instance.get("grep_paths")
     raw_sqlite_db_paths = raw_instance.get("sqlite_db_paths")
     raw_sqlite_db_path = raw_instance.get("sqlite_db_path")
 
+    if home is not None and raw_homes is not None:
+        raise CliError(
+            f"chat.provider_instances[{index}] must not define both home and homes"
+        )
     if raw_sqlite_db_path is not None and raw_sqlite_db_paths is not None:
         raise CliError(
             f"chat.provider_instances[{index}] must not define both sqlite_db_path and sqlite_db_paths"
@@ -219,19 +338,37 @@ def _provider_spec_from_instance_config(raw_instance: dict[str, object], *, inde
         raw_sqlite_db_paths if raw_sqlite_db_paths is not None else raw_sqlite_db_path,
         field_name=f"chat.provider_instances[{index}].sqlite_db_paths",
     )
+    homes = _load_optional_string_mapping(
+        raw_homes,
+        field_name=f"chat.provider_instances[{index}].homes",
+    )
 
     if home is not None:
-        if not isinstance(home, str) or not home.strip():
-            raise CliError(f"chat.provider_instances[{index}].home must be a non-empty string")
+        normalized_home = _normalize_provider_home(
+            home,
+            field_name=f"chat.provider_instances[{index}].home",
+        )
         if direct_paths or grep_paths or sqlite_db_paths:
             raise CliError(
                 f"chat.provider_instances[{index}] must define either home or explicit paths, not both"
             )
-        return _provider_spec_from_home(provider, home.strip(), index=index)
+        return layout.spec_from_home(normalized_home, index=index)
+
+    if homes:
+        if len(layout.home_slots) == 1:
+            raise CliError(
+                f"chat.provider_instances[{index}].homes is only supported for providers with multiple home roots; "
+                f"use chat.provider_instances[{index}].home"
+            )
+        if direct_paths or grep_paths or sqlite_db_paths:
+            raise CliError(
+                f"chat.provider_instances[{index}] must define either homes or explicit paths, not both"
+            )
+        return layout.spec_from_homes(homes, index=index)
 
     if not direct_paths:
         raise CliError(
-            f"chat.provider_instances[{index}] must define home or direct_paths"
+            f"chat.provider_instances[{index}] must define home, homes, or direct_paths"
         )
 
     return ProviderSpec(
@@ -240,51 +377,6 @@ def _provider_spec_from_instance_config(raw_instance: dict[str, object], *, inde
         grep_paths=grep_paths,
         sqlite_db_paths=sqlite_db_paths,
     )
-
-
-def _provider_spec_from_home(provider: str, home: str, *, index: int) -> ProviderSpec:
-    normalized_home = home.rstrip("/")
-
-    if provider == "copilot-cli":
-        return ProviderSpec(provider=provider, direct_paths=(f"{normalized_home}/session-state",))
-    if provider == "gemini-cli":
-        return ProviderSpec(
-            provider=provider,
-            direct_paths=(f"{normalized_home}/tmp", f"{normalized_home}/history"),
-        )
-    if provider == "codex":
-        return ProviderSpec(
-            provider=provider,
-            direct_paths=(
-                f"{normalized_home}/sessions",
-                f"{normalized_home}/archived_sessions",
-                f"{normalized_home}/session_index.jsonl",
-            ),
-            grep_paths=(
-                f"{normalized_home}/sessions",
-                f"{normalized_home}/archived_sessions",
-                f"{normalized_home}/session_index.jsonl",
-            ),
-        )
-    if provider == "opencode":
-        return ProviderSpec(
-            provider=provider,
-            direct_paths=(f"{normalized_home}/storage/session_diff",),
-            grep_paths=(f"{normalized_home}/storage", f"{normalized_home}/log"),
-            sqlite_db_paths=(f"{normalized_home}/opencode.db",),
-        )
-    if provider == "openclaw":
-        return ProviderSpec(
-            provider=provider,
-            direct_paths=(f"{normalized_home}/agents",),
-            grep_paths=(f"{normalized_home}/agents",),
-        )
-    if provider == "claude-code":
-        raise CliError(
-            f"chat.provider_instances[{index}].home is not supported for claude-code; use direct_paths and grep_paths"
-        )
-
-    raise CliError(f"unsupported provider instance provider: {provider}")
 
 
 def _load_optional_string_tuple(value: object, *, field_name: str) -> tuple[str, ...]:
@@ -304,6 +396,47 @@ def _load_optional_string_tuple(value: object, *, field_name: str) -> tuple[str,
             raise CliError(f"{field_name}[{index}] must be a non-empty string")
         items.append(item.strip())
     return tuple(items)
+
+
+def _load_optional_string_mapping(value: object, *, field_name: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise CliError(f"{field_name} must be a JSON object")
+
+    items: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not key.strip():
+            raise CliError(f"{field_name} contains an invalid key")
+        if not isinstance(item, str) or not item.strip():
+            raise CliError(f"{field_name}.{key} must be a non-empty string")
+        items[key.strip()] = item.strip()
+    return items
+
+
+def _provider_layout_for_provider(provider: str) -> ProviderLayout | None:
+    for layout in supported_provider_layouts():
+        if layout.provider == provider:
+            return layout
+    return None
+
+
+def _provider_instance_field_name(*, index: int | None, field: str) -> str:
+    if index is None:
+        return field
+    return f"chat.provider_instances[{index}].{field}"
+
+
+def _normalize_provider_home(home: object, *, field_name: str) -> str:
+    if not isinstance(home, str) or not home.strip():
+        raise CliError(f"{field_name} must be a non-empty string")
+    return home.strip()
+
+
+def _join_provider_home(home: str, relpath: str) -> str:
+    if not relpath:
+        return str(Path(home))
+    return str(Path(home) / relpath)
 
 
 def _merge_provider_specs(provider_specs: tuple[ProviderSpec, ...]) -> tuple[ProviderSpec, ...]:
@@ -336,6 +469,8 @@ def list_chat_sessions(
     full_output: bool = False,
     limit: int | None = None,
     providers: tuple[str, ...] | None = None,
+    extractable_only: bool = False,
+    updated_after: float | None = None,
 ) -> dict[str, object]:
     _validate_sort_choice(sort)
     _validate_session_limit(limit)
@@ -344,7 +479,16 @@ def list_chat_sessions(
     total_sessions = 0
 
     for context in _iter_provider_contexts(providers):
-        sessions = _sort_sessions(_discover_direct_provider_sessions(context), sort)
+        sessions = [
+            session
+            for session in _discover_direct_provider_sessions(context)
+            if _session_matches_list_filters(
+                session,
+                extractable_only=extractable_only,
+                updated_after=updated_after,
+            )
+        ]
+        sessions = _sort_sessions(sessions, sort)
         if limit is not None:
             sessions = sessions[:limit]
         provider_payload = _build_provider_payload(
@@ -367,6 +511,8 @@ def list_chat_sessions(
         "status": "ok",
         "command": "chat session list",
         "sort": sort,
+        "extractable_only": extractable_only,
+        "updated_after": _format_stats_timestamp(updated_after),
         "provider_count": len(output_providers),
         "session_count": total_sessions,
         "providers": output_providers,
@@ -752,20 +898,22 @@ def _build_stats_provider_payload(
 def _build_common_session_stats(
     session: ChatSession,
     *,
-    query: str,
+    query: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "provider": session.provider,
         "session_id": session.session_id,
         "display_name": _session_display_name(session),
         "display_name_field": _session_display_field_name(session),
-        "matched_field": _matched_field_name(session, query=query),
-        "matched_value": query,
         "updated_at": _format_stats_timestamp(session.sort_timestamp()),
         "extractable": _session_is_extractable(session),
         "primary_artifact_path": str(session.primary_artifact_path()) if session.primary_artifact_path() else None,
         "canonical_finding_count": len(session.canonical_findings()),
     }
+    if query is not None:
+        payload["matched_field"] = _matched_field_name(session, query=query)
+        payload["matched_value"] = query
+    return payload
 
 
 def _build_provider_session_stats(session: ChatSession) -> dict[str, Any]:
@@ -1126,7 +1274,7 @@ def _append_unique_finding(
 
 
 def _session_summary(session: ChatSession) -> dict[str, Any]:
-    summary: dict[str, Any] = {"session_id": session.session_id}
+    summary = _build_common_session_stats(session)
     if isinstance(session, ClaudeCodeChatSession) and session.title is not None:
         summary["title"] = session.title
     if isinstance(session, CodexChatSession) and session.thread_name is not None:

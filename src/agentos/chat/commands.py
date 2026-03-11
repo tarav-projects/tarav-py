@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import time
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
@@ -18,6 +20,7 @@ from agentos.chat.extractors import extract_chat_session
 
 
 _CHAT_PROVIDER_CHOICES = tuple(provider_spec.provider for provider_spec in supported_provider_specs())
+_DURATION_RE = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw]?)$")
 
 
 def _normalize_session_limit(limit: int | None) -> int | None:
@@ -28,12 +31,38 @@ def _normalize_session_limit(limit: int | None) -> int | None:
     return limit
 
 
+def _normalize_updated_since(value: str | None) -> float | None:
+    if value is None:
+        return None
+
+    normalized = value.strip().lower()
+    match = _DURATION_RE.fullmatch(normalized)
+    if match is None:
+        raise CliError("updated-since must be an integer with optional unit s|m|h|d|w, e.g. 72h or 3d")
+
+    amount = int(match.group("value"))
+    if amount < 1:
+        raise CliError("updated-since must be greater than 0")
+
+    unit = match.group("unit") or "s"
+    multiplier = {
+        "s": 1,
+        "m": 60,
+        "h": 60 * 60,
+        "d": 24 * 60 * 60,
+        "w": 7 * 24 * 60 * 60,
+    }[unit]
+    return time.time() - (amount * multiplier)
+
+
 def _cmd_chat_session_list(args: argparse.Namespace) -> int:
     payload = list_chat_sessions(
         sort=args.sort,
         full_output=args.full_output,
         limit=_normalize_session_limit(args.limit),
         providers=tuple(args.providers) if args.providers else None,
+        extractable_only=args.extractable,
+        updated_after=_normalize_updated_since(args.updated_since),
     )
     print(json.dumps(payload, indent=2))
     return 0
@@ -117,7 +146,7 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
 
     list_parser = session_subparsers.add_parser(
         "list",
-        help="Enumerate provider-native session ids across supported providers.",
+        help="List chat sessions with shared metadata across supported providers.",
     )
     list_parser.add_argument(
         "--sort",
@@ -142,6 +171,16 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         "--full-output",
         action="store_true",
         help="Keep zero-session providers in the providers array.",
+    )
+    list_parser.add_argument(
+        "--extractable",
+        action="store_true",
+        help="Keep only sessions with an extractable primary artifact.",
+    )
+    list_parser.add_argument(
+        "--updated-since",
+        default=None,
+        help="Keep only sessions updated within the given lookback, e.g. 72h or 3d.",
     )
     list_parser.set_defaults(handler=_cmd_chat_session_list)
 

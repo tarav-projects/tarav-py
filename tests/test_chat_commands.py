@@ -6,6 +6,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agentos.chat import core
 from agentos.cli import main
 
 
@@ -90,6 +91,7 @@ def _write_claude_desktop_session(
             }
         ),
     )
+    _set_iso_mtime(path, created_at)
 
 
 def _write_claude_project_session(path: Path, *, session_id: str) -> None:
@@ -298,6 +300,36 @@ def _write_global_config(path: Path, *, provider_instances: list[dict[str, objec
     )
 
 
+def _expected_session_summary(
+    *,
+    provider: str,
+    session_id: str,
+    display_name: str | None,
+    display_name_field: str | None,
+    updated_at: str | None,
+    extractable: bool,
+    primary_artifact_path: str | None,
+    canonical_finding_count: int,
+    title: str | None = None,
+    thread_name: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "provider": provider,
+        "session_id": session_id,
+        "display_name": display_name,
+        "display_name_field": display_name_field,
+        "updated_at": updated_at,
+        "extractable": extractable,
+        "primary_artifact_path": primary_artifact_path,
+        "canonical_finding_count": canonical_finding_count,
+    }
+    if title is not None:
+        payload["title"] = title
+    if thread_name is not None:
+        payload["thread_name"] = thread_name
+    return payload
+
+
 def test_chat_session_list_returns_provider_grouped_session_ids_only(
     tmp_path: Path,
     monkeypatch,
@@ -316,8 +348,9 @@ def test_chat_session_list_returns_provider_grouped_session_ids_only(
     opencode_session_id = "ses_3386643b2ffegZgI4IgNfmL9n3"
     openclaw_session_id = "061729c9-f0c0-4d62-a3fb-1d21553fc0e4"
 
+    claude_project_path = home / ".claude" / "projects" / "workspace" / f"{claude_session_id}.jsonl"
     _write(
-        home / ".claude" / "projects" / "workspace" / f"{claude_session_id}.jsonl",
+        claude_project_path,
         json.dumps(
             {
                 "sessionId": claude_session_id,
@@ -326,6 +359,7 @@ def test_chat_session_list_returns_provider_grouped_session_ids_only(
         )
         + "\n",
     )
+    _set_iso_mtime(claude_project_path, "2026-03-08T12:05:12.017Z")
     _write_claude_desktop_session(
         home
         / "Library"
@@ -389,11 +423,43 @@ def test_chat_session_list_returns_provider_grouped_session_ids_only(
     providers = {provider["provider"]: provider for provider in payload["providers"]}
     assert providers["claude-code"]["session_ids"] == [claude_session_id]
     assert providers["claude-code"]["sessions"] == [
-        {"session_id": claude_session_id, "title": claude_title}
+        _expected_session_summary(
+            provider="claude-code",
+            session_id=claude_session_id,
+            display_name=claude_title,
+            display_name_field="title",
+            updated_at="2026-03-08T12:05:12.017Z",
+            extractable=True,
+            primary_artifact_path=str(
+                claude_project_path.resolve()
+            ),
+            canonical_finding_count=2,
+            title=claude_title,
+        )
     ]
     assert providers["codex"]["session_ids"] == [codex_session_id]
     assert providers["codex"]["sessions"] == [
-        {"session_id": codex_session_id, "thread_name": codex_thread_name}
+        _expected_session_summary(
+            provider="codex",
+            session_id=codex_session_id,
+            display_name=codex_thread_name,
+            display_name_field="thread_name",
+            updated_at="2026-03-10T12:13:33.263Z",
+            extractable=True,
+            primary_artifact_path=str(
+                (
+                    home
+                    / ".codex"
+                    / "sessions"
+                    / "2026"
+                    / "03"
+                    / "08"
+                    / f"rollout-2026-03-08T01-05-38-{codex_session_id}.jsonl"
+                ).resolve()
+            ),
+            canonical_finding_count=1,
+            thread_name=codex_thread_name,
+        )
     ]
     assert providers["copilot-cli"]["session_ids"] == [copilot_session_id]
     assert providers["gemini-cli"]["session_ids"] == [gemini_session_id]
@@ -441,6 +507,80 @@ def test_chat_session_list_includes_configured_extra_codex_home(
     assert codex_provider["provider"] == "codex"
     assert codex_provider["session_ids"] == [default_session_id, extra_session_id]
     assert str((extra_codex_home / "sessions").resolve()) in codex_provider["searched_targets"]
+
+
+def test_chat_session_list_includes_configured_claude_code_homes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    session_id = "663f2740-5d31-4098-af41-66b3389adb24"
+    extra_claude_home = tmp_path / "claude-alt"
+    _write_claude_project_session(
+        extra_claude_home / "projects" / "workspace" / f"{session_id}.jsonl",
+        session_id=session_id,
+    )
+    _write_global_config(
+        tmp_path / "agentos-home" / "config.json",
+        provider_instances=[{"provider": "claude-code", "homes": {"cli": str(extra_claude_home)}}],
+    )
+
+    assert main(["chat", "session", "list", "--provider", "claude-code"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    claude_provider = payload["providers"][0]
+    assert payload["provider_count"] == 1
+    assert claude_provider["provider"] == "claude-code"
+    assert claude_provider["session_ids"] == [session_id]
+    assert str((extra_claude_home / "projects").resolve()) in claude_provider["searched_targets"]
+
+
+def test_chat_session_list_rejects_single_home_for_multi_root_claude_code_provider(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    _write_global_config(
+        tmp_path / "agentos-home" / "config.json",
+        provider_instances=[{"provider": "claude-code", "home": str(tmp_path / "claude-alt")}],
+    )
+
+    assert main(["chat", "session", "list"]) == 1
+    error_output = capsys.readouterr().err
+    assert "chat.provider_instances[0].home is only supported for providers with a single home root" in error_output
+    assert "chat.provider_instances[0].homes" in error_output
+    assert "cli, desktop" in error_output
+
+
+def test_chat_session_list_rejects_homes_for_single_root_provider(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    _write_global_config(
+        tmp_path / "agentos-home" / "config.json",
+        provider_instances=[{"provider": "codex", "homes": {"home": str(tmp_path / "codex-alt")}}],
+    )
+
+    assert main(["chat", "session", "list"]) == 1
+    error_output = capsys.readouterr().err
+    assert "chat.provider_instances[0].homes is only supported for providers with multiple home roots" in error_output
+    assert "chat.provider_instances[0].home" in error_output
 
 
 def test_chat_session_list_full_output_keeps_zero_session_providers(
@@ -550,7 +690,27 @@ def test_chat_session_list_can_filter_providers_and_limit_results(
     assert providers["claude-code"]["session_count"] == 1
     assert providers["codex"]["session_ids"] == [codex_ids[0]]
     assert providers["codex"]["sessions"] == [
-        {"session_id": codex_ids[0], "thread_name": codex_names[codex_ids[0]]}
+        _expected_session_summary(
+            provider="codex",
+            session_id=codex_ids[0],
+            display_name=codex_names[codex_ids[0]],
+            display_name_field="thread_name",
+            updated_at="2026-03-10T12:13:33.263Z",
+            extractable=True,
+            primary_artifact_path=str(
+                (
+                    home
+                    / ".codex"
+                    / "sessions"
+                    / "2026"
+                    / "03"
+                    / "08"
+                    / f"rollout-2026-03-08T01-05-38-{codex_ids[0]}.jsonl"
+                ).resolve()
+            ),
+            canonical_finding_count=1,
+            thread_name=codex_names[codex_ids[0]],
+        )
     ]
     assert providers["codex"]["session_count"] == 1
 
@@ -605,6 +765,105 @@ def test_chat_session_list_rejects_non_positive_limit(capsys) -> None:
     assert "session limit must be greater than 0" in capsys.readouterr().err
 
 
+def test_chat_session_list_can_filter_extractable_sessions(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    extractable_id = "061729c9-f0c0-4d62-a3fb-1d21553fc0e4"
+    non_extractable_id = "42e3cbf6-5ea7-42bd-a537-40fb04af7ce5"
+    _write_openclaw_session(
+        home / ".openclaw" / "agents" / "main" / "sessions",
+        session_id=extractable_id,
+    )
+    _write(
+        home / ".openclaw" / "agents" / "oba" / "sessions" / "sessions.json",
+        json.dumps(
+            {
+                "agent:oba:notes": {
+                    "sessionId": non_extractable_id,
+                    "updatedAt": 1772996011170,
+                    "sessionFile": None,
+                }
+            }
+        ),
+    )
+
+    assert main(["chat", "session", "list", "--provider", "openclaw", "--extractable"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["extractable_only"] is True
+    assert payload["session_count"] == 1
+    provider = payload["providers"][0]
+    assert provider["provider"] == "openclaw"
+    assert provider["session_ids"] == [extractable_id]
+
+
+def test_chat_session_list_can_filter_updated_since(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("agentos.chat.commands.time.time", lambda: 1_741_694_400.0)  # 2025-03-11T12:00:00Z
+
+    recent_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    old_session_id = "119ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2025" / "03" / "10" / f"rollout-2025-03-10T01-05-38-{recent_session_id}.jsonl",
+        session_id=recent_session_id,
+    )
+    _set_iso_mtime(
+        home / ".codex" / "sessions" / "2025" / "03" / "10" / f"rollout-2025-03-10T01-05-38-{recent_session_id}.jsonl",
+        "2025-03-10T01:05:38.000Z",
+    )
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2025" / "03" / "01" / f"rollout-2025-03-01T01-05-38-{old_session_id}.jsonl",
+        session_id=old_session_id,
+    )
+    _set_iso_mtime(
+        home / ".codex" / "sessions" / "2025" / "03" / "01" / f"rollout-2025-03-01T01-05-38-{old_session_id}.jsonl",
+        "2025-03-01T01:05:38.000Z",
+    )
+    _write(
+        home / ".codex" / "session_index.jsonl",
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "id": recent_session_id,
+                        "thread_name": "recent-thread",
+                        "updated_at": "2025-03-10T12:13:33.263726Z",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "id": old_session_id,
+                        "thread_name": "old-thread",
+                        "updated_at": "2025-03-01T12:13:33.263726Z",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+    )
+
+    assert main(["chat", "session", "list", "--provider", "codex", "--updated-since", "3d"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["updated_after"] == "2025-03-08T12:00:00.000Z"
+    assert payload["session_count"] == 1
+    provider = payload["providers"][0]
+    assert provider["provider"] == "codex"
+    assert provider["session_ids"] == [recent_session_id]
+
+
 def test_chat_session_stats_summarizes_provider_inventory(
     tmp_path: Path,
     monkeypatch,
@@ -621,6 +880,18 @@ def test_chat_session_stats_summarizes_provider_inventory(
     openclaw_extractable_id = "061729c9-f0c0-4d62-a3fb-1d21553fc0e4"
     openclaw_non_extractable_id = "42e3cbf6-5ea7-42bd-a537-40fb04af7ce5"
 
+    claude_project_path = home / ".claude" / "projects" / "workspace" / f"{claude_session_id}.jsonl"
+    _write(
+        claude_project_path,
+        json.dumps(
+            {
+                "sessionId": claude_session_id,
+                "timestamp": "2026-03-08T12:05:12.017Z",
+            }
+        )
+        + "\n",
+    )
+    _set_iso_mtime(claude_project_path, "2026-03-08T12:05:12.017Z")
     _write_claude_desktop_session(
         home
         / "Library"
@@ -673,7 +944,19 @@ def test_chat_session_stats_summarizes_provider_inventory(
     providers = {provider["provider"]: provider for provider in payload["providers"]}
     assert providers["claude-code"]["session_count"] == 1
     assert providers["claude-code"]["session_examples"] == [
-        {"session_id": claude_session_id, "title": claude_title}
+        _expected_session_summary(
+            provider="claude-code",
+            session_id=claude_session_id,
+            display_name=claude_title,
+            display_name_field="title",
+            updated_at="2026-03-08T12:05:12.017Z",
+            extractable=True,
+                primary_artifact_path=str(
+                claude_project_path.resolve()
+            ),
+            canonical_finding_count=2,
+            title=claude_title,
+        )
     ]
     assert providers["claude-code"]["oldest_session_name"] == claude_title
     assert providers["claude-code"]["latest_session_name"] == claude_title
@@ -682,7 +965,27 @@ def test_chat_session_stats_summarizes_provider_inventory(
     assert providers["codex"]["non_extractable_session_count"] == 0
     assert providers["codex"]["session_id_examples"] == [codex_session_id]
     assert providers["codex"]["session_examples"] == [
-        {"session_id": codex_session_id, "thread_name": codex_thread_name}
+        _expected_session_summary(
+            provider="codex",
+            session_id=codex_session_id,
+            display_name=codex_thread_name,
+            display_name_field="thread_name",
+            updated_at="2026-03-08T01:08:59.089Z",
+            extractable=True,
+            primary_artifact_path=str(
+                (
+                    home
+                    / ".codex"
+                    / "sessions"
+                    / "2026"
+                    / "03"
+                    / "08"
+                    / f"rollout-2026-03-08T01-05-38-{codex_session_id}.jsonl"
+                ).resolve()
+            ),
+            canonical_finding_count=1,
+            thread_name=codex_thread_name,
+        )
     ]
     assert providers["codex"]["oldest_session_name"] == codex_thread_name
     assert providers["codex"]["latest_session_name"] == codex_thread_name
@@ -1539,6 +1842,39 @@ def test_chat_session_find_includes_grep_results_only_when_requested(
     assert grep_finding["strategy"] == "grep"
     assert grep_finding["path"] == str(index_path.resolve())
     assert grep_finding["line_number"] == 1
+
+
+def test_chat_session_find_grep_uses_declared_grep_roots_without_scanning_nested_direct_targets(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "663f2740-5d31-4098-af41-66b3389adb24"
+    project_root = home / ".claude" / "projects" / "workspace"
+    desktop_root = home / "Library" / "Application Support" / "Claude" / "claude-code-sessions" / "workspace"
+    _write(project_root / f"{session_id}.jsonl", '{"event":"message"}\n')
+    _write(desktop_root / f"{session_id}.json", '{"sessionId":"x","title":"x"}\n')
+
+    scanned_targets: list[Path] = []
+    original_scan = core._scan_grep_findings
+
+    def _recording_scan(*, provider: str, target: Path, session_id: str) -> list[dict[str, object]]:
+        scanned_targets.append(target)
+        return original_scan(provider=provider, target=target, session_id=session_id)
+
+    monkeypatch.setattr(core, "_scan_grep_findings", _recording_scan)
+
+    assert main(["chat", "session", "find", session_id, "--grep"]) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    scanned_target_paths = {path.resolve() for path in scanned_targets}
+    assert (home / ".claude").resolve() in scanned_target_paths
+    assert (home / "Library" / "Application Support" / "Claude" / "claude-code-sessions").resolve() in scanned_target_paths
+    assert project_root.resolve() not in scanned_target_paths
 
 
 def test_chat_session_find_returns_empty_payload_when_no_provider_matches(

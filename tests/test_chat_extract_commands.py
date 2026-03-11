@@ -929,6 +929,32 @@ def test_chat_session_extract_uses_configured_extra_codex_home(
     assert payload[1]["text"] == "codex reply"
 
 
+def test_chat_session_extract_uses_configured_claude_code_homes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    session_id = "663f2740-5d31-4098-af41-66b3389adb24"
+    extra_claude_home = tmp_path / "claude-alt"
+    claude_path = extra_claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
+    _write_claude_code_session(claude_path, session_id=session_id)
+    _write_global_config(
+        tmp_path / "agentos-home" / "config.json",
+        provider_instances=[{"provider": "claude-code", "homes": {"cli": str(extra_claude_home)}}],
+    )
+
+    assert main(["chat", "session", "extract", session_id]) == 0
+    payload = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+
+    assert payload[0]["text"] == "hello from claude"
+    assert payload[1]["text"] == "claude reply"
+
+
 def test_chat_session_extract_codex_file_mode_does_not_require_session_id(
     tmp_path: Path,
     capsys,
