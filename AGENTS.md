@@ -9,6 +9,7 @@
 - check `agentos --version` to confirm that it is installed on the system.
 - run `agentos` to see the available commands and options.
 - Prefer direct `agentos ...` shell commands over `uv run agentos ...` when `agentos` is already installed.
+- After changing the `agentos` CLI, refresh the installed executable with `uv tool install --reinstall --editable .` so `~/.local/bin/agentos` stays in sync.
 
 ## Compatibility Policy
 
