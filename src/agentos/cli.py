@@ -6,12 +6,14 @@ from typing import Sequence
 
 from agentos import __version__
 from agentos._core.errors import CliError
+from agentos.chat import register_chat_commands
 from agentos.mdblocks.commands import register_mdblocks_commands
 from agentos.prefix.commands import register_prefix_commands
 from agentos.project import register_project_commands
 from agentos.refs import register_refs_commands
 from agentos.skills import register_skills_commands
 from agentos.system import register_system_commands
+from agentos.tara_tapes import register_tara_tapes_commands
 from agentos.tape import register_tape_commands
 from agentos.utils import register_utils_commands
 
@@ -30,6 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
     register_project_commands(subparsers)
     register_system_commands(subparsers)
+    register_chat_commands(subparsers)
+    register_tara_tapes_commands(subparsers)
     register_tape_commands(subparsers)
     register_refs_commands(subparsers)
     register_skills_commands(subparsers)

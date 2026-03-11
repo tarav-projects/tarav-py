@@ -1,0 +1,1005 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+from agentos.cli import main
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _write_codex_rollout(path: Path, *, session_id: str) -> None:
+    records = [
+        {
+            "timestamp": "2026-03-08T01:08:59.089Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "originator": "codex_cli_rs",
+                "source": "cli",
+            },
+        }
+    ]
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+
+
+def _write_codex_session_index(
+    path: Path,
+    *,
+    session_id: str,
+    thread_name: str,
+    updated_at: str = "2026-03-10T12:13:33.263726Z",
+) -> None:
+    _write(
+        path,
+        json.dumps(
+            {
+                "id": session_id,
+                "thread_name": thread_name,
+                "updated_at": updated_at,
+            }
+        )
+        + "\n",
+    )
+
+
+def _write_claude_desktop_session(
+    path: Path,
+    *,
+    session_id: str,
+    title: str,
+    created_at: str = "2026-03-08T12:05:12.017Z",
+) -> None:
+    _write(
+        path,
+        json.dumps(
+            {
+                "sessionId": session_id,
+                "title": title,
+                "createdAt": created_at,
+                "lastActivityAt": created_at,
+            }
+        ),
+    )
+
+
+def _write_gemini_session(
+    path: Path,
+    *,
+    session_id: str,
+    last_updated: str,
+    start_time: str | None = None,
+) -> None:
+    payload = {
+        "sessionId": session_id,
+        "lastUpdated": last_updated,
+        "startTime": start_time or last_updated,
+        "messages": [],
+    }
+    _write(path, json.dumps(payload))
+
+
+def _write_openclaw_session(
+    sessions_dir: Path,
+    *,
+    session_id: str,
+    agent_key: str = "agent:main:main",
+    updated_at: int = 1772995738498,
+) -> Path:
+    transcript_path = sessions_dir / f"{session_id}.jsonl"
+    _write(
+        transcript_path,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session",
+                        "version": 3,
+                        "id": session_id,
+                        "timestamp": "2026-03-08T12:05:10.000Z",
+                        "cwd": "/Users/pereiro/.openclaw/workspace",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "id": "msg-user-1",
+                        "timestamp": "2026-03-08T12:05:12.017Z",
+                        "message": {
+                            "role": "user",
+                            "content": [{"type": "text", "text": "hello from openclaw"}],
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+    )
+    _write(
+        sessions_dir / "sessions.json",
+        json.dumps(
+            {
+                agent_key: {
+                    "sessionId": session_id,
+                    "updatedAt": updated_at,
+                    "sessionFile": str(transcript_path.resolve()),
+                }
+            }
+        ),
+    )
+    return transcript_path
+
+
+def _write_global_config(path: Path, *, provider_instances: list[dict[str, object]]) -> None:
+    _write(
+        path,
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "schema_version": 1,
+                "chat": {
+                    "provider_instances": provider_instances,
+                },
+            }
+        ),
+    )
+
+
+def test_chat_session_list_returns_provider_grouped_session_ids_only(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    claude_session_id = "8948fa51-ae3d-4a28-bf5c-d9d8d8069a6b"
+    claude_title = "Claude Session Title"
+    codex_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    codex_thread_name = "tape-uri-discovery-refactor"
+    copilot_session_id = "663f2740-5d31-4098-af41-66b3389adb24"
+    gemini_session_id = "aba05f70-c886-4d1b-9b34-b95402476b94"
+    opencode_session_id = "ses_3386643b2ffegZgI4IgNfmL9n3"
+    openclaw_session_id = "061729c9-f0c0-4d62-a3fb-1d21553fc0e4"
+
+    _write(
+        home / ".claude" / "projects" / "workspace" / f"{claude_session_id}.jsonl",
+        json.dumps(
+            {
+                "sessionId": claude_session_id,
+                "timestamp": "2026-03-08T12:05:12.017Z",
+            }
+        )
+        + "\n",
+    )
+    _write_claude_desktop_session(
+        home
+        / "Library"
+        / "Application Support"
+        / "Claude"
+        / "claude-code-sessions"
+        / "workspace"
+        / f"{claude_session_id}.json",
+        session_id=claude_session_id,
+        title=claude_title,
+    )
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "08" / f"rollout-2026-03-08T01-05-38-{codex_session_id}.jsonl",
+        session_id=codex_session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=codex_session_id,
+        thread_name=codex_thread_name,
+    )
+    _write(
+        home / ".copilot" / "session-state" / copilot_session_id / "events.jsonl",
+        '{"event":"started"}\n',
+    )
+    _write_gemini_session(
+        home / ".gemini" / "tmp" / "workspace" / "chats" / "session-2026-03-07T11-47-aba05f70.json",
+        session_id=gemini_session_id,
+        last_updated="2026-03-07T11:47:42.513Z",
+    )
+    _write(
+        home / ".local" / "share" / "opencode" / "storage" / "session_diff" / f"{opencode_session_id}.json",
+        '{"diff":"value"}\n',
+    )
+    _write_openclaw_session(
+        home / ".openclaw" / "agents" / "main" / "sessions",
+        session_id=openclaw_session_id,
+    )
+
+    db_path = home / ".local" / "share" / "opencode" / "opencode.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(db_path))
+    try:
+        connection.execute("CREATE TABLE session (id TEXT PRIMARY KEY, time_updated INTEGER)")
+        connection.execute(
+            "INSERT INTO session (id, time_updated) VALUES (?, ?)",
+            (opencode_session_id, 1772875306929),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    assert main(["chat", "session", "list"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chat session list"
+    assert payload["sort"] == "lexical"
+    assert payload["provider_count"] == 6
+    assert payload["session_count"] == 6
+
+    providers = {provider["provider"]: provider for provider in payload["providers"]}
+    assert providers["claude-code"]["session_ids"] == [claude_session_id]
+    assert providers["claude-code"]["sessions"] == [
+        {"session_id": claude_session_id, "title": claude_title}
+    ]
+    assert providers["codex"]["session_ids"] == [codex_session_id]
+    assert providers["codex"]["sessions"] == [
+        {"session_id": codex_session_id, "thread_name": codex_thread_name}
+    ]
+    assert providers["copilot-cli"]["session_ids"] == [copilot_session_id]
+    assert providers["gemini-cli"]["session_ids"] == [gemini_session_id]
+    assert providers["opencode"]["session_ids"] == [opencode_session_id]
+    assert providers["openclaw"]["session_ids"] == [openclaw_session_id]
+
+
+def test_chat_session_list_includes_configured_extra_codex_home(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    default_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    extra_session_id = "119ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    extra_codex_home = tmp_path / "codex-alt"
+
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "08" / f"rollout-2026-03-08T01-05-38-{default_session_id}.jsonl",
+        session_id=default_session_id,
+    )
+    _write_codex_rollout(
+        extra_codex_home
+        / "sessions"
+        / "2026"
+        / "03"
+        / "09"
+        / f"rollout-2026-03-09T01-05-38-{extra_session_id}.jsonl",
+        session_id=extra_session_id,
+    )
+    _write_global_config(
+        tmp_path / "agentos-home" / "config.json",
+        provider_instances=[{"provider": "codex", "home": str(extra_codex_home)}],
+    )
+
+    assert main(["chat", "session", "list", "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    codex_provider = payload["providers"][0]
+    assert payload["provider_count"] == 1
+    assert codex_provider["provider"] == "codex"
+    assert codex_provider["session_ids"] == [default_session_id, extra_session_id]
+    assert str((extra_codex_home / "sessions").resolve()) in codex_provider["searched_targets"]
+
+
+def test_chat_session_list_full_output_keeps_zero_session_providers(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    assert main(["chat", "session", "list"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider_count"] == 0
+    assert payload["providers"] == []
+
+    assert main(["chat", "session", "list", "--full-output"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["provider_count"] == 6
+    assert len(payload["providers"]) == 6
+    assert all(provider["session_count"] == 0 for provider in payload["providers"])
+
+
+def test_chat_session_list_can_filter_providers_and_limit_results(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    claude_ids = [
+        "8948fa51-ae3d-4a28-bf5c-d9d8d8069a6b",
+        "9958fa51-ae3d-4a28-bf5c-d9d8d8069a6b",
+    ]
+    codex_ids = [
+        "019ccafa-7835-7fc3-ac17-0e0a0f675fd5",
+        "119ccafa-7835-7fc3-ac17-0e0a0f675fd5",
+    ]
+    codex_names = {
+        codex_ids[0]: "tape-uri-discovery-refactor",
+        codex_ids[1]: "tape-uri-discovery-followup",
+    }
+
+    for session_id in claude_ids:
+        _write(
+            home / ".claude" / "projects" / "workspace" / f"{session_id}.jsonl",
+            json.dumps(
+                {
+                    "sessionId": session_id,
+                    "timestamp": "2026-03-08T12:05:12.017Z",
+                }
+            )
+            + "\n",
+        )
+
+    for session_id in codex_ids:
+        _write_codex_rollout(
+            home
+            / ".codex"
+            / "sessions"
+            / "2026"
+            / "03"
+            / "08"
+            / f"rollout-2026-03-08T01-05-38-{session_id}.jsonl",
+            session_id=session_id,
+        )
+    _write(
+        home / ".codex" / "session_index.jsonl",
+        "\n".join(
+            json.dumps(
+                {
+                    "id": session_id,
+                    "thread_name": codex_names[session_id],
+                    "updated_at": "2026-03-10T12:13:33.263726Z",
+                }
+            )
+            for session_id in codex_ids
+        )
+        + "\n",
+    )
+
+    assert (
+        main(
+            [
+                "chat",
+                "session",
+                "list",
+                "--provider",
+                "claude-code",
+                "--provider",
+                "codex",
+                "--limit",
+                "1",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["provider_count"] == 2
+    assert payload["session_count"] == 2
+    providers = {provider["provider"]: provider for provider in payload["providers"]}
+    assert providers["claude-code"]["session_ids"] == [claude_ids[0]]
+    assert providers["claude-code"]["session_count"] == 1
+    assert providers["codex"]["session_ids"] == [codex_ids[0]]
+    assert providers["codex"]["sessions"] == [
+        {"session_id": codex_ids[0], "thread_name": codex_names[codex_ids[0]]}
+    ]
+    assert providers["codex"]["session_count"] == 1
+
+
+def test_chat_session_list_deduplicates_gemini_sessions_and_supports_sorting(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    first_session_id = "aba05f70-c886-4d1b-9b34-b95402476b94"
+    second_session_id = "b653c0d2-d75a-494b-bcfa-9b0556a24a48"
+
+    _write_gemini_session(
+        home / ".gemini" / "tmp" / "workspace" / "chats" / "session-2026-01-12T01-54-aba05f70.json",
+        session_id=first_session_id,
+        last_updated="2026-01-12T01:54:42.513Z",
+    )
+    _write_gemini_session(
+        home / ".gemini" / "tmp" / "workspace" / "chats" / "session-2026-01-28T16-02-b653c0d2.json",
+        session_id=second_session_id,
+        last_updated="2026-01-28T16:02:00.000Z",
+    )
+    _write_gemini_session(
+        home / ".gemini" / "tmp" / "workspace" / "chats" / "session-2026-01-28T16-45-b653c0d2.json",
+        session_id=second_session_id,
+        last_updated="2026-01-28T16:45:00.000Z",
+    )
+
+    assert main(["chat", "session", "list"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    gemini_provider = next(provider for provider in payload["providers"] if provider["provider"] == "gemini-cli")
+    assert gemini_provider["session_ids"] == [first_session_id, second_session_id]
+    assert gemini_provider["session_count"] == 2
+
+    assert main(["chat", "session", "list", "--sort", "newest"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    gemini_provider = next(provider for provider in payload["providers"] if provider["provider"] == "gemini-cli")
+    assert gemini_provider["session_ids"] == [second_session_id, first_session_id]
+
+    assert main(["chat", "session", "list", "--sort", "oldest"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    gemini_provider = next(provider for provider in payload["providers"] if provider["provider"] == "gemini-cli")
+    assert gemini_provider["session_ids"] == [first_session_id, second_session_id]
+
+
+def test_chat_session_list_rejects_non_positive_limit(capsys) -> None:
+    assert main(["chat", "session", "list", "--limit", "0"]) == 1
+    assert "session limit must be greater than 0" in capsys.readouterr().err
+
+
+def test_chat_session_stats_summarizes_provider_inventory(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    claude_session_id = "8948fa51-ae3d-4a28-bf5c-d9d8d8069a6b"
+    claude_title = "Claude Session Title"
+    codex_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    codex_thread_name = "tape-uri-discovery-refactor"
+    openclaw_extractable_id = "061729c9-f0c0-4d62-a3fb-1d21553fc0e4"
+    openclaw_non_extractable_id = "42e3cbf6-5ea7-42bd-a537-40fb04af7ce5"
+
+    _write_claude_desktop_session(
+        home
+        / "Library"
+        / "Application Support"
+        / "Claude"
+        / "claude-code-sessions"
+        / "workspace"
+        / f"{claude_session_id}.json",
+        session_id=claude_session_id,
+        title=claude_title,
+        created_at="2026-03-07T12:05:12.017Z",
+    )
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "08" / f"rollout-2026-03-08T01-05-38-{codex_session_id}.jsonl",
+        session_id=codex_session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=codex_session_id,
+        thread_name=codex_thread_name,
+        updated_at="2026-03-08T01:08:59.089Z",
+    )
+    _write_openclaw_session(
+        home / ".openclaw" / "agents" / "main" / "sessions",
+        session_id=openclaw_extractable_id,
+    )
+    _write(
+        home / ".openclaw" / "agents" / "oba" / "sessions" / "sessions.json",
+        json.dumps(
+            {
+                "agent:oba:notes": {
+                    "sessionId": openclaw_non_extractable_id,
+                    "updatedAt": 1772996011170,
+                    "sessionFile": None,
+                }
+            }
+        ),
+    )
+
+    assert main(["chat", "session", "stats"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chat session stats"
+    assert payload["provider_count"] == 3
+    assert payload["session_count"] == 4
+    assert payload["extractable_session_count"] == 3
+    assert payload["non_extractable_session_count"] == 1
+
+    providers = {provider["provider"]: provider for provider in payload["providers"]}
+    assert providers["claude-code"]["session_count"] == 1
+    assert providers["claude-code"]["session_examples"] == [
+        {"session_id": claude_session_id, "title": claude_title}
+    ]
+    assert providers["claude-code"]["oldest_session_name"] == claude_title
+    assert providers["claude-code"]["latest_session_name"] == claude_title
+    assert providers["codex"]["session_count"] == 1
+    assert providers["codex"]["extractable_session_count"] == 1
+    assert providers["codex"]["non_extractable_session_count"] == 0
+    assert providers["codex"]["session_id_examples"] == [codex_session_id]
+    assert providers["codex"]["session_examples"] == [
+        {"session_id": codex_session_id, "thread_name": codex_thread_name}
+    ]
+    assert providers["codex"]["oldest_session_name"] == codex_thread_name
+    assert providers["codex"]["latest_session_name"] == codex_thread_name
+
+    assert providers["openclaw"]["session_count"] == 2
+    assert providers["openclaw"]["extractable_session_count"] == 1
+    assert providers["openclaw"]["non_extractable_session_count"] == 1
+    assert providers["openclaw"]["session_id_examples"] == [
+        openclaw_extractable_id,
+        openclaw_non_extractable_id,
+    ]
+    assert providers["openclaw"]["canonical_finding_count"] == 2
+
+
+def test_chat_session_stats_full_output_and_provider_filtering(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    assert main(["chat", "session", "stats"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider_count"] == 0
+    assert payload["providers"] == []
+
+    assert main(["chat", "session", "stats", "--full-output"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider_count"] == 6
+    assert len(payload["providers"]) == 6
+    assert all(provider["session_count"] == 0 for provider in payload["providers"])
+
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "08" / "rollout-2026-03-08T01-05-38-019ccafa-7835-7fc3-ac17-0e0a0f675fd5.jsonl",
+        session_id="019ccafa-7835-7fc3-ac17-0e0a0f675fd5",
+    )
+    assert main(["chat", "session", "stats", "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider_count"] == 1
+    assert payload["providers"][0]["provider"] == "codex"
+
+
+def test_chat_session_stats_supports_markdown_output(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    claude_session_id = "8948fa51-ae3d-4a28-bf5c-d9d8d8069a6b"
+    claude_title = "Claude Session Title"
+    codex_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    codex_thread_name = "tape-uri-discovery-refactor"
+    _write_claude_desktop_session(
+        home
+        / "Library"
+        / "Application Support"
+        / "Claude"
+        / "claude-code-sessions"
+        / "workspace"
+        / f"{claude_session_id}.json",
+        session_id=claude_session_id,
+        title=claude_title,
+    )
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "08" / f"rollout-2026-03-08T01-05-38-{codex_session_id}.jsonl",
+        session_id=codex_session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=codex_session_id,
+        thread_name=codex_thread_name,
+    )
+
+    assert main(["chat", "session", "stats", "--output", "markdown"]) == 0
+    output = capsys.readouterr().out
+
+    assert "# Chat Session Stats" in output
+    assert "## claude-code" in output
+    assert "## codex" in output
+    assert "- Sessions: 1" in output
+    assert f"- Examples: {codex_session_id}" in output
+    assert f"- Named examples: {claude_session_id} ({claude_title})" in output
+    assert f"{codex_session_id} ({codex_thread_name})" in output
+
+
+def test_chat_session_find_supports_full_gemini_session_ids(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "aba05f70-c886-4d1b-9b34-b95402476b94"
+    session_path = (
+        home
+        / ".gemini"
+        / "tmp"
+        / "workspace"
+        / "chats"
+        / "session-2026-01-12T01-54-aba05f70.json"
+    )
+    _write_gemini_session(
+        session_path,
+        session_id=session_id,
+        last_updated="2026-01-12T01:54:42.513Z",
+    )
+
+    assert main(["chat", "session", "find", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    gemini_findings = [finding for finding in payload["findings"] if finding["provider"] == "gemini-cli"]
+    assert payload["provider_count"] == 1
+    assert [finding["path"] for finding in gemini_findings] == [str(session_path.resolve())]
+
+
+def test_chat_session_find_uses_configured_extra_codex_home(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    session_id = "119ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    extra_codex_home = tmp_path / "codex-alt"
+    rollout_path = (
+        extra_codex_home
+        / "sessions"
+        / "2026"
+        / "03"
+        / "09"
+        / f"rollout-2026-03-09T01-05-38-{session_id}.jsonl"
+    )
+    _write_codex_rollout(rollout_path, session_id=session_id)
+    _write_global_config(
+        tmp_path / "agentos-home" / "config.json",
+        provider_instances=[{"provider": "codex", "home": str(extra_codex_home)}],
+    )
+
+    assert main(["chat", "session", "find", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    codex_finding = next(finding for finding in payload["findings"] if finding["provider"] == "codex")
+    assert payload["provider_count"] == 1
+    assert codex_finding["path"] == str(rollout_path.resolve())
+
+
+def test_chat_session_find_returns_direct_copilot_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "663f2740-5d31-4098-af41-66b3389adb24"
+    session_root = home / ".copilot" / "session-state" / session_id
+    _write(session_root / "events.jsonl", '{"event":"started"}\n')
+    _write(session_root / "plan.md", "# plan\n")
+    _write(session_root / "checkpoints" / "index.md", "# checkpoints\n")
+
+    assert main(["chat", "session", "find", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chat session find"
+    assert payload["query"] == session_id
+    assert payload["grep_enabled"] is False
+    assert payload["provider_count"] == 1
+
+    copilot_provider = next(item for item in payload["providers"] if item["provider"] == "copilot-cli")
+    assert copilot_provider["finding_count"] == 1
+    assert copilot_provider["strategies_attempted"] == ["path"]
+
+    found_paths = {finding["path"] for finding in payload["findings"] if finding["provider"] == "copilot-cli"}
+    assert str(session_root.resolve()) in found_paths
+    assert str((session_root / "events.jsonl").resolve()) not in found_paths
+    assert str((session_root / "plan.md").resolve()) not in found_paths
+    assert str((session_root / "checkpoints").resolve()) not in found_paths
+    assert str((session_root / "checkpoints" / "index.md").resolve()) not in found_paths
+
+
+def test_chat_session_find_returns_opencode_sqlite_row(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    db_path = home / ".local" / "share" / "opencode" / "opencode.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    session_id = "ses_3386643b2ffegZgI4IgNfmL9n3"
+
+    connection = sqlite3.connect(str(db_path))
+    try:
+        connection.execute("CREATE TABLE session (id TEXT PRIMARY KEY)")
+        connection.execute("INSERT INTO session (id) VALUES (?)", (session_id,))
+        connection.commit()
+    finally:
+        connection.close()
+
+    assert main(["chat", "session", "find", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    sqlite_finding = next(
+        finding
+        for finding in payload["findings"]
+        if finding["provider"] == "opencode" and finding["match_kind"] == "sqlite_row"
+    )
+    assert sqlite_finding["strategy"] == "sqlite"
+    assert sqlite_finding["path"] == str(db_path.resolve())
+
+    opencode_provider = next(item for item in payload["providers"] if item["provider"] == "opencode")
+    assert payload["provider_count"] == 1
+    assert opencode_provider["sqlite_db_exists"] is True
+    assert "sqlite" in opencode_provider["strategies_attempted"]
+
+
+def test_chat_session_find_returns_openclaw_transcript_artifact(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "061729c9-f0c0-4d62-a3fb-1d21553fc0e4"
+    transcript_path = _write_openclaw_session(
+        home / ".openclaw" / "agents" / "main" / "sessions",
+        session_id=session_id,
+    )
+
+    assert main(["chat", "session", "find", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    openclaw_findings = [finding for finding in payload["findings"] if finding["provider"] == "openclaw"]
+    assert payload["provider_count"] == 1
+    assert [finding["path"] for finding in openclaw_findings] == [str(transcript_path.resolve())]
+
+    openclaw_provider = next(item for item in payload["providers"] if item["provider"] == "openclaw")
+    assert openclaw_provider["finding_count"] == 1
+    assert openclaw_provider["strategies_attempted"] == ["path"]
+
+
+def test_chat_session_find_only_returns_canonical_claude_session_artifacts_by_default(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "663f2740-5d31-4098-af41-66b3389adb24"
+    project_file = home / ".claude" / "projects" / "workspace" / f"{session_id}.jsonl"
+    _write(project_file, '{"event":"message"}\n')
+    _write(home / ".claude" / "file-history" / session_id / "foo@v1", "history\n")
+    _write(home / ".claude" / "session-env" / session_id, "env\n")
+    _write(home / ".claude" / "debug" / f"{session_id}.txt", "debug\n")
+
+    assert main(["chat", "session", "find", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    claude_findings = [finding for finding in payload["findings"] if finding["provider"] == "claude-code"]
+    assert [finding["path"] for finding in claude_findings] == [str(project_file.resolve())]
+
+    claude_provider = next(item for item in payload["providers"] if item["provider"] == "claude-code")
+    assert payload["provider_count"] == 1
+    assert claude_provider["finding_count"] == 1
+    assert claude_provider["strategies_attempted"] == ["path"]
+
+
+def test_chat_session_find_supports_exact_claude_name_matches(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "663f2740-5d31-4098-af41-66b3389adb24"
+    title = "Claude Session Title"
+    desktop_path = (
+        home
+        / "Library"
+        / "Application Support"
+        / "Claude"
+        / "claude-code-sessions"
+        / "workspace"
+        / f"{session_id}.json"
+    )
+    _write_claude_desktop_session(
+        desktop_path,
+        session_id=session_id,
+        title=title,
+    )
+
+    assert main(["chat", "session", "find", title]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["query"] == title
+    assert payload["provider_count"] == 1
+    claude_provider = next(item for item in payload["providers"] if item["provider"] == "claude-code")
+    assert claude_provider["finding_count"] == 1
+    claude_finding = next(finding for finding in payload["findings"] if finding["provider"] == "claude-code")
+    assert claude_finding["matched_field"] == "title"
+    assert claude_finding["matched_value"] == title
+    assert claude_finding["session_id"] == session_id
+    assert claude_finding["title"] == title
+    assert claude_finding["path"] == str(desktop_path.resolve())
+
+
+def test_chat_session_find_supports_exact_codex_name_matches(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "019cd2fe-ff22-70f2-a131-2c00c0b21166"
+    thread_name = "tape-uri-discovery-refactor"
+    rollout_path = (
+        home / ".codex" / "sessions" / "2026" / "03" / "10" / f"rollout-2026-03-10T12-13-33-{session_id}.jsonl"
+    )
+    _write_codex_rollout(rollout_path, session_id=session_id)
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(["chat", "session", "find", thread_name]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["query"] == thread_name
+    assert payload["provider_count"] == 1
+    codex_provider = next(item for item in payload["providers"] if item["provider"] == "codex")
+    assert codex_provider["finding_count"] == 1
+    codex_finding = next(finding for finding in payload["findings"] if finding["provider"] == "codex")
+    assert codex_finding["matched_field"] == "thread_name"
+    assert codex_finding["matched_value"] == thread_name
+    assert codex_finding["session_id"] == session_id
+    assert codex_finding["thread_name"] == thread_name
+    assert codex_finding["path"] == str(rollout_path.resolve())
+
+
+def test_chat_session_find_includes_grep_results_only_when_requested(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "663f2740-5d31-4098-af41-66b3389adb24"
+    index_path = home / ".codex" / "session_index.jsonl"
+    _write(index_path, f'{{"session_id":"{session_id}"}}\n')
+
+    assert main(["chat", "session", "find", session_id]) == 0
+    payload_without_grep = json.loads(capsys.readouterr().out)
+
+    assert payload_without_grep["grep_enabled"] is False
+    assert payload_without_grep["provider_count"] == 0
+    assert payload_without_grep["providers"] == []
+    assert not any(finding["provider"] == "codex" for finding in payload_without_grep["findings"])
+
+    assert main(["chat", "session", "find", session_id, "--grep"]) == 0
+    payload_with_grep = json.loads(capsys.readouterr().out)
+
+    codex_provider = next(item for item in payload_with_grep["providers"] if item["provider"] == "codex")
+    assert payload_with_grep["grep_enabled"] is True
+    assert payload_with_grep["provider_count"] == 1
+    assert codex_provider["strategies_attempted"] == ["path", "grep"]
+    assert codex_provider["finding_count"] == 1
+    grep_finding = next(
+        finding
+        for finding in payload_with_grep["findings"]
+        if finding["provider"] == "codex" and finding["match_kind"] == "grep_content"
+    )
+    assert grep_finding["strategy"] == "grep"
+    assert grep_finding["path"] == str(index_path.resolve())
+    assert grep_finding["line_number"] == 1
+
+
+def test_chat_session_find_returns_empty_payload_when_no_provider_matches(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    assert main(["chat", "session", "find", "663f2740-5d31-4098-af41-66b3389adb24"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["finding_count"] == 0
+    assert payload["provider_count"] == 0
+    assert payload["providers"] == []
+
+
+def test_chat_session_find_full_output_keeps_zero_finding_providers(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    assert main(["chat", "session", "find", "--full-output", "663f2740-5d31-4098-af41-66b3389adb24"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["finding_count"] == 0
+    assert payload["provider_count"] == 6
+    assert len(payload["providers"]) == 6
+    assert all(provider["finding_count"] == 0 for provider in payload["providers"])
+
+
+def test_chat_session_find_rejects_path_separators(capsys) -> None:
+    assert main(["chat", "session", "find", "bad/id"]) == 1
+    stderr = capsys.readouterr().err
+    assert "session query must not contain path separators" in stderr
+
+
+def test_chat_session_find_supports_openclaw_logical_session_keys(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "9ce6dc88-dd77-4ea1-9c6b-2c4e9fd5d401"
+    session_key = "agent:main:telegram:direct:734641842"
+    transcript_path = _write_openclaw_session(
+        home / ".openclaw" / "agents" / "main" / "sessions",
+        session_id=session_id,
+        agent_key=session_key,
+    )
+
+    assert main(["chat", "session", "find", session_key]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    openclaw_finding = next(finding for finding in payload["findings"] if finding["provider"] == "openclaw")
+    assert payload["provider_count"] == 1
+    assert openclaw_finding["path"] == str(transcript_path.resolve())
+    assert openclaw_finding["matched_field"] == "session_key"
+    assert openclaw_finding["matched_value"] == session_key
+    assert openclaw_finding["session_id"] == session_id
+    assert openclaw_finding["session_keys"] == [session_key]

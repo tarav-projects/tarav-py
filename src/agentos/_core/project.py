@@ -214,6 +214,22 @@ def load_global_config(config_path: Path) -> dict[str, object]:
     return payload
 
 
+def load_project_config(config_path: Path) -> dict[str, object]:
+    if not config_path.exists():
+        raise CliError(f"project config does not exist: {config_path}")
+    if not config_path.is_file():
+        raise CliError(f"project config path is not a file: {config_path}")
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise CliError(f"invalid project config JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise CliError("project config must be a JSON object")
+    if payload.get("class") != "agentos.project.config":
+        raise CliError("project config field class must be 'agentos.project.config'")
+    return payload
+
+
 def _normalize_project_id(project_id: str | None) -> str:
     return normalize_or_generate_uuid(project_id, field_name="project id")
 
