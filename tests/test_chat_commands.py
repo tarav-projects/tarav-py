@@ -1316,6 +1316,71 @@ def test_chat_session_stats_supports_unique_claude_session_queries(
     assert "- Source kind: mixed" in output
 
 
+def test_chat_session_stats_uses_clean_claude_dialog_as_count_source_of_truth(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "claude-noise-test"
+    project_path = home / ".claude" / "projects" / "workspace" / f"{session_id}.jsonl"
+    _write(
+        project_path,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "sessionId": session_id,
+                        "version": "1.0.0",
+                        "timestamp": "2026-03-08T12:05:00.000Z",
+                        "isMeta": True,
+                        "message": {
+                            "role": "user",
+                            "content": "Base directory for this skill: /tmp/project",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "sessionId": session_id,
+                        "version": "1.0.0",
+                        "timestamp": "2026-03-08T12:05:12.017Z",
+                        "message": {
+                            "role": "user",
+                            "content": "real user message",
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+    )
+    _set_iso_mtime(project_path, "2026-03-08T12:05:12.017Z")
+
+    assert main(["chat", "session", "stats", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["provider_stats"] == {
+        "artifact_count": 1,
+        "source_kind": "project",
+        "has_extractable_artifact": True,
+        "record_count": 2,
+        "message_record_count": 1,
+        "user_message_count": 1,
+        "assistant_message_count": 0,
+        "first_record_at": "2026-03-08T12:05:12.017Z",
+        "last_record_at": "2026-03-08T12:05:12.017Z",
+        "dialog_turn_count": 1,
+        "user_turn_count": 1,
+        "assistant_turn_count": 0,
+        "first_turn_at": "2026-03-08T12:05:12.017Z",
+        "last_turn_at": "2026-03-08T12:05:12.017Z",
+    }
+
+
 def test_chat_session_stats_supports_unique_copilot_session_queries(
     tmp_path: Path,
     monkeypatch,
@@ -1357,6 +1422,30 @@ def test_chat_session_stats_supports_unique_copilot_session_queries(
         "assistant_turn_count": 1,
         "first_turn_at": "2026-03-08T12:00:05.000Z",
         "last_turn_at": "2026-03-08T12:00:10.000Z",
+    }
+
+
+def test_chat_session_stats_returns_partial_payload_for_malformed_copilot_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "bad-copilot"
+    session_root = home / ".copilot" / "session-state" / session_id
+    _write(session_root / "events.jsonl", '{"event":"started"}\n')
+
+    assert main(["chat", "session", "stats", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "copilot-cli"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["provider_stats"] == {
+        "session_root_present": True,
+        "session_file_present": False,
     }
 
 
@@ -1423,6 +1512,38 @@ def test_chat_session_stats_supports_unique_gemini_session_queries(
     }
 
 
+def test_chat_session_stats_returns_partial_payload_for_malformed_gemini_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "bad-gemini"
+    session_path = home / ".gemini" / "tmp" / "workspace" / "chats" / "session-2026-03-07T11-47-bad.json"
+    _write(
+        session_path,
+        json.dumps(
+            {
+                "sessionId": session_id,
+                "lastUpdated": "2026-03-07T11:47:42.513Z",
+            }
+        ),
+    )
+    _set_iso_mtime(session_path, "2026-03-07T11:47:42.513Z")
+
+    assert main(["chat", "session", "stats", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "gemini-cli"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["provider_stats"] == {
+        "artifact_count": 1,
+    }
+
+
 def test_chat_session_stats_supports_unique_openclaw_session_queries(
     tmp_path: Path,
     monkeypatch,
@@ -1485,6 +1606,32 @@ def test_chat_session_stats_supports_unique_openclaw_session_queries(
     }
 
 
+def test_chat_session_stats_returns_partial_payload_for_malformed_openclaw_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "bad-openclaw"
+    transcript_path = home / ".openclaw" / "agents" / "main" / "sessions" / f"{session_id}.jsonl"
+    _write(transcript_path, '{"type":"message","message":{"role":"user","content":[]}}\n')
+
+    assert main(["chat", "session", "stats", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "openclaw"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["provider_stats"] == {
+        "has_transcript": True,
+        "has_sessions_index": False,
+        "session_key_count": 0,
+        "agent_id": "main",
+    }
+
+
 def test_chat_session_stats_supports_unique_opencode_session_queries(
     tmp_path: Path,
     monkeypatch,
@@ -1530,6 +1677,32 @@ def test_chat_session_stats_supports_unique_opencode_session_queries(
         "assistant_turn_count": 1,
         "first_turn_at": "2026-03-08T12:08:58.498Z",
         "last_turn_at": "2026-03-08T12:09:00.000Z",
+    }
+
+
+def test_chat_session_stats_returns_partial_payload_for_malformed_opencode_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "ses_bad_opencode"
+    diff_path = home / ".local" / "share" / "opencode" / "storage" / "session_diff" / f"{session_id}.json"
+    db_path = home / ".local" / "share" / "opencode" / "opencode.db"
+    _write(diff_path, "[]\n")
+    _write(db_path, "not a sqlite database\n")
+
+    assert main(["chat", "session", "stats", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "opencode"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["provider_stats"] == {
+        "has_diff_artifact": True,
+        "has_sqlite_db": True,
     }
 
 

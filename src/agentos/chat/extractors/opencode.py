@@ -23,7 +23,7 @@ def extract_opencode_chat_session_from_path(
 ) -> str:
     _validate_opencode_session_path(path)
     resolved_session_id = _resolve_opencode_session_id(path, session_id=session_id)
-    db_path = _resolve_opencode_db_path(path)
+    db_path = resolve_opencode_db_path(path)
     turns = extract_dialog_from_opencode_session(
         db_path=db_path,
         session_id=resolved_session_id,
@@ -41,7 +41,7 @@ def extract_dialog_from_opencode_session(
     session_id: str,
     raw: bool = False,
 ) -> list[DialogTurn]:
-    messages = _load_opencode_messages(db_path=db_path, session_id=session_id)
+    messages = load_opencode_session_messages(db_path=db_path, session_id=session_id)
     if not messages:
         raise CliError(f"no OpenCode message data found for session {session_id}")
 
@@ -116,7 +116,7 @@ def _resolve_opencode_session_id(path: Path, *, session_id: str | None) -> str:
     )
 
 
-def _resolve_opencode_db_path(path: Path) -> Path:
+def resolve_opencode_db_path(path: Path) -> Path:
     if path.name == "opencode.db":
         return path
 
@@ -126,6 +126,10 @@ def _resolve_opencode_db_path(path: Path) -> Path:
             return candidate
 
     raise CliError(f"unable to locate opencode.db for session artifact: {path}")
+
+
+def _resolve_opencode_db_path(path: Path) -> Path:
+    return resolve_opencode_db_path(path)
 
 
 def _looks_like_opencode_db(path: Path) -> bool:
@@ -145,7 +149,7 @@ def _looks_like_opencode_db(path: Path) -> bool:
     return {"session", "message", "part"}.issubset(table_names)
 
 
-def _load_opencode_messages(
+def load_opencode_session_messages(
     *,
     db_path: Path,
     session_id: str,
@@ -213,6 +217,14 @@ def _load_opencode_messages(
     return messages
 
 
+def _load_opencode_messages(
+    *,
+    db_path: Path,
+    session_id: str,
+) -> list[dict[str, Any]]:
+    return load_opencode_session_messages(db_path=db_path, session_id=session_id)
+
+
 def _extract_raw_turns(
     *,
     role: str,
@@ -259,4 +271,3 @@ def _parse_json_object(raw_text: str) -> dict[str, Any] | None:
     if not isinstance(obj, dict):
         return None
     return obj
-

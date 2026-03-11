@@ -26,7 +26,7 @@ def extract_openclaw_chat_session_from_path(
     output_format: str = "jsonl",
     raw: bool = False,
 ) -> str:
-    records = _load_openclaw_records(path)
+    records = load_openclaw_session_records(path)
     resolved_session_id = _resolve_openclaw_session_id(
         path,
         records=records,
@@ -81,7 +81,7 @@ def extract_dialog_from_openclaw_session(
 
 def is_openclaw_session_path(path: Path) -> bool:
     try:
-        records = _load_openclaw_records(path)
+        records = load_openclaw_session_records(path)
     except CliError:
         return False
     return _extract_embedded_session_id(records) is not None
@@ -89,13 +89,13 @@ def is_openclaw_session_path(path: Path) -> bool:
 
 def infer_openclaw_session_id_from_path(path: Path) -> str | None:
     try:
-        records = _load_openclaw_records(path)
+        records = load_openclaw_session_records(path)
     except CliError:
         return path.stem if path.suffix == ".jsonl" else None
     return _extract_embedded_session_id(records) or (path.stem if path.suffix == ".jsonl" else None)
 
 
-def _load_openclaw_records(path: Path) -> list[dict[str, Any]]:
+def load_openclaw_session_records(path: Path) -> list[dict[str, Any]]:
     if path.suffix != ".jsonl":
         raise CliError(f"not an OpenClaw session artifact: {path}")
 
@@ -119,6 +119,10 @@ def _load_openclaw_records(path: Path) -> list[dict[str, Any]]:
         raise CliError(f"not an OpenClaw session artifact: {path}")
 
     return records
+
+
+def _load_openclaw_records(path: Path) -> list[dict[str, Any]]:
+    return load_openclaw_session_records(path)
 
 
 def _resolve_openclaw_session_id(

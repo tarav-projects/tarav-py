@@ -19,7 +19,7 @@ def extract_copilot_cli_chat_session_from_path(
     output_format: str = "jsonl",
     raw: bool = False,
 ) -> str:
-    events = _load_copilot_events(path)
+    events = load_copilot_cli_events(path)
     resolved_session_id = _resolve_copilot_session_id(
         path,
         events=events,
@@ -79,7 +79,7 @@ def extract_dialog_from_copilot_cli_session(
 
 def is_copilot_cli_session_path(path: Path) -> bool:
     try:
-        events = _load_copilot_events(path)
+        events = load_copilot_cli_events(path)
     except CliError:
         return False
     return _extract_embedded_session_id(events) is not None
@@ -87,7 +87,7 @@ def is_copilot_cli_session_path(path: Path) -> bool:
 
 def infer_copilot_cli_session_id_from_path(path: Path) -> str | None:
     try:
-        events = _load_copilot_events(path)
+        events = load_copilot_cli_events(path)
     except CliError:
         return _infer_copilot_session_id_from_path_hint(path)
 
@@ -96,7 +96,7 @@ def infer_copilot_cli_session_id_from_path(path: Path) -> str | None:
     )
 
 
-def _load_copilot_events(path: Path) -> list[dict[str, Any]]:
+def load_copilot_cli_events(path: Path) -> list[dict[str, Any]]:
     if path.suffix != ".jsonl":
         raise CliError(f"not a Copilot CLI session artifact: {path}")
 
@@ -120,6 +120,10 @@ def _load_copilot_events(path: Path) -> list[dict[str, Any]]:
         raise CliError(f"not a Copilot CLI session artifact: {path}")
 
     return events
+
+
+def _load_copilot_events(path: Path) -> list[dict[str, Any]]:
+    return load_copilot_cli_events(path)
 
 
 def _resolve_copilot_session_id(

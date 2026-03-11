@@ -23,7 +23,7 @@ def extract_gemini_cli_chat_session_from_path(
     output_format: str = "jsonl",
     raw: bool = False,
 ) -> str:
-    session_data = _load_gemini_session_data(path)
+    session_data = load_gemini_cli_session_data(path)
     resolved_session_id = _resolve_gemini_session_id(
         path,
         session_data=session_data,
@@ -76,7 +76,7 @@ def extract_dialog_from_gemini_cli_session(
 
 def is_gemini_cli_session_path(path: Path) -> bool:
     try:
-        session_data = _load_gemini_session_data(path)
+        session_data = load_gemini_cli_session_data(path)
     except CliError:
         return False
     return _extract_embedded_session_id(session_data) is not None
@@ -84,13 +84,13 @@ def is_gemini_cli_session_path(path: Path) -> bool:
 
 def infer_gemini_cli_session_id_from_path(path: Path) -> str | None:
     try:
-        session_data = _load_gemini_session_data(path)
+        session_data = load_gemini_cli_session_data(path)
     except CliError:
         return None
     return _extract_embedded_session_id(session_data)
 
 
-def _load_gemini_session_data(path: Path) -> dict[str, Any]:
+def load_gemini_cli_session_data(path: Path) -> dict[str, Any]:
     try:
         raw_text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError as exc:
@@ -108,6 +108,10 @@ def _load_gemini_session_data(path: Path) -> dict[str, Any]:
         raise CliError(f"not a Gemini CLI session artifact: {path}")
 
     return obj
+
+
+def _load_gemini_session_data(path: Path) -> dict[str, Any]:
+    return load_gemini_cli_session_data(path)
 
 
 def _resolve_gemini_session_id(
@@ -316,4 +320,3 @@ def _strip_referenced_content(text: str) -> str | None:
 
 def _string_or_empty(value: object) -> str:
     return value if isinstance(value, str) else ""
-
