@@ -550,35 +550,12 @@ def format_chat_session_resolved_stats_markdown(payload: dict[str, object]) -> s
         provider_name = session.get("provider")
     if isinstance(provider_stats, dict):
         lines.extend(["", f"## {provider_name or 'provider'}", ""])
-        for label, key in (
-            ("Rollout artifacts", "rollout_artifact_count"),
-            ("Session indexes", "session_index_count"),
-            ("Has rollout artifact", "has_rollout_artifact"),
-            ("Records", "record_count"),
-            ("Session meta records", "session_meta_count"),
-            ("Response items", "response_item_count"),
-            ("Event messages", "event_message_count"),
-            ("Messages", "message_count"),
-            ("User messages", "user_message_count"),
-            ("Assistant messages", "assistant_message_count"),
-            ("Developer messages", "developer_message_count"),
-            ("Tool calls", "tool_call_count"),
-            ("Tool call outputs", "tool_call_output_count"),
-            ("Reasoning items", "reasoning_item_count"),
-            ("Dialog turns", "dialog_turn_count"),
-            ("User turns", "user_turn_count"),
-            ("Assistant turns", "assistant_turn_count"),
-            ("First record", "first_record_at"),
-            ("Last record", "last_record_at"),
-            ("First turn", "first_turn_at"),
-            ("Last turn", "last_turn_at"),
-        ):
-            value = provider_stats.get(key)
+        for key, value in provider_stats.items():
             if value is None:
                 continue
             if isinstance(value, bool):
                 value = "yes" if value else "no"
-            lines.append(f"- {label}: {value}")
+            lines.append(f"- {_format_provider_stats_label(key)}: {value}")
 
     return "\n".join(lines)
 
@@ -792,8 +769,18 @@ def _build_common_session_stats(
 
 
 def _build_provider_session_stats(session: ChatSession) -> dict[str, Any]:
+    if isinstance(session, ClaudeCodeChatSession):
+        return _build_claude_code_session_stats(session)
     if isinstance(session, CodexChatSession):
         return _build_codex_session_stats(session)
+    if isinstance(session, CopilotCliChatSession):
+        return _build_copilot_cli_session_stats(session)
+    if isinstance(session, GeminiCliChatSession):
+        return _build_gemini_cli_session_stats(session)
+    if isinstance(session, OpenclawChatSession):
+        return _build_openclaw_session_stats(session)
+    if isinstance(session, OpencodeChatSession):
+        return _build_opencode_session_stats(session)
     raise CliError(f"chat session stats is not implemented for provider {session.provider}")
 
 
@@ -1278,6 +1265,161 @@ def _session_preference_key(session: ChatSession) -> tuple[float, int, str]:
     )
 
 
+def _format_provider_stats_label(key: str) -> str:
+    labels = {
+        "agent_id": "Agent id",
+        "artifact_count": "Artifacts",
+        "assistant_message_count": "Assistant messages",
+        "assistant_message_event_count": "Assistant message events",
+        "assistant_turn_count": "Assistant turns",
+        "developer_message_count": "Developer messages",
+        "dialog_turn_count": "Dialog turns",
+        "event_count": "Events",
+        "event_message_count": "Event messages",
+        "first_event_at": "First event",
+        "first_message_at": "First message",
+        "first_record_at": "First record",
+        "first_turn_at": "First turn",
+        "has_diff_artifact": "Has diff artifact",
+        "has_extractable_artifact": "Has extractable artifact",
+        "has_rollout_artifact": "Has rollout artifact",
+        "has_sessions_index": "Has sessions index",
+        "has_sqlite_db": "Has sqlite db",
+        "has_transcript": "Has transcript",
+        "last_event_at": "Last event",
+        "last_message_at": "Last message",
+        "last_record_at": "Last record",
+        "last_turn_at": "Last turn",
+        "last_updated": "Last updated",
+        "message_count": "Messages",
+        "message_record_count": "Message records",
+        "non_text_part_count": "Non-text parts",
+        "part_count": "Parts",
+        "reasoning_item_count": "Reasoning items",
+        "record_count": "Records",
+        "response_item_count": "Response items",
+        "rollout_artifact_count": "Rollout artifacts",
+        "session_file_present": "Session file present",
+        "session_index_count": "Session indexes",
+        "session_key_count": "Session keys",
+        "session_meta_count": "Session meta records",
+        "session_record_count": "Session records",
+        "session_root_present": "Session root present",
+        "session_start_count": "Session starts",
+        "skill_invoked_count": "Skills invoked",
+        "source_kind": "Source kind",
+        "start_time": "Start time",
+        "text_part_count": "Text parts",
+        "thought_count": "Thoughts",
+        "tool_call_count": "Tool calls",
+        "tool_call_output_count": "Tool call outputs",
+        "tool_event_count": "Tool events",
+        "user_message_count": "User messages",
+        "user_message_event_count": "User message events",
+        "user_turn_count": "User turns",
+    }
+    return labels.get(key, key.replace("_", " ").capitalize())
+
+
+def _build_dialog_turn_stats(turns: list[Any]) -> dict[str, Any]:
+    return {
+        "dialog_turn_count": len(turns),
+        "user_turn_count": sum(1 for turn in turns if getattr(turn, "role", None) == "user"),
+        "assistant_turn_count": sum(1 for turn in turns if getattr(turn, "role", None) == "assistant"),
+        "first_turn_at": turns[0].timestamp if turns else None,
+        "last_turn_at": turns[-1].timestamp if turns else None,
+    }
+
+
+def _update_time_bounds(
+    first_timestamp: float | None,
+    last_timestamp: float | None,
+    value: object,
+) -> tuple[float | None, float | None]:
+    timestamp = coerce_timestamp(value)
+    if timestamp is None:
+        return first_timestamp, last_timestamp
+    if first_timestamp is None or timestamp < first_timestamp:
+        first_timestamp = timestamp
+    if last_timestamp is None or timestamp > last_timestamp:
+        last_timestamp = timestamp
+    return first_timestamp, last_timestamp
+
+
+def _build_claude_code_session_stats(session: ClaudeCodeChatSession) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "artifact_count": len(session.artifact_paths),
+        "source_kind": session.source_kind,
+        "has_extractable_artifact": False,
+    }
+
+    from agentos.chat.extractors.claude_code import (
+        extract_dialog_from_claude_code_session,
+        is_claude_code_session_path,
+    )
+
+    artifact_path = next(
+        (path for path in session.artifact_paths if path.is_file() and is_claude_code_session_path(path)),
+        None,
+    )
+    if artifact_path is None:
+        return payload
+
+    payload["has_extractable_artifact"] = True
+    record_count = 0
+    message_record_count = 0
+    user_message_count = 0
+    assistant_message_count = 0
+    first_record_at: float | None = None
+    last_record_at: float | None = None
+
+    try:
+        with artifact_path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+
+                record_count += 1
+                first_record_at, last_record_at = _update_time_bounds(
+                    first_record_at,
+                    last_record_at,
+                    obj.get("timestamp"),
+                )
+
+                message = obj.get("message")
+                if not isinstance(message, dict):
+                    continue
+                message_record_count += 1
+                role = message.get("role")
+                if role == "user":
+                    user_message_count += 1
+                elif role == "assistant":
+                    assistant_message_count += 1
+    except OSError:
+        return payload
+
+    turns = extract_dialog_from_claude_code_session(artifact_path, raw=False)
+    payload.update(
+        {
+            "record_count": record_count,
+            "message_record_count": message_record_count,
+            "user_message_count": user_message_count,
+            "assistant_message_count": assistant_message_count,
+            "first_record_at": _format_stats_timestamp(first_record_at),
+            "last_record_at": _format_stats_timestamp(last_record_at),
+            **_build_dialog_turn_stats(turns),
+        }
+    )
+    return payload
+
+
 def _build_codex_session_stats(session: CodexChatSession) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "rollout_artifact_count": len(session.artifact_paths),
@@ -1375,13 +1517,281 @@ def _build_codex_session_stats(session: CodexChatSession) -> dict[str, Any]:
             "tool_call_count": tool_call_count,
             "tool_call_output_count": tool_call_output_count,
             "reasoning_item_count": reasoning_item_count,
-            "dialog_turn_count": len(turns),
-            "user_turn_count": sum(1 for turn in turns if turn.role == "user"),
-            "assistant_turn_count": sum(1 for turn in turns if turn.role == "assistant"),
             "first_record_at": _format_stats_timestamp(first_record_at),
             "last_record_at": _format_stats_timestamp(last_record_at),
-            "first_turn_at": turns[0].timestamp if turns else None,
-            "last_turn_at": turns[-1].timestamp if turns else None,
+            **_build_dialog_turn_stats(turns),
+        }
+    )
+    return payload
+
+
+def _build_copilot_cli_session_stats(session: CopilotCliChatSession) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "session_root_present": session.session_root is not None,
+        "session_file_present": session.session_file is not None,
+    }
+
+    artifact_path = session.primary_artifact_path()
+    if artifact_path is None or not artifact_path.is_file():
+        return payload
+
+    from agentos.chat.extractors.copilot_cli import (
+        _load_copilot_events,
+        extract_dialog_from_copilot_cli_session,
+    )
+
+    events = _load_copilot_events(artifact_path)
+    session_start_count = 0
+    user_message_event_count = 0
+    assistant_message_event_count = 0
+    tool_event_count = 0
+    skill_invoked_count = 0
+    first_event_at: float | None = None
+    last_event_at: float | None = None
+
+    for event in events:
+        event_type = event.get("type")
+        first_event_at, last_event_at = _update_time_bounds(first_event_at, last_event_at, event.get("timestamp"))
+        if event_type == "session.start":
+            session_start_count += 1
+        elif event_type == "user.message":
+            user_message_event_count += 1
+        elif event_type == "assistant.message":
+            assistant_message_event_count += 1
+        elif event_type in {"tool.execution_start", "tool.execution_complete"}:
+            tool_event_count += 1
+        elif event_type == "skill.invoked":
+            skill_invoked_count += 1
+
+    turns = extract_dialog_from_copilot_cli_session(
+        events=events,
+        session_id=session.session_id,
+        raw=False,
+    )
+    payload.update(
+        {
+            "event_count": len(events),
+            "session_start_count": session_start_count,
+            "user_message_event_count": user_message_event_count,
+            "assistant_message_event_count": assistant_message_event_count,
+            "tool_event_count": tool_event_count,
+            "skill_invoked_count": skill_invoked_count,
+            "first_event_at": _format_stats_timestamp(first_event_at),
+            "last_event_at": _format_stats_timestamp(last_event_at),
+            **_build_dialog_turn_stats(turns),
+        }
+    )
+    return payload
+
+
+def _build_gemini_cli_session_stats(session: GeminiCliChatSession) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "artifact_count": len(session.artifact_paths),
+    }
+
+    artifact_path = session.primary_artifact_path()
+    if artifact_path is None or not artifact_path.is_file():
+        return payload
+
+    from agentos.chat.extractors.gemini_cli import (
+        _load_gemini_session_data,
+        extract_dialog_from_gemini_cli_session,
+    )
+
+    session_data = _load_gemini_session_data(artifact_path)
+    messages = session_data.get("messages")
+    if not isinstance(messages, list):
+        return payload
+
+    message_count = 0
+    user_message_count = 0
+    assistant_message_count = 0
+    thought_count = 0
+    tool_call_count = 0
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        message_count += 1
+        message_type = message.get("type")
+        if message_type == "user":
+            user_message_count += 1
+        elif message_type == "gemini":
+            assistant_message_count += 1
+        thoughts = message.get("thoughts")
+        if isinstance(thoughts, list):
+            thought_count += len(thoughts)
+        tool_calls = message.get("toolCalls")
+        if isinstance(tool_calls, list):
+            tool_call_count += len(tool_calls)
+
+    turns = extract_dialog_from_gemini_cli_session(
+        session_data=session_data,
+        session_id=session.session_id,
+        raw=False,
+    )
+    payload.update(
+        {
+            "message_count": message_count,
+            "user_message_count": user_message_count,
+            "assistant_message_count": assistant_message_count,
+            "thought_count": thought_count,
+            "tool_call_count": tool_call_count,
+            "start_time": session_data.get("startTime") if isinstance(session_data.get("startTime"), str) else None,
+            "last_updated": session_data.get("lastUpdated")
+            if isinstance(session_data.get("lastUpdated"), str)
+            else None,
+            **_build_dialog_turn_stats(turns),
+        }
+    )
+    return payload
+
+
+def _build_openclaw_session_stats(session: OpenclawChatSession) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "has_transcript": session.transcript_path is not None and session.transcript_path.is_file(),
+        "has_sessions_index": session.sessions_index_path is not None and session.sessions_index_path.is_file(),
+        "session_key_count": len(session.session_keys),
+        "agent_id": session.agent_id,
+    }
+
+    artifact_path = session.transcript_path
+    if artifact_path is None or not artifact_path.is_file():
+        return payload
+
+    from agentos.chat.extractors.openclaw import (
+        _load_openclaw_records,
+        extract_dialog_from_openclaw_session,
+    )
+
+    records = _load_openclaw_records(artifact_path)
+    session_record_count = 0
+    message_record_count = 0
+    user_message_count = 0
+    assistant_message_count = 0
+    first_record_at: float | None = None
+    last_record_at: float | None = None
+
+    for record in records:
+        record_type = record.get("type")
+        first_record_at, last_record_at = _update_time_bounds(
+            first_record_at,
+            last_record_at,
+            record.get("timestamp"),
+        )
+        if record_type == "session":
+            session_record_count += 1
+        elif record_type == "message":
+            message_record_count += 1
+            message = record.get("message")
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            if role == "user":
+                user_message_count += 1
+            elif role == "assistant":
+                assistant_message_count += 1
+
+    turns = extract_dialog_from_openclaw_session(
+        records=records,
+        session_id=session.session_id,
+        raw=False,
+    )
+    payload.update(
+        {
+            "record_count": len(records),
+            "session_record_count": session_record_count,
+            "message_record_count": message_record_count,
+            "user_message_count": user_message_count,
+            "assistant_message_count": assistant_message_count,
+            "first_record_at": _format_stats_timestamp(first_record_at),
+            "last_record_at": _format_stats_timestamp(last_record_at),
+            **_build_dialog_turn_stats(turns),
+        }
+    )
+    return payload
+
+
+def _build_opencode_session_stats(session: OpencodeChatSession) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "has_diff_artifact": session.diff_path is not None and session.diff_path.is_file(),
+        "has_sqlite_db": session.sqlite_db_path is not None and session.sqlite_db_path.is_file(),
+    }
+
+    from agentos.chat.extractors.opencode import (
+        _load_opencode_messages,
+        _resolve_opencode_db_path,
+        extract_dialog_from_opencode_session,
+    )
+
+    db_path = session.sqlite_db_path
+    if db_path is None and session.diff_path is not None:
+        try:
+            db_path = _resolve_opencode_db_path(session.diff_path)
+        except CliError:
+            db_path = None
+
+    if db_path is None or not db_path.is_file():
+        return payload
+
+    payload["has_sqlite_db"] = True
+    messages = _load_opencode_messages(db_path=db_path, session_id=session.session_id)
+    if not messages:
+        return payload
+
+    message_count = 0
+    user_message_count = 0
+    assistant_message_count = 0
+    part_count = 0
+    text_part_count = 0
+    non_text_part_count = 0
+    first_message_at: float | None = None
+    last_message_at: float | None = None
+
+    for message in messages:
+        message_count += 1
+        role = message.get("role")
+        if role == "user":
+            user_message_count += 1
+        elif role == "assistant":
+            assistant_message_count += 1
+
+        first_message_at, last_message_at = _update_time_bounds(
+            first_message_at,
+            last_message_at,
+            message.get("time_created"),
+        )
+
+        parts = message.get("parts")
+        if not isinstance(parts, list):
+            continue
+        part_count += len(parts)
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            part_data = part.get("data")
+            if not isinstance(part_data, dict):
+                continue
+            if part_data.get("type") == "text":
+                text_part_count += 1
+            else:
+                non_text_part_count += 1
+
+    turns = extract_dialog_from_opencode_session(
+        db_path=db_path,
+        session_id=session.session_id,
+        raw=False,
+    )
+    payload.update(
+        {
+            "message_count": message_count,
+            "user_message_count": user_message_count,
+            "assistant_message_count": assistant_message_count,
+            "part_count": part_count,
+            "text_part_count": text_part_count,
+            "non_text_part_count": non_text_part_count,
+            "first_message_at": _format_stats_timestamp(first_message_at),
+            "last_message_at": _format_stats_timestamp(last_message_at),
+            **_build_dialog_turn_stats(turns),
         }
     )
     return payload

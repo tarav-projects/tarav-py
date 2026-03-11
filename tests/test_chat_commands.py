@@ -92,20 +92,92 @@ def _write_claude_desktop_session(
     )
 
 
+def _write_claude_project_session(path: Path, *, session_id: str) -> None:
+    records = [
+        {
+            "sessionId": session_id,
+            "version": "1.0.0",
+            "timestamp": "2026-03-08T12:05:12.017Z",
+            "message": {
+                "role": "user",
+                "content": "hello from claude user",
+            },
+        },
+        {
+            "sessionId": session_id,
+            "version": "1.0.0",
+            "timestamp": "2026-03-08T12:05:18.000Z",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hello from claude assistant"}],
+            },
+        },
+    ]
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(path, records[-1]["timestamp"])
+
+
+def _write_copilot_session_events(session_root: Path, *, session_id: str) -> Path:
+    events_path = session_root / "events.jsonl"
+    records = [
+        {
+            "type": "session.start",
+            "timestamp": "2026-03-08T12:00:00.000Z",
+            "data": {
+                "sessionId": session_id,
+                "producer": "copilot-agent",
+            },
+        },
+        {
+            "type": "user.message",
+            "timestamp": "2026-03-08T12:00:05.000Z",
+            "data": {
+                "content": "hello from copilot user",
+            },
+        },
+        {
+            "type": "assistant.message",
+            "timestamp": "2026-03-08T12:00:10.000Z",
+            "data": {
+                "content": "hello from copilot assistant",
+            },
+        },
+        {
+            "type": "tool.execution_start",
+            "timestamp": "2026-03-08T12:00:12.000Z",
+            "data": {
+                "toolName": "terminal",
+            },
+        },
+        {
+            "type": "skill.invoked",
+            "timestamp": "2026-03-08T12:00:15.000Z",
+            "data": {
+                "skillName": "design-discussion",
+            },
+        },
+    ]
+    _write(events_path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(events_path, records[-1]["timestamp"])
+    return events_path
+
+
 def _write_gemini_session(
     path: Path,
     *,
     session_id: str,
     last_updated: str,
     start_time: str | None = None,
+    messages: list[dict[str, object]] | None = None,
 ) -> None:
     payload = {
         "sessionId": session_id,
         "lastUpdated": last_updated,
         "startTime": start_time or last_updated,
-        "messages": [],
+        "messages": messages or [],
     }
     _write(path, json.dumps(payload))
+    _set_iso_mtime(path, last_updated)
 
 
 def _write_openclaw_session(
@@ -114,36 +186,32 @@ def _write_openclaw_session(
     session_id: str,
     agent_key: str = "agent:main:main",
     updated_at: int = 1772995738498,
+    extra_records: list[dict[str, object]] | None = None,
 ) -> Path:
+    records = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": session_id,
+            "timestamp": "2026-03-08T12:05:10.000Z",
+            "cwd": "/Users/pereiro/.openclaw/workspace",
+        },
+        {
+            "type": "message",
+            "id": "msg-user-1",
+            "timestamp": "2026-03-08T12:05:12.017Z",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "hello from openclaw"}],
+            },
+        },
+    ]
+    if extra_records:
+        records.extend(extra_records)
+
     transcript_path = sessions_dir / f"{session_id}.jsonl"
-    _write(
-        transcript_path,
-        "\n".join(
-            [
-                json.dumps(
-                    {
-                        "type": "session",
-                        "version": 3,
-                        "id": session_id,
-                        "timestamp": "2026-03-08T12:05:10.000Z",
-                        "cwd": "/Users/pereiro/.openclaw/workspace",
-                    }
-                ),
-                json.dumps(
-                    {
-                        "type": "message",
-                        "id": "msg-user-1",
-                        "timestamp": "2026-03-08T12:05:12.017Z",
-                        "message": {
-                            "role": "user",
-                            "content": [{"type": "text", "text": "hello from openclaw"}],
-                        },
-                    }
-                ),
-            ]
-        )
-        + "\n",
-    )
+    _write(transcript_path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(transcript_path, str(records[-1]["timestamp"]))
     _write(
         sessions_dir / "sessions.json",
         json.dumps(
@@ -157,6 +225,62 @@ def _write_openclaw_session(
         ),
     )
     return transcript_path
+
+
+def _write_opencode_session_db(db_path: Path, *, session_id: str) -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(db_path))
+    try:
+        connection.execute("CREATE TABLE session (id TEXT PRIMARY KEY, time_updated INTEGER)")
+        connection.execute(
+            "CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT)"
+        )
+        connection.execute(
+            "CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, time_created INTEGER, data TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO session (id, time_updated) VALUES (?, ?)",
+            (session_id, 1772971740000),
+        )
+        connection.execute(
+            "INSERT INTO message (id, session_id, time_created, data) VALUES (?, ?, ?, ?)",
+            (
+                "msg-user",
+                session_id,
+                1772971738498,
+                json.dumps({"role": "user"}),
+            ),
+        )
+        connection.execute(
+            "INSERT INTO message (id, session_id, time_created, data) VALUES (?, ?, ?, ?)",
+            (
+                "msg-assistant",
+                session_id,
+                1772971740000,
+                json.dumps({"role": "assistant"}),
+            ),
+        )
+        connection.execute(
+            "INSERT INTO part (id, message_id, time_created, data) VALUES (?, ?, ?, ?)",
+            (
+                "part-user",
+                "msg-user",
+                1772971738498,
+                json.dumps({"type": "text", "text": "hello from opencode user"}),
+            ),
+        )
+        connection.execute(
+            "INSERT INTO part (id, message_id, time_created, data) VALUES (?, ?, ?, ?)",
+            (
+                "part-assistant",
+                "msg-assistant",
+                1772971740000,
+                json.dumps({"type": "text", "text": "hello from opencode assistant"}),
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def _write_global_config(path: Path, *, provider_instances: list[dict[str, object]]) -> None:
@@ -821,7 +945,7 @@ def test_chat_session_stats_rejects_ambiguous_session_queries(
     assert "multiple sessions matched query duplicate-thread-name" in stderr
 
 
-def test_chat_session_stats_reports_unsupported_session_provider(
+def test_chat_session_stats_supports_unique_claude_session_queries(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -832,21 +956,278 @@ def test_chat_session_stats_reports_unsupported_session_provider(
 
     session_id = "8948fa51-ae3d-4a28-bf5c-d9d8d8069a6b"
     title = "Claude Session Title"
-    _write_claude_desktop_session(
+    project_path = home / ".claude" / "projects" / "workspace" / f"{session_id}.jsonl"
+    desktop_path = (
         home
         / "Library"
         / "Application Support"
         / "Claude"
         / "claude-code-sessions"
         / "workspace"
-        / f"{session_id}.json",
+        / f"{session_id}.json"
+    )
+    _write_claude_project_session(project_path, session_id=session_id)
+    _write_claude_desktop_session(
+        desktop_path,
         session_id=session_id,
         title=title,
     )
+    _set_iso_mtime(desktop_path, "2026-03-08T12:05:12.017Z")
 
-    assert main(["chat", "session", "stats", title]) == 1
-    stderr = capsys.readouterr().err
-    assert "chat session stats is not implemented for provider claude-code" in stderr
+    assert main(["chat", "session", "stats", title]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "claude-code"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["session"]["display_name"] == title
+    assert payload["session"]["display_name_field"] == "title"
+    assert payload["session"]["matched_field"] == "title"
+    assert payload["session"]["matched_value"] == title
+    assert payload["session"]["extractable"] is True
+    assert payload["session"]["primary_artifact_path"] == str(project_path.resolve())
+    assert payload["session"]["canonical_finding_count"] == 2
+    assert payload["provider_stats"] == {
+        "artifact_count": 2,
+        "source_kind": "mixed",
+        "has_extractable_artifact": True,
+        "record_count": 2,
+        "message_record_count": 2,
+        "user_message_count": 1,
+        "assistant_message_count": 1,
+        "first_record_at": "2026-03-08T12:05:12.017Z",
+        "last_record_at": "2026-03-08T12:05:18.000Z",
+        "dialog_turn_count": 2,
+        "user_turn_count": 1,
+        "assistant_turn_count": 1,
+        "first_turn_at": "2026-03-08T12:05:12.017Z",
+        "last_turn_at": "2026-03-08T12:05:18.000Z",
+    }
+
+    assert main(["chat", "session", "stats", title, "--output", "markdown"]) == 0
+    output = capsys.readouterr().out
+    assert "# Chat Session Stats" in output
+    assert "- Provider: claude-code" in output
+    assert f"- Session ID: {session_id}" in output
+    assert f"- Name: {title}" in output
+    assert "- Artifacts: 2" in output
+    assert "- Source kind: mixed" in output
+
+
+def test_chat_session_stats_supports_unique_copilot_session_queries(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "663f2740-5d31-4098-af41-66b3389adb24"
+    session_root = home / ".copilot" / "session-state" / session_id
+    events_path = _write_copilot_session_events(session_root, session_id=session_id)
+
+    assert main(["chat", "session", "stats", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "copilot-cli"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["session"]["display_name"] is None
+    assert payload["session"]["display_name_field"] is None
+    assert payload["session"]["matched_field"] == "session_id"
+    assert payload["session"]["matched_value"] == session_id
+    assert payload["session"]["extractable"] is True
+    assert payload["session"]["primary_artifact_path"] == str(events_path.resolve())
+    assert payload["session"]["canonical_finding_count"] == 1
+    assert payload["provider_stats"] == {
+        "session_root_present": True,
+        "session_file_present": False,
+        "event_count": 5,
+        "session_start_count": 1,
+        "user_message_event_count": 1,
+        "assistant_message_event_count": 1,
+        "tool_event_count": 1,
+        "skill_invoked_count": 1,
+        "first_event_at": "2026-03-08T12:00:00.000Z",
+        "last_event_at": "2026-03-08T12:00:15.000Z",
+        "dialog_turn_count": 2,
+        "user_turn_count": 1,
+        "assistant_turn_count": 1,
+        "first_turn_at": "2026-03-08T12:00:05.000Z",
+        "last_turn_at": "2026-03-08T12:00:10.000Z",
+    }
+
+
+def test_chat_session_stats_supports_unique_gemini_session_queries(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "aba05f70-c886-4d1b-9b34-b95402476b94"
+    session_path = (
+        home / ".gemini" / "tmp" / "workspace" / "chats" / "session-2026-03-07T11-47-aba05f70.json"
+    )
+    _write_gemini_session(
+        session_path,
+        session_id=session_id,
+        start_time="2026-03-07T11:40:00.000Z",
+        last_updated="2026-03-07T11:47:42.513Z",
+        messages=[
+            {
+                "type": "user",
+                "timestamp": "2026-03-07T11:40:00.000Z",
+                "content": "hello from gemini user",
+            },
+            {
+                "type": "gemini",
+                "timestamp": "2026-03-07T11:40:10.000Z",
+                "content": "hello from gemini assistant",
+                "thoughts": [{"subject": "plan"}],
+                "toolCalls": [{"name": "search"}],
+            },
+        ],
+    )
+
+    assert main(["chat", "session", "stats", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "gemini-cli"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["session"]["display_name"] is None
+    assert payload["session"]["display_name_field"] is None
+    assert payload["session"]["matched_field"] == "session_id"
+    assert payload["session"]["matched_value"] == session_id
+    assert payload["session"]["extractable"] is True
+    assert payload["session"]["primary_artifact_path"] == str(session_path.resolve())
+    assert payload["session"]["canonical_finding_count"] == 1
+    assert payload["provider_stats"] == {
+        "artifact_count": 1,
+        "message_count": 2,
+        "user_message_count": 1,
+        "assistant_message_count": 1,
+        "thought_count": 1,
+        "tool_call_count": 1,
+        "start_time": "2026-03-07T11:40:00.000Z",
+        "last_updated": "2026-03-07T11:47:42.513Z",
+        "dialog_turn_count": 2,
+        "user_turn_count": 1,
+        "assistant_turn_count": 1,
+        "first_turn_at": "2026-03-07T11:40:00.000Z",
+        "last_turn_at": "2026-03-07T11:40:10.000Z",
+    }
+
+
+def test_chat_session_stats_supports_unique_openclaw_session_queries(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "061729c9-f0c0-4d62-a3fb-1d21553fc0e4"
+    session_key = "agent:main:telegram:direct:734641842"
+    sessions_dir = home / ".openclaw" / "agents" / "main" / "sessions"
+    transcript_path = _write_openclaw_session(
+        sessions_dir,
+        session_id=session_id,
+        agent_key=session_key,
+        extra_records=[
+            {
+                "type": "message",
+                "id": "msg-assistant-1",
+                "timestamp": "2026-03-08T12:05:18.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "[[reply_to_current]] hello from assistant"}],
+                },
+            }
+        ],
+    )
+    _set_iso_mtime(sessions_dir / "sessions.json", "2026-03-08T12:05:18.000Z")
+
+    assert main(["chat", "session", "stats", session_key]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "openclaw"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["session"]["display_name"] is None
+    assert payload["session"]["display_name_field"] is None
+    assert payload["session"]["matched_field"] == "session_key"
+    assert payload["session"]["matched_value"] == session_key
+    assert payload["session"]["extractable"] is True
+    assert payload["session"]["primary_artifact_path"] == str(transcript_path.resolve())
+    assert payload["session"]["canonical_finding_count"] == 1
+    assert payload["provider_stats"] == {
+        "has_transcript": True,
+        "has_sessions_index": True,
+        "session_key_count": 1,
+        "agent_id": "main",
+        "record_count": 3,
+        "session_record_count": 1,
+        "message_record_count": 2,
+        "user_message_count": 1,
+        "assistant_message_count": 1,
+        "first_record_at": "2026-03-08T12:05:10.000Z",
+        "last_record_at": "2026-03-08T12:05:18.000Z",
+        "dialog_turn_count": 2,
+        "user_turn_count": 1,
+        "assistant_turn_count": 1,
+        "first_turn_at": "2026-03-08T12:05:12.017Z",
+        "last_turn_at": "2026-03-08T12:05:18.000Z",
+    }
+
+
+def test_chat_session_stats_supports_unique_opencode_session_queries(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    session_id = "ses_3386643b2ffegZgI4IgNfmL9n3"
+    diff_path = home / ".local" / "share" / "opencode" / "storage" / "session_diff" / f"{session_id}.json"
+    db_path = home / ".local" / "share" / "opencode" / "opencode.db"
+    _write(diff_path, "[]\n")
+    _set_iso_mtime(diff_path, "2026-03-08T12:08:58.498Z")
+    _write_opencode_session_db(db_path, session_id=session_id)
+    _set_iso_mtime(db_path, "2026-03-08T12:09:00.000Z")
+
+    assert main(["chat", "session", "stats", session_id]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "opencode"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["session"]["display_name"] is None
+    assert payload["session"]["display_name_field"] is None
+    assert payload["session"]["matched_field"] == "session_id"
+    assert payload["session"]["matched_value"] == session_id
+    assert payload["session"]["extractable"] is True
+    assert payload["session"]["primary_artifact_path"] == str(diff_path.resolve())
+    assert payload["session"]["canonical_finding_count"] == 2
+    assert payload["provider_stats"] == {
+        "has_diff_artifact": True,
+        "has_sqlite_db": True,
+        "message_count": 2,
+        "user_message_count": 1,
+        "assistant_message_count": 1,
+        "part_count": 2,
+        "text_part_count": 2,
+        "non_text_part_count": 0,
+        "first_message_at": "2026-03-08T12:08:58.498Z",
+        "last_message_at": "2026-03-08T12:09:00.000Z",
+        "dialog_turn_count": 2,
+        "user_turn_count": 1,
+        "assistant_turn_count": 1,
+        "first_turn_at": "2026-03-08T12:08:58.498Z",
+        "last_turn_at": "2026-03-08T12:09:00.000Z",
+    }
 
 
 def test_chat_session_find_supports_full_gemini_session_ids(
