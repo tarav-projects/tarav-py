@@ -14,12 +14,12 @@ from agentos.chat.core import (
     format_chat_session_resolved_stats_markdown,
     format_chat_session_stats_markdown,
     list_chat_sessions,
-    supported_provider_specs,
+    supported_provider_families,
 )
 from agentos.chat.extractors import extract_chat_session
 
 
-_CHAT_PROVIDER_CHOICES = tuple(provider_spec.provider for provider_spec in supported_provider_specs())
+_CHAT_PROVIDER_CHOICES = tuple(provider_family.family for provider_family in supported_provider_families())
 _DURATION_RE = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw]?)$")
 
 

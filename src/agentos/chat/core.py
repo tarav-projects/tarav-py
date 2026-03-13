@@ -21,12 +21,14 @@ from agentos._core.project import (
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.chat.sessions import (
     ChatSession,
-    ClaudeCodeChatSession,
-    CodexChatSession,
-    CopilotCliChatSession,
-    GeminiCliChatSession,
-    OpenclawChatSession,
-    OpencodeChatSession,
+    ClaudeCodeSessionSource,
+    CodexSessionSource,
+    CopilotCliSessionSource,
+    GeminiCliSessionSource,
+    OpenclawSessionSource,
+    OpencodeSessionSource,
+    ProviderInstance,
+    SessionSource,
     coerce_timestamp,
     safe_path_mtime,
 )
@@ -46,24 +48,6 @@ SESSION_SORT_CHOICES = {"lexical", "newest", "oldest"}
 
 
 @dataclass(frozen=True)
-class ProviderSpec:
-    provider: str
-    direct_paths: tuple[str, ...]
-    grep_paths: tuple[str, ...] = ()
-    sqlite_db_paths: tuple[str, ...] = ()
-
-    def resolved_direct_targets(self) -> tuple[Path, ...]:
-        return tuple(Path(raw_path).expanduser().resolve() for raw_path in self.direct_paths)
-
-    def resolved_grep_targets(self) -> tuple[Path, ...]:
-        raw_paths = self.grep_paths or self.direct_paths
-        return tuple(Path(raw_path).expanduser().resolve() for raw_path in raw_paths)
-
-    def resolved_sqlite_db_paths(self) -> tuple[Path, ...]:
-        return tuple(Path(raw_path).expanduser().resolve() for raw_path in self.sqlite_db_paths)
-
-
-@dataclass(frozen=True)
 class ProviderHomeSlot:
     key: str
     default_home: str
@@ -71,7 +55,7 @@ class ProviderHomeSlot:
     grep_relpaths: tuple[str, ...] = ()
     sqlite_db_relpaths: tuple[str, ...] = ()
 
-    def build_paths(self, *, home: str) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    def build_paths(self, *, home: Path) -> tuple[tuple[Path, ...], tuple[Path, ...], tuple[Path, ...]]:
         return (
             tuple(_join_provider_home(home, relpath) for relpath in self.direct_relpaths),
             tuple(_join_provider_home(home, relpath) for relpath in self.grep_relpaths),
@@ -80,23 +64,30 @@ class ProviderHomeSlot:
 
 
 @dataclass(frozen=True)
-class ProviderLayout:
-    provider: str
+class ProviderFamily:
+    family: str
     home_slots: tuple[ProviderHomeSlot, ...]
 
     def supported_home_keys(self) -> tuple[str, ...]:
         return tuple(slot.key for slot in self.home_slots)
 
-    def default_spec(self) -> ProviderSpec:
-        return self.spec_from_homes(
+    def default_instance(self) -> ProviderInstance:
+        return self.instance_from_homes(
             {
                 slot.key: slot.default_home
                 for slot in self.home_slots
             },
             index=None,
+            is_default=True,
         )
 
-    def spec_from_home(self, home: str, *, index: int | None) -> ProviderSpec:
+    def instance_from_home(
+        self,
+        home: str,
+        *,
+        index: int | None,
+        is_default: bool,
+    ) -> ProviderInstance:
         if len(self.home_slots) != 1:
             supported_keys = ", ".join(self.supported_home_keys())
             field_name = _provider_instance_field_name(index=index, field="home")
@@ -106,14 +97,15 @@ class ProviderLayout:
                 f"use {homes_field_name} with keys: {supported_keys}"
             )
         slot = self.home_slots[0]
-        return self.spec_from_homes({slot.key: home}, index=index)
+        return self.instance_from_homes({slot.key: home}, index=index, is_default=is_default)
 
-    def spec_from_homes(
+    def instance_from_homes(
         self,
         homes: dict[str, str],
         *,
         index: int | None,
-    ) -> ProviderSpec:
+        is_default: bool,
+    ) -> ProviderInstance:
         supported_slots = {slot.key: slot for slot in self.home_slots}
         unsupported_keys = sorted(key for key in homes if key not in supported_slots)
         homes_field_name = _provider_instance_field_name(index=index, field="homes")
@@ -121,46 +113,53 @@ class ProviderLayout:
             supported_keys = ", ".join(self.supported_home_keys())
             unsupported_keys_text = ", ".join(unsupported_keys)
             raise CliError(
-                f"{homes_field_name} contains unsupported keys for provider {self.provider}: "
+                f"{homes_field_name} contains unsupported keys for provider {self.family}: "
                 f"{unsupported_keys_text} (supported: {supported_keys})"
             )
 
-        direct_paths: list[str] = []
-        grep_paths: list[str] = []
-        sqlite_db_paths: list[str] = []
+        normalized_homes: list[tuple[str, Path]] = []
+        direct_targets: list[Path] = []
+        grep_targets: list[Path] = []
+        sqlite_db_paths: list[Path] = []
 
         for slot in self.home_slots:
             raw_home = homes.get(slot.key)
             if raw_home is None:
                 continue
-            normalized_home = _normalize_provider_home(
-                raw_home,
-                field_name=f"{homes_field_name}.{slot.key}",
-            )
+            normalized_home = Path(
+                _normalize_provider_home(
+                    raw_home,
+                    field_name=f"{homes_field_name}.{slot.key}",
+                )
+            ).expanduser().resolve()
+            normalized_homes.append((slot.key, normalized_home))
             slot_direct_paths, slot_grep_paths, slot_sqlite_db_paths = slot.build_paths(
-                home=normalized_home
+                home=normalized_home,
             )
-            direct_paths.extend(slot_direct_paths)
-            grep_paths.extend(slot_grep_paths)
+            direct_targets.extend(slot_direct_paths)
+            grep_targets.extend(slot_grep_paths or slot_direct_paths)
             sqlite_db_paths.extend(slot_sqlite_db_paths)
 
-        if not direct_paths and not sqlite_db_paths:
+        if not direct_targets and not sqlite_db_paths:
             supported_keys = ", ".join(self.supported_home_keys())
             raise CliError(
                 f"{homes_field_name} must include at least one supported home key: {supported_keys}"
             )
 
-        return ProviderSpec(
-            provider=self.provider,
-            direct_paths=_unique_strings(tuple(direct_paths)),
-            grep_paths=_unique_strings(tuple(grep_paths)),
-            sqlite_db_paths=_unique_strings(tuple(sqlite_db_paths)),
+        return ProviderInstance(
+            family=self.family,
+            homes=tuple(normalized_homes),
+            direct_targets=_unique_paths(tuple(direct_targets)),
+            grep_targets=_unique_paths(tuple(grep_targets)),
+            sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
+            is_default=is_default,
         )
 
 
 @dataclass(frozen=True)
-class ProviderSearchContext:
-    provider_spec: ProviderSpec
+class ProviderInstanceContext:
+    provider_family: ProviderFamily
+    provider_instance: ProviderInstance
     direct_targets: tuple[Path, ...]
     direct_existing_targets: tuple[Path, ...]
     direct_missing_targets: tuple[Path, ...]
@@ -172,10 +171,10 @@ class ProviderSearchContext:
     sqlite_missing_db_paths: tuple[Path, ...]
 
 
-def supported_provider_layouts() -> tuple[ProviderLayout, ...]:
+def supported_provider_families() -> tuple[ProviderFamily, ...]:
     return (
-        ProviderLayout(
-            provider="copilot-cli",
+        ProviderFamily(
+            family="copilot-cli",
             home_slots=(
                 ProviderHomeSlot(
                     key="home",
@@ -184,8 +183,8 @@ def supported_provider_layouts() -> tuple[ProviderLayout, ...]:
                 ),
             ),
         ),
-        ProviderLayout(
-            provider="gemini-cli",
+        ProviderFamily(
+            family="gemini-cli",
             home_slots=(
                 ProviderHomeSlot(
                     key="home",
@@ -194,8 +193,8 @@ def supported_provider_layouts() -> tuple[ProviderLayout, ...]:
                 ),
             ),
         ),
-        ProviderLayout(
-            provider="codex",
+        ProviderFamily(
+            family="codex",
             home_slots=(
                 ProviderHomeSlot(
                     key="home",
@@ -204,8 +203,8 @@ def supported_provider_layouts() -> tuple[ProviderLayout, ...]:
                 ),
             ),
         ),
-        ProviderLayout(
-            provider="claude-code",
+        ProviderFamily(
+            family="claude-code",
             home_slots=(
                 ProviderHomeSlot(
                     key="cli",
@@ -221,8 +220,8 @@ def supported_provider_layouts() -> tuple[ProviderLayout, ...]:
                 ),
             ),
         ),
-        ProviderLayout(
-            provider="opencode",
+        ProviderFamily(
+            family="opencode",
             home_slots=(
                 ProviderHomeSlot(
                     key="home",
@@ -233,8 +232,8 @@ def supported_provider_layouts() -> tuple[ProviderLayout, ...]:
                 ),
             ),
         ),
-        ProviderLayout(
-            provider="openclaw",
+        ProviderFamily(
+            family="openclaw",
             home_slots=(
                 ProviderHomeSlot(
                     key="home",
@@ -246,17 +245,13 @@ def supported_provider_layouts() -> tuple[ProviderLayout, ...]:
     )
 
 
-def supported_provider_specs() -> tuple[ProviderSpec, ...]:
-    return tuple(layout.default_spec() for layout in supported_provider_layouts())
+def configured_provider_instances(*, start_path: Path | str = ".") -> tuple[ProviderInstance, ...]:
+    provider_instances = [family.default_instance() for family in supported_provider_families()]
+    provider_instances.extend(_load_configured_provider_instances(start_path=start_path))
+    return _dedupe_provider_instances(tuple(provider_instances))
 
 
-def configured_provider_specs(*, start_path: Path | str = ".") -> tuple[ProviderSpec, ...]:
-    provider_specs = list(supported_provider_specs())
-    provider_specs.extend(_load_configured_provider_specs(start_path=start_path))
-    return _merge_provider_specs(tuple(provider_specs))
-
-
-def _load_configured_provider_specs(*, start_path: Path | str = ".") -> tuple[ProviderSpec, ...]:
+def _load_configured_provider_instances(*, start_path: Path | str = ".") -> tuple[ProviderInstance, ...]:
     configs: list[dict[str, object]] = []
 
     global_path = global_config_path(agentos_home_dir())
@@ -269,13 +264,13 @@ def _load_configured_provider_specs(*, start_path: Path | str = ".") -> tuple[Pr
         if project_path.exists():
             configs.append(load_project_config(project_path))
 
-    provider_specs: list[ProviderSpec] = []
+    provider_instances: list[ProviderInstance] = []
     for config in configs:
-        provider_specs.extend(_provider_specs_from_config(config))
-    return tuple(provider_specs)
+        provider_instances.extend(_provider_instances_from_config(config))
+    return tuple(provider_instances)
 
 
-def _provider_specs_from_config(config: dict[str, object]) -> tuple[ProviderSpec, ...]:
+def _provider_instances_from_config(config: dict[str, object]) -> tuple[ProviderInstance, ...]:
     chat_config = config.get("chat")
     if chat_config is None:
         return ()
@@ -288,23 +283,23 @@ def _provider_specs_from_config(config: dict[str, object]) -> tuple[ProviderSpec
     if not isinstance(raw_instances, list):
         raise CliError("config field chat.provider_instances must be a JSON array")
 
-    provider_specs: list[ProviderSpec] = []
+    provider_instances: list[ProviderInstance] = []
     for index, raw_instance in enumerate(raw_instances):
         if not isinstance(raw_instance, dict):
             raise CliError(f"chat.provider_instances[{index}] must be a JSON object")
-        provider_specs.append(_provider_spec_from_instance_config(raw_instance, index=index))
-    return tuple(provider_specs)
+        provider_instances.append(_provider_instance_from_config(raw_instance, index=index))
+    return tuple(provider_instances)
 
 
-def _provider_spec_from_instance_config(raw_instance: dict[str, object], *, index: int) -> ProviderSpec:
-    provider = raw_instance.get("provider")
-    if not isinstance(provider, str) or not provider:
+def _provider_instance_from_config(raw_instance: dict[str, object], *, index: int) -> ProviderInstance:
+    family_name = raw_instance.get("provider")
+    if not isinstance(family_name, str) or not family_name:
         raise CliError(f"chat.provider_instances[{index}].provider is required")
 
-    layout = _provider_layout_for_provider(provider)
-    if layout is None:
+    family = _provider_family_for_name(family_name)
+    if family is None:
         supported_providers = ", ".join(
-            sorted(provider_layout.provider for provider_layout in supported_provider_layouts())
+            sorted(provider_family.family for provider_family in supported_provider_families())
         )
         raise CliError(
             f"chat.provider_instances[{index}].provider must be one of: {supported_providers}"
@@ -352,10 +347,10 @@ def _provider_spec_from_instance_config(raw_instance: dict[str, object], *, inde
             raise CliError(
                 f"chat.provider_instances[{index}] must define either home or explicit paths, not both"
             )
-        return layout.spec_from_home(normalized_home, index=index)
+        return family.instance_from_home(normalized_home, index=index, is_default=False)
 
     if homes:
-        if len(layout.home_slots) == 1:
+        if len(family.home_slots) == 1:
             raise CliError(
                 f"chat.provider_instances[{index}].homes is only supported for providers with multiple home roots; "
                 f"use chat.provider_instances[{index}].home"
@@ -364,18 +359,23 @@ def _provider_spec_from_instance_config(raw_instance: dict[str, object], *, inde
             raise CliError(
                 f"chat.provider_instances[{index}] must define either homes or explicit paths, not both"
             )
-        return layout.spec_from_homes(homes, index=index)
+        return family.instance_from_homes(homes, index=index, is_default=False)
 
     if not direct_paths:
         raise CliError(
             f"chat.provider_instances[{index}] must define home, homes, or direct_paths"
         )
 
-    return ProviderSpec(
-        provider=provider,
-        direct_paths=direct_paths,
-        grep_paths=grep_paths,
-        sqlite_db_paths=sqlite_db_paths,
+    resolved_direct_targets = _resolve_raw_paths(direct_paths)
+    resolved_grep_targets = _resolve_raw_paths(grep_paths) if grep_paths else resolved_direct_targets
+    resolved_sqlite_db_paths = _resolve_raw_paths(sqlite_db_paths)
+    return ProviderInstance(
+        family=family_name,
+        homes=(),
+        direct_targets=resolved_direct_targets,
+        grep_targets=resolved_grep_targets,
+        sqlite_db_paths=resolved_sqlite_db_paths,
+        is_default=False,
     )
 
 
@@ -414,10 +414,10 @@ def _load_optional_string_mapping(value: object, *, field_name: str) -> dict[str
     return items
 
 
-def _provider_layout_for_provider(provider: str) -> ProviderLayout | None:
-    for layout in supported_provider_layouts():
-        if layout.provider == provider:
-            return layout
+def _provider_family_for_name(family_name: str) -> ProviderFamily | None:
+    for family in supported_provider_families():
+        if family.family == family_name:
+            return family
     return None
 
 
@@ -433,34 +433,28 @@ def _normalize_provider_home(home: object, *, field_name: str) -> str:
     return home.strip()
 
 
-def _join_provider_home(home: str, relpath: str) -> str:
+def _resolve_raw_paths(raw_paths: tuple[str, ...]) -> tuple[Path, ...]:
+    return _unique_paths(tuple(Path(raw_path).expanduser().resolve() for raw_path in raw_paths))
+
+
+def _join_provider_home(home: Path, relpath: str) -> Path:
     if not relpath:
-        return str(Path(home))
-    return str(Path(home) / relpath)
+        return home
+    return home / relpath
 
 
-def _merge_provider_specs(provider_specs: tuple[ProviderSpec, ...]) -> tuple[ProviderSpec, ...]:
-    merged_specs: dict[str, ProviderSpec] = {}
-
-    for provider_spec in provider_specs:
-        existing = merged_specs.get(provider_spec.provider)
-        if existing is None:
-            merged_specs[provider_spec.provider] = provider_spec
+def _dedupe_provider_instances(provider_instances: tuple[ProviderInstance, ...]) -> tuple[ProviderInstance, ...]:
+    unique_instances: dict[tuple[object, ...], ProviderInstance] = {}
+    for provider_instance in provider_instances:
+        key = provider_instance.identity_key()
+        if key not in unique_instances:
+            unique_instances[key] = provider_instance
             continue
-
-        merged_specs[provider_spec.provider] = ProviderSpec(
-            provider=provider_spec.provider,
-            direct_paths=_unique_strings(existing.direct_paths + provider_spec.direct_paths),
-            grep_paths=_unique_strings(existing.grep_paths + provider_spec.grep_paths),
-            sqlite_db_paths=_unique_strings(existing.sqlite_db_paths + provider_spec.sqlite_db_paths),
-        )
-
-    preferred_order = [spec.provider for spec in supported_provider_specs()]
-    return tuple(
-        merged_specs[provider]
-        for provider in preferred_order
-        if provider in merged_specs
-    )
+        existing = unique_instances[key]
+        if existing.is_default or not provider_instance.is_default:
+            continue
+        unique_instances[key] = provider_instance
+    return tuple(unique_instances.values())
 
 
 def list_chat_sessions(
@@ -478,10 +472,13 @@ def list_chat_sessions(
     provider_payloads: list[dict[str, Any]] = []
     total_sessions = 0
 
-    for context in _iter_provider_contexts(providers):
+    for provider_family, contexts in _iter_provider_context_groups(providers):
+        family_sessions: list[ChatSession] = []
+        for context in contexts:
+            family_sessions.extend(_discover_direct_provider_sessions(context))
         sessions = [
             session
-            for session in _discover_direct_provider_sessions(context)
+            for session in _dedupe_sessions(family_sessions)
             if _session_matches_list_filters(
                 session,
                 extractable_only=extractable_only,
@@ -492,7 +489,8 @@ def list_chat_sessions(
         if limit is not None:
             sessions = sessions[:limit]
         provider_payload = _build_provider_payload(
-            context,
+            provider_family=provider_family.family,
+            contexts=contexts,
             include_grep=False,
             item_count_key="session_count",
             item_count=len(sessions),
@@ -529,9 +527,16 @@ def chat_session_stats(
     total_extractable_sessions = 0
     total_non_extractable_sessions = 0
 
-    for context in _iter_provider_contexts(providers):
-        sessions = _sort_sessions(_discover_direct_provider_sessions(context), "lexical")
-        stats_payload = _build_stats_provider_payload(context, sessions=sessions)
+    for provider_family, contexts in _iter_provider_context_groups(providers):
+        sessions: list[ChatSession] = []
+        for context in contexts:
+            sessions.extend(_discover_direct_provider_sessions(context))
+        sessions = _sort_sessions(_dedupe_sessions(sessions), "lexical")
+        stats_payload = _build_stats_provider_payload(
+            provider_family=provider_family.family,
+            contexts=contexts,
+            sessions=sessions,
+        )
         provider_payloads.append(stats_payload)
         total_sessions += stats_payload["session_count"]
         total_extractable_sessions += stats_payload["extractable_session_count"]
@@ -716,10 +721,11 @@ def find_chat_session(
     all_findings: list[dict[str, Any]] = []
     provider_payloads: list[dict[str, Any]] = []
 
-    for context in _iter_provider_contexts(providers):
+    for provider_family, contexts in _iter_provider_context_groups(providers):
         provider_findings, provider_payload = _find_session_for_provider(
-            context,
-            query,
+            provider_family=provider_family.family,
+            contexts=contexts,
+            query=query,
             include_grep=include_grep,
         )
         all_findings.extend(provider_findings)
@@ -749,31 +755,50 @@ def resolve_chat_sessions(
     providers: tuple[str, ...] | None = None,
 ) -> list[ChatSession]:
     resolved_sessions: list[ChatSession] = []
-    for context in _iter_provider_contexts(providers):
-        resolved_sessions.extend(_find_direct_provider_sessions(context, query))
+    for _, contexts in _iter_provider_context_groups(providers):
+        for context in contexts:
+            resolved_sessions.extend(_find_direct_provider_sessions(context, query))
     return _sort_sessions(_dedupe_sessions(resolved_sessions), "lexical")
 
 
-def _iter_provider_contexts(providers: tuple[str, ...] | None) -> tuple[ProviderSearchContext, ...]:
-    provider_specs = configured_provider_specs()
+def _iter_provider_context_groups(
+    providers: tuple[str, ...] | None,
+) -> tuple[tuple[ProviderFamily, tuple[ProviderInstanceContext, ...]], ...]:
+    provider_instances = configured_provider_instances()
     if providers is not None:
         requested_providers = set(providers)
-        provider_specs = tuple(
-            provider_spec
-            for provider_spec in provider_specs
-            if provider_spec.provider in requested_providers
+        provider_instances = tuple(
+            provider_instance
+            for provider_instance in provider_instances
+            if provider_instance.family in requested_providers
         )
 
-    return tuple(_build_provider_context(provider_spec) for provider_spec in provider_specs)
+    contexts_by_family: dict[str, list[ProviderInstanceContext]] = {}
+    for provider_instance in provider_instances:
+        context = _build_provider_context(provider_instance)
+        contexts_by_family.setdefault(provider_instance.family, []).append(context)
+
+    groups: list[tuple[ProviderFamily, tuple[ProviderInstanceContext, ...]]] = []
+    for provider_family in supported_provider_families():
+        family_contexts = contexts_by_family.get(provider_family.family)
+        if not family_contexts:
+            continue
+        groups.append((provider_family, tuple(family_contexts)))
+    return tuple(groups)
 
 
-def _build_provider_context(provider_spec: ProviderSpec) -> ProviderSearchContext:
-    direct_targets = provider_spec.resolved_direct_targets()
-    grep_targets = provider_spec.resolved_grep_targets()
-    sqlite_db_paths = provider_spec.resolved_sqlite_db_paths()
+def _build_provider_context(provider_instance: ProviderInstance) -> ProviderInstanceContext:
+    provider_family = _provider_family_for_name(provider_instance.family)
+    if provider_family is None:
+        raise CliError(f"unsupported provider family {provider_instance.family}")
 
-    return ProviderSearchContext(
-        provider_spec=provider_spec,
+    direct_targets = provider_instance.direct_targets
+    grep_targets = provider_instance.grep_targets
+    sqlite_db_paths = provider_instance.sqlite_db_paths
+
+    return ProviderInstanceContext(
+        provider_family=provider_family,
+        provider_instance=provider_instance,
         direct_targets=direct_targets,
         direct_existing_targets=tuple(target for target in direct_targets if target.exists()),
         direct_missing_targets=tuple(target for target in direct_targets if not target.exists()),
@@ -787,30 +812,33 @@ def _build_provider_context(provider_spec: ProviderSpec) -> ProviderSearchContex
 
 
 def _find_session_for_provider(
-    context: ProviderSearchContext,
-    query: str,
     *,
+    provider_family: str,
+    contexts: tuple[ProviderInstanceContext, ...],
+    query: str,
     include_grep: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     seen_keys: set[tuple[object, ...]] = set()
 
-    direct_sessions = _find_direct_provider_sessions(context, query)
-    for session in direct_sessions:
-        for finding in _session_findings(session, query=query):
-            _append_unique_finding(findings, seen_keys, finding)
-
-    if include_grep:
-        for target in context.grep_existing_targets:
-            for finding in _scan_grep_findings(
-                provider=context.provider_spec.provider,
-                target=target,
-                session_id=query,
-            ):
+    for context in contexts:
+        direct_sessions = _find_direct_provider_sessions(context, query)
+        for session in direct_sessions:
+            for finding in _session_findings(session, query=query):
                 _append_unique_finding(findings, seen_keys, finding)
 
+        if include_grep:
+            for target in context.grep_existing_targets:
+                for finding in _scan_grep_findings(
+                    provider=provider_family,
+                    target=target,
+                    session_id=query,
+                ):
+                    _append_unique_finding(findings, seen_keys, finding)
+
     payload = _build_provider_payload(
-        context,
+        provider_family=provider_family,
+        contexts=contexts,
         include_grep=include_grep,
         item_count_key="finding_count",
         item_count=len(findings),
@@ -819,48 +847,77 @@ def _find_session_for_provider(
 
 
 def _build_provider_payload(
-    context: ProviderSearchContext,
     *,
+    provider_family: str,
+    contexts: tuple[ProviderInstanceContext, ...],
     include_grep: bool,
     item_count_key: str,
     item_count: int,
 ) -> dict[str, Any]:
+    direct_targets = _unique_paths(
+        tuple(path for context in contexts for path in context.direct_targets)
+    )
+    direct_existing_targets = _unique_paths(
+        tuple(path for context in contexts for path in context.direct_existing_targets)
+    )
+    direct_missing_targets = _unique_paths(
+        tuple(path for context in contexts for path in context.direct_missing_targets)
+    )
+    grep_targets = _unique_paths(
+        tuple(path for context in contexts for path in context.grep_targets)
+    )
+    grep_existing_targets = _unique_paths(
+        tuple(path for context in contexts for path in context.grep_existing_targets)
+    )
+    grep_missing_targets = _unique_paths(
+        tuple(path for context in contexts for path in context.grep_missing_targets)
+    )
+    sqlite_db_paths = _unique_paths(
+        tuple(path for context in contexts for path in context.sqlite_db_paths)
+    )
+    sqlite_existing_db_paths = _unique_paths(
+        tuple(path for context in contexts for path in context.sqlite_existing_db_paths)
+    )
+    sqlite_missing_db_paths = _unique_paths(
+        tuple(path for context in contexts for path in context.sqlite_missing_db_paths)
+    )
+
     if include_grep:
-        candidate_targets = _unique_paths(context.direct_targets + context.grep_targets)
-        searched_targets = _unique_paths(
-            context.direct_existing_targets + context.grep_existing_targets
-        )
-        missing_targets = _unique_paths(
-            context.direct_missing_targets + context.grep_missing_targets
-        )
+        candidate_targets = _unique_paths(direct_targets + grep_targets)
+        searched_targets = _unique_paths(direct_existing_targets + grep_existing_targets)
+        missing_targets = _unique_paths(direct_missing_targets + grep_missing_targets)
     else:
-        candidate_targets = context.direct_targets
-        searched_targets = context.direct_existing_targets
-        missing_targets = context.direct_missing_targets
+        candidate_targets = direct_targets
+        searched_targets = direct_existing_targets
+        missing_targets = direct_missing_targets
 
     payload = {
-        "provider": context.provider_spec.provider,
+        "provider": provider_family,
+        "provider_family": provider_family,
+        "provider_instance_count": len(contexts),
+        "provider_instances": [context.provider_instance.summary() for context in contexts],
         "candidate_targets": [str(path) for path in candidate_targets],
         "searched_targets": [str(path) for path in searched_targets],
         "missing_targets": [str(path) for path in missing_targets],
-        "sqlite_db_paths": [str(path) for path in context.sqlite_db_paths],
-        "sqlite_existing_db_paths": [str(path) for path in context.sqlite_existing_db_paths],
-        "sqlite_missing_db_paths": [str(path) for path in context.sqlite_missing_db_paths],
+        "sqlite_db_paths": [str(path) for path in sqlite_db_paths],
+        "sqlite_existing_db_paths": [str(path) for path in sqlite_existing_db_paths],
+        "sqlite_missing_db_paths": [str(path) for path in sqlite_missing_db_paths],
         "sqlite_db_path": (
-            str(context.sqlite_db_paths[0]) if len(context.sqlite_db_paths) == 1 else None
+            str(sqlite_db_paths[0]) if len(sqlite_db_paths) == 1 else None
         ),
         "sqlite_db_exists": (
-            context.sqlite_db_paths[0].exists() if len(context.sqlite_db_paths) == 1 else None
+            sqlite_db_paths[0].exists() if len(sqlite_db_paths) == 1 else None
         ),
-        "strategies_attempted": _strategies_attempted(context, include_grep=include_grep),
+        "strategies_attempted": _strategies_attempted(contexts, include_grep=include_grep),
         item_count_key: item_count,
     }
     return payload
 
 
 def _build_stats_provider_payload(
-    context: ProviderSearchContext,
     *,
+    provider_family: str,
+    contexts: tuple[ProviderInstanceContext, ...],
     sessions: list[ChatSession],
 ) -> dict[str, Any]:
     extractable_sessions = [session for session in sessions if _session_is_extractable(session)]
@@ -872,7 +929,8 @@ def _build_stats_provider_payload(
     timestamps.sort(key=lambda item: (item[1] or 0.0, item[0].session_id))
 
     payload = _build_provider_payload(
-        context,
+        provider_family=provider_family,
+        contexts=contexts,
         include_grep=False,
         item_count_key="session_count",
         item_count=len(sessions),
@@ -917,207 +975,260 @@ def _build_common_session_stats(
 
 
 def _build_provider_session_stats(session: ChatSession) -> dict[str, Any]:
-    if isinstance(session, ClaudeCodeChatSession):
-        return _build_claude_code_session_stats(session)
-    if isinstance(session, CodexChatSession):
-        return _build_codex_session_stats(session)
-    if isinstance(session, CopilotCliChatSession):
-        return _build_copilot_cli_session_stats(session)
-    if isinstance(session, GeminiCliChatSession):
-        return _build_gemini_cli_session_stats(session)
-    if isinstance(session, OpenclawChatSession):
-        return _build_openclaw_session_stats(session)
-    if isinstance(session, OpencodeChatSession):
-        return _build_opencode_session_stats(session)
-    raise CliError(f"chat session stats is not implemented for provider {session.provider}")
+    source = session.source
+    if isinstance(source, ClaudeCodeSessionSource):
+        return _build_claude_code_session_stats(source)
+    if isinstance(source, CodexSessionSource):
+        return _build_codex_session_stats(source)
+    if isinstance(source, CopilotCliSessionSource):
+        return _build_copilot_cli_session_stats(source)
+    if isinstance(source, GeminiCliSessionSource):
+        return _build_gemini_cli_session_stats(source)
+    if isinstance(source, OpenclawSessionSource):
+        return _build_openclaw_session_stats(source)
+    if isinstance(source, OpencodeSessionSource):
+        return _build_opencode_session_stats(source)
+    raise CliError(f"chat session stats is not implemented for provider {session.provider_family}")
 
 
 def _strategies_attempted(
-    context: ProviderSearchContext,
+    contexts: tuple[ProviderInstanceContext, ...],
     *,
     include_grep: bool,
 ) -> list[str]:
     strategies = ["path"]
-    if context.sqlite_db_paths:
+    if any(context.sqlite_db_paths for context in contexts):
         strategies.append("sqlite")
     if include_grep:
         strategies.append("grep")
     return strategies
 
 
-def _discover_direct_provider_sessions(context: ProviderSearchContext) -> list[ChatSession]:
-    provider = context.provider_spec.provider
+def _discover_direct_provider_sessions(context: ProviderInstanceContext) -> list[ChatSession]:
+    provider = context.provider_family.family
     if provider == "claude-code":
-        return _list_claude_code_sessions(targets=context.direct_existing_targets)
+        return _wrap_session_sources(
+            _list_claude_code_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+            )
+        )
     if provider == "codex":
-        return _list_codex_sessions(targets=context.direct_existing_targets)
+        return _wrap_session_sources(
+            _list_codex_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+            )
+        )
     if provider == "copilot-cli":
-        return _list_copilot_sessions(targets=context.direct_existing_targets)
+        return _wrap_session_sources(
+            _list_copilot_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+            )
+        )
     if provider == "gemini-cli":
-        return _list_gemini_sessions(targets=context.direct_existing_targets)
+        return _wrap_session_sources(
+            _list_gemini_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+            )
+        )
     if provider == "opencode":
-        return _list_opencode_sessions(
-            targets=context.direct_existing_targets,
-            sqlite_db_paths=context.sqlite_existing_db_paths,
+        return _wrap_session_sources(
+            _list_opencode_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+                sqlite_db_paths=context.sqlite_existing_db_paths,
+            )
         )
     if provider == "openclaw":
-        return _list_openclaw_sessions(targets=context.direct_existing_targets)
+        return _wrap_session_sources(
+            _list_openclaw_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+            )
+        )
     return []
 
 
 def _find_direct_provider_sessions(
-    context: ProviderSearchContext,
+    context: ProviderInstanceContext,
     query: str,
 ) -> list[ChatSession]:
-    provider = context.provider_spec.provider
+    provider = context.provider_family.family
     if provider == "claude-code":
-        return _find_claude_code_sessions(
-            targets=context.direct_existing_targets,
-            query=query,
+        return _wrap_session_sources(
+            _find_claude_code_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+                query=query,
+            )
         )
     if provider == "codex":
-        return _find_codex_sessions(
-            targets=context.direct_existing_targets,
-            query=query,
+        return _wrap_session_sources(
+            _find_codex_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+                query=query,
+            )
         )
     if provider == "copilot-cli":
-        return _find_copilot_sessions(
-            targets=context.direct_existing_targets,
-            session_id=query,
+        return _wrap_session_sources(
+            _find_copilot_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+                session_id=query,
+            )
         )
     if provider == "gemini-cli":
-        return _find_gemini_sessions(
-            targets=context.direct_existing_targets,
-            session_id=query,
+        return _wrap_session_sources(
+            _find_gemini_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+                session_id=query,
+            )
         )
     if provider == "opencode":
-        return _find_opencode_sessions(
-            targets=context.direct_existing_targets,
-            session_id=query,
-            sqlite_db_paths=context.sqlite_existing_db_paths,
+        return _wrap_session_sources(
+            _find_opencode_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+                session_id=query,
+                sqlite_db_paths=context.sqlite_existing_db_paths,
+            )
         )
     if provider == "openclaw":
-        return _find_openclaw_sessions(
-            targets=context.direct_existing_targets,
-            session_id=query,
+        return _wrap_session_sources(
+            _find_openclaw_sessions(
+                provider_instance=context.provider_instance,
+                targets=context.direct_existing_targets,
+                session_id=query,
+            )
         )
     return []
 
 
+def _wrap_session_sources(session_sources: list[SessionSource]) -> list[ChatSession]:
+    return [ChatSession(source=source) for source in session_sources]
+
+
 def _list_claude_code_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
-) -> list[ChatSession]:
-    sessions: list[ChatSession] = []
+) -> list[SessionSource]:
+    sessions: list[SessionSource] = []
 
     for target in targets:
         if target.name == "projects":
             for path in _glob_paths(target, "**/*.jsonl"):
-                session = _read_claude_project_session(path)
+                session = _read_claude_project_session(path, provider_instance=provider_instance)
                 if session is not None:
                     sessions.append(session)
             continue
 
         for path in _glob_paths(target, "**/*.json"):
-            session = _read_claude_desktop_session(path)
+            session = _read_claude_desktop_session(path, provider_instance=provider_instance)
             if session is not None:
                 sessions.append(session)
 
-    return _dedupe_sessions(sessions)
+    return _dedupe_session_sources(sessions)
 
 
 def _find_claude_code_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
     query: str,
-) -> list[ChatSession]:
-    sessions_by_id: dict[tuple[str, str], ChatSession] = {}
-    all_sessions = _list_claude_code_sessions(targets=targets)
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
+    all_sessions = _list_claude_code_sessions(provider_instance=provider_instance, targets=targets)
 
     for session in all_sessions:
-        if session.session_id == query:
-            _merge_session(sessions_by_id, session)
-            continue
-        if isinstance(session, ClaudeCodeChatSession) and session.title == query:
-            _merge_session(sessions_by_id, session)
+        if session.matches_query(query):
+            _merge_session_source(sessions_by_id, session)
 
-    return _sort_sessions(list(sessions_by_id.values()), "lexical")
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
 
 
 def _list_codex_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
-) -> list[ChatSession]:
-    sessions_by_id: dict[tuple[str, str], ChatSession] = {}
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
 
     for target in targets:
         if target.is_file() and target.name == "session_index.jsonl":
-            for session in _read_codex_index_sessions(target):
-                _merge_session(sessions_by_id, session)
+            for session in _read_codex_index_sessions(target, provider_instance=provider_instance):
+                _merge_session_source(sessions_by_id, session)
             continue
         for path in _glob_paths(target, "**/rollout-*.jsonl"):
-            session = _read_codex_rollout_session(path)
+            session = _read_codex_rollout_session(path, provider_instance=provider_instance)
             if session is not None:
-                _merge_session(sessions_by_id, session)
+                _merge_session_source(sessions_by_id, session)
 
-    return _sort_sessions(list(sessions_by_id.values()), "lexical")
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
 
 
 def _find_codex_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
     query: str,
-) -> list[ChatSession]:
-    sessions_by_id: dict[tuple[str, str], ChatSession] = {}
-    all_sessions = _list_codex_sessions(targets=targets)
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
+    all_sessions = _list_codex_sessions(provider_instance=provider_instance, targets=targets)
 
     for session in all_sessions:
-        if session.session_id == query:
-            _merge_session(sessions_by_id, session)
-            continue
-        if isinstance(session, CodexChatSession) and session.thread_name == query:
-            _merge_session(sessions_by_id, session)
+        if session.matches_query(query):
+            _merge_session_source(sessions_by_id, session)
 
-    return _sort_sessions(list(sessions_by_id.values()), "lexical")
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
 
 
 def _list_copilot_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
-) -> list[ChatSession]:
-    sessions_by_id: dict[tuple[str, str], ChatSession] = {}
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
 
     for target in targets:
         if not target.is_dir():
             continue
 
         for child in sorted(target.iterdir(), key=lambda path: path.name):
-            session: ChatSession | None = None
+            session: SessionSource | None = None
             if child.is_dir():
-                session = CopilotCliChatSession(
-                    session_id=child.name,
+                session = CopilotCliSessionSource(
+                    provider_instance=provider_instance,
+                    native_session_id=child.name,
                     session_root=child,
                     updated_at=_copilot_updated_at(child),
                 )
             elif child.is_file() and child.suffix == ".jsonl":
-                session = CopilotCliChatSession(
-                    session_id=child.stem,
+                session = CopilotCliSessionSource(
+                    provider_instance=provider_instance,
+                    native_session_id=child.stem,
                     session_file=child,
                     updated_at=safe_path_mtime(child),
                 )
 
             if session is not None:
-                _merge_session(sessions_by_id, session)
+                _merge_session_source(sessions_by_id, session)
 
-    return _sort_sessions(list(sessions_by_id.values()), "lexical")
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
 
 
 def _find_copilot_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
     session_id: str,
-) -> list[ChatSession]:
-    sessions: list[ChatSession] = []
+) -> list[SessionSource]:
+    sessions: list[SessionSource] = []
 
     for target in targets:
         session_root = target / session_id
@@ -1126,8 +1237,9 @@ def _find_copilot_sessions(
             continue
 
         sessions.append(
-            CopilotCliChatSession(
-                session_id=session_id,
+            CopilotCliSessionSource(
+                provider_instance=provider_instance,
+                native_session_id=session_id,
                 session_root=session_root if session_root.is_dir() else None,
                 session_file=session_file if session_file.is_file() else None,
                 updated_at=_copilot_updated_at(session_root if session_root.is_dir() else None)
@@ -1135,124 +1247,136 @@ def _find_copilot_sessions(
             )
         )
 
-    return _dedupe_sessions(sessions)
+    return _dedupe_session_sources(sessions)
 
 
 def _list_gemini_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
-) -> list[ChatSession]:
-    sessions: list[ChatSession] = []
+) -> list[SessionSource]:
+    sessions: list[SessionSource] = []
 
     for target in targets:
         for path in _glob_paths(target, "**/chats/session-*.json"):
-            session = _read_gemini_session(path)
+            session = _read_gemini_session(path, provider_instance=provider_instance)
             if session is not None:
                 sessions.append(session)
 
-    return _dedupe_sessions(sessions)
+    return _dedupe_session_sources(sessions)
 
 
 def _find_gemini_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
     session_id: str,
-) -> list[ChatSession]:
-    sessions: list[ChatSession] = []
+) -> list[SessionSource]:
+    sessions: list[SessionSource] = []
 
     for target in targets:
         for path in _glob_paths(target, "**/chats/session-*.json"):
-            session = _read_gemini_session(path)
+            session = _read_gemini_session(path, provider_instance=provider_instance)
             if session is None:
                 continue
             if not _gemini_session_matches(session_id, session, path):
                 continue
             sessions.append(session)
 
-    return _dedupe_sessions(sessions)
+    return _dedupe_session_sources(sessions)
 
 
 def _list_opencode_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
     sqlite_db_paths: tuple[Path, ...],
-) -> list[ChatSession]:
-    sessions_by_id: dict[tuple[str, str], ChatSession] = {}
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
 
     for target in targets:
         for path in _glob_paths(target, "*.json"):
-            _merge_session(
+            _merge_session_source(
                 sessions_by_id,
-                OpencodeChatSession(
-                    session_id=path.stem,
+                OpencodeSessionSource(
+                    provider_instance=provider_instance,
+                    native_session_id=path.stem,
                     diff_path=path,
                     updated_at=safe_path_mtime(path),
                 ),
             )
 
     for sqlite_db_path in sqlite_db_paths:
-        for session in _query_opencode_sessions(sqlite_db_path):
-            _merge_session(sessions_by_id, session)
+        for session in _query_opencode_sessions(sqlite_db_path, provider_instance=provider_instance):
+            _merge_session_source(sessions_by_id, session)
 
-    return _sort_sessions(list(sessions_by_id.values()), "lexical")
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
 
 
 def _find_opencode_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
     session_id: str,
     sqlite_db_paths: tuple[Path, ...],
-) -> list[ChatSession]:
-    sessions_by_id: dict[tuple[str, str], ChatSession] = {}
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
 
     for target in targets:
         session_file = target / f"{session_id}.json"
         if session_file.is_file():
-            _merge_session(
+            _merge_session_source(
                 sessions_by_id,
-                OpencodeChatSession(
-                    session_id=session_id,
+                OpencodeSessionSource(
+                    provider_instance=provider_instance,
+                    native_session_id=session_id,
                     diff_path=session_file,
                     updated_at=safe_path_mtime(session_file),
                 ),
             )
 
     for sqlite_db_path in sqlite_db_paths:
-        for session in _query_opencode_sessions(sqlite_db_path, session_id=session_id):
-            _merge_session(sessions_by_id, session)
+        for session in _query_opencode_sessions(
+            sqlite_db_path,
+            provider_instance=provider_instance,
+            session_id=session_id,
+        ):
+            _merge_session_source(sessions_by_id, session)
 
-    return _sort_sessions(list(sessions_by_id.values()), "lexical")
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
 
 
 def _list_openclaw_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
-) -> list[ChatSession]:
-    sessions_by_id: dict[tuple[str, str], ChatSession] = {}
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
 
     for target in targets:
         for agent_dir in _iter_openclaw_agent_dirs(target):
-            for session in _read_openclaw_agent_sessions(agent_dir):
-                _merge_session(sessions_by_id, session)
+            for session in _read_openclaw_agent_sessions(agent_dir, provider_instance=provider_instance):
+                _merge_session_source(sessions_by_id, session)
 
-    return _sort_sessions(list(sessions_by_id.values()), "lexical")
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
 
 
 def _find_openclaw_sessions(
     *,
+    provider_instance: ProviderInstance,
     targets: tuple[Path, ...],
     session_id: str,
-) -> list[ChatSession]:
-    sessions_by_id: dict[tuple[str, str], ChatSession] = {}
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
 
     for target in targets:
         for agent_dir in _iter_openclaw_agent_dirs(target):
-            for session in _read_openclaw_agent_sessions(agent_dir):
+            for session in _read_openclaw_agent_sessions(agent_dir, provider_instance=provider_instance):
                 if session.session_id != session_id and session_id not in session.session_keys:
                     continue
-                _merge_session(sessions_by_id, session)
+                _merge_session_source(sessions_by_id, session)
 
-    return _sort_sessions(list(sessions_by_id.values()), "lexical")
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
 
 
 def _append_unique_finding(
@@ -1275,27 +1399,19 @@ def _append_unique_finding(
 
 def _session_summary(session: ChatSession) -> dict[str, Any]:
     summary = _build_common_session_stats(session)
-    if isinstance(session, ClaudeCodeChatSession) and session.title is not None:
-        summary["title"] = session.title
-    if isinstance(session, CodexChatSession) and session.thread_name is not None:
-        summary["thread_name"] = session.thread_name
+    for key, value in session.native_fields().items():
+        if key == "session_id":
+            continue
+        summary[key] = value
     return summary
 
 
 def _session_display_name(session: ChatSession) -> str | None:
-    if isinstance(session, ClaudeCodeChatSession):
-        return session.title
-    if isinstance(session, CodexChatSession):
-        return session.thread_name
-    return None
+    return session.display_name()
 
 
 def _session_display_field_name(session: ChatSession) -> str | None:
-    if isinstance(session, ClaudeCodeChatSession) and session.title is not None:
-        return "title"
-    if isinstance(session, CodexChatSession) and session.thread_name is not None:
-        return "thread_name"
-    return None
+    return session.display_name_field()
 
 
 def _session_findings(
@@ -1310,59 +1426,33 @@ def _session_findings(
         enriched["matched_field"] = matched_field
         enriched["matched_value"] = query
         enriched["session_id"] = session.session_id
-        if isinstance(session, ClaudeCodeChatSession) and session.title is not None:
-            enriched["title"] = session.title
-        if isinstance(session, CodexChatSession) and session.thread_name is not None:
-            enriched["thread_name"] = session.thread_name
-        if isinstance(session, OpenclawChatSession) and session.session_keys:
-            enriched["session_keys"] = list(session.session_keys)
+        for key, value in session.native_fields().items():
+            if key == "session_id":
+                continue
+            enriched[key] = value
         findings.append(enriched)
 
     if findings:
         return tuple(findings)
 
-    if isinstance(session, CodexChatSession) and session.index_paths:
-        for path in session.index_paths:
-            findings.append(
-                {
-                    "provider": session.provider,
-                    "strategy": "index",
-                    "match_kind": "exact",
-                    "path": str(path),
-                    "matched_field": matched_field,
-                    "matched_value": query,
-                    "session_id": session.session_id,
-                    "thread_name": session.thread_name,
-                }
-            )
-    return tuple(findings)
+    return session.supplemental_findings(query=query, matched_field=matched_field)
 
 
 def _matched_field_name(session: ChatSession, *, query: str) -> str:
-    if session.session_id == query:
-        return "session_id"
-    if isinstance(session, OpenclawChatSession) and query in session.session_keys:
-        return "session_key"
-    if isinstance(session, CodexChatSession):
-        if session.thread_name == query:
-            return "thread_name"
-    if isinstance(session, ClaudeCodeChatSession):
-        if session.title == query:
-            return "title"
-    return "query"
+    return session.matched_field(query)
 
 
 def _merge_session(
-    sessions_by_id: dict[tuple[str, str], ChatSession],
+    sessions_by_id: dict[str, ChatSession],
     session: ChatSession,
 ) -> None:
-    session_key = (session.provider, session.session_id)
+    session_key = session.uri
     existing = sessions_by_id.get(session_key)
     if existing is None:
         sessions_by_id[session_key] = session
         return
 
-    if type(existing) is type(session):
+    if type(existing.source) is type(session.source):
         sessions_by_id[session_key] = existing.merge(session)
         return
 
@@ -1371,7 +1461,7 @@ def _merge_session(
 
 
 def _dedupe_sessions(sessions: list[ChatSession]) -> list[ChatSession]:
-    deduped: dict[tuple[str, str], ChatSession] = {}
+    deduped: dict[str, ChatSession] = {}
     for session in sessions:
         _merge_session(deduped, session)
     return _sort_sessions(list(deduped.values()), "lexical")
@@ -1405,6 +1495,67 @@ def _sort_sessions(sessions: list[ChatSession], sort: str) -> list[ChatSession]:
 
 
 def _session_preference_key(session: ChatSession) -> tuple[float, int, str]:
+    timestamp = session.sort_timestamp()
+    return (
+        timestamp if timestamp is not None else float("-inf"),
+        len(session.canonical_findings()),
+        str(session.primary_artifact_path() or ""),
+    )
+
+
+def _merge_session_source(
+    sessions_by_id: dict[tuple[object, ...], SessionSource],
+    session: SessionSource,
+) -> None:
+    session_key = session.source_identity_key()
+    existing = sessions_by_id.get(session_key)
+    if existing is None:
+        sessions_by_id[session_key] = session
+        return
+
+    if type(existing) is type(session):
+        sessions_by_id[session_key] = existing.merge(session)
+        return
+
+    if _session_source_preference_key(session) > _session_source_preference_key(existing):
+        sessions_by_id[session_key] = session
+
+
+def _dedupe_session_sources(sessions: list[SessionSource]) -> list[SessionSource]:
+    deduped: dict[tuple[object, ...], SessionSource] = {}
+    for session in sessions:
+        _merge_session_source(deduped, session)
+    return _sort_session_sources(list(deduped.values()), "lexical")
+
+
+def _sort_session_sources(sessions: list[SessionSource], sort: str) -> list[SessionSource]:
+    _validate_sort_choice(sort)
+
+    if sort == "lexical":
+        sessions.sort(key=lambda session: session.session_id)
+        return sessions
+
+    if sort == "newest":
+        sessions.sort(
+            key=lambda session: (
+                session.sort_timestamp() is None,
+                -(session.sort_timestamp() or 0.0),
+                session.session_id,
+            )
+        )
+        return sessions
+
+    sessions.sort(
+        key=lambda session: (
+            session.sort_timestamp() is None,
+            session.sort_timestamp() or 0.0,
+            session.session_id,
+        )
+    )
+    return sessions
+
+
+def _session_source_preference_key(session: SessionSource) -> tuple[float, int, str]:
     timestamp = session.sort_timestamp()
     return (
         timestamp if timestamp is not None else float("-inf"),
@@ -1523,7 +1674,7 @@ def _try_build_dialog_turn_stats(callback: Callable[[], list[Any]]) -> dict[str,
     return _build_dialog_turn_stats(turns)
 
 
-def _build_claude_code_session_stats(session: ClaudeCodeChatSession) -> dict[str, Any]:
+def _build_claude_code_session_stats(session: ClaudeCodeSessionSource) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "artifact_count": len(session.artifact_paths),
         "source_kind": session.source_kind,
@@ -1583,7 +1734,7 @@ def _build_claude_code_session_stats(session: ClaudeCodeChatSession) -> dict[str
     return payload
 
 
-def _build_codex_session_stats(session: CodexChatSession) -> dict[str, Any]:
+def _build_codex_session_stats(session: CodexSessionSource) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "rollout_artifact_count": len(session.artifact_paths),
         "session_index_count": len(session.index_paths),
@@ -1687,7 +1838,7 @@ def _build_codex_session_stats(session: CodexChatSession) -> dict[str, Any]:
     return payload
 
 
-def _build_copilot_cli_session_stats(session: CopilotCliChatSession) -> dict[str, Any]:
+def _build_copilot_cli_session_stats(session: CopilotCliSessionSource) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "session_root_present": session.session_root is not None,
         "session_file_present": session.session_file is not None,
@@ -1752,7 +1903,7 @@ def _build_copilot_cli_session_stats(session: CopilotCliChatSession) -> dict[str
     return payload
 
 
-def _build_gemini_cli_session_stats(session: GeminiCliChatSession) -> dict[str, Any]:
+def _build_gemini_cli_session_stats(session: GeminiCliSessionSource) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "artifact_count": len(session.artifact_paths),
     }
@@ -1820,7 +1971,7 @@ def _build_gemini_cli_session_stats(session: GeminiCliChatSession) -> dict[str, 
     return payload
 
 
-def _build_openclaw_session_stats(session: OpenclawChatSession) -> dict[str, Any]:
+def _build_openclaw_session_stats(session: OpenclawSessionSource) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "has_transcript": session.transcript_path is not None and session.transcript_path.is_file(),
         "has_sessions_index": session.sessions_index_path is not None and session.sessions_index_path.is_file(),
@@ -1891,7 +2042,7 @@ def _build_openclaw_session_stats(session: OpenclawChatSession) -> dict[str, Any
     return payload
 
 
-def _build_opencode_session_stats(session: OpencodeChatSession) -> dict[str, Any]:
+def _build_opencode_session_stats(session: OpencodeSessionSource) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "has_diff_artifact": session.diff_path is not None and session.diff_path.is_file(),
         "has_sqlite_db": session.sqlite_db_path is not None and session.sqlite_db_path.is_file(),
@@ -2173,7 +2324,11 @@ def _iter_openclaw_agent_dirs(root: Path) -> tuple[Path, ...]:
     )
 
 
-def _read_openclaw_agent_sessions(agent_dir: Path) -> list[OpenclawChatSession]:
+def _read_openclaw_agent_sessions(
+    agent_dir: Path,
+    *,
+    provider_instance: ProviderInstance,
+) -> list[OpenclawSessionSource]:
     sessions_dir = agent_dir / "sessions"
     index_path = sessions_dir / "sessions.json"
     transcript_paths = {
@@ -2182,7 +2337,7 @@ def _read_openclaw_agent_sessions(agent_dir: Path) -> list[OpenclawChatSession]:
         if ".reset." not in path.name
     }
 
-    sessions_by_id: dict[str, OpenclawChatSession] = {}
+    sessions_by_id: dict[tuple[object, ...], OpenclawSessionSource] = {}
     index_obj = _read_json_file(index_path)
     if isinstance(index_obj, dict):
         for session_key, entry in index_obj.items():
@@ -2201,8 +2356,9 @@ def _read_openclaw_agent_sessions(agent_dir: Path) -> list[OpenclawChatSession]:
             if transcript_path is None:
                 transcript_path = transcript_paths.get(session_id)
 
-            session = OpenclawChatSession(
-                session_id=session_id,
+            session = OpenclawSessionSource(
+                provider_instance=provider_instance,
+                native_session_id=session_id,
                 transcript_path=transcript_path,
                 sessions_index_path=index_path.resolve(),
                 session_keys=(session_key,) if isinstance(session_key, str) and session_key else (),
@@ -2211,14 +2367,19 @@ def _read_openclaw_agent_sessions(agent_dir: Path) -> list[OpenclawChatSession]:
                 or safe_path_mtime(transcript_path)
                 or safe_path_mtime(index_path),
             )
-            existing = sessions_by_id.get(session_id)
-            sessions_by_id[session_id] = session if existing is None else existing.merge(session)
+            _merge_session_source(sessions_by_id, session)
 
     for session_id, transcript_path in transcript_paths.items():
-        existing = sessions_by_id.get(session_id)
+        session_key = (
+            provider_instance.family,
+            provider_instance.identity_key(),
+            session_id,
+        )
+        existing = sessions_by_id.get(session_key)
         if existing is None:
-            sessions_by_id[session_id] = OpenclawChatSession(
-                session_id=session_id,
+            sessions_by_id[session_key] = OpenclawSessionSource(
+                provider_instance=provider_instance,
+                native_session_id=session_id,
                 transcript_path=transcript_path.resolve(),
                 sessions_index_path=index_path.resolve() if index_path.exists() else None,
                 session_keys=(),
@@ -2227,8 +2388,9 @@ def _read_openclaw_agent_sessions(agent_dir: Path) -> list[OpenclawChatSession]:
             )
             continue
 
-        sessions_by_id[session_id] = OpenclawChatSession(
-            session_id=session_id,
+        sessions_by_id[session_key] = OpenclawSessionSource(
+            provider_instance=provider_instance,
+            native_session_id=session_id,
             transcript_path=existing.transcript_path or transcript_path.resolve(),
             sessions_index_path=existing.sessions_index_path,
             session_keys=existing.session_keys,
@@ -2307,7 +2469,11 @@ def _is_claude_project_session_artifact(path: Path) -> bool:
     return "subagents" not in path.parts
 
 
-def _read_claude_project_session(path: Path) -> ClaudeCodeChatSession | None:
+def _read_claude_project_session(
+    path: Path,
+    *,
+    provider_instance: ProviderInstance,
+) -> ClaudeCodeSessionSource | None:
     if not _is_claude_project_session_artifact(path):
         return None
 
@@ -2321,15 +2487,20 @@ def _read_claude_project_session(path: Path) -> ClaudeCodeChatSession | None:
             session_id = first_session_id
         updated_at = coerce_timestamp(first_obj.get("timestamp")) or updated_at
 
-    return ClaudeCodeChatSession(
-        session_id=session_id,
+    return ClaudeCodeSessionSource(
+        provider_instance=provider_instance,
+        native_session_id=session_id,
         artifact_paths=(path,),
         source_kind="project",
         updated_at=updated_at,
     )
 
 
-def _read_claude_desktop_session(path: Path) -> ClaudeCodeChatSession | None:
+def _read_claude_desktop_session(
+    path: Path,
+    *,
+    provider_instance: ProviderInstance,
+) -> ClaudeCodeSessionSource | None:
     obj = _read_json_file(path)
     if obj is None:
         return None
@@ -2343,8 +2514,9 @@ def _read_claude_desktop_session(path: Path) -> ClaudeCodeChatSession | None:
         or coerce_timestamp(obj.get("createdAt"))
         or safe_path_mtime(path)
     )
-    return ClaudeCodeChatSession(
-        session_id=session_id,
+    return ClaudeCodeSessionSource(
+        provider_instance=provider_instance,
+        native_session_id=session_id,
         artifact_paths=(path,),
         source_kind="desktop",
         title=obj.get("title") if isinstance(obj.get("title"), str) and obj.get("title") else None,
@@ -2352,7 +2524,11 @@ def _read_claude_desktop_session(path: Path) -> ClaudeCodeChatSession | None:
     )
 
 
-def _read_codex_rollout_session(path: Path) -> CodexChatSession | None:
+def _read_codex_rollout_session(
+    path: Path,
+    *,
+    provider_instance: ProviderInstance,
+) -> CodexSessionSource | None:
     meta_obj = _read_codex_session_meta(path)
     if meta_obj is None:
         return None
@@ -2366,18 +2542,23 @@ def _read_codex_rollout_session(path: Path) -> CodexChatSession | None:
         return None
 
     updated_at = safe_path_mtime(path) or coerce_timestamp(meta_obj.get("timestamp"))
-    return CodexChatSession(
-        session_id=session_id,
+    return CodexSessionSource(
+        provider_instance=provider_instance,
+        native_session_id=session_id,
         artifact_paths=(path,),
         updated_at=updated_at,
     )
 
 
-def _read_codex_index_sessions(path: Path) -> list[CodexChatSession]:
+def _read_codex_index_sessions(
+    path: Path,
+    *,
+    provider_instance: ProviderInstance,
+) -> list[CodexSessionSource]:
     if not path.is_file():
         return []
 
-    sessions: list[CodexChatSession] = []
+    sessions: list[CodexSessionSource] = []
     try:
         with path.open("r", encoding="utf-8", errors="ignore") as handle:
             for line in handle:
@@ -2398,8 +2579,9 @@ def _read_codex_index_sessions(path: Path) -> list[CodexChatSession]:
                     thread_name = None
                 updated_at = coerce_timestamp(obj.get("updated_at")) or safe_path_mtime(path)
                 sessions.append(
-                    CodexChatSession(
-                        session_id=session_id,
+                    CodexSessionSource(
+                        provider_instance=provider_instance,
+                        native_session_id=session_id,
                         thread_name=thread_name,
                         index_paths=(path,),
                         updated_at=updated_at,
@@ -2411,7 +2593,11 @@ def _read_codex_index_sessions(path: Path) -> list[CodexChatSession]:
     return sessions
 
 
-def _read_gemini_session(path: Path) -> GeminiCliChatSession | None:
+def _read_gemini_session(
+    path: Path,
+    *,
+    provider_instance: ProviderInstance,
+) -> GeminiCliSessionSource | None:
     obj = _read_json_file(path)
     if obj is None:
         return None
@@ -2425,8 +2611,9 @@ def _read_gemini_session(path: Path) -> GeminiCliChatSession | None:
         or coerce_timestamp(obj.get("startTime"))
         or safe_path_mtime(path)
     )
-    return GeminiCliChatSession(
-        session_id=session_id,
+    return GeminiCliSessionSource(
+        provider_instance=provider_instance,
+        native_session_id=session_id,
         artifact_paths=(path,),
         updated_at=updated_at,
     )
@@ -2434,7 +2621,7 @@ def _read_gemini_session(path: Path) -> GeminiCliChatSession | None:
 
 def _gemini_session_matches(
     requested_session_id: str,
-    session: GeminiCliChatSession,
+    session: GeminiCliSessionSource,
     path: Path,
 ) -> bool:
     if requested_session_id == session.session_id:
@@ -2445,14 +2632,15 @@ def _gemini_session_matches(
 def _query_opencode_sessions(
     sqlite_db_path: Path,
     *,
+    provider_instance: ProviderInstance,
     session_id: str | None = None,
-) -> list[OpencodeChatSession]:
+) -> list[OpencodeSessionSource]:
     try:
         connection = sqlite3.connect(str(sqlite_db_path))
     except sqlite3.Error:
         return []
 
-    sessions: list[OpencodeChatSession] = []
+    sessions: list[OpencodeSessionSource] = []
     try:
         try:
             if session_id is None:
@@ -2481,8 +2669,9 @@ def _query_opencode_sessions(
         if not isinstance(row_id, str) or not row_id:
             continue
         sessions.append(
-            OpencodeChatSession(
-                session_id=row_id,
+            OpencodeSessionSource(
+                provider_instance=provider_instance,
+                native_session_id=row_id,
                 sqlite_db_path=sqlite_db_path,
                 updated_at=coerce_timestamp(time_updated),
             )
@@ -2499,5 +2688,6 @@ __all__ = [
     "format_chat_session_stats_markdown",
     "list_chat_sessions",
     "resolve_chat_sessions",
-    "supported_provider_specs",
+    "configured_provider_instances",
+    "supported_provider_families",
 ]
