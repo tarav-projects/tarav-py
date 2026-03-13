@@ -330,6 +330,14 @@ def _expected_session_summary(
     return payload
 
 
+def _strip_exact_identity(payload: dict[str, object]) -> dict[str, object]:
+    stripped = dict(payload)
+    stripped.pop("provider_family", None)
+    stripped.pop("provider_instance", None)
+    stripped.pop("uri", None)
+    return stripped
+
+
 def test_chat_session_list_returns_provider_grouped_session_ids_only(
     tmp_path: Path,
     monkeypatch,
@@ -422,7 +430,7 @@ def test_chat_session_list_returns_provider_grouped_session_ids_only(
 
     providers = {provider["provider"]: provider for provider in payload["providers"]}
     assert providers["claude-code"]["session_ids"] == [claude_session_id]
-    assert providers["claude-code"]["sessions"] == [
+    assert [_strip_exact_identity(session) for session in providers["claude-code"]["sessions"]] == [
         _expected_session_summary(
             provider="claude-code",
             session_id=claude_session_id,
@@ -438,7 +446,7 @@ def test_chat_session_list_returns_provider_grouped_session_ids_only(
         )
     ]
     assert providers["codex"]["session_ids"] == [codex_session_id]
-    assert providers["codex"]["sessions"] == [
+    assert [_strip_exact_identity(session) for session in providers["codex"]["sessions"]] == [
         _expected_session_summary(
             provider="codex",
             session_id=codex_session_id,
@@ -689,7 +697,7 @@ def test_chat_session_list_can_filter_providers_and_limit_results(
     assert providers["claude-code"]["session_ids"] == [claude_ids[0]]
     assert providers["claude-code"]["session_count"] == 1
     assert providers["codex"]["session_ids"] == [codex_ids[0]]
-    assert providers["codex"]["sessions"] == [
+    assert [_strip_exact_identity(session) for session in providers["codex"]["sessions"]] == [
         _expected_session_summary(
             provider="codex",
             session_id=codex_ids[0],
@@ -943,7 +951,7 @@ def test_chat_session_stats_summarizes_provider_inventory(
 
     providers = {provider["provider"]: provider for provider in payload["providers"]}
     assert providers["claude-code"]["session_count"] == 1
-    assert providers["claude-code"]["session_examples"] == [
+    assert [_strip_exact_identity(session) for session in providers["claude-code"]["session_examples"]] == [
         _expected_session_summary(
             provider="claude-code",
             session_id=claude_session_id,
@@ -964,7 +972,7 @@ def test_chat_session_stats_summarizes_provider_inventory(
     assert providers["codex"]["extractable_session_count"] == 1
     assert providers["codex"]["non_extractable_session_count"] == 0
     assert providers["codex"]["session_id_examples"] == [codex_session_id]
-    assert providers["codex"]["session_examples"] == [
+    assert [_strip_exact_identity(session) for session in providers["codex"]["session_examples"]] == [
         _expected_session_summary(
             provider="codex",
             session_id=codex_session_id,
@@ -1162,18 +1170,37 @@ def test_chat_session_stats_supports_unique_codex_session_queries(
     assert payload["status"] == "ok"
     assert payload["command"] == "chat session stats"
     assert payload["query"] == thread_name
-    assert payload["session"] == {
-        "provider": "codex",
-        "session_id": session_id,
-        "display_name": thread_name,
-        "display_name_field": "thread_name",
-        "matched_field": "thread_name",
-        "matched_value": thread_name,
-        "updated_at": "2026-03-10T12:13:33.263Z",
-        "extractable": True,
-        "primary_artifact_path": str(rollout_path.resolve()),
-        "canonical_finding_count": 1,
-    }
+    assert payload["session"]["provider"] == "codex"
+    assert payload["session"]["provider_family"] == "codex"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["session"]["display_name"] == thread_name
+    assert payload["session"]["display_name_field"] == "thread_name"
+    assert payload["session"]["matched_field"] == "thread_name"
+    assert payload["session"]["matched_value"] == thread_name
+    assert payload["session"]["updated_at"] == "2026-03-10T12:13:33.263Z"
+    assert payload["session"]["extractable"] is True
+    assert payload["session"]["primary_artifact_path"] == str(rollout_path.resolve())
+    assert payload["session"]["canonical_finding_count"] == 1
+    assert payload["session"]["uri"].startswith("agentos://chat-session/codex/")
+    provider_instance = payload["session"]["provider_instance"]
+    assert provider_instance["fingerprint"]
+    assert provider_instance["anchors"] == [
+        {
+            "role": "sessions_root",
+            "path": str((home / ".codex" / "sessions").resolve()),
+            "slot": "home",
+        },
+        {
+            "role": "archive_root",
+            "path": str((home / ".codex" / "archived_sessions").resolve()),
+            "slot": "home",
+        },
+        {
+            "role": "session_index",
+            "path": str((home / ".codex" / "session_index.jsonl").resolve()),
+            "slot": "home",
+        },
+    ]
     assert payload["provider_stats"] == {
         "rollout_artifact_count": 1,
         "session_index_count": 1,
@@ -1246,6 +1273,70 @@ def test_chat_session_stats_rejects_ambiguous_session_queries(
     assert main(["chat", "session", "stats", thread_name]) == 1
     stderr = capsys.readouterr().err
     assert "multiple sessions matched query duplicate-thread-name" in stderr
+
+
+def test_chat_session_stats_supports_uri_resolution_for_duplicate_codex_session_ids(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    session_id = "019cd2fe-ff22-70f2-a131-2c00c0b21166"
+    default_rollout = (
+        home
+        / ".codex"
+        / "sessions"
+        / "2026"
+        / "03"
+        / "10"
+        / f"rollout-2026-03-10T12-13-33-{session_id}.jsonl"
+    )
+    extra_codex_home = tmp_path / "codex-alt"
+    extra_rollout = (
+        extra_codex_home
+        / "sessions"
+        / "2026"
+        / "03"
+        / "11"
+        / f"rollout-2026-03-11T12-13-33-{session_id}.jsonl"
+    )
+    _write_codex_rollout(default_rollout, session_id=session_id)
+    _write_codex_rollout(extra_rollout, session_id=session_id)
+    _write_global_config(
+        tmp_path / "agentos-home" / "config.json",
+        provider_instances=[{"provider": "codex", "home": str(extra_codex_home)}],
+    )
+
+    assert main(["chat", "session", "stats", session_id]) == 1
+    stderr = capsys.readouterr().err
+    assert f"multiple sessions matched query {session_id}" in stderr
+    assert "agentos://chat-session/codex/" in stderr
+
+    assert main(["chat", "session", "list", "--provider", "codex"]) == 0
+    list_payload = json.loads(capsys.readouterr().out)
+    codex_provider = list_payload["providers"][0]
+    target_session = next(
+        session
+        for session in codex_provider["sessions"]
+        if session["primary_artifact_path"] == str(extra_rollout.resolve())
+    )
+    uri = target_session["uri"]
+    uri_prefix, fingerprint, uri_session_id = uri.rsplit("/", 2)
+    short_uri = f"{uri_prefix}/{fingerprint[:12]}/{uri_session_id}"
+
+    assert main(["chat", "session", "stats", short_uri]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["query"] == short_uri
+    assert payload["session"]["matched_field"] == "uri"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["session"]["uri"] == uri
+    assert payload["session"]["primary_artifact_path"] == str(extra_rollout.resolve())
+    assert payload["session"]["provider_instance"]["fingerprint"] == fingerprint
 
 
 def test_chat_session_stats_supports_unique_claude_session_queries(

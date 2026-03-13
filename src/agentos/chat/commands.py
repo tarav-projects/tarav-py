@@ -55,6 +55,15 @@ def _normalize_updated_since(value: str | None) -> float | None:
     return time.time() - (amount * multiplier)
 
 
+def _normalize_session_query(query: str) -> str:
+    normalized = query.strip()
+    if normalized.startswith("agentos://chat-session/"):
+        if not normalized[len("agentos://chat-session/"):]:
+            raise CliError("session query must not be empty")
+        return normalized
+    return validate_string_for_path(normalized, field_name="session query")
+
+
 def _cmd_chat_session_list(args: argparse.Namespace) -> int:
     payload = list_chat_sessions(
         sort=args.sort,
@@ -69,7 +78,7 @@ def _cmd_chat_session_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_chat_session_find(args: argparse.Namespace) -> int:
-    query = validate_string_for_path(args.query, field_name="session query")
+    query = _normalize_session_query(args.query)
     payload = find_chat_session(
         query,
         include_grep=args.grep,
@@ -83,7 +92,7 @@ def _cmd_chat_session_stats(args: argparse.Namespace) -> int:
     providers = tuple(args.providers) if args.providers else None
     if args.session_query is not None:
         payload = chat_session_resolved_stats(
-            validate_string_for_path(args.session_query, field_name="session query"),
+            _normalize_session_query(args.session_query),
             providers=providers,
         )
         if args.output_format == "markdown":
@@ -113,7 +122,7 @@ def _normalize_optional_session_query(
             return None
         raise CliError("session query is required unless --file is provided")
 
-    return validate_string_for_path(session_query, field_name="session query")
+    return _normalize_session_query(session_query)
 
 
 def _cmd_chat_session_extract(args: argparse.Namespace) -> int:

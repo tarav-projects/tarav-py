@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import unquote
 
 from agentos._core.errors import CliError
 from agentos._core.project import (
@@ -28,6 +29,7 @@ from agentos.chat.sessions import (
     OpenclawSessionSource,
     OpencodeSessionSource,
     ProviderInstance,
+    ProviderInstanceAnchor,
     SessionSource,
     coerce_timestamp,
     safe_path_mtime,
@@ -54,6 +56,8 @@ class ProviderHomeSlot:
     direct_relpaths: tuple[str, ...]
     grep_relpaths: tuple[str, ...] = ()
     sqlite_db_relpaths: tuple[str, ...] = ()
+    direct_anchor_roles: tuple[str, ...] = ()
+    sqlite_db_anchor_roles: tuple[str, ...] = ()
 
     def build_paths(self, *, home: Path) -> tuple[tuple[Path, ...], tuple[Path, ...], tuple[Path, ...]]:
         return (
@@ -62,14 +66,57 @@ class ProviderHomeSlot:
             tuple(_join_provider_home(home, relpath) for relpath in self.sqlite_db_relpaths),
         )
 
+    def build_anchors(self, *, home: Path) -> tuple[ProviderInstanceAnchor, ...]:
+        direct_roles = self.direct_anchor_roles or tuple(
+            f"direct_target_{index + 1}" for index, _ in enumerate(self.direct_relpaths)
+        )
+        sqlite_roles = self.sqlite_db_anchor_roles or tuple(
+            f"sqlite_db_{index + 1}" for index, _ in enumerate(self.sqlite_db_relpaths)
+        )
+        if len(direct_roles) != len(self.direct_relpaths):
+            raise ValueError(f"provider slot {self.key} direct anchor roles must match direct relpaths")
+        if len(sqlite_roles) != len(self.sqlite_db_relpaths):
+            raise ValueError(f"provider slot {self.key} sqlite anchor roles must match sqlite db relpaths")
+
+        anchors = [
+            ProviderInstanceAnchor(
+                role=role,
+                path=_join_provider_home(home, relpath),
+                slot=self.key,
+            )
+            for role, relpath in zip(direct_roles, self.direct_relpaths, strict=True)
+        ]
+        anchors.extend(
+            ProviderInstanceAnchor(
+                role=role,
+                path=_join_provider_home(home, relpath),
+                slot=self.key,
+            )
+            for role, relpath in zip(sqlite_roles, self.sqlite_db_relpaths, strict=True)
+        )
+        return tuple(anchors)
+
 
 @dataclass(frozen=True)
 class ProviderFamily:
     family: str
     home_slots: tuple[ProviderHomeSlot, ...]
+    discover_sources: Callable[[ProviderInstanceContext], list[SessionSource]]
+    find_sources: Callable[[ProviderInstanceContext, str], list[SessionSource]]
+    build_source_stats: Callable[[SessionSource], dict[str, Any]]
 
     def supported_home_keys(self) -> tuple[str, ...]:
         return tuple(slot.key for slot in self.home_slots)
+
+    def discover_sessions(self, context: ProviderInstanceContext) -> list[ChatSession]:
+        return _wrap_session_sources(self.discover_sources(context))
+
+    def find_sessions(
+        self,
+        context: ProviderInstanceContext,
+        query: str,
+    ) -> list[ChatSession]:
+        return _wrap_session_sources(self.find_sources(context, query))
 
     def default_instance(self) -> ProviderInstance:
         return self.instance_from_homes(
@@ -121,6 +168,7 @@ class ProviderFamily:
         direct_targets: list[Path] = []
         grep_targets: list[Path] = []
         sqlite_db_paths: list[Path] = []
+        anchors: list[ProviderInstanceAnchor] = []
 
         for slot in self.home_slots:
             raw_home = homes.get(slot.key)
@@ -139,6 +187,7 @@ class ProviderFamily:
             direct_targets.extend(slot_direct_paths)
             grep_targets.extend(slot_grep_paths or slot_direct_paths)
             sqlite_db_paths.extend(slot_sqlite_db_paths)
+            anchors.extend(slot.build_anchors(home=normalized_home))
 
         if not direct_targets and not sqlite_db_paths:
             supported_keys = ", ".join(self.supported_home_keys())
@@ -152,6 +201,7 @@ class ProviderFamily:
             direct_targets=_unique_paths(tuple(direct_targets)),
             grep_targets=_unique_paths(tuple(grep_targets)),
             sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
+            anchors=tuple(anchors),
             is_default=is_default,
         )
 
@@ -171,6 +221,61 @@ class ProviderInstanceContext:
     sqlite_missing_db_paths: tuple[Path, ...]
 
 
+@dataclass(frozen=True)
+class ChatSessionUriQuery:
+    provider_family: str
+    instance_fingerprint_prefix: str
+    session_id: str
+
+
+def _make_direct_session_discovery(
+    discover_sources: Callable[..., list[SessionSource]],
+    *,
+    include_sqlite: bool = False,
+) -> Callable[[ProviderInstanceContext], list[SessionSource]]:
+    def handler(context: ProviderInstanceContext) -> list[SessionSource]:
+        kwargs: dict[str, Any] = {
+            "provider_instance": context.provider_instance,
+            "targets": context.direct_existing_targets,
+        }
+        if include_sqlite:
+            kwargs["sqlite_db_paths"] = context.sqlite_existing_db_paths
+        return discover_sources(**kwargs)
+
+    return handler
+
+
+def _make_direct_session_finder(
+    find_sources: Callable[..., list[SessionSource]],
+    *,
+    query_arg: str,
+    include_sqlite: bool = False,
+) -> Callable[[ProviderInstanceContext, str], list[SessionSource]]:
+    def handler(context: ProviderInstanceContext, query: str) -> list[SessionSource]:
+        kwargs: dict[str, Any] = {
+            "provider_instance": context.provider_instance,
+            "targets": context.direct_existing_targets,
+            query_arg: query,
+        }
+        if include_sqlite:
+            kwargs["sqlite_db_paths"] = context.sqlite_existing_db_paths
+        return find_sources(**kwargs)
+
+    return handler
+
+
+def _make_typed_session_stats_builder(
+    source_type: type[SessionSource],
+    build_source_stats: Callable[[Any], dict[str, Any]],
+) -> Callable[[SessionSource], dict[str, Any]]:
+    def handler(source: SessionSource) -> dict[str, Any]:
+        if not isinstance(source, source_type):
+            raise CliError(f"chat session stats is not implemented for provider {source.provider_family}")
+        return build_source_stats(source)
+
+    return handler
+
+
 def supported_provider_families() -> tuple[ProviderFamily, ...]:
     return (
         ProviderFamily(
@@ -180,7 +285,17 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                     key="home",
                     default_home="~/.copilot",
                     direct_relpaths=("session-state",),
+                    direct_anchor_roles=("session_state_root",),
                 ),
+            ),
+            discover_sources=_make_direct_session_discovery(_list_copilot_sessions),
+            find_sources=_make_direct_session_finder(
+                _find_copilot_sessions,
+                query_arg="session_id",
+            ),
+            build_source_stats=_make_typed_session_stats_builder(
+                CopilotCliSessionSource,
+                _build_copilot_cli_session_stats,
             ),
         ),
         ProviderFamily(
@@ -190,7 +305,17 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                     key="home",
                     default_home="~/.gemini",
                     direct_relpaths=("tmp", "history"),
+                    direct_anchor_roles=("tmp_root", "history_root"),
                 ),
+            ),
+            discover_sources=_make_direct_session_discovery(_list_gemini_sessions),
+            find_sources=_make_direct_session_finder(
+                _find_gemini_sessions,
+                query_arg="session_id",
+            ),
+            build_source_stats=_make_typed_session_stats_builder(
+                GeminiCliSessionSource,
+                _build_gemini_cli_session_stats,
             ),
         ),
         ProviderFamily(
@@ -200,7 +325,17 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                     key="home",
                     default_home="~/.codex",
                     direct_relpaths=("sessions", "archived_sessions", "session_index.jsonl"),
+                    direct_anchor_roles=("sessions_root", "archive_root", "session_index"),
                 ),
+            ),
+            discover_sources=_make_direct_session_discovery(_list_codex_sessions),
+            find_sources=_make_direct_session_finder(
+                _find_codex_sessions,
+                query_arg="query",
+            ),
+            build_source_stats=_make_typed_session_stats_builder(
+                CodexSessionSource,
+                _build_codex_session_stats,
             ),
         ),
         ProviderFamily(
@@ -211,13 +346,24 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                     default_home="~/.claude",
                     direct_relpaths=("projects",),
                     grep_relpaths=("",),
+                    direct_anchor_roles=("projects_root",),
                 ),
                 ProviderHomeSlot(
                     key="desktop",
                     default_home="~/Library/Application Support/Claude",
                     direct_relpaths=("claude-code-sessions",),
                     grep_relpaths=("claude-code-sessions",),
+                    direct_anchor_roles=("desktop_sessions_root",),
                 ),
+            ),
+            discover_sources=_make_direct_session_discovery(_list_claude_code_sessions),
+            find_sources=_make_direct_session_finder(
+                _find_claude_code_sessions,
+                query_arg="query",
+            ),
+            build_source_stats=_make_typed_session_stats_builder(
+                ClaudeCodeSessionSource,
+                _build_claude_code_session_stats,
             ),
         ),
         ProviderFamily(
@@ -229,7 +375,22 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                     direct_relpaths=("storage/session_diff",),
                     grep_relpaths=("storage", "log"),
                     sqlite_db_relpaths=("opencode.db",),
+                    direct_anchor_roles=("session_diff_root",),
+                    sqlite_db_anchor_roles=("sqlite_db",),
                 ),
+            ),
+            discover_sources=_make_direct_session_discovery(
+                _list_opencode_sessions,
+                include_sqlite=True,
+            ),
+            find_sources=_make_direct_session_finder(
+                _find_opencode_sessions,
+                query_arg="session_id",
+                include_sqlite=True,
+            ),
+            build_source_stats=_make_typed_session_stats_builder(
+                OpencodeSessionSource,
+                _build_opencode_session_stats,
             ),
         ),
         ProviderFamily(
@@ -239,7 +400,17 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                     key="home",
                     default_home="~/.openclaw",
                     direct_relpaths=("agents",),
+                    direct_anchor_roles=("agents_root",),
                 ),
+            ),
+            discover_sources=_make_direct_session_discovery(_list_openclaw_sessions),
+            find_sources=_make_direct_session_finder(
+                _find_openclaw_sessions,
+                query_arg="session_id",
+            ),
+            build_source_stats=_make_typed_session_stats_builder(
+                OpenclawSessionSource,
+                _build_openclaw_session_stats,
             ),
         ),
     )
@@ -375,6 +546,10 @@ def _provider_instance_from_config(raw_instance: dict[str, object], *, index: in
         direct_targets=resolved_direct_targets,
         grep_targets=resolved_grep_targets,
         sqlite_db_paths=resolved_sqlite_db_paths,
+        anchors=_build_explicit_provider_instance_anchors(
+            direct_targets=resolved_direct_targets,
+            sqlite_db_paths=resolved_sqlite_db_paths,
+        ),
         is_default=False,
     )
 
@@ -435,6 +610,22 @@ def _normalize_provider_home(home: object, *, field_name: str) -> str:
 
 def _resolve_raw_paths(raw_paths: tuple[str, ...]) -> tuple[Path, ...]:
     return _unique_paths(tuple(Path(raw_path).expanduser().resolve() for raw_path in raw_paths))
+
+
+def _build_explicit_provider_instance_anchors(
+    *,
+    direct_targets: tuple[Path, ...],
+    sqlite_db_paths: tuple[Path, ...],
+) -> tuple[ProviderInstanceAnchor, ...]:
+    anchors = [
+        ProviderInstanceAnchor(role=f"direct_target_{index + 1}", path=path)
+        for index, path in enumerate(direct_targets)
+    ]
+    anchors.extend(
+        ProviderInstanceAnchor(role=f"sqlite_db_{index + 1}", path=path)
+        for index, path in enumerate(sqlite_db_paths)
+    )
+    return tuple(anchors)
 
 
 def _join_provider_home(home: Path, relpath: str) -> Path:
@@ -668,6 +859,16 @@ def format_chat_session_resolved_stats_markdown(payload: dict[str, object]) -> s
         provider = session.get("provider")
         if provider is not None:
             lines.append(f"- Provider: {provider}")
+
+        uri = session.get("uri")
+        if uri is not None:
+            lines.append(f"- URI: {uri}")
+
+        provider_instance = session.get("provider_instance")
+        if isinstance(provider_instance, dict):
+            fingerprint = provider_instance.get("fingerprint")
+            if fingerprint is not None:
+                lines.append(f"- Provider instance: {fingerprint}")
 
         session_id = session.get("session_id")
         if session_id is not None:
@@ -960,6 +1161,9 @@ def _build_common_session_stats(
 ) -> dict[str, Any]:
     payload = {
         "provider": session.provider,
+        "provider_family": session.provider_family,
+        "provider_instance": session.provider_instance.summary(),
+        "uri": session.uri,
         "session_id": session.session_id,
         "display_name": _session_display_name(session),
         "display_name_field": _session_display_field_name(session),
@@ -975,20 +1179,41 @@ def _build_common_session_stats(
 
 
 def _build_provider_session_stats(session: ChatSession) -> dict[str, Any]:
-    source = session.source
-    if isinstance(source, ClaudeCodeSessionSource):
-        return _build_claude_code_session_stats(source)
-    if isinstance(source, CodexSessionSource):
-        return _build_codex_session_stats(source)
-    if isinstance(source, CopilotCliSessionSource):
-        return _build_copilot_cli_session_stats(source)
-    if isinstance(source, GeminiCliSessionSource):
-        return _build_gemini_cli_session_stats(source)
-    if isinstance(source, OpenclawSessionSource):
-        return _build_openclaw_session_stats(source)
-    if isinstance(source, OpencodeSessionSource):
-        return _build_opencode_session_stats(source)
-    raise CliError(f"chat session stats is not implemented for provider {session.provider_family}")
+    provider_family = _provider_family_for_name(session.provider_family)
+    if provider_family is None:
+        raise CliError(f"chat session stats is not implemented for provider {session.provider_family}")
+    return provider_family.build_source_stats(session.source)
+
+
+def _parse_chat_session_uri(query: str) -> ChatSessionUriQuery | None:
+    prefix = "agentos://chat-session/"
+    if not query.startswith(prefix):
+        return None
+
+    remainder = query[len(prefix):]
+    parts = remainder.split("/", 2)
+    if len(parts) != 3:
+        return None
+
+    provider_family, instance_fingerprint_prefix, session_id = (unquote(part) for part in parts)
+    if not provider_family or not instance_fingerprint_prefix or not session_id:
+        return None
+    return ChatSessionUriQuery(
+        provider_family=provider_family,
+        instance_fingerprint_prefix=instance_fingerprint_prefix.lower(),
+        session_id=session_id,
+    )
+
+
+def _session_matches_uri_query(
+    session: ChatSession,
+    uri_query: ChatSessionUriQuery,
+) -> bool:
+    return (
+        session.provider_family == uri_query.provider_family
+        and session.session_id == uri_query.session_id
+        and session.provider_instance.matches_fingerprint_prefix(uri_query.instance_fingerprint_prefix)
+    )
 
 
 def _strategies_attempted(
@@ -1005,108 +1230,25 @@ def _strategies_attempted(
 
 
 def _discover_direct_provider_sessions(context: ProviderInstanceContext) -> list[ChatSession]:
-    provider = context.provider_family.family
-    if provider == "claude-code":
-        return _wrap_session_sources(
-            _list_claude_code_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-            )
-        )
-    if provider == "codex":
-        return _wrap_session_sources(
-            _list_codex_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-            )
-        )
-    if provider == "copilot-cli":
-        return _wrap_session_sources(
-            _list_copilot_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-            )
-        )
-    if provider == "gemini-cli":
-        return _wrap_session_sources(
-            _list_gemini_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-            )
-        )
-    if provider == "opencode":
-        return _wrap_session_sources(
-            _list_opencode_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-                sqlite_db_paths=context.sqlite_existing_db_paths,
-            )
-        )
-    if provider == "openclaw":
-        return _wrap_session_sources(
-            _list_openclaw_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-            )
-        )
-    return []
+    return context.provider_family.discover_sessions(context)
 
 
 def _find_direct_provider_sessions(
     context: ProviderInstanceContext,
     query: str,
 ) -> list[ChatSession]:
-    provider = context.provider_family.family
-    if provider == "claude-code":
-        return _wrap_session_sources(
-            _find_claude_code_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-                query=query,
-            )
-        )
-    if provider == "codex":
-        return _wrap_session_sources(
-            _find_codex_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-                query=query,
-            )
-        )
-    if provider == "copilot-cli":
-        return _wrap_session_sources(
-            _find_copilot_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-                session_id=query,
-            )
-        )
-    if provider == "gemini-cli":
-        return _wrap_session_sources(
-            _find_gemini_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-                session_id=query,
-            )
-        )
-    if provider == "opencode":
-        return _wrap_session_sources(
-            _find_opencode_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-                session_id=query,
-                sqlite_db_paths=context.sqlite_existing_db_paths,
-            )
-        )
-    if provider == "openclaw":
-        return _wrap_session_sources(
-            _find_openclaw_sessions(
-                provider_instance=context.provider_instance,
-                targets=context.direct_existing_targets,
-                session_id=query,
-            )
-        )
-    return []
+    uri_query = _parse_chat_session_uri(query)
+    if uri_query is not None:
+        if context.provider_family.family != uri_query.provider_family:
+            return []
+        if not context.provider_instance.matches_fingerprint_prefix(uri_query.instance_fingerprint_prefix):
+            return []
+        return [
+            session
+            for session in _discover_direct_provider_sessions(context)
+            if _session_matches_uri_query(session, uri_query)
+        ]
+    return context.provider_family.find_sessions(context, query)
 
 
 def _wrap_session_sources(session_sources: list[SessionSource]) -> list[ChatSession]:
@@ -1426,6 +1568,8 @@ def _session_findings(
         enriched["matched_field"] = matched_field
         enriched["matched_value"] = query
         enriched["session_id"] = session.session_id
+        enriched["uri"] = session.uri
+        enriched["provider_instance_fingerprint"] = session.provider_instance.fingerprint
         for key, value in session.native_fields().items():
             if key == "session_id":
                 continue
@@ -1439,6 +1583,9 @@ def _session_findings(
 
 
 def _matched_field_name(session: ChatSession, *, query: str) -> str:
+    uri_query = _parse_chat_session_uri(query)
+    if uri_query is not None and _session_matches_uri_query(session, uri_query):
+        return "uri"
     return session.matched_field(query)
 
 
@@ -2140,7 +2287,7 @@ def _format_resolved_session_choices(sessions: list[ChatSession]) -> str:
     choices: list[str] = []
     for session in sessions:
         display_name = _session_display_name(session)
-        choice = f"{session.provider}:{session.session_id}"
+        choice = session.uri
         if display_name is not None:
             choice += f" ({display_name})"
         choices.append(choice)

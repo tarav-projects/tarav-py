@@ -929,6 +929,74 @@ def test_chat_session_extract_uses_configured_extra_codex_home(
     assert payload[1]["text"] == "codex reply"
 
 
+def test_chat_session_extract_supports_uri_resolution_for_duplicate_codex_session_ids(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    session_id = "119ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    default_codex_path = (
+        home
+        / ".codex"
+        / "sessions"
+        / "2026"
+        / "03"
+        / "08"
+        / f"rollout-2026-03-08T01-05-38-{session_id}.jsonl"
+    )
+    extra_codex_home = tmp_path / "codex-alt"
+    extra_codex_path = (
+        extra_codex_home
+        / "sessions"
+        / "2026"
+        / "03"
+        / "09"
+        / f"rollout-2026-03-09T01-05-38-{session_id}.jsonl"
+    )
+    _write_codex_rollout(
+        default_codex_path,
+        session_id=session_id,
+        user_text="default codex user",
+        assistant_text="default codex assistant",
+    )
+    _write_codex_rollout(
+        extra_codex_path,
+        session_id=session_id,
+        user_text="extra codex user",
+        assistant_text="extra codex assistant",
+    )
+    _write_global_config(
+        tmp_path / "agentos-home" / "config.json",
+        provider_instances=[{"provider": "codex", "home": str(extra_codex_home)}],
+    )
+
+    assert main(["chat", "session", "extract", session_id]) == 1
+    assert f"multiple extractable session artifacts found for query {session_id}" in capsys.readouterr().err
+
+    assert main(["chat", "session", "list", "--provider", "codex"]) == 0
+    list_payload = json.loads(capsys.readouterr().out)
+    codex_provider = list_payload["providers"][0]
+    target_session = next(
+        session
+        for session in codex_provider["sessions"]
+        if session["primary_artifact_path"] == str(extra_codex_path.resolve())
+    )
+    uri = target_session["uri"]
+    uri_prefix, fingerprint, uri_session_id = uri.rsplit("/", 2)
+    short_uri = f"{uri_prefix}/{fingerprint[:12]}/{uri_session_id}"
+
+    assert main(["chat", "session", "extract", short_uri]) == 0
+    payload = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+
+    assert payload[0]["text"] == "extra codex user"
+    assert payload[1]["text"] == "extra codex assistant"
+
+
 def test_chat_session_extract_uses_configured_claude_code_homes(
     tmp_path: Path,
     monkeypatch,

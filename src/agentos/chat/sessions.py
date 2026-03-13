@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -95,18 +96,86 @@ def _build_path_finding(
 
 
 @dataclass(frozen=True)
+class ProviderInstanceAnchor:
+    role: str
+    path: Path
+    slot: str | None = None
+
+    def identity_key(self) -> tuple[str, str | None, str]:
+        return (self.role, self.slot, str(self.path))
+
+    def summary(self) -> dict[str, str]:
+        payload = {
+            "role": self.role,
+            "path": str(self.path),
+        }
+        if self.slot is not None:
+            payload["slot"] = self.slot
+        return payload
+
+
+def _provider_instance_fingerprint(
+    *,
+    family: str,
+    anchors: tuple[ProviderInstanceAnchor, ...],
+) -> str:
+    digest = hashlib.sha256()
+    digest.update(family.encode("utf-8"))
+    for anchor in anchors:
+        digest.update(b"\0")
+        digest.update(anchor.role.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update((anchor.slot or "").encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(anchor.path).encode("utf-8"))
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True)
 class ProviderInstance:
     family: str
     homes: tuple[tuple[str, Path], ...] = ()
     direct_targets: tuple[Path, ...] = ()
     grep_targets: tuple[Path, ...] = ()
     sqlite_db_paths: tuple[Path, ...] = ()
+    anchors: tuple[ProviderInstanceAnchor, ...] = ()
     is_default: bool = False
 
     def homes_map(self) -> dict[str, Path]:
         return {key: path for key, path in self.homes}
 
+    @property
+    def fingerprint(self) -> str:
+        if self.anchors:
+            return _provider_instance_fingerprint(
+                family=self.family,
+                anchors=self.anchors,
+            )
+
+        fallback_anchors = tuple(
+            ProviderInstanceAnchor(role=f"direct_target_{index + 1}", path=path)
+            for index, path in enumerate(self.direct_targets)
+        ) + tuple(
+            ProviderInstanceAnchor(role=f"sqlite_db_{index + 1}", path=path)
+            for index, path in enumerate(self.sqlite_db_paths)
+        )
+        return _provider_instance_fingerprint(
+            family=self.family,
+            anchors=fallback_anchors,
+        )
+
+    def matches_fingerprint_prefix(self, fingerprint_prefix: str) -> bool:
+        normalized_prefix = fingerprint_prefix.strip().lower()
+        if not normalized_prefix:
+            return False
+        return self.fingerprint.startswith(normalized_prefix)
+
     def identity_key(self) -> tuple[object, ...]:
+        if self.anchors:
+            return (
+                self.family,
+                tuple(anchor.identity_key() for anchor in self.anchors),
+            )
         return (
             self.family,
             tuple((key, str(path)) for key, path in self.homes),
@@ -118,8 +187,11 @@ class ProviderInstance:
     def summary(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "family": self.family,
+            "fingerprint": self.fingerprint,
             "is_default": self.is_default,
         }
+        if self.anchors:
+            payload["anchors"] = [anchor.summary() for anchor in self.anchors]
         if self.homes:
             payload["homes"] = {key: str(path) for key, path in self.homes}
         if self.direct_targets:
@@ -131,15 +203,7 @@ class ProviderInstance:
         return payload
 
     def uri_component(self) -> str:
-        parts: list[str] = []
-        if self.homes:
-            parts.extend(f"home:{key}={path}" for key, path in self.homes)
-        else:
-            parts.extend(f"direct:{path}" for path in self.direct_targets)
-            parts.extend(f"sqlite:{path}" for path in self.sqlite_db_paths)
-        if not parts:
-            parts.append(f"family:{self.family}")
-        return quote("|".join(parts), safe="")
+        return quote(self.fingerprint, safe="")
 
 
 @dataclass(frozen=True)
@@ -224,6 +288,12 @@ def _build_chat_session_uri(source: SessionSource) -> str:
 class ChatSession:
     source: SessionSource
 
+    def query_fields(self) -> tuple[tuple[str, str], ...]:
+        return (
+            ("uri", self.uri),
+            ("provider_instance_fingerprint", self.provider_instance.fingerprint),
+        ) + self.source.query_fields()
+
     @property
     def uri(self) -> str:
         return _build_chat_session_uri(self.source)
@@ -268,10 +338,13 @@ class ChatSession:
         return self.source.native_fields()
 
     def matches_query(self, query: str) -> bool:
-        return self.source.matches_query(query)
+        return any(value == query for _, value in self.query_fields())
 
     def matched_field(self, query: str) -> str:
-        return self.source.matched_field(query)
+        for field_name, value in self.query_fields():
+            if value == query:
+                return field_name
+        return "query"
 
     def supplemental_findings(
         self,
@@ -608,6 +681,7 @@ __all__ = [
     "OpenclawSessionSource",
     "OpencodeSessionSource",
     "ProviderInstance",
+    "ProviderInstanceAnchor",
     "SessionSource",
     "coerce_timestamp",
     "safe_path_mtime",
