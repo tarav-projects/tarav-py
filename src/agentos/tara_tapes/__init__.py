@@ -1,4 +1,4 @@
-from .check import check_tape, check_tapes, discover_tape_candidates
+from .check import check_tape
 from .commands import register_tara_tapes_commands
 from .core import (
     append_tara_tape_stage_record,
@@ -20,9 +20,7 @@ __all__ = [
     "append_tara_tape_stage_record",
     "bootstrap_tara_tape",
     "check_tape",
-    "check_tapes",
     "commit_tara_tape_stage",
-    "discover_tape_candidates",
     "get_tara_tape_manifest_path",
     "get_tara_tape_segments_dir",
     "get_tara_tape_stage_dir",

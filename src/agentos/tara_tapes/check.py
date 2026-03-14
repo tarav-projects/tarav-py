@@ -11,37 +11,6 @@ from agentos.tara_tapes.core import (
 )
 
 
-def _has_jsonl_files(path: Path) -> bool:
-    return any(f.suffix == ".jsonl" for f in path.iterdir() if f.is_file())
-
-
-def _is_tape_candidate(path: Path) -> bool:
-    if not path.is_dir():
-        return False
-    # Has a manifest — clearly a tape (conformant or not)
-    if (path / MANIFEST_FILENAME).exists():
-        return True
-    # Has JSONL files directly — likely a non-conformant tape
-    if _has_jsonl_files(path):
-        return True
-    # Has a segments/ subdir with JSONL — likely a tape missing its manifest
-    segments = path / SEGMENTS_DIRNAME
-    if segments.is_dir() and _has_jsonl_files(segments):
-        return True
-    return False
-
-
-def discover_tape_candidates(root: Path) -> list[Path]:
-    root = root.expanduser().resolve()
-    if not root.is_dir():
-        return []
-    candidates: list[Path] = []
-    for child in sorted(root.iterdir(), key=lambda p: p.name):
-        if _is_tape_candidate(child):
-            candidates.append(child)
-    return candidates
-
-
 def check_tape(tape_path: Path) -> dict[str, object]:
     tape_path = tape_path.expanduser().resolve()
     issues: list[str] = []
@@ -141,28 +110,3 @@ def _check_jsonl_file(path: Path) -> list[str]:
     except OSError as exc:
         issues.append(f"cannot read file: {exc}")
     return issues
-
-
-def check_tapes(root: Path) -> dict[str, object]:
-    root = root.expanduser().resolve()
-    candidates = discover_tape_candidates(root)
-
-    results: list[dict[str, object]] = []
-    conformant_count = 0
-    non_conformant_count = 0
-
-    for tape_path in candidates:
-        result = check_tape(tape_path)
-        results.append(result)
-        if result["conformant"]:
-            conformant_count += 1
-        else:
-            non_conformant_count += 1
-
-    return {
-        "root_path": str(root),
-        "tape_count": len(candidates),
-        "conformant_count": conformant_count,
-        "non_conformant_count": non_conformant_count,
-        "tapes": results,
-    }

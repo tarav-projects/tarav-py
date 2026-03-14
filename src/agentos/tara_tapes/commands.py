@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from agentos._core.json_input import load_json_arg, load_json_object_arg
-from agentos.tara_tapes.check import check_tape, check_tapes
+from agentos.tara_tapes.check import check_tape
 from agentos.tara_tapes.core import (
     append_tara_tape_stage_record,
     bootstrap_tara_tape,
@@ -148,18 +148,15 @@ def _cmd_tara_tapes_verify(args: argparse.Namespace) -> int:
 
 def _cmd_tara_tapes_check(args: argparse.Namespace) -> int:
     root = _resolve_root(args.root)
-    if args.single:
-        result = check_tape(root)
-    else:
-        result = check_tapes(root)
+    result = check_tape(root)
     print(json.dumps(result, indent=2))
     return 0
 
 
 def _cmd_tara_tapes_quarantine(args: argparse.Namespace) -> int:
-    root = _resolve_root(args.root)
+    tape_paths = [Path(p) for p in args.tapes]
     quarantine_home = _resolve_root(args.quarantine_home) if args.quarantine_home else None
-    result = quarantine_tapes(root, quarantine_home=quarantine_home, dry_run=args.dry_run)
+    result = quarantine_tapes(tape_paths, quarantine_home=quarantine_home, dry_run=args.dry_run)
     print(json.dumps(result, indent=2))
     return 0
 
@@ -315,31 +312,24 @@ def register_tara_tapes_commands(subparsers: argparse._SubParsersAction) -> None
 
     check_parser = tara_tapes_subparsers.add_parser(
         "check",
-        help="Check tara-tapes-v0.1 conformance for tapes under a directory.",
+        help="Check a single tape directory for tara-tapes-v0.1 conformance.",
     )
     check_parser.add_argument(
         "--root",
         required=True,
         type=Path,
-        help="Directory containing tape subdirectories (or a single tape root with --single).",
-    )
-    check_parser.add_argument(
-        "--single",
-        action="store_true",
-        default=False,
-        help="Check a single tape root instead of scanning for tape subdirectories.",
+        help="Tape root directory to check.",
     )
     check_parser.set_defaults(handler=_cmd_tara_tapes_check)
 
     quarantine_parser = tara_tapes_subparsers.add_parser(
         "quarantine",
-        help="Move non-conformant tapes to ~/.taraproject/quarantine-tapes/.",
+        help="Move tape directories to ~/.taraproject/quarantine-tapes/.",
     )
     quarantine_parser.add_argument(
-        "--root",
-        required=True,
-        type=Path,
-        help="Directory containing tape subdirectories to check.",
+        "tapes",
+        nargs="+",
+        help="One or more tape directory paths to quarantine.",
     )
     quarantine_parser.add_argument(
         "--quarantine-home",
