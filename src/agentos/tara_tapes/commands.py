@@ -17,7 +17,7 @@ from agentos.tara_tapes.core import (
     read_tara_tape_segment_records,
     verify_tara_tape,
 )
-from agentos.tara_tapes.quarantine import quarantine_tapes
+from agentos.tara_tapes.archive import archive_tapes
 
 
 def _resolve_root(root: Path) -> Path:
@@ -153,10 +153,10 @@ def _cmd_tara_tapes_check(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_tara_tapes_quarantine(args: argparse.Namespace) -> int:
+def _cmd_tara_tapes_archive(args: argparse.Namespace) -> int:
     tape_paths = [Path(p) for p in args.tapes]
-    quarantine_home = _resolve_root(args.quarantine_home) if args.quarantine_home else None
-    result = quarantine_tapes(tape_paths, quarantine_home=quarantine_home, dry_run=args.dry_run)
+    archive_home = _resolve_root(args.archive_home) if args.archive_home else None
+    result = archive_tapes(tape_paths, archive_home=archive_home, dry_run=args.dry_run)
     print(json.dumps(result, indent=2))
     return 0
 
@@ -322,25 +322,25 @@ def register_tara_tapes_commands(subparsers: argparse._SubParsersAction) -> None
     )
     check_parser.set_defaults(handler=_cmd_tara_tapes_check)
 
-    quarantine_parser = tara_tapes_subparsers.add_parser(
-        "quarantine",
-        help="Move tape directories to ~/.taraproject/quarantine-tapes/.",
+    archive_parser = tara_tapes_subparsers.add_parser(
+        "archive",
+        help="Move tape directories to ~/.taraproject/archived-tapes/.",
     )
-    quarantine_parser.add_argument(
+    archive_parser.add_argument(
         "tapes",
         nargs="+",
-        help="One or more tape directory paths to quarantine.",
+        help="One or more tape directory paths to archive.",
     )
-    quarantine_parser.add_argument(
-        "--quarantine-home",
+    archive_parser.add_argument(
+        "--archive-home",
         default=None,
         type=Path,
-        help="Override quarantine destination (default: ~/.taraproject/quarantine-tapes/).",
+        help="Override archive destination (default: ~/.taraproject/archived-tapes/).",
     )
-    quarantine_parser.add_argument(
+    archive_parser.add_argument(
         "--dry-run",
         action="store_true",
         default=False,
-        help="Report what would be quarantined without moving anything.",
+        help="Report what would be archived without moving anything.",
     )
-    quarantine_parser.set_defaults(handler=_cmd_tara_tapes_quarantine)
+    archive_parser.set_defaults(handler=_cmd_tara_tapes_archive)

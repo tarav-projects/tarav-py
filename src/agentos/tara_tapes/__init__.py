@@ -1,3 +1,4 @@
+from .archive import archive_tapes
 from .check import check_tape
 from .commands import register_tara_tapes_commands
 from .core import (
@@ -14,10 +15,10 @@ from .core import (
     save_tara_tape_manifest,
     verify_tara_tape,
 )
-from .quarantine import quarantine_tapes
 
 __all__ = [
     "append_tara_tape_stage_record",
+    "archive_tapes",
     "bootstrap_tara_tape",
     "check_tape",
     "commit_tara_tape_stage",
@@ -26,7 +27,6 @@ __all__ = [
     "get_tara_tape_stage_dir",
     "list_tara_tape_segments",
     "load_tara_tape_manifest",
-    "quarantine_tapes",
     "read_tara_tape_records",
     "read_tara_tape_segment_records",
     "register_tara_tapes_commands",
