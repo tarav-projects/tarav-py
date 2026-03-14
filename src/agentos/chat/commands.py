@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import time
+from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
@@ -16,7 +17,24 @@ from agentos.chat.core import (
     list_chat_sessions,
     supported_provider_families,
 )
+from agentos.chat.extractors.claude_code import extract_dialog_from_claude_code_session
+from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
+from agentos.chat.extractors.copilot_cli import (
+    extract_dialog_from_copilot_cli_session,
+    infer_copilot_cli_session_id_from_path,
+    load_copilot_cli_events,
+)
+from agentos.chat.extractors.gemini_cli import (
+    extract_dialog_from_gemini_cli_session,
+    load_gemini_cli_session_data,
+)
+from agentos.chat.extractors.openclaw import (
+    extract_dialog_from_openclaw_session,
+    infer_openclaw_session_id_from_path,
+    load_openclaw_session_records,
+)
 from agentos.chat.extractors import extract_chat_session
+from agentos.chat.sessions import coerce_timestamp
 
 
 _CHAT_PROVIDER_CHOICES = tuple(provider_family.family for provider_family in supported_provider_families())
@@ -73,6 +91,9 @@ def _cmd_chat_session_list(args: argparse.Namespace) -> int:
         extractable_only=args.extractable,
         updated_after=_normalize_updated_since(args.updated_since),
     )
+    if args.short:
+        print(_format_chat_session_list_short(payload, now=time.time()))
+        return 0
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -137,6 +158,188 @@ def _cmd_chat_session_extract(args: argparse.Namespace) -> int:
     return 0
 
 
+def _format_chat_session_list_short(payload: dict[str, object], *, now: float) -> str:
+    raw_sessions = payload.get("sessions")
+    sessions = raw_sessions if isinstance(raw_sessions, list) else []
+
+    created_header = "Created at"
+    updated_header = "Updated at"
+    conversation_header = "Conversation"
+    rows: list[tuple[str, str, str]] = []
+
+    for raw_session in sessions:
+        if not isinstance(raw_session, dict):
+            continue
+        created_at, preview = _summarize_session_for_short_output(raw_session)
+        updated_at = coerce_timestamp(raw_session.get("updated_at"))
+        rows.append(
+            (
+                _format_relative_age(created_at, now=now),
+                _format_relative_age(updated_at, now=now),
+                preview,
+            )
+        )
+
+    created_width = max(len(created_header), *(len(row[0]) for row in rows)) if rows else len(created_header)
+    updated_width = max(len(updated_header), *(len(row[1]) for row in rows)) if rows else len(updated_header)
+
+    lines = [
+        f"{created_header:<{created_width}}  {updated_header:<{updated_width}}  {conversation_header}",
+    ]
+    for created_text, updated_text, preview in rows:
+        lines.append(
+            f"{created_text:<{created_width}}  {updated_text:<{updated_width}}  {preview}"
+        )
+
+    if not rows:
+        lines.append("(no sessions)")
+
+    return "\n".join(lines)
+
+
+def _summarize_session_for_short_output(session: dict[str, object]) -> tuple[float | None, str]:
+    path = _primary_artifact_path(session)
+    display_name = _string_or_none(session.get("display_name"))
+    session_id = _string_or_none(session.get("session_id")) or "-"
+
+    preview: str | None = None
+    created_at: float | None = None
+    if path is not None:
+        created_at, preview = _load_short_session_context(
+            provider=_string_or_none(session.get("provider")),
+            path=path,
+            session_id=session_id,
+        )
+
+    if preview is None:
+        preview = display_name or session_id
+    return created_at, _truncate_preview(preview)
+
+
+def _load_short_session_context(
+    *,
+    provider: str | None,
+    path: Path,
+    session_id: str,
+) -> tuple[float | None, str | None]:
+    try:
+        if provider == "codex":
+            turns = extract_dialog_from_codex_rollout(path, raw=False)
+            return _created_and_preview_from_turns(turns)
+
+        if provider == "claude-code":
+            if path.suffix == ".jsonl":
+                turns = extract_dialog_from_claude_code_session(path, raw=False)
+                return _created_and_preview_from_turns(turns)
+            if path.suffix == ".json":
+                obj = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+                if isinstance(obj, dict):
+                    created_at = coerce_timestamp(obj.get("createdAt")) or coerce_timestamp(obj.get("lastActivityAt"))
+                    preview = _string_or_none(obj.get("title"))
+                    return created_at, preview
+
+        if provider == "copilot-cli":
+            events = load_copilot_cli_events(path)
+            turns = extract_dialog_from_copilot_cli_session(
+                events=events,
+                session_id=infer_copilot_cli_session_id_from_path(path) or session_id,
+                raw=False,
+            )
+            return _created_and_preview_from_turns(turns)
+
+        if provider == "gemini-cli":
+            session_data = load_gemini_cli_session_data(path)
+            turns = extract_dialog_from_gemini_cli_session(
+                session_data=session_data,
+                session_id=str(session_data.get("sessionId") or session_id),
+                raw=False,
+            )
+            created_at, preview = _created_and_preview_from_turns(turns)
+            return created_at or coerce_timestamp(session_data.get("startTime")), preview
+
+        if provider == "openclaw":
+            records = load_openclaw_session_records(path)
+            turns = extract_dialog_from_openclaw_session(
+                records=records,
+                session_id=infer_openclaw_session_id_from_path(path) or session_id,
+                raw=False,
+            )
+            return _created_and_preview_from_turns(turns)
+    except (CliError, OSError, json.JSONDecodeError):
+        return None, None
+
+    return None, None
+
+
+def _created_and_preview_from_turns(turns: list[object]) -> tuple[float | None, str | None]:
+    created_at: float | None = None
+    preview: str | None = None
+
+    for turn in turns:
+        timestamp = coerce_timestamp(getattr(turn, "timestamp", None))
+        if timestamp is not None and created_at is None:
+            created_at = timestamp
+
+        role = getattr(turn, "role", None)
+        text = _string_or_none(getattr(turn, "text", None))
+        if not text:
+            continue
+        if preview is None:
+            preview = text
+        if role == "user":
+            preview = text
+            break
+
+    return created_at, preview
+
+
+def _primary_artifact_path(session: dict[str, object]) -> Path | None:
+    raw_path = session.get("primary_artifact_path")
+    path_text = _string_or_none(raw_path)
+    if path_text is None:
+        return None
+    return Path(path_text)
+
+
+def _string_or_none(value: object) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def _truncate_preview(text: str, *, max_length: int = 120) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return normalized[: max_length - 3].rstrip() + "..."
+
+
+def _format_relative_age(timestamp: float | None, *, now: float) -> str:
+    if timestamp is None:
+        return "-"
+
+    delta_seconds = max(0, int(now - timestamp))
+    if delta_seconds < 60:
+        return "just now"
+
+    units = (
+        ("year", 365 * 24 * 60 * 60),
+        ("month", 30 * 24 * 60 * 60),
+        ("week", 7 * 24 * 60 * 60),
+        ("day", 24 * 60 * 60),
+        ("hour", 60 * 60),
+        ("minute", 60),
+    )
+    for unit_name, unit_seconds in units:
+        if delta_seconds >= unit_seconds:
+            value = delta_seconds // unit_seconds
+            suffix = "" if value == 1 else "s"
+            return f"{value} {unit_name}{suffix} ago"
+    return "just now"
+
+
 def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
     chat_parser = subparsers.add_parser(
         "chat",
@@ -190,6 +393,11 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         "--updated-since",
         default=None,
         help="Keep only sessions updated within the given lookback, e.g. 72h or 3d.",
+    )
+    list_parser.add_argument(
+        "--short",
+        action="store_true",
+        help="Print a compact plain-text list with relative created/updated times and a conversation preview.",
     )
     list_parser.set_defaults(handler=_cmd_chat_session_list)
 

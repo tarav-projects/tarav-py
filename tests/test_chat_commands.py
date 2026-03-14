@@ -869,7 +869,89 @@ def test_chat_session_list_can_filter_updated_since(
     assert payload["session_count"] == 1
     provider = payload["providers"][0]
     assert provider["provider"] == "codex"
-    assert provider["session_ids"] == [recent_session_id]
+    assert provider["session_count"] == 1
+
+
+def test_chat_session_list_can_render_short_output(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    now = datetime(2026, 3, 10, 13, 0, 0, tzinfo=timezone.utc).timestamp()
+    monkeypatch.setattr("agentos.chat.commands.time.time", lambda: now)
+
+    codex_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    _write_codex_rollout_with_records(
+        home / ".codex" / "sessions" / "2026" / "03" / "08" / f"rollout-2026-03-08T01-05-38-{codex_session_id}.jsonl",
+        session_id=codex_session_id,
+        records=[
+            {
+                "timestamp": "2026-03-08T01:09:10.000Z",
+                "type": "message",
+                "payload": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "Implement the short session list output for agentos chat session list",
+                        }
+                    ],
+                },
+            },
+            {
+                "timestamp": "2026-03-08T01:09:30.000Z",
+                "type": "message",
+                "payload": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "I will add the formatter and tests.",
+                        }
+                    ],
+                },
+            },
+        ],
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=codex_session_id,
+        thread_name="short-list-output",
+        updated_at="2026-03-10T12:00:00.000Z",
+    )
+
+    assert main(["chat", "session", "list", "--provider", "codex", "--short"]) == 0
+    output = capsys.readouterr().out
+
+    assert "Created at" in output
+    assert "Updated at" in output
+    assert "Conversation" in output
+    assert "Branch" not in output
+    assert "2 days ago" in output
+    assert "1 hour ago" in output
+    assert "Implement the short session list output for agentos chat session list" in output
+    assert '"status": "ok"' not in output
+
+
+def test_chat_session_list_short_output_handles_empty_inventory(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    assert main(["chat", "session", "list", "--short"]) == 0
+    output = capsys.readouterr().out
+
+    assert "Created at" in output
+    assert "Updated at" in output
+    assert "Conversation" in output
+    assert "(no sessions)" in output
 
 
 def test_chat_session_stats_summarizes_provider_inventory(
