@@ -11,8 +11,24 @@ from agentos.tara_tapes.core import (
 )
 
 
+def _has_jsonl_files(path: Path) -> bool:
+    return any(f.suffix == ".jsonl" for f in path.iterdir() if f.is_file())
+
+
 def _is_tape_candidate(path: Path) -> bool:
-    return path.is_dir() and (path / MANIFEST_FILENAME).exists()
+    if not path.is_dir():
+        return False
+    # Has a manifest — clearly a tape (conformant or not)
+    if (path / MANIFEST_FILENAME).exists():
+        return True
+    # Has JSONL files directly — likely a non-conformant tape
+    if _has_jsonl_files(path):
+        return True
+    # Has a segments/ subdir with JSONL — likely a tape missing its manifest
+    segments = path / SEGMENTS_DIRNAME
+    if segments.is_dir() and _has_jsonl_files(segments):
+        return True
+    return False
 
 
 def discover_tape_candidates(root: Path) -> list[Path]:
