@@ -7,7 +7,13 @@ description: Resolve a chat session from a session id, session URI, or provider-
 
 Return a compressed transcript for a prior chat session.
 
-This skill is an agent workflow, not a raw extractor. `agentos chat session` handles deterministic resolution and extraction. The agent always compresses the transcript before returning it.
+This skill must run as an agent by default, not inline in the caller context. `agentos chat session` handles deterministic resolution and extraction. The agent always compresses the transcript before returning it.
+
+## Execution Mode
+
+- Run this skill in a separate agent by default.
+- Do not perform the transcript compression inline in the caller context unless the user explicitly asks for that fallback.
+- The point of this skill is to keep transcript-processing work and compression reasoning out of the caller context.
 
 ## Use This Skill When
 
@@ -59,6 +65,7 @@ Hard rules:
 - Preserve chronological order.
 - Compress every assistant turn to the shortest direct form that keeps new information.
 - Short high-signal command outputs may be kept verbatim.
+- High-signal but long outputs must be compressed structurally, not copied wholesale.
 - Do not keep progress chatter, repeated framing, or filler.
 - Do not pretend the output is the original transcript.
 
@@ -75,10 +82,26 @@ Keep in assistant turns:
 Drop or compress aggressively:
 
 - progress updates
+- statements about what the agent is about to do
+- statements that a run is in progress
 - repeated summaries
 - apology/filler language
 - redundant caveats
 - verbose prose that adds no new information
+
+Preferred assistant rewrite shape:
+
+- result
+- evidence
+- decision
+- unresolved issue, only if one remains
+
+If a long structured output matters, compress it into a short factual summary instead of pasting the full block.
+
+Examples:
+
+- Good: `Found 46 likely heartbeat sessions; current reused session: 6a5c95ab-...; 2 extra debugging sessions.`
+- Bad: a 46-line session id dump when the exact full list is not required to preserve the conversation outcome.
 
 ## Step 4: Return The Artifact
 
@@ -89,6 +112,15 @@ The returned artifact must be self-describing. Start it with this notice or equi
 User turns are preserved in full.
 Assistant turns are compressed for brevity and may not match the original wording.
 Do not treat this artifact as the original transcript.
+```
+
+Add a short provenance header before the first transcript turn when the information is available:
+
+```text
+source-session-id: <session-id>
+source-session-uri: <resolved-uri>
+resolved-via: agentos chat session find
+extracted-via: agentos chat session extract --format markdown
 ```
 
 Then emit the transcript in a stable turn-based format:
