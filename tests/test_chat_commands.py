@@ -338,7 +338,19 @@ def _strip_exact_identity(payload: dict[str, object]) -> dict[str, object]:
     return stripped
 
 
-def test_chat_session_list_returns_provider_grouped_session_ids_only(
+def _group_sessions_by_provider(payload: dict[str, object]) -> dict[str, list[dict[str, object]]]:
+    sessions = payload.get("sessions")
+    assert isinstance(sessions, list)
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for session in sessions:
+        assert isinstance(session, dict)
+        provider = session.get("provider")
+        assert isinstance(provider, str)
+        grouped.setdefault(provider, []).append(session)
+    return grouped
+
+
+def test_chat_session_list_returns_flat_global_inventory(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -419,7 +431,7 @@ def test_chat_session_list_returns_provider_grouped_session_ids_only(
     finally:
         connection.close()
 
-    assert main(["chat", "session", "list"]) == 0
+    assert main(["chat", "session", "list", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["status"] == "ok"
@@ -428,9 +440,19 @@ def test_chat_session_list_returns_provider_grouped_session_ids_only(
     assert payload["provider_count"] == 6
     assert payload["session_count"] == 6
 
+    sessions = payload["sessions"]
+    assert [session["session_id"] for session in sessions] == [
+        codex_session_id,
+        openclaw_session_id,
+        copilot_session_id,
+        claude_session_id,
+        gemini_session_id,
+        opencode_session_id,
+    ]
+    grouped_sessions = _group_sessions_by_provider(payload)
     providers = {provider["provider"]: provider for provider in payload["providers"]}
-    assert providers["claude-code"]["session_ids"] == [claude_session_id]
-    assert [_strip_exact_identity(session) for session in providers["claude-code"]["sessions"]] == [
+    assert providers["claude-code"]["session_count"] == 1
+    assert [_strip_exact_identity(session) for session in grouped_sessions["claude-code"]] == [
         _expected_session_summary(
             provider="claude-code",
             session_id=claude_session_id,
@@ -445,8 +467,8 @@ def test_chat_session_list_returns_provider_grouped_session_ids_only(
             title=claude_title,
         )
     ]
-    assert providers["codex"]["session_ids"] == [codex_session_id]
-    assert [_strip_exact_identity(session) for session in providers["codex"]["sessions"]] == [
+    assert providers["codex"]["session_count"] == 1
+    assert [_strip_exact_identity(session) for session in grouped_sessions["codex"]] == [
         _expected_session_summary(
             provider="codex",
             session_id=codex_session_id,
@@ -469,10 +491,10 @@ def test_chat_session_list_returns_provider_grouped_session_ids_only(
             thread_name=codex_thread_name,
         )
     ]
-    assert providers["copilot-cli"]["session_ids"] == [copilot_session_id]
-    assert providers["gemini-cli"]["session_ids"] == [gemini_session_id]
-    assert providers["opencode"]["session_ids"] == [opencode_session_id]
-    assert providers["openclaw"]["session_ids"] == [openclaw_session_id]
+    assert providers["copilot-cli"]["session_count"] == 1
+    assert providers["gemini-cli"]["session_count"] == 1
+    assert providers["opencode"]["session_count"] == 1
+    assert providers["openclaw"]["session_count"] == 1
 
 
 def test_chat_session_list_includes_configured_extra_codex_home(
@@ -507,13 +529,14 @@ def test_chat_session_list_includes_configured_extra_codex_home(
         provider_instances=[{"provider": "codex", "home": str(extra_codex_home)}],
     )
 
-    assert main(["chat", "session", "list", "--provider", "codex"]) == 0
+    assert main(["chat", "session", "list", "--provider", "codex", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     codex_provider = payload["providers"][0]
     assert payload["provider_count"] == 1
     assert codex_provider["provider"] == "codex"
-    assert codex_provider["session_ids"] == [default_session_id, extra_session_id]
+    assert codex_provider["session_count"] == 2
+    assert [session["session_id"] for session in payload["sessions"]] == [default_session_id, extra_session_id]
     assert str((extra_codex_home / "sessions").resolve()) in codex_provider["searched_targets"]
 
 
@@ -538,13 +561,14 @@ def test_chat_session_list_includes_configured_claude_code_homes(
         provider_instances=[{"provider": "claude-code", "homes": {"cli": str(extra_claude_home)}}],
     )
 
-    assert main(["chat", "session", "list", "--provider", "claude-code"]) == 0
+    assert main(["chat", "session", "list", "--provider", "claude-code", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     claude_provider = payload["providers"][0]
     assert payload["provider_count"] == 1
     assert claude_provider["provider"] == "claude-code"
-    assert claude_provider["session_ids"] == [session_id]
+    assert claude_provider["session_count"] == 1
+    assert [session["session_id"] for session in payload["sessions"]] == [session_id]
     assert str((extra_claude_home / "projects").resolve()) in claude_provider["searched_targets"]
 
 
@@ -600,15 +624,17 @@ def test_chat_session_list_full_output_keeps_zero_session_providers(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
 
-    assert main(["chat", "session", "list"]) == 0
+    assert main(["chat", "session", "list", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["provider_count"] == 0
+    assert payload["sessions"] == []
     assert payload["providers"] == []
 
-    assert main(["chat", "session", "list", "--full-output"]) == 0
+    assert main(["chat", "session", "list", "--full-output", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["provider_count"] == 6
+    assert payload["sessions"] == []
     assert len(payload["providers"]) == 6
     assert all(provider["session_count"] == 0 for provider in payload["providers"])
 
@@ -675,29 +701,30 @@ def test_chat_session_list_can_filter_providers_and_limit_results(
 
     assert (
         main(
-            [
-                "chat",
-                "session",
-                "list",
+                [
+                    "chat",
+                    "session",
+                    "list",
                 "--provider",
                 "claude-code",
                 "--provider",
-                "codex",
-                "--limit",
-                "1",
-            ]
+                    "codex",
+                    "--limit",
+                    "1",
+                    "--output",
+                    "json",
+                ]
+            )
+            == 0
         )
-        == 0
-    )
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["provider_count"] == 2
-    assert payload["session_count"] == 2
+    assert payload["provider_count"] == 1
+    assert payload["session_count"] == 1
+    assert [session["session_id"] for session in payload["sessions"]] == [codex_ids[0]]
     providers = {provider["provider"]: provider for provider in payload["providers"]}
-    assert providers["claude-code"]["session_ids"] == [claude_ids[0]]
-    assert providers["claude-code"]["session_count"] == 1
-    assert providers["codex"]["session_ids"] == [codex_ids[0]]
-    assert [_strip_exact_identity(session) for session in providers["codex"]["sessions"]] == [
+    assert "claude-code" not in providers
+    assert [_strip_exact_identity(session) for session in payload["sessions"]] == [
         _expected_session_summary(
             provider="codex",
             session_id=codex_ids[0],
@@ -751,21 +778,19 @@ def test_chat_session_list_deduplicates_gemini_sessions_and_supports_sorting(
         last_updated="2026-01-28T16:45:00.000Z",
     )
 
-    assert main(["chat", "session", "list"]) == 0
+    assert main(["chat", "session", "list", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
+    assert [session["session_id"] for session in payload["sessions"]] == [first_session_id, second_session_id]
     gemini_provider = next(provider for provider in payload["providers"] if provider["provider"] == "gemini-cli")
-    assert gemini_provider["session_ids"] == [first_session_id, second_session_id]
     assert gemini_provider["session_count"] == 2
 
-    assert main(["chat", "session", "list", "--sort", "newest"]) == 0
+    assert main(["chat", "session", "list", "--sort", "newest", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    gemini_provider = next(provider for provider in payload["providers"] if provider["provider"] == "gemini-cli")
-    assert gemini_provider["session_ids"] == [second_session_id, first_session_id]
+    assert [session["session_id"] for session in payload["sessions"]] == [second_session_id, first_session_id]
 
-    assert main(["chat", "session", "list", "--sort", "oldest"]) == 0
+    assert main(["chat", "session", "list", "--sort", "oldest", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    gemini_provider = next(provider for provider in payload["providers"] if provider["provider"] == "gemini-cli")
-    assert gemini_provider["session_ids"] == [first_session_id, second_session_id]
+    assert [session["session_id"] for session in payload["sessions"]] == [first_session_id, second_session_id]
 
 
 def test_chat_session_list_rejects_non_positive_limit(capsys) -> None:
@@ -801,14 +826,15 @@ def test_chat_session_list_can_filter_extractable_sessions(
         ),
     )
 
-    assert main(["chat", "session", "list", "--provider", "openclaw", "--extractable"]) == 0
+    assert main(["chat", "session", "list", "--provider", "openclaw", "--extractable", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["extractable_only"] is True
     assert payload["session_count"] == 1
+    assert [session["session_id"] for session in payload["sessions"]] == [extractable_id]
     provider = payload["providers"][0]
     assert provider["provider"] == "openclaw"
-    assert provider["session_ids"] == [extractable_id]
+    assert provider["session_count"] == 1
 
 
 def test_chat_session_list_can_filter_updated_since(
@@ -862,17 +888,18 @@ def test_chat_session_list_can_filter_updated_since(
         + "\n",
     )
 
-    assert main(["chat", "session", "list", "--provider", "codex", "--updated-since", "3d"]) == 0
+    assert main(["chat", "session", "list", "--provider", "codex", "--updated-since", "3d", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["updated_after"] == "2025-03-08T12:00:00.000Z"
     assert payload["session_count"] == 1
+    assert [session["session_id"] for session in payload["sessions"]] == [recent_session_id]
     provider = payload["providers"][0]
     assert provider["provider"] == "codex"
     assert provider["session_count"] == 1
 
 
-def test_chat_session_list_can_render_short_output(
+def test_chat_session_list_defaults_to_card_output(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -923,20 +950,21 @@ def test_chat_session_list_can_render_short_output(
         updated_at="2026-03-10T12:00:00.000Z",
     )
 
-    assert main(["chat", "session", "list", "--provider", "codex", "--short"]) == 0
+    assert main(["chat", "session", "list", "--provider", "codex"]) == 0
     output = capsys.readouterr().out
 
-    assert "Created at" in output
-    assert "Updated at" in output
-    assert "Conversation" in output
-    assert "Branch" not in output
+    assert "────────────────────────────────────────" in output
+    assert "\ncodex\n" in output
+    assert f"\n{codex_session_id}\n" in output
+    assert "created 2 days ago" in output
+    assert "updated 1 hour ago" in output
     assert "2 days ago" in output
     assert "1 hour ago" in output
     assert "Implement the short session list output for agentos chat session list" in output
     assert '"status": "ok"' not in output
 
 
-def test_chat_session_list_short_output_handles_empty_inventory(
+def test_chat_session_list_card_output_handles_empty_inventory(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -945,13 +973,10 @@ def test_chat_session_list_short_output_handles_empty_inventory(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
 
-    assert main(["chat", "session", "list", "--short"]) == 0
+    assert main(["chat", "session", "list"]) == 0
     output = capsys.readouterr().out
 
-    assert "Created at" in output
-    assert "Updated at" in output
-    assert "Conversation" in output
-    assert "(no sessions)" in output
+    assert output.strip() == "(no sessions)"
 
 
 def test_chat_session_stats_summarizes_provider_inventory(
@@ -1398,12 +1423,11 @@ def test_chat_session_stats_supports_uri_resolution_for_duplicate_codex_session_
     assert f"multiple sessions matched query {session_id}" in stderr
     assert "agentos://chat-session/codex/" in stderr
 
-    assert main(["chat", "session", "list", "--provider", "codex"]) == 0
+    assert main(["chat", "session", "list", "--provider", "codex", "--output", "json"]) == 0
     list_payload = json.loads(capsys.readouterr().out)
-    codex_provider = list_payload["providers"][0]
     target_session = next(
         session
-        for session in codex_provider["sessions"]
+        for session in list_payload["sessions"]
         if session["primary_artifact_path"] == str(extra_rollout.resolve())
     )
     uri = target_session["uri"]

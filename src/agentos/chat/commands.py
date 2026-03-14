@@ -91,8 +91,8 @@ def _cmd_chat_session_list(args: argparse.Namespace) -> int:
         extractable_only=args.extractable,
         updated_after=_normalize_updated_since(args.updated_since),
     )
-    if args.short:
-        print(_format_chat_session_list_short(payload, now=time.time()))
+    if args.output_format == "card":
+        print(_format_chat_session_list_card(payload, now=time.time()))
         return 0
     print(json.dumps(payload, indent=2))
     return 0
@@ -158,46 +158,37 @@ def _cmd_chat_session_extract(args: argparse.Namespace) -> int:
     return 0
 
 
-def _format_chat_session_list_short(payload: dict[str, object], *, now: float) -> str:
+def _format_chat_session_list_card(payload: dict[str, object], *, now: float) -> str:
     raw_sessions = payload.get("sessions")
     sessions = raw_sessions if isinstance(raw_sessions, list) else []
-
-    created_header = "Created at"
-    updated_header = "Updated at"
-    conversation_header = "Conversation"
-    rows: list[tuple[str, str, str]] = []
+    separator = "────────────────────────────────────────"
+    cards: list[str] = []
 
     for raw_session in sessions:
         if not isinstance(raw_session, dict):
             continue
-        created_at, preview = _summarize_session_for_short_output(raw_session)
+        created_at, preview = _summarize_session_for_card_output(raw_session)
         updated_at = coerce_timestamp(raw_session.get("updated_at"))
-        rows.append(
-            (
-                _format_relative_age(created_at, now=now),
-                _format_relative_age(updated_at, now=now),
-                preview,
-            )
-        )
+        provider = _string_or_none(raw_session.get("provider")) or "-"
+        session_id = _string_or_none(raw_session.get("session_id")) or "-"
+        card_lines = [
+            separator,
+            provider,
+            session_id,
+            "",
+            f"created {_format_relative_age(created_at, now=now)}",
+            f"updated {_format_relative_age(updated_at, now=now)}",
+            "",
+            preview,
+        ]
+        cards.append("\n".join(card_lines))
 
-    created_width = max(len(created_header), *(len(row[0]) for row in rows)) if rows else len(created_header)
-    updated_width = max(len(updated_header), *(len(row[1]) for row in rows)) if rows else len(updated_header)
-
-    lines = [
-        f"{created_header:<{created_width}}  {updated_header:<{updated_width}}  {conversation_header}",
-    ]
-    for created_text, updated_text, preview in rows:
-        lines.append(
-            f"{created_text:<{created_width}}  {updated_text:<{updated_width}}  {preview}"
-        )
-
-    if not rows:
-        lines.append("(no sessions)")
-
-    return "\n".join(lines)
+    if not cards:
+        return "(no sessions)"
+    return "\n\n".join(cards)
 
 
-def _summarize_session_for_short_output(session: dict[str, object]) -> tuple[float | None, str]:
+def _summarize_session_for_card_output(session: dict[str, object]) -> tuple[float | None, str]:
     path = _primary_artifact_path(session)
     display_name = _string_or_none(session.get("display_name"))
     session_id = _string_or_none(session.get("session_id")) or "-"
@@ -205,7 +196,7 @@ def _summarize_session_for_short_output(session: dict[str, object]) -> tuple[flo
     preview: str | None = None
     created_at: float | None = None
     if path is not None:
-        created_at, preview = _load_short_session_context(
+        created_at, preview = _load_card_session_context(
             provider=_string_or_none(session.get("provider")),
             path=path,
             session_id=session_id,
@@ -216,7 +207,7 @@ def _summarize_session_for_short_output(session: dict[str, object]) -> tuple[flo
     return created_at, _truncate_preview(preview)
 
 
-def _load_short_session_context(
+def _load_card_session_context(
     *,
     provider: str | None,
     path: Path,
@@ -364,13 +355,13 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         "--sort",
         choices=("lexical", "newest", "oldest"),
         default="lexical",
-        help="Sort order for session ids within each provider (default: lexical).",
+        help="Sort order for returned sessions across all providers (default: lexical).",
     )
     list_parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="Maximum number of session ids to return per provider.",
+        help="Maximum number of sessions to return overall.",
     )
     list_parser.add_argument(
         "--provider",
@@ -382,7 +373,7 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
     list_parser.add_argument(
         "--full-output",
         action="store_true",
-        help="Keep zero-session providers in the providers array.",
+        help="Keep zero-session provider diagnostics in the providers array.",
     )
     list_parser.add_argument(
         "--extractable",
@@ -395,9 +386,11 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Keep only sessions updated within the given lookback, e.g. 72h or 3d.",
     )
     list_parser.add_argument(
-        "--short",
-        action="store_true",
-        help="Print a compact plain-text list with relative created/updated times and a conversation preview.",
+        "--output",
+        choices=("card", "json"),
+        default="card",
+        dest="output_format",
+        help="Output format (default: card).",
     )
     list_parser.set_defaults(handler=_cmd_chat_session_list)
 
