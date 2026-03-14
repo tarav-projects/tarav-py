@@ -1,0 +1,4 @@
+interface:
+  display_name: "session-zip-transcript"
+  short_description: "Resolve, extract, and compress a prior chat session into a self-described transcript artifact"
+  default_prompt: "Given a session id, session URI, or session query, resolve the chat session with `agentos chat session`, extract its conversation, and return a compressed transcript artifact. Preserve every user turn in full, compress assistant turns to the shortest form that keeps new information, keep short high-signal outputs verbatim when useful, and begin with an explicit notice that the artifact is compressed and not the original transcript. If resolution is ambiguous, stop and report the candidate sessions instead of guessing."
