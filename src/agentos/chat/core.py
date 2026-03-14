@@ -660,36 +660,41 @@ def list_chat_sessions(
     _validate_sort_choice(sort)
     _validate_session_limit(limit)
 
+    provider_groups = _iter_provider_context_groups(providers)
+    discovered_sessions: list[ChatSession] = []
     provider_payloads: list[dict[str, Any]] = []
-    total_sessions = 0
 
-    for provider_family, contexts in _iter_provider_context_groups(providers):
-        family_sessions: list[ChatSession] = []
+    for _, contexts in provider_groups:
         for context in contexts:
-            family_sessions.extend(_discover_direct_provider_sessions(context))
-        sessions = [
+            discovered_sessions.extend(_discover_direct_provider_sessions(context))
+
+    sessions = [
+        session
+        for session in _dedupe_sessions(discovered_sessions)
+        if _session_matches_list_filters(
+            session,
+            extractable_only=extractable_only,
+            updated_after=updated_after,
+        )
+    ]
+    sessions = _sort_sessions(sessions, sort)
+    if limit is not None:
+        sessions = sessions[:limit]
+
+    for provider_family, contexts in provider_groups:
+        provider_sessions = [
             session
-            for session in _dedupe_sessions(family_sessions)
-            if _session_matches_list_filters(
-                session,
-                extractable_only=extractable_only,
-                updated_after=updated_after,
-            )
+            for session in sessions
+            if session.provider_family == provider_family.family
         ]
-        sessions = _sort_sessions(sessions, sort)
-        if limit is not None:
-            sessions = sessions[:limit]
         provider_payload = _build_provider_payload(
             provider_family=provider_family.family,
             contexts=contexts,
             include_grep=False,
             item_count_key="session_count",
-            item_count=len(sessions),
+            item_count=len(provider_sessions),
         )
-        provider_payload["session_ids"] = [session.session_id for session in sessions]
-        provider_payload["sessions"] = [_session_summary(session) for session in sessions]
         provider_payloads.append(provider_payload)
-        total_sessions += len(sessions)
 
     output_providers = (
         provider_payloads
@@ -702,8 +707,9 @@ def list_chat_sessions(
         "sort": sort,
         "extractable_only": extractable_only,
         "updated_after": _format_stats_timestamp(updated_after),
+        "sessions": [_session_summary(session) for session in sessions],
         "provider_count": len(output_providers),
-        "session_count": total_sessions,
+        "session_count": len(sessions),
         "providers": output_providers,
     }
 

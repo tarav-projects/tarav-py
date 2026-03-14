@@ -980,10 +980,9 @@ def test_chat_session_extract_supports_uri_resolution_for_duplicate_codex_sessio
 
     assert main(["chat", "session", "list", "--provider", "codex"]) == 0
     list_payload = json.loads(capsys.readouterr().out)
-    codex_provider = list_payload["providers"][0]
     target_session = next(
         session
-        for session in codex_provider["sessions"]
+        for session in list_payload["sessions"]
         if session["primary_artifact_path"] == str(extra_codex_path.resolve())
     )
     uri = target_session["uri"]
