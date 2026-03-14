@@ -112,3 +112,47 @@ def test_quarantine_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     assert payload["quarantined"] is True
     assert payload["non_conformant_count"] == 1
     assert not (tapes_dir / "nok").exists()
+
+
+def test_quarantine_dry_run_does_not_move(tmp_path: Path) -> None:
+    tapes_dir = tmp_path / "tapes"
+    tapes_dir.mkdir()
+    q_home = tmp_path / "quarantine"
+
+    _make_conformant_tape(tapes_dir, "good")
+    _make_non_conformant_tape(tapes_dir, "bad")
+
+    result = quarantine_tapes(tapes_dir, quarantine_home=q_home, dry_run=True)
+
+    assert result["dry_run"] is True
+    assert result["quarantined"] is False
+    assert result["non_conformant_count"] == 1
+    assert len(result["tapes"]) == 1
+    assert result["tapes"][0]["tape_name"] == "bad"
+
+    # Tape was NOT moved
+    assert (tapes_dir / "bad").exists()
+    # Quarantine dir was NOT created
+    assert not q_home.exists()
+
+
+def test_quarantine_dry_run_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    tapes_dir = tmp_path / "tapes"
+    tapes_dir.mkdir()
+    q_home = tmp_path / "quarantine"
+
+    _make_non_conformant_tape(tapes_dir, "old-tape")
+
+    assert main([
+        "tara-tapes", "quarantine",
+        "--root", str(tapes_dir),
+        "--quarantine-home", str(q_home),
+        "--dry-run",
+    ]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dry_run"] is True
+    assert payload["non_conformant_count"] == 1
+    # Nothing was moved
+    assert (tapes_dir / "old-tape").exists()
+    assert not q_home.exists()

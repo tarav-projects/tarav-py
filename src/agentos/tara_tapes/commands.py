@@ -159,7 +159,7 @@ def _cmd_tara_tapes_check(args: argparse.Namespace) -> int:
 def _cmd_tara_tapes_quarantine(args: argparse.Namespace) -> int:
     root = _resolve_root(args.root)
     quarantine_home = _resolve_root(args.quarantine_home) if args.quarantine_home else None
-    result = quarantine_tapes(root, quarantine_home=quarantine_home)
+    result = quarantine_tapes(root, quarantine_home=quarantine_home, dry_run=args.dry_run)
     print(json.dumps(result, indent=2))
     return 0
 
@@ -346,5 +346,11 @@ def register_tara_tapes_commands(subparsers: argparse._SubParsersAction) -> None
         default=None,
         type=Path,
         help="Override quarantine destination (default: ~/.taraproject/quarantine-tapes/).",
+    )
+    quarantine_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Report what would be quarantined without moving anything.",
     )
     quarantine_parser.set_defaults(handler=_cmd_tara_tapes_quarantine)
