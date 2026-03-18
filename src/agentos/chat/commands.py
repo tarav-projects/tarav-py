@@ -18,6 +18,7 @@ from agentos.chat.core import (
     supported_provider_families,
 )
 from agentos.chat.extractors.claude_code import extract_dialog_from_claude_code_session
+from agentos.chat.extractors.common import DialogTurn
 from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
 from agentos.chat.extractors.copilot_cli import (
     extract_dialog_from_copilot_cli_session,
@@ -27,6 +28,10 @@ from agentos.chat.extractors.copilot_cli import (
 from agentos.chat.extractors.gemini_cli import (
     extract_dialog_from_gemini_cli_session,
     load_gemini_cli_session_data,
+)
+from agentos.chat.extractors.opencode import (
+    extract_dialog_from_opencode_session,
+    resolve_opencode_db_path,
 )
 from agentos.chat.extractors.openclaw import (
     extract_dialog_from_openclaw_session,
@@ -83,14 +88,18 @@ def _normalize_session_query(query: str) -> str:
 
 
 def _cmd_chat_session_list(args: argparse.Namespace) -> int:
+    user_contain = args.user_contain
+    limit = _normalize_session_limit(args.limit)
     payload = list_chat_sessions(
         sort=args.sort,
         full_output=args.full_output,
-        limit=_normalize_session_limit(args.limit),
+        limit=None if user_contain is not None else limit,
         providers=tuple(args.providers) if args.providers else None,
         extractable_only=args.extractable,
         updated_after=_normalize_updated_since(args.updated_since),
     )
+    if user_contain is not None:
+        payload = _filter_payload_by_user_contain(payload, query=user_contain, limit=limit)
     if args.output_format == "card":
         print(_format_chat_session_list_card(payload, now=time.time()))
         return 0
@@ -156,6 +165,107 @@ def _cmd_chat_session_extract(args: argparse.Namespace) -> int:
     )
     print(output)
     return 0
+
+
+def _filter_payload_by_user_contain(
+    payload: dict[str, object],
+    *,
+    query: str,
+    limit: int | None = None,
+) -> dict[str, object]:
+    raw_sessions = payload.get("sessions")
+    if not isinstance(raw_sessions, list):
+        return payload
+
+    query_lower = query.lower()
+    filtered: list[dict[str, object]] = []
+    for session in raw_sessions:
+        if not isinstance(session, dict):
+            continue
+        if _session_user_messages_contain(session, query_lower):
+            filtered.append(session)
+            if limit is not None and len(filtered) >= limit:
+                break
+
+    return {
+        **payload,
+        "sessions": filtered,
+        "session_count": len(filtered),
+        "user_contain": query,
+    }
+
+
+def _session_user_messages_contain(session: dict[str, object], query_lower: str) -> bool:
+    turns = _load_session_user_turns(session)
+    for turn in turns:
+        if query_lower in turn.text.lower():
+            return True
+    return False
+
+
+def _load_session_user_turns(session: dict[str, object]) -> list[DialogTurn]:
+    path = _primary_artifact_path(session)
+    if path is None or not path.is_file():
+        return []
+
+    provider = _string_or_none(session.get("provider"))
+    session_id = _string_or_none(session.get("session_id")) or ""
+
+    try:
+        turns = _load_session_turns(provider=provider, path=path, session_id=session_id)
+    except (CliError, OSError, json.JSONDecodeError):
+        return []
+
+    return [turn for turn in turns if turn.role == "user"]
+
+
+def _load_session_turns(
+    *,
+    provider: str | None,
+    path: Path,
+    session_id: str,
+) -> list[DialogTurn]:
+    if provider == "claude-code":
+        if path.suffix == ".jsonl":
+            return extract_dialog_from_claude_code_session(path, raw=False)
+        return []
+
+    if provider == "codex":
+        return extract_dialog_from_codex_rollout(path, raw=False)
+
+    if provider == "copilot-cli":
+        events = load_copilot_cli_events(path)
+        return extract_dialog_from_copilot_cli_session(
+            events=events,
+            session_id=infer_copilot_cli_session_id_from_path(path) or session_id,
+            raw=False,
+        )
+
+    if provider == "gemini-cli":
+        session_data = load_gemini_cli_session_data(path)
+        return extract_dialog_from_gemini_cli_session(
+            session_data=session_data,
+            session_id=str(session_data.get("sessionId") or session_id),
+            raw=False,
+        )
+
+    if provider == "openclaw":
+        records = load_openclaw_session_records(path)
+        return extract_dialog_from_openclaw_session(
+            records=records,
+            session_id=infer_openclaw_session_id_from_path(path) or session_id,
+            raw=False,
+        )
+
+    if provider == "opencode":
+        db_path = resolve_opencode_db_path(path)
+        return extract_dialog_from_opencode_session(
+            db_path=db_path,
+            session_id=session_id,
+            raw=False,
+        )
+
+    return []
 
 
 def _format_chat_session_list_card(payload: dict[str, object], *, now: float) -> str:
@@ -384,6 +494,12 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         "--updated-since",
         default=None,
         help="Keep only sessions updated within the given lookback, e.g. 72h or 3d.",
+    )
+    list_parser.add_argument(
+        "--user-contain",
+        default=None,
+        dest="user_contain",
+        help="Keep only sessions where at least one user message contains the given text (case-insensitive).",
     )
     list_parser.add_argument(
         "--output",
