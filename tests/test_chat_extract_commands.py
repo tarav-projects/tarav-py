@@ -18,6 +18,7 @@ def _write_codex_rollout(
     session_id: str,
     user_text: str = "hello from codex",
     assistant_text: str = "codex reply",
+    originator: str = "codex_cli_rs",
 ) -> None:
     records = [
         {
@@ -25,7 +26,7 @@ def _write_codex_rollout(
             "type": "session_meta",
             "payload": {
                 "id": session_id,
-                "originator": "codex_cli_rs",
+                "originator": originator,
                 "source": "cli",
             },
         },
@@ -1519,6 +1520,37 @@ def test_chat_session_extract_rejects_unknown_file_provenance(
         == 1
     )
     assert "unable to infer extractor from file provenance" in capsys.readouterr().err
+
+
+def test_chat_session_extract_accepts_codex_tui_rollout_from_file(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    session_id = "019d0716-7a2d-7902-ab86-163b76f68ee9"
+    rollout_path = tmp_path / "codex" / "sessions" / "2026" / "03" / "19" / "rollout.jsonl"
+    _write_codex_rollout(
+        rollout_path,
+        session_id=session_id,
+        user_text="hello from codex-tui",
+        assistant_text="codex-tui reply",
+        originator="codex-tui",
+    )
+
+    assert main(["chat", "session", "extract", "--file", str(rollout_path)]) == 0
+    payload = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+
+    assert payload == [
+        {
+            "role": "user",
+            "timestamp": "2026-03-08T01:08:59.093Z",
+            "text": "hello from codex-tui",
+        },
+        {
+            "role": "assistant",
+            "timestamp": "2026-03-08T01:08:59.094Z",
+            "text": "codex-tui reply",
+        },
+    ]
 
 
 def test_chat_session_extract_requires_session_query_without_file(capsys) -> None:

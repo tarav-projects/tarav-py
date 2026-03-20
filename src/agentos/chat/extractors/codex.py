@@ -10,6 +10,11 @@ from agentos.chat.extractors.common import (
     format_turns_markdown,
 )
 
+_CODEX_SESSION_META_ORIGINATORS = {
+    "codex_cli_rs",
+    "codex-tui",
+}
+
 # Content prefixes injected by the Codex platform into user-role messages.
 # These are never human-authored text.
 _CODEX_NOISE_PREFIXES = (
@@ -128,7 +133,14 @@ def _is_codex_session_meta(obj: object) -> bool:
     if not isinstance(payload, dict):
         return False
 
-    return payload.get("originator") == "codex_cli_rs"
+    originator = payload.get("originator")
+    if not isinstance(originator, str):
+        return False
+
+    if originator in _CODEX_SESSION_META_ORIGINATORS:
+        return True
+
+    return originator.startswith("codex")
 
 
 def _strip_system_reminder(text: str) -> str:
