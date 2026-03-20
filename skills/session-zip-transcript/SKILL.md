@@ -9,6 +9,16 @@ Return a compressed transcript for a prior chat session.
 
 This skill must run as an agent by default, not inline in the caller context. `agentos chat session` handles deterministic resolution and extraction. The agent always compresses the transcript before returning it.
 
+## Trigger Boundary
+
+Use this skill for prior-session transcript recovery and compression.
+
+Do not use it for:
+
+- recapping the current live chat inline
+- quote-accurate archival output
+- generic session management unrelated to returning a compressed transcript artifact
+
 ## Execution Mode
 
 - Run this skill in a separate agent by default.
@@ -21,12 +31,38 @@ This skill must run as an agent by default, not inline in the caller context. `a
 - The caller needs user intent preserved exactly, but does not need the original assistant wording.
 - The caller must keep transcript-processing work out of their own context.
 
+## Compression Quality Bar
+
+Hold the output to this quality bar:
+
+1. **Zero user-turn loss**: preserve every user turn in full and in order.
+2. **Minimal redundancy**: compress assistant content aggressively when it repeats or adds no new state.
+3. **Maximum scannability**: make the artifact easy to continue from quickly without pretending it is the original transcript.
+
 ## Workflow
 
 1. Resolve the session.
 2. Extract the conversation transcript.
 3. Compress the transcript in-agent.
 4. Return only the compressed transcript artifact.
+
+## Missing Input
+
+If the user provides neither:
+
+- a session id
+- a session URI
+- nor a provider-agnostic session query
+
+stop and return this short failure shape:
+
+```text
+Could not resolve a prior session because no session identifier or query was provided.
+Provide one of:
+- a session id
+- an agentos://chat-session/... URI
+- a query that can be resolved with `agentos chat session find`
+```
 
 ## Step 1: Resolve The Session
 
@@ -42,7 +78,17 @@ Resolution rules:
 
 - If `finding_count` is `1`, use the returned `findings[0].uri`.
 - If `finding_count` is `0`, fail clearly and say the session could not be found.
-- If `finding_count` is greater than `1`, do not guess. Return a short ambiguity report with the candidate `provider`, `session_id`, and `uri`.
+- If `finding_count` is greater than `1`, do not guess. Return this short ambiguity report shape:
+
+```text
+Multiple prior sessions matched the query. I did not choose one automatically.
+
+Candidates:
+- provider: <provider> | session_id: <session-id> | uri: <uri>
+- provider: <provider> | session_id: <session-id> | uri: <uri>
+
+Reply with the exact `session_id` or `uri` to continue.
+```
 
 ## Step 2: Extract The Transcript
 
@@ -68,6 +114,34 @@ Hard rules:
 - High-signal but long outputs must be compressed structurally, not copied wholesale.
 - Do not keep progress chatter, repeated framing, or filler.
 - Do not pretend the output is the original transcript.
+
+Keep assistant content only when it carries session state that matters later, such as:
+
+- decisions
+- accepted plans
+- constraints
+- concrete results
+- failures
+- warnings
+- unresolved issues
+- commands, paths, flags, identifiers, or counts that matter for continuation
+
+Usually drop assistant content that is only:
+
+- speculative framing
+- unaccepted suggestions
+- process narration
+- repeated summaries
+- tone-only filler
+- status chatter that did not change the outcome
+
+Compression checklist:
+
+1. Preserve every user turn fully.
+2. Preserve accepted decisions and concrete outcomes.
+3. Preserve failures and unresolved issues.
+4. Drop chatter and repeated framing.
+5. Compress long outputs structurally instead of copying them wholesale.
 
 Keep in assistant turns:
 
@@ -123,6 +197,8 @@ resolved-via: agentos chat session find
 extracted-via: agentos chat session extract --format markdown
 ```
 
+When both a session id and URI are available, include both. Treat these as first-class provenance data, not optional decoration.
+
 Then emit the transcript in a stable turn-based format:
 
 ```text
@@ -139,6 +215,12 @@ Then emit the transcript in a stable turn-based format:
 - Keep the artifact plain and readable.
 - If extraction fails, report the failure briefly instead of fabricating output.
 - If resolution is ambiguous, stop before extraction.
+
+## Session Content Sensitivity
+
+- Treat the returned artifact as sensitive prior-session content.
+- Do not broaden or remix it with unrelated repository discovery or external context.
+- Do not present the artifact as a casual recap when it is actually a derived transcript.
 
 ## Notes
 
