@@ -6,7 +6,7 @@ Current baseline includes:
 - project context commands: `init`, `rev-parse`, and scope-aware `doctor`
 - `tara-tapes` for Tara spec-first tape operations
 - `tape` and `git-refs` (from `obacli`)
-- `mdblocks`, `prefix`, `skills`, `utils`, `doctor`, `test` (from `devcli`)
+- `mdblocks`, `prefix`, `skills`, `utils`, `doctor`, `test`
 
 `agentos` is the core Python package/library.
 `agentos` is the CLI entrypoint/layer.

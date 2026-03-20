@@ -34,7 +34,7 @@ The goal is convergence: all notes should trend toward the same short/direct/foc
 1. Read the project's `AGENTS.md` to find the index location and structure
 2. If `AGENTS.md` does not reference an index, ask the user where it is
 3. Discover all index files (glob the index directory)
-4. For block-level formatting analysis, use `devcli mdblocks blocks <index-root> --min-level 2 --max-level 6 --json` instead of manual ad-hoc block parsing.
+4. For block-level formatting analysis, use `agentos mdblocks blocks <index-root> --min-level 2 --max-level 6 --json` instead of manual ad-hoc block parsing.
 5. Validate file naming:
    - Each index file must follow pattern `NNN-short-topic.md`
    - `NNN` must be zero-padded 3 digits in range `000-499`

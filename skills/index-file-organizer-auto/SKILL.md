@@ -32,9 +32,9 @@ Scan index notes and propose three high-impact file-organization changes (file r
 1. Read `AGENTS.md` to locate the index root
 2. If no index location is declared, print a short report stating it is missing and stop
 3. Enumerate all index markdown files
-4. Use `devcli mdblocks blocks` to map blocks (heading + body) with file paths/lines.
-   - Example: `devcli mdblocks blocks <index-root> --min-level 2 --max-level 2 --json`
-   - Use `devcli mdblocks links <index-root> --min-level 2 --max-level 2` when you need companion block links.
+4. Use `agentos mdblocks blocks` to map blocks (heading + body) with file paths/lines.
+   - Example: `agentos mdblocks blocks <index-root> --min-level 2 --max-level 2 --json`
+   - Use `agentos mdblocks links <index-root> --min-level 2 --max-level 2` when you need companion block links.
 
 Use Glob, Grep, and Read tools for discovery and context loading.
 

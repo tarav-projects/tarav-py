@@ -1,6 +1,6 @@
 ---
 name: index-find-block-auto
-description: "Index System: Find the most relevant index block from a user text description using devcli markdown block extraction"
+description: "Index System: Find the most relevant index block from a user text description using agentos markdown block extraction"
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -32,10 +32,10 @@ If description text is missing or too vague, ask one short clarifying question a
 2. If not specified, assume `notes/index/`.
 3. If index directory is missing, print a short report and stop.
 
-### Phase 2: Retrieve Candidates (Required via devcli)
+### Phase 2: Retrieve Candidates (Required via agentos)
 
 1. Run deterministic retrieval:
-   - `devcli mdblocks find <index-root> --min-level 2 --max-level 4 --query "<user description>" --top-k 3 --json`
+   - `agentos mdblocks find <index-root> --min-level 2 --max-level 4 --query "<user description>" --top-k 3 --json`
 2. If the user explicitly requests regex matching, add `--regex` (and `--case-sensitive` only if explicitly requested).
 3. Treat returned `matches` order as source of truth; do not implement custom reranking in this skill.
 4. Use `matches[i].link` as the companion `path#Lline` reference.
@@ -71,7 +71,7 @@ Print to chat in this format:
 **Companion link**
 - `path/to/file.md#Lline`
 **Score**
-- `[numeric score from devcli output]`
+- `[numeric score from agentos output]`
 **Confidence**
 - `high|medium|low`
 **Why this matches**

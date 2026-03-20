@@ -26,9 +26,9 @@ You are part of the **Index Maintenance System** — a set of agents that help t
 
 ## Block Extraction Protocol
 
-- For markdown block extraction, use `devcli mdblocks blocks` from the terminal.
-- For companion block references, use `devcli mdblocks links`.
-- For deterministic retrieval by query, use `devcli mdblocks find --query ...`.
+- For markdown block extraction, use `agentos mdblocks blocks` from the terminal.
+- For companion block references, use `agentos mdblocks links`.
+- For deterministic retrieval by query, use `agentos mdblocks find --query ...`.
 - Prefer these commands over ad-hoc manual parsing from raw file reads when block-level analysis is the task.
 
 ## Index File Naming

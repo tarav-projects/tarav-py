@@ -23,7 +23,7 @@ When writing reports in `notes/live/`, use `live-note-base` protocol:
 - Path and naming: `notes/live/NNN-short-topic.md`
 - Number source: files matching `notes/live/NNN-*.md`
 - Reserved range: `000-499` is human-managed
-- Prefix CLI (terminal): `devcli prefix next --root . --include notes/live --min 500 --width 3`
+- Prefix CLI (terminal): `agentos prefix next --root . --include notes/live --min 500 --width 3`
 
 ## Inputs
 - Notes: index root from `AGENTS.md` (default `notes/index/`), starting with `index.md` when present.
@@ -34,17 +34,17 @@ When writing reports in `notes/live/`, use `live-note-base` protocol:
 - Each `##` heading is one invariant.
 - The heading text is the invariant name.
 - The bullets under the heading are the invariant statements.
-- Use `devcli mdblocks blocks <index-root> --min-level 2 --max-level 2 --json` to extract invariant blocks deterministically.
-- Use `devcli mdblocks links <index-root> --min-level 2 --max-level 2` for companion block links (`path#Lline`).
+- Use `agentos mdblocks blocks <index-root> --min-level 2 --max-level 2 --json` to extract invariant blocks deterministically.
+- Use `agentos mdblocks links <index-root> --min-level 2 --max-level 2` for companion block links (`path#Lline`).
 
 ## Workflow
 1. Read `AGENTS.md` and resolve `<index-root>` (default `notes/index/`).
 2. Read `<index-root>/index.md` first when present, then remaining index files.
-3. Identify invariants and their statements from `devcli mdblocks blocks` output.
+3. Identify invariants and their statements from `agentos mdblocks blocks` output.
 4. Scan code for evidence supporting or contradicting invariants. Use file path + line number as anchors.
 5. Select up to 5 most significant drifts (use common sense; prioritize clear contradictions or repeated violations).
 6. Find the next report number using `live-note-base`:
-   - Run `devcli prefix next --root . --include notes/live --min 500 --width 3` from repo root.
+   - Run `agentos prefix next --root . --include notes/live --min 500 --width 3` from repo root.
    - Use the returned `NNN` directly.
    - Build target filename `notes/live/NNN-index-drift-review.md`.
 7. Read at least 3 prior reports with smaller numbers (if available) to avoid repeating old known drift without new value.
