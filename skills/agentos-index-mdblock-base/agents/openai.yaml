@@ -1,4 +1,4 @@
 interface:
-  display_name: "Agentos Index Mdblock Base"
+  display_name: "agentos-index-mdblock-base"
   short_description: "Defines the shared index-mdblock format."
   default_prompt: "Use $agentos-index-mdblock-base to define or review the shared index-mdblock format and note-taking philosophy."
