@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Index Drift Review
 
-Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-notes-base/FOUNDATION.md` before proceeding.
 
 ## Goal
 Evaluate invariants in `notes/index/*.md` against the codebase, report the most significant drift. Do not update specs or code; only write a single report file.

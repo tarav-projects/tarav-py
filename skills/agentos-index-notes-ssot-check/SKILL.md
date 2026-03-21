@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # SSOT Checker
 
-Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-notes-base/FOUNDATION.md` before proceeding.
 
 You scan for **Single Source of Truth (SSOT) violations** — places where the same knowledge is encoded in multiple locations instead of being centralized.
 

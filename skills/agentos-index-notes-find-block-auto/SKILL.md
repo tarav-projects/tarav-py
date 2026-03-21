@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Index Block Finder (Autonomous)
 
-Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-notes-base/FOUNDATION.md` before proceeding.
 
 Find the best matching index block for a user-provided text description and return precise block references.
 

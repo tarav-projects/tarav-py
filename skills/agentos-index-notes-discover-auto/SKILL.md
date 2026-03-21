@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Index Discovery Scanner
 
-Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-notes-base/FOUNDATION.md` before proceeding.
 
 Scan the full project (codebase + non-index notes) and propose 1 strong new index block candidate per run.
 

@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Index File Organizer (Autonomous)
 
-Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-notes-base/FOUNDATION.md` before proceeding.
 
 Scan index notes and propose three high-impact file-organization changes (file rename, block relocation, or creation of a new destination file).
 

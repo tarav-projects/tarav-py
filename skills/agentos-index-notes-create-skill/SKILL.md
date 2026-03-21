@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Agentos Index Notes Skill Creator
 
-Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-notes-base/FOUNDATION.md` before proceeding.
 
 You guide the user through designing and creating a new skill for the Agentos Index Notes Maintenance System.
 
@@ -17,7 +17,7 @@ You guide the user through designing and creating a new skill for the Agentos In
 
 ### Phase 1: Load Context
 
-1. Read `skills/agentos-index-note-base/FOUNDATION.md`
+1. Read `skills/agentos-index-notes-base/FOUNDATION.md`
 2. Discover all existing index notes skills: glob `skills/agentos-index-notes-*/SKILL.md`
 3. Read each discovered skill file
 4. Summarize to the user:
@@ -76,7 +76,7 @@ The loop ends when the user says to proceed (e.g., "create it", "go ahead", "loo
    ```
 
    **Structure:**
-   - First line after frontmatter heading: `Read and follow skills/agentos-index-note-base/FOUNDATION.md before proceeding.`
+   - First line after frontmatter heading: `Read and follow skills/agentos-index-notes-base/FOUNDATION.md before proceeding.`
    - One-sentence description of what the skill does
    - **Key constraints block** duplicated inline from foundation:
      ```

@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Index Reformat Reviewer (Report-Feedback Loop)
 
-Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-notes-base/FOUNDATION.md` before proceeding.
 
 Review index notes for formatting quality and propose rewrites toward short, direct, bullet-point structured text through an in-chat report-feedback loop.
 

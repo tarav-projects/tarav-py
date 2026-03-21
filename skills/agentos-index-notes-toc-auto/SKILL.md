@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Index TOC Generator
 
-Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-notes-base/FOUNDATION.md` before proceeding.
 
 Scan all files under the project's index directory and print a proposed table-of-contents section — a flat markdown list with a one-sentence content summary per file.
 

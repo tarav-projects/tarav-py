@@ -16,7 +16,7 @@ disable-model-invocation: true
 
 # Better Naming Review
 
-Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-notes-base/FOUNDATION.md` before proceeding.
 
 Find the 5 names across the project that would benefit most from renaming —
 for clarity, convention alignment, or both.
