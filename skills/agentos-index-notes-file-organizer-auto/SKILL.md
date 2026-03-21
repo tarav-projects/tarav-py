@@ -1,13 +1,13 @@
 ---
-name: index-file-organizer-auto
-description: "Index System: Scan index files for file-organization issues and propose file renames and block relocations with insertion hints"
+name: agentos-index-notes-file-organizer-auto
+description: "Agentos Index Notes System: Scan index files for file-organization issues and propose file renames and block relocations with insertion hints"
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # Index File Organizer (Autonomous)
 
-Read and follow `skills/index-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
 
 Scan index notes and propose three high-impact file-organization changes (file rename, block relocation, or creation of a new destination file).
 

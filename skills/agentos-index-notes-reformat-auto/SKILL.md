@@ -1,13 +1,13 @@
 ---
-name: index-reformat-auto
-description: "Index System: Review index notes for verbose or prose-y formatting and propose bullet-point reformat rewrites through in-chat report feedback loop"
+name: agentos-index-notes-reformat-auto
+description: "Agentos Index Notes System: Review index notes for verbose or prose-y formatting and propose bullet-point reformat rewrites through in-chat report feedback loop"
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # Index Reformat Reviewer (Report-Feedback Loop)
 
-Read and follow `skills/index-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
 
 Review index notes for formatting quality and propose rewrites toward short, direct, bullet-point structured text through an in-chat report-feedback loop.
 

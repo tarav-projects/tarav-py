@@ -1,13 +1,13 @@
 ---
-name: index-ssot-check
-description: "Index System: Scan codebase for Single Source of Truth violations — duplicated knowledge, bypassed interfaces, magic values"
+name: agentos-index-notes-ssot-check
+description: "Agentos Index Notes System: Scan codebase for Single Source of Truth violations — duplicated knowledge, bypassed interfaces, magic values"
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # SSOT Checker
 
-Read and follow `skills/index-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
 
 You scan for **Single Source of Truth (SSOT) violations** — places where the same knowledge is encoded in multiple locations instead of being centralized.
 

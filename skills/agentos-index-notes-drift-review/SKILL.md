@@ -1,13 +1,13 @@
 ---
-name: index-drift-review
-description: Review invariant/spec notes under notes/index/ against code, report significant drift in a numbered notes/live report.
+name: agentos-index-notes-drift-review
+description: "Agentos Index Notes System: Review invariant/spec notes under notes/index/ against code, report significant drift in a numbered notes/live report."
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # Index Drift Review
 
-Read and follow `skills/index-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
 
 ## Goal
 Evaluate invariants in `notes/index/*.md` against the codebase, report the most significant drift. Do not update specs or code; only write a single report file.
@@ -19,7 +19,7 @@ Evaluate invariants in `notes/index/*.md` against the codebase, report the most 
 - Be direct — brevity over completeness
 
 ## Live Note Dependency
-When writing reports in `notes/live/`, use `live-note-base` protocol:
+When writing reports in `notes/live/`, use `agentos-live-note-base` protocol:
 - Path and naming: `notes/live/NNN-short-topic.md`
 - Number source: files matching `notes/live/NNN-*.md`
 - Reserved range: `000-499` is human-managed
@@ -43,7 +43,7 @@ When writing reports in `notes/live/`, use `live-note-base` protocol:
 3. Identify invariants and their statements from `agentos mdblocks blocks` output.
 4. Scan code for evidence supporting or contradicting invariants. Use file path + line number as anchors.
 5. Select up to 5 most significant drifts (use common sense; prioritize clear contradictions or repeated violations).
-6. Find the next report number using `live-note-base`:
+6. Find the next report number using `agentos-live-note-base`:
    - Run `agentos prefix next --root . --include notes/live --min 500 --width 3` from repo root.
    - Use the returned `NNN` directly.
    - Build target filename `notes/live/NNN-index-drift-review.md`.

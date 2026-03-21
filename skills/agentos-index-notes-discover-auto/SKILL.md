@@ -1,13 +1,13 @@
 ---
-name: index-discover-auto
-description: "Index System: Scan codebase and notes to discover and propose new index block candidates — patterns, decisions, conventions not yet captured"
+name: agentos-index-notes-discover-auto
+description: "Agentos Index Notes System: Scan codebase and notes to discover and propose new index block candidates — patterns, decisions, conventions not yet captured"
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # Index Discovery Scanner
 
-Read and follow `skills/index-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
 
 Scan the full project (codebase + non-index notes) and propose 1 strong new index block candidate per run.
 

@@ -1,5 +1,5 @@
 ---
-name: index-better-naming
+name: agentos-index-notes-better-naming
 description: >
   Scan the entire project's naming index — code identifiers (functions, globals,
   structs), file and folder names, and notes titles — to find names that are
@@ -16,7 +16,7 @@ disable-model-invocation: true
 
 # Better Naming Review
 
-Read and follow `skills/index-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
 
 Find the 5 names across the project that would benefit most from renaming —
 for clarity, convention alignment, or both.

@@ -1,13 +1,13 @@
 ---
-name: index-find-block-auto
-description: "Index System: Find the most relevant index block from a user text description using agentos markdown block extraction"
+name: agentos-index-notes-find-block-auto
+description: "Agentos Index Notes System: Find the most relevant index block from a user text description using agentos markdown block extraction"
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # Index Block Finder (Autonomous)
 
-Read and follow `skills/index-base/FOUNDATION.md` before proceeding.
+Read and follow `skills/agentos-index-note-base/FOUNDATION.md` before proceeding.
 
 Find the best matching index block for a user-provided text description and return precise block references.
 
