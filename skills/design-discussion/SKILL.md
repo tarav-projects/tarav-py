@@ -1,12 +1,17 @@
 ---
 name: design-discussion
 description: Collaborative design conversation mode for architecture or product decisions. Use when the user wants iterative back-and-forth suggestions, critique, and refinement toward convergence, not a structured interview or questionnaire.
-model: opus
 ---
 
 # Design Discussion
 
 Drive a design goal through iterative exploration toward convergence.
+
+## Trigger Boundary
+
+Use this skill for collaborative design exploration where the user wants iterative critique, proposal updates, and convergence.
+
+Do not use it for structured requirements interviews, implementation work, or document drafting by default.
 
 ## Core Principles
 
@@ -18,6 +23,21 @@ Drive a design goal through iterative exploration toward convergence.
 - Default to delta updates: include mostly new information.
 - If feedback is scoped to one part, reply only on that part and its direct dependencies.
 
+## Working Design State
+
+Maintain an internal working state for the discussion:
+
+- accepted decisions
+- active assumptions
+- open questions
+- rejected or superseded directions
+
+Rules:
+
+- The latest accepted user direction overrides earlier brainstorming unless the user explicitly revives an old option.
+- Focus each round on the highest-uncertainty or highest-leverage unresolved part first.
+- Keep this state mostly internal and expose only the parts needed to move the discussion forward.
+
 ## Required Behavior
 
 1. Restate the design goal, constraints, and assumptions briefly.
@@ -27,7 +47,8 @@ Drive a design goal through iterative exploration toward convergence.
 - Respond to the user's critique directly.
 - Update only the impacted design sections with clear changes.
 - Call out tradeoffs and open risks.
-- Ask one concise follow-up question only if needed to unblock progress.
+- If ambiguity does not block progress, state the working assumption and continue.
+- Ask one concise follow-up question only when ambiguity blocks useful progress.
 5. Repeat until the user signals convergence.
 
 ## Interaction Rules
@@ -40,6 +61,7 @@ Drive a design goal through iterative exploration toward convergence.
 - Maintain the same level of abstraction; do not jump to low-level details too early.
 - Do not restate the full plan on every round.
 - Provide full recaps only when explicitly asked or at convergence.
+- Do not revisit rejected directions unless the user reopens them.
 
 ## Round Output Format
 
@@ -50,6 +72,16 @@ Use this structure each round:
 - `Changes from previous round` (delta only)
 - `Tradeoffs`
 - `Open questions` (only if blocking)
+
+## Lightweight Pressure Test
+
+Before convergence on a non-trivial design, briefly pressure-test the current proposal against:
+
+- one concrete usage scenario
+- one edge case
+- one key tradeoff or failure mode
+
+Keep this lightweight. Do not turn it into a formal evaluation unless the user asks.
 
 ## Convergence Output Format
 
