@@ -4,6 +4,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from taralib.tapes import TapeHandler
+
 from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
@@ -14,17 +16,9 @@ SEGMENTS_DIRNAME = "segments"
 STAGE_DIRNAME = "stage"
 
 
-def get_tara_tape_manifest_path(root: Path | str) -> Path:
-    return Path(root).expanduser().resolve() / MANIFEST_FILENAME
-
-
-def get_tara_tape_segments_dir(root: Path | str) -> Path:
-    return Path(root).expanduser().resolve() / SEGMENTS_DIRNAME
-
-
-def get_tara_tape_stage_dir(root: Path | str) -> Path:
-    return Path(root).expanduser().resolve() / STAGE_DIRNAME
-
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _normalize_root(root: Path | str) -> Path:
     return Path(root).expanduser().resolve()
@@ -74,6 +68,43 @@ def _validate_manifest_payload(payload: object) -> dict[str, object]:
     return manifest
 
 
+def _normalize_writer_id(value: str) -> str:
+    return validate_string_for_path(value, field_name="writer_id")
+
+
+def _normalize_segment_name(value: str) -> str:
+    normalized = validate_string_for_path(value, field_name="segment")
+    if not normalized.endswith(".jsonl"):
+        raise CliError("segment must end with .jsonl")
+    return normalized
+
+
+def _tape_handler(root: Path, *, writer: str | None = None, segment: str | None = None) -> TapeHandler:
+    """Build a TapeHandler from a resolved root path."""
+    tape_id = root.name
+    return TapeHandler(tape_id, root, writer=writer, segment=segment)
+
+
+# ---------------------------------------------------------------------------
+# Path getters (kept for check.py / archive.py compatibility)
+# ---------------------------------------------------------------------------
+
+def get_tara_tape_manifest_path(root: Path | str) -> Path:
+    return Path(root).expanduser().resolve() / MANIFEST_FILENAME
+
+
+def get_tara_tape_segments_dir(root: Path | str) -> Path:
+    return Path(root).expanduser().resolve() / SEGMENTS_DIRNAME
+
+
+def get_tara_tape_stage_dir(root: Path | str) -> Path:
+    return Path(root).expanduser().resolve() / STAGE_DIRNAME
+
+
+# ---------------------------------------------------------------------------
+# Manifest I/O
+# ---------------------------------------------------------------------------
+
 def load_tara_tape_manifest(root: Path | str) -> dict[str, object]:
     resolved_root = _normalize_root(root)
     if not resolved_root.exists():
@@ -81,14 +112,12 @@ def load_tara_tape_manifest(root: Path | str) -> dict[str, object]:
     if not resolved_root.is_dir():
         raise CliError(f"tape root is not a directory: {resolved_root}")
 
-    manifest_path = get_tara_tape_manifest_path(resolved_root)
-    if not manifest_path.exists():
-        raise CliError(f"tape manifest does not exist: {manifest_path}")
-    if not manifest_path.is_file():
-        raise CliError(f"tape manifest path is not a file: {manifest_path}")
+    th = _tape_handler(resolved_root)
+    if not th.exists():
+        raise CliError(f"tape manifest does not exist: {th.get_manifest_path()}")
 
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload = json.loads(th.get_manifest_path().read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise CliError(f"invalid tape manifest JSON: {exc}") from exc
 
@@ -107,6 +136,10 @@ def save_tara_tape_manifest(root: Path | str, manifest: dict[str, object]) -> di
     return validated_manifest
 
 
+# ---------------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------------
+
 def bootstrap_tara_tape(
     root: Path | str,
     *,
@@ -118,14 +151,13 @@ def bootstrap_tara_tape(
     if resolved_root.exists() and not resolved_root.is_dir():
         raise CliError(f"tape root is not a directory: {resolved_root}")
 
-    resolved_root.mkdir(parents=True, exist_ok=True)
-    get_tara_tape_segments_dir(resolved_root).mkdir(parents=True, exist_ok=True)
-    get_tara_tape_stage_dir(resolved_root).mkdir(parents=True, exist_ok=True)
+    th = _tape_handler(resolved_root)
 
-    manifest_path = get_tara_tape_manifest_path(resolved_root)
-    if manifest_path.exists():
+    # If already bootstrapped, just load the manifest
+    if th.exists():
         return load_tara_tape_manifest(resolved_root), False
 
+    # Build manifest payload
     manifest_payload = dict(manifest_extra or {})
     manifest_payload["tape_name"] = _normalize_tape_name(tape_name, default_value=resolved_root.name)
     manifest_payload["tara_tape_spec"] = TARA_TAPE_SPEC_VERSION
@@ -134,7 +166,13 @@ def bootstrap_tara_tape(
         field_name="created_at",
     )
 
-    return save_tara_tape_manifest(resolved_root, manifest_payload), True
+    # Use TapeHandler.instantiate() for core directory + manifest creation
+    th.instantiate(manifest=manifest_payload)
+
+    # Ensure stage/ directory exists (taralib doesn't create it by default)
+    get_tara_tape_stage_dir(resolved_root).mkdir(parents=True, exist_ok=True)
+
+    return load_tara_tape_manifest(resolved_root), True
 
 
 def _require_tara_tape_layout(root: Path | str) -> tuple[Path, dict[str, object]]:
@@ -156,16 +194,9 @@ def _require_tara_tape_layout(root: Path | str) -> tuple[Path, dict[str, object]
     return resolved_root, manifest
 
 
-def _normalize_writer_id(value: str) -> str:
-    return validate_string_for_path(value, field_name="writer_id")
-
-
-def _normalize_segment_name(value: str) -> str:
-    normalized = validate_string_for_path(value, field_name="segment")
-    if not normalized.endswith(".jsonl"):
-        raise CliError("segment must end with .jsonl")
-    return normalized
-
+# ---------------------------------------------------------------------------
+# Write — stage
+# ---------------------------------------------------------------------------
 
 def append_tara_tape_stage_record(
     root: Path | str,
@@ -178,20 +209,23 @@ def append_tara_tape_stage_record(
     normalized_writer_id = _normalize_writer_id(writer_id)
     normalized_segment_name = _normalize_segment_name(segment_name)
 
+    # Validate JSON-serializability before delegating
     try:
-        record_line = json.dumps(record)
+        json.dumps(record)
     except TypeError as exc:
         raise CliError(f"record is not JSON-serializable: {exc}") from exc
 
-    stage_path = get_tara_tape_stage_dir(resolved_root) / normalized_writer_id / normalized_segment_name
-    stage_path.parent.mkdir(parents=True, exist_ok=True)
-    with stage_path.open("a", encoding="utf-8") as handle:
-        handle.write(record_line)
-        handle.write("\n")
-    return stage_path
+    th = _tape_handler(resolved_root, writer=normalized_writer_id, segment=normalized_segment_name)
+    th.stage_json(record)
+    return th.get_current_stage_path()
 
+
+# ---------------------------------------------------------------------------
+# Write — commit
+# ---------------------------------------------------------------------------
 
 def _read_jsonl_lines(path: Path) -> list[str]:
+    """Strict JSONL reader — raises on blank/invalid lines."""
     lines: list[str] = []
     with path.open("r", encoding="utf-8") as handle:
         for line_no, raw_line in enumerate(handle, start=1):
@@ -206,9 +240,63 @@ def _read_jsonl_lines(path: Path) -> list[str]:
     return lines
 
 
+def commit_tara_tape_stage(root: Path | str) -> dict[str, object]:
+    """Commit staged records into segments, returning detailed stats.
+
+    Uses TapeHandler for the actual I/O but collects stats before committing.
+    """
+    resolved_root, _manifest = _require_tara_tape_layout(root)
+    stage_dir = get_tara_tape_stage_dir(resolved_root)
+
+    # Collect stats before commit
+    committed_record_count = 0
+    processed_stage_file_count = 0
+    touched_segments: set[str] = set()
+    touched_writers: set[str] = set()
+
+    for writer_dir in sorted(stage_dir.iterdir(), key=lambda p: p.name):
+        if not writer_dir.is_dir():
+            raise CliError(f"unexpected non-directory entry under stage: {writer_dir}")
+        writer_touched = False
+        for stage_path in sorted(writer_dir.iterdir(), key=lambda p: p.name):
+            if not stage_path.is_file():
+                raise CliError(f"unexpected non-file entry under stage writer directory: {stage_path}")
+            if stage_path.suffix != ".jsonl":
+                raise CliError(f"unexpected non-jsonl file under stage writer directory: {stage_path}")
+
+            lines = _read_jsonl_lines(stage_path)
+            committed_record_count += len(lines)
+            touched_segments.add(stage_path.name)
+            processed_stage_file_count += 1
+            writer_touched = True
+
+        if writer_touched:
+            touched_writers.add(writer_dir.name)
+
+    # Delegate actual file moves to TapeHandler
+    th = _tape_handler(resolved_root)
+    th.commit_stage()
+
+    # Re-create stage/ if TapeHandler cleaned it up (agentos expects it to persist)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+
+    return {
+        "committed_record_count": committed_record_count,
+        "processed_stage_file_count": processed_stage_file_count,
+        "segments_touched": sorted(touched_segments),
+        "writers_touched": sorted(touched_writers),
+        "stage_root": str(stage_dir),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Read
+# ---------------------------------------------------------------------------
+
 def _list_segment_paths(root: Path | str) -> list[Path]:
     resolved_root, _manifest = _require_tara_tape_layout(root)
-    segments_dir = get_tara_tape_segments_dir(resolved_root)
+    th = _tape_handler(resolved_root)
+    segments_dir = th.get_segments_dir()
 
     paths: list[Path] = []
     for candidate in sorted(segments_dir.iterdir(), key=lambda item: item.name):
@@ -244,53 +332,10 @@ def _list_stage_file_paths(root: Path | str) -> list[Path]:
     return stage_file_paths
 
 
-def commit_tara_tape_stage(root: Path | str) -> dict[str, object]:
-    resolved_root, _manifest = _require_tara_tape_layout(root)
-    stage_dir = get_tara_tape_stage_dir(resolved_root)
-    segments_dir = get_tara_tape_segments_dir(resolved_root)
-
-    committed_record_count = 0
-    processed_stage_file_count = 0
-    touched_segments: set[str] = set()
-    touched_writers: set[str] = set()
-
-    for writer_dir in _list_stage_writer_dirs(resolved_root):
-        writer_touched = False
-        for stage_path in sorted(writer_dir.iterdir(), key=lambda item: item.name):
-            if not stage_path.is_file():
-                raise CliError(f"unexpected non-file entry under stage writer directory: {stage_path}")
-            if stage_path.suffix != ".jsonl":
-                raise CliError(f"unexpected non-jsonl file under stage writer directory: {stage_path}")
-
-            lines = _read_jsonl_lines(stage_path)
-            if lines:
-                segment_path = segments_dir / stage_path.name
-                with segment_path.open("a", encoding="utf-8") as handle:
-                    for line in lines:
-                        handle.write(line)
-                        handle.write("\n")
-                committed_record_count += len(lines)
-                touched_segments.add(stage_path.name)
-            stage_path.unlink()
-            processed_stage_file_count += 1
-            writer_touched = True
-
-        if writer_touched:
-            touched_writers.add(writer_dir.name)
-        if not any(writer_dir.iterdir()):
-            writer_dir.rmdir()
-
-    return {
-        "committed_record_count": committed_record_count,
-        "processed_stage_file_count": processed_stage_file_count,
-        "segments_touched": sorted(touched_segments),
-        "writers_touched": sorted(touched_writers),
-        "stage_root": str(stage_dir),
-    }
-
-
 def list_tara_tape_segments(root: Path | str) -> list[str]:
-    return [path.name for path in _list_segment_paths(root)]
+    resolved_root, _manifest = _require_tara_tape_layout(root)
+    th = _tape_handler(resolved_root)
+    return th.list_segments()
 
 
 def read_tara_tape_segment_records(root: Path | str, *, segment_name: str) -> list[object]:
@@ -305,9 +350,12 @@ def read_tara_tape_segment_records(root: Path | str, *, segment_name: str) -> li
 
 
 def read_tara_tape_records(root: Path | str) -> list[object]:
+    resolved_root, _manifest = _require_tara_tape_layout(root)
+    th = _tape_handler(resolved_root)
     records: list[object] = []
-    for segment_path in _list_segment_paths(root):
-        records.extend(json.loads(line) for line in _read_jsonl_lines(segment_path))
+    for entry in th.read_jsonl():
+        if entry["parsed"] is not None:
+            records.append(entry["parsed"])
     return records
 
 

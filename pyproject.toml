@@ -12,7 +12,11 @@ authors = [{ name = "pereiro" }]
 dependencies = [
     "jsonschema>=4.25.1",
     "jmespath>=1.0.1",
+    "taralib",
 ]
+
+[tool.uv.sources]
+taralib = { path = "/Users/pereiro/Documents/workspaces/oba-workspace/taraproject-py/packages/taralib", editable = true }
 
 [project.scripts]
 agentos = "agentos.cli:main"
