@@ -979,7 +979,7 @@ def test_chat_session_extract_supports_uri_resolution_for_duplicate_codex_sessio
     assert main(["chat", "session", "extract", session_id]) == 1
     assert f"multiple extractable session artifacts found for query {session_id}" in capsys.readouterr().err
 
-    assert main(["chat", "session", "list", "--provider", "codex"]) == 0
+    assert main(["chat", "session", "list", "--provider", "codex", "--output", "json"]) == 0
     list_payload = json.loads(capsys.readouterr().out)
     target_session = next(
         session
