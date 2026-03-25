@@ -1,0 +1,4 @@
+interface:
+  display_name: "agentos-iterator-base"
+  short_description: "Defines iterator skills and iteration reports."
+  default_prompt: "Use $agentos-iterator-base to define or review one-iteration-per-run skills and their Iteration.Report guidance."
