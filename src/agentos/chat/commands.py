@@ -8,6 +8,12 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
+from agentos.chat.accounts import (
+    chat_account_stats,
+    format_chat_account_stats_markdown,
+    format_chat_account_stats_usage,
+    supported_account_provider_families,
+)
 from agentos.chat.archive import archive_chat_instances, supported_archive_provider_families
 from agentos.chat.core import (
     chat_session_resolved_stats,
@@ -44,6 +50,9 @@ from agentos.chat.sessions import coerce_timestamp
 
 
 _CHAT_PROVIDER_CHOICES = tuple(provider_family.family for provider_family in supported_provider_families())
+_CHAT_ACCOUNTS_PROVIDER_CHOICES = tuple(
+    provider_family.family for provider_family in supported_account_provider_families()
+)
 _CHAT_ARCHIVE_PROVIDER_CHOICES = tuple(
     provider_family.family for provider_family in supported_archive_provider_families()
 )
@@ -175,6 +184,23 @@ def _cmd_chat_archive(args: argparse.Namespace) -> int:
     payload = archive_chat_instances(
         providers=tuple(args.providers) if args.providers else None,
     )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_chat_accounts_stats(args: argparse.Namespace) -> int:
+    payload = chat_account_stats(
+        instance_ids=tuple(args.instance_ids) if args.instance_ids else None,
+        providers=tuple(args.providers) if args.providers else None,
+        refresh_usage=args.refresh_usage,
+        full_output=args.full_output,
+    )
+    if args.output_format == "markdown":
+        print(format_chat_account_stats_markdown(payload))
+        return 0
+    if args.output_format == "usage":
+        print(format_chat_account_stats_usage(payload))
+        return 0
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -613,3 +639,50 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Restrict archiving to a provider family. Repeat to include multiple providers.",
     )
     archive_parser.set_defaults(handler=_cmd_chat_archive)
+
+    accounts_parser = chat_subparsers.add_parser(
+        "accounts",
+        help="Query configured account status across supported provider CLIs.",
+    )
+    accounts_subparsers = accounts_parser.add_subparsers(
+        dest="chat_accounts_command",
+        required=True,
+    )
+
+    accounts_stats_parser = accounts_subparsers.add_parser(
+        "stats",
+        help="Aggregate configured account status checks across supported providers.",
+    )
+    accounts_stats_parser.add_argument(
+        "instance_ids",
+        nargs="*",
+        help="Optional configured account instance ids to query. Defaults to all configured instances.",
+    )
+    accounts_stats_parser.add_argument(
+        "--provider",
+        choices=_CHAT_ACCOUNTS_PROVIDER_CHOICES,
+        action="append",
+        dest="providers",
+        help="Restrict checks to a provider. Repeat to include multiple providers.",
+    )
+    accounts_stats_parser.add_argument(
+        "--output",
+        choices=("json", "markdown", "usage"),
+        default="json",
+        dest="output_format",
+        help="Output format (default: json).",
+    )
+    accounts_stats_parser.add_argument(
+        "--full-output",
+        action="store_true",
+        help="Keep zero-account provider diagnostics in the providers array.",
+    )
+    accounts_stats_parser.add_argument(
+        "--refresh-usage",
+        action="store_true",
+        help=(
+            "Allow provider adapters to issue live refresh requests for usage data when needed "
+            "(for example Claude Code)."
+        ),
+    )
+    accounts_stats_parser.set_defaults(handler=_cmd_chat_accounts_stats)
