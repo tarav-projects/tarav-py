@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -42,6 +44,7 @@ class ArchiveFamily:
     def default_instance(self) -> ArchiveInstance:
         return self.instance_from_homes(
             {slot.key: slot.default_home for slot in self.home_slots},
+            field_prefix="chat.archive.provider_instances",
             index=None,
             is_default=True,
             instance_name="default",
@@ -53,6 +56,7 @@ class ArchiveFamily:
         self,
         home: str,
         *,
+        field_prefix: str,
         index: int | None,
         is_default: bool,
         instance_name: str | None,
@@ -60,8 +64,8 @@ class ArchiveFamily:
         excludes: tuple[str, ...],
     ) -> ArchiveInstance:
         if len(self.home_slots) != 1:
-            field_name = _archive_provider_instance_field_name(index=index, field="home")
-            homes_field_name = _archive_provider_instance_field_name(index=index, field="homes")
+            field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="home")
+            homes_field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="homes")
             supported_keys = ", ".join(self.supported_home_keys())
             raise CliError(
                 f"{field_name} is only supported for providers with a single home root; "
@@ -70,6 +74,7 @@ class ArchiveFamily:
         slot = self.home_slots[0]
         return self.instance_from_homes(
             {slot.key: home},
+            field_prefix=field_prefix,
             index=index,
             is_default=is_default,
             instance_name=instance_name,
@@ -81,6 +86,7 @@ class ArchiveFamily:
         self,
         homes: dict[str, str],
         *,
+        field_prefix: str,
         index: int | None,
         is_default: bool,
         instance_name: str | None,
@@ -89,7 +95,7 @@ class ArchiveFamily:
     ) -> ArchiveInstance:
         supported_slots = {slot.key: slot for slot in self.home_slots}
         unsupported_keys = sorted(key for key in homes if key not in supported_slots)
-        homes_field_name = _archive_provider_instance_field_name(index=index, field="homes")
+        homes_field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="homes")
         if unsupported_keys:
             supported_keys = ", ".join(self.supported_home_keys())
             unsupported_text = ", ".join(unsupported_keys)
@@ -119,7 +125,7 @@ class ArchiveFamily:
 
         resolved_instance_name: str | None = None
         if instance_name is not None:
-            field_name = _archive_provider_instance_field_name(index=index, field="instance")
+            field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="instance")
             resolved_instance_name = validate_string_for_path(instance_name, field_name=field_name)
 
         return ArchiveInstance(
@@ -161,6 +167,9 @@ class ArchiveInstance:
             return self.instance_name
         if self.is_default:
             return "default"
+        derived_name = _derive_archive_instance_name(self.family, self.homes)
+        if derived_name is not None:
+            return derived_name
         return self.fingerprint[:12]
 
     def identity_key(self) -> tuple[object, ...]:
@@ -170,18 +179,38 @@ class ArchiveInstance:
         )
 
     def destination_root(self, archive_root: Path) -> Path:
-        return archive_root / self.family / self.resolved_instance_name
+        if len(self.homes) != 1:
+            return archive_root
+        _, home_path = self.homes[0]
+        return _archive_home_destination(
+            archive_root=archive_root,
+            home_path=home_path,
+        )
 
     def summary(self, archive_root: Path) -> dict[str, Any]:
+        destination_roots = {
+            key: str(
+                _archive_home_destination(
+                    archive_root=archive_root,
+                    home_path=home_path,
+                )
+            )
+            for key, home_path in self.homes
+        }
         return {
             "provider": self.family,
             "instance": self.resolved_instance_name,
             "is_default": self.is_default,
             "homes": {key: str(path) for key, path in self.homes},
             "includes": list(self.includes),
-            "excludes": list(self.excludes),
-            "destination_root": str(self.destination_root(archive_root)),
+            "excludes": list(self.effective_excludes),
+            "destination_root": str(self.destination_root(archive_root)) if len(self.homes) == 1 else None,
+            "destination_roots": destination_roots,
         }
+
+    @property
+    def effective_excludes(self) -> tuple[str, ...]:
+        return _unique_strings(self.excludes + _derived_archive_instance_excludes(self.family, self.homes))
 
 
 @dataclass(frozen=True)
@@ -291,6 +320,7 @@ def configured_archive_settings(*, start_path: Path | str = ".") -> ArchiveSetti
             configs.append(load_project_config(project_path))
 
     for config in configs:
+        provider_instances.extend(_session_archive_instances_from_config(config))
         archive_config = _archive_config_from_config(config)
         if archive_config is None:
             continue
@@ -381,16 +411,22 @@ def _archive_single_instance(
     instance: ArchiveInstance,
     archive_root: Path,
 ) -> dict[str, object]:
-    destination_root = instance.destination_root(archive_root)
+    legacy_destination_root = _legacy_archive_instance_destination_root(
+        instance=instance,
+        archive_root=archive_root,
+    )
+    if legacy_destination_root != archive_root and legacy_destination_root.exists():
+        _remove_archive_tree(legacy_destination_root)
+        _prune_archive_parent_dirs(legacy_destination_root.parent, stop=archive_root)
+
     home_results: list[dict[str, object]] = []
     synced = False
 
     for home_key, home_path in instance.homes:
         exists = home_path.is_dir()
         destination_path = _archive_home_destination(
-            instance=instance,
-            destination_root=destination_root,
-            home_key=home_key,
+            archive_root=archive_root,
+            home_path=home_path,
         )
         home_payload = {
             "key": home_key,
@@ -404,7 +440,7 @@ def _archive_single_instance(
                 source_path=home_path,
                 destination_path=destination_path,
                 includes=instance.includes,
-                excludes=instance.excludes,
+                excludes=instance.effective_excludes,
             )
             home_payload["synced"] = True
             synced = True
@@ -429,13 +465,18 @@ def _archive_single_instance(
 
 def _archive_home_destination(
     *,
-    instance: ArchiveInstance,
-    destination_root: Path,
-    home_key: str,
+    archive_root: Path,
+    home_path: Path,
 ) -> Path:
-    if len(instance.homes) == 1:
-        return destination_root
-    return destination_root / home_key
+    return archive_root / _archive_home_relpath(home_path)
+
+
+def _legacy_archive_instance_destination_root(
+    *,
+    instance: ArchiveInstance,
+    archive_root: Path,
+) -> Path:
+    return archive_root / instance.family / instance.resolved_instance_name
 
 
 def _mirror_archive_home(
@@ -482,6 +523,56 @@ def _mirror_archive_home(
         raise CliError(details)
 
 
+def _archive_home_relpath(home_path: Path) -> Path:
+    normalized_home = home_path.expanduser().resolve()
+    user_home = Path.home().expanduser().resolve()
+
+    try:
+        relpath = normalized_home.relative_to(user_home)
+        if relpath.parts:
+            return relpath
+    except ValueError:
+        pass
+
+    if normalized_home.is_absolute():
+        relative_text = os.path.relpath(str(normalized_home), normalized_home.anchor)
+        relpath = Path(relative_text)
+        if relpath.parts and relpath != Path("."):
+            return relpath
+
+    return Path(normalized_home.name)
+
+
+def _remove_archive_tree(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return
+    if path.is_dir():
+        shutil.rmtree(path)
+
+
+def _prune_archive_parent_dirs(path: Path, *, stop: Path) -> None:
+    current = path
+    stop_resolved = stop.resolve()
+    while current != stop_resolved:
+        if not current.exists() or not current.is_dir():
+            return
+        children = list(current.iterdir())
+        removable = [child for child in children if child.name == ".DS_Store"]
+        for child in removable:
+            child.unlink()
+        if any(child.name != ".DS_Store" for child in children):
+            return
+        try:
+            current.rmdir()
+        except OSError:
+            return
+        parent = current.parent
+        if parent == current:
+            return
+        current = parent
+
+
 def _ensure_git_repo(repo_root: Path) -> None:
     repo_root.mkdir(parents=True, exist_ok=True)
     git_dir = repo_root / ".git"
@@ -521,14 +612,58 @@ def _archive_instances_from_config(archive_config: dict[str, object]) -> tuple[A
     for index, raw_instance in enumerate(raw_instances):
         if not isinstance(raw_instance, dict):
             raise CliError(f"chat.archive.provider_instances[{index}] must be a JSON object")
-        instances.append(_archive_instance_from_config(raw_instance, index=index))
+        instances.append(
+            _archive_instance_from_raw_config(
+                raw_instance,
+                index=index,
+                field_prefix="chat.archive.provider_instances",
+            )
+        )
     return tuple(instances)
 
 
-def _archive_instance_from_config(raw_instance: dict[str, object], *, index: int) -> ArchiveInstance:
+def _session_archive_instances_from_config(config: dict[str, object]) -> tuple[ArchiveInstance, ...]:
+    chat_config = config.get("chat")
+    if chat_config is None:
+        return ()
+    if not isinstance(chat_config, dict):
+        raise CliError("config field chat must be a JSON object")
+
+    session_config = chat_config.get("session")
+    if session_config is None:
+        return ()
+    if not isinstance(session_config, dict):
+        raise CliError("config field chat.session must be a JSON object")
+
+    raw_instances = session_config.get("provider_instances")
+    if raw_instances is None:
+        return ()
+    if not isinstance(raw_instances, list):
+        raise CliError("config field chat.session.provider_instances must be a JSON array")
+
+    instances: list[ArchiveInstance] = []
+    for index, raw_instance in enumerate(raw_instances):
+        if not isinstance(raw_instance, dict):
+            raise CliError(f"chat.session.provider_instances[{index}] must be a JSON object")
+        instances.append(
+            _archive_instance_from_raw_config(
+                raw_instance,
+                index=index,
+                field_prefix="chat.session.provider_instances",
+            )
+        )
+    return tuple(instances)
+
+
+def _archive_instance_from_raw_config(
+    raw_instance: dict[str, object],
+    *,
+    index: int,
+    field_prefix: str,
+) -> ArchiveInstance:
     family_name = raw_instance.get("provider")
     if not isinstance(family_name, str) or not family_name:
-        raise CliError(f"chat.archive.provider_instances[{index}].provider is required")
+        raise CliError(f"{field_prefix}[{index}].provider is required")
 
     family = _archive_family_for_name(family_name)
     if family is None:
@@ -536,7 +671,7 @@ def _archive_instance_from_config(raw_instance: dict[str, object], *, index: int
             sorted(provider_family.family for provider_family in supported_archive_provider_families())
         )
         raise CliError(
-            f"chat.archive.provider_instances[{index}].provider must be one of: {supported_providers}"
+            f"{field_prefix}[{index}].provider must be one of: {supported_providers}"
         )
 
     home = raw_instance.get("home")
@@ -545,39 +680,40 @@ def _archive_instance_from_config(raw_instance: dict[str, object], *, index: int
 
     if home is not None and raw_homes is not None:
         raise CliError(
-            f"chat.archive.provider_instances[{index}] must not define both home and homes"
+            f"{field_prefix}[{index}] must not define both home and homes"
         )
 
     includes = _load_optional_string_tuple(
         raw_instance.get("includes"),
-        field_name=f"chat.archive.provider_instances[{index}].includes",
+        field_name=f"{field_prefix}[{index}].includes",
     )
     excludes = _load_optional_string_tuple(
         raw_instance.get("excludes"),
-        field_name=f"chat.archive.provider_instances[{index}].excludes",
+        field_name=f"{field_prefix}[{index}].excludes",
     )
     homes = _load_optional_string_mapping(
         raw_homes,
-        field_name=f"chat.archive.provider_instances[{index}].homes",
+        field_name=f"{field_prefix}[{index}].homes",
     )
 
     instance_name: str | None = None
     if raw_instance_name is not None:
         if not isinstance(raw_instance_name, str) or not raw_instance_name.strip():
-            raise CliError(f"chat.archive.provider_instances[{index}].instance must be a non-empty string")
+            raise CliError(f"{field_prefix}[{index}].instance must be a non-empty string")
         instance_name = raw_instance_name.strip()
 
     if home is not None:
         normalized_home = _normalize_archive_home(
             home,
-            field_name=f"chat.archive.provider_instances[{index}].home",
+            field_name=f"{field_prefix}[{index}].home",
         )
         if homes:
             raise CliError(
-                f"chat.archive.provider_instances[{index}] must define either home or homes, not both"
+                f"{field_prefix}[{index}] must define either home or homes, not both"
             )
         return family.instance_from_home(
             normalized_home,
+            field_prefix=field_prefix,
             index=index,
             is_default=False,
             instance_name=instance_name,
@@ -588,11 +724,12 @@ def _archive_instance_from_config(raw_instance: dict[str, object], *, index: int
     if homes:
         if len(family.home_slots) == 1:
             raise CliError(
-                f"chat.archive.provider_instances[{index}].homes is only supported for providers with multiple home roots; "
-                f"use chat.archive.provider_instances[{index}].home"
+                f"{field_prefix}[{index}].homes is only supported for providers with multiple home roots; "
+                f"use {field_prefix}[{index}].home"
             )
         return family.instance_from_homes(
             homes,
+            field_prefix=field_prefix,
             index=index,
             is_default=False,
             instance_name=instance_name,
@@ -601,7 +738,7 @@ def _archive_instance_from_config(raw_instance: dict[str, object], *, index: int
         )
 
     raise CliError(
-        f"chat.archive.provider_instances[{index}] must define home or homes"
+        f"{field_prefix}[{index}] must define home or homes"
     )
 
 
@@ -612,10 +749,10 @@ def _archive_family_for_name(family_name: str) -> ArchiveFamily | None:
     return None
 
 
-def _archive_provider_instance_field_name(*, index: int | None, field: str) -> str:
+def _provider_instance_field_name(*, field_prefix: str, index: int | None, field: str) -> str:
     if index is None:
         return field
-    return f"chat.archive.provider_instances[{index}].{field}"
+    return f"{field_prefix}[{index}].{field}"
 
 
 def _normalize_archive_home(home: object, *, field_name: str) -> str:
@@ -696,6 +833,42 @@ def _unique_strings(values: tuple[str, ...]) -> tuple[str, ...]:
         seen.add(value)
         items.append(value)
     return tuple(items)
+
+
+def _derive_archive_instance_name(
+    family: str,
+    homes: tuple[tuple[str, Path], ...],
+) -> str | None:
+    if len(homes) != 1:
+        return None
+
+    _, home_path = homes[0]
+    basename = home_path.name.lstrip(".")
+    if not basename or basename == family:
+        return None
+
+    for separator in ("-", "_"):
+        family_prefix = f"{family}{separator}"
+        if basename.startswith(family_prefix):
+            suffix = basename[len(family_prefix):].strip()
+            if suffix:
+                return validate_string_for_path(suffix, field_name="archive instance name")
+
+    return validate_string_for_path(basename, field_name="archive instance name")
+
+
+def _derived_archive_instance_excludes(
+    family: str,
+    homes: tuple[tuple[str, Path], ...],
+) -> tuple[str, ...]:
+    # Preserve the old trackagents behavior for ~/.codex-tk without forcing
+    # users to duplicate their existing session-home config under chat.archive.
+    if family != "codex":
+        return ()
+    derived_name = _derive_archive_instance_name(family, homes)
+    if derived_name == "tk":
+        return ("_auth-tk.json",)
+    return ()
 
 
 __all__ = [

@@ -25,3 +25,7 @@
 - Archive repo root is now `~/.agentos/chat-archive`.
 - Config lives under `chat.archive.provider_instances` and supports `provider`, `home`/`homes`, `instance`, `includes`, and `excludes`.
 - Verified with the full `agentos` test suite and refreshed the installed `agentos` executable.
+- Follow-up fix: `chat archive` now also inherits extra home-based instances from `chat.provider_instances`, so existing session-home config for `~/.codex-jp` and `~/.codex-tk` is archived without duplication.
+- Follow-up fix: restored the old `codex-tk` `_auth-tk.json` exclusion and reran the live Codex archive.
+- Follow-up change: moved session config from `chat.provider_instances` to `chat.session.provider_instances`, updated the code/tests, and migrated the live `~/.agentos/config.json` to match.
+- Follow-up change: archive layout now mirrors homes directly by home-relative path under `~/.agentos/chat-archive`, so `~/.codex-jp/...` archives to `~/.agentos/chat-archive/.codex-jp/...` and the old `provider/instance` folders are migrated away.

@@ -14,7 +14,12 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _write_global_config(path: Path, *, provider_instances: list[dict[str, object]]) -> None:
+def _write_global_config(
+    path: Path,
+    *,
+    provider_instances: list[dict[str, object]] | None = None,
+    archive_provider_instances: list[dict[str, object]] | None = None,
+) -> None:
     _write(
         path,
         json.dumps(
@@ -22,9 +27,12 @@ def _write_global_config(path: Path, *, provider_instances: list[dict[str, objec
                 "class": "agentos.global.config",
                 "schema_version": 1,
                 "chat": {
+                    "session": {
+                        "provider_instances": provider_instances or [],
+                    },
                     "archive": {
-                        "provider_instances": provider_instances,
-                    }
+                        "provider_instances": archive_provider_instances or [],
+                    },
                 },
             }
         ),
@@ -42,6 +50,10 @@ def _git_output(repo_root: Path, *args: str) -> str:
     if result.returncode != 0:
         raise AssertionError(result.stderr or result.stdout)
     return result.stdout.strip()
+
+
+def _archive_home_root(agentos_home: Path, home: Path, source_home: Path) -> Path:
+    return agentos_home / "chat-archive" / source_home.relative_to(home)
 
 
 def test_chat_archive_mirrors_default_codex_home_and_commits(
@@ -64,13 +76,15 @@ def test_chat_archive_mirrors_default_codex_home_and_commits(
 
     payload = json.loads(capsys.readouterr().out)
     archive_root = agentos_home / "chat-archive"
-    destination_root = archive_root / "codex" / "default"
+    source_root = home / ".codex"
+    destination_root = _archive_home_root(agentos_home, home, source_root)
 
     assert payload["command"] == "chat archive"
     assert payload["committed"] is True
     assert payload["synced_instance_count"] == 1
     assert payload["skipped_instance_count"] == 0
     assert payload["instances"][0]["instance"] == "default"
+    assert payload["instances"][0]["destination_root"] == str(destination_root)
     assert payload["instances"][0]["synced"] is True
     assert (destination_root / "sessions" / "2026" / "03" / "25" / "rollout.jsonl").exists()
     assert (destination_root / "notes.md").exists()
@@ -113,7 +127,7 @@ def test_chat_archive_uses_configured_extra_codex_instance(
 ) -> None:
     home = tmp_path / "home"
     agentos_home = tmp_path / "agentos-home"
-    extra_codex_home = tmp_path / "codex-jp"
+    extra_codex_home = home / ".codex-jp"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
@@ -122,7 +136,7 @@ def test_chat_archive_uses_configured_extra_codex_instance(
     _write(extra_codex_home / "sessions" / "2026" / "03" / "26" / "rollout.jsonl", '{"id":"jp"}\n')
     _write_global_config(
         agentos_home / "config.json",
-        provider_instances=[
+        archive_provider_instances=[
             {
                 "provider": "codex",
                 "instance": "jp",
@@ -140,8 +154,55 @@ def test_chat_archive_uses_configured_extra_codex_instance(
     assert payload["instance_count"] == 2
     assert payload["synced_instance_count"] == 2
     assert instance_names == ["default", "jp"]
-    assert (archive_root / "codex" / "default" / "sessions" / "2026" / "03" / "25" / "rollout.jsonl").exists()
-    assert (archive_root / "codex" / "jp" / "sessions" / "2026" / "03" / "26" / "rollout.jsonl").exists()
+    assert (_archive_home_root(agentos_home, home, home / ".codex") / "sessions" / "2026" / "03" / "25" / "rollout.jsonl").exists()
+    assert (_archive_home_root(agentos_home, home, extra_codex_home) / "sessions" / "2026" / "03" / "26" / "rollout.jsonl").exists()
+
+
+def test_chat_archive_inherits_session_provider_instances(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    codex_jp_home = home / ".codex-jp"
+    codex_tk_home = home / ".codex-tk"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write(home / ".codex" / "sessions" / "2026" / "03" / "25" / "rollout.jsonl", '{"id":"default"}\n')
+    _write(codex_jp_home / "sessions" / "2026" / "03" / "26" / "rollout.jsonl", '{"id":"jp"}\n')
+    _write(codex_tk_home / "sessions" / "2026" / "03" / "27" / "rollout.jsonl", '{"id":"tk"}\n')
+    _write(codex_tk_home / "_auth-tk.json", '{"secret":true}\n')
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "home": str(codex_tk_home),
+            },
+            {
+                "provider": "codex",
+                "home": str(codex_jp_home),
+            },
+        ],
+    )
+
+    assert main(["chat", "archive", "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    archive_root = agentos_home / "chat-archive"
+    instance_names = [instance["instance"] for instance in payload["instances"]]
+
+    assert payload["instance_count"] == 3
+    assert payload["synced_instance_count"] == 3
+    assert instance_names == ["default", "tk", "jp"]
+    assert (_archive_home_root(agentos_home, home, home / ".codex") / "sessions" / "2026" / "03" / "25" / "rollout.jsonl").exists()
+    assert (_archive_home_root(agentos_home, home, codex_jp_home) / "sessions" / "2026" / "03" / "26" / "rollout.jsonl").exists()
+    assert (_archive_home_root(agentos_home, home, codex_tk_home) / "sessions" / "2026" / "03" / "27" / "rollout.jsonl").exists()
+    assert not (_archive_home_root(agentos_home, home, codex_tk_home) / "_auth-tk.json").exists()
+    assert not (archive_root / "codex").exists()
 
 
 def test_chat_archive_openclaw_allowlist_and_excludes(
@@ -167,7 +228,7 @@ def test_chat_archive_openclaw_allowlist_and_excludes(
     assert main(["chat", "archive", "--provider", "openclaw"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    destination_root = agentos_home / "chat-archive" / "openclaw" / "default"
+    destination_root = _archive_home_root(agentos_home, home, openclaw_home)
     assert payload["instances"][0]["synced"] is True
     assert (destination_root / "agents" / "alpha" / "sessions" / "s1.jsonl").exists()
     assert (destination_root / "agents" / "alpha" / "agent" / "profile.md").exists()
@@ -198,3 +259,24 @@ def test_chat_archive_skips_missing_sources_without_creating_repo(
     assert payload["instances"][0]["synced"] is False
     assert payload["instances"][0]["missing_home_keys"] == ["home"]
     assert not (agentos_home / "chat-archive").exists()
+
+
+def test_chat_archive_migrates_legacy_provider_instance_layout(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write(home / ".codex" / "sessions" / "2026" / "03" / "25" / "rollout.jsonl", '{"ok":true}\n')
+    _write(agentos_home / "chat-archive" / "codex" / "default" / "obsolete.txt", "old\n")
+
+    assert main(["chat", "archive", "--provider", "codex"]) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert not (agentos_home / "chat-archive" / "codex").exists()
+    assert (_archive_home_root(agentos_home, home, home / ".codex") / "sessions" / "2026" / "03" / "25" / "rollout.jsonl").exists()

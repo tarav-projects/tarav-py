@@ -293,7 +293,9 @@ def _write_global_config(path: Path, *, provider_instances: list[dict[str, objec
                 "class": "agentos.global.config",
                 "schema_version": 1,
                 "chat": {
-                    "provider_instances": provider_instances,
+                    "session": {
+                        "provider_instances": provider_instances,
+                    },
                 },
             }
         ),
@@ -589,8 +591,8 @@ def test_chat_session_list_rejects_single_home_for_multi_root_claude_code_provid
 
     assert main(["chat", "session", "list"]) == 1
     error_output = capsys.readouterr().err
-    assert "chat.provider_instances[0].home is only supported for providers with a single home root" in error_output
-    assert "chat.provider_instances[0].homes" in error_output
+    assert "chat.session.provider_instances[0].home is only supported for providers with a single home root" in error_output
+    assert "chat.session.provider_instances[0].homes" in error_output
     assert "cli, desktop" in error_output
 
 
@@ -611,8 +613,8 @@ def test_chat_session_list_rejects_homes_for_single_root_provider(
 
     assert main(["chat", "session", "list"]) == 1
     error_output = capsys.readouterr().err
-    assert "chat.provider_instances[0].homes is only supported for providers with multiple home roots" in error_output
-    assert "chat.provider_instances[0].home" in error_output
+    assert "chat.session.provider_instances[0].homes is only supported for providers with multiple home roots" in error_output
+    assert "chat.session.provider_instances[0].home" in error_output
 
 
 def test_chat_session_list_full_output_keeps_zero_session_providers(

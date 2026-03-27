@@ -101,7 +101,9 @@ def _write_global_config(path: Path, *, provider_instances: list[dict[str, objec
                 "class": "agentos.global.config",
                 "schema_version": 1,
                 "chat": {
-                    "provider_instances": provider_instances,
+                    "session": {
+                        "provider_instances": provider_instances,
+                    },
                 },
             }
         ),
