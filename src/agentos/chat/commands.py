@@ -3,8 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import select
+import sys
 import time
 from pathlib import Path
+from typing import TextIO
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
@@ -57,6 +60,7 @@ _CHAT_ARCHIVE_PROVIDER_CHOICES = tuple(
     provider_family.family for provider_family in supported_archive_provider_families()
 )
 _DURATION_RE = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw]?)$")
+_CHAT_ACCOUNTS_LOOP_INTERVAL_SEC = 60.0
 
 
 def _normalize_session_limit(limit: int | None) -> int | None:
@@ -189,6 +193,14 @@ def _cmd_chat_archive(args: argparse.Namespace) -> int:
 
 
 def _cmd_chat_accounts_stats(args: argparse.Namespace) -> int:
+    if args.loop:
+        return _loop_chat_accounts_stats(args)
+
+    print(_render_chat_accounts_stats_output(args))
+    return 0
+
+
+def _render_chat_accounts_stats_output(args: argparse.Namespace) -> str:
     payload = chat_account_stats(
         instance_ids=tuple(args.instance_ids) if args.instance_ids else None,
         providers=tuple(args.providers) if args.providers else None,
@@ -196,13 +208,72 @@ def _cmd_chat_accounts_stats(args: argparse.Namespace) -> int:
         full_output=args.full_output,
     )
     if args.output_format == "markdown":
-        print(format_chat_account_stats_markdown(payload))
-        return 0
+        return format_chat_account_stats_markdown(payload)
     if args.output_format == "usage":
-        print(format_chat_account_stats_usage(payload))
-        return 0
-    print(json.dumps(payload, indent=2))
-    return 0
+        return format_chat_account_stats_usage(payload)
+    return json.dumps(payload, indent=2)
+
+
+def _loop_chat_accounts_stats(
+    args: argparse.Namespace,
+    *,
+    input_stream: TextIO | None = None,
+    output_stream: TextIO | None = None,
+    interval_sec: float = _CHAT_ACCOUNTS_LOOP_INTERVAL_SEC,
+    wait_for_trigger: Callable[[float, TextIO], None] | None = None,
+) -> int:
+    input_stream = input_stream or sys.stdin
+    output_stream = output_stream or sys.stdout
+    wait_for_trigger = wait_for_trigger or _wait_for_chat_accounts_loop_trigger
+
+    first_iteration = True
+    while True:
+        if _stream_is_tty(output_stream):
+            _clear_terminal_screen(output_stream)
+        elif not first_iteration:
+            output_stream.write("\n")
+
+        output_stream.write(_render_chat_accounts_stats_output(args))
+        output_stream.write(
+            f"\n\n[loop] refreshes every {int(interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
+        )
+        output_stream.flush()
+        first_iteration = False
+
+        try:
+            wait_for_trigger(interval_sec, input_stream)
+        except KeyboardInterrupt:
+            return 0
+
+
+def _wait_for_chat_accounts_loop_trigger(interval_sec: float, input_stream: TextIO) -> None:
+    if interval_sec <= 0:
+        return
+
+    if not _stream_is_tty(input_stream):
+        time.sleep(interval_sec)
+        return
+
+    ready, _, _ = select.select([input_stream], [], [], interval_sec)
+    if not ready:
+        return
+
+    input_stream.readline()
+
+
+def _stream_is_tty(stream: TextIO) -> bool:
+    isatty = getattr(stream, "isatty", None)
+    if isatty is None:
+        return False
+    try:
+        return bool(isatty())
+    except OSError:
+        return False
+
+
+def _clear_terminal_screen(output_stream: TextIO) -> None:
+    output_stream.write("\033[2J\033[H")
+    output_stream.flush()
 
 
 def _filter_payload_by_user_contain(
@@ -684,5 +755,10 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
             "Allow provider adapters to issue live refresh requests for usage data when needed "
             "(for example Claude Code)."
         ),
+    )
+    accounts_stats_parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Refresh forever every 60 seconds; press Enter to refresh immediately.",
     )
     accounts_stats_parser.set_defaults(handler=_cmd_chat_accounts_stats)

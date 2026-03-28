@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import argparse
+import io
 import json
+import os
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
 from agentos.chat import accounts as chat_accounts
+from agentos.chat import commands as chat_commands
 from agentos.cli import main
 from agentos.tara_tapes.core import load_tara_tape_manifest, read_tara_tape_segment_records
 
@@ -145,10 +151,12 @@ def test_chat_accounts_stats_summarizes_configured_provider_instances(
     assert main(["chat", "accounts", "stats"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert observed_calls == [
-        (["/opt/homebrew/bin/codex", "login", "status"], 9),
-        (["claude", "auth", "status", "--json"], chat_accounts.DEFAULT_ACCOUNT_TIMEOUT_SEC),
-    ]
+    assert sorted(observed_calls) == sorted(
+        [
+            (["/opt/homebrew/bin/codex", "login", "status"], 9),
+            (["claude", "auth", "status", "--json"], chat_accounts.DEFAULT_ACCOUNT_TIMEOUT_SEC),
+        ]
+    )
     assert payload["status"] == "ok"
     assert payload["command"] == "chat accounts stats"
     assert payload["recorded_at"] == "2026-03-25T12:00:00Z"
@@ -318,6 +326,238 @@ def test_chat_accounts_stats_refresh_usage_enables_claude_live_usage(
     assert claude_account["usage_summary"] == "5h 1%, 7d 100%"
     assert claude_account["usage_source"] == "interactive-statusline"
     assert claude_account["usage_refresh_cost_usd"] == 0.023
+
+
+def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(monkeypatch) -> None:
+    instances = (
+        chat_accounts.AccountProviderInstance(
+            provider="alpha",
+            instance_id="alpha-1",
+            label="Alpha 1",
+            cli_command=("alpha",),
+            env=(),
+            timeout_sec=15,
+            live_usage_refresh=False,
+        ),
+        chat_accounts.AccountProviderInstance(
+            provider="beta",
+            instance_id="beta-1",
+            label="Beta 1",
+            cli_command=("beta",),
+            env=(),
+            timeout_sec=15,
+            live_usage_refresh=False,
+        ),
+        chat_accounts.AccountProviderInstance(
+            provider="alpha",
+            instance_id="alpha-2",
+            label="Alpha 2",
+            cli_command=("alpha",),
+            env=(),
+            timeout_sec=15,
+            live_usage_refresh=False,
+        ),
+    )
+
+    lock = threading.Lock()
+    in_flight = 0
+    max_in_flight = 0
+
+    def collect(instance: chat_accounts.AccountProviderInstance, refresh_usage: bool) -> dict[str, object]:
+        nonlocal in_flight, max_in_flight
+        assert refresh_usage is False
+        with lock:
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+        time.sleep(0.05)
+        with lock:
+            in_flight -= 1
+        return {
+            "id": instance.instance_id,
+            "label": instance.label,
+            "provider": instance.provider,
+            "check_status": "ok",
+        }
+
+    monkeypatch.setattr(
+        chat_accounts,
+        "supported_account_provider_families",
+        lambda: (
+            chat_accounts.AccountProviderFamily(family="alpha", collect_stats=collect),
+            chat_accounts.AccountProviderFamily(family="beta", collect_stats=collect),
+        ),
+    )
+    monkeypatch.setattr(
+        chat_accounts,
+        "configured_account_provider_instances",
+        lambda start_path=".": instances,
+    )
+    monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
+    monkeypatch.setattr(chat_accounts, "_utc_now_iso", lambda: "2026-03-25T12:00:00Z")
+
+    payload = chat_accounts.chat_account_stats()
+
+    assert max_in_flight >= 2
+    assert [provider["provider"] for provider in payload["providers"]] == ["alpha", "beta"]
+    assert [account["id"] for account in payload["providers"][0]["accounts"]] == ["alpha-1", "alpha-2"]
+    assert [account["id"] for account in payload["providers"][1]["accounts"]] == ["beta-1"]
+
+
+def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypatch) -> None:
+    instance = chat_accounts.AccountProviderInstance(
+        provider="claude-code",
+        instance_id="claude-main",
+        label="Claude main",
+        cli_command=("claude",),
+        env=(),
+        timeout_sec=15,
+        live_usage_refresh=False,
+    )
+
+    lock = threading.Lock()
+    in_flight = 0
+    max_in_flight = 0
+
+    def enter_task() -> None:
+        nonlocal in_flight, max_in_flight
+        with lock:
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+
+    def exit_task() -> None:
+        nonlocal in_flight
+        with lock:
+            in_flight -= 1
+
+    def fake_collect_parsed_command_payload(
+        task_instance: chat_accounts.AccountProviderInstance,
+        *,
+        extra_args: tuple[str, ...],
+        parser,
+        cwd: str | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> dict[str, object]:
+        del parser, cwd, extra_env
+        assert task_instance == instance
+        assert extra_args == ("auth", "status", "--json")
+        enter_task()
+        try:
+            time.sleep(0.05)
+            return {
+                "logged_in": True,
+                "summary": "Authenticated",
+            }
+        finally:
+            exit_task()
+
+    def fake_collect_live_usage(
+        task_instance: chat_accounts.AccountProviderInstance,
+    ) -> dict[str, object]:
+        assert task_instance == instance
+        enter_task()
+        try:
+            time.sleep(0.05)
+            return {
+                "usage_status": "ok",
+                "usage_summary": "5h 10%, 7d 20%",
+                "usage_source": "interactive-statusline",
+                "usage": {
+                    "kind": "rate_limits",
+                    "limits": [],
+                },
+            }
+        finally:
+            exit_task()
+
+    monkeypatch.setattr(
+        chat_accounts,
+        "_collect_parsed_command_payload",
+        fake_collect_parsed_command_payload,
+    )
+    monkeypatch.setattr(
+        chat_accounts,
+        "_collect_claude_code_live_usage",
+        fake_collect_live_usage,
+    )
+
+    payload = chat_accounts._collect_claude_code_account_stats(instance, refresh_usage=True)
+
+    assert max_in_flight >= 2
+    assert payload["check_status"] == "ok"
+    assert payload["usage_status"] == "ok"
+    assert payload["usage_source"] == "interactive-statusline"
+
+
+def test_loop_chat_accounts_stats_repeats_until_keyboard_interrupt(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="json",
+        loop=True,
+    )
+
+    outputs = iter(("snapshot-1", "snapshot-2"))
+    monkeypatch.setattr(
+        chat_commands,
+        "_render_chat_accounts_stats_output",
+        lambda loop_args: next(outputs),
+    )
+
+    wait_calls: list[float] = []
+
+    def fake_wait(interval_sec: float, input_stream) -> None:  # type: ignore[no-untyped-def]
+        del input_stream
+        wait_calls.append(interval_sec)
+        if len(wait_calls) >= 2:
+            raise KeyboardInterrupt()
+
+    output_stream = io.StringIO()
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=output_stream,
+        interval_sec=60.0,
+        wait_for_trigger=fake_wait,
+    )
+
+    rendered = output_stream.getvalue()
+    assert exit_code == 0
+    assert wait_calls == [60.0, 60.0]
+    assert "snapshot-1" in rendered
+    assert "snapshot-2" in rendered
+    assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
+
+
+def test_wait_for_chat_accounts_loop_trigger_returns_immediately_on_enter() -> None:
+    class FakeTTYInput:
+        def __init__(self, wrapped) -> None:  # type: ignore[no-untyped-def]
+            self._wrapped = wrapped
+
+        def fileno(self) -> int:
+            return self._wrapped.fileno()
+
+        def readline(self) -> str:
+            return self._wrapped.readline()
+
+        def isatty(self) -> bool:
+            return True
+
+    read_fd, write_fd = os.pipe()
+    read_stream = os.fdopen(read_fd, "r", encoding="utf-8", buffering=1)
+    write_stream = os.fdopen(write_fd, "w", encoding="utf-8", buffering=1)
+    try:
+        write_stream.write("\n")
+        write_stream.flush()
+        start = time.perf_counter()
+        chat_commands._wait_for_chat_accounts_loop_trigger(1.0, FakeTTYInput(read_stream))
+        elapsed = time.perf_counter() - start
+    finally:
+        read_stream.close()
+        write_stream.close()
+
+    assert elapsed < 0.5
 
 
 def test_chat_accounts_stats_supports_full_output_and_markdown(
@@ -525,6 +765,18 @@ def test_format_remaining_duration_uses_human_day_hour_minute_units() -> None:
     assert chat_accounts._format_remaining_duration(60 * (2 * 24 * 60 + 3 * 60 + 1)) == "2d 3h 1m"
 
 
+def test_normalize_terminal_output_detects_trust_and_main_prompts() -> None:
+    trust_text = chat_accounts._normalize_terminal_output(
+        [b"\x1b[1CQuick\x1b[1Csafety\x1b[1Ccheck \x1b[1CYes,\x1b[1CI\x1b[1Ctrust\x1b[1Cthis\x1b[1Cfolder"]
+    )
+    assert chat_accounts._claude_refresh_trust_prompt_visible(trust_text) is True
+
+    main_text = chat_accounts._normalize_terminal_output(
+        [b"\x1b[?2026hClaude\x1b[1CCode\x1Cv2.1.81 \x1b[1CWelcome\x1b[1Cback"]
+    )
+    assert chat_accounts._claude_refresh_main_prompt_visible(main_text) is True
+
+
 def test_parse_claude_code_statusline_usage_output_includes_five_hour_and_seven_day() -> None:
     payload = chat_accounts._parse_claude_code_statusline_usage_output(
         {
@@ -564,6 +816,22 @@ def test_parse_claude_code_statusline_usage_output_includes_five_hour_and_seven_
     assert limits[1]["period_duration_mins"] == 10_080
     assert limits[1]["period_started_at"] == "2026-03-20T10:00:00Z"
     assert limits[1]["period_ends_at"] == "2026-03-27T10:00:00Z"
+
+
+def test_claude_code_refresh_workspace_root_is_instance_scoped() -> None:
+    instance = chat_accounts.AccountProviderInstance(
+        provider="claude-code",
+        instance_id="claude-main",
+        label="Claude main",
+        cli_command=("claude",),
+        env=(),
+        timeout_sec=15,
+        live_usage_refresh=False,
+    )
+
+    workspace_root = chat_accounts._claude_code_refresh_workspace_root(instance)
+    assert workspace_root.name == "claude-main"
+    assert workspace_root.parent.name == chat_accounts.CLAUDE_REFRESH_WORKSPACE_DIRNAME
 
 
 def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -> None:

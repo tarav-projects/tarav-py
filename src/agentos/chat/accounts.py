@@ -4,10 +4,12 @@ import datetime
 import json
 import os
 import pty
+import re
 import select
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -37,6 +39,17 @@ CHAT_ACCOUNT_STATS_LATEST_FILENAME = "latest.json"
 CHAT_ACCOUNT_STATS_TAPE_NAME = "chat-account-stats"
 CHAT_ACCOUNT_STATS_TAPE_WRITER_ID = "agentos-chat-accounts-stats"
 CHAT_ACCOUNT_STATS_RECORD_CLASS = "agentos.chat.account-stats.snapshot"
+MAX_ACCOUNT_COLLECTION_WORKERS = 4
+CLAUDE_REFRESH_WORKSPACE_DIRNAME = "claude-refresh-workspace"
+CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC = 0.75
+CLAUDE_REFRESH_TRUST_CONFIRM_RETRY_SEC = 0.75
+CLAUDE_REFRESH_PROMPT_FALLBACK_DELAY_SEC = 2.5
+CLAUDE_REFRESH_INTERRUPT_SETTLE_SEC = 0.05
+CLAUDE_REFRESH_TERMINATE_WAIT_SEC = 0.5
+
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
 @dataclass(frozen=True)
@@ -153,12 +166,23 @@ def chat_account_stats(
     ok_count = 0
     error_count = 0
 
+    provider_families_by_name = {
+        provider_family.family: provider_family for provider_family in provider_families
+    }
+    provider_accounts_by_name = {
+        provider_family.family: [] for provider_family in provider_families
+    }
+    collected_account_results = _collect_account_results(
+        configured_instances=configured_instances,
+        provider_families_by_name=provider_families_by_name,
+        refresh_usage=refresh_usage,
+    )
+
+    for provider_name, account_payload in collected_account_results:
+        provider_accounts_by_name[provider_name].append(account_payload)
+
     for provider_family in provider_families:
-        provider_accounts = [
-            provider_family.collect_stats(instance, refresh_usage)
-            for instance in configured_instances
-            if instance.provider == provider_family.family
-        ]
+        provider_accounts = provider_accounts_by_name[provider_family.family]
         provider_ok_count = sum(1 for account in provider_accounts if account.get("check_status") == "ok")
         provider_error_count = sum(
             1 for account in provider_accounts if account.get("check_status") == "error"
@@ -200,6 +224,37 @@ def default_chat_account_stats_root() -> Path:
 
 def default_chat_account_stats_tape_root() -> Path:
     return default_chat_account_stats_root() / CHAT_ACCOUNT_STATS_HISTORY_DIRNAME
+
+
+def _collect_account_results(
+    *,
+    configured_instances: tuple[AccountProviderInstance, ...],
+    provider_families_by_name: dict[str, AccountProviderFamily],
+    refresh_usage: bool,
+) -> list[tuple[str, dict[str, Any]]]:
+    if not configured_instances:
+        return []
+
+    if len(configured_instances) == 1:
+        instance = configured_instances[0]
+        provider_family = provider_families_by_name[instance.provider]
+        return [(instance.provider, provider_family.collect_stats(instance, refresh_usage))]
+
+    max_workers = min(MAX_ACCOUNT_COLLECTION_WORKERS, len(configured_instances))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures: list[tuple[str, object]] = []
+        for instance in configured_instances:
+            provider_family = provider_families_by_name[instance.provider]
+            future = executor.submit(provider_family.collect_stats, instance, refresh_usage)
+            futures.append((instance.provider, future))
+
+        collected_results: list[tuple[str, dict[str, Any]]] = []
+        for provider_name, future in futures:
+            account_payload = future.result()
+            if not isinstance(account_payload, dict):
+                raise CliError("account provider collector must return a JSON object payload")
+            collected_results.append((provider_name, account_payload))
+        return collected_results
 
 
 def format_chat_account_stats_markdown(payload: dict[str, object]) -> str:
@@ -675,12 +730,18 @@ def _collect_codex_account_stats(
     refresh_usage: bool,
 ) -> dict[str, Any]:
     del refresh_usage
-    try:
-        auth_payload = _collect_parsed_command_payload(
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        auth_future = executor.submit(
+            _collect_parsed_command_payload,
             instance,
             extra_args=("login", "status"),
             parser=_parse_codex_login_status,
         )
+        usage_future = executor.submit(_collect_codex_usage_payload, instance)
+
+    try:
+        auth_payload = auth_future.result()
     except AccountCommandError as exc:
         return _error_account_result(
             instance,
@@ -691,7 +752,7 @@ def _collect_codex_account_stats(
 
     usage_payload: dict[str, Any]
     try:
-        usage_payload = _parse_codex_rate_limits(_read_codex_account_rate_limits(instance))
+        usage_payload = usage_future.result()
     except AccountCommandError as exc:
         usage_payload = _usage_error_payload(
             error_type=exc.error_type,
@@ -710,39 +771,64 @@ def _collect_codex_account_stats(
     )
 
 
+def _collect_codex_usage_payload(instance: AccountProviderInstance) -> dict[str, Any]:
+    return _parse_codex_rate_limits(_read_codex_account_rate_limits(instance))
+
+
 def _collect_claude_code_account_stats(
     instance: AccountProviderInstance,
     refresh_usage: bool,
 ) -> dict[str, Any]:
-    try:
-        auth_payload = _collect_parsed_command_payload(
-            instance,
-            extra_args=("auth", "status", "--json"),
-            parser=_parse_claude_code_auth_status,
-        )
-    except AccountCommandError as exc:
-        return _error_account_result(
-            instance,
-            error_type=exc.error_type,
-            message=exc.message,
-            exit_code=exc.exit_code,
-        )
+    should_refresh_usage = refresh_usage or instance.live_usage_refresh
 
-    if refresh_usage or instance.live_usage_refresh:
+    if should_refresh_usage:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            auth_future = executor.submit(
+                _collect_parsed_command_payload,
+                instance,
+                extra_args=("auth", "status", "--json"),
+                parser=_parse_claude_code_auth_status,
+            )
+            usage_future = executor.submit(_collect_claude_code_live_usage, instance)
+
+            try:
+                auth_payload = auth_future.result()
+            except AccountCommandError as exc:
+                return _error_account_result(
+                    instance,
+                    error_type=exc.error_type,
+                    message=exc.message,
+                    exit_code=exc.exit_code,
+                )
+
+            try:
+                usage_payload = usage_future.result()
+            except AccountCommandError as exc:
+                usage_payload = _usage_error_payload(
+                    error_type=exc.error_type,
+                    message=exc.message,
+                    exit_code=exc.exit_code,
+                )
+            except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                usage_payload = _usage_error_payload(
+                    error_type="invalid_output",
+                    message=str(exc),
+                )
+    else:
         try:
-            usage_payload = _collect_claude_code_live_usage(instance)
+            auth_payload = _collect_parsed_command_payload(
+                instance,
+                extra_args=("auth", "status", "--json"),
+                parser=_parse_claude_code_auth_status,
+            )
         except AccountCommandError as exc:
-            usage_payload = _usage_error_payload(
+            return _error_account_result(
+                instance,
                 error_type=exc.error_type,
                 message=exc.message,
                 exit_code=exc.exit_code,
             )
-        except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
-            usage_payload = _usage_error_payload(
-                error_type="invalid_output",
-                message=str(exc),
-            )
-    else:
+
         usage_payload = _usage_unavailable_payload(
             "live usage refresh disabled; pass --refresh-usage or set live_usage_refresh=true",
         )
@@ -1187,6 +1273,8 @@ def _collect_claude_code_live_usage_from_statusline(
     instance: AccountProviderInstance,
 ) -> dict[str, Any]:
     timeout_sec = max(instance.timeout_sec, 45)
+    workspace_root = _claude_code_refresh_workspace_root(instance)
+    workspace_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="agentos-claude-usage-") as temp_dir:
         temp_root = Path(temp_dir)
         capture_path = temp_root / "statusline.json"
@@ -1214,7 +1302,7 @@ def _collect_claude_code_live_usage_from_statusline(
 
         statusline_payload = _run_claude_code_statusline_refresh_session(
             instance,
-            cwd=temp_root,
+            cwd=workspace_root,
             capture_path=capture_path,
             settings_path=settings_path,
             timeout_sec=timeout_sec,
@@ -1244,7 +1332,10 @@ def _collect_claude_code_live_usage_from_stream_json(
                 "--no-session-persistence",
             ),
             cwd=temp_dir,
-            extra_env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"},
+            extra_env={
+                "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            },
         )
     return _parse_claude_code_live_usage_output(result.stdout)
 
@@ -1270,6 +1361,7 @@ def _run_claude_code_statusline_refresh_session(
     env = os.environ.copy()
     env.update(instance.env_mapping())
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
 
     try:
         master_fd, slave_fd = pty.openpty()
@@ -1299,9 +1391,11 @@ def _run_claude_code_statusline_refresh_session(
 
     os.set_blocking(master_fd, False)
     start = time.monotonic()
-    next_trust_confirm_at = start + 3.0
-    prompt_send_at = start + 10.0
+    next_trust_confirm_at = start + CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC
+    prompt_fallback_at = start + CLAUDE_REFRESH_PROMPT_FALLBACK_DELAY_SEC
     prompt_sent = False
+    trust_prompt_seen = False
+    trust_confirm_sent = False
     transcript_chunks: list[bytes] = []
     statusline_payload: dict[str, Any] | None = None
 
@@ -1315,12 +1409,24 @@ def _run_claude_code_statusline_refresh_session(
                 )
 
             transcript_chunks.extend(_read_pty_chunks(master_fd, timeout_sec=0.25))
+            transcript_text = _normalize_terminal_output(transcript_chunks)
 
-            if not prompt_sent and now >= next_trust_confirm_at:
-                _write_pty(master_fd, b"\r")
-                next_trust_confirm_at += 1.5
+            if not prompt_sent and _claude_refresh_trust_prompt_visible(transcript_text):
+                trust_prompt_seen = True
+                if now >= next_trust_confirm_at:
+                    _write_pty(master_fd, b"\r")
+                    trust_confirm_sent = True
+                    next_trust_confirm_at = now + CLAUDE_REFRESH_TRUST_CONFIRM_RETRY_SEC
 
-            if not prompt_sent and now >= prompt_send_at:
+            if not prompt_sent and _claude_refresh_main_prompt_visible(transcript_text):
+                _write_pty(master_fd, (_CLAUDE_USAGE_REFRESH_PROMPT + "\r").encode("utf-8"))
+                prompt_sent = True
+
+            if (
+                not prompt_sent
+                and not _claude_refresh_trust_prompt_visible(transcript_text)
+                and ((not trust_prompt_seen and now >= prompt_fallback_at) or trust_confirm_sent)
+            ):
                 _write_pty(master_fd, (_CLAUDE_USAGE_REFRESH_PROMPT + "\r").encode("utf-8"))
                 prompt_sent = True
 
@@ -1370,6 +1476,31 @@ def _read_pty_chunks(master_fd: int, *, timeout_sec: float) -> list[bytes]:
         chunks.append(chunk)
 
 
+def _normalize_terminal_output(chunks: list[bytes], *, tail_bytes: int = 32_768) -> str:
+    if not chunks:
+        return ""
+
+    tail = b"".join(chunks)[-tail_bytes:]
+    text = tail.decode("utf-8", errors="ignore")
+    text = _ANSI_OSC_RE.sub(" ", text)
+    text = _ANSI_CSI_RE.sub(" ", text)
+    text = _CONTROL_CHARS_RE.sub(" ", text)
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _claude_refresh_trust_prompt_visible(text: str) -> bool:
+    return "quick safety check" in text or "yes, i trust this folder" in text
+
+
+def _claude_refresh_main_prompt_visible(text: str) -> bool:
+    return (
+        "welcome back" in text
+        or "claude code v" in text
+        or "no recent activity" in text
+        or "haiku 4.5" in text
+    )
+
+
 def _write_pty(master_fd: int, payload: bytes) -> None:
     try:
         os.write(master_fd, payload)
@@ -1380,14 +1511,16 @@ def _write_pty(master_fd: int, payload: bytes) -> None:
 def _terminate_pty_process(process: subprocess.Popen[bytes], master_fd: int) -> None:
     try:
         _write_pty(master_fd, b"\x03")
-        time.sleep(0.25)
+        time.sleep(CLAUDE_REFRESH_INTERRUPT_SETTLE_SEC)
         _write_pty(master_fd, b"\x03")
+        if process.poll() is None:
+            process.terminate()
     finally:
         try:
-            process.wait(timeout=2)
+            process.wait(timeout=CLAUDE_REFRESH_TERMINATE_WAIT_SEC)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.wait(timeout=2)
+            process.wait(timeout=CLAUDE_REFRESH_TERMINATE_WAIT_SEC)
         try:
             os.close(master_fd)
         except OSError:
@@ -1407,6 +1540,10 @@ def _load_claude_code_statusline_capture(capture_path: Path) -> dict[str, Any] |
     if not isinstance(rate_limits, dict) or not rate_limits:
         return None
     return payload
+
+
+def _claude_code_refresh_workspace_root(instance: AccountProviderInstance) -> Path:
+    return default_chat_account_stats_root() / CLAUDE_REFRESH_WORKSPACE_DIRNAME / instance.instance_id
 
 
 def _cleanup_claude_code_refresh_transcript(statusline_payload: dict[str, Any]) -> None:
