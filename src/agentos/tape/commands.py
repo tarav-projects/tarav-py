@@ -66,6 +66,33 @@ def _resolve_tape_root(
     )
 
 
+def _default_tape_name_for_resolution(
+    *,
+    resolution: dict[str, object],
+    root_path: Path,
+) -> str:
+    resolved_tape = resolution.get("tape")
+    if resolved_tape is not None:
+        return str(resolved_tape)
+    return root_path.name
+
+
+def _build_tape_output(
+    command: str,
+    *,
+    root_path: Path,
+    resolution: dict[str, object],
+    **payload: object,
+) -> dict[str, object]:
+    return {
+        "status": "ok",
+        "command": command,
+        "root_path": str(root_path),
+        **payload,
+        **resolution,
+    }
+
+
 def _config_to_payload(config: TapeFolderConfig) -> dict[str, object]:
     return {
         "type": DEFAULT_TAPE_TYPE,
@@ -195,10 +222,9 @@ def _build_write_init_options(
     if init_data_schema is not None:
         explicit["data_schema"] = init_data_schema
 
-    default_tape_name = (
-        str(resolution["tape"])
-        if resolution.get("tape") is not None
-        else root_path.name
+    default_tape_name = _default_tape_name_for_resolution(
+        resolution=resolution,
+        root_path=root_path,
     )
 
     resolved = {
@@ -421,7 +447,10 @@ def _cmd_tape_init(args: argparse.Namespace) -> int:
     tape_display_name = (
         str(args.tape_display_name)
         if args.tape_display_name is not None
-        else (str(resolution["tape"]) if resolution.get("tape") is not None else root_path.name)
+        else _default_tape_name_for_resolution(
+            resolution=resolution,
+            root_path=root_path,
+        )
     )
 
     config, created = bootstrap_tape_folder(
@@ -435,15 +464,14 @@ def _cmd_tape_init(args: argparse.Namespace) -> int:
         ensure=bool(args.ensure),
     )
 
-    output = {
-        "status": "ok",
-        "command": "tape init",
-        "root_path": str(root_path),
-        "manifest_path": str(get_manifest_path(root_path)),
-        "created": created,
-        "config": _config_to_payload(config),
-        **resolution,
-    }
+    output = _build_tape_output(
+        "tape init",
+        root_path=root_path,
+        resolution=resolution,
+        manifest_path=str(get_manifest_path(root_path)),
+        created=created,
+        config=_config_to_payload(config),
+    )
     print(json.dumps(output))
     return 0
 
@@ -474,16 +502,15 @@ def _cmd_tape_append(args: argparse.Namespace) -> int:
         data=data,
     )
 
-    output = {
-        "status": "ok",
-        "command": "tape append",
-        "root_path": str(root_path),
-        "staging_path": str(staging_path),
-        "tape_created": tape_created,
-        "config": _config_to_payload(config),
-        "record": record,
-        **resolution,
-    }
+    output = _build_tape_output(
+        "tape append",
+        root_path=root_path,
+        resolution=resolution,
+        staging_path=str(staging_path),
+        tape_created=tape_created,
+        config=_config_to_payload(config),
+        record=record,
+    )
     if warnings:
         output["warnings"] = warnings
     print(json.dumps(output))
@@ -523,17 +550,16 @@ def _cmd_tape_append_batch(args: argparse.Namespace) -> int:
             }
         )
 
-    output = {
-        "status": "ok",
-        "command": "tape append-batch",
-        "root_path": str(root_path),
-        "tape_created": tape_created,
-        "config": _config_to_payload(config),
-        "input_count": len(entries),
-        "appended_count": len(entries),
-        "results": results,
-        **resolution,
-    }
+    output = _build_tape_output(
+        "tape append-batch",
+        root_path=root_path,
+        resolution=resolution,
+        tape_created=tape_created,
+        config=_config_to_payload(config),
+        input_count=len(entries),
+        appended_count=len(entries),
+        results=results,
+    )
     if warnings:
         output["warnings"] = warnings
     print(json.dumps(output))
@@ -553,15 +579,14 @@ def _cmd_tape_consolidate(args: argparse.Namespace) -> int:
     )
 
     result = consolidate_staging_records(root_path, limit=args.limit)
-    output = {
-        "status": "ok",
-        "command": "tape consolidate",
-        "root_path": str(root_path),
-        "tape_created": tape_created,
-        "config": _config_to_payload(config),
-        **resolution,
+    output = _build_tape_output(
+        "tape consolidate",
+        root_path=root_path,
+        resolution=resolution,
+        tape_created=tape_created,
+        config=_config_to_payload(config),
         **result,
-    }
+    )
     if warnings:
         output["warnings"] = warnings
     print(json.dumps(output))
@@ -598,13 +623,12 @@ def _cmd_tape_query(args: argparse.Namespace) -> int:
     if args.jmes_expr is not None:
         entries = _apply_jmes_query_to_entries(entries, expression=args.jmes_expr)
 
-    output: dict[str, object] = {
-        "status": "ok",
-        "command": "tape query",
-        "root_path": str(root_path),
-        "mode": args.read_mode,
-        **resolution,
-    }
+    output = _build_tape_output(
+        "tape query",
+        root_path=root_path,
+        resolution=resolution,
+        mode=args.read_mode,
+    )
     if consolidate_payload is not None:
         output["consolidated"] = consolidate_payload
     if args.jmes_expr is not None:
@@ -630,13 +654,12 @@ def _cmd_tape_verify(args: argparse.Namespace) -> int:
         tape_name=args.tape_name,
     )
     result = verify_segment_headers(root_path)
-    output = {
-        "status": "ok",
-        "command": "tape verify",
-        "root_path": str(root_path),
-        **resolution,
+    output = _build_tape_output(
+        "tape verify",
+        root_path=root_path,
+        resolution=resolution,
         **result,
-    }
+    )
     print(json.dumps(output))
     return 0
 
@@ -647,16 +670,15 @@ def _cmd_tape_config(args: argparse.Namespace) -> int:
         tape_name=args.tape_name,
     )
     config = load_tape_folder_config(root_path)
-    output = {
-        "status": "ok",
-        "command": "tape config",
-        "root_path": str(root_path),
-        "manifest_path": str(get_manifest_path(root_path)),
-        "defaults": _default_config_payload(),
-        "warning_policy": _warning_policy_payload(),
-        "config": _config_to_payload(config),
-        **resolution,
-    }
+    output = _build_tape_output(
+        "tape config",
+        root_path=root_path,
+        resolution=resolution,
+        manifest_path=str(get_manifest_path(root_path)),
+        defaults=_default_config_payload(),
+        warning_policy=_warning_policy_payload(),
+        config=_config_to_payload(config),
+    )
     print(json.dumps(output))
     return 0
 
@@ -680,22 +702,21 @@ def _cmd_tape_doctor(args: argparse.Namespace) -> int:
         explicit_init_options={},
     )
 
-    output = {
-        "status": "ok",
-        "command": "tape doctor",
-        "root_path": str(root_path),
-        "manifest_path": str(get_manifest_path(root_path)),
-        "defaults": _default_config_payload(),
-        "warning_policy": _warning_policy_payload(),
-        "config": _config_to_payload(config),
-        "segment_count": verify_payload["segment_count"],
-        "committed_record_count": committed_count,
-        "best_effort_record_count": best_effort_count,
-        "staging_file_count": len(staging_files),
-        "staging_files": staging_files,
-        "warnings": warnings,
-        **resolution,
-    }
+    output = _build_tape_output(
+        "tape doctor",
+        root_path=root_path,
+        resolution=resolution,
+        manifest_path=str(get_manifest_path(root_path)),
+        defaults=_default_config_payload(),
+        warning_policy=_warning_policy_payload(),
+        config=_config_to_payload(config),
+        segment_count=verify_payload["segment_count"],
+        committed_record_count=committed_count,
+        best_effort_record_count=best_effort_count,
+        staging_file_count=len(staging_files),
+        staging_files=staging_files,
+        warnings=warnings,
+    )
     print(json.dumps(output))
     return 0
 
@@ -713,13 +734,12 @@ def _cmd_tape_lint(args: argparse.Namespace) -> int:
         max_findings=int(args.max_findings),
     )
 
-    output = {
-        "status": "ok",
-        "command": "tape lint",
-        "root_path": str(root_path),
-        **resolution,
+    output = _build_tape_output(
+        "tape lint",
+        root_path=root_path,
+        resolution=resolution,
         **report,
-    }
+    )
     print(json.dumps(output))
     return 1 if int(report["summary"]["errors"]) > 0 else 0
 
@@ -735,6 +755,32 @@ def _add_tape_target_group(parser: argparse.ArgumentParser) -> None:
         "--root",
         dest="root_path",
         help="Explicit tape root directory (headless mode).",
+    )
+
+
+def _add_json_file_input_group(
+    parser: argparse.ArgumentParser,
+    *,
+    required: bool = False,
+    json_option: str,
+    json_dest: str,
+    json_help: str,
+    file_option: str,
+    file_dest: str,
+    file_help: str,
+) -> None:
+    group = parser.add_mutually_exclusive_group(required=required)
+    group.add_argument(
+        json_option,
+        default=None,
+        dest=json_dest,
+        help=json_help,
+    )
+    group.add_argument(
+        file_option,
+        default=None,
+        dest=file_dest,
+        help=file_help,
     )
 
 
@@ -778,31 +824,23 @@ def _add_write_init_options(parser: argparse.ArgumentParser) -> None:
         dest="init_tape_class",
         help="Tape class stored as config field `tape.class` when --init creates a new tape.",
     )
-    init_allowed_classes_group = parser.add_mutually_exclusive_group(required=False)
-    init_allowed_classes_group.add_argument(
-        "--init-allowed-classes-json",
-        default=None,
-        dest="init_allowed_classes_json",
-        help="JSON array of allowed record classes for tape writes.",
+    _add_json_file_input_group(
+        parser,
+        json_option="--init-allowed-classes-json",
+        json_dest="init_allowed_classes_json",
+        json_help="JSON array of allowed record classes for tape writes.",
+        file_option="--init-allowed-classes-file",
+        file_dest="init_allowed_classes_file",
+        file_help="Path to JSON file with allowed record classes array.",
     )
-    init_allowed_classes_group.add_argument(
-        "--init-allowed-classes-file",
-        default=None,
-        dest="init_allowed_classes_file",
-        help="Path to JSON file with allowed record classes array.",
-    )
-    init_data_schema_group = parser.add_mutually_exclusive_group(required=False)
-    init_data_schema_group.add_argument(
-        "--init-data-schema-json",
-        default=None,
-        dest="init_data_schema_json",
-        help="JSON Schema 2020-12 for record `data` payload (JSON object).",
-    )
-    init_data_schema_group.add_argument(
-        "--init-data-schema-file",
-        default=None,
-        dest="init_data_schema_file",
-        help="Path to JSON file with JSON Schema 2020-12 for record `data` payload.",
+    _add_json_file_input_group(
+        parser,
+        json_option="--init-data-schema-json",
+        json_dest="init_data_schema_json",
+        json_help="JSON Schema 2020-12 for record `data` payload (JSON object).",
+        file_option="--init-data-schema-file",
+        file_dest="init_data_schema_file",
+        file_help="Path to JSON file with JSON Schema 2020-12 for record `data` payload.",
     )
 
 
@@ -839,18 +877,14 @@ def register_tape_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="tape_class",
         help="Tape class stored as config field `tape.class`.",
     )
-    init_allowed_classes_group = init_parser.add_mutually_exclusive_group(required=False)
-    init_allowed_classes_group.add_argument(
-        "--allowed-classes-json",
-        default=None,
-        dest="allowed_classes_json",
-        help="JSON array of allowed record classes for tape writes.",
-    )
-    init_allowed_classes_group.add_argument(
-        "--allowed-classes-file",
-        default=None,
-        dest="allowed_classes_file",
-        help="Path to JSON file with allowed record classes array.",
+    _add_json_file_input_group(
+        init_parser,
+        json_option="--allowed-classes-json",
+        json_dest="allowed_classes_json",
+        json_help="JSON array of allowed record classes for tape writes.",
+        file_option="--allowed-classes-file",
+        file_dest="allowed_classes_file",
+        file_help="Path to JSON file with allowed record classes array.",
     )
     init_parser.add_argument(
         "--naming",
@@ -866,18 +900,14 @@ def register_tape_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="max_records_per_segment",
         help="Rollover limit for sequential naming (ignored for monthly/daily).",
     )
-    init_data_schema_group = init_parser.add_mutually_exclusive_group(required=False)
-    init_data_schema_group.add_argument(
-        "--data-schema-json",
-        default=None,
-        dest="data_schema_json",
-        help="JSON Schema 2020-12 for record `data` payload (JSON object).",
-    )
-    init_data_schema_group.add_argument(
-        "--data-schema-file",
-        default=None,
-        dest="data_schema_file",
-        help="Path to JSON file with JSON Schema 2020-12 for record `data` payload.",
+    _add_json_file_input_group(
+        init_parser,
+        json_option="--data-schema-json",
+        json_dest="data_schema_json",
+        json_help="JSON Schema 2020-12 for record `data` payload (JSON object).",
+        file_option="--data-schema-file",
+        file_dest="data_schema_file",
+        file_help="Path to JSON file with JSON Schema 2020-12 for record `data` payload.",
     )
     init_parser.add_argument(
         "--ensure",
@@ -910,18 +940,14 @@ def register_tape_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="created_at",
         help="Override record created_at (defaults to auto UTC timestamp).",
     )
-    append_data_group = append_parser.add_mutually_exclusive_group(required=False)
-    append_data_group.add_argument(
-        "--data-json",
-        default=None,
-        dest="data_json",
-        help="Record data JSON object (validated against tape data_schema when configured).",
-    )
-    append_data_group.add_argument(
-        "--data-file",
-        default=None,
-        dest="data_file",
-        help="Path to JSON file with record data object.",
+    _add_json_file_input_group(
+        append_parser,
+        json_option="--data-json",
+        json_dest="data_json",
+        json_help="Record data JSON object (validated against tape data_schema when configured).",
+        file_option="--data-file",
+        file_dest="data_file",
+        file_help="Path to JSON file with record data object.",
     )
     _add_write_init_options(append_parser)
     append_parser.set_defaults(handler=_cmd_tape_append)
@@ -937,16 +963,15 @@ def register_tape_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="writer_id",
         help="Writer/process identifier.",
     )
-    append_batch_entries_group = append_batch_parser.add_mutually_exclusive_group(required=True)
-    append_batch_entries_group.add_argument(
-        "--entries-json",
-        dest="entries_json",
-        help="JSON array of records to append.",
-    )
-    append_batch_entries_group.add_argument(
-        "--entries-file",
-        dest="entries_file",
-        help="Path to JSON file with records array.",
+    _add_json_file_input_group(
+        append_batch_parser,
+        required=True,
+        json_option="--entries-json",
+        json_dest="entries_json",
+        json_help="JSON array of records to append.",
+        file_option="--entries-file",
+        file_dest="entries_file",
+        file_help="Path to JSON file with records array.",
     )
     _add_write_init_options(append_batch_parser)
     append_batch_parser.set_defaults(handler=_cmd_tape_append_batch)
