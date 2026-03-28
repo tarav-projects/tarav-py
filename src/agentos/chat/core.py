@@ -99,22 +99,22 @@ class ProviderHomeSlot:
 
 
 @dataclass(frozen=True)
-class ProviderFamily:
+class SessionProviderHandler:
     family: str
     home_slots: tuple[ProviderHomeSlot, ...]
-    discover_sources: Callable[[ProviderInstanceContext], list[SessionSource]]
-    find_sources: Callable[[ProviderInstanceContext, str], list[SessionSource]]
+    discover_sources: Callable[[SessionProviderContext], list[SessionSource]]
+    find_sources: Callable[[SessionProviderContext, str], list[SessionSource]]
     build_source_stats: Callable[[SessionSource], dict[str, Any]]
 
     def supported_home_keys(self) -> tuple[str, ...]:
         return tuple(slot.key for slot in self.home_slots)
 
-    def discover_sessions(self, context: ProviderInstanceContext) -> list[ChatSession]:
+    def discover_sessions(self, context: SessionProviderContext) -> list[ChatSession]:
         return _wrap_session_sources(self.discover_sources(context))
 
     def find_sessions(
         self,
-        context: ProviderInstanceContext,
+        context: SessionProviderContext,
         query: str,
     ) -> list[ChatSession]:
         return _wrap_session_sources(self.find_sources(context, query))
@@ -208,8 +208,8 @@ class ProviderFamily:
 
 
 @dataclass(frozen=True)
-class ProviderInstanceContext:
-    provider_family: ProviderFamily
+class SessionProviderContext:
+    provider_handler: SessionProviderHandler
     provider_instance: ProviderInstance
     direct_targets: tuple[Path, ...]
     direct_existing_targets: tuple[Path, ...]
@@ -233,8 +233,8 @@ def _make_direct_session_discovery(
     discover_sources: Callable[..., list[SessionSource]],
     *,
     include_sqlite: bool = False,
-) -> Callable[[ProviderInstanceContext], list[SessionSource]]:
-    def handler(context: ProviderInstanceContext) -> list[SessionSource]:
+) -> Callable[[SessionProviderContext], list[SessionSource]]:
+    def handler(context: SessionProviderContext) -> list[SessionSource]:
         kwargs: dict[str, Any] = {
             "provider_instance": context.provider_instance,
             "targets": context.direct_existing_targets,
@@ -251,8 +251,8 @@ def _make_direct_session_finder(
     *,
     query_arg: str,
     include_sqlite: bool = False,
-) -> Callable[[ProviderInstanceContext, str], list[SessionSource]]:
-    def handler(context: ProviderInstanceContext, query: str) -> list[SessionSource]:
+) -> Callable[[SessionProviderContext, str], list[SessionSource]]:
+    def handler(context: SessionProviderContext, query: str) -> list[SessionSource]:
         kwargs: dict[str, Any] = {
             "provider_instance": context.provider_instance,
             "targets": context.direct_existing_targets,
@@ -277,9 +277,9 @@ def _make_typed_session_stats_builder(
     return handler
 
 
-def supported_provider_families() -> tuple[ProviderFamily, ...]:
+def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
     return (
-        ProviderFamily(
+        SessionProviderHandler(
             family="copilot-cli",
             home_slots=(
                 ProviderHomeSlot(
@@ -299,7 +299,7 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                 _build_copilot_cli_session_stats,
             ),
         ),
-        ProviderFamily(
+        SessionProviderHandler(
             family="gemini-cli",
             home_slots=(
                 ProviderHomeSlot(
@@ -319,7 +319,7 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                 _build_gemini_cli_session_stats,
             ),
         ),
-        ProviderFamily(
+        SessionProviderHandler(
             family="codex",
             home_slots=(
                 ProviderHomeSlot(
@@ -339,7 +339,7 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                 _build_codex_session_stats,
             ),
         ),
-        ProviderFamily(
+        SessionProviderHandler(
             family="claude-code",
             home_slots=(
                 ProviderHomeSlot(
@@ -367,7 +367,7 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                 _build_claude_code_session_stats,
             ),
         ),
-        ProviderFamily(
+        SessionProviderHandler(
             family="opencode",
             home_slots=(
                 ProviderHomeSlot(
@@ -394,7 +394,7 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
                 _build_opencode_session_stats,
             ),
         ),
-        ProviderFamily(
+        SessionProviderHandler(
             family="openclaw",
             home_slots=(
                 ProviderHomeSlot(
@@ -596,7 +596,7 @@ def _load_optional_string_mapping(value: object, *, field_name: str) -> dict[str
     return items
 
 
-def _provider_family_for_name(family_name: str) -> ProviderFamily | None:
+def _provider_family_for_name(family_name: str) -> SessionProviderHandler | None:
     for family in supported_provider_families():
         if family.family == family_name:
             return family
@@ -1057,7 +1057,7 @@ def resolve_chat_sessions(
 
 def _iter_provider_context_groups(
     providers: tuple[str, ...] | None,
-) -> tuple[tuple[ProviderFamily, tuple[ProviderInstanceContext, ...]], ...]:
+) -> tuple[tuple[SessionProviderHandler, tuple[SessionProviderContext, ...]], ...]:
     provider_instances = configured_provider_instances()
     if providers is not None:
         requested_providers = set(providers)
@@ -1067,31 +1067,31 @@ def _iter_provider_context_groups(
             if provider_instance.family in requested_providers
         )
 
-    contexts_by_family: dict[str, list[ProviderInstanceContext]] = {}
+    contexts_by_family: dict[str, list[SessionProviderContext]] = {}
     for provider_instance in provider_instances:
         context = _build_provider_context(provider_instance)
         contexts_by_family.setdefault(provider_instance.family, []).append(context)
 
-    groups: list[tuple[ProviderFamily, tuple[ProviderInstanceContext, ...]]] = []
-    for provider_family in supported_provider_families():
-        family_contexts = contexts_by_family.get(provider_family.family)
+    groups: list[tuple[SessionProviderHandler, tuple[SessionProviderContext, ...]]] = []
+    for provider_handler in supported_provider_families():
+        family_contexts = contexts_by_family.get(provider_handler.family)
         if not family_contexts:
             continue
-        groups.append((provider_family, tuple(family_contexts)))
+        groups.append((provider_handler, tuple(family_contexts)))
     return tuple(groups)
 
 
-def _build_provider_context(provider_instance: ProviderInstance) -> ProviderInstanceContext:
-    provider_family = _provider_family_for_name(provider_instance.family)
-    if provider_family is None:
+def _build_provider_context(provider_instance: ProviderInstance) -> SessionProviderContext:
+    provider_handler = _provider_family_for_name(provider_instance.family)
+    if provider_handler is None:
         raise CliError(f"unsupported provider family {provider_instance.family}")
 
     direct_targets = provider_instance.direct_targets
     grep_targets = provider_instance.grep_targets
     sqlite_db_paths = provider_instance.sqlite_db_paths
 
-    return ProviderInstanceContext(
-        provider_family=provider_family,
+    return SessionProviderContext(
+        provider_handler=provider_handler,
         provider_instance=provider_instance,
         direct_targets=direct_targets,
         direct_existing_targets=tuple(target for target in direct_targets if target.exists()),
@@ -1108,7 +1108,7 @@ def _build_provider_context(provider_instance: ProviderInstance) -> ProviderInst
 def _find_session_for_provider(
     *,
     provider_family: str,
-    contexts: tuple[ProviderInstanceContext, ...],
+    contexts: tuple[SessionProviderContext, ...],
     query: str,
     include_grep: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -1143,7 +1143,7 @@ def _find_session_for_provider(
 def _build_provider_payload(
     *,
     provider_family: str,
-    contexts: tuple[ProviderInstanceContext, ...],
+    contexts: tuple[SessionProviderContext, ...],
     include_grep: bool,
     item_count_key: str,
     item_count: int,
@@ -1211,7 +1211,7 @@ def _build_provider_payload(
 def _build_stats_provider_payload(
     *,
     provider_family: str,
-    contexts: tuple[ProviderInstanceContext, ...],
+    contexts: tuple[SessionProviderContext, ...],
     sessions: list[ChatSession],
 ) -> dict[str, Any]:
     extractable_sessions = [session for session in sessions if _session_is_extractable(session)]
@@ -1491,7 +1491,7 @@ def _session_matches_uri_query(
 
 
 def _strategies_attempted(
-    contexts: tuple[ProviderInstanceContext, ...],
+    contexts: tuple[SessionProviderContext, ...],
     *,
     include_grep: bool,
 ) -> list[str]:
@@ -1503,17 +1503,17 @@ def _strategies_attempted(
     return strategies
 
 
-def _discover_direct_provider_sessions(context: ProviderInstanceContext) -> list[ChatSession]:
-    return context.provider_family.discover_sessions(context)
+def _discover_direct_provider_sessions(context: SessionProviderContext) -> list[ChatSession]:
+    return context.provider_handler.discover_sessions(context)
 
 
 def _find_direct_provider_sessions(
-    context: ProviderInstanceContext,
+    context: SessionProviderContext,
     query: str,
 ) -> list[ChatSession]:
     uri_query = _parse_chat_session_uri(query)
     if uri_query is not None:
-        if context.provider_family.family != uri_query.provider_family:
+        if context.provider_handler.family != uri_query.provider_family:
             return []
         if not context.provider_instance.matches_fingerprint_prefix(uri_query.instance_fingerprint_prefix):
             return []
@@ -1522,7 +1522,7 @@ def _find_direct_provider_sessions(
             for session in _discover_direct_provider_sessions(context)
             if _session_matches_uri_query(session, uri_query)
         ]
-    return context.provider_family.find_sessions(context, query)
+    return context.provider_handler.find_sessions(context, query)
 
 
 def _wrap_session_sources(session_sources: list[SessionSource]) -> list[ChatSession]:

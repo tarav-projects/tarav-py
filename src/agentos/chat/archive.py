@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import os
 import shutil
 import subprocess
@@ -20,6 +19,7 @@ from agentos._core.project import (
     load_project_config,
     project_config_path,
 )
+from agentos.chat.providers import ProviderInstance, ProviderInstanceAnchor
 
 CHAT_ARCHIVE_DIRNAME = "chat-archive"
 DEFAULT_ARCHIVE_COMMIT_PREFIX = "checkpoint"
@@ -32,7 +32,7 @@ class ArchiveHomeSlot:
 
 
 @dataclass(frozen=True)
-class ArchiveFamily:
+class ArchiveProviderHandler:
     family: str
     home_slots: tuple[ArchiveHomeSlot, ...]
     default_excludes: tuple[str, ...] = ()
@@ -41,13 +41,13 @@ class ArchiveFamily:
     def supported_home_keys(self) -> tuple[str, ...]:
         return tuple(slot.key for slot in self.home_slots)
 
-    def default_instance(self) -> ArchiveInstance:
+    def default_instance(self) -> ProviderInstance:
         return self.instance_from_homes(
             {slot.key: slot.default_home for slot in self.home_slots},
             field_prefix="chat.archive.provider_instances",
             index=None,
             is_default=True,
-            instance_name="default",
+            instance_name=None,
             includes=(),
             excludes=(),
         )
@@ -62,7 +62,7 @@ class ArchiveFamily:
         instance_name: str | None,
         includes: tuple[str, ...],
         excludes: tuple[str, ...],
-    ) -> ArchiveInstance:
+    ) -> ProviderInstance:
         if len(self.home_slots) != 1:
             field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="home")
             homes_field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="homes")
@@ -92,7 +92,7 @@ class ArchiveFamily:
         instance_name: str | None,
         includes: tuple[str, ...],
         excludes: tuple[str, ...],
-    ) -> ArchiveInstance:
+    ) -> ProviderInstance:
         supported_slots = {slot.key: slot for slot in self.home_slots}
         unsupported_keys = sorted(key for key in homes if key not in supported_slots)
         homes_field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="homes")
@@ -128,60 +128,34 @@ class ArchiveFamily:
             field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="instance")
             resolved_instance_name = validate_string_for_path(instance_name, field_name=field_name)
 
-        return ArchiveInstance(
+        anchors = tuple(
+            ProviderInstanceAnchor(role="home", path=home_path, slot=home_key)
+            for home_key, home_path in normalized_homes
+        )
+
+        return ProviderInstance(
             family=self.family,
+            instance_id=resolved_instance_name,
             homes=tuple(normalized_homes),
             includes=_unique_strings(self.default_includes + includes),
             excludes=_unique_strings(self.default_excludes + excludes),
-            instance_name=resolved_instance_name,
+            anchors=anchors,
             is_default=is_default,
         )
 
 
 @dataclass(frozen=True)
-class ArchiveInstance:
-    family: str
-    homes: tuple[tuple[str, Path], ...]
-    includes: tuple[str, ...] = ()
-    excludes: tuple[str, ...] = ()
-    instance_name: str | None = None
-    is_default: bool = False
-
-    def homes_map(self) -> dict[str, Path]:
-        return {key: path for key, path in self.homes}
-
-    @property
-    def fingerprint(self) -> str:
-        digest = hashlib.sha256()
-        digest.update(self.family.encode("utf-8"))
-        for key, path in self.homes:
-            digest.update(b"\0")
-            digest.update(key.encode("utf-8"))
-            digest.update(b"\0")
-            digest.update(str(path).encode("utf-8"))
-        return digest.hexdigest()
-
-    @property
-    def resolved_instance_name(self) -> str:
-        if self.instance_name is not None:
-            return self.instance_name
-        if self.is_default:
-            return "default"
-        derived_name = _derive_archive_instance_name(self.family, self.homes)
-        if derived_name is not None:
-            return derived_name
-        return self.fingerprint[:12]
-
-    def identity_key(self) -> tuple[object, ...]:
-        return (
-            self.family,
-            tuple((key, str(path)) for key, path in self.homes),
-        )
+class ArchiveProviderContext:
+    provider_handler: ArchiveProviderHandler
+    provider_instance: ProviderInstance
+    resolved_instance_name: str
+    effective_excludes: tuple[str, ...]
 
     def destination_root(self, archive_root: Path) -> Path:
-        if len(self.homes) != 1:
+        homes = self.provider_instance.homes
+        if len(homes) != 1:
             return archive_root
-        _, home_path = self.homes[0]
+        _, home_path = homes[0]
         return _archive_home_destination(
             archive_root=archive_root,
             home_path=home_path,
@@ -195,37 +169,33 @@ class ArchiveInstance:
                     home_path=home_path,
                 )
             )
-            for key, home_path in self.homes
+            for key, home_path in self.provider_instance.homes
         }
         return {
-            "provider": self.family,
+            "provider": self.provider_instance.family,
             "instance": self.resolved_instance_name,
-            "is_default": self.is_default,
-            "homes": {key: str(path) for key, path in self.homes},
-            "includes": list(self.includes),
+            "is_default": self.provider_instance.is_default,
+            "homes": {key: str(path) for key, path in self.provider_instance.homes},
+            "includes": list(self.provider_instance.includes),
             "excludes": list(self.effective_excludes),
-            "destination_root": str(self.destination_root(archive_root)) if len(self.homes) == 1 else None,
+            "destination_root": str(self.destination_root(archive_root)) if len(self.provider_instance.homes) == 1 else None,
             "destination_roots": destination_roots,
         }
-
-    @property
-    def effective_excludes(self) -> tuple[str, ...]:
-        return _unique_strings(self.excludes + _derived_archive_instance_excludes(self.family, self.homes))
 
 
 @dataclass(frozen=True)
 class ArchiveSettings:
     commit_prefix: str
-    provider_instances: tuple[ArchiveInstance, ...]
+    provider_instances: tuple[ProviderInstance, ...]
 
 
 def default_chat_archive_root() -> Path:
     return agentos_home_dir() / CHAT_ARCHIVE_DIRNAME
 
 
-def supported_archive_provider_families() -> tuple[ArchiveFamily, ...]:
+def supported_archive_provider_families() -> tuple[ArchiveProviderHandler, ...]:
     return (
-        ArchiveFamily(
+        ArchiveProviderHandler(
             family="claude-code",
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.claude"),),
             default_excludes=(
@@ -242,7 +212,7 @@ def supported_archive_provider_families() -> tuple[ArchiveFamily, ...]:
                 "skills",
             ),
         ),
-        ArchiveFamily(
+        ArchiveProviderHandler(
             family="copilot-cli",
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.copilot"),),
             default_excludes=(
@@ -251,7 +221,7 @@ def supported_archive_provider_families() -> tuple[ArchiveFamily, ...]:
                 "ide/",
             ),
         ),
-        ArchiveFamily(
+        ArchiveProviderHandler(
             family="codex",
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.codex"),),
             default_excludes=(
@@ -266,7 +236,7 @@ def supported_archive_provider_families() -> tuple[ArchiveFamily, ...]:
                 "skills",
             ),
         ),
-        ArchiveFamily(
+        ArchiveProviderHandler(
             family="gemini-cli",
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.gemini"),),
             default_excludes=(
@@ -275,11 +245,11 @@ def supported_archive_provider_families() -> tuple[ArchiveFamily, ...]:
                 "google_accounts.json",
             ),
         ),
-        ArchiveFamily(
+        ArchiveProviderHandler(
             family="agents",
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.agents"),),
         ),
-        ArchiveFamily(
+        ArchiveProviderHandler(
             family="openclaw",
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.openclaw"),),
             default_excludes=("agents/*/agent/auth*.json",),
@@ -355,14 +325,15 @@ def archive_chat_instances(
             for instance in selected_instances
             if instance.family in providers
         )
+    selected_contexts = tuple(_build_archive_provider_context(instance) for instance in selected_instances)
 
     instance_payloads: list[dict[str, object]] = []
     synced_instance_count = 0
     skipped_instance_count = 0
 
-    for instance in selected_instances:
+    for context in selected_contexts:
         instance_payload = _archive_single_instance(
-            instance=instance,
+            context=context,
             archive_root=archive_root_path,
         )
         instance_payloads.append(instance_payload)
@@ -390,14 +361,14 @@ def archive_chat_instances(
             )
             committed = True
 
-    provider_names = _unique_strings(tuple(instance.family for instance in selected_instances))
+    provider_names = _unique_strings(tuple(context.provider_instance.family for context in selected_contexts))
     return {
         "status": "ok",
         "command": "chat archive",
         "archive_root": str(archive_root_path),
         "commit_prefix": settings.commit_prefix,
         "provider_count": len(provider_names),
-        "instance_count": len(selected_instances),
+        "instance_count": len(selected_contexts),
         "synced_instance_count": synced_instance_count,
         "skipped_instance_count": skipped_instance_count,
         "committed": committed,
@@ -408,11 +379,11 @@ def archive_chat_instances(
 
 def _archive_single_instance(
     *,
-    instance: ArchiveInstance,
+    context: ArchiveProviderContext,
     archive_root: Path,
 ) -> dict[str, object]:
     legacy_destination_root = _legacy_archive_instance_destination_root(
-        instance=instance,
+        context=context,
         archive_root=archive_root,
     )
     if legacy_destination_root != archive_root and legacy_destination_root.exists():
@@ -422,7 +393,7 @@ def _archive_single_instance(
     home_results: list[dict[str, object]] = []
     synced = False
 
-    for home_key, home_path in instance.homes:
+    for home_key, home_path in context.provider_instance.homes:
         exists = home_path.is_dir()
         destination_path = _archive_home_destination(
             archive_root=archive_root,
@@ -439,8 +410,8 @@ def _archive_single_instance(
             _mirror_archive_home(
                 source_path=home_path,
                 destination_path=destination_path,
-                includes=instance.includes,
-                excludes=instance.effective_excludes,
+                includes=context.provider_instance.includes,
+                excludes=context.effective_excludes,
             )
             home_payload["synced"] = True
             synced = True
@@ -452,7 +423,7 @@ def _archive_single_instance(
         if not bool(home_result["exists"])
     ]
 
-    payload = instance.summary(archive_root)
+    payload = context.summary(archive_root)
     payload.update(
         {
             "synced": synced,
@@ -473,10 +444,10 @@ def _archive_home_destination(
 
 def _legacy_archive_instance_destination_root(
     *,
-    instance: ArchiveInstance,
+    context: ArchiveProviderContext,
     archive_root: Path,
 ) -> Path:
-    return archive_root / instance.family / instance.resolved_instance_name
+    return archive_root / context.provider_instance.family / context.resolved_instance_name
 
 
 def _mirror_archive_home(
@@ -601,14 +572,14 @@ def _archive_config_from_config(config: dict[str, object]) -> dict[str, object] 
     return archive_config
 
 
-def _archive_instances_from_config(archive_config: dict[str, object]) -> tuple[ArchiveInstance, ...]:
+def _archive_instances_from_config(archive_config: dict[str, object]) -> tuple[ProviderInstance, ...]:
     raw_instances = archive_config.get("provider_instances")
     if raw_instances is None:
         return ()
     if not isinstance(raw_instances, list):
         raise CliError("config field chat.archive.provider_instances must be a JSON array")
 
-    instances: list[ArchiveInstance] = []
+    instances: list[ProviderInstance] = []
     for index, raw_instance in enumerate(raw_instances):
         if not isinstance(raw_instance, dict):
             raise CliError(f"chat.archive.provider_instances[{index}] must be a JSON object")
@@ -622,7 +593,7 @@ def _archive_instances_from_config(archive_config: dict[str, object]) -> tuple[A
     return tuple(instances)
 
 
-def _session_archive_instances_from_config(config: dict[str, object]) -> tuple[ArchiveInstance, ...]:
+def _session_archive_instances_from_config(config: dict[str, object]) -> tuple[ProviderInstance, ...]:
     chat_config = config.get("chat")
     if chat_config is None:
         return ()
@@ -641,7 +612,7 @@ def _session_archive_instances_from_config(config: dict[str, object]) -> tuple[A
     if not isinstance(raw_instances, list):
         raise CliError("config field chat.session.provider_instances must be a JSON array")
 
-    instances: list[ArchiveInstance] = []
+    instances: list[ProviderInstance] = []
     for index, raw_instance in enumerate(raw_instances):
         if not isinstance(raw_instance, dict):
             raise CliError(f"chat.session.provider_instances[{index}] must be a JSON object")
@@ -660,13 +631,13 @@ def _archive_instance_from_raw_config(
     *,
     index: int,
     field_prefix: str,
-) -> ArchiveInstance:
+) -> ProviderInstance:
     family_name = raw_instance.get("provider")
     if not isinstance(family_name, str) or not family_name:
         raise CliError(f"{field_prefix}[{index}].provider is required")
 
-    family = _archive_family_for_name(family_name)
-    if family is None:
+    provider_handler = _archive_provider_handler_for_name(family_name)
+    if provider_handler is None:
         supported_providers = ", ".join(
             sorted(provider_family.family for provider_family in supported_archive_provider_families())
         )
@@ -711,7 +682,7 @@ def _archive_instance_from_raw_config(
             raise CliError(
                 f"{field_prefix}[{index}] must define either home or homes, not both"
             )
-        return family.instance_from_home(
+        return provider_handler.instance_from_home(
             normalized_home,
             field_prefix=field_prefix,
             index=index,
@@ -722,12 +693,12 @@ def _archive_instance_from_raw_config(
         )
 
     if homes:
-        if len(family.home_slots) == 1:
+        if len(provider_handler.home_slots) == 1:
             raise CliError(
                 f"{field_prefix}[{index}].homes is only supported for providers with multiple home roots; "
                 f"use {field_prefix}[{index}].home"
             )
-        return family.instance_from_homes(
+        return provider_handler.instance_from_homes(
             homes,
             field_prefix=field_prefix,
             index=index,
@@ -742,10 +713,10 @@ def _archive_instance_from_raw_config(
     )
 
 
-def _archive_family_for_name(family_name: str) -> ArchiveFamily | None:
-    for family in supported_archive_provider_families():
-        if family.family == family_name:
-            return family
+def _archive_provider_handler_for_name(family_name: str) -> ArchiveProviderHandler | None:
+    for provider_handler in supported_archive_provider_families():
+        if provider_handler.family == family_name:
+            return provider_handler
     return None
 
 
@@ -796,8 +767,24 @@ def _load_optional_string_mapping(value: object, *, field_name: str) -> dict[str
     return items
 
 
-def _dedupe_archive_instances(provider_instances: tuple[ArchiveInstance, ...]) -> tuple[ArchiveInstance, ...]:
-    unique_instances: dict[tuple[object, ...], ArchiveInstance] = {}
+def _build_archive_provider_context(provider_instance: ProviderInstance) -> ArchiveProviderContext:
+    provider_handler = _archive_provider_handler_for_name(provider_instance.family)
+    if provider_handler is None:
+        raise CliError(f"unsupported archive provider family {provider_instance.family}")
+
+    return ArchiveProviderContext(
+        provider_handler=provider_handler,
+        provider_instance=provider_instance,
+        resolved_instance_name=_resolve_archive_instance_name(provider_instance),
+        effective_excludes=_unique_strings(
+            provider_instance.excludes
+            + _derived_archive_instance_excludes(provider_instance.family, provider_instance.homes)
+        ),
+    )
+
+
+def _dedupe_archive_instances(provider_instances: tuple[ProviderInstance, ...]) -> tuple[ProviderInstance, ...]:
+    unique_instances: dict[tuple[object, ...], ProviderInstance] = {}
     for provider_instance in provider_instances:
         key = provider_instance.identity_key()
         if key not in unique_instances:
@@ -810,15 +797,16 @@ def _dedupe_archive_instances(provider_instances: tuple[ArchiveInstance, ...]) -
     return tuple(unique_instances.values())
 
 
-def _validate_unique_archive_destinations(provider_instances: tuple[ArchiveInstance, ...]) -> None:
-    seen_destinations: dict[tuple[str, str], ArchiveInstance] = {}
+def _validate_unique_archive_destinations(provider_instances: tuple[ProviderInstance, ...]) -> None:
+    seen_destinations: dict[tuple[str, str], ProviderInstance] = {}
     for provider_instance in provider_instances:
-        key = (provider_instance.family, provider_instance.resolved_instance_name)
+        context = _build_archive_provider_context(provider_instance)
+        key = (provider_instance.family, context.resolved_instance_name)
         if key in seen_destinations:
             existing = seen_destinations[key]
             raise CliError(
                 "chat archive provider instances resolve to the same destination "
-                f"{provider_instance.family}/{provider_instance.resolved_instance_name}: "
+                f"{provider_instance.family}/{context.resolved_instance_name}: "
                 f"{existing.homes_map()} and {provider_instance.homes_map()}"
             )
         seen_destinations[key] = provider_instance
@@ -855,6 +843,17 @@ def _derive_archive_instance_name(
                 return validate_string_for_path(suffix, field_name="archive instance name")
 
     return validate_string_for_path(basename, field_name="archive instance name")
+
+
+def _resolve_archive_instance_name(provider_instance: ProviderInstance) -> str:
+    if provider_instance.instance_id is not None:
+        return provider_instance.instance_id
+    if provider_instance.is_default:
+        return "default"
+    derived_name = _derive_archive_instance_name(provider_instance.family, provider_instance.homes)
+    if derived_name is not None:
+        return derived_name
+    return provider_instance.fingerprint[:12]
 
 
 def _derived_archive_instance_excludes(
