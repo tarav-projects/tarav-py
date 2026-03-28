@@ -6,8 +6,9 @@
 - Keep surface-specific behavior in handler/context objects, not in the canonical family/instance objects.
 
 ## Status
-- First and second implementation slices are complete.
+- First, second, third, and fourth implementation slices are complete.
 - Added canonical provider model module in `src/agentos/chat/providers.py`.
+- Added canonical `ProviderFamily` registry and lookup helpers in `src/agentos/chat/providers.py`.
 - Moved canonical `ProviderInstance` and `ProviderInstanceAnchor` out of `chat/sessions.py`.
 - Session surface now uses handler/context naming internally:
 - `SessionProviderHandler`
@@ -16,10 +17,17 @@
 - `ArchiveProviderHandler`
 - `ArchiveProviderContext`
 - Archive now consumes canonical `ProviderInstance` instead of a separate `ArchiveInstance`.
+- Accounts surface now uses handler/context naming internally:
+- `AccountProviderHandler`
+- `AccountProviderContext`
+- Accounts now consumes canonical `ProviderInstance` instead of a separate `AccountProviderInstance`.
+- Session/archive/accounts handlers now bind to shared canonical `ProviderFamily` objects.
 - Public behavior stayed stable.
 - Verified with:
 - `uv run pytest tests/test_chat_archive_commands.py -q`
 - `uv run pytest tests/test_chat_commands.py tests/test_chat_extract_commands.py -q`
+- `uv run pytest tests/test_chat_accounts_commands.py -q`
+- `uv run pytest tests/test_chat_commands.py tests/test_chat_extract_commands.py tests/test_chat_archive_commands.py tests/test_chat_accounts_commands.py -q`
 - `uv run pytest -q`
 
 ## Accepted Direction
@@ -199,6 +207,34 @@ This keeps the first pass bounded and avoids mixing model unification with confi
 - Archive now builds canonical `ProviderInstance` values with home anchors.
 - Archive-specific instance naming and exclude derivation now live in `ArchiveProviderContext`.
 - Archive command behavior and tests remained stable.
+
+## Third Change Set
+- Replace `AccountProviderFamily` with `AccountProviderHandler`.
+- Replace `AccountProviderInstance` with canonical `ProviderInstance`.
+- Add `AccountProviderContext` for:
+- resolved runtime command configuration
+- environment mapping
+- timeout
+- live-usage refresh policy
+- Keep account command payloads stable while moving runtime derivation out of the canonical instance.
+
+### Third Change Set Result
+- Implemented accounts-side handler/context rename.
+- Accounts now builds canonical `ProviderInstance` values from `chat.accounts.provider_instances`.
+- Account runtime command/env/timeout/live-refresh state now lives in `AccountProviderContext`.
+- Account command behavior and tests remained stable.
+
+## Fourth Change Set
+- Adopt the canonical `ProviderFamily` layer across all chat surfaces.
+- Add one canonical provider-family registry in `src/agentos/chat/providers.py`.
+- Make session/archive/accounts handlers reference canonical `ProviderFamily` objects instead of carrying standalone family strings as their semantic identity.
+- Keep per-surface handler lookup and behavior local to each surface.
+
+### Fourth Change Set Result
+- Implemented shared canonical provider-family registry and lookup helpers.
+- Session/archive/accounts handler registries now consume canonical `ProviderFamily` objects.
+- Surface-specific provider choices and command behavior remained stable.
+- Remaining major unification work is the provider-instance config-loading pipeline.
 
 ## Acceptance Criteria
 - There is one canonical provider family type in the codebase.

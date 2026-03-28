@@ -20,6 +20,7 @@ from agentos._core.project import (
     project_config_path,
 )
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
+from agentos.chat.providers import ProviderFamily, require_canonical_provider_family
 from agentos.chat.sessions import (
     BackingArtifact,
     ChatSession,
@@ -100,11 +101,15 @@ class ProviderHomeSlot:
 
 @dataclass(frozen=True)
 class SessionProviderHandler:
-    family: str
+    provider_family: ProviderFamily
     home_slots: tuple[ProviderHomeSlot, ...]
     discover_sources: Callable[[SessionProviderContext], list[SessionSource]]
     find_sources: Callable[[SessionProviderContext, str], list[SessionSource]]
     build_source_stats: Callable[[SessionSource], dict[str, Any]]
+
+    @property
+    def family(self) -> str:
+        return self.provider_family.family
 
     def supported_home_keys(self) -> tuple[str, ...]:
         return tuple(slot.key for slot in self.home_slots)
@@ -280,7 +285,7 @@ def _make_typed_session_stats_builder(
 def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
     return (
         SessionProviderHandler(
-            family="copilot-cli",
+            provider_family=require_canonical_provider_family("copilot-cli"),
             home_slots=(
                 ProviderHomeSlot(
                     key="home",
@@ -300,7 +305,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
             ),
         ),
         SessionProviderHandler(
-            family="gemini-cli",
+            provider_family=require_canonical_provider_family("gemini-cli"),
             home_slots=(
                 ProviderHomeSlot(
                     key="home",
@@ -320,7 +325,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
             ),
         ),
         SessionProviderHandler(
-            family="codex",
+            provider_family=require_canonical_provider_family("codex"),
             home_slots=(
                 ProviderHomeSlot(
                     key="home",
@@ -340,7 +345,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
             ),
         ),
         SessionProviderHandler(
-            family="claude-code",
+            provider_family=require_canonical_provider_family("claude-code"),
             home_slots=(
                 ProviderHomeSlot(
                     key="cli",
@@ -368,7 +373,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
             ),
         ),
         SessionProviderHandler(
-            family="opencode",
+            provider_family=require_canonical_provider_family("opencode"),
             home_slots=(
                 ProviderHomeSlot(
                     key="home",
@@ -395,7 +400,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
             ),
         ),
         SessionProviderHandler(
-            family="openclaw",
+            provider_family=require_canonical_provider_family("openclaw"),
             home_slots=(
                 ProviderHomeSlot(
                     key="home",

@@ -23,6 +23,50 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _account_instance(
+    *,
+    provider: str,
+    instance_id: str,
+    label: str,
+    cli_command: tuple[str, ...] = (),
+    env: tuple[tuple[str, str], ...] = (),
+    timeout_sec: int = 15,
+    live_usage_refresh: bool = False,
+) -> chat_accounts.ProviderInstance:
+    return chat_accounts.ProviderInstance(
+        family=provider,
+        instance_id=instance_id,
+        label=label,
+        cli_command=cli_command,
+        env=env,
+        timeout_sec=timeout_sec,
+        live_usage_refresh=live_usage_refresh,
+    )
+
+
+def _account_context(
+    *,
+    provider: str,
+    instance_id: str,
+    label: str,
+    cli_command: tuple[str, ...] = (),
+    env: tuple[tuple[str, str], ...] = (),
+    timeout_sec: int = 15,
+    live_usage_refresh: bool = False,
+) -> chat_accounts.AccountProviderContext:
+    return chat_accounts._build_account_provider_context(
+        _account_instance(
+            provider=provider,
+            instance_id=instance_id,
+            label=label,
+            cli_command=cli_command,
+            env=env,
+            timeout_sec=timeout_sec,
+            live_usage_refresh=live_usage_refresh,
+        )
+    )
+
+
 def _write_global_config(
     path: Path,
     *,
@@ -218,6 +262,239 @@ def test_chat_accounts_stats_summarizes_configured_provider_instances(
     assert "live usage refresh disabled" in claude_account["usage_message"]
 
 
+def test_chat_accounts_stats_summarizes_configured_copilot_account(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot",
+                "id": "copilot-main",
+                "label": "Copilot main",
+            }
+        ],
+    )
+
+    observed_calls: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        assert capture_output is True
+        assert text is True
+        assert check is False
+        assert timeout == chat_accounts.DEFAULT_ACCOUNT_TIMEOUT_SEC
+        observed_calls.append(command)
+
+        if command == [
+            "copilot",
+            "--model",
+            "gpt-4.1",
+            "-p",
+            "Reply with OK only.",
+            "--allow-all-tools",
+            "--no-ask-user",
+            "--no-custom-instructions",
+            "--no-auto-update",
+            "--output-format",
+            "json",
+            "--stream",
+            "off",
+        ]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="\n".join(
+                    [
+                        json.dumps({"type": "session.model_change", "data": {"newModel": "gpt-4.1"}}),
+                        json.dumps({"type": "assistant.message", "data": {"content": "OK"}}),
+                        json.dumps(
+                            {
+                                "type": "result",
+                                "sessionId": "session-123",
+                                "exitCode": 0,
+                                "usage": {
+                                    "premiumRequests": 1,
+                                    "sessionDurationMs": 3210,
+                                },
+                            }
+                        ),
+                    ]
+                ),
+                stderr="",
+            )
+        if command == ["gh", "auth", "token"]:
+            return subprocess.CompletedProcess(command, 0, stdout="gho-test-token\n", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    class FakeCopilotResponse:
+        def __init__(self, payload: dict[str, object]) -> None:
+            self._payload = payload
+
+        def __enter__(self) -> "FakeCopilotResponse":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(self._payload).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):  # type: ignore[no-untyped-def]
+        assert timeout == chat_accounts.DEFAULT_ACCOUNT_TIMEOUT_SEC
+        assert request.full_url == chat_accounts.COPILOT_USAGE_API_URL
+        assert request.get_header("Authorization") == "token gho-test-token"
+        return FakeCopilotResponse(
+            {
+                "login": "josePereiro",
+                "copilot_plan": "individual",
+                "quota_snapshots": {
+                    "premium_interactions": {
+                        "entitlement": 500,
+                        "remaining": 450,
+                        "percent_remaining": 90,
+                        "quota_id": "premium_interactions",
+                    },
+                    "chat": {
+                        "entitlement": 300,
+                        "remaining": 150,
+                        "percent_remaining": 50,
+                        "quota_id": "chat",
+                    },
+                },
+            }
+        )
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+    monkeypatch.setattr(chat_accounts.urllib.request, "urlopen", fake_urlopen)
+
+    assert main(["chat", "accounts", "stats"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["provider_count"] == 1
+    assert payload["account_count"] == 1
+    copilot_account = payload["providers"][0]["accounts"][0]
+    assert copilot_account["id"] == "copilot-main"
+    assert copilot_account["label"] == "Copilot main"
+    assert copilot_account["provider"] == "copilot"
+    assert copilot_account["check_status"] == "ok"
+    assert copilot_account["cli_command"] == ["copilot"]
+    assert copilot_account["auth_summary"] == "Copilot CLI ready (gpt-4.1)"
+    assert copilot_account["auth_method"] == "copilot-cli"
+    assert copilot_account["logged_in"] is True
+    assert copilot_account["account_login"] == "josePereiro"
+    assert copilot_account["plan"] == "individual"
+    assert copilot_account["usage_status"] == "ok"
+    assert copilot_account["usage_source"] == "copilot-api"
+    assert copilot_account["usage_summary"] == "Premium 10%, Chat 50%"
+    assert copilot_account["summary"] == "Copilot CLI ready (gpt-4.1); Premium 10%, Chat 50%"
+    assert copilot_account["provider_status"]["copilot_cli_probe"]["session_id"] == "session-123"
+    copilot_limits = copilot_account["usage"]["limits"]
+    assert [limit["limit_label"] for limit in copilot_limits] == ["Premium", "Chat"]
+    assert [limit["used_percent"] for limit in copilot_limits] == [10, 50]
+    assert observed_calls == [
+        [
+            "copilot",
+            "--model",
+            "gpt-4.1",
+            "-p",
+            "Reply with OK only.",
+            "--allow-all-tools",
+            "--no-ask-user",
+            "--no-custom-instructions",
+            "--no-auto-update",
+            "--output-format",
+            "json",
+            "--stream",
+            "off",
+        ],
+        ["gh", "auth", "token"],
+    ]
+
+
+def test_chat_accounts_stats_degrades_when_copilot_github_token_fetch_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot",
+                "id": "copilot-main",
+                "label": "Copilot main",
+            }
+        ],
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del capture_output, text, check, env, timeout
+        if command[0] == "copilot":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="\n".join(
+                    [
+                        json.dumps({"type": "session.model_change", "data": {"newModel": "gpt-4.1"}}),
+                        json.dumps(
+                            {
+                                "type": "result",
+                                "sessionId": "session-123",
+                                "exitCode": 0,
+                                "usage": {"premiumRequests": 1},
+                            }
+                        ),
+                    ]
+                ),
+                stderr="",
+            )
+        if command == ["gh", "auth", "token"]:
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="gh auth token failed")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+
+    assert main(["chat", "accounts", "stats"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    copilot_account = payload["providers"][0]["accounts"][0]
+    assert copilot_account["check_status"] == "ok"
+    assert copilot_account["auth_method"] == "copilot-cli"
+    assert copilot_account["usage_status"] == "error"
+    assert copilot_account["usage_error"]["type"] == "command_failed"
+    assert copilot_account["usage_error"]["message"] == "gh auth token failed"
+
+
 def test_chat_accounts_stats_refresh_usage_enables_claude_live_usage(
     tmp_path: Path,
     monkeypatch,
@@ -273,7 +550,7 @@ def test_chat_accounts_stats_refresh_usage_enables_claude_live_usage(
 
     live_usage_observed: list[str] = []
 
-    def fake_collect_live_usage(instance: chat_accounts.AccountProviderInstance) -> dict[str, object]:
+    def fake_collect_live_usage(instance: chat_accounts.AccountProviderContext) -> dict[str, object]:
         live_usage_observed.append(instance.instance_id)
         return {
             "usage_status": "ok",
@@ -331,7 +608,7 @@ def test_chat_accounts_stats_refresh_usage_enables_claude_live_usage(
 
 def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(monkeypatch) -> None:
     instances = (
-        chat_accounts.AccountProviderInstance(
+        _account_instance(
             provider="alpha",
             instance_id="alpha-1",
             label="Alpha 1",
@@ -340,7 +617,7 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
             timeout_sec=15,
             live_usage_refresh=False,
         ),
-        chat_accounts.AccountProviderInstance(
+        _account_instance(
             provider="beta",
             instance_id="beta-1",
             label="Beta 1",
@@ -349,7 +626,7 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
             timeout_sec=15,
             live_usage_refresh=False,
         ),
-        chat_accounts.AccountProviderInstance(
+        _account_instance(
             provider="alpha",
             instance_id="alpha-2",
             label="Alpha 2",
@@ -364,7 +641,7 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
     in_flight = 0
     max_in_flight = 0
 
-    def collect(instance: chat_accounts.AccountProviderInstance, refresh_usage: bool) -> dict[str, object]:
+    def collect(instance: chat_accounts.AccountProviderContext, refresh_usage: bool) -> dict[str, object]:
         nonlocal in_flight, max_in_flight
         assert refresh_usage is False
         with lock:
@@ -381,11 +658,17 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
         }
 
     monkeypatch.setattr(
-        chat_accounts,
-        "supported_account_provider_families",
-        lambda: (
-            chat_accounts.AccountProviderFamily(family="alpha", collect_stats=collect),
-            chat_accounts.AccountProviderFamily(family="beta", collect_stats=collect),
+            chat_accounts,
+            "supported_account_provider_families",
+            lambda: (
+            chat_accounts.AccountProviderHandler(
+                provider_family=chat_accounts.ProviderFamily(family="alpha"),
+                collect_stats=collect,
+            ),
+            chat_accounts.AccountProviderHandler(
+                provider_family=chat_accounts.ProviderFamily(family="beta"),
+                collect_stats=collect,
+            ),
         ),
     )
     monkeypatch.setattr(
@@ -405,7 +688,7 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
 
 
 def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypatch) -> None:
-    instance = chat_accounts.AccountProviderInstance(
+    instance = _account_context(
         provider="claude-code",
         instance_id="claude-main",
         label="Claude main",
@@ -431,7 +714,7 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
             in_flight -= 1
 
     def fake_collect_parsed_command_payload(
-        task_instance: chat_accounts.AccountProviderInstance,
+        task_instance: chat_accounts.AccountProviderContext,
         *,
         extra_args: tuple[str, ...],
         parser,
@@ -452,7 +735,7 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
             exit_task()
 
     def fake_collect_live_usage(
-        task_instance: chat_accounts.AccountProviderInstance,
+        task_instance: chat_accounts.AccountProviderContext,
     ) -> dict[str, object]:
         assert task_instance == instance
         enter_task()
@@ -713,8 +996,8 @@ def test_chat_accounts_stats_supports_full_output_and_markdown(
 
     assert main(["chat", "accounts", "stats", "--full-output"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["provider_count"] == 2
-    assert [provider["provider"] for provider in payload["providers"]] == ["codex", "claude-code"]
+    assert payload["provider_count"] == 3
+    assert [provider["provider"] for provider in payload["providers"]] == ["codex", "claude-code", "copilot"]
     assert all(provider["account_count"] == 0 for provider in payload["providers"])
 
     assert main(["chat", "accounts", "stats", "--full-output", "--output", "markdown"]) == 0
@@ -725,6 +1008,7 @@ def test_chat_accounts_stats_supports_full_output_and_markdown(
     assert "- History segment: " in output
     assert "## codex" in output
     assert "## claude-code" in output
+    assert "## copilot" in output
 
 
 def test_chat_accounts_stats_supports_compact_usage_output(
@@ -821,16 +1105,71 @@ def test_chat_accounts_stats_supports_compact_usage_output(
     assert "# Chat Accounts Usage" in output
     assert "- Recorded at: 2026-03-25 08:00:00 CDT" in output
     assert "codex-tk (Codex tk):" in output
-    assert "  5h used [######----] 64%" in output
-    assert "    time [----------] 0% elapsed" in output
-    assert "       resets 2026-03-26 01:40:41 CDT" in output
-    assert "       in 17h 40m" in output
-    assert "  7d used [##--------] 20%" in output
-    assert "    time [########--] 80% elapsed" in output
-    assert "       resets 2026-03-26 17:10:27 CDT" in output
-    assert "       in 1d 9h 10m" in output
+    assert "  5h | used [######----] 64% | time [----------] 0%" in output
+    assert "     | resets 2026-03-26 01:40:41 CDT in 17h 40m" in output
+    assert "  7d | used [##--------] 20% | time [########--] 80%" in output
+    assert "     | resets 2026-03-26 17:10:27 CDT in 1d 9h 10m" in output
     assert "claude-main (Claude main):" in output
-    assert "  Usage unavailable: " in output
+    assert "  usage | unavailable" in output
+    assert "     | live usage refresh disabled; pass --refresh-usage or set live_usage_refresh=true" in output
+
+
+def test_chat_accounts_stats_usage_output_styles_fetch_errors(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "codex-main",
+                "label": "Codex main",
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del capture_output, text, check, env, timeout
+        if command == ["codex", "login", "status"]:
+            return subprocess.CompletedProcess(command, 0, stdout="Logged in using ChatGPT\n", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        chat_accounts,
+        "_read_codex_account_rate_limits",
+        lambda instance: (_ for _ in ()).throw(
+            chat_accounts.AccountCommandError(
+                error_type="command_failed",
+                message="rate-limit request failed",
+                exit_code=2,
+            )
+        ),
+    )
+
+    assert main(["chat", "accounts", "stats", "--output", "usage"]) == 0
+    output = capsys.readouterr().out
+
+    assert "codex-main (Codex main):" in output
+    assert "  usage | error" in output
+    assert "     | command_failed: rate-limit request failed" in output
 
 
 def test_chat_accounts_stats_history_accumulates_into_month_segment(
@@ -937,6 +1276,28 @@ def test_format_usage_limit_elapsed_percent_uses_period_bounds() -> None:
     )
 
 
+def test_parse_copilot_usage_response_falls_back_to_monthly_quotas() -> None:
+    payload = chat_accounts._parse_copilot_usage_response(
+        {
+            "copilot_plan": "free",
+            "monthly_quotas": {
+                "chat": "500",
+                "completions": 300,
+            },
+            "limited_user_quotas": {
+                "chat": 125,
+                "completions": "75",
+            },
+        }
+    )
+
+    assert payload["plan"] == "free"
+    assert payload["usage_summary"] == "Premium 75%, Chat 75%"
+    limits = payload["usage"]["limits"]
+    assert [limit["limit_label"] for limit in limits] == ["Premium", "Chat"]
+    assert [limit["used_percent"] for limit in limits] == [75, 75]
+
+
 def test_normalize_terminal_output_detects_trust_and_main_prompts() -> None:
     trust_text = chat_accounts._normalize_terminal_output(
         [b"\x1b[1CQuick\x1b[1Csafety\x1b[1Ccheck \x1b[1CYes,\x1b[1CI\x1b[1Ctrust\x1b[1Cthis\x1b[1Cfolder"]
@@ -991,7 +1352,7 @@ def test_parse_claude_code_statusline_usage_output_includes_five_hour_and_seven_
 
 
 def test_claude_code_refresh_workspace_root_is_instance_scoped() -> None:
-    instance = chat_accounts.AccountProviderInstance(
+    instance = _account_context(
         provider="claude-code",
         instance_id="claude-main",
         label="Claude main",
@@ -1007,7 +1368,7 @@ def test_claude_code_refresh_workspace_root_is_instance_scoped() -> None:
 
 
 def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -> None:
-    instance = chat_accounts.AccountProviderInstance(
+    instance = _account_context(
         provider="claude-code",
         instance_id="claude-main",
         label="Claude main",

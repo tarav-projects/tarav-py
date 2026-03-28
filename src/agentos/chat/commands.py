@@ -736,7 +736,7 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
 
     accounts_parser = chat_subparsers.add_parser(
         "accounts",
-        help="Query configured account status across supported provider CLIs.",
+        help="Query configured account status across supported providers.",
     )
     accounts_subparsers = accounts_parser.add_subparsers(
         dest="chat_accounts_command",
@@ -745,7 +745,7 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
 
     accounts_stats_parser = accounts_subparsers.add_parser(
         "stats",
-        help="Aggregate configured account status checks across supported providers.",
+        help="Aggregate configured account status and usage checks across supported providers.",
     )
     accounts_stats_parser.add_argument(
         "instance_ids",

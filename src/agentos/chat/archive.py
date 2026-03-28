@@ -19,7 +19,12 @@ from agentos._core.project import (
     load_project_config,
     project_config_path,
 )
-from agentos.chat.providers import ProviderInstance, ProviderInstanceAnchor
+from agentos.chat.providers import (
+    ProviderFamily,
+    ProviderInstance,
+    ProviderInstanceAnchor,
+    require_canonical_provider_family,
+)
 
 CHAT_ARCHIVE_DIRNAME = "chat-archive"
 DEFAULT_ARCHIVE_COMMIT_PREFIX = "checkpoint"
@@ -33,10 +38,14 @@ class ArchiveHomeSlot:
 
 @dataclass(frozen=True)
 class ArchiveProviderHandler:
-    family: str
+    provider_family: ProviderFamily
     home_slots: tuple[ArchiveHomeSlot, ...]
     default_excludes: tuple[str, ...] = ()
     default_includes: tuple[str, ...] = ()
+
+    @property
+    def family(self) -> str:
+        return self.provider_family.family
 
     def supported_home_keys(self) -> tuple[str, ...]:
         return tuple(slot.key for slot in self.home_slots)
@@ -196,7 +205,7 @@ def default_chat_archive_root() -> Path:
 def supported_archive_provider_families() -> tuple[ArchiveProviderHandler, ...]:
     return (
         ArchiveProviderHandler(
-            family="claude-code",
+            provider_family=require_canonical_provider_family("claude-code"),
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.claude"),),
             default_excludes=(
                 "debug/",
@@ -213,7 +222,7 @@ def supported_archive_provider_families() -> tuple[ArchiveProviderHandler, ...]:
             ),
         ),
         ArchiveProviderHandler(
-            family="copilot-cli",
+            provider_family=require_canonical_provider_family("copilot-cli"),
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.copilot"),),
             default_excludes=(
                 "pkg/",
@@ -222,7 +231,7 @@ def supported_archive_provider_families() -> tuple[ArchiveProviderHandler, ...]:
             ),
         ),
         ArchiveProviderHandler(
-            family="codex",
+            provider_family=require_canonical_provider_family("codex"),
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.codex"),),
             default_excludes=(
                 "log/",
@@ -237,7 +246,7 @@ def supported_archive_provider_families() -> tuple[ArchiveProviderHandler, ...]:
             ),
         ),
         ArchiveProviderHandler(
-            family="gemini-cli",
+            provider_family=require_canonical_provider_family("gemini-cli"),
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.gemini"),),
             default_excludes=(
                 "tmp/bin/",
@@ -246,11 +255,11 @@ def supported_archive_provider_families() -> tuple[ArchiveProviderHandler, ...]:
             ),
         ),
         ArchiveProviderHandler(
-            family="agents",
+            provider_family=require_canonical_provider_family("agents"),
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.agents"),),
         ),
         ArchiveProviderHandler(
-            family="openclaw",
+            provider_family=require_canonical_provider_family("openclaw"),
             home_slots=(ArchiveHomeSlot(key="home", default_home="~/.openclaw"),),
             default_excludes=("agents/*/agent/auth*.json",),
             default_includes=(

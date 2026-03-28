@@ -12,6 +12,40 @@ class ProviderFamily:
     family: str
 
 
+_CANONICAL_PROVIDER_FAMILIES = tuple(
+    ProviderFamily(family=family_name)
+    for family_name in (
+        "agents",
+        "claude-code",
+        "codex",
+        "copilot",
+        "copilot-cli",
+        "gemini-cli",
+        "opencode",
+        "openclaw",
+    )
+)
+_CANONICAL_PROVIDER_FAMILIES_BY_NAME = {
+    provider_family.family: provider_family
+    for provider_family in _CANONICAL_PROVIDER_FAMILIES
+}
+
+
+def canonical_provider_families() -> tuple[ProviderFamily, ...]:
+    return _CANONICAL_PROVIDER_FAMILIES
+
+
+def canonical_provider_family_for_name(family_name: str) -> ProviderFamily | None:
+    return _CANONICAL_PROVIDER_FAMILIES_BY_NAME.get(family_name)
+
+
+def require_canonical_provider_family(family_name: str) -> ProviderFamily:
+    provider_family = canonical_provider_family_for_name(family_name)
+    if provider_family is None:
+        raise ValueError(f"unknown provider family: {family_name}")
+    return provider_family
+
+
 @dataclass(frozen=True)
 class ProviderInstanceAnchor:
     role: str
@@ -155,7 +189,10 @@ class ProviderInstance:
 
 
 __all__ = [
+    "canonical_provider_families",
+    "canonical_provider_family_for_name",
     "ProviderFamily",
     "ProviderInstance",
     "ProviderInstanceAnchor",
+    "require_canonical_provider_family",
 ]
