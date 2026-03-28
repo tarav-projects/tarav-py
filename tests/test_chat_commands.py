@@ -308,35 +308,44 @@ def _expected_session_summary(
     session_id: str,
     display_name: str | None,
     display_name_field: str | None,
+    created_at: str | None = None,
     updated_at: str | None,
     extractable: bool,
     primary_artifact_path: str | None,
-    canonical_finding_count: int,
-    title: str | None = None,
-    thread_name: str | None = None,
+    backing_artifact_count: int,
+    primary_artifact_role: str = "transcript",
+    primary_artifact_storage_kind: str = "file",
+    primary_artifact_locator: dict[str, object] | None = None,
+    native: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    payload: dict[str, object] = {
+    primary_backing_artifact = None
+    if primary_artifact_path is not None:
+        primary_backing_artifact = {
+            "role": primary_artifact_role,
+            "storage_kind": primary_artifact_storage_kind,
+            "path": primary_artifact_path,
+            "locator": primary_artifact_locator,
+            "extractable": extractable,
+        }
+
+    return {
         "provider": provider,
         "session_id": session_id,
         "display_name": display_name,
         "display_name_field": display_name_field,
+        "created_at": created_at,
         "updated_at": updated_at,
         "extractable": extractable,
-        "primary_artifact_path": primary_artifact_path,
-        "canonical_finding_count": canonical_finding_count,
+        "backing_artifact_count": backing_artifact_count,
+        "primary_backing_artifact": primary_backing_artifact,
+        "native": native or {},
     }
-    if title is not None:
-        payload["title"] = title
-    if thread_name is not None:
-        payload["thread_name"] = thread_name
-    return payload
 
 
 def _strip_exact_identity(payload: dict[str, object]) -> dict[str, object]:
     stripped = dict(payload)
-    stripped.pop("provider_family", None)
-    stripped.pop("provider_instance", None)
     stripped.pop("uri", None)
+    stripped.pop("provider_instance_fingerprint", None)
     return stripped
 
 
@@ -350,6 +359,55 @@ def _group_sessions_by_provider(payload: dict[str, object]) -> dict[str, list[di
         assert isinstance(provider, str)
         grouped.setdefault(provider, []).append(session)
     return grouped
+
+
+def _provider_diagnostics_by_provider(payload: dict[str, object]) -> dict[str, dict[str, object]]:
+    diagnostics = payload.get("provider_diagnostics")
+    assert isinstance(diagnostics, list)
+    return {
+        str(provider["provider"]): provider
+        for provider in diagnostics
+        if isinstance(provider, dict)
+    }
+
+
+def _stats_by_provider(payload: dict[str, object]) -> dict[str, dict[str, object]]:
+    stats = payload.get("stats")
+    assert isinstance(stats, dict)
+    by_provider = stats.get("by_provider")
+    assert isinstance(by_provider, list)
+    return {
+        str(provider["provider"]): provider
+        for provider in by_provider
+        if isinstance(provider, dict)
+    }
+
+
+def _primary_backing_artifact_path(session: dict[str, object]) -> str | None:
+    artifact = session.get("primary_backing_artifact")
+    if not isinstance(artifact, dict):
+        return None
+    path = artifact.get("path")
+    return path if isinstance(path, str) else None
+
+
+def _assert_match_fields(
+    session: dict[str, object],
+    *,
+    query: str,
+    fields: list[tuple[str, str]],
+) -> None:
+    assert session["match"] == {
+        "query": query,
+        "kind": "exact_identity",
+        "fields": [
+            {
+                "field": field_name,
+                "value": value,
+            }
+            for field_name, value in fields
+        ],
+    }
 
 
 def test_chat_session_list_returns_flat_global_inventory(
@@ -438,8 +496,17 @@ def test_chat_session_list_returns_flat_global_inventory(
 
     assert payload["status"] == "ok"
     assert payload["command"] == "chat session list"
-    assert payload["sort"] == "lexical"
-    assert payload["provider_count"] == 6
+    assert payload["selection"] == {
+        "kind": "all",
+        "providers": None,
+        "filters": {
+            "sort": "lexical",
+            "limit": None,
+            "extractable": False,
+            "updated_after": None,
+        },
+    }
+    assert payload["expansions"] == []
     assert payload["session_count"] == 6
 
     sessions = payload["sessions"]
@@ -452,30 +519,29 @@ def test_chat_session_list_returns_flat_global_inventory(
         opencode_session_id,
     ]
     grouped_sessions = _group_sessions_by_provider(payload)
-    providers = {provider["provider"]: provider for provider in payload["providers"]}
-    assert providers["claude-code"]["session_count"] == 1
     assert [_strip_exact_identity(session) for session in grouped_sessions["claude-code"]] == [
         _expected_session_summary(
             provider="claude-code",
             session_id=claude_session_id,
             display_name=claude_title,
             display_name_field="title",
+            created_at=None,
             updated_at="2026-03-08T12:05:12.017Z",
-            extractable=True,
+            extractable=False,
             primary_artifact_path=str(
                 claude_project_path.resolve()
             ),
-            canonical_finding_count=2,
-            title=claude_title,
+            backing_artifact_count=2,
+            native={"title": claude_title},
         )
     ]
-    assert providers["codex"]["session_count"] == 1
     assert [_strip_exact_identity(session) for session in grouped_sessions["codex"]] == [
         _expected_session_summary(
             provider="codex",
             session_id=codex_session_id,
             display_name=codex_thread_name,
             display_name_field="thread_name",
+            created_at=None,
             updated_at="2026-03-10T12:13:33.263Z",
             extractable=True,
             primary_artifact_path=str(
@@ -489,14 +555,10 @@ def test_chat_session_list_returns_flat_global_inventory(
                     / f"rollout-2026-03-08T01-05-38-{codex_session_id}.jsonl"
                 ).resolve()
             ),
-            canonical_finding_count=1,
-            thread_name=codex_thread_name,
+            backing_artifact_count=2,
+            native={"thread_name": codex_thread_name},
         )
     ]
-    assert providers["copilot-cli"]["session_count"] == 1
-    assert providers["gemini-cli"]["session_count"] == 1
-    assert providers["opencode"]["session_count"] == 1
-    assert providers["openclaw"]["session_count"] == 1
 
 
 def test_chat_session_list_includes_configured_extra_codex_home(
@@ -531,11 +593,10 @@ def test_chat_session_list_includes_configured_extra_codex_home(
         provider_instances=[{"provider": "codex", "home": str(extra_codex_home)}],
     )
 
-    assert main(["chat", "session", "list", "--provider", "codex", "--output", "json"]) == 0
+    assert main(["chat", "session", "list", "--provider", "codex", "--full-output", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    codex_provider = payload["providers"][0]
-    assert payload["provider_count"] == 1
+    codex_provider = _provider_diagnostics_by_provider(payload)["codex"]
     assert codex_provider["provider"] == "codex"
     assert codex_provider["session_count"] == 2
     assert [session["session_id"] for session in payload["sessions"]] == [default_session_id, extra_session_id]
@@ -563,11 +624,13 @@ def test_chat_session_list_includes_configured_claude_code_homes(
         provider_instances=[{"provider": "claude-code", "homes": {"cli": str(extra_claude_home)}}],
     )
 
-    assert main(["chat", "session", "list", "--provider", "claude-code", "--output", "json"]) == 0
+    assert (
+        main(["chat", "session", "list", "--provider", "claude-code", "--full-output", "--output", "json"])
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
 
-    claude_provider = payload["providers"][0]
-    assert payload["provider_count"] == 1
+    claude_provider = _provider_diagnostics_by_provider(payload)["claude-code"]
     assert claude_provider["provider"] == "claude-code"
     assert claude_provider["session_count"] == 1
     assert [session["session_id"] for session in payload["sessions"]] == [session_id]
@@ -628,17 +691,16 @@ def test_chat_session_list_full_output_keeps_zero_session_providers(
 
     assert main(["chat", "session", "list", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["provider_count"] == 0
     assert payload["sessions"] == []
-    assert payload["providers"] == []
+    assert "provider_diagnostics" not in payload
 
     assert main(["chat", "session", "list", "--full-output", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["provider_count"] == 6
     assert payload["sessions"] == []
-    assert len(payload["providers"]) == 6
-    assert all(provider["session_count"] == 0 for provider in payload["providers"])
+    diagnostics = payload["provider_diagnostics"]
+    assert len(diagnostics) == 6
+    assert all(provider["session_count"] == 0 for provider in diagnostics)
 
 
 def test_chat_session_list_can_filter_providers_and_limit_results(
@@ -721,17 +783,25 @@ def test_chat_session_list_can_filter_providers_and_limit_results(
         )
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["provider_count"] == 1
+    assert payload["selection"] == {
+        "kind": "all",
+        "providers": ["claude-code", "codex"],
+        "filters": {
+            "sort": "lexical",
+            "limit": 1,
+            "extractable": False,
+            "updated_after": None,
+        },
+    }
     assert payload["session_count"] == 1
     assert [session["session_id"] for session in payload["sessions"]] == [codex_ids[0]]
-    providers = {provider["provider"]: provider for provider in payload["providers"]}
-    assert "claude-code" not in providers
     assert [_strip_exact_identity(session) for session in payload["sessions"]] == [
         _expected_session_summary(
             provider="codex",
             session_id=codex_ids[0],
             display_name=codex_names[codex_ids[0]],
             display_name_field="thread_name",
+            created_at=None,
             updated_at="2026-03-10T12:13:33.263Z",
             extractable=True,
             primary_artifact_path=str(
@@ -745,11 +815,10 @@ def test_chat_session_list_can_filter_providers_and_limit_results(
                     / f"rollout-2026-03-08T01-05-38-{codex_ids[0]}.jsonl"
                 ).resolve()
             ),
-            canonical_finding_count=1,
-            thread_name=codex_names[codex_ids[0]],
+            backing_artifact_count=2,
+            native={"thread_name": codex_names[codex_ids[0]]},
         )
     ]
-    assert providers["codex"]["session_count"] == 1
 
 
 def test_chat_session_list_deduplicates_gemini_sessions_and_supports_sorting(
@@ -783,8 +852,6 @@ def test_chat_session_list_deduplicates_gemini_sessions_and_supports_sorting(
     assert main(["chat", "session", "list", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert [session["session_id"] for session in payload["sessions"]] == [first_session_id, second_session_id]
-    gemini_provider = next(provider for provider in payload["providers"] if provider["provider"] == "gemini-cli")
-    assert gemini_provider["session_count"] == 2
 
     assert main(["chat", "session", "list", "--sort", "newest", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -831,12 +898,18 @@ def test_chat_session_list_can_filter_extractable_sessions(
     assert main(["chat", "session", "list", "--provider", "openclaw", "--extractable", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["extractable_only"] is True
+    assert payload["selection"] == {
+        "kind": "all",
+        "providers": ["openclaw"],
+        "filters": {
+            "sort": "lexical",
+            "limit": None,
+            "extractable": True,
+            "updated_after": None,
+        },
+    }
     assert payload["session_count"] == 1
     assert [session["session_id"] for session in payload["sessions"]] == [extractable_id]
-    provider = payload["providers"][0]
-    assert provider["provider"] == "openclaw"
-    assert provider["session_count"] == 1
 
 
 def test_chat_session_list_can_filter_updated_since(
@@ -893,12 +966,18 @@ def test_chat_session_list_can_filter_updated_since(
     assert main(["chat", "session", "list", "--provider", "codex", "--updated-since", "3d", "--output", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["updated_after"] == "2025-03-08T12:00:00.000Z"
+    assert payload["selection"] == {
+        "kind": "all",
+        "providers": ["codex"],
+        "filters": {
+            "sort": "lexical",
+            "limit": None,
+            "extractable": False,
+            "updated_after": "2025-03-08T12:00:00.000Z",
+        },
+    }
     assert payload["session_count"] == 1
     assert [session["session_id"] for session in payload["sessions"]] == [recent_session_id]
-    provider = payload["providers"][0]
-    assert provider["provider"] == "codex"
-    assert provider["session_count"] == 1
 
 
 def test_chat_session_list_defaults_to_card_output(
@@ -1053,12 +1132,15 @@ def test_chat_session_stats_summarizes_provider_inventory(
 
     assert payload["status"] == "ok"
     assert payload["command"] == "chat session stats"
-    assert payload["provider_count"] == 3
-    assert payload["session_count"] == 4
-    assert payload["extractable_session_count"] == 3
-    assert payload["non_extractable_session_count"] == 1
+    assert payload["selection"] == {
+        "kind": "all",
+        "providers": None,
+    }
+    assert payload["stats"]["session_count"] == 4
+    assert payload["stats"]["extractable_session_count"] == 2
+    assert payload["stats"]["non_extractable_session_count"] == 2
 
-    providers = {provider["provider"]: provider for provider in payload["providers"]}
+    providers = _stats_by_provider(payload)
     assert providers["claude-code"]["session_count"] == 1
     assert [_strip_exact_identity(session) for session in providers["claude-code"]["session_examples"]] == [
         _expected_session_summary(
@@ -1066,13 +1148,14 @@ def test_chat_session_stats_summarizes_provider_inventory(
             session_id=claude_session_id,
             display_name=claude_title,
             display_name_field="title",
+            created_at=None,
             updated_at="2026-03-08T12:05:12.017Z",
-            extractable=True,
-                primary_artifact_path=str(
+            extractable=False,
+            primary_artifact_path=str(
                 claude_project_path.resolve()
             ),
-            canonical_finding_count=2,
-            title=claude_title,
+            backing_artifact_count=2,
+            native={"title": claude_title},
         )
     ]
     assert providers["claude-code"]["oldest_session_name"] == claude_title
@@ -1087,6 +1170,7 @@ def test_chat_session_stats_summarizes_provider_inventory(
             session_id=codex_session_id,
             display_name=codex_thread_name,
             display_name_field="thread_name",
+            created_at=None,
             updated_at="2026-03-08T01:08:59.089Z",
             extractable=True,
             primary_artifact_path=str(
@@ -1100,8 +1184,8 @@ def test_chat_session_stats_summarizes_provider_inventory(
                     / f"rollout-2026-03-08T01-05-38-{codex_session_id}.jsonl"
                 ).resolve()
             ),
-            canonical_finding_count=1,
-            thread_name=codex_thread_name,
+            backing_artifact_count=2,
+            native={"thread_name": codex_thread_name},
         )
     ]
     assert providers["codex"]["oldest_session_name"] == codex_thread_name
@@ -1114,7 +1198,7 @@ def test_chat_session_stats_summarizes_provider_inventory(
         openclaw_extractable_id,
         openclaw_non_extractable_id,
     ]
-    assert providers["openclaw"]["canonical_finding_count"] == 2
+    assert providers["openclaw"]["backing_artifact_count"] == 3
 
 
 def test_chat_session_stats_full_output_and_provider_filtering(
@@ -1128,14 +1212,12 @@ def test_chat_session_stats_full_output_and_provider_filtering(
 
     assert main(["chat", "session", "stats"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["provider_count"] == 0
-    assert payload["providers"] == []
+    assert payload["stats"]["by_provider"] == []
 
     assert main(["chat", "session", "stats", "--full-output"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["provider_count"] == 6
-    assert len(payload["providers"]) == 6
-    assert all(provider["session_count"] == 0 for provider in payload["providers"])
+    assert len(payload["stats"]["by_provider"]) == 6
+    assert all(provider["session_count"] == 0 for provider in payload["stats"]["by_provider"])
 
     _write_codex_rollout(
         home / ".codex" / "sessions" / "2026" / "03" / "08" / "rollout-2026-03-08T01-05-38-019ccafa-7835-7fc3-ac17-0e0a0f675fd5.jsonl",
@@ -1143,8 +1225,11 @@ def test_chat_session_stats_full_output_and_provider_filtering(
     )
     assert main(["chat", "session", "stats", "--provider", "codex"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["provider_count"] == 1
-    assert payload["providers"][0]["provider"] == "codex"
+    assert payload["selection"] == {
+        "kind": "all",
+        "providers": ["codex"],
+    }
+    assert payload["stats"]["by_provider"][0]["provider"] == "codex"
 
 
 def test_chat_session_stats_supports_markdown_output(
@@ -1278,39 +1363,28 @@ def test_chat_session_stats_supports_unique_codex_session_queries(
 
     assert payload["status"] == "ok"
     assert payload["command"] == "chat session stats"
-    assert payload["query"] == thread_name
+    assert payload["selection"] == {
+        "kind": "query",
+        "query": thread_name,
+        "providers": None,
+    }
     assert payload["session"]["provider"] == "codex"
-    assert payload["session"]["provider_family"] == "codex"
     assert payload["session"]["session_id"] == session_id
     assert payload["session"]["display_name"] == thread_name
     assert payload["session"]["display_name_field"] == "thread_name"
-    assert payload["session"]["matched_field"] == "thread_name"
-    assert payload["session"]["matched_value"] == thread_name
+    assert payload["session"]["created_at"] == "2026-03-08T01:09:00.000Z"
+    _assert_match_fields(
+        payload["session"],
+        query=thread_name,
+        fields=[("thread_name", thread_name)],
+    )
     assert payload["session"]["updated_at"] == "2026-03-10T12:13:33.263Z"
     assert payload["session"]["extractable"] is True
-    assert payload["session"]["primary_artifact_path"] == str(rollout_path.resolve())
-    assert payload["session"]["canonical_finding_count"] == 1
+    assert _primary_backing_artifact_path(payload["session"]) == str(rollout_path.resolve())
+    assert payload["session"]["backing_artifact_count"] == 2
     assert payload["session"]["uri"].startswith("agentos://chat-session/codex/")
-    provider_instance = payload["session"]["provider_instance"]
-    assert provider_instance["fingerprint"]
-    assert provider_instance["anchors"] == [
-        {
-            "role": "sessions_root",
-            "path": str((home / ".codex" / "sessions").resolve()),
-            "slot": "home",
-        },
-        {
-            "role": "archive_root",
-            "path": str((home / ".codex" / "archived_sessions").resolve()),
-            "slot": "home",
-        },
-        {
-            "role": "session_index",
-            "path": str((home / ".codex" / "session_index.jsonl").resolve()),
-            "slot": "home",
-        },
-    ]
-    assert payload["provider_stats"] == {
+    assert payload["session"]["provider_instance_fingerprint"]
+    assert payload["stats"] == {
         "rollout_artifact_count": 1,
         "session_index_count": 1,
         "has_rollout_artifact": True,
@@ -1430,7 +1504,7 @@ def test_chat_session_stats_supports_uri_resolution_for_duplicate_codex_session_
     target_session = next(
         session
         for session in list_payload["sessions"]
-        if session["primary_artifact_path"] == str(extra_rollout.resolve())
+        if _primary_backing_artifact_path(session) == str(extra_rollout.resolve())
     )
     uri = target_session["uri"]
     uri_prefix, fingerprint, uri_session_id = uri.rsplit("/", 2)
@@ -1439,12 +1513,20 @@ def test_chat_session_stats_supports_uri_resolution_for_duplicate_codex_session_
     assert main(["chat", "session", "stats", short_uri]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["query"] == short_uri
-    assert payload["session"]["matched_field"] == "uri"
+    assert payload["selection"] == {
+        "kind": "query",
+        "query": short_uri,
+        "providers": None,
+    }
+    _assert_match_fields(
+        payload["session"],
+        query=short_uri,
+        fields=[("uri", uri)],
+    )
     assert payload["session"]["session_id"] == session_id
     assert payload["session"]["uri"] == uri
-    assert payload["session"]["primary_artifact_path"] == str(extra_rollout.resolve())
-    assert payload["session"]["provider_instance"]["fingerprint"] == fingerprint
+    assert _primary_backing_artifact_path(payload["session"]) == str(extra_rollout.resolve())
+    assert payload["session"]["provider_instance_fingerprint"] == fingerprint
 
 
 def test_chat_session_stats_supports_unique_claude_session_queries(
@@ -1483,12 +1565,16 @@ def test_chat_session_stats_supports_unique_claude_session_queries(
     assert payload["session"]["session_id"] == session_id
     assert payload["session"]["display_name"] == title
     assert payload["session"]["display_name_field"] == "title"
-    assert payload["session"]["matched_field"] == "title"
-    assert payload["session"]["matched_value"] == title
+    assert payload["session"]["created_at"] == "2026-03-08T12:05:12.017Z"
+    _assert_match_fields(
+        payload["session"],
+        query=title,
+        fields=[("title", title)],
+    )
     assert payload["session"]["extractable"] is True
-    assert payload["session"]["primary_artifact_path"] == str(project_path.resolve())
-    assert payload["session"]["canonical_finding_count"] == 2
-    assert payload["provider_stats"] == {
+    assert _primary_backing_artifact_path(payload["session"]) == str(project_path.resolve())
+    assert payload["session"]["backing_artifact_count"] == 2
+    assert payload["stats"] == {
         "artifact_count": 2,
         "source_kind": "mixed",
         "has_extractable_artifact": True,
@@ -1562,7 +1648,7 @@ def test_chat_session_stats_uses_clean_claude_dialog_as_count_source_of_truth(
     assert main(["chat", "session", "stats", session_id]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["provider_stats"] == {
+    assert payload["stats"] == {
         "artifact_count": 1,
         "source_kind": "project",
         "has_extractable_artifact": True,
@@ -1600,12 +1686,16 @@ def test_chat_session_stats_supports_unique_copilot_session_queries(
     assert payload["session"]["session_id"] == session_id
     assert payload["session"]["display_name"] is None
     assert payload["session"]["display_name_field"] is None
-    assert payload["session"]["matched_field"] == "session_id"
-    assert payload["session"]["matched_value"] == session_id
+    assert payload["session"]["created_at"] == "2026-03-08T12:00:00.000Z"
+    _assert_match_fields(
+        payload["session"],
+        query=session_id,
+        fields=[("session_id", session_id)],
+    )
     assert payload["session"]["extractable"] is True
-    assert payload["session"]["primary_artifact_path"] == str(events_path.resolve())
-    assert payload["session"]["canonical_finding_count"] == 1
-    assert payload["provider_stats"] == {
+    assert _primary_backing_artifact_path(payload["session"]) == str(events_path.resolve())
+    assert payload["session"]["backing_artifact_count"] == 2
+    assert payload["stats"] == {
         "session_root_present": True,
         "session_file_present": False,
         "event_count": 5,
@@ -1642,7 +1732,7 @@ def test_chat_session_stats_returns_partial_payload_for_malformed_copilot_artifa
 
     assert payload["session"]["provider"] == "copilot-cli"
     assert payload["session"]["session_id"] == session_id
-    assert payload["provider_stats"] == {
+    assert payload["stats"] == {
         "session_root_present": True,
         "session_file_present": False,
     }
@@ -1689,12 +1779,16 @@ def test_chat_session_stats_supports_unique_gemini_session_queries(
     assert payload["session"]["session_id"] == session_id
     assert payload["session"]["display_name"] is None
     assert payload["session"]["display_name_field"] is None
-    assert payload["session"]["matched_field"] == "session_id"
-    assert payload["session"]["matched_value"] == session_id
+    assert payload["session"]["created_at"] == "2026-03-07T11:40:00.000Z"
+    _assert_match_fields(
+        payload["session"],
+        query=session_id,
+        fields=[("session_id", session_id)],
+    )
     assert payload["session"]["extractable"] is True
-    assert payload["session"]["primary_artifact_path"] == str(session_path.resolve())
-    assert payload["session"]["canonical_finding_count"] == 1
-    assert payload["provider_stats"] == {
+    assert _primary_backing_artifact_path(payload["session"]) == str(session_path.resolve())
+    assert payload["session"]["backing_artifact_count"] == 1
+    assert payload["stats"] == {
         "artifact_count": 1,
         "message_count": 2,
         "user_message_count": 1,
@@ -1738,7 +1832,7 @@ def test_chat_session_stats_returns_partial_payload_for_malformed_gemini_artifac
 
     assert payload["session"]["provider"] == "gemini-cli"
     assert payload["session"]["session_id"] == session_id
-    assert payload["provider_stats"] == {
+    assert payload["stats"] == {
         "artifact_count": 1,
     }
 
@@ -1780,12 +1874,16 @@ def test_chat_session_stats_supports_unique_openclaw_session_queries(
     assert payload["session"]["session_id"] == session_id
     assert payload["session"]["display_name"] is None
     assert payload["session"]["display_name_field"] is None
-    assert payload["session"]["matched_field"] == "session_key"
-    assert payload["session"]["matched_value"] == session_key
+    assert payload["session"]["created_at"] == "2026-03-08T12:05:10.000Z"
+    _assert_match_fields(
+        payload["session"],
+        query=session_key,
+        fields=[("session_key", session_key)],
+    )
     assert payload["session"]["extractable"] is True
-    assert payload["session"]["primary_artifact_path"] == str(transcript_path.resolve())
-    assert payload["session"]["canonical_finding_count"] == 1
-    assert payload["provider_stats"] == {
+    assert _primary_backing_artifact_path(payload["session"]) == str(transcript_path.resolve())
+    assert payload["session"]["backing_artifact_count"] == 2
+    assert payload["stats"] == {
         "has_transcript": True,
         "has_sessions_index": True,
         "session_key_count": 1,
@@ -1823,7 +1921,7 @@ def test_chat_session_stats_returns_partial_payload_for_malformed_openclaw_artif
 
     assert payload["session"]["provider"] == "openclaw"
     assert payload["session"]["session_id"] == session_id
-    assert payload["provider_stats"] == {
+    assert payload["stats"] == {
         "has_transcript": True,
         "has_sessions_index": False,
         "session_key_count": 0,
@@ -1855,12 +1953,16 @@ def test_chat_session_stats_supports_unique_opencode_session_queries(
     assert payload["session"]["session_id"] == session_id
     assert payload["session"]["display_name"] is None
     assert payload["session"]["display_name_field"] is None
-    assert payload["session"]["matched_field"] == "session_id"
-    assert payload["session"]["matched_value"] == session_id
+    assert payload["session"]["created_at"] == "2026-03-08T12:08:58.498Z"
+    _assert_match_fields(
+        payload["session"],
+        query=session_id,
+        fields=[("session_id", session_id)],
+    )
     assert payload["session"]["extractable"] is True
-    assert payload["session"]["primary_artifact_path"] == str(diff_path.resolve())
-    assert payload["session"]["canonical_finding_count"] == 2
-    assert payload["provider_stats"] == {
+    assert _primary_backing_artifact_path(payload["session"]) == str(diff_path.resolve())
+    assert payload["session"]["backing_artifact_count"] == 2
+    assert payload["stats"] == {
         "has_diff_artifact": True,
         "has_sqlite_db": True,
         "message_count": 2,
@@ -1899,7 +2001,7 @@ def test_chat_session_stats_returns_partial_payload_for_malformed_opencode_artif
 
     assert payload["session"]["provider"] == "opencode"
     assert payload["session"]["session_id"] == session_id
-    assert payload["provider_stats"] == {
+    assert payload["stats"] == {
         "has_diff_artifact": True,
         "has_sqlite_db": True,
     }
@@ -1932,9 +2034,23 @@ def test_chat_session_find_supports_full_gemini_session_ids(
     assert main(["chat", "session", "find", session_id]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    gemini_findings = [finding for finding in payload["findings"] if finding["provider"] == "gemini-cli"]
-    assert payload["provider_count"] == 1
-    assert [finding["path"] for finding in gemini_findings] == [str(session_path.resolve())]
+    assert payload["selection"] == {
+        "kind": "query",
+        "query": session_id,
+        "providers": None,
+    }
+    assert payload["expansions"] == ["match"]
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "gemini-cli"
+    assert session["session_id"] == session_id
+    _assert_match_fields(
+        session,
+        query=session_id,
+        fields=[("session_id", session_id)],
+    )
+    assert _primary_backing_artifact_path(session) == str(session_path.resolve())
+    assert session["backing_artifact_count"] == 1
 
 
 def test_chat_session_find_uses_configured_extra_codex_home(
@@ -1966,9 +2082,16 @@ def test_chat_session_find_uses_configured_extra_codex_home(
     assert main(["chat", "session", "find", session_id]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    codex_finding = next(finding for finding in payload["findings"] if finding["provider"] == "codex")
-    assert payload["provider_count"] == 1
-    assert codex_finding["path"] == str(rollout_path.resolve())
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "codex"
+    assert session["session_id"] == session_id
+    _assert_match_fields(
+        session,
+        query=session_id,
+        fields=[("session_id", session_id)],
+    )
+    assert _primary_backing_artifact_path(session) == str(rollout_path.resolve())
 
 
 def test_chat_session_find_returns_direct_copilot_artifacts(
@@ -1986,25 +2109,39 @@ def test_chat_session_find_returns_direct_copilot_artifacts(
     _write(session_root / "plan.md", "# plan\n")
     _write(session_root / "checkpoints" / "index.md", "# checkpoints\n")
 
-    assert main(["chat", "session", "find", session_id]) == 0
+    assert main(["chat", "session", "find", session_id, "--artifacts", "--full-output"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["status"] == "ok"
     assert payload["command"] == "chat session find"
-    assert payload["query"] == session_id
-    assert payload["grep_enabled"] is False
-    assert payload["provider_count"] == 1
+    assert payload["selection"] == {
+        "kind": "query",
+        "query": session_id,
+        "providers": None,
+    }
+    assert payload["expansions"] == ["match", "backing_artifacts"]
+    assert payload["session_count"] == 1
 
-    copilot_provider = next(item for item in payload["providers"] if item["provider"] == "copilot-cli")
-    assert copilot_provider["finding_count"] == 1
+    copilot_provider = _provider_diagnostics_by_provider(payload)["copilot-cli"]
+    assert copilot_provider["session_count"] == 1
     assert copilot_provider["strategies_attempted"] == ["path"]
 
-    found_paths = {finding["path"] for finding in payload["findings"] if finding["provider"] == "copilot-cli"}
-    assert str(session_root.resolve()) in found_paths
-    assert str((session_root / "events.jsonl").resolve()) not in found_paths
-    assert str((session_root / "plan.md").resolve()) not in found_paths
-    assert str((session_root / "checkpoints").resolve()) not in found_paths
-    assert str((session_root / "checkpoints" / "index.md").resolve()) not in found_paths
+    session = payload["sessions"][0]
+    assert session["provider"] == "copilot-cli"
+    assert session["session_id"] == session_id
+    _assert_match_fields(
+        session,
+        query=session_id,
+        fields=[("session_id", session_id)],
+    )
+    artifact_paths = {artifact["path"] for artifact in session["backing_artifacts"]}
+    assert artifact_paths == {
+        str((session_root / "events.jsonl").resolve()),
+        str(session_root.resolve()),
+    }
+    assert str((session_root / "plan.md").resolve()) not in artifact_paths
+    assert str((session_root / "checkpoints").resolve()) not in artifact_paths
+    assert str((session_root / "checkpoints" / "index.md").resolve()) not in artifact_paths
 
 
 def test_chat_session_find_returns_opencode_sqlite_row(
@@ -2031,18 +2168,26 @@ def test_chat_session_find_returns_opencode_sqlite_row(
     assert main(["chat", "session", "find", session_id]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    sqlite_finding = next(
-        finding
-        for finding in payload["findings"]
-        if finding["provider"] == "opencode" and finding["match_kind"] == "sqlite_row"
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "opencode"
+    assert session["session_id"] == session_id
+    _assert_match_fields(
+        session,
+        query=session_id,
+        fields=[("session_id", session_id)],
     )
-    assert sqlite_finding["strategy"] == "sqlite"
-    assert sqlite_finding["path"] == str(db_path.resolve())
-
-    opencode_provider = next(item for item in payload["providers"] if item["provider"] == "opencode")
-    assert payload["provider_count"] == 1
-    assert opencode_provider["sqlite_db_exists"] is True
-    assert "sqlite" in opencode_provider["strategies_attempted"]
+    assert session["primary_backing_artifact"] == {
+        "role": "sqlite_session_row",
+        "storage_kind": "sqlite_row",
+        "path": str(db_path.resolve()),
+        "locator": {
+            "kind": "sqlite_row_match",
+            "table": "session",
+            "key": {"id": session_id},
+        },
+        "extractable": False,
+    }
 
 
 def test_chat_session_find_returns_openclaw_transcript_artifact(
@@ -2063,13 +2208,12 @@ def test_chat_session_find_returns_openclaw_transcript_artifact(
     assert main(["chat", "session", "find", session_id]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    openclaw_findings = [finding for finding in payload["findings"] if finding["provider"] == "openclaw"]
-    assert payload["provider_count"] == 1
-    assert [finding["path"] for finding in openclaw_findings] == [str(transcript_path.resolve())]
-
-    openclaw_provider = next(item for item in payload["providers"] if item["provider"] == "openclaw")
-    assert openclaw_provider["finding_count"] == 1
-    assert openclaw_provider["strategies_attempted"] == ["path"]
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "openclaw"
+    assert session["session_id"] == session_id
+    assert _primary_backing_artifact_path(session) == str(transcript_path.resolve())
+    assert session["backing_artifact_count"] == 2
 
 
 def test_chat_session_find_only_returns_canonical_claude_session_artifacts_by_default(
@@ -2091,13 +2235,14 @@ def test_chat_session_find_only_returns_canonical_claude_session_artifacts_by_de
     assert main(["chat", "session", "find", session_id]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    claude_findings = [finding for finding in payload["findings"] if finding["provider"] == "claude-code"]
-    assert [finding["path"] for finding in claude_findings] == [str(project_file.resolve())]
-
-    claude_provider = next(item for item in payload["providers"] if item["provider"] == "claude-code")
-    assert payload["provider_count"] == 1
-    assert claude_provider["finding_count"] == 1
-    assert claude_provider["strategies_attempted"] == ["path"]
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "claude-code"
+    assert session["session_id"] == session_id
+    assert session["extractable"] is False
+    assert _primary_backing_artifact_path(session) == str(project_file.resolve())
+    assert session["backing_artifact_count"] == 1
+    assert "backing_artifacts" not in session
 
 
 def test_chat_session_find_supports_exact_claude_name_matches(
@@ -2129,16 +2274,23 @@ def test_chat_session_find_supports_exact_claude_name_matches(
     assert main(["chat", "session", "find", title]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["query"] == title
-    assert payload["provider_count"] == 1
-    claude_provider = next(item for item in payload["providers"] if item["provider"] == "claude-code")
-    assert claude_provider["finding_count"] == 1
-    claude_finding = next(finding for finding in payload["findings"] if finding["provider"] == "claude-code")
-    assert claude_finding["matched_field"] == "title"
-    assert claude_finding["matched_value"] == title
-    assert claude_finding["session_id"] == session_id
-    assert claude_finding["title"] == title
-    assert claude_finding["path"] == str(desktop_path.resolve())
+    assert payload["selection"] == {
+        "kind": "query",
+        "query": title,
+        "providers": None,
+    }
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "claude-code"
+    assert session["session_id"] == session_id
+    assert session["display_name"] == title
+    assert session["native"] == {"title": title}
+    _assert_match_fields(
+        session,
+        query=title,
+        fields=[("title", title)],
+    )
+    assert _primary_backing_artifact_path(session) == str(desktop_path.resolve())
 
 
 def test_chat_session_find_supports_exact_codex_name_matches(
@@ -2165,16 +2317,22 @@ def test_chat_session_find_supports_exact_codex_name_matches(
     assert main(["chat", "session", "find", thread_name]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["query"] == thread_name
-    assert payload["provider_count"] == 1
-    codex_provider = next(item for item in payload["providers"] if item["provider"] == "codex")
-    assert codex_provider["finding_count"] == 1
-    codex_finding = next(finding for finding in payload["findings"] if finding["provider"] == "codex")
-    assert codex_finding["matched_field"] == "thread_name"
-    assert codex_finding["matched_value"] == thread_name
-    assert codex_finding["session_id"] == session_id
-    assert codex_finding["thread_name"] == thread_name
-    assert codex_finding["path"] == str(rollout_path.resolve())
+    assert payload["selection"] == {
+        "kind": "query",
+        "query": thread_name,
+        "providers": None,
+    }
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "codex"
+    assert session["session_id"] == session_id
+    assert session["native"] == {"thread_name": thread_name}
+    _assert_match_fields(
+        session,
+        query=thread_name,
+        fields=[("thread_name", thread_name)],
+    )
+    assert _primary_backing_artifact_path(session) == str(rollout_path.resolve())
 
 
 def test_chat_session_find_includes_grep_results_only_when_requested(
@@ -2193,24 +2351,21 @@ def test_chat_session_find_includes_grep_results_only_when_requested(
     assert main(["chat", "session", "find", session_id]) == 0
     payload_without_grep = json.loads(capsys.readouterr().out)
 
-    assert payload_without_grep["grep_enabled"] is False
-    assert payload_without_grep["provider_count"] == 0
-    assert payload_without_grep["providers"] == []
-    assert not any(finding["provider"] == "codex" for finding in payload_without_grep["findings"])
+    assert payload_without_grep["expansions"] == ["match"]
+    assert payload_without_grep["session_count"] == 0
+    assert payload_without_grep["sessions"] == []
+    assert "search_findings" not in payload_without_grep
 
-    assert main(["chat", "session", "find", session_id, "--grep"]) == 0
+    assert main(["chat", "session", "find", session_id, "--grep", "--full-output"]) == 0
     payload_with_grep = json.loads(capsys.readouterr().out)
 
-    codex_provider = next(item for item in payload_with_grep["providers"] if item["provider"] == "codex")
-    assert payload_with_grep["grep_enabled"] is True
-    assert payload_with_grep["provider_count"] == 1
+    codex_provider = _provider_diagnostics_by_provider(payload_with_grep)["codex"]
+    assert payload_with_grep["expansions"] == ["match", "search_findings"]
+    assert payload_with_grep["session_count"] == 0
+    assert payload_with_grep["search_finding_count"] == 1
     assert codex_provider["strategies_attempted"] == ["path", "grep"]
-    assert codex_provider["finding_count"] == 1
-    grep_finding = next(
-        finding
-        for finding in payload_with_grep["findings"]
-        if finding["provider"] == "codex" and finding["match_kind"] == "grep_content"
-    )
+    assert codex_provider["search_finding_count"] == 1
+    grep_finding = payload_with_grep["search_findings"][0]
     assert grep_finding["strategy"] == "grep"
     assert grep_finding["path"] == str(index_path.resolve())
     assert grep_finding["line_number"] == 1
@@ -2261,9 +2416,9 @@ def test_chat_session_find_returns_empty_payload_when_no_provider_matches(
     assert main(["chat", "session", "find", "663f2740-5d31-4098-af41-66b3389adb24"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["finding_count"] == 0
-    assert payload["provider_count"] == 0
-    assert payload["providers"] == []
+    assert payload["session_count"] == 0
+    assert payload["sessions"] == []
+    assert "provider_diagnostics" not in payload
 
 
 def test_chat_session_find_full_output_keeps_zero_finding_providers(
@@ -2278,10 +2433,10 @@ def test_chat_session_find_full_output_keeps_zero_finding_providers(
     assert main(["chat", "session", "find", "--full-output", "663f2740-5d31-4098-af41-66b3389adb24"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["finding_count"] == 0
-    assert payload["provider_count"] == 6
-    assert len(payload["providers"]) == 6
-    assert all(provider["finding_count"] == 0 for provider in payload["providers"])
+    assert payload["session_count"] == 0
+    diagnostics = payload["provider_diagnostics"]
+    assert len(diagnostics) == 6
+    assert all(provider["session_count"] == 0 for provider in diagnostics)
 
 
 def test_chat_session_find_rejects_path_separators(capsys) -> None:
@@ -2310,10 +2465,17 @@ def test_chat_session_find_supports_openclaw_logical_session_keys(
     assert main(["chat", "session", "find", session_key]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    openclaw_finding = next(finding for finding in payload["findings"] if finding["provider"] == "openclaw")
-    assert payload["provider_count"] == 1
-    assert openclaw_finding["path"] == str(transcript_path.resolve())
-    assert openclaw_finding["matched_field"] == "session_key"
-    assert openclaw_finding["matched_value"] == session_key
-    assert openclaw_finding["session_id"] == session_id
-    assert openclaw_finding["session_keys"] == [session_key]
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "openclaw"
+    assert session["session_id"] == session_id
+    assert session["native"] == {
+        "session_keys": [session_key],
+        "agent_id": "main",
+    }
+    _assert_match_fields(
+        session,
+        query=session_key,
+        fields=[("session_key", session_key)],
+    )
+    assert _primary_backing_artifact_path(session) == str(transcript_path.resolve())

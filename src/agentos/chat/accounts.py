@@ -264,8 +264,9 @@ def format_chat_account_stats_markdown(payload: dict[str, object]) -> str:
     ]
 
     recorded_at = _string_or_none(payload.get("recorded_at"))
-    if recorded_at is not None:
-        lines.append(f"- Recorded at: {recorded_at}")
+    recorded_at_display = _format_display_datetime_local(recorded_at)
+    if recorded_at_display is not None:
+        lines.append(f"- Recorded at: {recorded_at_display}")
 
     lines.extend(
         [
@@ -404,8 +405,9 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
     ]
 
     recorded_at = _string_or_none(payload.get("recorded_at"))
-    if recorded_at is not None:
-        lines.append(f"- Recorded at: {recorded_at}")
+    recorded_at_display = _format_display_datetime_local(recorded_at)
+    if recorded_at_display is not None:
+        lines.append(f"- Recorded at: {recorded_at_display}")
     recorded_at_dt = _parse_iso_datetime_or_none(recorded_at)
 
     raw_providers = payload.get("providers")
@@ -566,14 +568,7 @@ def _format_usage_limit_reset_at(limit_payload: dict[str, Any]) -> str | None:
     if raw_reset_at is None:
         return None
 
-    try:
-        reset_at = datetime.datetime.fromisoformat(raw_reset_at.replace("Z", "+00:00"))
-    except ValueError:
-        return raw_reset_at
-
-    if reset_at.tzinfo == datetime.timezone.utc:
-        return reset_at.strftime("%Y-%m-%d %H:%M:%SZ")
-    return reset_at.strftime("%Y-%m-%d %H:%M:%S%z")
+    return _format_display_datetime_local(raw_reset_at)
 
 
 def _format_usage_limit_remaining(
@@ -1996,6 +1991,25 @@ def _parse_iso_datetime_or_none(value: str | None) -> datetime.datetime | None:
         return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _format_display_datetime_local(
+    value: str | None,
+    *,
+    tzinfo: datetime.tzinfo | None = None,
+) -> str | None:
+    if value is None:
+        return None
+
+    parsed = _parse_iso_datetime_or_none(value)
+    if parsed is None or parsed.tzinfo is None:
+        return value
+
+    local_dt = parsed.astimezone(tz=tzinfo)
+    tz_name = local_dt.tzname()
+    if tz_name:
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S ") + tz_name
+    return local_dt.isoformat(timespec="seconds")
 
 
 def _iso_from_epoch_seconds(epoch_seconds: int | None) -> str | None:

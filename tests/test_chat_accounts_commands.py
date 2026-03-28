@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import io
 import json
 import os
@@ -527,7 +528,125 @@ def test_loop_chat_accounts_stats_repeats_until_keyboard_interrupt(monkeypatch) 
     assert wait_calls == [60.0, 60.0]
     assert "snapshot-1" in rendered
     assert "snapshot-2" in rendered
+    assert rendered.count(chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE) == 1
     assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
+
+
+def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="json",
+        loop=True,
+    )
+
+    events: list[str] = []
+
+    def fake_render(loop_args: argparse.Namespace) -> str:
+        assert loop_args is args
+        events.append("render")
+        return "snapshot"
+
+    def fake_clear(output_stream) -> None:  # type: ignore[no-untyped-def]
+        del output_stream
+        events.append("clear")
+
+    def fake_wait(interval_sec: float, input_stream) -> None:  # type: ignore[no-untyped-def]
+        del interval_sec, input_stream
+        raise KeyboardInterrupt()
+
+    class FakeTTYOutput(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+        def write(self, text: str) -> int:
+            if text == "snapshot":
+                events.append("write")
+            return super().write(text)
+
+    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_output", fake_render)
+    monkeypatch.setattr(chat_commands, "_clear_terminal_screen", fake_clear)
+
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=FakeTTYOutput(),
+        interval_sec=60.0,
+        wait_for_trigger=fake_wait,
+    )
+
+    assert exit_code == 0
+    assert events == ["render", "clear", "write"]
+
+
+def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetch(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="json",
+        loop=True,
+    )
+
+    outputs = iter(("snapshot-1", "snapshot-2"))
+    events: list[str] = []
+    wait_calls = 0
+
+    def fake_render(loop_args: argparse.Namespace) -> str:
+        assert loop_args is args
+        snapshot = next(outputs)
+        events.append(f"render:{snapshot}")
+        return snapshot
+
+    def fake_clear(output_stream) -> None:  # type: ignore[no-untyped-def]
+        del output_stream
+        events.append("clear")
+
+    def fake_wait(interval_sec: float, input_stream) -> None:  # type: ignore[no-untyped-def]
+        nonlocal wait_calls
+        del interval_sec, input_stream
+        wait_calls += 1
+        events.append(f"wait:{wait_calls}")
+        if wait_calls >= 2:
+            raise KeyboardInterrupt()
+
+    class FakeTTYOutput(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+        def write(self, text: str) -> int:
+            if text in {"snapshot-1", "snapshot-2"}:
+                events.append(f"write:{text}")
+            elif text == chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n":
+                events.append("write:refreshing")
+            return super().write(text)
+
+    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_output", fake_render)
+    monkeypatch.setattr(chat_commands, "_clear_terminal_screen", fake_clear)
+
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=FakeTTYOutput(),
+        interval_sec=60.0,
+        wait_for_trigger=fake_wait,
+    )
+
+    assert exit_code == 0
+    assert events == [
+        "render:snapshot-1",
+        "clear",
+        "write:snapshot-1",
+        "wait:1",
+        "write:refreshing",
+        "render:snapshot-2",
+        "clear",
+        "write:snapshot-2",
+        "wait:2",
+    ]
 
 
 def test_wait_for_chat_accounts_loop_trigger_returns_immediately_on_enter() -> None:
@@ -560,6 +679,15 @@ def test_wait_for_chat_accounts_loop_trigger_returns_immediately_on_enter() -> N
     assert elapsed < 0.5
 
 
+def test_format_display_datetime_local_converts_utc_timestamp() -> None:
+    tzinfo = datetime.timezone(datetime.timedelta(hours=-4), name="CDT")
+
+    assert (
+        chat_accounts._format_display_datetime_local("2026-03-28T14:06:58Z", tzinfo=tzinfo)
+        == "2026-03-28 10:06:58 CDT"
+    )
+
+
 def test_chat_accounts_stats_supports_full_output_and_markdown(
     tmp_path: Path,
     monkeypatch,
@@ -575,6 +703,7 @@ def test_chat_accounts_stats_supports_full_output_and_markdown(
         raise AssertionError("subprocess.run should not be called without configured instances")
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fail_run)
+    monkeypatch.setattr(chat_accounts, "_format_display_datetime_local", lambda value, tzinfo=None: "LOCAL_TIME")
 
     assert main(["chat", "accounts", "stats"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -591,7 +720,7 @@ def test_chat_accounts_stats_supports_full_output_and_markdown(
     assert main(["chat", "accounts", "stats", "--full-output", "--output", "markdown"]) == 0
     output = capsys.readouterr().out
     assert "# Chat Accounts Stats" in output
-    assert "- Recorded at: " in output
+    assert "- Recorded at: LOCAL_TIME" in output
     assert "- History: ok" in output
     assert "- History segment: " in output
     assert "## codex" in output
@@ -609,6 +738,16 @@ def test_chat_accounts_stats_supports_compact_usage_output(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
     monkeypatch.setattr(chat_accounts, "_utc_now_iso", lambda: "2026-03-25T12:00:00Z")
+    display_timestamps = {
+        "2026-03-25T12:00:00Z": "2026-03-25 08:00:00 CDT",
+        "2026-03-26T05:40:41Z": "2026-03-26 01:40:41 CDT",
+        "2026-03-26T21:10:27Z": "2026-03-26 17:10:27 CDT",
+    }
+    monkeypatch.setattr(
+        chat_accounts,
+        "_format_display_datetime_local",
+        lambda value, tzinfo=None: display_timestamps.get(value, value),
+    )
 
     _write_global_config(
         agentos_home / "config.json",
@@ -680,9 +819,10 @@ def test_chat_accounts_stats_supports_compact_usage_output(
     output = capsys.readouterr().out
 
     assert "# Chat Accounts Usage" in output
+    assert "- Recorded at: 2026-03-25 08:00:00 CDT" in output
     assert "codex-tk (Codex tk):" in output
-    assert "  5h [######----] 64% | resets 2026-03-26 05:40:41Z | in 17h 40m" in output
-    assert "  7d [##--------] 20% | resets 2026-03-26 21:10:27Z | in 1d 9h 10m" in output
+    assert "  5h [######----] 64% | resets 2026-03-26 01:40:41 CDT | in 17h 40m" in output
+    assert "  7d [##--------] 20% | resets 2026-03-26 17:10:27 CDT | in 1d 9h 10m" in output
     assert "claude-main (Claude main):" in output
     assert "  Usage unavailable: " in output
 

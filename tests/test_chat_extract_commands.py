@@ -110,6 +110,14 @@ def _write_global_config(path: Path, *, provider_instances: list[dict[str, objec
     )
 
 
+def _primary_backing_artifact_path(session: dict[str, object]) -> str | None:
+    artifact = session.get("primary_backing_artifact")
+    if not isinstance(artifact, dict):
+        return None
+    path = artifact.get("path")
+    return path if isinstance(path, str) else None
+
+
 def _write_claude_code_session(
     path: Path,
     *,
@@ -986,7 +994,7 @@ def test_chat_session_extract_supports_uri_resolution_for_duplicate_codex_sessio
     target_session = next(
         session
         for session in list_payload["sessions"]
-        if session["primary_artifact_path"] == str(extra_codex_path.resolve())
+        if _primary_backing_artifact_path(session) == str(extra_codex_path.resolve())
     )
     uri = target_session["uri"]
     uri_prefix, fingerprint, uri_session_id = uri.rsplit("/", 2)

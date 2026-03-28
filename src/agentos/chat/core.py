@@ -21,6 +21,7 @@ from agentos._core.project import (
 )
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.chat.sessions import (
+    BackingArtifact,
     ChatSession,
     ClaudeCodeSessionSource,
     CodexSessionSource,
@@ -707,17 +708,26 @@ def list_chat_sessions(
         if full_output
         else [payload for payload in provider_payloads if payload["session_count"] > 0]
     )
-    return {
+    payload: dict[str, object] = {
         "status": "ok",
         "command": "chat session list",
-        "sort": sort,
-        "extractable_only": extractable_only,
-        "updated_after": _format_stats_timestamp(updated_after),
+        "selection": {
+            "kind": "all",
+            "providers": list(providers) if providers is not None else None,
+            "filters": {
+                "sort": sort,
+                "limit": limit,
+                "extractable": extractable_only,
+                "updated_after": _format_stats_timestamp(updated_after),
+            },
+        },
+        "expansions": [],
         "sessions": [_session_summary(session) for session in sessions],
-        "provider_count": len(output_providers),
         "session_count": len(sessions),
-        "providers": output_providers,
     }
+    if full_output:
+        payload["provider_diagnostics"] = output_providers
+    return payload
 
 
 def chat_session_stats(
@@ -753,11 +763,16 @@ def chat_session_stats(
     return {
         "status": "ok",
         "command": "chat session stats",
-        "provider_count": len(output_providers),
-        "session_count": total_sessions,
-        "extractable_session_count": total_extractable_sessions,
-        "non_extractable_session_count": total_non_extractable_sessions,
-        "providers": output_providers,
+        "selection": {
+            "kind": "all",
+            "providers": list(providers) if providers is not None else None,
+        },
+        "stats": {
+            "session_count": total_sessions,
+            "extractable_session_count": total_extractable_sessions,
+            "non_extractable_session_count": total_non_extractable_sessions,
+            "by_provider": output_providers,
+        },
     }
 
 
@@ -779,26 +794,34 @@ def chat_session_resolved_stats(
     return {
         "status": "ok",
         "command": "chat session stats",
-        "query": query,
+        "selection": {
+            "kind": "query",
+            "query": query,
+            "providers": list(providers) if providers is not None else None,
+        },
         "session": _build_common_session_stats(session, query=query),
-        "provider_stats": provider_stats,
+        "stats": provider_stats,
     }
 
 
 def format_chat_session_stats_markdown(payload: dict[str, object]) -> str:
+    stats = payload.get("stats")
+    if not isinstance(stats, dict):
+        stats = {}
+
     lines = [
         "# Chat Session Stats",
         "",
-        f"- Providers: {payload['provider_count']}",
-        f"- Sessions: {payload['session_count']}",
-        f"- Extractable: {payload['extractable_session_count']}",
-        f"- Non-extractable: {payload['non_extractable_session_count']}",
+        f"- Sessions: {stats.get('session_count', 0)}",
+        f"- Extractable: {stats.get('extractable_session_count', 0)}",
+        f"- Non-extractable: {stats.get('non_extractable_session_count', 0)}",
     ]
 
-    providers = payload.get("providers")
+    providers = stats.get("by_provider")
     if not isinstance(providers, list) or not providers:
         return "\n".join(lines)
 
+    lines.insert(2, f"- Providers: {len(providers)}")
     for provider_payload in providers:
         if not isinstance(provider_payload, dict):
             continue
@@ -812,7 +835,7 @@ def format_chat_session_stats_markdown(payload: dict[str, object]) -> str:
                 f"- Sessions: {provider_payload.get('session_count', 0)}",
                 f"- Extractable: {provider_payload.get('extractable_session_count', 0)}",
                 f"- Non-extractable: {provider_payload.get('non_extractable_session_count', 0)}",
-                f"- Canonical findings: {provider_payload.get('canonical_finding_count', 0)}",
+                f"- Backing artifacts: {provider_payload.get('backing_artifact_count', 0)}",
             ]
         )
 
@@ -829,7 +852,7 @@ def format_chat_session_stats_markdown(payload: dict[str, object]) -> str:
                 session_id = example.get("session_id")
                 if session_id is None:
                     continue
-                name = example.get("thread_name") or example.get("title")
+                name = example.get("display_name")
                 formatted_examples.append(f"{session_id} ({name})" if name else str(session_id))
             if formatted_examples:
                 lines.append(f"- Named examples: {', '.join(formatted_examples)}")
@@ -862,7 +885,10 @@ def format_chat_session_stats_markdown(payload: dict[str, object]) -> str:
 def format_chat_session_resolved_stats_markdown(payload: dict[str, object]) -> str:
     lines = ["# Chat Session Stats", ""]
 
-    query = payload.get("query")
+    selection = payload.get("selection")
+    query = None
+    if isinstance(selection, dict):
+        query = selection.get("query")
     if query is not None:
         lines.append(f"- Query: {query}")
 
@@ -876,23 +902,33 @@ def format_chat_session_resolved_stats_markdown(payload: dict[str, object]) -> s
         if uri is not None:
             lines.append(f"- URI: {uri}")
 
-        provider_instance = session.get("provider_instance")
-        if isinstance(provider_instance, dict):
-            fingerprint = provider_instance.get("fingerprint")
-            if fingerprint is not None:
-                lines.append(f"- Provider instance: {fingerprint}")
+        fingerprint = session.get("provider_instance_fingerprint")
+        if fingerprint is not None:
+            lines.append(f"- Provider instance: {fingerprint}")
 
         session_id = session.get("session_id")
         if session_id is not None:
             lines.append(f"- Session ID: {session_id}")
 
-        matched_field = session.get("matched_field")
-        if matched_field is not None:
-            lines.append(f"- Matched by: {matched_field}")
+        match = session.get("match")
+        if isinstance(match, dict):
+            match_fields = match.get("fields")
+            if isinstance(match_fields, list) and match_fields:
+                formatted_fields = [
+                    str(field.get("field"))
+                    for field in match_fields
+                    if isinstance(field, dict) and field.get("field") is not None
+                ]
+                if formatted_fields:
+                    lines.append(f"- Matched by: {', '.join(formatted_fields)}")
 
         display_name = session.get("display_name")
         if display_name is not None:
             lines.append(f"- Name: {display_name}")
+
+        created_at = session.get("created_at")
+        if created_at is not None:
+            lines.append(f"- Created at: {created_at}")
 
         updated_at = session.get("updated_at")
         if updated_at is not None:
@@ -900,15 +936,17 @@ def format_chat_session_resolved_stats_markdown(payload: dict[str, object]) -> s
 
         lines.append(f"- Extractable: {'yes' if session.get('extractable') else 'no'}")
 
-        primary_artifact_path = session.get("primary_artifact_path")
-        if primary_artifact_path is not None:
-            lines.append(f"- Primary artifact: {primary_artifact_path}")
+        primary_artifact = session.get("primary_backing_artifact")
+        if isinstance(primary_artifact, dict):
+            primary_artifact_path = primary_artifact.get("path")
+            if primary_artifact_path is not None:
+                lines.append(f"- Primary backing artifact: {primary_artifact_path}")
 
-        canonical_finding_count = session.get("canonical_finding_count")
-        if canonical_finding_count is not None:
-            lines.append(f"- Canonical findings: {canonical_finding_count}")
+        backing_artifact_count = session.get("backing_artifact_count")
+        if backing_artifact_count is not None:
+            lines.append(f"- Backing artifacts: {backing_artifact_count}")
 
-    provider_stats = payload.get("provider_stats")
+    provider_stats = payload.get("stats")
     provider_name = None
     if isinstance(session, dict):
         provider_name = session.get("provider")
@@ -927,39 +965,82 @@ def format_chat_session_resolved_stats_markdown(payload: dict[str, object]) -> s
 def find_chat_session(
     query: str,
     *,
+    include_artifacts: bool = False,
     include_grep: bool = False,
     full_output: bool = False,
     providers: tuple[str, ...] | None = None,
 ) -> dict[str, object]:
-    all_findings: list[dict[str, Any]] = []
+    provider_groups = _iter_provider_context_groups(providers)
+    sessions = resolve_chat_sessions(query, providers=providers)
+    search_findings: list[dict[str, Any]] = []
+    search_findings_seen_keys: set[tuple[object, ...]] = set()
     provider_payloads: list[dict[str, Any]] = []
+    sessions_by_provider: dict[str, list[ChatSession]] = {}
+    search_findings_by_provider: dict[str, list[dict[str, Any]]] = {}
 
-    for provider_family, contexts in _iter_provider_context_groups(providers):
-        provider_findings, provider_payload = _find_session_for_provider(
+    for session in sessions:
+        sessions_by_provider.setdefault(session.provider_family, []).append(session)
+
+    for provider_family, contexts in provider_groups:
+        provider_search_findings: list[dict[str, Any]] = []
+        provider_seen_keys: set[tuple[object, ...]] = set()
+
+        if include_grep:
+            for context in contexts:
+                for target in context.grep_existing_targets:
+                    for finding in _scan_grep_findings(
+                        provider=provider_family.family,
+                        target=target,
+                        session_id=query,
+                    ):
+                        _append_unique_finding(provider_search_findings, provider_seen_keys, finding)
+                        _append_unique_finding(search_findings, search_findings_seen_keys, finding)
+
+        search_findings_by_provider[provider_family.family] = _sort_findings(provider_search_findings)
+        provider_payload = _build_provider_payload(
             provider_family=provider_family.family,
             contexts=contexts,
-            query=query,
             include_grep=include_grep,
+            item_count_key="session_count",
+            item_count=len(sessions_by_provider.get(provider_family.family, [])),
         )
-        all_findings.extend(provider_findings)
+        if include_grep:
+            provider_payload["search_finding_count"] = len(
+                search_findings_by_provider[provider_family.family]
+            )
         provider_payloads.append(provider_payload)
 
-    all_findings = _sort_findings(all_findings)
-    output_providers = (
-        provider_payloads
-        if full_output
-        else [payload for payload in provider_payloads if payload["finding_count"] > 0]
-    )
-    return {
+    expansions = ["match"]
+    if include_artifacts:
+        expansions.append("backing_artifacts")
+    if include_grep:
+        expansions.append("search_findings")
+
+    payload: dict[str, object] = {
         "status": "ok",
         "command": "chat session find",
-        "query": query,
-        "grep_enabled": include_grep,
-        "provider_count": len(output_providers),
-        "finding_count": len(all_findings),
-        "providers": output_providers,
-        "findings": all_findings,
+        "selection": {
+            "kind": "query",
+            "query": query,
+            "providers": list(providers) if providers is not None else None,
+        },
+        "expansions": expansions,
+        "session_count": len(sessions),
+        "sessions": [
+            _build_common_session_stats(
+                session,
+                query=query,
+                include_artifacts=include_artifacts,
+            )
+            for session in sessions
+        ],
     }
+    if include_grep:
+        payload["search_finding_count"] = len(search_findings)
+        payload["search_findings"] = _sort_findings(search_findings)
+    if full_output:
+        payload["provider_diagnostics"] = provider_payloads
+    return payload
 
 
 def resolve_chat_sessions(
@@ -1141,52 +1222,233 @@ def _build_stats_provider_payload(
     ]
     timestamps.sort(key=lambda item: (item[1] or 0.0, item[0].session_id))
 
-    payload = _build_provider_payload(
-        provider_family=provider_family,
-        contexts=contexts,
-        include_grep=False,
-        item_count_key="session_count",
-        item_count=len(sessions),
-    )
-    payload.update(
-        {
-            "extractable_session_count": len(extractable_sessions),
-            "non_extractable_session_count": len(sessions) - len(extractable_sessions),
-            "canonical_finding_count": sum(len(session.canonical_findings()) for session in sessions),
-            "session_id_examples": [session.session_id for session in sessions[:3]],
-            "session_examples": [_session_summary(session) for session in sessions[:3]],
-            "oldest_session_id": timestamps[0][0].session_id if timestamps else None,
-            "oldest_session_name": _session_display_name(timestamps[0][0]) if timestamps else None,
-            "oldest_session_at": _format_stats_timestamp(timestamps[0][1]) if timestamps else None,
-            "latest_session_id": timestamps[-1][0].session_id if timestamps else None,
-            "latest_session_name": _session_display_name(timestamps[-1][0]) if timestamps else None,
-            "latest_session_at": _format_stats_timestamp(timestamps[-1][1]) if timestamps else None,
-        }
-    )
+    return {
+        "provider": provider_family,
+        "session_count": len(sessions),
+        "extractable_session_count": len(extractable_sessions),
+        "non_extractable_session_count": len(sessions) - len(extractable_sessions),
+        "backing_artifact_count": sum(len(session.backing_artifacts()) for session in sessions),
+        "session_id_examples": [session.session_id for session in sessions[:3]],
+        "session_examples": [_session_summary(session) for session in sessions[:3]],
+        "oldest_session_id": timestamps[0][0].session_id if timestamps else None,
+        "oldest_session_name": _session_display_name(timestamps[0][0]) if timestamps else None,
+        "oldest_session_at": _format_stats_timestamp(timestamps[0][1]) if timestamps else None,
+        "latest_session_id": timestamps[-1][0].session_id if timestamps else None,
+        "latest_session_name": _session_display_name(timestamps[-1][0]) if timestamps else None,
+        "latest_session_at": _format_stats_timestamp(timestamps[-1][1]) if timestamps else None,
+    }
+
+
+def _session_native_payload(session: ChatSession) -> dict[str, Any]:
+    payload = dict(session.native_fields())
+    payload.pop("session_id", None)
     return payload
+
+
+def _matched_query_fields(
+    session: ChatSession,
+    *,
+    query: str,
+) -> tuple[tuple[str, str], ...]:
+    uri_query = _parse_chat_session_uri(query)
+    if uri_query is not None and _session_matches_uri_query(session, uri_query):
+        return (("uri", session.uri),)
+
+    matched_fields: list[tuple[str, str]] = []
+    seen_fields: set[tuple[str, str]] = set()
+    for field_name, value in session.query_fields():
+        if value != query:
+            continue
+        key = (field_name, value)
+        if key in seen_fields:
+            continue
+        seen_fields.add(key)
+        matched_fields.append(key)
+    return tuple(matched_fields)
+
+
+def _build_session_match_payload(
+    session: ChatSession,
+    *,
+    query: str,
+) -> dict[str, Any]:
+    matched_fields = _matched_query_fields(session, query=query)
+    if not matched_fields:
+        matched_fields = ((session.matched_field(query), query),)
+
+    return {
+        "query": query,
+        "kind": "exact_identity",
+        "fields": [
+            {
+                "field": field_name,
+                "value": value,
+            }
+            for field_name, value in matched_fields
+        ],
+    }
+
+
+def _backing_artifact_is_extractable(
+    session: ChatSession,
+    artifact: BackingArtifact,
+) -> bool:
+    path = artifact.path
+    if not path.exists() or path.is_dir():
+        return False
+
+    try:
+        if session.provider == "claude-code":
+            from agentos.chat.extractors.claude_code import is_claude_code_session_path
+
+            return is_claude_code_session_path(path)
+        if session.provider == "codex":
+            from agentos.chat.extractors.codex import is_codex_rollout_path
+
+            return is_codex_rollout_path(path)
+        if session.provider == "copilot-cli":
+            from agentos.chat.extractors.copilot_cli import is_copilot_cli_session_path
+
+            return is_copilot_cli_session_path(path)
+        if session.provider == "gemini-cli":
+            from agentos.chat.extractors.gemini_cli import is_gemini_cli_session_path
+
+            return is_gemini_cli_session_path(path)
+        if session.provider == "openclaw":
+            from agentos.chat.extractors.openclaw import is_openclaw_session_path
+
+            return is_openclaw_session_path(path)
+        if session.provider == "opencode":
+            from agentos.chat.extractors.opencode import is_opencode_session_path
+
+            return is_opencode_session_path(path)
+    except CliError:
+        return False
+
+    return False
+
+
+def _serialize_backing_artifact(
+    session: ChatSession,
+    artifact: BackingArtifact,
+) -> dict[str, Any]:
+    return artifact.summary(
+        extractable=_backing_artifact_is_extractable(session, artifact),
+    )
+
+
+def _created_timestamp_from_turns(turns: list[Any]) -> float | None:
+    for turn in turns:
+        timestamp = coerce_timestamp(getattr(turn, "timestamp", None))
+        if timestamp is not None:
+            return timestamp
+    return None
+
+
+def _session_created_timestamp(session: ChatSession) -> float | None:
+    created_at = session.created_timestamp()
+    if created_at is not None:
+        return created_at
+
+    artifact = session.primary_artifact_path()
+    if artifact is None or not artifact.exists():
+        return None
+
+    try:
+        if session.provider == "codex":
+            from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
+
+            return _created_timestamp_from_turns(extract_dialog_from_codex_rollout(artifact, raw=False))
+
+        if session.provider == "claude-code":
+            if artifact.suffix == ".jsonl":
+                from agentos.chat.extractors.claude_code import extract_dialog_from_claude_code_session
+
+                return _created_timestamp_from_turns(
+                    extract_dialog_from_claude_code_session(artifact, raw=False)
+                )
+            if artifact.suffix == ".json":
+                obj = json.loads(artifact.read_text(encoding="utf-8", errors="ignore"))
+                if isinstance(obj, dict):
+                    return coerce_timestamp(obj.get("createdAt")) or coerce_timestamp(obj.get("lastActivityAt"))
+                return None
+
+        if session.provider == "copilot-cli":
+            from agentos.chat.extractors.copilot_cli import load_copilot_cli_events
+
+            events = load_copilot_cli_events(artifact)
+            first_event_timestamp: float | None = None
+            for event in events:
+                timestamp = coerce_timestamp(event.get("timestamp"))
+                if timestamp is not None and first_event_timestamp is None:
+                    first_event_timestamp = timestamp
+                if event.get("type") == "session.start":
+                    return timestamp
+            return first_event_timestamp
+
+        if session.provider == "gemini-cli":
+            from agentos.chat.extractors.gemini_cli import load_gemini_cli_session_data
+
+            session_data = load_gemini_cli_session_data(artifact)
+            if not isinstance(session_data, dict):
+                return None
+            return coerce_timestamp(session_data.get("startTime"))
+
+        if session.provider == "openclaw":
+            from agentos.chat.extractors.openclaw import load_openclaw_session_records
+
+            records = load_openclaw_session_records(artifact)
+            if not records:
+                return None
+            return coerce_timestamp(records[0].get("timestamp"))
+
+        if session.provider == "opencode":
+            from agentos.chat.extractors.opencode import load_opencode_session_messages, resolve_opencode_db_path
+
+            db_path = artifact if artifact.name == "opencode.db" else resolve_opencode_db_path(artifact)
+            messages = load_opencode_session_messages(db_path=db_path, session_id=session.session_id)
+            if not messages:
+                return None
+            return coerce_timestamp(messages[0].get("time_created"))
+    except (CliError, OSError, json.JSONDecodeError):
+        return None
+
+    return None
 
 
 def _build_common_session_stats(
     session: ChatSession,
     *,
     query: str | None = None,
+    include_artifacts: bool = False,
 ) -> dict[str, Any]:
+    backing_artifacts = session.backing_artifacts()
+    primary_backing_artifact = session.primary_backing_artifact()
     payload = {
         "provider": session.provider,
-        "provider_family": session.provider_family,
-        "provider_instance": session.provider_instance.summary(),
         "uri": session.uri,
+        "provider_instance_fingerprint": session.provider_instance.fingerprint,
         "session_id": session.session_id,
         "display_name": _session_display_name(session),
         "display_name_field": _session_display_field_name(session),
+        "created_at": _format_stats_timestamp(_session_created_timestamp(session)),
         "updated_at": _format_stats_timestamp(session.sort_timestamp()),
         "extractable": _session_is_extractable(session),
-        "primary_artifact_path": str(session.primary_artifact_path()) if session.primary_artifact_path() else None,
-        "canonical_finding_count": len(session.canonical_findings()),
+        "backing_artifact_count": len(backing_artifacts),
+        "primary_backing_artifact": (
+            _serialize_backing_artifact(session, primary_backing_artifact)
+            if primary_backing_artifact is not None
+            else None
+        ),
+        "native": _session_native_payload(session),
     }
     if query is not None:
-        payload["matched_field"] = _matched_field_name(session, query=query)
-        payload["matched_value"] = query
+        payload["match"] = _build_session_match_payload(session, query=query)
+    if include_artifacts:
+        payload["backing_artifacts"] = [
+            _serialize_backing_artifact(session, artifact)
+            for artifact in backing_artifacts
+        ]
     return payload
 
 
@@ -1552,12 +1814,7 @@ def _append_unique_finding(
 
 
 def _session_summary(session: ChatSession) -> dict[str, Any]:
-    summary = _build_common_session_stats(session)
-    for key, value in session.native_fields().items():
-        if key == "session_id":
-            continue
-        summary[key] = value
-    return summary
+    return _build_common_session_stats(session)
 
 
 def _session_display_name(session: ChatSession) -> str | None:
@@ -1582,10 +1839,7 @@ def _session_findings(
         enriched["session_id"] = session.session_id
         enriched["uri"] = session.uri
         enriched["provider_instance_fingerprint"] = session.provider_instance.fingerprint
-        for key, value in session.native_fields().items():
-            if key == "session_id":
-                continue
-            enriched[key] = value
+        enriched["native"] = _session_native_payload(session)
         findings.append(enriched)
 
     if findings:
@@ -1595,9 +1849,9 @@ def _session_findings(
 
 
 def _matched_field_name(session: ChatSession, *, query: str) -> str:
-    uri_query = _parse_chat_session_uri(query)
-    if uri_query is not None and _session_matches_uri_query(session, uri_query):
-        return "uri"
+    matched_fields = _matched_query_fields(session, query=query)
+    if matched_fields:
+        return matched_fields[0][0]
     return session.matched_field(query)
 
 
@@ -2459,6 +2713,13 @@ def _copilot_updated_at(session_root: Path | None) -> float | None:
 
 
 def _session_is_extractable(session: ChatSession) -> bool:
+    backing_artifacts = session.backing_artifacts()
+    if backing_artifacts:
+        return any(
+            _backing_artifact_is_extractable(session, artifact)
+            for artifact in backing_artifacts
+        )
+
     artifact_path = session.primary_artifact_path()
     return artifact_path is not None and artifact_path.is_file()
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -93,6 +93,30 @@ def _build_path_finding(
         "match_kind": "directory" if path.is_dir() else "file",
         "path": str(path),
     }
+
+
+@dataclass(frozen=True)
+class BackingArtifact:
+    role: str
+    path: Path
+    storage_kind: str | None = None
+    locator: dict[str, Any] | None = None
+
+    def normalized_storage_kind(self) -> str:
+        if self.storage_kind is not None:
+            return self.storage_kind
+        if self.path.is_dir():
+            return "directory"
+        return "file"
+
+    def summary(self, *, extractable: bool) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "storage_kind": self.normalized_storage_kind(),
+            "path": str(self.path),
+            "locator": self.locator,
+            "extractable": extractable,
+        }
 
 
 @dataclass(frozen=True)
@@ -230,10 +254,25 @@ class SessionSource:
             self.native_session_id,
         )
 
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        return ()
+
+    def primary_backing_artifact(self) -> BackingArtifact | None:
+        artifacts = self.backing_artifacts()
+        if not artifacts:
+            return None
+        return artifacts[0]
+
     def canonical_findings(self) -> tuple[dict[str, Any], ...]:
         return ()
 
     def primary_artifact_path(self) -> Path | None:
+        primary_artifact = self.primary_backing_artifact()
+        if primary_artifact is None:
+            return None
+        return primary_artifact.path
+
+    def created_timestamp(self) -> float | None:
         return None
 
     def sort_timestamp(self) -> float | None:
@@ -314,11 +353,20 @@ class ChatSession:
     def session_id(self) -> str:
         return self.source.session_id
 
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        return self.source.backing_artifacts()
+
+    def primary_backing_artifact(self) -> BackingArtifact | None:
+        return self.source.primary_backing_artifact()
+
     def canonical_findings(self) -> tuple[dict[str, Any], ...]:
         return self.source.canonical_findings()
 
     def primary_artifact_path(self) -> Path | None:
         return self.source.primary_artifact_path()
+
+    def created_timestamp(self) -> float | None:
+        return self.source.created_timestamp()
 
     def sort_timestamp(self) -> float | None:
         return self.source.sort_timestamp()
@@ -361,6 +409,18 @@ class ClaudeCodeSessionSource(SessionSource):
     source_kind: str = "project"
     title: str | None = None
     updated_at: float | None = None
+
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        artifacts: list[BackingArtifact] = []
+        for path in self.artifact_paths:
+            role = "transcript" if path.suffix == ".jsonl" else "metadata"
+            artifacts.append(
+                BackingArtifact(
+                    role=role,
+                    path=path,
+                )
+            )
+        return tuple(artifacts)
 
     def canonical_findings(self) -> tuple[dict[str, Any], ...]:
         return tuple(
@@ -420,6 +480,27 @@ class CodexSessionSource(SessionSource):
     thread_name: str | None = None
     index_paths: tuple[Path, ...] = ()
     updated_at: float | None = None
+
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        artifacts = [
+            BackingArtifact(
+                role="transcript",
+                path=path,
+            )
+            for path in self.artifact_paths
+        ]
+        artifacts.extend(
+            BackingArtifact(
+                role="session_index",
+                path=path,
+                locator={
+                    "kind": "jsonl_record_match",
+                    "match": {"id": self.session_id},
+                },
+            )
+            for path in self.index_paths
+        )
+        return tuple(artifacts)
 
     def canonical_findings(self) -> tuple[dict[str, Any], ...]:
         return tuple(
@@ -500,6 +581,34 @@ class CopilotCliSessionSource(SessionSource):
     session_file: Path | None = None
     updated_at: float | None = None
 
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        artifacts: list[BackingArtifact] = []
+        if self.session_file is not None:
+            artifacts.append(
+                BackingArtifact(
+                    role="transcript",
+                    path=self.session_file,
+                )
+            )
+        elif self.session_root is not None:
+            events_path = self.session_root / "events.jsonl"
+            if events_path.is_file():
+                artifacts.append(
+                    BackingArtifact(
+                        role="transcript",
+                        path=events_path,
+                    )
+                )
+        if self.session_root is not None:
+            artifacts.append(
+                BackingArtifact(
+                    role="session_root",
+                    path=self.session_root,
+                    storage_kind="directory",
+                )
+            )
+        return tuple(artifacts)
+
     def canonical_findings(self) -> tuple[dict[str, Any], ...]:
         findings: list[dict[str, Any]] = []
         if self.session_root is not None:
@@ -545,6 +654,15 @@ class GeminiCliSessionSource(SessionSource):
     artifact_paths: tuple[Path, ...]
     updated_at: float | None = None
 
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        return tuple(
+            BackingArtifact(
+                role="transcript",
+                path=path,
+            )
+            for path in self.artifact_paths
+        )
+
     def canonical_findings(self) -> tuple[dict[str, Any], ...]:
         return tuple(
             _build_path_finding(provider=self.provider_family, path=path) for path in self.artifact_paths
@@ -581,6 +699,36 @@ class OpenclawSessionSource(SessionSource):
     session_keys: tuple[str, ...] = ()
     agent_id: str | None = None
     updated_at: float | None = None
+
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        artifacts: list[BackingArtifact] = []
+        if self.transcript_path is not None:
+            artifacts.append(
+                BackingArtifact(
+                    role="transcript",
+                    path=self.transcript_path,
+                )
+            )
+        if self.sessions_index_path is not None:
+            locator: dict[str, Any]
+            if self.session_keys:
+                locator = {
+                    "kind": "json_object_keys",
+                    "keys": list(self.session_keys),
+                }
+            else:
+                locator = {
+                    "kind": "json_object_value_match",
+                    "match": {"sessionId": self.session_id},
+                }
+            artifacts.append(
+                BackingArtifact(
+                    role="session_index",
+                    path=self.sessions_index_path,
+                    locator=locator,
+                )
+            )
+        return tuple(artifacts)
 
     def canonical_findings(self) -> tuple[dict[str, Any], ...]:
         if self.transcript_path is not None:
@@ -633,6 +781,30 @@ class OpencodeSessionSource(SessionSource):
     sqlite_db_path: Path | None = None
     updated_at: float | None = None
 
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        artifacts: list[BackingArtifact] = []
+        if self.diff_path is not None:
+            artifacts.append(
+                BackingArtifact(
+                    role="session_diff",
+                    path=self.diff_path,
+                )
+            )
+        if self.sqlite_db_path is not None:
+            artifacts.append(
+                BackingArtifact(
+                    role="sqlite_session_row",
+                    path=self.sqlite_db_path,
+                    storage_kind="sqlite_row",
+                    locator={
+                        "kind": "sqlite_row_match",
+                        "table": "session",
+                        "key": {"id": self.session_id},
+                    },
+                )
+            )
+        return tuple(artifacts)
+
     def canonical_findings(self) -> tuple[dict[str, Any], ...]:
         findings: list[dict[str, Any]] = []
         if self.diff_path is not None:
@@ -673,6 +845,7 @@ class OpencodeSessionSource(SessionSource):
 
 
 __all__ = [
+    "BackingArtifact",
     "ChatSession",
     "ClaudeCodeSessionSource",
     "CodexSessionSource",

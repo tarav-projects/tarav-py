@@ -61,6 +61,7 @@ _CHAT_ARCHIVE_PROVIDER_CHOICES = tuple(
 )
 _DURATION_RE = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw]?)$")
 _CHAT_ACCOUNTS_LOOP_INTERVAL_SEC = 60.0
+_CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE = "[loop] refreshing..."
 
 
 def _normalize_session_limit(limit: int | None) -> int | None:
@@ -128,6 +129,7 @@ def _cmd_chat_session_find(args: argparse.Namespace) -> int:
     query = _normalize_session_query(args.query)
     payload = find_chat_session(
         query,
+        include_artifacts=args.artifacts,
         include_grep=args.grep,
         full_output=args.full_output,
     )
@@ -228,12 +230,14 @@ def _loop_chat_accounts_stats(
 
     first_iteration = True
     while True:
+        rendered_output = _render_chat_accounts_stats_output(args)
+
         if _stream_is_tty(output_stream):
             _clear_terminal_screen(output_stream)
         elif not first_iteration:
             output_stream.write("\n")
 
-        output_stream.write(_render_chat_accounts_stats_output(args))
+        output_stream.write(rendered_output)
         output_stream.write(
             f"\n\n[loop] refreshes every {int(interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
         )
@@ -244,6 +248,9 @@ def _loop_chat_accounts_stats(
             wait_for_trigger(interval_sec, input_stream)
         except KeyboardInterrupt:
             return 0
+
+        output_stream.write(_CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n")
+        output_stream.flush()
 
 
 def _wait_for_chat_accounts_loop_trigger(interval_sec: float, input_stream: TextIO) -> None:
@@ -296,11 +303,19 @@ def _filter_payload_by_user_contain(
             if limit is not None and len(filtered) >= limit:
                 break
 
+    selection = payload.get("selection")
+    normalized_selection = dict(selection) if isinstance(selection, dict) else {}
+    filters = normalized_selection.get("filters")
+    normalized_filters = dict(filters) if isinstance(filters, dict) else {}
+    normalized_filters["user_contain"] = query
+    normalized_filters["limit"] = limit
+    normalized_selection["filters"] = normalized_filters
+
     return {
         **payload,
+        "selection": normalized_selection,
         "sessions": filtered,
         "session_count": len(filtered),
-        "user_contain": query,
     }
 
 
@@ -413,13 +428,14 @@ def _summarize_session_for_card_output(session: dict[str, object]) -> tuple[floa
     session_id = _string_or_none(session.get("session_id")) or "-"
 
     preview: str | None = None
-    created_at: float | None = None
+    created_at = coerce_timestamp(session.get("created_at"))
     if path is not None:
-        created_at, preview = _load_card_session_context(
+        loaded_created_at, preview = _load_card_session_context(
             provider=_string_or_none(session.get("provider")),
             path=path,
             session_id=session_id,
         )
+        created_at = loaded_created_at or created_at
 
     if preview is None:
         preview = display_name or session_id
@@ -504,8 +520,10 @@ def _created_and_preview_from_turns(turns: list[object]) -> tuple[float | None, 
 
 
 def _primary_artifact_path(session: dict[str, object]) -> Path | None:
-    raw_path = session.get("primary_artifact_path")
-    path_text = _string_or_none(raw_path)
+    raw_artifact = session.get("primary_backing_artifact")
+    if not isinstance(raw_artifact, dict):
+        return None
+    path_text = _string_or_none(raw_artifact.get("path"))
     if path_text is None:
         return None
     return Path(path_text)
@@ -592,7 +610,7 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
     list_parser.add_argument(
         "--full-output",
         action="store_true",
-        help="Keep zero-session provider diagnostics in the providers array.",
+        help="Include provider diagnostics even for providers with no matching sessions.",
     )
     list_parser.add_argument(
         "--extractable",
@@ -645,7 +663,7 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
     stats_parser.add_argument(
         "--full-output",
         action="store_true",
-        help="Keep zero-session providers in the providers array.",
+        help="Keep zero-session providers in stats.by_provider.",
     )
     stats_parser.set_defaults(handler=_cmd_chat_session_stats)
 
@@ -658,14 +676,19 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Session query string. Each provider tries all matching strategies it supports.",
     )
     find_parser.add_argument(
+        "--artifacts",
+        action="store_true",
+        help="Expand matched sessions with their canonical backing artifacts.",
+    )
+    find_parser.add_argument(
         "--grep",
         action="store_true",
-        help="Include grep-based reference matches in addition to canonical direct artifacts.",
+        help="Include grep-based search evidence as separate search_findings output.",
     )
     find_parser.add_argument(
         "--full-output",
         action="store_true",
-        help="Keep zero-finding providers in the providers array.",
+        help="Include provider diagnostics even for providers with no matched sessions.",
     )
     find_parser.set_defaults(handler=_cmd_chat_session_find)
 
