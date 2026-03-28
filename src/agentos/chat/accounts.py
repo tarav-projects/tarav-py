@@ -482,13 +482,14 @@ def _format_chat_account_usage_block(
         raw_limits = usage.get("limits")
         if isinstance(raw_limits, list):
             formatted_limits = [
-                _format_usage_limit_detailed(limit_payload, recorded_at=recorded_at)
+                _format_usage_limit_detailed_lines(limit_payload, recorded_at=recorded_at)
                 for limit_payload in raw_limits
                 if isinstance(limit_payload, dict)
             ]
             formatted_limits = [item for item in formatted_limits if item is not None]
             if formatted_limits:
-                lines.extend(f"  {item}" for item in formatted_limits)
+                for limit_lines in formatted_limits:
+                    lines.extend(f"  {item}" for item in limit_lines)
                 return lines
 
     lines.append(f"  {_format_chat_account_usage_summary(account)}")
@@ -543,22 +544,54 @@ def _format_usage_limit_compact(limit_payload: dict[str, Any]) -> str | None:
     return label
 
 
-def _format_usage_limit_detailed(
+def _format_usage_limit_used_line(limit_payload: dict[str, Any]) -> str | None:
+    label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
+    used_percent = limit_payload.get("used_percent")
+    if label is None and not isinstance(used_percent, int):
+        return None
+    if isinstance(used_percent, int):
+        return f"{label or 'usage'} used [{_usage_progress_bar(used_percent)}] {used_percent}%"
+    return label
+
+
+def _format_usage_limit_detailed_lines(
     limit_payload: dict[str, Any],
     *,
     recorded_at: datetime.datetime | None,
-) -> str | None:
-    compact = _format_usage_limit_compact(limit_payload)
-    if compact is None:
+) -> list[str] | None:
+    used_line = _format_usage_limit_used_line(limit_payload)
+    if used_line is None:
         return None
 
+    lines = [used_line]
+    time_lines = _format_usage_limit_time_lines(limit_payload, recorded_at=recorded_at)
+    if time_lines is not None:
+        lines.extend(time_lines)
+    return lines
+
+
+def _format_usage_limit_time_lines(
+    limit_payload: dict[str, Any],
+    *,
+    recorded_at: datetime.datetime | None,
+) -> list[str] | None:
     reset_at = _format_usage_limit_reset_at(limit_payload)
-    if reset_at is None:
-        return compact
     remaining = _format_usage_limit_remaining(limit_payload, recorded_at=recorded_at)
-    if remaining is None:
-        return f"{compact} | resets {reset_at}"
-    return f"{compact} | resets {reset_at} | in {remaining}"
+    elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at)
+
+    lines: list[str] = []
+    if elapsed_percent is not None:
+        lines.append(f"  time [{_usage_progress_bar(elapsed_percent)}] {elapsed_percent}% elapsed")
+    elif reset_at is not None or remaining is not None:
+        lines.append("  time unavailable")
+    else:
+        return None
+
+    if reset_at is not None:
+        lines.append(f"     resets {reset_at}")
+    if remaining is not None:
+        lines.append(f"     in {remaining}")
+    return lines
 
 
 def _format_usage_limit_reset_at(limit_payload: dict[str, Any]) -> str | None:
@@ -588,6 +621,51 @@ def _format_usage_limit_remaining(
 
     diff_seconds = int((reset_at - recorded_at).total_seconds())
     return _format_remaining_duration(diff_seconds)
+
+
+def _format_usage_limit_elapsed_percent(
+    limit_payload: dict[str, Any],
+    *,
+    recorded_at: datetime.datetime | None,
+) -> int | None:
+    if recorded_at is None:
+        return None
+
+    period_started_at = _usage_limit_period_started_at(limit_payload)
+    period_ends_at = _usage_limit_period_ends_at(limit_payload)
+    if period_started_at is None or period_ends_at is None or period_ends_at <= period_started_at:
+        return None
+
+    duration_seconds = (period_ends_at - period_started_at).total_seconds()
+    if duration_seconds <= 0:
+        return None
+
+    elapsed_seconds = (recorded_at - period_started_at).total_seconds()
+    elapsed_ratio = max(0.0, min(1.0, elapsed_seconds / duration_seconds))
+    return round(elapsed_ratio * 100)
+
+
+def _usage_limit_period_started_at(limit_payload: dict[str, Any]) -> datetime.datetime | None:
+    raw_period_started_at = _string_or_none(limit_payload.get("period_started_at"))
+    period_started_at = _parse_iso_datetime_or_none(raw_period_started_at)
+    if period_started_at is not None:
+        return period_started_at
+
+    period_duration_mins = _optional_int(limit_payload.get("period_duration_mins"), field_name="period_duration_mins")
+    if period_duration_mins is None:
+        return None
+
+    period_ends_at = _usage_limit_period_ends_at(limit_payload)
+    if period_ends_at is None:
+        return None
+    return period_ends_at - datetime.timedelta(minutes=period_duration_mins)
+
+
+def _usage_limit_period_ends_at(limit_payload: dict[str, Any]) -> datetime.datetime | None:
+    raw_period_ends_at = _string_or_none(limit_payload.get("period_ends_at")) or _string_or_none(
+        limit_payload.get("resets_at")
+    )
+    return _parse_iso_datetime_or_none(raw_period_ends_at)
 
 
 def _format_remaining_duration(diff_seconds: int) -> str:

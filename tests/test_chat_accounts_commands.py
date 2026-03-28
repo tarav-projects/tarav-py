@@ -821,8 +821,14 @@ def test_chat_accounts_stats_supports_compact_usage_output(
     assert "# Chat Accounts Usage" in output
     assert "- Recorded at: 2026-03-25 08:00:00 CDT" in output
     assert "codex-tk (Codex tk):" in output
-    assert "  5h [######----] 64% | resets 2026-03-26 01:40:41 CDT | in 17h 40m" in output
-    assert "  7d [##--------] 20% | resets 2026-03-26 17:10:27 CDT | in 1d 9h 10m" in output
+    assert "  5h used [######----] 64%" in output
+    assert "    time [----------] 0% elapsed" in output
+    assert "       resets 2026-03-26 01:40:41 CDT" in output
+    assert "       in 17h 40m" in output
+    assert "  7d used [##--------] 20%" in output
+    assert "    time [########--] 80% elapsed" in output
+    assert "       resets 2026-03-26 17:10:27 CDT" in output
+    assert "       in 1d 9h 10m" in output
     assert "claude-main (Claude main):" in output
     assert "  Usage unavailable: " in output
 
@@ -903,6 +909,32 @@ def test_format_remaining_duration_uses_human_day_hour_minute_units() -> None:
     assert chat_accounts._format_remaining_duration(59) == "1m"
     assert chat_accounts._format_remaining_duration(60 * 60 * 2 + 60) == "2h 1m"
     assert chat_accounts._format_remaining_duration(60 * (2 * 24 * 60 + 3 * 60 + 1)) == "2d 3h 1m"
+
+
+def test_format_usage_limit_elapsed_percent_uses_period_bounds() -> None:
+    recorded_at = chat_accounts._parse_iso_datetime_or_none("2026-03-25T12:30:00Z")
+    assert recorded_at is not None
+
+    assert (
+        chat_accounts._format_usage_limit_elapsed_percent(
+            {
+                "period_started_at": "2026-03-25T12:00:00Z",
+                "period_ends_at": "2026-03-25T13:00:00Z",
+            },
+            recorded_at=recorded_at,
+        )
+        == 50
+    )
+    assert (
+        chat_accounts._format_usage_limit_elapsed_percent(
+            {
+                "period_ends_at": "2026-03-25T13:00:00Z",
+                "period_duration_mins": 60,
+            },
+            recorded_at=recorded_at,
+        )
+        == 50
+    )
 
 
 def test_normalize_terminal_output_detects_trust_and_main_prompts() -> None:
