@@ -987,7 +987,7 @@ def test_chat_session_extract_supports_uri_resolution_for_duplicate_codex_sessio
     )
 
     assert main(["chat", "session", "extract", session_id]) == 1
-    assert f"multiple extractable session artifacts found for query {session_id}" in capsys.readouterr().err
+    assert f"multiple extractable backing artifacts found for query {session_id}" in capsys.readouterr().err
 
     assert main(["chat", "session", "list", "--provider", "codex", "--output", "json"]) == 0
     list_payload = json.loads(capsys.readouterr().out)
@@ -1212,6 +1212,23 @@ def test_chat_session_extract_opencode_file_mode_infers_provenance(
     assert "### USER [2026-03-07T09:21:07.171Z]" in output
     assert "```markdown" in output
     assert "markdown assistant" in output
+
+
+def test_chat_session_extract_opencode_db_backing_artifact_requires_session_id(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    session_id = "ses_3386643b2ffegZgI4IgNfmL9n3"
+    _, db_path = _write_opencode_session(
+        tmp_path / "opencode",
+        session_id=session_id,
+    )
+
+    assert main(["chat", "session", "extract", "--file", str(db_path)]) == 1
+    assert (
+        f"session id is required when extracting from backing artifact: {db_path.resolve()}"
+        in capsys.readouterr().err
+    )
 
 
 def test_chat_session_extract_opencode_raw_includes_reasoning_and_tool_blocks(
@@ -1526,10 +1543,10 @@ def test_chat_session_extract_rejects_unknown_file_provenance(
                 "--file",
                 str(unknown_path),
             ]
-        )
+    )
         == 1
     )
-    assert "unable to infer extractor from file provenance" in capsys.readouterr().err
+    assert "unable to infer extractor from backing artifact provenance" in capsys.readouterr().err
 
 
 def test_chat_session_extract_accepts_codex_tui_rollout_from_file(

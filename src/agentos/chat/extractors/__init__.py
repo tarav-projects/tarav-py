@@ -34,6 +34,7 @@ from agentos.chat.extractors.openclaw import (
     infer_openclaw_session_id_from_path,
     is_openclaw_session_path,
 )
+from agentos.chat.sessions import BackingArtifact, ChatSession
 
 
 ChatSessionExtractor = Callable[..., str]
@@ -46,6 +47,15 @@ class ChatSessionExtractorSpec:
     probe_artifact_path: ChatSessionArtifactProbe
     extract_from_path: ChatSessionExtractor
     infer_session_id_from_path: Callable[[Path], str | None] | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedChatSessionExtractTarget:
+    extractor: ChatSessionExtractorSpec
+    artifact_path: Path
+    resolved_session_id: str | None
+    session: ChatSession | None = None
+    backing_artifact: BackingArtifact | None = None
 
 
 _CHAT_SESSION_EXTRACTORS: dict[str, ChatSessionExtractorSpec] = {
@@ -93,66 +103,60 @@ def extract_chat_session(
     output_format: str = "jsonl",
     raw: bool = False,
 ) -> str:
-    extractor, artifact_path, resolved_session_id = _resolve_chat_session_extractor(
+    target = _resolve_chat_session_extract_target(
         session_query=session_query,
         file_path=file_path,
     )
-    return extractor.extract_from_path(
-        path=artifact_path,
-        session_id=resolved_session_id,
+    return target.extractor.extract_from_path(
+        path=target.artifact_path,
+        session_id=target.resolved_session_id,
         output_format=output_format,
         raw=raw,
     )
 
 
-def _resolve_chat_session_extractor(
+def _resolve_chat_session_extract_target(
     *,
     session_query: str | None,
     file_path: str | None,
-) -> tuple[ChatSessionExtractorSpec, Path, str | None]:
+) -> ResolvedChatSessionExtractTarget:
     if file_path is not None:
-        path = Path(file_path).expanduser().resolve()
-        if not path.exists():
-            raise CliError(f"file does not exist: {path}")
-        if not path.is_file():
-            raise CliError(f"path is not a file: {path}")
-        extractor, inferred_session_id = _infer_extractor_from_artifact_path(path)
-        return extractor, path, session_query or inferred_session_id
+        return _resolve_extract_target_from_backing_artifact(
+            file_path=file_path,
+            session_query=session_query,
+        )
 
     requested_session_query = session_query
     if requested_session_query is None:
         raise CliError("session query is required unless --file is provided")
 
-    supported_candidates: list[tuple[ChatSessionExtractorSpec, Path, str]] = []
+    supported_candidates: list[ResolvedChatSessionExtractTarget] = []
     unsupported_providers: set[str] = set()
     seen_candidates: set[tuple[str, Path]] = set()
 
     for session in resolve_chat_sessions(requested_session_query):
-        provider = session.provider
-        extractor = _CHAT_SESSION_EXTRACTORS.get(provider)
+        extractor = _CHAT_SESSION_EXTRACTORS.get(session.provider)
         if extractor is None:
-            unsupported_providers.add(provider)
+            unsupported_providers.add(session.provider)
             continue
 
-        artifact_path = session.primary_artifact_path()
-        if artifact_path is None or not artifact_path.is_file():
-            continue
-        if not extractor.probe_artifact_path(artifact_path):
+        candidate = _select_session_extract_target(session, extractor=extractor)
+        if candidate is None:
             continue
 
-        candidate_key = (provider, artifact_path)
+        candidate_key = (session.provider, candidate.artifact_path)
         if candidate_key in seen_candidates:
             continue
         seen_candidates.add(candidate_key)
-        supported_candidates.append((extractor, artifact_path, session.session_id))
+        supported_candidates.append(candidate)
 
     if len(supported_candidates) == 1:
         return supported_candidates[0]
 
     if len(supported_candidates) > 1:
-        paths = ", ".join(str(path) for _, path, _ in supported_candidates)
+        paths = ", ".join(str(candidate.artifact_path) for candidate in supported_candidates)
         raise CliError(
-            f"multiple extractable session artifacts found for query {requested_session_query}: {paths}"
+            f"multiple extractable backing artifacts found for query {requested_session_query}: {paths}"
         )
 
     if unsupported_providers:
@@ -161,10 +165,64 @@ def _resolve_chat_session_extractor(
             f"session found, but no extractor is implemented for provider(s): {providers}"
         )
 
-    raise CliError(f"no extractable session artifact found for query {requested_session_query}")
+    raise CliError(f"no extractable backing artifact found for query {requested_session_query}")
 
 
-def _infer_extractor_from_artifact_path(path: Path) -> tuple[ChatSessionExtractorSpec, str | None]:
+def _resolve_extract_target_from_backing_artifact(
+    *,
+    file_path: str,
+    session_query: str | None,
+) -> ResolvedChatSessionExtractTarget:
+    path = Path(file_path).expanduser().resolve()
+    if not path.exists():
+        raise CliError(f"backing artifact does not exist: {path}")
+    if not path.is_file():
+        raise CliError(f"backing artifact path is not a file: {path}")
+
+    extractor, inferred_session_id = _infer_extractor_from_backing_artifact_path(path)
+    resolved_session_id = session_query or inferred_session_id
+    if extractor.provider == "opencode" and path.name == "opencode.db" and resolved_session_id is None:
+        raise CliError(f"session id is required when extracting from backing artifact: {path}")
+
+    return ResolvedChatSessionExtractTarget(
+        extractor=extractor,
+        artifact_path=path,
+        resolved_session_id=resolved_session_id,
+    )
+
+
+def _select_session_extract_target(
+    session: ChatSession,
+    *,
+    extractor: ChatSessionExtractorSpec,
+) -> ResolvedChatSessionExtractTarget | None:
+    for backing_artifact in session.backing_artifacts():
+        if not _backing_artifact_matches_extractor(backing_artifact, extractor=extractor):
+            continue
+
+        return ResolvedChatSessionExtractTarget(
+            extractor=extractor,
+            artifact_path=backing_artifact.path,
+            resolved_session_id=session.session_id,
+            session=session,
+            backing_artifact=backing_artifact,
+        )
+
+    return None
+
+
+def _backing_artifact_matches_extractor(
+    backing_artifact: BackingArtifact,
+    *,
+    extractor: ChatSessionExtractorSpec,
+) -> bool:
+    path = backing_artifact.path
+    if not path.exists() or not path.is_file():
+        return False
+    return extractor.probe_artifact_path(path)
+
+
+def _infer_extractor_from_backing_artifact_path(path: Path) -> tuple[ChatSessionExtractorSpec, str | None]:
     matching_extractors = [
         extractor
         for extractor in _CHAT_SESSION_EXTRACTORS.values()
@@ -180,9 +238,11 @@ def _infer_extractor_from_artifact_path(path: Path) -> tuple[ChatSessionExtracto
 
     if len(matching_extractors) > 1:
         providers = ", ".join(sorted(extractor.provider for extractor in matching_extractors))
-        raise CliError(f"multiple extractors match file provenance for {path}: {providers}")
+        raise CliError(
+            f"multiple extractors match backing artifact provenance for {path}: {providers}"
+        )
 
-    raise CliError(f"unable to infer extractor from file provenance: {path}")
+    raise CliError(f"unable to infer extractor from backing artifact provenance: {path}")
 
 
 __all__ = [
