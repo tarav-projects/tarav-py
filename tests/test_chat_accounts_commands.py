@@ -1105,10 +1105,10 @@ def test_chat_accounts_stats_supports_compact_usage_output(
     assert "# Chat Accounts Usage" in output
     assert "- Recorded at: 2026-03-25 08:00:00 CDT" in output
     assert "codex-tk (Codex tk):" in output
-    assert "  5h | used [######----] 64% | time [----------] 0%" in output
-    assert "     | resets 2026-03-26 01:40:41 CDT in 17h 40m" in output
-    assert "  7d | used [##--------] 20% | time [########--] 80%" in output
-    assert "     | resets 2026-03-26 17:10:27 CDT in 1d 9h 10m" in output
+    assert "  used [######----] 64% | time [----------] 00% | 5h" in output
+    assert "  resets 2026-03-26 01:40:41 CDT in 17h 40m" in output
+    assert "  used [##--------] 20% | time [########--] 80% | 7d" in output
+    assert "  resets 2026-03-26 17:10:27 CDT in 1d 9h 10m" in output
     assert "claude-main (Claude main):" in output
     assert "  usage | unavailable" in output
     assert "     | live usage refresh disabled; pass --refresh-usage or set live_usage_refresh=true" in output
@@ -1280,6 +1280,7 @@ def test_parse_copilot_usage_response_falls_back_to_monthly_quotas() -> None:
     payload = chat_accounts._parse_copilot_usage_response(
         {
             "copilot_plan": "free",
+            "quota_reset_date_utc": "2026-04-01T00:00:00.000Z",
             "monthly_quotas": {
                 "chat": "500",
                 "completions": 300,
@@ -1296,6 +1297,15 @@ def test_parse_copilot_usage_response_falls_back_to_monthly_quotas() -> None:
     limits = payload["usage"]["limits"]
     assert [limit["limit_label"] for limit in limits] == ["Premium", "Chat"]
     assert [limit["used_percent"] for limit in limits] == [75, 75]
+    assert [limit["period_duration_mins"] for limit in limits] == [44_640, 44_640]
+    assert [limit["period_started_at"] for limit in limits] == [
+        "2026-03-01T00:00:00Z",
+        "2026-03-01T00:00:00Z",
+    ]
+    assert [limit["period_ends_at"] for limit in limits] == [
+        "2026-04-01T00:00:00Z",
+        "2026-04-01T00:00:00Z",
+    ]
 
 
 def test_normalize_terminal_output_detects_trust_and_main_prompts() -> None:

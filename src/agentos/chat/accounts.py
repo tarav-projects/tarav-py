@@ -18,15 +18,15 @@ from typing import Any, Callable
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos._core.project import (
-    agentos_home_dir,
-    find_agentos_project_root,
-    global_config_path,
-    load_global_config,
-    load_project_config,
-    project_config_path,
+from agentos._core.project import agentos_home_dir
+from agentos.chat.providers import (
+    ProviderFamily,
+    ProviderInstance,
+    ProviderInstanceConfigEntry,
+    ProviderInstanceConfigSource,
+    load_provider_instance_config_entries,
+    require_canonical_provider_family,
 )
-from agentos.chat.providers import ProviderFamily, ProviderInstance, require_canonical_provider_family
 from agentos.tara_tapes.core import (
     append_tara_tape_stage_record,
     bootstrap_tara_tape,
@@ -56,6 +56,10 @@ COPILOT_EDITOR_VERSION = "vscode/1.96.2"
 COPILOT_EDITOR_PLUGIN_VERSION = "copilot-chat/0.26.7"
 COPILOT_USER_AGENT = "GitHubCopilotChat/0.26.7"
 COPILOT_GITHUB_API_VERSION = "2025-04-01"
+_ACCOUNT_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
+    object_path=("chat", "accounts", "provider_instances"),
+    field_prefix="chat.accounts.provider_instances",
+)
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
@@ -135,21 +139,11 @@ def configured_account_provider_instances(
     *,
     start_path: Path | str = ".",
 ) -> tuple[ProviderInstance, ...]:
-    configs: list[dict[str, object]] = []
-
-    global_path = global_config_path(agentos_home_dir())
-    if global_path.exists():
-        configs.append(load_global_config(global_path))
-
-    project_root = find_agentos_project_root(start_path)
-    if project_root is not None:
-        project_path = project_config_path(project_root)
-        if project_path.exists():
-            configs.append(load_project_config(project_path))
-
-    provider_instances: list[ProviderInstance] = []
-    for config in configs:
-        provider_instances.extend(_account_provider_instances_from_config(config))
+    entries = load_provider_instance_config_entries(
+        start_path=start_path,
+        sources=(_ACCOUNT_PROVIDER_INSTANCE_CONFIG_SOURCE,),
+    )
+    provider_instances = [_account_provider_instance_from_config(entry) for entry in entries]
 
     _validate_unique_account_instance_ids(tuple(provider_instances))
     return tuple(provider_instances)
@@ -472,33 +466,6 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
-def _account_provider_instances_from_config(config: dict[str, object]) -> tuple[ProviderInstance, ...]:
-    chat_config = config.get("chat")
-    if chat_config is None:
-        return ()
-    if not isinstance(chat_config, dict):
-        raise CliError("config field chat must be a JSON object")
-
-    accounts_config = chat_config.get("accounts")
-    if accounts_config is None:
-        return ()
-    if not isinstance(accounts_config, dict):
-        raise CliError("config field chat.accounts must be a JSON object")
-
-    raw_instances = accounts_config.get("provider_instances")
-    if raw_instances is None:
-        return ()
-    if not isinstance(raw_instances, list):
-        raise CliError("config field chat.accounts.provider_instances must be a JSON array")
-
-    provider_instances: list[ProviderInstance] = []
-    for index, raw_instance in enumerate(raw_instances):
-        if not isinstance(raw_instance, dict):
-            raise CliError(f"chat.accounts.provider_instances[{index}] must be a JSON object")
-        provider_instances.append(_account_provider_instance_from_config(raw_instance, index=index))
-    return tuple(provider_instances)
-
-
 def _format_chat_account_usage_block(
     account: dict[str, Any],
     *,
@@ -622,7 +589,10 @@ def _format_usage_limit_used_line(limit_payload: dict[str, Any]) -> str | None:
     if label is None and not isinstance(used_percent, int):
         return None
     if isinstance(used_percent, int):
-        return f"{label or 'usage'} | used [{_usage_progress_bar(used_percent)}] {used_percent}%"
+        line = f"used [{_usage_progress_bar(used_percent)}] {_format_usage_percent(used_percent)}"
+        if label is not None:
+            return f"{line} | {label}"
+        return line
     return label
 
 
@@ -638,11 +608,15 @@ def _format_usage_limit_detailed_lines(
     lines = [used_line]
     time_summary = _format_usage_limit_time_summary(limit_payload, recorded_at=recorded_at)
     if time_summary is not None:
-        lines[0] = f"{lines[0]} | {time_summary}"
+        label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
+        if label is not None and lines[0].endswith(f" | {label}"):
+            lines[0] = f"{lines[0][: -len(f' | {label}')]} | {time_summary} | {label}"
+        else:
+            lines[0] = f"{lines[0]} | {time_summary}"
 
     time_meta = _format_usage_limit_time_meta_line(limit_payload, recorded_at=recorded_at)
     if time_meta is not None:
-        lines.append(f"   | {time_meta}")
+        lines.append(time_meta)
     return lines
 
 
@@ -656,7 +630,7 @@ def _format_usage_limit_time_summary(
     elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at)
 
     if elapsed_percent is not None:
-        return f"time [{_usage_progress_bar(elapsed_percent)}] {elapsed_percent}%"
+        return f"time [{_usage_progress_bar(elapsed_percent)}] {_format_usage_percent(elapsed_percent)}"
     if reset_at is not None or remaining is not None:
         return "time unavailable"
     return None
@@ -783,36 +757,42 @@ def _usage_progress_bar(used_percent: int, *, width: int = 10) -> str:
     return ("#" * filled) + ("-" * (width - filled))
 
 
+def _format_usage_percent(value: int) -> str:
+    clamped_percent = max(0, min(100, value))
+    if clamped_percent < 100:
+        return f"{clamped_percent:02d}%"
+    return "100%"
+
+
 def _account_provider_instance_from_config(
-    raw_instance: dict[str, object],
-    *,
-    index: int,
+    entry: ProviderInstanceConfigEntry,
 ) -> ProviderInstance:
+    raw_instance = entry.raw_instance
     family_name = raw_instance.get("provider")
     if not isinstance(family_name, str) or not family_name:
-        raise CliError(f"chat.accounts.provider_instances[{index}].provider is required")
+        raise CliError(f"{entry.field_name('provider')} is required")
 
     if _account_provider_handler_for_name(family_name) is None:
         supported_providers = ", ".join(
             sorted(provider_family.family for provider_family in supported_account_provider_families())
         )
         raise CliError(
-            f"chat.accounts.provider_instances[{index}].provider must be one of: {supported_providers}"
+            f"{entry.field_name('provider')} must be one of: {supported_providers}"
         )
 
     raw_instance_id = raw_instance.get("id")
     if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
-        raise CliError(f"chat.accounts.provider_instances[{index}].id is required")
+        raise CliError(f"{entry.field_name('id')} is required")
     instance_id = validate_string_for_path(
         raw_instance_id.strip(),
-        field_name=f"chat.accounts.provider_instances[{index}].id",
+        field_name=entry.field_name("id"),
     )
 
     raw_label = raw_instance.get("label")
     if raw_label is None:
         label = instance_id
     elif not isinstance(raw_label, str) or not raw_label.strip():
-        raise CliError(f"chat.accounts.provider_instances[{index}].label must be a non-empty string")
+        raise CliError(f"{entry.field_name('label')} must be a non-empty string")
     else:
         label = raw_label.strip()
 
@@ -822,15 +802,15 @@ def _account_provider_instance_from_config(
     else:
         cli_command = _load_string_argv(
             raw_cli_command,
-            field_name=f"chat.accounts.provider_instances[{index}].cli_command",
+            field_name=entry.field_name("cli_command"),
         )
     if not cli_command and _account_provider_requires_cli_command(family_name):
-        raise CliError(f"chat.accounts.provider_instances[{index}].cli_command must not be empty")
+        raise CliError(f"{entry.field_name('cli_command')} must not be empty")
 
     raw_env = raw_instance.get("env")
     env = _load_string_mapping(
         raw_env,
-        field_name=f"chat.accounts.provider_instances[{index}].env",
+        field_name=entry.field_name("env"),
     )
 
     raw_timeout_sec = raw_instance.get("timeout_sec")
@@ -838,7 +818,7 @@ def _account_provider_instance_from_config(
         timeout_sec = DEFAULT_ACCOUNT_TIMEOUT_SEC
     elif isinstance(raw_timeout_sec, bool) or not isinstance(raw_timeout_sec, int) or raw_timeout_sec < 1:
         raise CliError(
-            f"chat.accounts.provider_instances[{index}].timeout_sec must be an integer greater than 0"
+            f"{entry.field_name('timeout_sec')} must be an integer greater than 0"
         )
     else:
         timeout_sec = raw_timeout_sec
@@ -848,7 +828,7 @@ def _account_provider_instance_from_config(
         live_usage_refresh = False
     elif not isinstance(raw_live_usage_refresh, bool):
         raise CliError(
-            f"chat.accounts.provider_instances[{index}].live_usage_refresh must be a boolean"
+            f"{entry.field_name('live_usage_refresh')} must be a boolean"
         )
     else:
         live_usage_refresh = raw_live_usage_refresh
@@ -1140,6 +1120,7 @@ def _copilot_http_error_message(exc: urllib.error.HTTPError) -> str:
 def _parse_copilot_usage_response(payload: dict[str, Any]) -> dict[str, Any]:
     direct_snapshots = _parse_copilot_quota_snapshots(payload.get("quota_snapshots"))
     monthly_snapshots = _copilot_monthly_quota_snapshots(payload)
+    period_started_at, period_ends_at, period_duration_mins = _copilot_monthly_period_bounds(payload)
 
     premium_snapshot = _usable_copilot_quota_snapshot(direct_snapshots["premium_interactions"]) or (
         _usable_copilot_quota_snapshot(monthly_snapshots["premium_interactions"])
@@ -1149,10 +1130,22 @@ def _parse_copilot_usage_response(payload: dict[str, Any]) -> dict[str, Any]:
     )
 
     limits: list[dict[str, Any]] = []
-    premium_limit = _copilot_limit_from_snapshot(premium_snapshot, label="Premium")
+    premium_limit = _copilot_limit_from_snapshot(
+        premium_snapshot,
+        label="Premium",
+        period_started_at=period_started_at,
+        period_ends_at=period_ends_at,
+        period_duration_mins=period_duration_mins,
+    )
     if premium_limit is not None:
         limits.append(premium_limit)
-    chat_limit = _copilot_limit_from_snapshot(chat_snapshot, label="Chat")
+    chat_limit = _copilot_limit_from_snapshot(
+        chat_snapshot,
+        label="Chat",
+        period_started_at=period_started_at,
+        period_ends_at=period_ends_at,
+        period_duration_mins=period_duration_mins,
+    )
     if chat_limit is not None:
         limits.append(chat_limit)
 
@@ -1363,6 +1356,9 @@ def _copilot_limit_from_snapshot(
     snapshot: dict[str, Any] | None,
     *,
     label: str,
+    period_started_at: str | None = None,
+    period_ends_at: str | None = None,
+    period_duration_mins: int | None = None,
 ) -> dict[str, Any] | None:
     if snapshot is None:
         return None
@@ -1374,10 +1370,72 @@ def _copilot_limit_from_snapshot(
     if percent_remaining is None:
         return None
 
-    return {
+    limit_payload: dict[str, Any] = {
         "limit_label": label,
         "used_percent": _rounded_percent(100 - percent_remaining),
     }
+    if period_duration_mins is not None:
+        limit_payload["period_duration_mins"] = period_duration_mins
+    if period_started_at is not None:
+        limit_payload["period_started_at"] = period_started_at
+    if period_ends_at is not None:
+        limit_payload["period_ends_at"] = period_ends_at
+    return limit_payload
+
+
+def _copilot_monthly_period_bounds(payload: dict[str, Any]) -> tuple[str | None, str | None, int | None]:
+    period_ends_at = _copilot_quota_reset_at(payload)
+    if period_ends_at is None:
+        return (None, None, None)
+
+    period_ends_at_dt = _parse_iso_datetime_or_none(period_ends_at)
+    if period_ends_at_dt is None or period_ends_at_dt.tzinfo is None:
+        return (None, period_ends_at, None)
+
+    period_started_at_dt = _previous_month_same_instant(period_ends_at_dt)
+    period_duration_mins = int((period_ends_at_dt - period_started_at_dt).total_seconds() // 60)
+    return (
+        _iso_from_datetime(period_started_at_dt),
+        _iso_from_datetime(period_ends_at_dt),
+        period_duration_mins,
+    )
+
+
+def _copilot_quota_reset_at(payload: dict[str, Any]) -> str | None:
+    raw_reset_at = _string_or_none(payload.get("quota_reset_date_utc"))
+    if raw_reset_at is not None:
+        reset_at = _parse_iso_datetime_or_none(raw_reset_at)
+        if reset_at is None:
+            return raw_reset_at
+        return _iso_from_datetime(reset_at)
+
+    raw_reset_date = _string_or_none(payload.get("quota_reset_date"))
+    if raw_reset_date is None:
+        return None
+    try:
+        reset_date = datetime.date.fromisoformat(raw_reset_date)
+    except ValueError:
+        return raw_reset_date
+    reset_at = datetime.datetime.combine(reset_date, datetime.time.min, tzinfo=datetime.timezone.utc)
+    return _iso_from_datetime(reset_at)
+
+
+def _previous_month_same_instant(value: datetime.datetime) -> datetime.datetime:
+    year = value.year
+    month = value.month - 1
+    if month == 0:
+        year -= 1
+        month = 12
+
+    if month == 12:
+        next_month_year = year + 1
+        next_month = 1
+    else:
+        next_month_year = year
+        next_month = month + 1
+    last_day = (datetime.date(next_month_year, next_month, 1) - datetime.timedelta(days=1)).day
+    day = min(value.day, last_day)
+    return value.replace(year=year, month=month, day=day)
 
 
 def _collect_codex_account_stats(
@@ -2709,6 +2767,12 @@ def _iso_from_epoch_seconds(epoch_seconds: int | None) -> str | None:
         "+00:00",
         "Z",
     )
+
+
+def _iso_from_datetime(value: datetime.datetime) -> str:
+    if value.tzinfo is None:
+        return value.isoformat(timespec="seconds")
+    return value.astimezone(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _period_bounds_from_reset(
