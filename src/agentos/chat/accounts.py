@@ -443,7 +443,7 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
     if not isinstance(raw_providers, list):
         return "\n".join(lines)
 
-    account_blocks: list[list[str]] = []
+    accounts: list[dict[str, Any]] = []
     for provider_payload in raw_providers:
         if not isinstance(provider_payload, dict):
             continue
@@ -453,12 +453,19 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
         for account in raw_accounts:
             if not isinstance(account, dict):
                 continue
-            account_blocks.append(_format_chat_account_usage_block(account, recorded_at=recorded_at_dt))
+            accounts.append(account)
 
-    if not account_blocks:
+    if accounts:
+        accounts.sort(
+            key=lambda account: _chat_account_usage_sort_ratio(account, recorded_at=recorded_at_dt),
+            reverse=True,
+        )
+
+    if not accounts:
         lines.append("- No account instances matched.")
         return "\n".join(lines)
 
+    account_blocks = [_format_chat_account_usage_block(account, recorded_at=recorded_at_dt) for account in accounts]
     for index, account_block in enumerate(account_blocks):
         if index > 0:
             lines.append("")
@@ -503,10 +510,43 @@ def _format_chat_account_usage_block(
     return lines
 
 
+def _chat_account_usage_sort_ratio(
+    account: dict[str, Any],
+    *,
+    recorded_at: datetime.datetime | None,
+) -> float:
+    usage = account.get("usage")
+    if not isinstance(usage, dict):
+        return float("-inf")
+
+    raw_limits = usage.get("limits")
+    if not isinstance(raw_limits, list):
+        return float("-inf")
+
+    ratios = [
+        _usage_limit_time_ratio_value(limit_payload, recorded_at=recorded_at)
+        for limit_payload in raw_limits
+        if isinstance(limit_payload, dict)
+    ]
+    ratios = [ratio for ratio in ratios if ratio is not None]
+    if not ratios:
+        return float("-inf")
+    return max(ratios)
+
+
 def _format_chat_account_usage_fallback_lines(account: dict[str, Any]) -> list[str] | None:
+    check_status = _string_or_none(account.get("check_status"))
+    account_error = account.get("error")
     usage_status = _string_or_none(account.get("usage_status"))
     usage_message = _string_or_none(account.get("usage_message"))
     usage_error = account.get("usage_error")
+
+    if check_status == "error":
+        lines = ["check | error"]
+        detail = _format_chat_account_usage_error_detail(account_error)
+        if detail is not None:
+            lines.append(f"   | {detail}")
+        return lines
 
     if usage_status == "unavailable":
         lines = ["usage | unavailable"]
@@ -548,6 +588,14 @@ def _format_chat_account_usage_summary(account: dict[str, Any]) -> str:
             formatted_limits = [item for item in formatted_limits if item is not None]
             if formatted_limits:
                 return "Usage: " + ", ".join(formatted_limits)
+
+    check_status = _string_or_none(account.get("check_status"))
+    account_error = account.get("error")
+    if check_status == "error":
+        detail = _format_chat_account_usage_error_detail(account_error)
+        if detail is not None:
+            return f"Check error: {detail}"
+        return "Check error"
 
     usage_status = _string_or_none(account.get("usage_status"))
     usage_message = _string_or_none(account.get("usage_message"))
@@ -601,23 +649,50 @@ def _format_usage_limit_detailed_lines(
     *,
     recorded_at: datetime.datetime | None,
 ) -> list[str] | None:
-    used_line = _format_usage_limit_used_line(limit_payload)
-    if used_line is None:
-        return None
+    usage_time_line = _format_usage_limit_usage_time_line(limit_payload, recorded_at=recorded_at)
+    if usage_time_line is not None:
+        lines = [usage_time_line]
+    else:
+        used_line = _format_usage_limit_used_line(limit_payload)
+        if used_line is None:
+            return None
 
-    lines = [used_line]
-    time_summary = _format_usage_limit_time_summary(limit_payload, recorded_at=recorded_at)
-    if time_summary is not None:
-        label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
-        if label is not None and lines[0].endswith(f" | {label}"):
-            lines[0] = f"{lines[0][: -len(f' | {label}')]} | {time_summary} | {label}"
-        else:
-            lines[0] = f"{lines[0]} | {time_summary}"
+        lines = [used_line]
+        time_summary = _format_usage_limit_time_summary(limit_payload, recorded_at=recorded_at)
+        if time_summary is not None:
+            label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(
+                limit_payload.get("limit_label")
+            )
+            if label is not None and lines[0].endswith(f" | {label}"):
+                lines[0] = f"{lines[0][: -len(f' | {label}')]} | {time_summary} | {label}"
+            else:
+                lines[0] = f"{lines[0]} | {time_summary}"
 
     time_meta = _format_usage_limit_time_meta_line(limit_payload, recorded_at=recorded_at)
     if time_meta is not None:
         lines.append(time_meta)
     return lines
+
+
+def _format_usage_limit_usage_time_line(
+    limit_payload: dict[str, Any],
+    *,
+    recorded_at: datetime.datetime | None,
+) -> str | None:
+    label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
+    used_percent = limit_payload.get("used_percent")
+    elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at)
+    if not isinstance(used_percent, int) or elapsed_percent is None:
+        return None
+
+    line = (
+        "usage/time"
+        f" | {_format_usage_percent_plain(used_percent)} / {_format_usage_percent_plain(elapsed_percent)}"
+        f" = {_format_usage_time_ratio(used_percent, elapsed_percent)}"
+    )
+    if label is not None:
+        return f"{line} | {label}"
+    return line
 
 
 def _format_usage_limit_time_summary(
@@ -644,14 +719,14 @@ def _format_usage_limit_time_meta_line(
     reset_at = _format_usage_limit_reset_at(limit_payload)
     remaining = _format_usage_limit_remaining(limit_payload, recorded_at=recorded_at)
 
-    parts: list[str] = []
-    if reset_at is not None:
-        parts.append(f"resets {reset_at}")
-    if remaining is not None:
-        parts.append(f"in {remaining}")
-    if not parts:
+    if reset_at is None and remaining is None:
         return None
-    return " ".join(parts)
+
+    if reset_at is None:
+        return f"    resets | {remaining}"
+    if remaining is None:
+        return f"    resets | {reset_at}"
+    return f"    resets | {reset_at} | {remaining}"
 
 
 def _format_usage_limit_reset_at(limit_payload: dict[str, Any]) -> str | None:
@@ -661,7 +736,7 @@ def _format_usage_limit_reset_at(limit_payload: dict[str, Any]) -> str | None:
     if raw_reset_at is None:
         return None
 
-    return _format_display_datetime_local(raw_reset_at)
+    return _format_display_datetime_local_compact(raw_reset_at)
 
 
 def _format_usage_limit_remaining(
@@ -762,6 +837,40 @@ def _format_usage_percent(value: int) -> str:
     if clamped_percent < 100:
         return f"{clamped_percent:02d}%"
     return "100%"
+
+
+def _format_usage_percent_plain(value: int) -> str:
+    clamped_percent = max(0, min(100, value))
+    return f"{clamped_percent}%".rjust(3)
+
+
+def _usage_limit_time_ratio_value(
+    limit_payload: dict[str, Any],
+    *,
+    recorded_at: datetime.datetime | None,
+) -> float | None:
+    used_percent = limit_payload.get("used_percent")
+    elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at)
+    if not isinstance(used_percent, int) or elapsed_percent is None:
+        return None
+    return _usage_time_ratio_value(used_percent, elapsed_percent)
+
+
+def _format_usage_time_ratio(used_percent: int, elapsed_percent: int) -> str:
+    clamped_elapsed_percent = max(0, min(100, elapsed_percent))
+    if clamped_elapsed_percent == 0:
+        return "n/a"
+    return f"{_usage_time_ratio_value(used_percent, elapsed_percent):.1f}"
+
+
+def _usage_time_ratio_value(used_percent: int, elapsed_percent: int) -> float:
+    clamped_used_percent = max(0, min(100, used_percent))
+    clamped_elapsed_percent = max(0, min(100, elapsed_percent))
+    if clamped_elapsed_percent == 0:
+        if clamped_used_percent == 0:
+            return 0.0
+        return float("inf")
+    return clamped_used_percent / clamped_elapsed_percent
 
 
 def _account_provider_instance_from_config(
@@ -2758,6 +2867,22 @@ def _format_display_datetime_local(
     if tz_name:
         return local_dt.strftime("%Y-%m-%d %H:%M:%S ") + tz_name
     return local_dt.isoformat(timespec="seconds")
+
+
+def _format_display_datetime_local_compact(
+    value: str | None,
+    *,
+    tzinfo: datetime.tzinfo | None = None,
+) -> str | None:
+    if value is None:
+        return None
+
+    parsed = _parse_iso_datetime_or_none(value)
+    if parsed is None or parsed.tzinfo is None:
+        return value
+
+    local_dt = parsed.astimezone(tz=tzinfo)
+    return local_dt.strftime("%a %m-%d %H:%M")
 
 
 def _iso_from_epoch_seconds(epoch_seconds: int | None) -> str | None:

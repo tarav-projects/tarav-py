@@ -1032,6 +1032,15 @@ def test_chat_accounts_stats_supports_compact_usage_output(
         "_format_display_datetime_local",
         lambda value, tzinfo=None: display_timestamps.get(value, value),
     )
+    compact_display_timestamps = {
+        "2026-03-26T05:40:41Z": "Wed 03-26 01:40",
+        "2026-03-26T21:10:27Z": "Wed 03-26 17:10",
+    }
+    monkeypatch.setattr(
+        chat_accounts,
+        "_format_display_datetime_local_compact",
+        lambda value, tzinfo=None: compact_display_timestamps.get(value, value),
+    )
 
     _write_global_config(
         agentos_home / "config.json",
@@ -1105,13 +1114,65 @@ def test_chat_accounts_stats_supports_compact_usage_output(
     assert "# Chat Accounts Usage" in output
     assert "- Recorded at: 2026-03-25 08:00:00 CDT" in output
     assert "codex-tk (Codex tk):" in output
-    assert "  used [######----] 64% | time [----------] 00% | 5h" in output
-    assert "  resets 2026-03-26 01:40:41 CDT in 17h 40m" in output
-    assert "  used [##--------] 20% | time [########--] 80% | 7d" in output
-    assert "  resets 2026-03-26 17:10:27 CDT in 1d 9h 10m" in output
+    assert "  usage/time | 64% /  0% = n/a | 5h" in output
+    assert "      resets | Wed 03-26 01:40 | 17h 40m" in output
+    assert "  usage/time | 20% / 80% = 0.2 | 7d" in output
+    assert "      resets | Wed 03-26 17:10 | 1d 9h 10m" in output
     assert "claude-main (Claude main):" in output
     assert "  usage | unavailable" in output
     assert "     | live usage refresh disabled; pass --refresh-usage or set live_usage_refresh=true" in output
+
+
+def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> None:
+    output = chat_accounts.format_chat_account_stats_usage(
+        {
+            "recorded_at": "2026-03-25T12:00:00Z",
+            "providers": [
+                {
+                    "accounts": [
+                        {
+                            "id": "steady-low",
+                            "label": "Steady low",
+                            "usage": {
+                                "limits": [
+                                    {
+                                        "limit_label": "5h",
+                                        "used_percent": 70,
+                                        "period_started_at": "2026-03-25T04:30:00Z",
+                                        "period_ends_at": "2026-03-25T14:30:00Z",
+                                    }
+                                ]
+                            },
+                        },
+                        {
+                            "id": "burst-high",
+                            "label": "Burst high",
+                            "usage": {
+                                "limits": [
+                                    {
+                                        "limit_label": "5h",
+                                        "used_percent": 20,
+                                        "period_started_at": "2026-03-25T09:30:00Z",
+                                        "period_ends_at": "2026-03-25T14:30:00Z",
+                                    },
+                                    {
+                                        "limit_label": "7d",
+                                        "used_percent": 90,
+                                        "period_started_at": "2026-03-19T12:00:00Z",
+                                        "period_ends_at": "2026-03-26T12:00:00Z",
+                                    },
+                                ]
+                            },
+                        },
+                    ]
+                }
+            ],
+        }
+    )
+
+    assert output.index("burst-high (Burst high):") < output.index("steady-low (Steady low):")
+    assert "  usage/time | 90% / 86% = 1.0 | 7d" in output
+    assert "  usage/time | 70% / 75% = 0.9 | 5h" in output
 
 
 def test_chat_accounts_stats_usage_output_styles_fetch_errors(
@@ -1170,6 +1231,67 @@ def test_chat_accounts_stats_usage_output_styles_fetch_errors(
     assert "codex-main (Codex main):" in output
     assert "  usage | error" in output
     assert "     | command_failed: rate-limit request failed" in output
+
+
+def test_chat_accounts_stats_usage_formats_account_check_errors_nicely(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "codex-main",
+                "label": "Codex main",
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del capture_output, text, check, env, timeout
+        if command == ["codex", "login", "status"]:
+            return subprocess.CompletedProcess(command, 2, stdout="", stderr="login failed")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        chat_accounts,
+        "_read_codex_account_rate_limits",
+        lambda instance: {
+            "rateLimits": {
+                "limitId": "codex",
+                "primary": {
+                    "usedPercent": 1,
+                    "windowDurationMins": 300,
+                    "resetsAt": 1_774_537_200,
+                },
+            }
+        },
+    )
+
+    assert main(["chat", "accounts", "stats", "--output", "usage"]) == 0
+    output = capsys.readouterr().out
+
+    assert "codex-main (Codex main):" in output
+    assert "  check | error" in output
+    assert "     | command_failed: login failed" in output
 
 
 def test_chat_accounts_stats_history_accumulates_into_month_segment(
