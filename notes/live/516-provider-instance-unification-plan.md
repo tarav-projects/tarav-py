@@ -6,10 +6,11 @@
 - Keep surface-specific behavior in handler/context objects, not in the canonical family/instance objects.
 
 ## Status
-- First, second, third, and fourth implementation slices are complete.
+- First, second, third, fourth, and fifth implementation slices are complete.
 - Added canonical provider model module in `src/agentos/chat/providers.py`.
 - Added canonical `ProviderFamily` registry and lookup helpers in `src/agentos/chat/providers.py`.
 - Moved canonical `ProviderInstance` and `ProviderInstanceAnchor` out of `chat/sessions.py`.
+- Added shared provider-instance config document / entry loading helpers in `src/agentos/chat/providers.py`.
 - Session surface now uses handler/context naming internally:
 - `SessionProviderHandler`
 - `SessionProviderContext`
@@ -22,6 +23,7 @@
 - `AccountProviderContext`
 - Accounts now consumes canonical `ProviderInstance` instead of a separate `AccountProviderInstance`.
 - Session/archive/accounts handlers now bind to shared canonical `ProviderFamily` objects.
+- Session/archive/accounts provider-instance loading now uses one shared config-entry pipeline.
 - Public behavior stayed stable.
 - Verified with:
 - `uv run pytest tests/test_chat_archive_commands.py -q`
@@ -234,7 +236,21 @@ This keeps the first pass bounded and avoids mixing model unification with confi
 - Implemented shared canonical provider-family registry and lookup helpers.
 - Session/archive/accounts handler registries now consume canonical `ProviderFamily` objects.
 - Surface-specific provider choices and command behavior remained stable.
-- Remaining major unification work is the provider-instance config-loading pipeline.
+- Remaining major unification work was the provider-instance config-loading pipeline.
+
+## Fifth Change Set
+- Introduce one shared provider-instance config pipeline in `src/agentos/chat/providers.py`.
+- Centralize:
+- global/project config document loading
+- object-path traversal and validation for `provider_instances`
+- raw provider-instance entry iteration with stable field-prefix metadata
+- Keep per-surface entry-to-`ProviderInstance` conversion local to each surface.
+
+### Fifth Change Set Result
+- Implemented shared config-document loading and provider-instance entry loaders.
+- Session/archive/accounts now all consume the same raw-entry pipeline before surface-specific conversion.
+- Per-surface validation and conversion logic stayed local and command behavior remained stable.
+- The core provider/family/instance unification work is complete; remaining items are deferred follow-ups such as possible future config namespace consolidation.
 
 ## Acceptance Criteria
 - There is one canonical provider family type in the codebase.

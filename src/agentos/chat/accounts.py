@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+from http import HTTPStatus
 import json
 import os
 import pty
@@ -8,6 +9,7 @@ import re
 import select
 import subprocess
 import tempfile
+import textwrap
 import time
 import urllib.error
 import urllib.request
@@ -56,6 +58,9 @@ COPILOT_EDITOR_VERSION = "vscode/1.96.2"
 COPILOT_EDITOR_PLUGIN_VERSION = "copilot-chat/0.26.7"
 COPILOT_USER_AGENT = "GitHubCopilotChat/0.26.7"
 COPILOT_GITHUB_API_VERSION = "2025-04-01"
+CHAT_USAGE_BURST_LABEL = "Burst"
+CHAT_USAGE_WEEKLY_LABEL = "Weekly"
+CHAT_ACCOUNT_USAGE_ERROR_DETAIL_WIDTH = 78
 _ACCOUNT_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
     object_path=("chat", "accounts", "provider_instances"),
     field_prefix="chat.accounts.provider_instances",
@@ -84,6 +89,7 @@ class AccountProviderContext:
     env: tuple[tuple[str, str], ...]
     timeout_sec: int
     live_usage_refresh: bool
+    usage_progression_limit: str | None
 
     @property
     def provider(self) -> str:
@@ -485,15 +491,31 @@ def _format_chat_account_usage_block(
     else:
         display_name = instance_id
 
-    lines = [f"{display_name}:"]
+    provider_icon = _chat_account_provider_icon(_string_or_none(account.get("provider")))
+    title = f"{display_name}:"
+    if provider_icon is not None:
+        title = f"{provider_icon} {title}"
+
+    lines = [title]
     usage = account.get("usage")
     if isinstance(usage, dict):
         raw_limits = usage.get("limits")
         if isinstance(raw_limits, list):
+            limit_payloads = [limit_payload for limit_payload in raw_limits if isinstance(limit_payload, dict)]
+            highlighted_indexes = _chat_account_highlighted_limit_indexes(limit_payloads, recorded_at=recorded_at)
+            progression_indexes = _chat_account_progression_limit_indexes(
+                account,
+                limit_payloads,
+                recorded_at=recorded_at,
+            )
             formatted_limits = [
-                _format_usage_limit_detailed_lines(limit_payload, recorded_at=recorded_at)
-                for limit_payload in raw_limits
-                if isinstance(limit_payload, dict)
+                _format_usage_limit_detailed_lines(
+                    limit_payload,
+                    recorded_at=recorded_at,
+                    highlight_peak_ratio=index in highlighted_indexes,
+                    show_progression_marker=index in progression_indexes,
+                )
+                for index, limit_payload in enumerate(limit_payloads)
             ]
             formatted_limits = [item for item in formatted_limits if item is not None]
             if formatted_limits:
@@ -508,6 +530,16 @@ def _format_chat_account_usage_block(
 
     lines.append(f"  {_format_chat_account_usage_summary(account)}")
     return lines
+
+
+def _chat_account_provider_icon(provider: str | None) -> str | None:
+    if provider == "codex":
+        return "⬢"
+    if provider == "claude-code":
+        return "✺"
+    if provider == "copilot":
+        return "🤖"
+    return None
 
 
 def _chat_account_usage_sort_ratio(
@@ -534,6 +566,40 @@ def _chat_account_usage_sort_ratio(
     return max(ratios)
 
 
+def _chat_account_highlighted_limit_indexes(
+    limit_payloads: list[dict[str, Any]],
+    *,
+    recorded_at: datetime.datetime | None,
+) -> set[int]:
+    indexed_ratios = {
+        index: _usage_limit_display_ratio_value(limit_payload, recorded_at=recorded_at)
+        for index, limit_payload in enumerate(limit_payloads)
+    }
+    indexed_ratios = {index: ratio for index, ratio in indexed_ratios.items() if ratio is not None}
+    if not indexed_ratios:
+        return set()
+
+    max_ratio = max(indexed_ratios.values())
+    return {index for index, ratio in indexed_ratios.items() if ratio == max_ratio}
+
+
+def _chat_account_progression_limit_indexes(
+    account: dict[str, Any],
+    limit_payloads: list[dict[str, Any]],
+    *,
+    recorded_at: datetime.datetime | None,
+) -> set[int]:
+    progression_limit = _string_or_none(account.get("usage_progression_limit"))
+    if progression_limit is None:
+        return _chat_account_highlighted_limit_indexes(limit_payloads, recorded_at=recorded_at)
+
+    return {
+        index
+        for index, limit_payload in enumerate(limit_payloads)
+        if _usage_limit_label(limit_payload) == progression_limit
+    }
+
+
 def _format_chat_account_usage_fallback_lines(account: dict[str, Any]) -> list[str] | None:
     check_status = _string_or_none(account.get("check_status"))
     account_error = account.get("error")
@@ -543,9 +609,9 @@ def _format_chat_account_usage_fallback_lines(account: dict[str, Any]) -> list[s
 
     if check_status == "error":
         lines = ["check | error"]
-        detail = _format_chat_account_usage_error_detail(account_error)
-        if detail is not None:
-            lines.append(f"   | {detail}")
+        detail_lines = _format_chat_account_usage_error_detail_lines(account_error)
+        if detail_lines is not None:
+            lines.extend(f"   | {detail}" for detail in detail_lines)
         return lines
 
     if usage_status == "unavailable":
@@ -556,23 +622,53 @@ def _format_chat_account_usage_fallback_lines(account: dict[str, Any]) -> list[s
 
     if usage_status == "error":
         lines = ["usage | error"]
-        detail = _format_chat_account_usage_error_detail(usage_error)
-        if detail is not None:
-            lines.append(f"   | {detail}")
+        detail_lines = _format_chat_account_usage_error_detail_lines(usage_error)
+        if detail_lines is not None:
+            lines.extend(f"   | {detail}" for detail in detail_lines)
         return lines
 
     return None
 
 
 def _format_chat_account_usage_error_detail(usage_error: object) -> str | None:
+    detail_lines = _format_chat_account_usage_error_detail_lines(usage_error)
+    if detail_lines:
+        return detail_lines[0]
+    return None
+
+
+def _format_chat_account_usage_error_detail_lines(usage_error: object) -> list[str] | None:
     if not isinstance(usage_error, dict):
         return None
 
     error_type = _string_or_none(usage_error.get("type"))
     error_message = _string_or_none(usage_error.get("message"))
+    detail_lines: list[str] = []
     if error_type is not None and error_message is not None:
-        return f"{error_type}: {error_message}"
-    return error_message or error_type
+        detail_lines.extend(_wrap_chat_account_usage_error_text(f"{error_type}: {error_message}"))
+    elif error_message is not None or error_type is not None:
+        detail_lines.extend(_wrap_chat_account_usage_error_text(error_message or error_type or ""))
+
+    raw_detail_lines = usage_error.get("detail_lines")
+    if isinstance(raw_detail_lines, list):
+        for raw_detail in raw_detail_lines:
+            if not isinstance(raw_detail, str):
+                continue
+            detail_lines.extend(_wrap_chat_account_usage_error_text(raw_detail))
+
+    return detail_lines or None
+
+
+def _wrap_chat_account_usage_error_text(text: str) -> list[str]:
+    normalized = " ".join(text.split())
+    if not normalized:
+        return []
+    return textwrap.wrap(
+        normalized,
+        width=CHAT_ACCOUNT_USAGE_ERROR_DETAIL_WIDTH,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
 
 
 def _format_chat_account_usage_summary(account: dict[str, Any]) -> str:
@@ -622,7 +718,7 @@ def _format_chat_account_usage_summary(account: dict[str, Any]) -> str:
 
 
 def _format_usage_limit_compact(limit_payload: dict[str, Any]) -> str | None:
-    label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
+    label = _usage_limit_label(limit_payload)
     used_percent = limit_payload.get("used_percent")
     if label is None and not isinstance(used_percent, int):
         return None
@@ -631,8 +727,12 @@ def _format_usage_limit_compact(limit_payload: dict[str, Any]) -> str | None:
     return label
 
 
+def _usage_limit_label(limit_payload: dict[str, Any]) -> str | None:
+    return _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
+
+
 def _format_usage_limit_used_line(limit_payload: dict[str, Any]) -> str | None:
-    label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
+    label = _usage_limit_label(limit_payload)
     used_percent = limit_payload.get("used_percent")
     if label is None and not isinstance(used_percent, int):
         return None
@@ -648,8 +748,15 @@ def _format_usage_limit_detailed_lines(
     limit_payload: dict[str, Any],
     *,
     recorded_at: datetime.datetime | None,
+    highlight_peak_ratio: bool = False,
+    show_progression_marker: bool = False,
 ) -> list[str] | None:
-    usage_time_line = _format_usage_limit_usage_time_line(limit_payload, recorded_at=recorded_at)
+    usage_time_line = _format_usage_limit_usage_time_line(
+        limit_payload,
+        recorded_at=recorded_at,
+        highlight_peak_ratio=highlight_peak_ratio,
+        show_progression_marker=show_progression_marker,
+    )
     if usage_time_line is not None:
         lines = [usage_time_line]
     else:
@@ -660,9 +767,7 @@ def _format_usage_limit_detailed_lines(
         lines = [used_line]
         time_summary = _format_usage_limit_time_summary(limit_payload, recorded_at=recorded_at)
         if time_summary is not None:
-            label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(
-                limit_payload.get("limit_label")
-            )
+            label = _usage_limit_label(limit_payload)
             if label is not None and lines[0].endswith(f" | {label}"):
                 lines[0] = f"{lines[0][: -len(f' | {label}')]} | {time_summary} | {label}"
             else:
@@ -678,8 +783,10 @@ def _format_usage_limit_usage_time_line(
     limit_payload: dict[str, Any],
     *,
     recorded_at: datetime.datetime | None,
+    highlight_peak_ratio: bool = False,
+    show_progression_marker: bool = False,
 ) -> str | None:
-    label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
+    label = _usage_limit_label(limit_payload)
     used_percent = limit_payload.get("used_percent")
     elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at)
     if not isinstance(used_percent, int) or elapsed_percent is None:
@@ -691,8 +798,54 @@ def _format_usage_limit_usage_time_line(
         f" = {_format_usage_time_ratio(used_percent, elapsed_percent)}"
     )
     if label is not None:
-        return f"{line} | {label}"
+        line = f"{line} | {label}"
+
+    markers: list[str] = []
+    ratio_value = _usage_limit_display_ratio_value(limit_payload, recorded_at=recorded_at)
+    if highlight_peak_ratio:
+        peak_ratio_marker = _usage_peak_ratio_marker(ratio_value)
+        if peak_ratio_marker is not None:
+            markers.append(peak_ratio_marker)
+    if show_progression_marker:
+        markers.append(_usage_progression_marker(used_percent))
+    time_progression_marker = _usage_time_progression_marker(elapsed_percent)
+    if time_progression_marker is not None:
+        markers.append(time_progression_marker)
+    if markers:
+        return f"{line} {' '.join(markers)}"
     return line
+
+
+def _usage_progression_marker(used_percent: int) -> str:
+    if used_percent >= 90:
+        return "💀"
+    if used_percent >= 75:
+        return "👨‍🦳"
+    if used_percent >= 50:
+        return "👨‍🦰"
+    if used_percent >= 25:
+        return "👨‍🦱"
+    return "👶"
+
+
+def _usage_peak_ratio_marker(ratio_value: float | None) -> str | None:
+    if ratio_value is None or ratio_value <= 0:
+        return None
+    if ratio_value >= 1.5:
+        return "🔥🔥"
+    if ratio_value > 1.05:
+        return "🔥"
+    if ratio_value >= 0.95:
+        return None
+    if ratio_value >= 0.5:
+        return "❄️"
+    return "❄️❄️"
+
+
+def _usage_time_progression_marker(elapsed_percent: int) -> str | None:
+    if elapsed_percent > 90:
+        return "🕒"
+    return None
 
 
 def _format_usage_limit_time_summary(
@@ -856,6 +1009,18 @@ def _usage_limit_time_ratio_value(
     return _usage_time_ratio_value(used_percent, elapsed_percent)
 
 
+def _usage_limit_display_ratio_value(
+    limit_payload: dict[str, Any],
+    *,
+    recorded_at: datetime.datetime | None,
+) -> float | None:
+    used_percent = limit_payload.get("used_percent")
+    elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at)
+    if not isinstance(used_percent, int) or elapsed_percent is None or elapsed_percent <= 0:
+        return None
+    return _usage_time_ratio_value(used_percent, elapsed_percent)
+
+
 def _format_usage_time_ratio(used_percent: int, elapsed_percent: int) -> str:
     clamped_elapsed_percent = max(0, min(100, elapsed_percent))
     if clamped_elapsed_percent == 0:
@@ -942,6 +1107,16 @@ def _account_provider_instance_from_config(
     else:
         live_usage_refresh = raw_live_usage_refresh
 
+    raw_usage_progression_limit = raw_instance.get("usage_progression_limit")
+    if raw_usage_progression_limit is None:
+        usage_progression_limit = None
+    elif not isinstance(raw_usage_progression_limit, str) or not raw_usage_progression_limit.strip():
+        raise CliError(
+            f"{entry.field_name('usage_progression_limit')} must be a non-empty string"
+        )
+    else:
+        usage_progression_limit = raw_usage_progression_limit.strip()
+
     return ProviderInstance(
         family=family_name,
         instance_id=instance_id,
@@ -950,6 +1125,7 @@ def _account_provider_instance_from_config(
         env=env,
         timeout_sec=timeout_sec,
         live_usage_refresh=live_usage_refresh,
+        usage_progression_limit=usage_progression_limit,
     )
 
 
@@ -1002,6 +1178,7 @@ def _build_account_provider_context(provider_instance: ProviderInstance) -> Acco
         env=provider_instance.env,
         timeout_sec=provider_instance.timeout_sec or DEFAULT_ACCOUNT_TIMEOUT_SEC,
         live_usage_refresh=bool(provider_instance.live_usage_refresh),
+        usage_progression_limit=provider_instance.usage_progression_limit,
     )
 
 
@@ -1025,12 +1202,14 @@ def _collect_copilot_account_stats(
         usage_payload = _collect_copilot_usage_payload(instance)
     except AccountCommandError as exc:
         usage_payload = _usage_error_payload(
+            provider=instance.provider,
             error_type=exc.error_type,
             message=exc.message,
             exit_code=exc.exit_code,
         )
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
         usage_payload = _usage_error_payload(
+            provider=instance.provider,
             error_type="invalid_output",
             message=str(exc),
         )
@@ -1577,12 +1756,14 @@ def _collect_codex_account_stats(
         usage_payload = usage_future.result()
     except AccountCommandError as exc:
         usage_payload = _usage_error_payload(
+            provider=instance.provider,
             error_type=exc.error_type,
             message=exc.message,
             exit_code=exc.exit_code,
         )
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
         usage_payload = _usage_error_payload(
+            provider=instance.provider,
             error_type="invalid_output",
             message=str(exc),
         )
@@ -1627,12 +1808,14 @@ def _collect_claude_code_account_stats(
                 usage_payload = usage_future.result()
             except AccountCommandError as exc:
                 usage_payload = _usage_error_payload(
+                    provider=instance.provider,
                     error_type=exc.error_type,
                     message=exc.message,
                     exit_code=exc.exit_code,
                 )
             except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
                 usage_payload = _usage_error_payload(
+                    provider=instance.provider,
                     error_type="invalid_output",
                     message=str(exc),
                 )
@@ -2087,11 +2270,11 @@ def _parse_codex_snapshot_windows(
 
 def _codex_window_label(window_duration_mins: int | None, *, window_key: str) -> str:
     if window_duration_mins == 300:
-        return "5h"
+        return CHAT_USAGE_BURST_LABEL
     if window_duration_mins == 1_440:
         return "24h"
     if window_duration_mins == 10_080:
-        return "7d"
+        return CHAT_USAGE_WEEKLY_LABEL
     if window_duration_mins is not None:
         return f"{window_duration_mins}m"
     return window_key
@@ -2576,13 +2759,13 @@ def _claude_refresh_result_model(result_payload: dict[str, Any]) -> str | None:
 
 def _claude_rate_limit_label(rate_limit_type: str | None) -> str:
     if rate_limit_type == "five_hour":
-        return "5h"
+        return CHAT_USAGE_BURST_LABEL
     if rate_limit_type == "seven_day":
-        return "7d"
+        return CHAT_USAGE_WEEKLY_LABEL
     if rate_limit_type == "seven_day_opus":
-        return "7d Opus"
+        return f"{CHAT_USAGE_WEEKLY_LABEL} Opus"
     if rate_limit_type == "seven_day_sonnet":
-        return "7d Sonnet"
+        return f"{CHAT_USAGE_WEEKLY_LABEL} Sonnet"
     if rate_limit_type == "overage":
         return "extra"
     return rate_limit_type or "usage"
@@ -2638,20 +2821,314 @@ def _usage_unavailable_payload(message: str) -> dict[str, Any]:
 
 def _usage_error_payload(
     *,
+    provider: str | None,
     error_type: str,
     message: str,
     exit_code: int | None = None,
 ) -> dict[str, Any]:
+    return {
+        "usage_status": "error",
+        "usage_error": _build_account_error_payload(
+            provider=provider,
+            error_type=error_type,
+            message=message,
+            exit_code=exit_code,
+        ),
+    }
+
+
+def _build_account_error_payload(
+    *,
+    provider: str | None,
+    error_type: str,
+    message: str,
+    exit_code: int | None = None,
+) -> dict[str, object]:
+    normalized_message = message
+    extra_payload: dict[str, object] = {}
+
+    if provider == "codex":
+        normalized_codex_error = _normalize_codex_usage_error_message(message)
+        if normalized_codex_error is not None:
+            normalized_message = normalized_codex_error["message"]
+            extra_payload.update(
+                {
+                    key: value
+                    for key, value in normalized_codex_error.items()
+                    if key != "message"
+                }
+            )
+    if provider == "claude-code":
+        normalized_claude_error = _normalize_claude_usage_error_message(message)
+        if normalized_claude_error is not None:
+            normalized_message = normalized_claude_error["message"]
+            extra_payload.update(
+                {
+                    key: value
+                    for key, value in normalized_claude_error.items()
+                    if key != "message"
+                }
+            )
+
     error_payload: dict[str, object] = {
         "type": error_type,
-        "message": message,
+        "message": normalized_message,
     }
     if exit_code is not None:
         error_payload["exit_code"] = exit_code
-    return {
-        "usage_status": "error",
-        "usage_error": error_payload,
-    }
+    error_payload.update(extra_payload)
+    return error_payload
+
+
+def _normalize_codex_usage_error_message(message: str) -> dict[str, object] | None:
+    if "failed to fetch codex rate limits" not in message:
+        return None
+
+    http_status, http_reason = _parse_http_status_from_message(message)
+    body_payload = _parse_json_object_suffix(message, marker="body=")
+    api_error = body_payload.get("error") if isinstance(body_payload, dict) else None
+
+    api_message = None
+    api_code = None
+    if isinstance(api_error, dict):
+        api_message = _string_or_none(api_error.get("message"))
+        api_code = _string_or_none(api_error.get("code"))
+
+    if http_status is None and isinstance(body_payload, dict):
+        raw_status = body_payload.get("status")
+        if isinstance(raw_status, int):
+            http_status = raw_status
+
+    status_summary = _format_http_status_summary(http_status, http_reason)
+    detail_lines: list[str] = []
+    if status_summary is not None or api_code is not None:
+        status_parts = [part for part in (status_summary, api_code) if part]
+        if status_parts:
+            detail_lines.append(" | ".join(status_parts))
+
+    if http_status == 401 and api_code == "token_expired":
+        if api_message is not None:
+            detail_lines.append(api_message)
+        detail_lines.append("Sign in again with the configured Codex CLI and refresh.")
+        return {
+            "message": "Codex authentication token expired",
+            "raw_message": message,
+            "detail_lines": detail_lines,
+            "http_status": http_status,
+            "code": api_code,
+        }
+
+    if api_message is None and status_summary is None:
+        return None
+
+    if api_message is not None and api_message != message:
+        return {
+            "message": api_message,
+            "raw_message": message,
+            "detail_lines": detail_lines,
+            "http_status": http_status,
+            "code": api_code,
+        }
+
+    if status_summary is not None:
+        return {
+            "message": f"Codex rate-limit request failed with {status_summary}",
+            "raw_message": message,
+            "detail_lines": detail_lines,
+            "http_status": http_status,
+            "code": api_code,
+        }
+
+    return None
+
+
+def _normalize_claude_usage_error_message(message: str) -> dict[str, object] | None:
+    parsed_events = _parse_json_object_lines(message)
+    top_level_error: str | None = None
+    candidate_texts: list[str] = []
+
+    for event in parsed_events:
+        event_error = _string_or_none(event.get("error"))
+        if top_level_error is None and event_error is not None:
+            top_level_error = event_error
+        candidate_texts.extend(_claude_error_text_candidates_from_event(event))
+
+    raw_text = next((text for text in reversed(candidate_texts) if text.strip()), None) or message
+    normalized_text = " ".join(raw_text.split())
+    http_status, api_code, api_message = _parse_claude_api_error_text(raw_text)
+    auth_failed = (
+        (top_level_error == "authentication_failed")
+        or ("failed to authenticate" in raw_text.lower())
+    )
+
+    detail_lines: list[str] = []
+    status_summary = _format_http_status_summary(http_status, _http_status_reason_phrase(http_status))
+    status_parts = [part for part in (status_summary, top_level_error, api_code) if part]
+    if status_parts:
+        detail_lines.append(" | ".join(status_parts))
+    if api_message is not None:
+        detail_lines.append(api_message)
+
+    if auth_failed:
+        detail_lines.append("Sign in again with the configured Claude Code CLI and refresh.")
+        return {
+            "message": "Claude Code authentication failed",
+            "raw_message": message,
+            "detail_lines": detail_lines,
+            "http_status": http_status,
+            "code": top_level_error or api_code,
+            "api_code": api_code,
+        }
+
+    compact_text = _compact_claude_error_text(normalized_text)
+    if compact_text is not None and compact_text != message:
+        return {
+            "message": compact_text,
+            "raw_message": message,
+            "detail_lines": detail_lines,
+            "http_status": http_status,
+            "code": top_level_error or api_code,
+            "api_code": api_code,
+        }
+
+    return None
+
+
+def _parse_json_object_lines(text: str) -> list[dict[str, Any]]:
+    parsed_objects: list[dict[str, Any]] = []
+    saw_content = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        saw_content = True
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(parsed, dict):
+            return []
+        parsed_objects.append(parsed)
+    if not saw_content:
+        return []
+    return parsed_objects
+
+
+def _claude_error_text_candidates_from_event(event: dict[str, Any]) -> list[str]:
+    candidates: list[str] = []
+
+    result_text = _string_or_none(event.get("result"))
+    if result_text is not None:
+        candidates.append(result_text)
+
+    message_payload = event.get("message")
+    if isinstance(message_payload, dict):
+        content_payload = message_payload.get("content")
+        if isinstance(content_payload, list):
+            for item in content_payload:
+                if not isinstance(item, dict):
+                    continue
+                text = _string_or_none(item.get("text"))
+                if text is not None:
+                    candidates.append(text)
+
+    return candidates
+
+
+def _parse_claude_api_error_text(text: str) -> tuple[int | None, str | None, str | None]:
+    status_match = re.search(r"\bapi error:\s*(?P<status>\d{3})\b", text, re.IGNORECASE)
+    http_status = int(status_match.group("status")) if status_match is not None else None
+
+    payload = _parse_json_object_from_text(text)
+    api_code = None
+    api_message = None
+    if isinstance(payload, dict):
+        api_error = payload.get("error")
+        if isinstance(api_error, dict):
+            api_code = _string_or_none(api_error.get("type"))
+            api_message = _string_or_none(api_error.get("message"))
+
+    return http_status, api_code, api_message
+
+
+def _compact_claude_error_text(text: str) -> str | None:
+    normalized = text.strip()
+    if not normalized:
+        return None
+
+    api_error_index = normalized.lower().find("api error:")
+    if api_error_index > 0:
+        normalized = normalized[:api_error_index].strip()
+
+    if "\n" in normalized:
+        normalized = normalized.splitlines()[0].strip()
+    if not normalized:
+        return None
+    return normalized
+
+
+def _parse_http_status_from_message(message: str) -> tuple[int | None, str | None]:
+    match = re.search(r"\bfailed:\s*(?P<status>\d{3}) (?P<reason>[^;]+)", message)
+    if match is None:
+        return None, None
+    status = int(match.group("status"))
+    reason = match.group("reason").strip()
+    return status, reason or None
+
+
+def _format_http_status_summary(status: int | None, reason: str | None) -> str | None:
+    if status is None and reason is None:
+        return None
+    if status is None:
+        return reason
+    if reason is None:
+        return f"HTTP {status}"
+    return f"{status} {reason}"
+
+
+def _http_status_reason_phrase(status: int | None) -> str | None:
+    if status is None:
+        return None
+    try:
+        return HTTPStatus(status).phrase
+    except ValueError:
+        return None
+
+
+def _parse_json_object_suffix(message: str, *, marker: str) -> dict[str, Any] | None:
+    marker_index = message.find(marker)
+    if marker_index < 0:
+        return None
+
+    suffix = message[marker_index + len(marker):].strip()
+    if not suffix.startswith("{"):
+        return None
+
+    try:
+        payload = json.loads(suffix)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def _parse_json_object_from_text(text: str) -> dict[str, Any] | None:
+    start_index = text.find("{")
+    if start_index < 0:
+        return None
+
+    candidate = text[start_index:].strip()
+    if not candidate.startswith("{"):
+        return None
+
+    try:
+        payload = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
 
 
 def _persist_chat_account_stats_payload(payload: dict[str, object]) -> dict[str, object]:
@@ -2716,7 +3193,7 @@ def _chat_account_stats_segment_name(recorded_at: str) -> str:
 
 
 def _ok_account_result(instance: AccountProviderContext, payload: dict[str, Any]) -> dict[str, Any]:
-    return {
+    result = {
         "id": instance.instance_id,
         "label": instance.label,
         "provider": instance.provider,
@@ -2725,6 +3202,9 @@ def _ok_account_result(instance: AccountProviderContext, payload: dict[str, Any]
         "timeout_sec": instance.timeout_sec,
         **payload,
     }
+    if instance.usage_progression_limit is not None:
+        result["usage_progression_limit"] = instance.usage_progression_limit
+    return result
 
 
 def _error_account_result(
@@ -2734,22 +3214,23 @@ def _error_account_result(
     message: str,
     exit_code: int | None = None,
 ) -> dict[str, Any]:
-    error_payload: dict[str, object] = {
-        "type": error_type,
-        "message": message,
-    }
-    if exit_code is not None:
-        error_payload["exit_code"] = exit_code
-
-    return {
+    result = {
         "id": instance.instance_id,
         "label": instance.label,
         "provider": instance.provider,
         "check_status": "error",
         "cli_command": list(instance.cli_command),
         "timeout_sec": instance.timeout_sec,
-        "error": error_payload,
+        "error": _build_account_error_payload(
+            provider=instance.provider,
+            error_type=error_type,
+            message=message,
+            exit_code=exit_code,
+        ),
     }
+    if instance.usage_progression_limit is not None:
+        result["usage_progression_limit"] = instance.usage_progression_limit
+    return result
 
 
 def _load_string_argv(value: object, *, field_name: str) -> tuple[str, ...]:

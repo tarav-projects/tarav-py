@@ -11,16 +11,14 @@ from typing import Any, Callable
 from urllib.parse import unquote
 
 from agentos._core.errors import CliError
-from agentos._core.project import (
-    agentos_home_dir,
-    find_agentos_project_root,
-    global_config_path,
-    load_global_config,
-    load_project_config,
-    project_config_path,
-)
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
-from agentos.chat.providers import ProviderFamily, require_canonical_provider_family
+from agentos.chat.providers import (
+    ProviderFamily,
+    ProviderInstanceConfigEntry,
+    ProviderInstanceConfigSource,
+    load_provider_instance_config_entries,
+    require_canonical_provider_family,
+)
 from agentos.chat.sessions import (
     BackingArtifact,
     ChatSession,
@@ -49,6 +47,10 @@ TEXT_FILE_SUFFIXES = {
 }
 MAX_GREP_FILE_BYTES = 5 * 1024 * 1024
 SESSION_SORT_CHOICES = {"lexical", "newest", "oldest"}
+_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
+    object_path=("chat", "session", "provider_instances"),
+    field_prefix="chat.session.provider_instances",
+)
 
 
 @dataclass(frozen=True)
@@ -429,55 +431,18 @@ def configured_provider_instances(*, start_path: Path | str = ".") -> tuple[Prov
 
 
 def _load_configured_provider_instances(*, start_path: Path | str = ".") -> tuple[ProviderInstance, ...]:
-    configs: list[dict[str, object]] = []
-
-    global_path = global_config_path(agentos_home_dir())
-    if global_path.exists():
-        configs.append(load_global_config(global_path))
-
-    project_root = find_agentos_project_root(start_path)
-    if project_root is not None:
-        project_path = project_config_path(project_root)
-        if project_path.exists():
-            configs.append(load_project_config(project_path))
-
-    provider_instances: list[ProviderInstance] = []
-    for config in configs:
-        provider_instances.extend(_provider_instances_from_config(config))
-    return tuple(provider_instances)
+    entries = load_provider_instance_config_entries(
+        start_path=start_path,
+        sources=(_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE,),
+    )
+    return tuple(_provider_instance_from_config(entry) for entry in entries)
 
 
-def _provider_instances_from_config(config: dict[str, object]) -> tuple[ProviderInstance, ...]:
-    chat_config = config.get("chat")
-    if chat_config is None:
-        return ()
-    if not isinstance(chat_config, dict):
-        raise CliError("config field chat must be a JSON object")
-
-    session_config = chat_config.get("session")
-    if session_config is None:
-        return ()
-    if not isinstance(session_config, dict):
-        raise CliError("config field chat.session must be a JSON object")
-
-    raw_instances = session_config.get("provider_instances")
-    if raw_instances is None:
-        return ()
-    if not isinstance(raw_instances, list):
-        raise CliError("config field chat.session.provider_instances must be a JSON array")
-
-    provider_instances: list[ProviderInstance] = []
-    for index, raw_instance in enumerate(raw_instances):
-        if not isinstance(raw_instance, dict):
-            raise CliError(f"chat.session.provider_instances[{index}] must be a JSON object")
-        provider_instances.append(_provider_instance_from_config(raw_instance, index=index))
-    return tuple(provider_instances)
-
-
-def _provider_instance_from_config(raw_instance: dict[str, object], *, index: int) -> ProviderInstance:
+def _provider_instance_from_config(entry: ProviderInstanceConfigEntry) -> ProviderInstance:
+    raw_instance = entry.raw_instance
     family_name = raw_instance.get("provider")
     if not isinstance(family_name, str) or not family_name:
-        raise CliError(f"chat.session.provider_instances[{index}].provider is required")
+        raise CliError(f"{entry.item_path()}.provider is required")
 
     family = _provider_family_for_name(family_name)
     if family is None:
@@ -485,7 +450,7 @@ def _provider_instance_from_config(raw_instance: dict[str, object], *, index: in
             sorted(provider_family.family for provider_family in supported_provider_families())
         )
         raise CliError(
-            f"chat.session.provider_instances[{index}].provider must be one of: {supported_providers}"
+            f"{entry.item_path()}.provider must be one of: {supported_providers}"
         )
 
     home = raw_instance.get("home")
@@ -497,56 +462,56 @@ def _provider_instance_from_config(raw_instance: dict[str, object], *, index: in
 
     if home is not None and raw_homes is not None:
         raise CliError(
-            f"chat.session.provider_instances[{index}] must not define both home and homes"
+            f"{entry.item_path()} must not define both home and homes"
         )
     if raw_sqlite_db_path is not None and raw_sqlite_db_paths is not None:
         raise CliError(
-            f"chat.session.provider_instances[{index}] must not define both sqlite_db_path and sqlite_db_paths"
+            f"{entry.item_path()} must not define both sqlite_db_path and sqlite_db_paths"
         )
 
     direct_paths = _load_optional_string_tuple(
         raw_direct_paths,
-        field_name=f"chat.session.provider_instances[{index}].direct_paths",
+        field_name=entry.field_name("direct_paths"),
     )
     grep_paths = _load_optional_string_tuple(
         raw_grep_paths,
-        field_name=f"chat.session.provider_instances[{index}].grep_paths",
+        field_name=entry.field_name("grep_paths"),
     )
     sqlite_db_paths = _load_optional_string_tuple(
         raw_sqlite_db_paths if raw_sqlite_db_paths is not None else raw_sqlite_db_path,
-        field_name=f"chat.session.provider_instances[{index}].sqlite_db_paths",
+        field_name=entry.field_name("sqlite_db_paths"),
     )
     homes = _load_optional_string_mapping(
         raw_homes,
-        field_name=f"chat.session.provider_instances[{index}].homes",
+        field_name=entry.field_name("homes"),
     )
 
     if home is not None:
         normalized_home = _normalize_provider_home(
             home,
-            field_name=f"chat.session.provider_instances[{index}].home",
+            field_name=entry.field_name("home"),
         )
         if direct_paths or grep_paths or sqlite_db_paths:
             raise CliError(
-                f"chat.session.provider_instances[{index}] must define either home or explicit paths, not both"
+                f"{entry.item_path()} must define either home or explicit paths, not both"
             )
-        return family.instance_from_home(normalized_home, index=index, is_default=False)
+        return family.instance_from_home(normalized_home, index=entry.index, is_default=False)
 
     if homes:
         if len(family.home_slots) == 1:
             raise CliError(
-                f"chat.session.provider_instances[{index}].homes is only supported for providers with multiple home roots; "
-                f"use chat.session.provider_instances[{index}].home"
+                f"{entry.field_name('homes')} is only supported for providers with multiple home roots; "
+                f"use {entry.field_name('home')}"
             )
         if direct_paths or grep_paths or sqlite_db_paths:
             raise CliError(
-                f"chat.session.provider_instances[{index}] must define either homes or explicit paths, not both"
+                f"{entry.item_path()} must define either homes or explicit paths, not both"
             )
-        return family.instance_from_homes(homes, index=index, is_default=False)
+        return family.instance_from_homes(homes, index=entry.index, is_default=False)
 
     if not direct_paths:
         raise CliError(
-            f"chat.session.provider_instances[{index}] must define home, homes, or direct_paths"
+            f"{entry.item_path()} must define home, homes, or direct_paths"
         )
 
     resolved_direct_targets = _resolve_raw_paths(direct_paths)

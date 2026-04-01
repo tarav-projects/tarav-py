@@ -13,21 +13,28 @@ from agentos._core.git_ops import run_git
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import (
     agentos_home_dir,
-    find_agentos_project_root,
-    global_config_path,
-    load_global_config,
-    load_project_config,
-    project_config_path,
 )
 from agentos.chat.providers import (
     ProviderFamily,
+    ProviderInstanceConfigEntry,
+    ProviderInstanceConfigSource,
     ProviderInstance,
     ProviderInstanceAnchor,
+    load_chat_config_documents,
+    provider_instance_config_entries_from_config,
     require_canonical_provider_family,
 )
 
 CHAT_ARCHIVE_DIRNAME = "chat-archive"
 DEFAULT_ARCHIVE_COMMIT_PREFIX = "checkpoint"
+_ARCHIVE_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
+    object_path=("chat", "archive", "provider_instances"),
+    field_prefix="chat.archive.provider_instances",
+)
+_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
+    object_path=("chat", "session", "provider_instances"),
+    field_prefix="chat.session.provider_instances",
+)
 
 
 @dataclass(frozen=True)
@@ -287,19 +294,15 @@ def configured_archive_settings(*, start_path: Path | str = ".") -> ArchiveSetti
     commit_prefix = DEFAULT_ARCHIVE_COMMIT_PREFIX
     provider_instances = [family.default_instance() for family in supported_archive_provider_families()]
 
-    configs: list[dict[str, object]] = []
-    global_path = global_config_path(agentos_home_dir())
-    if global_path.exists():
-        configs.append(load_global_config(global_path))
-
-    project_root = find_agentos_project_root(start_path)
-    if project_root is not None:
-        project_path = project_config_path(project_root)
-        if project_path.exists():
-            configs.append(load_project_config(project_path))
-
-    for config in configs:
-        provider_instances.extend(_session_archive_instances_from_config(config))
+    for config in load_chat_config_documents(start_path=start_path):
+        provider_instances.extend(
+            _provider_instances_from_config_entries(
+                provider_instance_config_entries_from_config(
+                    config,
+                    source=_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE,
+                )
+            )
+        )
         archive_config = _archive_config_from_config(config)
         if archive_config is None:
             continue
@@ -308,7 +311,14 @@ def configured_archive_settings(*, start_path: Path | str = ".") -> ArchiveSetti
             if not isinstance(raw_commit_prefix, str) or not raw_commit_prefix.strip():
                 raise CliError("config field chat.archive.commit_prefix must be a non-empty string")
             commit_prefix = raw_commit_prefix.strip()
-        provider_instances.extend(_archive_instances_from_config(archive_config))
+        provider_instances.extend(
+            _provider_instances_from_config_entries(
+                provider_instance_config_entries_from_config(
+                    config,
+                    source=_ARCHIVE_PROVIDER_INSTANCE_CONFIG_SOURCE,
+                )
+            )
+        )
 
     deduped_instances = _dedupe_archive_instances(tuple(provider_instances))
     _validate_unique_archive_destinations(deduped_instances)
@@ -581,69 +591,19 @@ def _archive_config_from_config(config: dict[str, object]) -> dict[str, object] 
     return archive_config
 
 
-def _archive_instances_from_config(archive_config: dict[str, object]) -> tuple[ProviderInstance, ...]:
-    raw_instances = archive_config.get("provider_instances")
-    if raw_instances is None:
-        return ()
-    if not isinstance(raw_instances, list):
-        raise CliError("config field chat.archive.provider_instances must be a JSON array")
-
-    instances: list[ProviderInstance] = []
-    for index, raw_instance in enumerate(raw_instances):
-        if not isinstance(raw_instance, dict):
-            raise CliError(f"chat.archive.provider_instances[{index}] must be a JSON object")
-        instances.append(
-            _archive_instance_from_raw_config(
-                raw_instance,
-                index=index,
-                field_prefix="chat.archive.provider_instances",
-            )
-        )
-    return tuple(instances)
-
-
-def _session_archive_instances_from_config(config: dict[str, object]) -> tuple[ProviderInstance, ...]:
-    chat_config = config.get("chat")
-    if chat_config is None:
-        return ()
-    if not isinstance(chat_config, dict):
-        raise CliError("config field chat must be a JSON object")
-
-    session_config = chat_config.get("session")
-    if session_config is None:
-        return ()
-    if not isinstance(session_config, dict):
-        raise CliError("config field chat.session must be a JSON object")
-
-    raw_instances = session_config.get("provider_instances")
-    if raw_instances is None:
-        return ()
-    if not isinstance(raw_instances, list):
-        raise CliError("config field chat.session.provider_instances must be a JSON array")
-
-    instances: list[ProviderInstance] = []
-    for index, raw_instance in enumerate(raw_instances):
-        if not isinstance(raw_instance, dict):
-            raise CliError(f"chat.session.provider_instances[{index}] must be a JSON object")
-        instances.append(
-            _archive_instance_from_raw_config(
-                raw_instance,
-                index=index,
-                field_prefix="chat.session.provider_instances",
-            )
-        )
-    return tuple(instances)
+def _provider_instances_from_config_entries(
+    entries: tuple[ProviderInstanceConfigEntry, ...],
+) -> tuple[ProviderInstance, ...]:
+    return tuple(_archive_instance_from_raw_config(entry) for entry in entries)
 
 
 def _archive_instance_from_raw_config(
-    raw_instance: dict[str, object],
-    *,
-    index: int,
-    field_prefix: str,
+    entry: ProviderInstanceConfigEntry,
 ) -> ProviderInstance:
+    raw_instance = entry.raw_instance
     family_name = raw_instance.get("provider")
     if not isinstance(family_name, str) or not family_name:
-        raise CliError(f"{field_prefix}[{index}].provider is required")
+        raise CliError(f"{entry.field_name('provider')} is required")
 
     provider_handler = _archive_provider_handler_for_name(family_name)
     if provider_handler is None:
@@ -651,7 +611,7 @@ def _archive_instance_from_raw_config(
             sorted(provider_family.family for provider_family in supported_archive_provider_families())
         )
         raise CliError(
-            f"{field_prefix}[{index}].provider must be one of: {supported_providers}"
+            f"{entry.field_name('provider')} must be one of: {supported_providers}"
         )
 
     home = raw_instance.get("home")
@@ -660,41 +620,41 @@ def _archive_instance_from_raw_config(
 
     if home is not None and raw_homes is not None:
         raise CliError(
-            f"{field_prefix}[{index}] must not define both home and homes"
+            f"{entry.item_path()} must not define both home and homes"
         )
 
     includes = _load_optional_string_tuple(
         raw_instance.get("includes"),
-        field_name=f"{field_prefix}[{index}].includes",
+        field_name=entry.field_name("includes"),
     )
     excludes = _load_optional_string_tuple(
         raw_instance.get("excludes"),
-        field_name=f"{field_prefix}[{index}].excludes",
+        field_name=entry.field_name("excludes"),
     )
     homes = _load_optional_string_mapping(
         raw_homes,
-        field_name=f"{field_prefix}[{index}].homes",
+        field_name=entry.field_name("homes"),
     )
 
     instance_name: str | None = None
     if raw_instance_name is not None:
         if not isinstance(raw_instance_name, str) or not raw_instance_name.strip():
-            raise CliError(f"{field_prefix}[{index}].instance must be a non-empty string")
+            raise CliError(f"{entry.field_name('instance')} must be a non-empty string")
         instance_name = raw_instance_name.strip()
 
     if home is not None:
         normalized_home = _normalize_archive_home(
             home,
-            field_name=f"{field_prefix}[{index}].home",
+            field_name=entry.field_name("home"),
         )
         if homes:
             raise CliError(
-                f"{field_prefix}[{index}] must define either home or homes, not both"
+                f"{entry.item_path()} must define either home or homes, not both"
             )
         return provider_handler.instance_from_home(
             normalized_home,
-            field_prefix=field_prefix,
-            index=index,
+            field_prefix=entry.field_prefix,
+            index=entry.index,
             is_default=False,
             instance_name=instance_name,
             includes=includes,
@@ -704,13 +664,13 @@ def _archive_instance_from_raw_config(
     if homes:
         if len(provider_handler.home_slots) == 1:
             raise CliError(
-                f"{field_prefix}[{index}].homes is only supported for providers with multiple home roots; "
-                f"use {field_prefix}[{index}].home"
+                f"{entry.field_name('homes')} is only supported for providers with multiple home roots; "
+                f"use {entry.field_name('home')}"
             )
         return provider_handler.instance_from_homes(
             homes,
-            field_prefix=field_prefix,
-            index=index,
+            field_prefix=entry.field_prefix,
+            index=entry.index,
             is_default=False,
             instance_name=instance_name,
             includes=includes,
@@ -718,7 +678,7 @@ def _archive_instance_from_raw_config(
         )
 
     raise CliError(
-        f"{field_prefix}[{index}] must define home or homes"
+        f"{entry.item_path()} must define home or homes"
     )
 
 

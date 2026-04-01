@@ -234,12 +234,12 @@ def test_chat_accounts_stats_summarizes_configured_provider_instances(
     assert codex_account["label"] == "Codex tk"
     assert codex_account["check_status"] == "ok"
     assert codex_account["auth_summary"] == "Logged in using ChatGPT"
-    assert codex_account["summary"] == "Logged in using ChatGPT; 5h 0%, 7d 99%"
+    assert codex_account["summary"] == "Logged in using ChatGPT; Burst 0%, Weekly 99%"
     assert codex_account["logged_in"] is True
     assert codex_account["auth_method"] == "ChatGPT"
     assert codex_account["plan"] == "plus"
     assert codex_account["usage_status"] == "ok"
-    assert codex_account["usage_summary"] == "5h 0%, 7d 99%"
+    assert codex_account["usage_summary"] == "Burst 0%, Weekly 99%"
     assert codex_account["usage_source"] == "app-server"
     codex_limits = codex_account["usage"]["limits"]
     assert codex_limits[0]["period_duration_mins"] == 300
@@ -555,19 +555,19 @@ def test_chat_accounts_stats_refresh_usage_enables_claude_live_usage(
         return {
             "usage_status": "ok",
             "usage_source": "interactive-statusline",
-            "usage_summary": "5h 1%, 7d 100%",
+            "usage_summary": "Burst 1%, Weekly 100%",
             "usage_refresh_cost_usd": 0.023,
             "usage": {
                 "kind": "subscription_rate_limit",
                 "limits": [
                     {
                         "limit_type": "five_hour",
-                        "limit_label": "5h",
+                        "limit_label": "Burst",
                         "used_percent": 1,
                     },
                     {
                         "limit_type": "seven_day",
-                        "limit_label": "7d",
+                        "limit_label": "Weekly",
                         "used_percent": 100,
                     },
                 ],
@@ -599,9 +599,9 @@ def test_chat_accounts_stats_refresh_usage_enables_claude_live_usage(
     assert live_usage_observed == ["claude-main"]
 
     claude_account = payload["providers"][0]["accounts"][0]
-    assert claude_account["summary"] == "Logged in via claude.ai (pro); 5h 1%, 7d 100%"
+    assert claude_account["summary"] == "Logged in via claude.ai (pro); Burst 1%, Weekly 100%"
     assert claude_account["usage_status"] == "ok"
-    assert claude_account["usage_summary"] == "5h 1%, 7d 100%"
+    assert claude_account["usage_summary"] == "Burst 1%, Weekly 100%"
     assert claude_account["usage_source"] == "interactive-statusline"
     assert claude_account["usage_refresh_cost_usd"] == 0.023
 
@@ -743,7 +743,7 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
             time.sleep(0.05)
             return {
                 "usage_status": "ok",
-                "usage_summary": "5h 10%, 7d 20%",
+                "usage_summary": "Burst 10%, Weekly 20%",
                 "usage_source": "interactive-statusline",
                 "usage": {
                     "kind": "rate_limits",
@@ -1050,6 +1050,7 @@ def test_chat_accounts_stats_supports_compact_usage_output(
                 "id": "codex-tk",
                 "label": "Codex tk",
                 "cli_command": ["codex"],
+                "usage_progression_limit": "Burst",
             },
             {
                 "provider": "claude-code",
@@ -1113,12 +1114,12 @@ def test_chat_accounts_stats_supports_compact_usage_output(
 
     assert "# Chat Accounts Usage" in output
     assert "- Recorded at: 2026-03-25 08:00:00 CDT" in output
-    assert "codex-tk (Codex tk):" in output
-    assert "  usage/time | 64% /  0% = n/a | 5h" in output
+    assert "⬢ codex-tk (Codex tk):" in output
+    assert "  usage/time | 64% /  0% = n/a | Burst 👨‍🦰" in output
     assert "      resets | Wed 03-26 01:40 | 17h 40m" in output
-    assert "  usage/time | 20% / 80% = 0.2 | 7d" in output
+    assert "  usage/time | 20% / 80% = 0.2 | Weekly" in output
     assert "      resets | Wed 03-26 17:10 | 1d 9h 10m" in output
-    assert "claude-main (Claude main):" in output
+    assert "✺ claude-main (Claude main):" in output
     assert "  usage | unavailable" in output
     assert "     | live usage refresh disabled; pass --refresh-usage or set live_usage_refresh=true" in output
 
@@ -1133,10 +1134,11 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> No
                         {
                             "id": "steady-low",
                             "label": "Steady low",
+                            "provider": "codex",
                             "usage": {
                                 "limits": [
                                     {
-                                        "limit_label": "5h",
+                                        "limit_label": "Burst",
                                         "used_percent": 70,
                                         "period_started_at": "2026-03-25T04:30:00Z",
                                         "period_ends_at": "2026-03-25T14:30:00Z",
@@ -1147,17 +1149,18 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> No
                         {
                             "id": "burst-high",
                             "label": "Burst high",
+                            "provider": "copilot",
                             "usage": {
                                 "limits": [
                                     {
-                                        "limit_label": "5h",
+                                        "limit_label": "Burst",
                                         "used_percent": 20,
                                         "period_started_at": "2026-03-25T09:30:00Z",
                                         "period_ends_at": "2026-03-25T14:30:00Z",
                                     },
                                     {
-                                        "limit_label": "7d",
-                                        "used_percent": 90,
+                                        "limit_label": "Weekly",
+                                        "used_percent": 100,
                                         "period_started_at": "2026-03-19T12:00:00Z",
                                         "period_ends_at": "2026-03-26T12:00:00Z",
                                     },
@@ -1170,9 +1173,61 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> No
         }
     )
 
+    assert "🤖 burst-high (Burst high):" in output
+    assert "⬢ steady-low (Steady low):" in output
     assert output.index("burst-high (Burst high):") < output.index("steady-low (Steady low):")
-    assert "  usage/time | 90% / 86% = 1.0 | 7d" in output
-    assert "  usage/time | 70% / 75% = 0.9 | 5h" in output
+    assert "  usage/time | 100% / 86% = 1.2 | Weekly 🔥 💀" in output
+    assert "  usage/time | 70% / 75% = 0.9 | Burst ❄️ 👨‍🦰" in output
+
+
+def test_format_chat_account_stats_usage_shows_cold_marker_only_on_most_active_limit() -> None:
+    output = chat_accounts.format_chat_account_stats_usage(
+        {
+            "recorded_at": "2026-03-25T12:00:00Z",
+            "providers": [
+                {
+                    "accounts": [
+                        {
+                            "id": "all-cold",
+                            "label": "All cold",
+                            "provider": "codex",
+                            "usage": {
+                                "limits": [
+                                    {
+                                        "limit_label": "Burst",
+                                        "used_percent": 20,
+                                        "period_started_at": "2026-03-25T09:30:00Z",
+                                        "period_ends_at": "2026-03-25T14:30:00Z",
+                                    },
+                                    {
+                                        "limit_label": "Weekly",
+                                        "used_percent": 70,
+                                        "period_started_at": "2026-03-19T12:00:00Z",
+                                        "period_ends_at": "2026-03-26T12:00:00Z",
+                                    },
+                                ]
+                            },
+                        }
+                    ]
+                }
+            ],
+        }
+    )
+
+    assert "  usage/time | 20% / 50% = 0.4 | Burst" in output
+    assert "  usage/time | 70% / 86% = 0.8 | Weekly ❄️ 👨‍🦰" in output
+
+
+def test_usage_peak_ratio_marker_gradient() -> None:
+    assert chat_accounts._usage_peak_ratio_marker(1.62) == "🔥🔥"
+    assert chat_accounts._usage_peak_ratio_marker(1.22) == "🔥"
+    assert chat_accounts._usage_peak_ratio_marker(1.05) is None
+    assert chat_accounts._usage_peak_ratio_marker(1.00) is None
+    assert chat_accounts._usage_peak_ratio_marker(0.95) is None
+    assert chat_accounts._usage_peak_ratio_marker(0.74) == "❄️"
+    assert chat_accounts._usage_peak_ratio_marker(0.31) == "❄️❄️"
+    assert chat_accounts._usage_peak_ratio_marker(0.0) is None
+    assert chat_accounts._usage_peak_ratio_marker(None) is None
 
 
 def test_chat_accounts_stats_usage_output_styles_fetch_errors(
@@ -1231,6 +1286,187 @@ def test_chat_accounts_stats_usage_output_styles_fetch_errors(
     assert "codex-main (Codex main):" in output
     assert "  usage | error" in output
     assert "     | command_failed: rate-limit request failed" in output
+
+
+def test_chat_accounts_stats_usage_compacts_codex_token_expired_errors(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "codex-main",
+                "label": "Codex main",
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del capture_output, text, check, env, timeout
+        if command == ["codex", "login", "status"]:
+            return subprocess.CompletedProcess(command, 0, stdout="Logged in using ChatGPT\n", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        chat_accounts,
+        "_read_codex_account_rate_limits",
+        lambda instance: (_ for _ in ()).throw(
+            chat_accounts.AccountCommandError(
+                error_type="command_failed",
+                message=(
+                    "failed to fetch codex rate limits: GET "
+                    "https://chatgpt.com/backend-api/wham/usage failed: 401 Unauthorized; "
+                    'content-type=text/plain; body={\n  "error": {\n    "message": '
+                    '"Provided authentication token is expired. Please try signing in again.",\n'
+                    '    "type": null,\n    "code": "token_expired",\n    "param": null\n  },\n'
+                    '  "status": 401\n}'
+                ),
+            )
+        ),
+    )
+
+    assert main(["chat", "accounts", "stats", "--output", "usage"]) == 0
+    output = capsys.readouterr().out
+
+    assert "codex-main (Codex main):" in output
+    assert "  usage | error" in output
+    assert "     | command_failed: Codex authentication token expired" in output
+    assert "     | 401 Unauthorized | token_expired" in output
+    assert "     | Provided authentication token is expired. Please try signing in again." in output
+    assert "     | Sign in again with the configured Codex CLI and refresh." in output
+    assert "backend-api/wham/usage" not in output
+    assert "body={" not in output
+
+
+def test_chat_accounts_stats_usage_compacts_claude_authentication_failures(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "claude-code",
+                "id": "claude-main",
+                "label": "Claude main",
+                "cli_command": ["claude"],
+            }
+        ],
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del capture_output, text, check, env, timeout
+        if command == ["claude", "auth", "status", "--json"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "loggedIn": True,
+                        "authMethod": "claude.ai",
+                        "subscriptionType": "pro",
+                    }
+                ),
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        chat_accounts,
+        "_collect_claude_code_live_usage",
+        lambda instance: (_ for _ in ()).throw(
+            chat_accounts.AccountCommandError(
+                error_type="command_failed",
+                message="\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "system",
+                                "subtype": "init",
+                                "session_id": "session-123",
+                                "model": "claude-haiku-4-5-20251001",
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "assistant",
+                                "message": {
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": (
+                                                "Failed to authenticate. API Error: 403\n"
+                                                '{"error":{"type":"forbidden","message":"Request not allowed"}}'
+                                            ),
+                                        }
+                                    ]
+                                },
+                                "error": "authentication_failed",
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "result",
+                                "subtype": "success",
+                                "is_error": True,
+                                "result": (
+                                    "Failed to authenticate. API Error: 403\n"
+                                    '{"error":{"type":"forbidden","message":"Request not allowed"}}'
+                                ),
+                            }
+                        ),
+                    ]
+                ),
+            )
+        ),
+    )
+
+    assert main(["chat", "accounts", "stats", "--output", "usage", "--refresh-usage"]) == 0
+    output = capsys.readouterr().out
+
+    assert "claude-main (Claude main):" in output
+    assert "  usage | error" in output
+    assert "     | command_failed: Claude Code authentication failed" in output
+    assert "     | 403 Forbidden | authentication_failed | forbidden" in output
+    assert "     | Request not allowed" in output
+    assert "     | Sign in again with the configured Claude Code CLI and refresh." in output
+    assert '"subtype":"init"' not in output
+    assert '"session_id":"session-123"' not in output
 
 
 def test_chat_accounts_stats_usage_formats_account_check_errors_nicely(
@@ -1292,6 +1528,42 @@ def test_chat_accounts_stats_usage_formats_account_check_errors_nicely(
     assert "codex-main (Codex main):" in output
     assert "  check | error" in output
     assert "     | command_failed: login failed" in output
+
+
+def test_format_chat_account_usage_error_detail_lines_wrap_long_messages() -> None:
+    detail_lines = chat_accounts._format_chat_account_usage_error_detail_lines(
+        {
+            "type": "command_failed",
+            "message": (
+                "provider command returned unexpectedly verbose output that should wrap cleanly "
+                "instead of overflowing the compact usage interface"
+            ),
+            "detail_lines": [
+                (
+                    "Additional context should also wrap to the same width so secondary detail "
+                    "lines stay readable in loop mode."
+                )
+            ],
+        }
+    )
+
+    assert detail_lines is not None
+    assert len(detail_lines) >= 3
+    assert detail_lines[0].startswith("command_failed:")
+    assert all(len(line) <= chat_accounts.CHAT_ACCOUNT_USAGE_ERROR_DETAIL_WIDTH for line in detail_lines)
+
+
+def test_usage_progression_marker_evolves_with_usage_percent() -> None:
+    assert chat_accounts._usage_progression_marker(10) == "👶"
+    assert chat_accounts._usage_progression_marker(40) == "👨‍🦱"
+    assert chat_accounts._usage_progression_marker(60) == "👨‍🦰"
+    assert chat_accounts._usage_progression_marker(80) == "👨‍🦳"
+    assert chat_accounts._usage_progression_marker(95) == "💀"
+
+
+def test_usage_time_progression_marker_only_appears_above_ninety_percent() -> None:
+    assert chat_accounts._usage_time_progression_marker(90) is None
+    assert chat_accounts._usage_time_progression_marker(91) == "🕒"
 
 
 def test_chat_accounts_stats_history_accumulates_into_month_segment(
@@ -1356,7 +1628,7 @@ def test_parse_claude_code_live_usage_output_derives_period_bounds() -> None:
     )
 
     assert payload["usage_status"] == "ok"
-    assert payload["usage_summary"] == "7d 42%"
+    assert payload["usage_summary"] == "Weekly 42%"
     assert payload["usage_refresh_cost_usd"] == 0.004
     limit_payload = payload["usage"]["limits"][0]
     assert limit_payload["period_duration_mins"] == 10_080
@@ -1469,7 +1741,7 @@ def test_parse_claude_code_statusline_usage_output_includes_five_hour_and_seven_
 
     assert payload["usage_status"] == "ok"
     assert payload["usage_source"] == "interactive-statusline"
-    assert payload["usage_summary"] == "5h 1%, 7d 100%"
+    assert payload["usage_summary"] == "Burst 1%, Weekly 100%"
     assert payload["usage_refresh_cost_usd"] == 0.02309745
     assert payload["usage"]["refresh_model"] == "claude-haiku-4-5-20251001"
     assert payload["usage"]["refresh_session_id"] == "session-123"
@@ -1526,14 +1798,14 @@ def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -
         lambda instance: {
             "usage_status": "ok",
             "usage_source": "live-refresh",
-            "usage_summary": "7d 42%",
+            "usage_summary": "Weekly 42%",
         },
     )
 
     payload = chat_accounts._collect_claude_code_live_usage(instance)
     assert payload["usage_status"] == "ok"
     assert payload["usage_source"] == "live-refresh"
-    assert payload["usage_summary"] == "7d 42%"
+    assert payload["usage_summary"] == "Weekly 42%"
 
 
 def test_chat_accounts_stats_keeps_per_account_errors_in_payload(

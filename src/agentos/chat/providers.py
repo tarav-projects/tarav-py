@@ -6,6 +6,16 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from agentos._core.errors import CliError
+from agentos._core.project import (
+    agentos_home_dir,
+    find_agentos_project_root,
+    global_config_path,
+    load_global_config,
+    load_project_config,
+    project_config_path,
+)
+
 
 @dataclass(frozen=True)
 class ProviderFamily:
@@ -44,6 +54,105 @@ def require_canonical_provider_family(family_name: str) -> ProviderFamily:
     if provider_family is None:
         raise ValueError(f"unknown provider family: {family_name}")
     return provider_family
+
+
+@dataclass(frozen=True)
+class ProviderInstanceConfigSource:
+    object_path: tuple[str, ...]
+    field_prefix: str
+
+
+@dataclass(frozen=True)
+class ProviderInstanceConfigEntry:
+    field_prefix: str
+    index: int
+    raw_instance: dict[str, object]
+
+    def item_path(self) -> str:
+        return f"{self.field_prefix}[{self.index}]"
+
+    def field_name(self, field: str) -> str:
+        return f"{self.item_path()}.{field}"
+
+
+def load_chat_config_documents(*, start_path: Path | str = ".") -> tuple[dict[str, object], ...]:
+    configs: list[dict[str, object]] = []
+
+    global_path = global_config_path(agentos_home_dir())
+    if global_path.exists():
+        configs.append(load_global_config(global_path))
+
+    project_root = find_agentos_project_root(start_path)
+    if project_root is not None:
+        project_path = project_config_path(project_root)
+        if project_path.exists():
+            configs.append(load_project_config(project_path))
+
+    return tuple(configs)
+
+
+def provider_instance_config_entries_from_config(
+    config: dict[str, object],
+    *,
+    source: ProviderInstanceConfigSource,
+) -> tuple[ProviderInstanceConfigEntry, ...]:
+    raw_instances = _config_value_at_object_path(config, object_path=source.object_path)
+    if raw_instances is None:
+        return ()
+    if not isinstance(raw_instances, list):
+        raise CliError(f"config field {'.'.join(source.object_path)} must be a JSON array")
+
+    entries: list[ProviderInstanceConfigEntry] = []
+    for index, raw_instance in enumerate(raw_instances):
+        if not isinstance(raw_instance, dict):
+            raise CliError(f"{source.field_prefix}[{index}] must be a JSON object")
+        entries.append(
+            ProviderInstanceConfigEntry(
+                field_prefix=source.field_prefix,
+                index=index,
+                raw_instance=raw_instance,
+            )
+        )
+    return tuple(entries)
+
+
+def load_provider_instance_config_entries(
+    *,
+    start_path: Path | str = ".",
+    sources: tuple[ProviderInstanceConfigSource, ...],
+) -> tuple[ProviderInstanceConfigEntry, ...]:
+    entries: list[ProviderInstanceConfigEntry] = []
+    for config in load_chat_config_documents(start_path=start_path):
+        for source in sources:
+            entries.extend(
+                provider_instance_config_entries_from_config(
+                    config,
+                    source=source,
+                )
+            )
+    return tuple(entries)
+
+
+def _config_value_at_object_path(config: dict[str, object], *, object_path: tuple[str, ...]) -> object | None:
+    if not object_path:
+        return config
+
+    current: object = config
+    current_path: list[str] = []
+    for key in object_path[:-1]:
+        current_path.append(key)
+        if not isinstance(current, dict):
+            raise CliError(f"config field {'.'.join(current_path)} must be a JSON object")
+        next_value = current.get(key)
+        if next_value is None:
+            return None
+        if not isinstance(next_value, dict):
+            raise CliError(f"config field {'.'.join(current_path)} must be a JSON object")
+        current = next_value
+
+    if not isinstance(current, dict):
+        raise CliError(f"config field {'.'.join(object_path[:-1])} must be a JSON object")
+    return current.get(object_path[-1])
 
 
 @dataclass(frozen=True)
@@ -95,6 +204,7 @@ class ProviderInstance:
     env: tuple[tuple[str, str], ...] = ()
     timeout_sec: int | None = None
     live_usage_refresh: bool | None = None
+    usage_progression_limit: str | None = None
     includes: tuple[str, ...] = ()
     excludes: tuple[str, ...] = ()
     anchors: tuple[ProviderInstanceAnchor, ...] = ()
@@ -146,6 +256,7 @@ class ProviderInstance:
             self.env,
             self.timeout_sec,
             self.live_usage_refresh,
+            self.usage_progression_limit,
             self.includes,
             self.excludes,
         )
@@ -178,6 +289,8 @@ class ProviderInstance:
             payload["timeout_sec"] = self.timeout_sec
         if self.live_usage_refresh is not None:
             payload["live_usage_refresh"] = self.live_usage_refresh
+        if self.usage_progression_limit is not None:
+            payload["usage_progression_limit"] = self.usage_progression_limit
         if self.includes:
             payload["includes"] = list(self.includes)
         if self.excludes:
@@ -191,8 +304,13 @@ class ProviderInstance:
 __all__ = [
     "canonical_provider_families",
     "canonical_provider_family_for_name",
+    "load_chat_config_documents",
+    "load_provider_instance_config_entries",
     "ProviderFamily",
+    "ProviderInstanceConfigEntry",
+    "ProviderInstanceConfigSource",
     "ProviderInstance",
     "ProviderInstanceAnchor",
+    "provider_instance_config_entries_from_config",
     "require_canonical_provider_family",
 ]
