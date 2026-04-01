@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import os
+import json
+import shutil
 from pathlib import Path
 
 from agentos.cli import main
@@ -11,308 +12,269 @@ def _create_skill(path: Path) -> None:
     (path / "SKILL.md").write_text("# skill\n", encoding="utf-8")
 
 
-def test_skills_flatten_creates_symlink_for_nested_skill(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    nested_skill = skills_root / "group-one" / "alpha-skill"
-    _create_skill(nested_skill)
+def _write_project_config(project_root: Path, imports: list[dict[str, object]]) -> None:
+    config_path = project_root / ".agentos" / "config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "class": "agentos.project.config",
+        "schema_version": 1,
+        "skills": {
+            "imports": imports,
+        },
+    }
+    config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
-    assert main(["skills", "flatten", str(skills_root)]) == 0
-    capsys.readouterr()
 
-    flattened_link = skills_root / "alpha-skill"
-    assert flattened_link.is_symlink()
-    assert flattened_link.resolve() == nested_skill.resolve()
-
-
-def test_skills_flatten_defaults_to_current_directory(
+def test_skills_sync_creates_symlinks_from_configured_imports(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    nested_skill = tmp_path / "group-one" / "alpha-skill"
-    _create_skill(nested_skill)
-    monkeypatch.chdir(tmp_path)
+    project_root = tmp_path / "project"
+    workspace_dir = project_root / "nested" / "child"
+    workspace_dir.mkdir(parents=True, exist_ok=True)
 
-    assert main(["skills", "flatten"]) == 0
+    external_root = tmp_path / "external-skills"
+    alpha_skill = external_root / "alpha-skill"
+    beta_skill = external_root / "group-one" / "beta-skill"
+    _create_skill(alpha_skill)
+    _create_skill(beta_skill)
+
+    _write_project_config(
+        project_root,
+        [{"name": "shared", "path": "../external-skills"}],
+    )
+
+    monkeypatch.chdir(workspace_dir)
+    assert main(["skills", "sync"]) == 0
+    stdout = capsys.readouterr().out
+
+    alpha_link = project_root / "skills" / "alpha-skill"
+    beta_link = project_root / "skills" / "beta-skill"
+    assert "created:" in stdout
+    assert alpha_link.is_symlink()
+    assert beta_link.is_symlink()
+    assert alpha_link.resolve() == alpha_skill.resolve()
+    assert beta_link.resolve() == beta_skill.resolve()
+    assert (project_root / ".agentos" / "state" / "skills-links.json").is_file()
+
+
+def test_skills_sync_uses_skills_folder_override(tmp_path: Path, monkeypatch, capsys) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    external_root = tmp_path / "external-skills"
+    alpha_skill = external_root / "alpha-skill"
+    _create_skill(alpha_skill)
+
+    _write_project_config(
+        project_root,
+        [{"name": "shared", "path": "../external-skills"}],
+    )
+
+    monkeypatch.chdir(project_root)
+    assert main(["skills", "sync", "--skills-folder", ".agents/skills"]) == 0
     capsys.readouterr()
 
-    flattened_link = tmp_path / "alpha-skill"
-    assert flattened_link.is_symlink()
-    assert flattened_link.resolve() == nested_skill.resolve()
+    override_link = project_root / ".agents" / "skills" / "alpha-skill"
+    default_link = project_root / "skills" / "alpha-skill"
+    assert override_link.is_symlink()
+    assert override_link.resolve() == alpha_skill.resolve()
+    assert not default_link.exists()
 
 
-def test_skills_flatten_dry_run_does_not_create_symlink(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    nested_skill = skills_root / "group-one" / "alpha-skill"
-    _create_skill(nested_skill)
-
-    assert main(["skills", "flatten", str(skills_root), "--dry-run"]) == 0
-    stdout = capsys.readouterr().out
-
-    flattened_link = skills_root / "alpha-skill"
-    assert not flattened_link.exists()
-    assert "DRY-RUN would create:" in stdout
-    assert "Dry run: no symlinks were created or replaced." in stdout
-
-
-def test_skills_flatten_ignores_top_level_skills(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    top_level_skill = skills_root / "alpha-skill"
-    _create_skill(top_level_skill)
-
-    assert main(["skills", "flatten", str(skills_root), "--dry-run"]) == 0
-    captured = capsys.readouterr()
-
-    assert "No symlinks would be created." in captured.out
-    assert "warn:" not in captured.err
-    assert top_level_skill.is_dir()
-    assert not top_level_skill.is_symlink()
-
-
-def test_skills_flatten_noops_for_existing_matching_symlink(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    nested_skill = skills_root / "group-one" / "alpha-skill"
-    _create_skill(nested_skill)
-
-    flattened_link = skills_root / "alpha-skill"
-    flattened_link.parent.mkdir(parents=True, exist_ok=True)
-    flattened_link.symlink_to(Path("group-one") / "alpha-skill", target_is_directory=True)
-
-    assert main(["skills", "flatten", str(skills_root)]) == 0
-    stdout = capsys.readouterr().out
-
-    assert "No new symlinks created." in stdout
-    assert "info: skipping nested skill source" in stdout
-    assert str(nested_skill.resolve()) in stdout
-    assert str(flattened_link) in stdout
-    assert "Skipped 1 existing matching symlink(s)." in stdout
-    assert flattened_link.is_symlink()
-    assert flattened_link.resolve() == nested_skill.resolve()
-
-
-def test_skills_flatten_warns_and_skips_when_target_path_exists(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    nested_skill = skills_root / "group-one" / "alpha-skill"
-    _create_skill(nested_skill)
-
-    conflicting_path = skills_root / "alpha-skill"
-    conflicting_path.parent.mkdir(parents=True, exist_ok=True)
-    conflicting_path.mkdir()
-
-    assert main(["skills", "flatten", str(skills_root)]) == 0
-    captured = capsys.readouterr()
-    assert "No new symlinks created." in captured.out
-    assert "Skipped 1 conflicting existing path(s)." in captured.out
-    assert "warn: skipping nested skill source" in captured.err
-    assert str(nested_skill.resolve()) in captured.err
-    assert str(conflicting_path.resolve()) in captured.err
-    assert conflicting_path.is_dir()
-    assert not conflicting_path.is_symlink()
-
-
-def test_skills_flatten_dry_run_warns_and_skips_when_target_path_exists(
+def test_skills_sync_errors_on_duplicate_imported_skill_names(
     tmp_path: Path,
+    monkeypatch,
     capsys,
 ) -> None:
-    skills_root = tmp_path / "skills"
-    nested_skill = skills_root / "group-one" / "alpha-skill"
-    _create_skill(nested_skill)
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
 
-    conflicting_path = skills_root / "alpha-skill"
-    conflicting_path.parent.mkdir(parents=True, exist_ok=True)
-    conflicting_path.mkdir()
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    _create_skill(first_root / "alpha-skill")
+    _create_skill(second_root / "alpha-skill")
 
-    assert main(["skills", "flatten", str(skills_root), "--dry-run"]) == 0
-    captured = capsys.readouterr()
-    assert "No symlinks would be created." in captured.out
-    assert "Skipped 1 conflicting existing path(s)." in captured.out
-    assert "warn: skipping nested skill source" in captured.err
-    assert str(nested_skill.resolve()) in captured.err
-    assert str(conflicting_path.resolve()) in captured.err
-    assert conflicting_path.is_dir()
-    assert not conflicting_path.is_symlink()
+    _write_project_config(
+        project_root,
+        [
+            {"name": "first", "path": "../first"},
+            {"name": "second", "path": "../second"},
+        ],
+    )
 
-
-def test_skills_flatten_errors_for_duplicate_nested_skill_names(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    _create_skill(skills_root / "group-one" / "alpha-skill")
-    _create_skill(skills_root / "group-two" / "alpha-skill")
-
-    assert main(["skills", "flatten", str(skills_root)]) == 1
+    monkeypatch.chdir(project_root)
+    assert main(["skills", "sync"]) == 1
     stderr = capsys.readouterr().err
-    assert "duplicate nested skill names under" in stderr
+    assert "duplicate imported skill names" in stderr
+    assert not (project_root / "skills" / "alpha-skill").exists()
 
 
-def test_skills_flatten_creates_symlink_for_hidden_nested_skill(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    nested_skill = skills_root / ".system" / "alpha-skill"
-    _create_skill(nested_skill)
+def test_skills_sync_updates_previous_managed_link(tmp_path: Path, monkeypatch, capsys) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
 
-    assert main(["skills", "flatten", str(skills_root)]) == 0
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_skill = first_root / "alpha-skill"
+    second_skill = second_root / "alpha-skill"
+    _create_skill(first_skill)
+    _create_skill(second_skill)
+
+    _write_project_config(
+        project_root,
+        [{"name": "shared", "path": "../first"}],
+    )
+
+    monkeypatch.chdir(project_root)
+    assert main(["skills", "sync"]) == 0
     capsys.readouterr()
 
-    flattened_link = skills_root / "alpha-skill"
-    assert flattened_link.is_symlink()
-    assert os.readlink(flattened_link) == str(Path(".system") / "alpha-skill")
-    assert flattened_link.resolve() == nested_skill.resolve()
+    _write_project_config(
+        project_root,
+        [{"name": "shared", "path": "../second"}],
+    )
 
-
-def test_skills_flatten_creates_symlink_for_nested_skill_under_symlinked_dir(
-    tmp_path: Path,
-    capsys,
-) -> None:
-    skills_root = tmp_path / "skills"
-    external_bundle = tmp_path / "bundle"
-    nested_skill = external_bundle / "group-one" / "alpha-skill"
-    _create_skill(nested_skill)
-
-    skills_root.mkdir(parents=True, exist_ok=True)
-    (skills_root / "linked-bundle").symlink_to(external_bundle, target_is_directory=True)
-
-    assert main(["skills", "flatten", str(skills_root)]) == 0
-    capsys.readouterr()
-
-    flattened_link = skills_root / "alpha-skill"
-    assert flattened_link.is_symlink()
-    assert os.readlink(flattened_link) == str(Path("linked-bundle") / "group-one" / "alpha-skill")
-    assert flattened_link.resolve() == nested_skill.resolve()
-
-
-def test_skills_flatten_overwrite_replaces_conflicting_symlink(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    nested_skill = skills_root / "group-one" / "alpha-skill"
-    wrong_target = skills_root / "group-two" / "beta-skill"
-    _create_skill(nested_skill)
-    _create_skill(wrong_target)
-
-    flattened_link = skills_root / "alpha-skill"
-    flattened_link.symlink_to(Path("group-two") / "beta-skill", target_is_directory=True)
-
-    assert main(["skills", "flatten", str(skills_root), "--overwrite"]) == 0
+    assert main(["skills", "sync"]) == 0
     stdout = capsys.readouterr().out
 
-    assert str(flattened_link) in stdout
-    assert "Replaced 1 conflicting symlink(s)." in stdout
-    assert flattened_link.is_symlink()
-    assert flattened_link.resolve() == nested_skill.resolve()
+    alpha_link = project_root / "skills" / "alpha-skill"
+    assert "updated:" in stdout
+    assert alpha_link.is_symlink()
+    assert alpha_link.resolve() == second_skill.resolve()
 
 
-def test_skills_flatten_overwrite_dry_run_does_not_replace_conflicting_symlink(
-    tmp_path: Path,
-    capsys,
-) -> None:
-    skills_root = tmp_path / "skills"
-    nested_skill = skills_root / "group-one" / "alpha-skill"
-    wrong_target = skills_root / "group-two" / "beta-skill"
-    _create_skill(nested_skill)
-    _create_skill(wrong_target)
-
-    flattened_link = skills_root / "alpha-skill"
-    flattened_link.symlink_to(Path("group-two") / "beta-skill", target_is_directory=True)
-
-    assert main(["skills", "flatten", str(skills_root), "--overwrite", "--dry-run"]) == 0
-    stdout = capsys.readouterr().out
-
-    assert f"DRY-RUN would replace: {flattened_link}" in stdout
-    assert "Would replace 1 conflicting symlink(s)." in stdout
-    assert "Dry run: no symlinks were created or replaced." in stdout
-    assert flattened_link.is_symlink()
-    assert flattened_link.resolve() == wrong_target.resolve()
-
-
-def test_skills_flatten_overwrite_still_warns_and_skips_non_symlink_conflicts(
-    tmp_path: Path,
-    capsys,
-) -> None:
-    skills_root = tmp_path / "skills"
-    nested_skill = skills_root / "group-one" / "alpha-skill"
-    _create_skill(nested_skill)
-
-    conflicting_path = skills_root / "alpha-skill"
-    conflicting_path.parent.mkdir(parents=True, exist_ok=True)
-    conflicting_path.mkdir()
-
-    assert main(["skills", "flatten", str(skills_root), "--overwrite"]) == 0
-    captured = capsys.readouterr()
-
-    assert "Skipped 1 conflicting existing path(s)." in captured.out
-    assert "warn: skipping nested skill source" in captured.err
-    assert conflicting_path.is_dir()
-    assert not conflicting_path.is_symlink()
-
-
-def test_skills_prune_removes_broken_symlink(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    broken_link = skills_root / "alpha-skill"
-    broken_link.parent.mkdir(parents=True, exist_ok=True)
-    broken_link.symlink_to(Path("missing-alpha-skill"), target_is_directory=True)
-
-    assert main(["skills", "prune", str(skills_root)]) == 0
-    stdout = capsys.readouterr().out
-
-    assert str(broken_link) in stdout
-    assert not broken_link.exists()
-    assert not broken_link.is_symlink()
-
-
-def test_skills_prune_defaults_to_current_directory(
+def test_skills_sync_removes_stale_managed_link_when_import_removed(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    broken_link = tmp_path / "alpha-skill"
-    broken_link.symlink_to(Path("missing-alpha-skill"), target_is_directory=True)
-    monkeypatch.chdir(tmp_path)
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    external_root = tmp_path / "external-skills"
+    alpha_skill = external_root / "alpha-skill"
+    _create_skill(alpha_skill)
+
+    _write_project_config(
+        project_root,
+        [{"name": "shared", "path": "../external-skills"}],
+    )
+
+    monkeypatch.chdir(project_root)
+    assert main(["skills", "sync"]) == 0
+    capsys.readouterr()
+
+    _write_project_config(project_root, [])
+    assert main(["skills", "sync"]) == 0
+    stdout = capsys.readouterr().out
+
+    alpha_link = project_root / "skills" / "alpha-skill"
+    assert "removed stale link:" in stdout
+    assert not alpha_link.exists()
+    assert not alpha_link.is_symlink()
+
+
+def test_skills_sync_errors_on_unmanaged_conflicting_path(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    external_root = tmp_path / "external-skills"
+    alpha_skill = external_root / "alpha-skill"
+    _create_skill(alpha_skill)
+
+    _write_project_config(
+        project_root,
+        [{"name": "shared", "path": "../external-skills"}],
+    )
+
+    conflicting_path = project_root / "skills" / "alpha-skill"
+    conflicting_path.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.chdir(project_root)
+    assert main(["skills", "sync"]) == 1
+    stderr = capsys.readouterr().err
+
+    assert "conflicting existing paths" in stderr
+    assert conflicting_path.is_dir()
+    assert not conflicting_path.is_symlink()
+
+
+def test_skills_prune_removes_broken_managed_symlink(tmp_path: Path, monkeypatch, capsys) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    external_root = tmp_path / "external-skills"
+    alpha_skill = external_root / "alpha-skill"
+    _create_skill(alpha_skill)
+
+    _write_project_config(
+        project_root,
+        [{"name": "shared", "path": "../external-skills"}],
+    )
+
+    monkeypatch.chdir(project_root)
+    assert main(["skills", "sync"]) == 0
+    capsys.readouterr()
+
+    shutil.rmtree(alpha_skill)
 
     assert main(["skills", "prune"]) == 0
     stdout = capsys.readouterr().out
 
-    assert str(broken_link) in stdout
-    assert not broken_link.exists()
-    assert not broken_link.is_symlink()
+    alpha_link = project_root / "skills" / "alpha-skill"
+    assert f"removed: {alpha_link}" in stdout
+    assert not alpha_link.exists()
+    assert not alpha_link.is_symlink()
 
 
-def test_skills_prune_dry_run_does_not_remove_broken_symlink(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    broken_link = skills_root / "alpha-skill"
-    broken_link.parent.mkdir(parents=True, exist_ok=True)
-    broken_link.symlink_to(Path("missing-alpha-skill"), target_is_directory=True)
+def test_skills_list_and_path_use_effective_project_target(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
 
-    assert main(["skills", "prune", str(skills_root), "--dry-run"]) == 0
-    stdout = capsys.readouterr().out
+    external_root = tmp_path / "external-skills"
+    alpha_skill = external_root / "alpha-skill"
+    _create_skill(alpha_skill)
 
-    assert f"DRY-RUN would remove: {broken_link}" in stdout
-    assert "Dry run: no symlinks were removed." in stdout
-    assert broken_link.is_symlink()
-    assert not broken_link.exists()
+    _write_project_config(
+        project_root,
+        [{"name": "shared", "path": "../external-skills"}],
+    )
+
+    monkeypatch.chdir(project_root)
+    assert main(["skills", "sync", "--skills-folder", ".agents/skills"]) == 0
+    capsys.readouterr()
+
+    assert main(["skills", "list", "--skills-folder", ".agents/skills", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed == ["alpha-skill"]
+
+    assert main(["skills", "path", "--skills-folder", ".agents/skills"]) == 0
+    target_path = capsys.readouterr().out.strip()
+    assert target_path == str((project_root / ".agents" / "skills").resolve())
+
+    assert main(["skills", "path", "alpha-skill", "--skills-folder", ".agents/skills"]) == 0
+    skill_path = capsys.readouterr().out.strip()
+    assert skill_path == str(project_root / ".agents" / "skills" / "alpha-skill")
 
 
-def test_skills_prune_ignores_non_broken_entries(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    real_skill = skills_root / "group-one" / "alpha-skill"
-    _create_skill(real_skill)
+def test_skills_commands_require_dot_agentos_directory(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.chdir(tmp_path)
 
-    working_link = skills_root / "alpha-skill"
-    working_link.symlink_to(Path("group-one") / "alpha-skill", target_is_directory=True)
+    assert main(["skills", "path"]) == 1
+    stderr = capsys.readouterr().err
 
-    assert main(["skills", "prune", str(skills_root), "--dry-run"]) == 0
-    captured = capsys.readouterr()
-
-    assert "No broken symlinks would be removed." in captured.out
-    assert "warn:" not in captured.err
-    assert working_link.is_symlink()
-    assert working_link.resolve() == real_skill.resolve()
-
-
-def test_skills_prune_removes_broken_symlink_in_hidden_nested_dir(tmp_path: Path, capsys) -> None:
-    skills_root = tmp_path / "skills"
-    broken_link = skills_root / ".system" / "alpha-skill"
-    broken_link.parent.mkdir(parents=True, exist_ok=True)
-    broken_link.symlink_to(Path("missing-alpha-skill"), target_is_directory=True)
-
-    assert main(["skills", "prune", str(skills_root)]) == 0
-    stdout = capsys.readouterr().out
-
-    assert str(broken_link) in stdout
-    assert not broken_link.exists()
-    assert not broken_link.is_symlink()
+    assert "missing .agentos directory" in stderr

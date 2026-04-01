@@ -51,70 +51,105 @@ def _build_markdown_scan_config(args: argparse.Namespace) -> MarkdownScanConfig:
     )
 
 
+def _relative_target_paths(config: MarkdownScanConfig) -> list[str]:
+    return [str(path.relative_to(config.root)) for path in config.targets]
+
+
+def _build_mdblocks_payload(
+    config: MarkdownScanConfig,
+    *,
+    include_recursive: bool = False,
+    include_levels: bool = False,
+    include_excludes: bool = False,
+    **payload: object,
+) -> dict[str, object]:
+    base_payload: dict[str, object] = {
+        "root": str(config.root),
+        "targets": _relative_target_paths(config),
+        "start_line": config.start_line,
+        "end_line": config.end_line,
+        "separator": BLOCK_SEPARATOR,
+    }
+    if include_recursive:
+        base_payload["recursive"] = config.recursive
+    if include_levels:
+        base_payload["min_level"] = config.min_level
+        base_payload["max_level"] = config.max_level
+    if include_excludes:
+        base_payload["excludes"] = list(config.excludes)
+    return {
+        **base_payload,
+        **payload,
+    }
+
+
+def _write_split_tmp_blocks_payload(
+    *,
+    summary: dict[str, object],
+    files: list[dict[str, object]],
+) -> dict[str, object]:
+    output_root = Path(tempfile.mkdtemp(prefix="agentos-md-blocks-"))
+    files_root = output_root / "files"
+    file_entries: list[dict[str, object]] = []
+
+    for file_data in files:
+        rel_md_path = Path(file_data["path"])
+        output_file = files_root / rel_md_path.parent / f"{rel_md_path.name}.json"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_text(json.dumps(file_data, indent=2), encoding="utf-8")
+
+        file_entries.append(
+            {
+                "path": file_data["path"],
+                "block_count": file_data["block_count"],
+                "json_file": output_file.relative_to(output_root).as_posix(),
+            }
+        )
+
+    manifest = {
+        **summary,
+        "output_mode": "split-tmp",
+        "files": file_entries,
+    }
+    manifest_path = output_root / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    return {
+        **summary,
+        "output_mode": "split-tmp",
+        "output_dir": str(output_root),
+        "manifest_path": str(manifest_path),
+        "manifest_file_count": len(file_entries),
+    }
+
+
 def _cmd_md_blocks(args: argparse.Namespace) -> int:
     config = _build_markdown_scan_config(args)
     files = scan_markdown_blocks(config)
 
-    summary = {
-        "root": str(config.root),
-        "targets": [str(path.relative_to(config.root)) for path in config.targets],
-        "recursive": config.recursive,
-        "min_level": config.min_level,
-        "max_level": config.max_level,
-        "start_line": config.start_line,
-        "end_line": config.end_line,
-        "separator": BLOCK_SEPARATOR,
-        "excludes": list(config.excludes),
-        "file_count": len(files),
-        "block_count": sum(file_data["block_count"] for file_data in files),
-    }
+    summary = _build_mdblocks_payload(
+        config,
+        include_recursive=True,
+        include_levels=True,
+        include_excludes=True,
+        file_count=len(files),
+        block_count=sum(file_data["block_count"] for file_data in files),
+    )
 
     if args.output_mode == "split-tmp":
-        output_root = Path(tempfile.mkdtemp(prefix="agentos-md-blocks-"))
-        files_root = output_root / "files"
-        file_entries: list[dict[str, object]] = []
-
-        for file_data in files:
-            rel_md_path = Path(file_data["path"])
-            output_file = files_root / rel_md_path.parent / f"{rel_md_path.name}.json"
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            output_file.write_text(json.dumps(file_data, indent=2), encoding="utf-8")
-
-            file_entries.append(
-                {
-                    "path": file_data["path"],
-                    "block_count": file_data["block_count"],
-                    "json_file": output_file.relative_to(output_root).as_posix(),
-                }
-            )
-
-        manifest = {
-            **summary,
-            "output_mode": "split-tmp",
-            "files": file_entries,
-        }
-        manifest_path = output_root / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-
-        payload = {
-            **summary,
-            "output_mode": "split-tmp",
-            "output_dir": str(output_root),
-            "manifest_path": str(manifest_path),
-            "manifest_file_count": len(file_entries),
-        }
+        payload = _write_split_tmp_blocks_payload(
+            summary=summary,
+            files=files,
+        )
 
         if args.json:
             print(json.dumps(payload, indent=2))
             return 0
 
-        print(manifest_path)
+        print(payload["manifest_path"])
         return 0
 
-    payload = {
-        **summary,
-        "files": files,
-    }
+    payload = {**summary, "files": files}
 
     if args.json:
         print(json.dumps(payload, indent=2))
@@ -135,15 +170,11 @@ def _cmd_md_links(args: argparse.Namespace) -> int:
     config = _build_markdown_scan_config(args)
     files = scan_markdown_blocks(config)
     links = collect_block_links(files)
-    payload = {
-        "root": str(config.root),
-        "targets": [str(path.relative_to(config.root)) for path in config.targets],
-        "start_line": config.start_line,
-        "end_line": config.end_line,
-        "separator": BLOCK_SEPARATOR,
-        "link_count": len(links),
-        "links": links,
-    }
+    payload = _build_mdblocks_payload(
+        config,
+        link_count=len(links),
+        links=links,
+    )
 
     if args.json:
         print(json.dumps(payload, indent=2))
@@ -161,17 +192,13 @@ def _cmd_md_links(args: argparse.Namespace) -> int:
 def _cmd_md_lint(args: argparse.Namespace) -> int:
     config = _build_markdown_scan_config(args)
     lint_payload = lint_markdown_blocks(config=config)
-    payload = {
-        "root": str(config.root),
-        "targets": [str(path.relative_to(config.root)) for path in config.targets],
-        "recursive": config.recursive,
-        "start_line": config.start_line,
-        "end_line": config.end_line,
-        "separator": BLOCK_SEPARATOR,
-        "hard_max_block_lines": HARD_MAX_BLOCK_LINES,
-        "excludes": list(config.excludes),
+    payload = _build_mdblocks_payload(
+        config,
+        include_recursive=True,
+        include_excludes=True,
+        hard_max_block_lines=HARD_MAX_BLOCK_LINES,
         **lint_payload,
-    }
+    )
 
     if args.json:
         print(json.dumps(payload, indent=2))
@@ -217,18 +244,13 @@ def _cmd_md_find(args: argparse.Namespace) -> int:
     except ValueError as exc:
         raise SystemExit(f"error: {exc}") from exc
 
-    payload = {
-        "root": str(config.root),
-        "targets": [str(path.relative_to(config.root)) for path in config.targets],
-        "recursive": config.recursive,
-        "min_level": config.min_level,
-        "max_level": config.max_level,
-        "start_line": config.start_line,
-        "end_line": config.end_line,
-        "separator": BLOCK_SEPARATOR,
-        "excludes": list(config.excludes),
+    payload = _build_mdblocks_payload(
+        config,
+        include_recursive=True,
+        include_levels=True,
+        include_excludes=True,
         **find_payload,
-    }
+    )
 
     if args.json:
         print(json.dumps(payload, indent=2))

@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from taralib.tapes import TapeHandler
+from tara_stdlib.tapes import TapeHandler
 
 from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
@@ -169,7 +169,7 @@ def bootstrap_tara_tape(
     # Use TapeHandler.instantiate() for core directory + manifest creation
     th.instantiate(manifest=manifest_payload)
 
-    # Ensure stage/ directory exists (taralib doesn't create it by default)
+    # Ensure stage/ directory exists (tara-stdlib-py doesn't create it by default)
     get_tara_tape_stage_dir(resolved_root).mkdir(parents=True, exist_ok=True)
 
     return load_tara_tape_manifest(resolved_root), True

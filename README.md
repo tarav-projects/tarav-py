@@ -22,14 +22,15 @@ Current baseline includes:
 
 `agentos skills` exposes local skills-directory helpers:
 
-- `list`: print discovered top-level skill directory names (`--json` optional)
-- `path`: print the skills root path or a specific skill path
-- `flatten [root]`: walk nested skill folders in any nested layout, including hidden directories and symlinked bundles, and create top-level symlinks for nested `SKILL.md` directories (defaults to current working directory)
-- `flatten --dry-run`: print planned symlink creations or replacements without writing filesystem changes
-- `flatten --overwrite`: replace conflicting destination symlinks instead of skipping them; non-symlink conflicts still warn and are left untouched
-- `prune [root]`: recursively remove broken symlinks under a skills root without following working symlink targets (defaults to current working directory)
-- `prune --dry-run`: print broken symlinks that would be removed without writing filesystem changes
-- Existing root-path collisions are skipped: matching destination symlinks are reported as `info`, everything else as `warn`, with both source and destination paths reported.
+- Commands resolve the nearest ancestor containing `.agentos/` from the current working directory.
+- Imports are declared in `<project>/.agentos/config.json` under `skills.imports`.
+- `list`: print discovered top-level skill directory names from the effective target folder (`--json` optional)
+- `path`: print the effective target folder path or a specific skill path
+- `sync`: discover all imported `SKILL.md` directories and sync them into the effective target folder via symlinks
+- `sync --dry-run`: print planned symlink creations, updates, and stale-link removals without writing filesystem changes
+- `prune`: remove broken managed symlinks from the effective target folder
+- `prune --dry-run`: print broken managed symlinks that would be removed without writing filesystem changes
+- `--skills-folder <path>`: override the target folder for a command; defaults to `<project>/skills`
 
 ## Tape CLI (folder-backed default)
 

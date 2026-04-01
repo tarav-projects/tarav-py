@@ -9,7 +9,7 @@ source = { editable = "." }
 dependencies = [
     { name = "jmespath" },
     { name = "jsonschema" },
-    { name = "taralib" },
+    { name = "tara-stdlib-py" },
 ]
 
 [package.dev-dependencies]
@@ -21,7 +21,7 @@ dev = [
 requires-dist = [
     { name = "jmespath", specifier = ">=1.0.1" },
     { name = "jsonschema", specifier = ">=4.25.1" },
-    { name = "taralib", editable = "../../Documents/workspaces/oba-workspace/taraproject-py/packages/taralib" },
+    { name = "tara-stdlib-py", editable = "../../Documents/workspaces/oba-workspace/taraproject-py/packages/tara-stdlib-py" },
 ]
 
 [package.metadata.requires-dev]
@@ -284,9 +284,9 @@ wheels = [
 ]
 
 [[package]]
-name = "taralib"
+name = "tara-stdlib-py"
 version = "0.0.1"
-source = { editable = "../../Documents/workspaces/oba-workspace/taraproject-py/packages/taralib" }
+source = { editable = "../../Documents/workspaces/oba-workspace/taraproject-py/packages/tara-stdlib-py" }
 
 [package.metadata]
 
