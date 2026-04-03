@@ -17,7 +17,6 @@ from agentos.chat.accounts import (
     format_chat_account_stats_usage,
     supported_account_provider_families,
 )
-from agentos.chat.archive import archive_chat_instances, supported_archive_provider_families
 from agentos.chat.core import (
     chat_session_resolved_stats,
     chat_session_stats,
@@ -55,9 +54,6 @@ from agentos.chat.sessions import coerce_timestamp
 _CHAT_PROVIDER_CHOICES = tuple(provider_family.family for provider_family in supported_provider_families())
 _CHAT_ACCOUNTS_PROVIDER_CHOICES = tuple(
     provider_family.family for provider_family in supported_account_provider_families()
-)
-_CHAT_ARCHIVE_PROVIDER_CHOICES = tuple(
-    provider_family.family for provider_family in supported_archive_provider_families()
 )
 _DURATION_RE = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw]?)$")
 _CHAT_ACCOUNTS_LOOP_INTERVAL_SEC = 60.0
@@ -183,14 +179,6 @@ def _cmd_chat_session_extract(args: argparse.Namespace) -> int:
         raw=args.raw,
     )
     print(output)
-    return 0
-
-
-def _cmd_chat_archive(args: argparse.Namespace) -> int:
-    payload = archive_chat_instances(
-        providers=tuple(args.providers) if args.providers else None,
-    )
-    print(json.dumps(payload, indent=2))
     return 0
 
 
@@ -720,19 +708,6 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Skip all filtering; emit every content block verbatim.",
     )
     extract_parser.set_defaults(handler=_cmd_chat_session_extract)
-
-    archive_parser = chat_subparsers.add_parser(
-        "archive",
-        help="Mirror configured agent/chat homes into ~/.agentos/chat-archive and checkpoint changes with git.",
-    )
-    archive_parser.add_argument(
-        "--provider",
-        choices=_CHAT_ARCHIVE_PROVIDER_CHOICES,
-        action="append",
-        dest="providers",
-        help="Restrict archiving to a provider family. Repeat to include multiple providers.",
-    )
-    archive_parser.set_defaults(handler=_cmd_chat_archive)
 
     accounts_parser = chat_subparsers.add_parser(
         "accounts",

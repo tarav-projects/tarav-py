@@ -1,0 +1,65 @@
+# Chatlas Implementation TODO
+
+## Goal
+- Implement `Chatlas` as an `agentos` subsystem with a clean `agentos chatlas ...` command surface.
+- Start with the raw-data update layer, then add the first normalized/session query, derived transcript, and summary layers.
+- Do not preserve backward-compatibility command paths or config aliases that only exist for the old `chat archive` framing.
+
+## Checklist
+- [x] Record the implementation TODO note for progress tracking.
+- [x] Add a top-level `agentos chatlas` CLI surface.
+- [x] Remove the `agentos chat archive` command surface.
+- [x] Implement `agentos chatlas update`.
+- [x] Store Chatlas data under a dedicated git-backed root at `~/.agentos/chatlas`.
+- [x] Create the initial Chatlas dataset layout:
+- [x] `raw/`
+- [x] `manifests/updates/`
+- [x] Define the initial Chatlas config namespace.
+- [x] Use `chatlas.provider_instances` instead of `chat.archive.provider_instances`.
+- [x] Keep built-in default provider homes for the raw update layer.
+- [x] Reuse the existing raw mirroring engine for the first slice without keeping the old CLI.
+- [x] Write one update manifest when dataset content changes.
+- [x] Commit dataset changes at the Chatlas repo root, not at the raw mirror folder.
+- [x] Add targeted tests for:
+- [x] default update behavior
+- [x] unchanged second run behavior
+- [x] configured extra provider instance behavior
+- [x] Materialize normalized sessions into `normalized/sessions.jsonl`.
+- [x] Add `agentos chatlas stats`.
+- [x] Add `agentos chatlas query`.
+- [x] Add targeted tests for normalized session materialization and query/stats behavior.
+- [x] Materialize derived transcripts under `derived/transcripts/`.
+- [x] Add `agentos chatlas export`.
+- [x] Add targeted tests for derived transcript generation and export behavior.
+- [x] Materialize derived session summaries under `derived/summaries/`.
+- [x] Extend `agentos chatlas query` with transcript-content filters.
+- [x] Add targeted tests for summary generation and transcript-content query behavior.
+- [x] Run focused tests.
+
+## Progress Notes
+- Accepted service boundary is captured in `517-chatlas-service-boundary.md`.
+- Accepted implementation direction is to start with a clean `agentos chatlas update` first slice.
+- No backward-compatibility shim should remain for `agentos chat archive`.
+- Implemented first slice:
+- top-level `agentos chatlas update`
+- new Chatlas root at `~/.agentos/chatlas`
+- raw mirror output under `raw/`
+- update manifests under `manifests/updates/`
+- fresh `chatlas.provider_instances` config namespace
+- Implemented second slice:
+- normalized session snapshot at `normalized/sessions.jsonl`
+- `agentos chatlas stats`
+- `agentos chatlas query`
+- normalized session rows reuse the canonical `agentos chat session` shape with backing artifacts included
+- Implemented third slice:
+- derived transcript materialization under `derived/transcripts/`
+- transcript export through `agentos chatlas export`
+- transcript generation reuses the existing provider extractors and shared markdown/jsonl transcript formatters
+- Implemented fourth slice:
+- derived summary snapshot at `derived/summaries/sessions.jsonl`
+- `agentos chatlas query --text-contain ...`
+- `agentos chatlas query --user-contain ...`
+- query results now include summary payloads when available
+- Focused verification:
+- `uv run pytest tests/test_chatlas_commands.py -q`
+- `uv run pytest tests/test_chat_commands.py tests/test_chat_extract_commands.py tests/test_chat_accounts_commands.py tests/test_chatlas_commands.py -q`

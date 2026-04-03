@@ -7,6 +7,7 @@ from typing import Sequence
 from agentos import __version__
 from agentos._core.errors import CliError
 from agentos.chat import register_chat_commands
+from agentos.chatlas import register_chatlas_commands
 from agentos.mdblocks.commands import register_mdblocks_commands
 from agentos.prefix.commands import register_prefix_commands
 from agentos.project import register_project_commands
@@ -33,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_project_commands(subparsers)
     register_system_commands(subparsers)
     register_chat_commands(subparsers)
+    register_chatlas_commands(subparsers)
     register_tara_tapes_commands(subparsers)
     register_tape_commands(subparsers)
     register_refs_commands(subparsers)
