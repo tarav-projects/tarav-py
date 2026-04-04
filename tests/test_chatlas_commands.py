@@ -108,6 +108,56 @@ def _write_codex_session_index(
     )
 
 
+def _write_openclaw_session(
+    sessions_dir: Path,
+    *,
+    session_id: str,
+    session_key: str = "agent:main:telegram:direct:734641842",
+) -> Path:
+    records = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": session_id,
+            "timestamp": "2026-03-08T12:05:10.000Z",
+            "cwd": "/Users/pereiro/.openclaw/workspace",
+        },
+        {
+            "type": "message",
+            "id": "msg-user-1",
+            "timestamp": "2026-03-08T12:05:12.017Z",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "hello from openclaw"}],
+            },
+        },
+        {
+            "type": "message",
+            "id": "msg-assistant-1",
+            "timestamp": "2026-03-08T12:05:18.000Z",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "[[reply_to_current]] openclaw reply"}],
+            },
+        },
+    ]
+    transcript_path = sessions_dir / f"{session_id}.jsonl"
+    _write(transcript_path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _write(
+        sessions_dir / "sessions.json",
+        json.dumps(
+            {
+                session_key: {
+                    "sessionId": session_id,
+                    "sessionFile": str(transcript_path),
+                    "updatedAt": 1772995738498,
+                }
+            }
+        ),
+    )
+    return transcript_path
+
+
 def _write_global_config(
     path: Path,
     *,
@@ -465,6 +515,90 @@ def test_chatlas_query_matches_normalized_thread_name(
     assert session["summary"]["turn_count"] == 0
     assert session["summary_levels"]["brief"]["level"] == "brief"
     assert session["summary_levels"]["detailed"]["level"] == "detailed"
+
+
+def test_chatlas_query_can_include_provider_stats_for_exact_session_queries(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    thread_name = "provider-stats-thread"
+    _write_codex_dialog_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
+        session_id=session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(["chatlas", "query", thread_name, "--include-match", "--include-provider-stats"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session_count"] == 1
+    assert "provider_stats" in payload["expansions"]
+    session = payload["sessions"][0]
+    assert session["match"]["fields"] == [{"field": "thread_name", "value": thread_name}]
+    assert session["provider_stats"]["has_rollout_artifact"] is True
+    assert session["provider_stats"]["dialog_turn_count"] == 2
+
+
+def test_chatlas_query_matches_openclaw_logical_session_keys(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    session_id = "9ce6dc88-dd77-4ea1-9c6b-2c4e9fd5d401"
+    session_key = "agent:main:telegram:direct:734641842"
+    _write_openclaw_session(
+        home / ".openclaw" / "agents" / "main" / "sessions",
+        session_id=session_id,
+        session_key=session_key,
+    )
+
+    assert main(["chatlas", "update", "--provider", "openclaw"]) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(
+        [
+            "chatlas",
+            "query",
+            session_key,
+            "--include-match",
+            "--include-provider-stats",
+            "--include-artifacts",
+        ]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "openclaw"
+    assert session["session_id"] == session_id
+    assert session["native"] == {
+        "session_keys": [session_key],
+        "agent_id": "main",
+    }
+    assert session["match"]["fields"] == [{"field": "session_key", "value": session_key}]
+    assert session["provider_stats"]["session_key_count"] == 1
+    assert session["provider_stats"]["dialog_turn_count"] == 2
 
 
 def test_chatlas_query_supports_user_contain_transcript_filter(

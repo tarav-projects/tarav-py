@@ -76,6 +76,7 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
         include_summary=args.include_summary,
         include_summary_levels=tuple(args.summary_levels or ()),
         include_transcript_filter_match=args.include_transcript_filter_match,
+        include_provider_stats=args.include_provider_stats,
     )
     print(json.dumps(payload, indent=2))
     return 0
@@ -208,6 +209,11 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "--include-transcript-filter-match",
         action="store_true",
         help="Include transcript filter match metadata when transcript filters are used.",
+    )
+    query_parser.add_argument(
+        "--include-provider-stats",
+        action="store_true",
+        help="Include provider-specific stats for each matched session.",
     )
     query_parser.set_defaults(handler=_cmd_chatlas_query)
 

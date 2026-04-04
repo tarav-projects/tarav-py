@@ -312,6 +312,7 @@ def chatlas_query(
     include_summary: bool = False,
     include_summary_levels: tuple[str, ...] = (),
     include_transcript_filter_match: bool = False,
+    include_provider_stats: bool = False,
 ) -> dict[str, object]:
     _validate_chatlas_sort(sort)
     _validate_chatlas_limit(limit)
@@ -370,6 +371,11 @@ def chatlas_query(
             }
         if include_transcript_filter_match and selection.transcript_filter_match:
             enriched["transcript_filter_match"] = selection.transcript_filter_match
+        if include_provider_stats:
+            enriched["provider_stats"] = _chatlas_provider_stats_for_session(
+                chatlas_root_path,
+                selection.session,
+            )
         matched_sessions.append(enriched)
 
     expansions: list[str] = []
@@ -383,6 +389,8 @@ def chatlas_query(
         expansions.append("match")
     if include_transcript_filter_match and (normalized_text_contain is not None or normalized_user_contain is not None):
         expansions.append("transcript_filter_match")
+    if include_provider_stats:
+        expansions.append("provider_stats")
     return {
         "status": "ok",
         "command": "chatlas query",
@@ -1163,7 +1171,26 @@ def _chatlas_session_summary(
     payload.pop("summary_levels", None)
     payload.pop("match", None)
     payload.pop("transcript_filter_match", None)
+    payload.pop("provider_stats", None)
     return payload
+
+
+def _chatlas_provider_stats_for_session(
+    chatlas_root: Path,
+    session: dict[str, Any],
+) -> dict[str, Any] | None:
+    uri = _string_or_none(session.get("uri"))
+    provider = _string_or_none(session.get("provider"))
+    if uri is None:
+        return None
+    resolved_sessions = resolve_chatlas_sessions(
+        uri,
+        providers=None if provider is None else (provider,),
+        chatlas_root=chatlas_root,
+    )
+    if len(resolved_sessions) != 1:
+        return None
+    return _build_provider_session_stats(resolved_sessions[0])
 
 
 def _select_chatlas_sessions(
