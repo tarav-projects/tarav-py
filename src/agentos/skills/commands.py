@@ -4,11 +4,14 @@ import argparse
 import json
 from pathlib import Path
 
+from agentos._core.errors import CliError
 from agentos.utils.skills import (
-    list_target_skill_names,
     prune_skills_target,
     require_skills_project_root,
+    resolve_skill,
     resolve_project_skills_dir,
+    resolve_skills_path,
+    list_resolved_skills,
     sync_skills_target,
 )
 
@@ -20,27 +23,45 @@ def _resolve_project_and_target(args: argparse.Namespace) -> tuple[Path, Path]:
 
 
 def _cmd_skills_list(args: argparse.Namespace) -> int:
-    _, target_dir = _resolve_project_and_target(args)
-    names = list_target_skill_names(target_dir)
+    skills = list_resolved_skills(Path.cwd(), skills_folder=args.skills_folder)
     if args.json:
-        print(json.dumps(names))
+        print(
+            json.dumps(
+                [
+                    {
+                        "name": skill.name,
+                        "resolved_from_index": skill.resolved_from_index,
+                        "source_kind": skill.source_kind,
+                        "root": str(skill.root),
+                        "path": str(skill.path),
+                    }
+                    for skill in skills
+                ]
+            )
+        )
         return 0
 
-    if not names:
+    if not skills:
         print("No skills found.")
         return 0
 
-    for name in names:
-        print(name)
+    for skill in skills:
+        print(f"{skill.name}\t{skill.source_kind}[{skill.resolved_from_index}]\t{skill.path}")
     return 0
 
 
 def _cmd_skills_path(args: argparse.Namespace) -> int:
-    _, target_dir = _resolve_project_and_target(args)
     if args.name:
-        print(target_dir / args.name)
+        skill = resolve_skill(args.name, Path.cwd(), skills_folder=args.skills_folder)
+        if skill is None:
+            raise CliError(f"skill not found in effective skills path: {args.name}")
+        print(skill.name)
+        print(f"resolved_from: PATH[{skill.resolved_from_index}]")
+        print(f"source_kind: {skill.source_kind}")
+        print(f"path: {skill.path}")
     else:
-        print(target_dir)
+        for entry in resolve_skills_path(Path.cwd(), skills_folder=args.skills_folder):
+            print(f"PATH[{entry.resolved_from_index}] {entry.source_kind} {entry.root}")
     return 0
 
 
@@ -104,24 +125,24 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
 
     skills_list_parser = skills_subparsers.add_parser(
         "list",
-        help="List skills from the effective project skills folder.",
+        help="List effective skills from the ordered skills path with source provenance.",
     )
     skills_list_parser.add_argument(
         "--json",
         action="store_true",
-        help="Emit list as a JSON array.",
+        help="Emit resolved skills as structured JSON records.",
     )
     skills_list_parser.add_argument(
         "--skills-folder",
         type=Path,
         default=None,
-        help="Project-relative skills target folder override (default: skills).",
+        help="Project-relative project skills root override for the first PATH entry (default: skills).",
     )
     skills_list_parser.set_defaults(handler=_cmd_skills_list)
 
     skills_path_parser = skills_subparsers.add_parser(
         "path",
-        help="Print full path to the effective project skills folder or one skill path.",
+        help="Print the ordered skills path, or resolve one skill through it.",
     )
     skills_path_parser.add_argument(
         "name",
@@ -132,7 +153,7 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
         "--skills-folder",
         type=Path,
         default=None,
-        help="Project-relative skills target folder override (default: skills).",
+        help="Project-relative project skills root override for the first PATH entry (default: skills).",
     )
     skills_path_parser.set_defaults(handler=_cmd_skills_path)
 

@@ -22,15 +22,17 @@ Current baseline includes:
 
 `agentos skills` exposes local skills-directory helpers:
 
-- Commands resolve the nearest ancestor containing `.agentos/` from the current working directory.
+- Commands resolve skills through an ordered skills path.
+- Outside a project the default path is `~/.agentos/skills`.
+- Inside an `agentos` project the default path is `<project>/skills`, then `~/.agentos/skills`.
 - Imports are declared in `<project>/.agentos/config.json` under `skills.imports`.
-- `list`: print discovered top-level skill directory names from the effective target folder (`--json` optional)
-- `path`: print the effective target folder path or a specific skill path
+- `list`: print effective top-level skills with winning source provenance (`--json` optional)
+- `path`: print the ordered skills path, or resolve one specific skill through it
 - `sync`: discover all imported `SKILL.md` directories and sync them into the effective target folder via symlinks
 - `sync --dry-run`: print planned symlink creations, updates, and stale-link removals without writing filesystem changes
 - `prune`: remove broken managed symlinks from the effective target folder
 - `prune --dry-run`: print broken managed symlinks that would be removed without writing filesystem changes
-- `--skills-folder <path>`: override the target folder for a command; defaults to `<project>/skills`
+- `--skills-folder <path>`: override the project-local root used as the first path entry; defaults to `<project>/skills`
 
 ## Tape CLI (folder-backed default)
 

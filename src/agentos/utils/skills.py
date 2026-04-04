@@ -7,6 +7,7 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.project import (
+    agentos_home_dir,
     build_not_inside_project_message,
     find_agentos_project_root,
     load_project_config,
@@ -33,6 +34,22 @@ class DiscoveredSkill:
     name: str
     source_path: Path
     import_name: str
+
+
+@dataclass(frozen=True)
+class SkillsPathEntry:
+    root: Path
+    source_kind: str
+    resolved_from_index: int
+
+
+@dataclass(frozen=True)
+class ResolvedSkill:
+    name: str
+    root: Path
+    path: Path
+    source_kind: str
+    resolved_from_index: int
 
 
 @dataclass(frozen=True)
@@ -68,6 +85,10 @@ def list_skill_names() -> list[str]:
 
 def find_skills_project_root(start_path: Path | str = ".") -> Path | None:
     return find_agentos_project_root(start_path)
+
+
+def global_skills_dir() -> Path:
+    return agentos_home_dir() / DEFAULT_PROJECT_SKILLS_DIRNAME
 
 
 def require_skills_project_root(start_path: Path | str = ".") -> Path:
@@ -224,14 +245,14 @@ def discover_imported_skills(imports: list[SkillsImport]) -> list[DiscoveredSkil
     return discovered
 
 
-def list_target_skill_names(target_dir: Path) -> list[str]:
+def list_target_skill_dirs(target_dir: Path) -> list[Path]:
     root = target_dir.expanduser().resolve()
     if not root.exists():
         return []
     if not root.is_dir():
         raise CliError(f"skills target is not a directory: {root}")
 
-    names: list[str] = []
+    skill_dirs: list[Path] = []
     for child in sorted(root.iterdir(), key=lambda path: path.name):
         if child.name.startswith("."):
             continue
@@ -241,8 +262,92 @@ def list_target_skill_names(target_dir: Path) -> list[str]:
         except OSError:
             continue
         if (child / SKILL_MARKER_FILENAME).is_file():
-            names.append(child.name)
-    return names
+            skill_dirs.append(child)
+    return skill_dirs
+
+
+def list_target_skill_names(target_dir: Path) -> list[str]:
+    return [path.name for path in list_target_skill_dirs(target_dir)]
+
+
+def resolve_skills_path(
+    start_path: Path | str = ".",
+    *,
+    skills_folder: Path | None = None,
+) -> list[SkillsPathEntry]:
+    project_root = find_skills_project_root(start_path)
+    path_entries: list[SkillsPathEntry] = []
+
+    if project_root is not None:
+        path_entries.append(
+            SkillsPathEntry(
+                root=resolve_project_skills_dir(project_root, skills_folder=skills_folder),
+                source_kind="project",
+                resolved_from_index=len(path_entries),
+            )
+        )
+    elif skills_folder is not None:
+        raise CliError(build_not_inside_project_message())
+
+    path_entries.append(
+        SkillsPathEntry(
+            root=global_skills_dir().resolve(),
+            source_kind="global",
+            resolved_from_index=len(path_entries),
+        )
+    )
+    return path_entries
+
+
+def list_resolved_skills(
+    start_path: Path | str = ".",
+    *,
+    skills_folder: Path | None = None,
+) -> list[ResolvedSkill]:
+    resolved_by_name: dict[str, ResolvedSkill] = {}
+
+    for entry in resolve_skills_path(start_path, skills_folder=skills_folder):
+        for skill_dir in list_target_skill_dirs(entry.root):
+            name = skill_dir.name
+            if name in resolved_by_name:
+                continue
+            resolved_by_name[name] = ResolvedSkill(
+                name=name,
+                root=entry.root,
+                path=skill_dir,
+                source_kind=entry.source_kind,
+                resolved_from_index=entry.resolved_from_index,
+            )
+
+    return [resolved_by_name[name] for name in sorted(resolved_by_name)]
+
+
+def resolve_skill(
+    name: str,
+    start_path: Path | str = ".",
+    *,
+    skills_folder: Path | None = None,
+) -> ResolvedSkill | None:
+    normalized_name = str(name).strip()
+    if not normalized_name:
+        raise CliError("skill name is required")
+
+    for entry in resolve_skills_path(start_path, skills_folder=skills_folder):
+        skill_path = entry.root / normalized_name
+        if not skill_path.exists():
+            continue
+        if not skill_path.is_dir():
+            continue
+        if not (skill_path / SKILL_MARKER_FILENAME).is_file():
+            continue
+        return ResolvedSkill(
+            name=normalized_name,
+            root=entry.root,
+            path=skill_path,
+            source_kind=entry.source_kind,
+            resolved_from_index=entry.resolved_from_index,
+        )
+    return None
 
 
 def _resolved_symlink_target(path: Path) -> Path:

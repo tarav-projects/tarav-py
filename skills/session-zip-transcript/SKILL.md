@@ -1,13 +1,13 @@
 ---
 name: session-zip-transcript
-description: Resolve a chat session from a session id, session URI, or provider-agnostic query, extract its conversation with `agentos chat session`, and return a compressed transcript artifact. Use when the user wants prior session context loaded in a smaller form that preserves full user turns but not the exact original assistant wording.
+description: Resolve a chat session from a session id, session URI, or provider-agnostic query, extract its conversation with `agentos chatlas`, and return a compressed transcript artifact. Use when the user wants prior session context loaded in a smaller form that preserves full user turns but not the exact original assistant wording.
 ---
 
 # Session Zip Transcript
 
 Return a compressed transcript for a prior chat session.
 
-This skill must run as an agent by default, not inline in the caller context. `agentos chat session` handles deterministic resolution and extraction. The agent always compresses the transcript before returning it.
+This skill must run as an agent by default, not inline in the caller context. `agentos chatlas` handles deterministic resolution and extraction from the maintained chat dataset. The agent always compresses the transcript before returning it.
 
 ## Trigger Boundary
 
@@ -61,7 +61,7 @@ Could not resolve a prior session because no session identifier or query was pro
 Provide one of:
 - a session id
 - an agentos://chat-session/... URI
-- a query that can be resolved with `agentos chat session find`
+- a query that can be resolved with `agentos chatlas query --include-match`
 ```
 
 ## Step 1: Resolve The Session
@@ -71,14 +71,14 @@ If the input is already an `agentos://chat-session/...` URI, use it directly.
 Otherwise resolve it with:
 
 ```bash
-agentos chat session find "<query>"
+agentos chatlas query "<query>" --include-match
 ```
 
 Resolution rules:
 
-- If `finding_count` is `1`, use the returned `findings[0].uri`.
-- If `finding_count` is `0`, fail clearly and say the session could not be found.
-- If `finding_count` is greater than `1`, do not guess. Return this short ambiguity report shape:
+- If `session_count` is `1`, use the returned `sessions[0].uri`.
+- If `session_count` is `0`, fail clearly and say the session could not be found.
+- If `session_count` is greater than `1`, do not guess. Return this short ambiguity report shape:
 
 ```text
 Multiple prior sessions matched the query. I did not choose one automatically.
@@ -95,7 +95,7 @@ Reply with the exact `session_id` or `uri` to continue.
 Extract markdown with:
 
 ```bash
-agentos chat session extract "<resolved-uri>" --format markdown
+agentos chatlas export "<resolved-uri>" --kind transcript --format markdown
 ```
 
 Use markdown extraction unless the user explicitly asks for another format.
@@ -193,8 +193,8 @@ Add a short provenance header before the first transcript turn when the informat
 ```text
 source-session-id: <session-id>
 source-session-uri: <resolved-uri>
-resolved-via: agentos chat session find
-extracted-via: agentos chat session extract --format markdown
+resolved-via: agentos chatlas query --include-match
+extracted-via: agentos chatlas export --kind transcript --format markdown
 ```
 
 When both a session id and URI are available, include both. Treat these as first-class provenance data, not optional decoration.
@@ -226,3 +226,4 @@ Then emit the transcript in a stable turn-based format:
 
 - This skill is for continuation and context recovery, not quote-accurate archival use.
 - The caller must be aware that the returned transcript is compressed and not original.
+- Prefer Chatlas dataset resolution over `agentos chat debug ...`; the debug surface is for live connector diagnostics, not normal prior-session recovery.

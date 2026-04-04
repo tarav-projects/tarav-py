@@ -32,6 +32,13 @@ def _write_project_config(project_root: Path, imports: list[dict[str, object]]) 
     config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def _set_fake_home(monkeypatch, home_root: Path) -> Path:
+    monkeypatch.setenv("HOME", str(home_root))
+    skills_root = home_root / ".agentos" / "skills"
+    skills_root.mkdir(parents=True, exist_ok=True)
+    return skills_root
+
+
 def test_skills_sync_creates_symlinks_from_configured_imports(
     tmp_path: Path,
     monkeypatch,
@@ -245,12 +252,16 @@ def test_skills_list_and_path_use_effective_project_target(
     monkeypatch,
     capsys,
 ) -> None:
+    global_skills_root = _set_fake_home(monkeypatch, tmp_path / "home")
     project_root = tmp_path / "project"
     project_root.mkdir(parents=True, exist_ok=True)
 
     external_root = tmp_path / "external-skills"
     alpha_skill = external_root / "alpha-skill"
     _create_skill(alpha_skill)
+    _create_skill(global_skills_root / "alpha-skill")
+    gamma_skill = global_skills_root / "gamma-skill"
+    _create_skill(gamma_skill)
 
     _write_project_config(
         project_root,
@@ -263,45 +274,88 @@ def test_skills_list_and_path_use_effective_project_target(
 
     assert main(["skills", "list", "--skills-folder", ".agents/skills", "--json"]) == 0
     listed = json.loads(capsys.readouterr().out)
-    assert listed == ["alpha-skill"]
+    assert listed == [
+        {
+            "name": "alpha-skill",
+            "resolved_from_index": 0,
+            "source_kind": "project",
+            "root": str((project_root / ".agents" / "skills").resolve()),
+            "path": str(project_root / ".agents" / "skills" / "alpha-skill"),
+        },
+        {
+            "name": "gamma-skill",
+            "resolved_from_index": 1,
+            "source_kind": "global",
+            "root": str(global_skills_root.resolve()),
+            "path": str(gamma_skill),
+        },
+    ]
 
     assert main(["skills", "path", "--skills-folder", ".agents/skills"]) == 0
-    target_path = capsys.readouterr().out.strip()
-    assert target_path == str((project_root / ".agents" / "skills").resolve())
+    target_path_lines = capsys.readouterr().out.strip().splitlines()
+    assert target_path_lines == [
+        f"PATH[0] project {(project_root / '.agents' / 'skills').resolve()}",
+        f"PATH[1] global {global_skills_root.resolve()}",
+    ]
 
     assert main(["skills", "path", "alpha-skill", "--skills-folder", ".agents/skills"]) == 0
-    skill_path = capsys.readouterr().out.strip()
-    assert skill_path == str(project_root / ".agents" / "skills" / "alpha-skill")
+    skill_path_lines = capsys.readouterr().out.strip().splitlines()
+    assert skill_path_lines == [
+        "alpha-skill",
+        "resolved_from: PATH[0]",
+        "source_kind: project",
+        f"path: {project_root / '.agents' / 'skills' / 'alpha-skill'}",
+    ]
 
 
-def test_skills_commands_require_dot_agentos_directory(
+def test_skills_list_and_path_use_global_skills_outside_project(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
-    monkeypatch.chdir(tmp_path)
+    global_skills_root = _set_fake_home(monkeypatch, tmp_path / "home")
+    alpha_skill = global_skills_root / "alpha-skill"
+    _create_skill(alpha_skill)
 
-    assert main(["skills", "path"]) == 1
-    stderr = capsys.readouterr().err
-
-    assert "missing .agentos/project.json" in stderr
-
-
-def test_skills_commands_ignore_global_agentos_home_without_project_marker(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-) -> None:
-    fake_home = tmp_path / "home"
-    (fake_home / ".agentos").mkdir(parents=True, exist_ok=True)
-
-    workspace = fake_home / "work" / "repo"
+    workspace = tmp_path / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
-
-    monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.chdir(workspace)
 
-    assert main(["skills", "path"]) == 1
+    assert main(["skills", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed == [
+        {
+            "name": "alpha-skill",
+            "resolved_from_index": 0,
+            "source_kind": "global",
+            "root": str(global_skills_root.resolve()),
+            "path": str(alpha_skill),
+        }
+    ]
+
+    assert main(["skills", "path"]) == 0
+    path_lines = capsys.readouterr().out.strip().splitlines()
+    assert path_lines == [f"PATH[0] global {global_skills_root.resolve()}"]
+
+    assert main(["skills", "path", "alpha-skill"]) == 0
+    skill_path_lines = capsys.readouterr().out.strip().splitlines()
+    assert skill_path_lines == [
+        "alpha-skill",
+        "resolved_from: PATH[0]",
+        "source_kind: global",
+        f"path: {alpha_skill}",
+    ]
+
+
+def test_skills_sync_requires_real_project_marker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_home(monkeypatch, tmp_path / "home")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["skills", "sync"]) == 1
     stderr = capsys.readouterr().err
 
     assert "missing .agentos/project.json" in stderr
