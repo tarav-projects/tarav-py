@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos._core.project import load_project_config, local_storage_paths, project_config_path
+from agentos._core.project import (
+    build_not_inside_project_message,
+    find_agentos_project_root,
+    load_project_config,
+    local_storage_paths,
+    project_config_path,
+)
 
 SKILL_MARKER_FILENAME = "SKILL.md"
 DEFAULT_PROJECT_SKILLS_DIRNAME = "skills"
@@ -61,23 +67,13 @@ def list_skill_names() -> list[str]:
 
 
 def find_skills_project_root(start_path: Path | str = ".") -> Path | None:
-    current = Path(start_path).expanduser().resolve()
-    if current.is_file():
-        current = current.parent
-
-    while True:
-        if (current / ".agentos").is_dir():
-            return current
-        parent = current.parent
-        if parent == current:
-            return None
-        current = parent
+    return find_agentos_project_root(start_path)
 
 
 def require_skills_project_root(start_path: Path | str = ".") -> Path:
     project_root = find_skills_project_root(start_path)
     if project_root is None:
-        raise CliError("not inside a skills project (missing .agentos directory in current or parent paths)")
+        raise CliError(build_not_inside_project_message())
     return project_root
 
 

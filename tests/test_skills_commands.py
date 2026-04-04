@@ -13,8 +13,14 @@ def _create_skill(path: Path) -> None:
 
 
 def _write_project_config(project_root: Path, imports: list[dict[str, object]]) -> None:
+    marker_path = project_root / ".agentos" / "project.json"
     config_path = project_root / ".agentos" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_payload = {
+        "class": "agentos.project",
+        "schema_version": 1,
+        "project_id": "00000000-0000-4000-8000-000000000001",
+    }
     payload = {
         "class": "agentos.project.config",
         "schema_version": 1,
@@ -22,6 +28,7 @@ def _write_project_config(project_root: Path, imports: list[dict[str, object]]) 
             "imports": imports,
         },
     }
+    marker_path.write_text(json.dumps(marker_payload, indent=2) + "\n", encoding="utf-8")
     config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
@@ -277,4 +284,24 @@ def test_skills_commands_require_dot_agentos_directory(
     assert main(["skills", "path"]) == 1
     stderr = capsys.readouterr().err
 
-    assert "missing .agentos directory" in stderr
+    assert "missing .agentos/project.json" in stderr
+
+
+def test_skills_commands_ignore_global_agentos_home_without_project_marker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    fake_home = tmp_path / "home"
+    (fake_home / ".agentos").mkdir(parents=True, exist_ok=True)
+
+    workspace = fake_home / "work" / "repo"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.chdir(workspace)
+
+    assert main(["skills", "path"]) == 1
+    stderr = capsys.readouterr().err
+
+    assert "missing .agentos/project.json" in stderr
