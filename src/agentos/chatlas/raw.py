@@ -170,17 +170,29 @@ class ChatlasProviderContext:
         }
 
 
-def supported_chatlas_provider_families() -> tuple[ChatlasProviderHandler, ...]:
-    return tuple(
-        ChatlasProviderHandler(
-            family=provider_spec.family,
-            home_slots=provider_spec.home_slots,
-            default_excludes=provider_spec.chatlas_default_excludes,
-            default_includes=provider_spec.chatlas_default_includes,
-        )
-        for provider_spec in canonical_chat_provider_specs()
-        if provider_spec.supports_chatlas_raw
+def _build_chatlas_provider_handler(provider_spec) -> ChatlasProviderHandler:
+    return ChatlasProviderHandler(
+        family=provider_spec.family,
+        home_slots=provider_spec.home_slots,
+        default_excludes=provider_spec.chatlas_default_excludes,
+        default_includes=provider_spec.chatlas_default_includes,
     )
+
+
+_CHATLAS_PROVIDER_HANDLERS = tuple(
+    _build_chatlas_provider_handler(provider_spec)
+    for provider_spec in canonical_chat_provider_specs()
+    if provider_spec.supports_chatlas_raw
+)
+_CHATLAS_PROVIDER_HANDLERS_BY_NAME = {
+    provider_handler.family: provider_handler
+    for provider_handler in _CHATLAS_PROVIDER_HANDLERS
+}
+_CHATLAS_PROVIDER_NAMES = tuple(sorted(_CHATLAS_PROVIDER_HANDLERS_BY_NAME))
+
+
+def supported_chatlas_provider_families() -> tuple[ChatlasProviderHandler, ...]:
+    return _CHATLAS_PROVIDER_HANDLERS
 
 
 def _provider_instances_from_config_entries(
@@ -197,9 +209,7 @@ def _chatlas_instance_from_raw_config(entry: ProviderInstanceConfigEntry) -> Pro
 
     provider_handler = _chatlas_provider_handler_for_name(family_name)
     if provider_handler is None:
-        supported_providers = ", ".join(
-            sorted(provider_family.family for provider_family in supported_chatlas_provider_families())
-        )
+        supported_providers = ", ".join(_CHATLAS_PROVIDER_NAMES)
         raise CliError(
             f"{entry.field_name('provider')} must be one of: {supported_providers}"
         )
@@ -275,12 +285,7 @@ def _chatlas_provider_handler_for_name(family_name: str) -> ChatlasProviderHandl
     provider_spec = canonical_chat_provider_spec_for_name(family_name)
     if provider_spec is None or not provider_spec.supports_chatlas_raw:
         return None
-    return ChatlasProviderHandler(
-        family=provider_spec.family,
-        home_slots=provider_spec.home_slots,
-        default_excludes=provider_spec.chatlas_default_excludes,
-        default_includes=provider_spec.chatlas_default_includes,
-    )
+    return _CHATLAS_PROVIDER_HANDLERS_BY_NAME.get(family_name)
 
 
 def _provider_instance_field_name(*, field_prefix: str, index: int | None, field: str) -> str:

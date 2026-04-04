@@ -439,7 +439,19 @@ def test_chatlas_query_matches_normalized_thread_name(
     assert main(["chatlas", "update", "--provider", "codex"]) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "query", thread_name]) == 0
+    assert main(
+        [
+            "chatlas",
+            "query",
+            thread_name,
+            "--include-match",
+            "--include-summary",
+            "--summary-level",
+            "brief",
+            "--summary-level",
+            "detailed",
+        ]
+    ) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["command"] == "chatlas query"
@@ -482,12 +494,23 @@ def test_chatlas_query_supports_user_contain_transcript_filter(
     assert main(["chatlas", "update", "--provider", "codex"]) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "query", "--user-contain", "searchable user"]) == 0
+    assert main(
+        [
+            "chatlas",
+            "query",
+            "--user-contain",
+            "searchable user",
+            "--include-summary",
+            "--summary-level",
+            "detailed",
+            "--include-transcript-filter-match",
+        ]
+    ) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["session_count"] == 1
     assert payload["selection"]["query"] is None
-    assert payload["selection"]["user_contain"] == "searchable user"
+    assert payload["selection"]["filters"]["user_contain"] == "searchable user"
     assert payload["sessions"][0]["transcript_filter_match"] == {"user_contain": "searchable user"}
     assert payload["sessions"][0]["summary"]["first_user_text"] == "searchable user text"
     assert payload["sessions"][0]["summary_levels"]["detailed"]["user_turn_previews"] == ["searchable user text"]
@@ -520,7 +543,16 @@ def test_chatlas_query_supports_text_contain_filter(
     assert main(["chatlas", "update", "--provider", "codex"]) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "query", "--text-contain", "searchable phrase"]) == 0
+    assert main(
+        [
+            "chatlas",
+            "query",
+            "--text-contain",
+            "searchable phrase",
+            "--include-summary",
+            "--include-transcript-filter-match",
+        ]
+    ) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["session_count"] == 1

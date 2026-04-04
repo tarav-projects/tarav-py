@@ -13,9 +13,14 @@ from agentos._core.project import agentos_home_dir
 from agentos.chat.core import (
     _build_common_session_stats,
     _build_provider_context,
+    _build_provider_session_stats,
     _dedupe_sessions,
     _discover_direct_provider_sessions,
+    _find_direct_provider_sessions,
+    _format_resolved_session_choices,
+    _format_stats_timestamp,
     _provider_family_for_name,
+    _sort_sessions,
 )
 from agentos.chat.extractors import extract_chat_session
 from agentos.chat.providers import (
@@ -24,6 +29,7 @@ from agentos.chat.providers import (
     load_chat_config_documents,
     provider_instance_config_entries_from_config,
 )
+from agentos.chat.sessions import ChatSession, coerce_timestamp
 from agentos.chatlas.raw import (
     _build_chatlas_provider_context,
     _chatlas_home_destination,
@@ -41,9 +47,17 @@ _DERIVED_TRANSCRIPTS_RELATIVE_ROOT = Path("derived") / "transcripts"
 _DERIVED_SUMMARIES_RELATIVE_ROOT = Path("derived") / "summaries"
 _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH = _DERIVED_SUMMARIES_RELATIVE_ROOT / "brief.jsonl"
 _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH = _DERIVED_SUMMARIES_RELATIVE_ROOT / "detailed.jsonl"
+_SUMMARY_RELATIVE_PATHS = {
+    "brief": _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH,
+    "detailed": _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH,
+}
 _CHATLAS_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
     object_path=("chatlas", "provider_instances"),
     field_prefix="chatlas.provider_instances",
+)
+_CHAT_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
+    object_path=("chat", "session", "provider_instances"),
+    field_prefix="chat.session.provider_instances",
 )
 _SUMMARY_LEVELS = ("brief", "detailed")
 
@@ -73,20 +87,26 @@ def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSetti
 
     for config in load_chat_config_documents(start_path=start_path):
         chatlas_config = _chatlas_config_from_config(config)
-        if chatlas_config is None:
-            continue
+        if chatlas_config is not None:
+            raw_commit_prefix = chatlas_config.get("commit_prefix")
+            if raw_commit_prefix is not None:
+                if not isinstance(raw_commit_prefix, str) or not raw_commit_prefix.strip():
+                    raise CliError("config field chatlas.commit_prefix must be a non-empty string")
+                commit_prefix = raw_commit_prefix.strip()
 
-        raw_commit_prefix = chatlas_config.get("commit_prefix")
-        if raw_commit_prefix is not None:
-            if not isinstance(raw_commit_prefix, str) or not raw_commit_prefix.strip():
-                raise CliError("config field chatlas.commit_prefix must be a non-empty string")
-            commit_prefix = raw_commit_prefix.strip()
-
+            provider_instances.extend(
+                _provider_instances_from_config_entries(
+                    provider_instance_config_entries_from_config(
+                        config,
+                        source=_CHATLAS_PROVIDER_INSTANCE_CONFIG_SOURCE,
+                    )
+                )
+            )
         provider_instances.extend(
             _provider_instances_from_config_entries(
                 provider_instance_config_entries_from_config(
                     config,
-                    source=_CHATLAS_PROVIDER_INSTANCE_CONFIG_SOURCE,
+                    source=_CHAT_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE,
                 )
             )
         )
@@ -138,13 +158,13 @@ def chatlas_update(
     _ensure_git_repo(chatlas_root_path)
     normalized_sessions = _materialize_normalized_sessions(
         chatlas_root=chatlas_root_path,
-        provider_instances=selected_instances,
+        provider_instances=settings.provider_instances,
     )
     derived_transcript_session_count = _materialize_derived_transcripts(
         chatlas_root=chatlas_root_path,
         normalized_sessions=normalized_sessions,
     )
-    derived_summary_count = _materialize_derived_summaries(
+    derived_summary_counts = _materialize_derived_summaries(
         chatlas_root=chatlas_root_path,
         normalized_sessions=normalized_sessions,
     )
@@ -167,7 +187,7 @@ def chatlas_update(
                 skipped_instance_count=skipped_instance_count,
                 normalized_session_count=len(normalized_sessions),
                 derived_transcript_session_count=derived_transcript_session_count,
-                derived_summary_counts=derived_summary_count,
+                derived_summary_counts=derived_summary_counts,
                 instance_payloads=instance_payloads,
             ),
         )
@@ -205,8 +225,8 @@ def chatlas_update(
             "brief": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
             "detailed": str(chatlas_root_path / _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH),
         },
-        "derived_summary_count": derived_summary_count["brief"],
-        "derived_summary_counts": derived_summary_count,
+        "derived_summary_count": derived_summary_counts["brief"],
+        "derived_summary_counts": derived_summary_counts,
         "manifest_path": None if manifest_path is None else str(manifest_path),
         "commit_prefix": settings.commit_prefix,
         "provider_count": len(provider_names),
@@ -224,6 +244,7 @@ def chatlas_stats(
     *,
     providers: tuple[str, ...] | None = None,
     chatlas_root: Path | None = None,
+    full_output: bool = False,
 ) -> dict[str, object]:
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
     sessions = _selected_normalized_sessions(chatlas_root_path, providers=providers)
@@ -233,23 +254,23 @@ def chatlas_stats(
         provider = _string_or_none(session.get("provider")) or "unknown"
         sessions_by_provider.setdefault(provider, []).append(session)
 
+    requested_providers = (
+        tuple(providers)
+        if providers is not None
+        else tuple(provider_handler.family for provider_handler in supported_chatlas_provider_families())
+    )
     by_provider = [
-        {
-            "provider": provider,
-            "session_count": len(provider_sessions),
-            "extractable_session_count": sum(1 for session in provider_sessions if bool(session.get("extractable"))),
-            "non_extractable_session_count": sum(
-                1 for session in provider_sessions if not bool(session.get("extractable"))
-            ),
-            "backing_artifact_count": sum(
-                int(session.get("backing_artifact_count", 0))
-                for session in provider_sessions
-            ),
-        }
-        for provider, provider_sessions in sorted(sessions_by_provider.items())
+        _build_chatlas_stats_provider_payload(provider, sessions_by_provider.get(provider, []))
+        for provider in requested_providers
+        if full_output or sessions_by_provider.get(provider)
     ]
     latest_manifest = _latest_update_manifest(chatlas_root_path)
     summary_levels_by_uri = _summary_levels_by_uri(chatlas_root_path)
+
+    derived_summary_counts = _derived_summary_counts(
+        sessions,
+        summary_levels_by_uri=summary_levels_by_uri,
+    )
 
     return {
         "status": "ok",
@@ -266,19 +287,8 @@ def chatlas_stats(
             "derived_transcript_session_count": sum(
                 1 for session in sessions if _derived_transcript_exists(chatlas_root_path, session, output_format="markdown")
             ),
-            "derived_summary_count": sum(
-                1
-                for session in sessions
-                if _session_summary_for_uri(summary_levels_by_uri, session) is not None
-            ),
-            "derived_summary_counts": {
-                level: sum(
-                    1
-                    for session in sessions
-                    if _session_summary_for_uri(summary_levels_by_uri, session, level=level) is not None
-                )
-                for level in _SUMMARY_LEVELS
-            },
+            "derived_summary_count": derived_summary_counts["brief"],
+            "derived_summary_counts": derived_summary_counts,
             "by_provider": by_provider,
             "last_update_recorded_at": None if latest_manifest is None else latest_manifest.get("recorded_at"),
             "last_update_manifest_path": None if latest_manifest is None else latest_manifest.get("_manifest_path"),
@@ -293,7 +303,18 @@ def chatlas_query(
     user_contain: str | None = None,
     providers: tuple[str, ...] | None = None,
     chatlas_root: Path | None = None,
+    sort: str = "lexical",
+    limit: int | None = None,
+    extractable_only: bool = False,
+    updated_after: float | None = None,
+    include_match: bool = False,
+    include_artifacts: bool = False,
+    include_summary: bool = False,
+    include_summary_levels: tuple[str, ...] = (),
+    include_transcript_filter_match: bool = False,
 ) -> dict[str, object]:
+    _validate_chatlas_sort(sort)
+    _validate_chatlas_limit(limit)
     normalized_query = None if query is None else query.strip()
     normalized_text_contain = None if text_contain is None else text_contain.strip()
     normalized_user_contain = None if user_contain is None else user_contain.strip()
@@ -303,8 +324,7 @@ def chatlas_query(
         normalized_text_contain = None
     if normalized_user_contain == "":
         normalized_user_contain = None
-    if normalized_query is None and normalized_text_contain is None and normalized_user_contain is None:
-        raise CliError("query, --text-contain, or --user-contain is required")
+    normalized_summary_levels = _normalize_summary_levels(include_summary_levels)
 
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
     selections = _select_chatlas_sessions(
@@ -313,16 +333,30 @@ def chatlas_query(
         text_contain=normalized_text_contain,
         user_contain=normalized_user_contain,
         providers=providers,
+        extractable_only=extractable_only,
+        updated_after=updated_after,
     )
+    selections = _sort_chatlas_session_selections(selections, sort=sort)
+    if limit is not None:
+        selections = selections[:limit]
 
     matched_sessions: list[dict[str, Any]] = []
     for selection in selections:
         enriched = dict(selection.session)
-        if selection.summary is not None:
-            enriched["summary"] = selection.summary
-        if selection.summary_levels:
-            enriched["summary_levels"] = selection.summary_levels
-        if normalized_query is not None:
+        if not include_artifacts:
+            enriched.pop("backing_artifacts", None)
+        if include_summary:
+            enriched["summary"] = selection.summary or _build_session_summary(chatlas_root_path, selection.session, level="brief")
+        if normalized_summary_levels:
+            enriched["summary_levels"] = {
+                level: selection.summary_levels.get(level) or _build_session_summary(
+                    chatlas_root_path,
+                    selection.session,
+                    level=level,
+                )
+                for level in normalized_summary_levels
+            }
+        if include_match and normalized_query is not None:
             enriched["match"] = {
                 "query": normalized_query,
                 "kind": "exact_identity",
@@ -334,25 +368,36 @@ def chatlas_query(
                     for field_name, value in selection.matched_fields
                 ],
             }
-        if selection.transcript_filter_match:
+        if include_transcript_filter_match and selection.transcript_filter_match:
             enriched["transcript_filter_match"] = selection.transcript_filter_match
         matched_sessions.append(enriched)
 
-    matched_sessions.sort(key=lambda session: str(session.get("session_id", "")))
-    expansions = ["backing_artifacts", "summary", "summary_levels"]
-    if normalized_query is not None:
+    expansions: list[str] = []
+    if include_artifacts:
+        expansions.append("backing_artifacts")
+    if include_summary:
+        expansions.append("summary")
+    if normalized_summary_levels:
+        expansions.append("summary_levels")
+    if include_match and normalized_query is not None:
         expansions.append("match")
-    if normalized_text_contain is not None or normalized_user_contain is not None:
+    if include_transcript_filter_match and (normalized_text_contain is not None or normalized_user_contain is not None):
         expansions.append("transcript_filter_match")
     return {
         "status": "ok",
         "command": "chatlas query",
         "selection": {
-            "kind": "query",
+            "kind": "query" if normalized_query is not None else "all",
             "query": normalized_query,
-            "text_contain": normalized_text_contain,
-            "user_contain": normalized_user_contain,
             "providers": list(providers) if providers is not None else None,
+            "filters": {
+                "sort": sort,
+                "limit": limit,
+                "extractable": extractable_only,
+                "updated_after": _format_stats_timestamp(updated_after),
+                "text_contain": normalized_text_contain,
+                "user_contain": normalized_user_contain,
+            },
         },
         "expansions": expansions,
         "session_count": len(matched_sessions),
@@ -389,6 +434,7 @@ def chatlas_export(
         chatlas_root_path,
         query=normalized_query,
         providers=providers,
+        extractable_only=True,
     )
     if not selections:
         raise CliError(f"no normalized Chatlas session matched query {query}")
@@ -410,6 +456,58 @@ def chatlas_export(
     rendered = _render_transcript(session, output_format=output_format)
     _write_text_if_changed(transcript_path, rendered)
     return rendered
+
+
+def resolve_chatlas_sessions(
+    query: str,
+    *,
+    providers: tuple[str, ...] | None = None,
+    chatlas_root: Path | None = None,
+    start_path: Path | str = ".",
+) -> list[ChatSession]:
+    chatlas_root_path = _resolve_chatlas_root(chatlas_root)
+    resolved_sessions: list[ChatSession] = []
+    for context in _iter_chatlas_session_contexts(
+        chatlas_root=chatlas_root_path,
+        start_path=start_path,
+        providers=providers,
+    ):
+        resolved_sessions.extend(_find_direct_provider_sessions(context, query))
+    return _sort_sessions(_dedupe_sessions(resolved_sessions), "lexical")
+
+
+def chatlas_resolved_session_stats(
+    query: str,
+    *,
+    providers: tuple[str, ...] | None = None,
+    chatlas_root: Path | None = None,
+    start_path: Path | str = ".",
+) -> dict[str, object]:
+    sessions = resolve_chatlas_sessions(
+        query,
+        providers=providers,
+        chatlas_root=chatlas_root,
+        start_path=start_path,
+    )
+    if not sessions:
+        raise CliError(f"no session matched query {query}")
+    if len(sessions) > 1:
+        raise CliError(
+            f"multiple sessions matched query {query}: {_format_resolved_session_choices(sessions)}"
+        )
+
+    session = sessions[0]
+    return {
+        "status": "ok",
+        "command": "chatlas stats",
+        "selection": {
+            "kind": "query",
+            "query": query,
+            "providers": list(providers) if providers is not None else None,
+        },
+        "session": _build_common_session_stats(session, query=query),
+        "stats": _build_provider_session_stats(session),
+    }
 
 
 def _chatlas_config_from_config(config: dict[str, object]) -> dict[str, object] | None:
@@ -495,6 +593,18 @@ def _compact_timestamp(value: str) -> str:
     )
 
 
+def _validate_chatlas_sort(sort: str) -> None:
+    if sort not in {"lexical", "newest", "oldest"}:
+        raise CliError(f"unsupported chatlas query sort: {sort}")
+
+
+def _validate_chatlas_limit(limit: int | None) -> None:
+    if limit is None:
+        return
+    if limit < 1:
+        raise CliError("chatlas query limit must be greater than 0")
+
+
 def _unique_strings(values: tuple[str, ...]) -> tuple[str, ...]:
     items: list[str] = []
     seen: set[str] = set()
@@ -504,6 +614,19 @@ def _unique_strings(values: tuple[str, ...]) -> tuple[str, ...]:
         seen.add(value)
         items.append(value)
     return tuple(items)
+
+
+def _normalize_summary_levels(levels: tuple[str, ...]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for level in levels:
+        if level not in _SUMMARY_LEVELS:
+            raise CliError(f"unsupported summary level: {level}")
+        if level in seen:
+            continue
+        seen.add(level)
+        normalized.append(level)
+    return tuple(normalized)
 
 
 def _materialize_normalized_sessions(
@@ -534,14 +657,17 @@ def _materialize_derived_transcripts(
     for session in normalized_sessions:
         if not _session_has_exportable_transcript(session):
             continue
+        rendered_outputs: dict[str, str] = {}
+        try:
+            for output_format in ("jsonl", "markdown"):
+                rendered_outputs[output_format] = _render_transcript(session, output_format=output_format)
+        except (CliError, OSError, json.JSONDecodeError):
+            continue
         transcript_session_count += 1
-        for output_format in ("jsonl", "markdown"):
+        for output_format, rendered_output in rendered_outputs.items():
             transcript_path = _derived_transcript_path(chatlas_root, session, output_format=output_format)
             transcript_path.parent.mkdir(parents=True, exist_ok=True)
-            _write_text_if_changed(
-                transcript_path,
-                _render_transcript(session, output_format=output_format),
-            )
+            _write_text_if_changed(transcript_path, rendered_output)
             expected_paths.add(transcript_path)
 
     _prune_stale_files(root=transcript_root, expected_paths=expected_paths)
@@ -606,12 +732,16 @@ def _chatlas_session_provider_instance(
     grep_targets: list[Path] = []
     sqlite_db_paths: list[Path] = []
 
-    for _, source_home_path in archive_provider_instance.homes:
+    for home_key, source_home_path in archive_provider_instance.homes:
         raw_home_path = _chatlas_home_destination(
             raw_root=raw_root,
             home_path=source_home_path,
         )
-        home_slot = _match_session_home_slot(provider_handler.family, source_home_path)
+        home_slot = _match_session_home_slot(
+            provider_handler.family,
+            source_home_path,
+            slot_key=home_key,
+        )
         if home_slot is None:
             continue
         slot_direct_paths, slot_grep_paths, slot_sqlite_db_paths = home_slot.build_paths(home=raw_home_path)
@@ -642,10 +772,20 @@ def _chatlas_session_provider_instance(
     )
 
 
-def _match_session_home_slot(provider_family: str, source_home_path: Path):
+def _match_session_home_slot(
+    provider_family: str,
+    source_home_path: Path,
+    *,
+    slot_key: str | None = None,
+):
     provider_handler = _provider_family_for_name(provider_family)
     if provider_handler is None:
         return None
+
+    if slot_key is not None:
+        for home_slot in provider_handler.home_slots:
+            if home_slot.key == slot_key:
+                return home_slot
 
     source_home_name = source_home_path.name
     for home_slot in provider_handler.home_slots:
@@ -755,10 +895,6 @@ def _load_normalized_sessions(chatlas_root: Path) -> list[dict[str, Any]]:
     return _load_jsonl_dict_rows(chatlas_root / _NORMALIZED_SESSIONS_RELATIVE_PATH)
 
 
-def _load_derived_summaries(chatlas_root: Path) -> list[dict[str, Any]]:
-    return _load_derived_summaries_for_level(chatlas_root, level="brief")
-
-
 def _load_derived_summaries_for_level(chatlas_root: Path, *, level: str) -> list[dict[str, Any]]:
     return _load_jsonl_dict_rows(chatlas_root / _summary_relative_path(level))
 
@@ -778,6 +914,27 @@ def _load_jsonl_dict_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _iter_chatlas_session_contexts(
+    *,
+    chatlas_root: Path,
+    start_path: Path | str = ".",
+    providers: tuple[str, ...] | None = None,
+):
+    settings = configured_chatlas_settings(start_path=start_path)
+    raw_root = chatlas_root / "raw"
+    requested_providers = None if providers is None else set(providers)
+    for provider_instance in settings.provider_instances:
+        if requested_providers is not None and provider_instance.family not in requested_providers:
+            continue
+        session_provider_instance = _chatlas_session_provider_instance(
+            raw_root=raw_root,
+            archive_provider_instance=provider_instance,
+        )
+        if session_provider_instance is None:
+            continue
+        yield _build_provider_context(session_provider_instance)
+
+
 def _selected_normalized_sessions(
     chatlas_root: Path,
     *,
@@ -788,6 +945,82 @@ def _selected_normalized_sessions(
         return sessions
     requested_providers = set(providers)
     return [session for session in sessions if session.get("provider") in requested_providers]
+
+
+def _session_matches_query_filters(
+    session: dict[str, Any],
+    *,
+    extractable_only: bool,
+    updated_after: float | None,
+) -> bool:
+    if extractable_only and not bool(session.get("extractable")):
+        return False
+    if updated_after is not None:
+        timestamp = _chatlas_session_sort_timestamp(session)
+        if timestamp is None or timestamp < updated_after:
+            return False
+    return True
+
+
+def _chatlas_session_sort_timestamp(session: dict[str, Any]) -> float | None:
+    return coerce_timestamp(session.get("updated_at")) or coerce_timestamp(session.get("created_at"))
+
+
+def _sort_chatlas_session_selections(
+    selections: list[ChatlasSessionSelection],
+    *,
+    sort: str,
+) -> list[ChatlasSessionSelection]:
+    if sort == "lexical":
+        return sorted(
+            selections,
+            key=lambda selection: str(selection.session.get("session_id") or ""),
+        )
+
+    reverse = sort == "newest"
+    return sorted(
+        selections,
+        key=lambda selection: (
+            _chatlas_session_sort_timestamp(selection.session) or 0.0,
+            str(selection.session.get("session_id") or ""),
+        ),
+        reverse=reverse,
+    )
+
+
+def _build_chatlas_stats_provider_payload(
+    provider: str,
+    sessions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    timestamps = [
+        (session, _chatlas_session_sort_timestamp(session))
+        for session in sessions
+        if _chatlas_session_sort_timestamp(session) is not None
+    ]
+    timestamps.sort(key=lambda item: ((item[1] or 0.0), str(item[0].get("session_id") or "")))
+    session_examples = [_chatlas_session_summary(session, include_artifacts=False) for session in sessions[:3]]
+    return {
+        "provider": provider,
+        "session_count": len(sessions),
+        "extractable_session_count": sum(1 for session in sessions if bool(session.get("extractable"))),
+        "non_extractable_session_count": sum(1 for session in sessions if not bool(session.get("extractable"))),
+        "backing_artifact_count": sum(int(session.get("backing_artifact_count", 0)) for session in sessions),
+        "session_id_examples": [
+            session_id
+            for session_id in (
+                _string_or_none(session.get("session_id"))
+                for session in sessions[:3]
+            )
+            if session_id is not None
+        ],
+        "session_examples": session_examples,
+        "oldest_session_id": _string_or_none(timestamps[0][0].get("session_id")) if timestamps else None,
+        "oldest_session_name": _string_or_none(timestamps[0][0].get("display_name")) if timestamps else None,
+        "oldest_session_at": _format_stats_timestamp(timestamps[0][1]) if timestamps else None,
+        "latest_session_id": _string_or_none(timestamps[-1][0].get("session_id")) if timestamps else None,
+        "latest_session_name": _string_or_none(timestamps[-1][0].get("display_name")) if timestamps else None,
+        "latest_session_at": _format_stats_timestamp(timestamps[-1][1]) if timestamps else None,
+    }
 
 
 def _summary_levels_by_uri(chatlas_root: Path) -> dict[str, dict[str, dict[str, Any]]]:
@@ -811,6 +1044,31 @@ def _session_summary_for_uri(
     if uri is None:
         return None
     return summary_levels_by_uri.get(uri, {}).get(level)
+
+
+def _session_summary_levels(
+    summary_levels_by_uri: dict[str, dict[str, dict[str, Any]]],
+    session: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    uri = _string_or_none(session.get("uri"))
+    if uri is None:
+        return {}
+    return summary_levels_by_uri.get(uri, {})
+
+
+def _derived_summary_counts(
+    sessions: list[dict[str, Any]],
+    *,
+    summary_levels_by_uri: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, int]:
+    return {
+        level: sum(
+            1
+            for session in sessions
+            if _session_summary_for_uri(summary_levels_by_uri, session, level=level) is not None
+        )
+        for level in _SUMMARY_LEVELS
+    }
 
 
 def _latest_update_manifest(chatlas_root: Path) -> dict[str, Any] | None:
@@ -857,7 +1115,14 @@ def _matched_normalized_session_fields(
         for field_name, raw_value in native.items():
             value = _string_or_none(raw_value)
             if value == query:
-                matched_fields.append((str(field_name), value))
+                matched_fields.append((_query_field_name_for_native_field(str(field_name)), value))
+                continue
+            if not isinstance(raw_value, list):
+                continue
+            for item in raw_value:
+                item_value = _string_or_none(item)
+                if item_value == query:
+                    matched_fields.append((_query_field_name_for_native_field(str(field_name)), item_value))
 
     seen: set[tuple[str, str]] = set()
     unique_matches: list[tuple[str, str]] = []
@@ -869,6 +1134,12 @@ def _matched_normalized_session_fields(
     return tuple(unique_matches)
 
 
+def _query_field_name_for_native_field(field_name: str) -> str:
+    if field_name == "session_keys":
+        return "session_key"
+    return field_name
+
+
 def _string_or_none(value: object) -> str | None:
     if not isinstance(value, str):
         return None
@@ -878,6 +1149,23 @@ def _string_or_none(value: object) -> str | None:
     return stripped
 
 
+def _chatlas_session_summary(
+    session: dict[str, Any],
+    *,
+    include_artifacts: bool,
+) -> dict[str, Any]:
+    payload = dict(session)
+    payload.pop("class", None)
+    payload.pop("schema_version", None)
+    if not include_artifacts:
+        payload.pop("backing_artifacts", None)
+    payload.pop("summary", None)
+    payload.pop("summary_levels", None)
+    payload.pop("match", None)
+    payload.pop("transcript_filter_match", None)
+    return payload
+
+
 def _select_chatlas_sessions(
     chatlas_root: Path,
     *,
@@ -885,10 +1173,18 @@ def _select_chatlas_sessions(
     text_contain: str | None = None,
     user_contain: str | None = None,
     providers: tuple[str, ...] | None = None,
+    extractable_only: bool = False,
+    updated_after: float | None = None,
 ) -> list[ChatlasSessionSelection]:
     summary_levels_by_uri = _summary_levels_by_uri(chatlas_root)
     selections: list[ChatlasSessionSelection] = []
     for session in _selected_normalized_sessions(chatlas_root, providers=providers):
+        if not _session_matches_query_filters(
+            session,
+            extractable_only=extractable_only,
+            updated_after=updated_after,
+        ):
+            continue
         matched_fields = _matched_normalized_session_fields(session, query=query)
         if query is not None and not matched_fields:
             continue
@@ -907,7 +1203,7 @@ def _select_chatlas_sessions(
                 matched_fields=matched_fields,
                 transcript_filter_match=transcript_filter_match or {},
                 summary=_session_summary_for_uri(summary_levels_by_uri, session),
-                summary_levels=summary_levels_by_uri.get(_string_or_none(session.get("uri")) or "", {}),
+                summary_levels=_session_summary_levels(summary_levels_by_uri, session),
             )
         )
     return selections
@@ -1014,11 +1310,10 @@ def _turn_previews(turns: list[dict[str, Any]], *, limit: int) -> list[dict[str,
 
 
 def _summary_relative_path(level: str) -> Path:
-    if level == "brief":
-        return _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH
-    if level == "detailed":
-        return _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH
-    raise CliError(f"unsupported summary level: {level}")
+    path = _SUMMARY_RELATIVE_PATHS.get(level)
+    if path is None:
+        raise CliError(f"unsupported summary level: {level}")
+    return path
 
 
 def _render_summary(summary: dict[str, Any], *, output_format: str) -> str:
@@ -1093,8 +1388,10 @@ def _prune_empty_dirs(root: Path, *, stop: Path) -> None:
 __all__ = [
     "chatlas_export",
     "chatlas_query",
+    "chatlas_resolved_session_stats",
     "chatlas_stats",
     "chatlas_update",
     "configured_chatlas_settings",
     "default_chatlas_root",
+    "resolve_chatlas_sessions",
 ]

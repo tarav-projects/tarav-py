@@ -18,8 +18,6 @@ from agentos.chat.accounts import (
     supported_account_provider_families,
 )
 from agentos.chat.core import (
-    chat_session_resolved_stats,
-    chat_session_stats,
     find_chat_session,
     format_chat_session_resolved_stats_markdown,
     format_chat_session_stats_markdown,
@@ -49,6 +47,17 @@ from agentos.chat.extractors.openclaw import (
 )
 from agentos.chat.extractors import extract_chat_session
 from agentos.chat.sessions import coerce_timestamp
+from agentos.chatlas.core import (
+    chatlas_export,
+    chatlas_query,
+    chatlas_resolved_session_stats,
+    chatlas_stats,
+    chatlas_update,
+    configured_chatlas_settings,
+    default_chatlas_root,
+    resolve_chatlas_sessions,
+)
+from agentos.chatlas.raw import _chatlas_home_destination
 
 
 _CHAT_PROVIDER_CHOICES = tuple(provider_family.family for provider_family in supported_provider_families())
@@ -101,19 +110,177 @@ def _normalize_session_query(query: str) -> str:
     return validate_string_for_path(normalized, field_name="session query")
 
 
+def _refresh_chatlas_session_backend(*, providers: tuple[str, ...] | None = None) -> None:
+    chatlas_update(providers=providers)
+
+
+def _session_backend_providers(providers: tuple[str, ...] | None) -> tuple[str, ...]:
+    if providers is not None:
+        return providers
+    return _CHAT_PROVIDER_CHOICES
+
+
+def _rewrite_session_payloads_to_source_paths(sessions: object) -> list[dict[str, object]]:
+    if not isinstance(sessions, list):
+        return []
+    settings = configured_chatlas_settings()
+    raw_root = default_chatlas_root() / "raw"
+    return [
+        _rewrite_session_payload_to_source_paths(session, settings=settings, raw_root=raw_root)
+        for session in sessions
+        if isinstance(session, dict)
+    ]
+
+
+def _rewrite_stats_provider_examples_to_source_paths(providers: object) -> list[dict[str, object]]:
+    if not isinstance(providers, list):
+        return []
+    settings = configured_chatlas_settings()
+    raw_root = default_chatlas_root() / "raw"
+    rewritten: list[dict[str, object]] = []
+    for provider_payload in providers:
+        if not isinstance(provider_payload, dict):
+            continue
+        payload = dict(provider_payload)
+        session_examples = payload.get("session_examples")
+        if isinstance(session_examples, list):
+            payload["session_examples"] = [
+                _rewrite_session_payload_to_source_paths(
+                    session,
+                    settings=settings,
+                    raw_root=raw_root,
+                )
+                for session in session_examples
+                if isinstance(session, dict)
+            ]
+        rewritten.append(payload)
+    return rewritten
+
+
+def _rewrite_session_payload_to_source_paths(
+    session: dict[str, object],
+    *,
+    settings=None,
+    raw_root: Path | None = None,
+) -> dict[str, object]:
+    settings = settings or configured_chatlas_settings()
+    raw_root = raw_root or (default_chatlas_root() / "raw")
+    payload = dict(session)
+    payload.pop("class", None)
+    payload.pop("schema_version", None)
+
+    primary_backing_artifact = payload.get("primary_backing_artifact")
+    if isinstance(primary_backing_artifact, dict):
+        rewritten_artifact = dict(primary_backing_artifact)
+        rewritten_artifact["path"] = _chatlas_path_to_source_path(
+            rewritten_artifact.get("path"),
+            settings=settings,
+            raw_root=raw_root,
+        )
+        payload["primary_backing_artifact"] = rewritten_artifact
+
+    backing_artifacts = payload.get("backing_artifacts")
+    if isinstance(backing_artifacts, list):
+        payload["backing_artifacts"] = [
+            _rewrite_backing_artifact_path(
+                artifact,
+                settings=settings,
+                raw_root=raw_root,
+            )
+            for artifact in backing_artifacts
+            if isinstance(artifact, dict)
+        ]
+
+    return payload
+
+
+def _rewrite_backing_artifact_path(
+    artifact: dict[str, object],
+    *,
+    settings,
+    raw_root: Path,
+) -> dict[str, object]:
+    payload = dict(artifact)
+    payload["path"] = _chatlas_path_to_source_path(
+        payload.get("path"),
+        settings=settings,
+        raw_root=raw_root,
+    )
+    return payload
+
+
+def _chatlas_path_to_source_path(
+    raw_path: object,
+    *,
+    settings,
+    raw_root: Path,
+) -> object:
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return raw_path
+
+    candidate = Path(raw_path).expanduser().resolve()
+    for provider_instance in settings.provider_instances:
+        for _, source_home_path in provider_instance.homes:
+            mirrored_home_path = _chatlas_home_destination(
+                raw_root=raw_root,
+                home_path=source_home_path,
+            )
+            try:
+                relative_path = candidate.relative_to(mirrored_home_path)
+            except ValueError:
+                continue
+            return str((source_home_path / relative_path).resolve())
+    return raw_path
+
+
 def _cmd_chat_session_list(args: argparse.Namespace) -> int:
     user_contain = args.user_contain
     limit = _normalize_session_limit(args.limit)
-    payload = list_chat_sessions(
+    providers = tuple(args.providers) if args.providers else None
+    backend_providers = _session_backend_providers(providers)
+    updated_after = _normalize_updated_since(args.updated_since)
+    _refresh_chatlas_session_backend(providers=backend_providers)
+
+    chatlas_payload = chatlas_query(
+        query=None,
+        user_contain=user_contain,
+        providers=backend_providers,
         sort=args.sort,
-        full_output=args.full_output,
-        limit=None if user_contain is not None else limit,
-        providers=tuple(args.providers) if args.providers else None,
+        limit=limit,
         extractable_only=args.extractable,
-        updated_after=_normalize_updated_since(args.updated_since),
+        updated_after=updated_after,
     )
+    payload = {
+        "status": "ok",
+        "command": "chat session list",
+        "selection": {
+            "kind": "all",
+            "providers": list(providers) if providers is not None else None,
+            "filters": {
+                "sort": args.sort,
+                "limit": limit,
+                "extractable": args.extractable,
+                "updated_after": chatlas_payload["selection"]["filters"]["updated_after"],
+            },
+        },
+        "expansions": [],
+        "sessions": _rewrite_session_payloads_to_source_paths(chatlas_payload["sessions"]),
+        "session_count": chatlas_payload["session_count"],
+    }
     if user_contain is not None:
-        payload = _filter_payload_by_user_contain(payload, query=user_contain, limit=limit)
+        payload["selection"]["filters"]["user_contain"] = user_contain
+    if args.full_output:
+        diagnostics_payload = list_chat_sessions(
+            sort=args.sort,
+            full_output=True,
+            limit=None if user_contain is not None else limit,
+            providers=providers,
+            extractable_only=args.extractable,
+            updated_after=updated_after,
+        )
+        if user_contain is not None:
+            diagnostics_payload = _filter_payload_by_user_contain(diagnostics_payload, query=user_contain, limit=limit)
+        payload["provider_diagnostics"] = diagnostics_payload.get("provider_diagnostics", [])
     if args.output_format == "card":
         print(_format_chat_session_list_card(payload, now=time.time()))
         return 0
@@ -123,33 +290,76 @@ def _cmd_chat_session_list(args: argparse.Namespace) -> int:
 
 def _cmd_chat_session_find(args: argparse.Namespace) -> int:
     query = _normalize_session_query(args.query)
-    payload = find_chat_session(
-        query,
+    backend_providers = _session_backend_providers(None)
+    _refresh_chatlas_session_backend(providers=backend_providers)
+    chatlas_payload = chatlas_query(
+        query=query,
+        include_match=True,
         include_artifacts=args.artifacts,
-        include_grep=args.grep,
-        full_output=args.full_output,
+        providers=backend_providers,
     )
+    payload = {
+        "status": "ok",
+        "command": "chat session find",
+        "selection": {
+            "kind": "query",
+            "query": query,
+            "providers": None,
+        },
+        "expansions": ["match"] + (["backing_artifacts"] if args.artifacts else []) + (["search_findings"] if args.grep else []),
+        "session_count": chatlas_payload["session_count"],
+        "sessions": _rewrite_session_payloads_to_source_paths(chatlas_payload["sessions"]),
+    }
+    if args.grep or args.full_output:
+        live_payload = find_chat_session(
+            query,
+            include_artifacts=args.artifacts,
+            include_grep=args.grep,
+            full_output=args.full_output,
+        )
+        if args.grep:
+            payload["search_finding_count"] = live_payload.get("search_finding_count", 0)
+            payload["search_findings"] = live_payload.get("search_findings", [])
+        if args.full_output:
+            payload["provider_diagnostics"] = live_payload.get("provider_diagnostics", [])
     print(json.dumps(payload, indent=2))
     return 0
 
 
 def _cmd_chat_session_stats(args: argparse.Namespace) -> int:
     providers = tuple(args.providers) if args.providers else None
+    backend_providers = _session_backend_providers(providers)
+    _refresh_chatlas_session_backend(providers=backend_providers)
     if args.session_query is not None:
-        payload = chat_session_resolved_stats(
+        payload = chatlas_resolved_session_stats(
             _normalize_session_query(args.session_query),
-            providers=providers,
+            providers=backend_providers,
         )
+        payload["command"] = "chat session stats"
+        payload["selection"] = {
+            "kind": "query",
+            "query": _normalize_session_query(args.session_query),
+            "providers": list(providers) if providers is not None else None,
+        }
+        session_payload = payload.get("session")
+        if isinstance(session_payload, dict):
+            payload["session"] = _rewrite_session_payload_to_source_paths(session_payload)
         if args.output_format == "markdown":
             print(format_chat_session_resolved_stats_markdown(payload))
             return 0
         print(json.dumps(payload, indent=2))
         return 0
 
-    payload = chat_session_stats(
+    payload = chatlas_stats(
+        providers=backend_providers,
         full_output=args.full_output,
-        providers=providers,
     )
+    payload["command"] = "chat session stats"
+    payload["selection"] = {
+        "kind": "all",
+        "providers": list(providers) if providers is not None else None,
+    }
+    payload["stats"]["by_provider"] = _rewrite_stats_provider_examples_to_source_paths(payload["stats"]["by_provider"])
     if args.output_format == "markdown":
         print(format_chat_session_stats_markdown(payload))
         return 0
@@ -172,12 +382,57 @@ def _normalize_optional_session_query(
 
 def _cmd_chat_session_extract(args: argparse.Namespace) -> int:
     session_query = _normalize_optional_session_query(args.session_query, file_path=args.file_path)
-    output = extract_chat_session(
-        session_query=session_query,
-        file_path=args.file_path,
-        output_format=args.output_format,
-        raw=args.raw,
-    )
+    if args.file_path is not None or args.raw:
+        output = extract_chat_session(
+            session_query=session_query,
+            file_path=args.file_path,
+            output_format=args.output_format,
+            raw=args.raw,
+        )
+    else:
+        backend_providers = _session_backend_providers(None)
+        _refresh_chatlas_session_backend(providers=backend_providers)
+        resolved_query = session_query or ""
+        if resolved_query.startswith("agentos://chat-session/"):
+            resolved_sessions = [
+                session
+                for session in resolve_chatlas_sessions(
+                    resolved_query,
+                    providers=backend_providers,
+                )
+                if session.primary_backing_artifact() is not None
+            ]
+        else:
+            payload = chatlas_query(
+                query=resolved_query,
+                providers=backend_providers,
+                extractable_only=True,
+            )
+            sessions = payload.get("sessions")
+            resolved_sessions = []
+            if isinstance(sessions, list):
+                for session_payload in sessions:
+                    if not isinstance(session_payload, dict):
+                        continue
+                    uri = _string_or_none(session_payload.get("uri"))
+                    if uri is None:
+                        continue
+                    resolved_sessions.extend(
+                        resolve_chatlas_sessions(
+                            uri,
+                            providers=backend_providers,
+                        )
+                    )
+        if not resolved_sessions:
+            raise CliError(f"no extractable backing artifact found for query {session_query}")
+        if len(resolved_sessions) > 1:
+            raise CliError(f"multiple extractable backing artifacts found for query {session_query}")
+        output = chatlas_export(
+            query=resolved_sessions[0].uri,
+            providers=(resolved_sessions[0].provider,),
+            artifact_kind="transcript",
+            output_format=args.output_format,
+        )
     print(output)
     return 0
 
