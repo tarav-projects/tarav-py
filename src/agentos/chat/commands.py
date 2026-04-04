@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import select
 import sys
 import time
@@ -11,10 +10,12 @@ from typing import TextIO
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
+from agentos.chat._cli_common import normalize_updated_since
 from agentos.chat.accounts import (
     chat_account_stats,
     format_chat_account_stats_markdown,
     format_chat_account_stats_usage,
+    iter_chat_account_stats_refresh_payloads,
     supported_account_provider_families,
 )
 from agentos.chat.core import (
@@ -51,7 +52,6 @@ _CHAT_PROVIDER_CHOICES = tuple(provider_family.family for provider_family in sup
 _CHAT_ACCOUNTS_PROVIDER_CHOICES = tuple(
     provider_family.family for provider_family in supported_account_provider_families()
 )
-_DURATION_RE = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw]?)$")
 _CHAT_ACCOUNTS_LOOP_INTERVAL_SEC = 60.0
 _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE = "[loop] refreshing..."
 
@@ -62,30 +62,6 @@ def _normalize_session_limit(limit: int | None) -> int | None:
     if limit < 1:
         raise CliError("session limit must be greater than 0")
     return limit
-
-
-def _normalize_updated_since(value: str | None) -> float | None:
-    if value is None:
-        return None
-
-    normalized = value.strip().lower()
-    match = _DURATION_RE.fullmatch(normalized)
-    if match is None:
-        raise CliError("updated-since must be an integer with optional unit s|m|h|d|w, e.g. 72h or 3d")
-
-    amount = int(match.group("value"))
-    if amount < 1:
-        raise CliError("updated-since must be greater than 0")
-
-    unit = match.group("unit") or "s"
-    multiplier = {
-        "s": 1,
-        "m": 60,
-        "h": 60 * 60,
-        "d": 24 * 60 * 60,
-        "w": 7 * 24 * 60 * 60,
-    }[unit]
-    return time.time() - (amount * multiplier)
 
 
 def _normalize_session_query(query: str) -> str:
@@ -106,7 +82,7 @@ def _cmd_chat_debug_list(args: argparse.Namespace) -> int:
         limit=None if user_contain is not None else limit,
         providers=tuple(args.providers) if args.providers else None,
         extractable_only=args.extractable,
-        updated_after=_normalize_updated_since(args.updated_since),
+        updated_after=normalize_updated_since(args.updated_since),
     )
     payload["command"] = "chat debug list"
     if user_contain is not None:
@@ -172,6 +148,13 @@ def _render_chat_accounts_stats_output(args: argparse.Namespace) -> str:
         refresh_usage=args.refresh_usage,
         full_output=args.full_output,
     )
+    return _format_chat_accounts_stats_payload_output(args, payload)
+
+
+def _format_chat_accounts_stats_payload_output(
+    args: argparse.Namespace,
+    payload: dict[str, object],
+) -> str:
     if args.output_format == "markdown":
         return format_chat_account_stats_markdown(payload)
     if args.output_format == "usage":
@@ -190,21 +173,25 @@ def _loop_chat_accounts_stats(
     input_stream = input_stream or sys.stdin
     output_stream = output_stream or sys.stdout
     wait_for_trigger = wait_for_trigger or _wait_for_chat_accounts_loop_trigger
+    tty_output = _stream_is_tty(output_stream)
 
     first_iteration = True
     while True:
-        rendered_output = _render_chat_accounts_stats_output(args)
-
-        if _stream_is_tty(output_stream):
-            _clear_terminal_screen(output_stream)
-        elif not first_iteration:
-            output_stream.write("\n")
-
-        output_stream.write(rendered_output)
-        output_stream.write(
-            f"\n\n[loop] refreshes every {int(interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
-        )
-        output_stream.flush()
+        if tty_output:
+            _render_chat_accounts_stats_progressive_tty(
+                args,
+                output_stream=output_stream,
+                interval_sec=interval_sec,
+            )
+        else:
+            rendered_output = _render_chat_accounts_stats_output(args)
+            if not first_iteration:
+                output_stream.write("\n")
+            output_stream.write(rendered_output)
+            output_stream.write(
+                f"\n\n[loop] refreshes every {int(interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
+            )
+            output_stream.flush()
         first_iteration = False
 
         try:
@@ -212,8 +199,45 @@ def _loop_chat_accounts_stats(
         except KeyboardInterrupt:
             return 0
 
-        output_stream.write(_CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n")
+        if not tty_output:
+            output_stream.write(_CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n")
+            output_stream.flush()
+
+
+def _render_chat_accounts_stats_progressive_tty(
+    args: argparse.Namespace,
+    *,
+    output_stream: TextIO,
+    interval_sec: float,
+) -> None:
+    for payload in iter_chat_account_stats_refresh_payloads(
+        instance_ids=tuple(args.instance_ids) if args.instance_ids else None,
+        providers=tuple(args.providers) if args.providers else None,
+        refresh_usage=args.refresh_usage,
+        full_output=args.full_output,
+    ):
+        rendered_output = _format_chat_accounts_stats_payload_output(args, payload)
+        _clear_terminal_screen(output_stream)
+        refresh_progress = _format_chat_accounts_refresh_progress(payload)
+        if refresh_progress is not None:
+            output_stream.write(refresh_progress)
+            output_stream.write("\n\n")
+        output_stream.write(rendered_output)
+        output_stream.write(
+            f"\n\n[loop] refreshes every {int(interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
+        )
         output_stream.flush()
+
+
+def _format_chat_accounts_refresh_progress(payload: dict[str, object]) -> str | None:
+    raw_pending_count = payload.get("pending_count")
+    raw_completed_count = payload.get("completed_count")
+    raw_account_count = payload.get("account_count")
+    if not isinstance(raw_pending_count, int) or not isinstance(raw_completed_count, int):
+        return None
+    if not isinstance(raw_account_count, int) or raw_pending_count < 0 or raw_completed_count < 0:
+        return None
+    return f"[refresh] {raw_completed_count}/{raw_account_count} complete; {raw_pending_count} pending"
 
 
 def _wait_for_chat_accounts_loop_trigger(interval_sec: float, input_stream: TextIO) -> None:
@@ -355,6 +379,30 @@ def _load_session_turns(
     return []
 
 
+def _load_turns_for_card_session_context(
+    *,
+    provider: str | None,
+    path: Path,
+    session_id: str,
+    gemini_session_data: dict[str, object] | None = None,
+) -> tuple[float | None, str | None] | None:
+    resolved_session_id = session_id
+    if provider == "gemini-cli":
+        session_data = gemini_session_data
+        if session_data is None:
+            session_data = load_gemini_cli_session_data(path)
+        resolved_session_id = str(session_data.get("sessionId") or session_id)
+
+    turns = _load_session_turns(
+        provider=provider,
+        path=path,
+        session_id=resolved_session_id,
+    )
+    if not turns:
+        return None
+    return _created_and_preview_from_turns(turns)
+
+
 def _format_chat_session_list_card(payload: dict[str, object], *, now: float) -> str:
     raw_sessions = payload.get("sessions")
     sessions = raw_sessions if isinstance(raw_sessions, list) else []
@@ -412,14 +460,15 @@ def _load_card_session_context(
     session_id: str,
 ) -> tuple[float | None, str | None]:
     try:
-        if provider == "codex":
-            turns = extract_dialog_from_codex_rollout(path, raw=False)
-            return _created_and_preview_from_turns(turns)
-
         if provider == "claude-code":
             if path.suffix == ".jsonl":
-                turns = extract_dialog_from_claude_code_session(path, raw=False)
-                return _created_and_preview_from_turns(turns)
+                loaded = _load_turns_for_card_session_context(
+                    provider=provider,
+                    path=path,
+                    session_id=session_id,
+                )
+                if loaded is not None:
+                    return loaded
             if path.suffix == ".json":
                 obj = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
                 if isinstance(obj, dict):
@@ -427,33 +476,25 @@ def _load_card_session_context(
                     preview = _string_or_none(obj.get("title"))
                     return created_at, preview
 
-        if provider == "copilot-cli":
-            events = load_copilot_cli_events(path)
-            turns = extract_dialog_from_copilot_cli_session(
-                events=events,
-                session_id=infer_copilot_cli_session_id_from_path(path) or session_id,
-                raw=False,
-            )
-            return _created_and_preview_from_turns(turns)
-
         if provider == "gemini-cli":
             session_data = load_gemini_cli_session_data(path)
-            turns = extract_dialog_from_gemini_cli_session(
-                session_data=session_data,
-                session_id=str(session_data.get("sessionId") or session_id),
-                raw=False,
+            loaded = _load_turns_for_card_session_context(
+                provider=provider,
+                path=path,
+                session_id=session_id,
+                gemini_session_data=session_data,
             )
-            created_at, preview = _created_and_preview_from_turns(turns)
-            return created_at or coerce_timestamp(session_data.get("startTime")), preview
+            if loaded is not None:
+                created_at, preview = loaded
+                return created_at or coerce_timestamp(session_data.get("startTime")), preview
 
-        if provider == "openclaw":
-            records = load_openclaw_session_records(path)
-            turns = extract_dialog_from_openclaw_session(
-                records=records,
-                session_id=infer_openclaw_session_id_from_path(path) or session_id,
-                raw=False,
-            )
-            return _created_and_preview_from_turns(turns)
+        loaded = _load_turns_for_card_session_context(
+            provider=provider,
+            path=path,
+            session_id=session_id,
+        )
+        if loaded is not None:
+            return loaded
     except (CliError, OSError, json.JSONDecodeError):
         return None, None
 

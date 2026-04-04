@@ -687,6 +687,100 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
     assert [account["id"] for account in payload["providers"][1]["accounts"]] == ["beta-1"]
 
 
+def test_iter_chat_account_stats_refresh_payloads_yields_partial_updates_as_accounts_finish(
+    monkeypatch,
+) -> None:
+    instances = (
+        _account_instance(
+            provider="alpha",
+            instance_id="alpha-1",
+            label="Alpha 1",
+            cli_command=("alpha",),
+            env=(),
+            timeout_sec=15,
+            live_usage_refresh=False,
+        ),
+        _account_instance(
+            provider="beta",
+            instance_id="beta-1",
+            label="Beta 1",
+            cli_command=("beta",),
+            env=(),
+            timeout_sec=15,
+            live_usage_refresh=False,
+        ),
+    )
+
+    release_alpha = threading.Event()
+
+    def collect(instance: chat_accounts.AccountProviderContext, refresh_usage: bool) -> dict[str, object]:
+        assert refresh_usage is False
+        if instance.instance_id == "alpha-1":
+            assert release_alpha.wait(timeout=1.0)
+        return {
+            "id": instance.instance_id,
+            "label": instance.label,
+            "provider": instance.provider,
+            "check_status": "ok",
+            "summary": f"{instance.instance_id} ready",
+        }
+
+    monkeypatch.setattr(
+        chat_accounts,
+        "supported_account_provider_families",
+        lambda: (
+            chat_accounts.AccountProviderHandler(
+                provider_family=chat_accounts.ProviderFamily(family="alpha"),
+                collect_stats=collect,
+            ),
+            chat_accounts.AccountProviderHandler(
+                provider_family=chat_accounts.ProviderFamily(family="beta"),
+                collect_stats=collect,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        chat_accounts,
+        "configured_account_provider_instances",
+        lambda start_path=".": instances,
+    )
+    monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
+
+    payloads = chat_accounts.iter_chat_account_stats_refresh_payloads()
+
+    initial_payload = next(payloads)
+    assert initial_payload["pending_count"] == 2
+    assert [account["check_status"] for account in initial_payload["providers"][0]["accounts"]] == ["pending"]
+    assert [account["check_status"] for account in initial_payload["providers"][1]["accounts"]] == ["pending"]
+
+    partial_payload_ready = threading.Event()
+    partial_payload_holder: list[dict[str, object]] = []
+
+    def load_partial_payload() -> None:
+        partial_payload_holder.append(next(payloads))
+        partial_payload_ready.set()
+
+    partial_thread = threading.Thread(target=load_partial_payload)
+    partial_thread.start()
+    assert partial_payload_ready.wait(timeout=1.0)
+    partial_payload = partial_payload_holder[0]
+    assert partial_payload["pending_count"] == 1
+    assert [account["check_status"] for account in partial_payload["providers"][0]["accounts"]] == ["pending"]
+    assert [account["check_status"] for account in partial_payload["providers"][1]["accounts"]] == ["ok"]
+
+    release_alpha.set()
+    partial_thread.join(timeout=1.0)
+
+    final_payload = next(payloads)
+    assert "pending_count" not in final_payload
+    assert final_payload["history"]["status"] == "ok"
+    assert [account["check_status"] for account in final_payload["providers"][0]["accounts"]] == ["ok"]
+    assert [account["check_status"] for account in final_payload["providers"][1]["accounts"]] == ["ok"]
+
+    with pytest.raises(StopIteration):
+        next(payloads)
+
+
 def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypatch) -> None:
     instance = _account_context(
         provider="claude-code",
@@ -827,14 +921,15 @@ def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> No
 
     events: list[str] = []
 
-    def fake_render(loop_args: argparse.Namespace) -> str:
+    def fake_render_progressive(
+        loop_args: argparse.Namespace,
+        *,
+        output_stream,
+        interval_sec: float,
+    ) -> None:  # type: ignore[no-untyped-def]
+        del output_stream, interval_sec
         assert loop_args is args
         events.append("render")
-        return "snapshot"
-
-    def fake_clear(output_stream) -> None:  # type: ignore[no-untyped-def]
-        del output_stream
-        events.append("clear")
 
     def fake_wait(interval_sec: float, input_stream) -> None:  # type: ignore[no-untyped-def]
         del interval_sec, input_stream
@@ -845,12 +940,9 @@ def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> No
             return True
 
         def write(self, text: str) -> int:
-            if text == "snapshot":
-                events.append("write")
             return super().write(text)
 
-    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_output", fake_render)
-    monkeypatch.setattr(chat_commands, "_clear_terminal_screen", fake_clear)
+    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_progressive_tty", fake_render_progressive)
 
     exit_code = chat_commands._loop_chat_accounts_stats(
         args,
@@ -861,7 +953,7 @@ def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> No
     )
 
     assert exit_code == 0
-    assert events == ["render", "clear", "write"]
+    assert events == ["render"]
 
 
 def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetch(monkeypatch) -> None:
@@ -874,19 +966,18 @@ def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetc
         loop=True,
     )
 
-    outputs = iter(("snapshot-1", "snapshot-2"))
     events: list[str] = []
     wait_calls = 0
 
-    def fake_render(loop_args: argparse.Namespace) -> str:
+    def fake_render_progressive(
+        loop_args: argparse.Namespace,
+        *,
+        output_stream,
+        interval_sec: float,
+    ) -> None:  # type: ignore[no-untyped-def]
+        del output_stream, interval_sec
         assert loop_args is args
-        snapshot = next(outputs)
-        events.append(f"render:{snapshot}")
-        return snapshot
-
-    def fake_clear(output_stream) -> None:  # type: ignore[no-untyped-def]
-        del output_stream
-        events.append("clear")
+        events.append(f"render:{len([event for event in events if event.startswith('render:')]) + 1}")
 
     def fake_wait(interval_sec: float, input_stream) -> None:  # type: ignore[no-untyped-def]
         nonlocal wait_calls
@@ -901,14 +992,9 @@ def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetc
             return True
 
         def write(self, text: str) -> int:
-            if text in {"snapshot-1", "snapshot-2"}:
-                events.append(f"write:{text}")
-            elif text == chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n":
-                events.append("write:refreshing")
             return super().write(text)
 
-    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_output", fake_render)
-    monkeypatch.setattr(chat_commands, "_clear_terminal_screen", fake_clear)
+    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_progressive_tty", fake_render_progressive)
 
     exit_code = chat_commands._loop_chat_accounts_stats(
         args,
@@ -920,15 +1006,73 @@ def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetc
 
     assert exit_code == 0
     assert events == [
-        "render:snapshot-1",
-        "clear",
-        "write:snapshot-1",
+        "render:1",
         "wait:1",
-        "write:refreshing",
-        "render:snapshot-2",
-        "clear",
-        "write:snapshot-2",
+        "render:2",
         "wait:2",
+    ]
+
+
+def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapshot(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="json",
+        loop=True,
+    )
+
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        chat_commands,
+        "iter_chat_account_stats_refresh_payloads",
+        lambda **kwargs: iter(
+            (
+                {"account_count": 2, "pending_count": 2, "completed_count": 0, "providers": []},
+                {"account_count": 2, "providers": []},
+            )
+        ),
+    )
+
+    def fake_format(loop_args: argparse.Namespace, payload: dict[str, object]) -> str:
+        assert loop_args is args
+        pending_count = payload.get("pending_count")
+        events.append(f"format:{pending_count if pending_count is not None else 'final'}")
+        if pending_count is not None:
+            return f"snapshot-pending-{pending_count}"
+        return "snapshot-final"
+
+    def fake_clear(output_stream) -> None:  # type: ignore[no-untyped-def]
+        del output_stream
+        events.append("clear")
+
+    class FakeTTYOutput(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+        def write(self, text: str) -> int:
+            if text.startswith("snapshot-"):
+                events.append(f"write:{text}")
+            return super().write(text)
+
+    monkeypatch.setattr(chat_commands, "_format_chat_accounts_stats_payload_output", fake_format)
+    monkeypatch.setattr(chat_commands, "_clear_terminal_screen", fake_clear)
+
+    chat_commands._render_chat_accounts_stats_progressive_tty(
+        args,
+        output_stream=FakeTTYOutput(),
+        interval_sec=60.0,
+    )
+
+    assert events == [
+        "format:2",
+        "clear",
+        "write:snapshot-pending-2",
+        "format:final",
+        "clear",
+        "write:snapshot-final",
     ]
 
 
@@ -1178,6 +1322,32 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> No
     assert output.index("burst-high (Burst high):") < output.index("steady-low (Steady low):")
     assert "  usage/time | 100% / 86% = 1.2 | Weekly 🔥 💀" in output
     assert "  usage/time | 70% / 75% = 0.9 | Burst ❄️ 👨‍🦰" in output
+
+
+def test_format_chat_account_stats_usage_shows_pending_refresh_accounts() -> None:
+    output = chat_accounts.format_chat_account_stats_usage(
+        {
+            "providers": [
+                {
+                    "accounts": [
+                        {
+                            "id": "pending-account",
+                            "label": "Pending account",
+                            "provider": "codex",
+                            "check_status": "pending",
+                            "summary": "Refreshing account status...",
+                            "usage_status": "pending",
+                            "usage_message": "Waiting for provider response.",
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    assert "⬢ pending-account (Pending account):" in output
+    assert "  refresh | pending" in output
+    assert "Waiting for provider response." in output
 
 
 def test_format_chat_account_stats_usage_shows_cold_marker_only_on_most_active_limit() -> None:

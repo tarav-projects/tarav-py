@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
-import time
 
-from agentos._core.errors import CliError
+from agentos.chat._cli_common import normalize_updated_since
 from agentos.chatlas.core import (
     chatlas_export,
     chatlas_query,
@@ -17,31 +15,6 @@ from agentos.chatlas.raw import supported_chatlas_provider_families
 _CHATLAS_PROVIDER_CHOICES = tuple(
     provider_family.family for provider_family in supported_chatlas_provider_families()
 )
-_DURATION_RE = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw]?)$")
-
-
-def _normalize_updated_since(value: str | None) -> float | None:
-    if value is None:
-        return None
-
-    normalized = value.strip().lower()
-    match = _DURATION_RE.fullmatch(normalized)
-    if match is None:
-        raise CliError("updated-since must be an integer with optional unit s|m|h|d|w, e.g. 72h or 3d")
-
-    amount = int(match.group("value"))
-    if amount < 1:
-        raise CliError("updated-since must be greater than 0")
-
-    unit = match.group("unit") or "s"
-    multiplier = {
-        "s": 1,
-        "m": 60,
-        "h": 60 * 60,
-        "d": 24 * 60 * 60,
-        "w": 7 * 24 * 60 * 60,
-    }[unit]
-    return time.time() - (amount * multiplier)
 
 
 def _cmd_chatlas_update(args: argparse.Namespace) -> int:
@@ -70,7 +43,7 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
         sort=args.sort,
         limit=args.limit,
         extractable_only=args.extractable,
-        updated_after=_normalize_updated_since(args.updated_since),
+        updated_after=normalize_updated_since(args.updated_since),
         include_match=args.include_match,
         include_artifacts=args.include_artifacts,
         include_summary=args.include_summary,

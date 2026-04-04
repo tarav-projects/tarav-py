@@ -13,7 +13,7 @@ import textwrap
 import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -110,6 +110,13 @@ class AccountProviderContext:
         return dict(self.env)
 
 
+@dataclass(frozen=True)
+class AccountCollectionResult:
+    index: int
+    provider_name: str
+    account_payload: dict[str, Any]
+
+
 class AccountCommandError(Exception):
     def __init__(
         self,
@@ -163,6 +170,87 @@ def chat_account_stats(
     full_output: bool = False,
     start_path: Path | str = ".",
 ) -> dict[str, object]:
+    payloads = list(
+        iter_chat_account_stats_refresh_payloads(
+            instance_ids=instance_ids,
+            providers=providers,
+            refresh_usage=refresh_usage,
+            full_output=full_output,
+            start_path=start_path,
+        )
+    )
+    if not payloads:
+        raise CliError("chat account stats refresh did not produce a payload")
+    return payloads[-1]
+
+
+def iter_chat_account_stats_refresh_payloads(
+    *,
+    instance_ids: tuple[str, ...] | None = None,
+    providers: tuple[str, ...] | None = None,
+    refresh_usage: bool = False,
+    full_output: bool = False,
+    start_path: Path | str = ".",
+) -> tuple[dict[str, object], ...]:
+    provider_handlers, configured_contexts, provider_handlers_by_name = _resolve_chat_account_stats_request(
+        instance_ids=instance_ids,
+        providers=providers,
+        start_path=start_path,
+    )
+    ordered_results: list[AccountCollectionResult | None] = [None] * len(configured_contexts)
+
+    if configured_contexts:
+        yield _build_chat_account_stats_payload(
+            provider_handlers=provider_handlers,
+            configured_contexts=configured_contexts,
+            collected_results=ordered_results,
+            refresh_usage=refresh_usage,
+            full_output=full_output,
+            include_pending=True,
+            persist_history=False,
+        )
+
+    completed_count = 0
+    for collected_result in _iter_account_collection_results(
+        configured_contexts=configured_contexts,
+        provider_handlers_by_name=provider_handlers_by_name,
+        refresh_usage=refresh_usage,
+    ):
+        ordered_results[collected_result.index] = collected_result
+        completed_count += 1
+        is_final = completed_count == len(configured_contexts)
+        yield _build_chat_account_stats_payload(
+            provider_handlers=provider_handlers,
+            configured_contexts=configured_contexts,
+            collected_results=ordered_results,
+            refresh_usage=refresh_usage,
+            full_output=full_output,
+            include_pending=not is_final,
+            persist_history=is_final,
+        )
+
+    if not configured_contexts:
+        yield _build_chat_account_stats_payload(
+            provider_handlers=provider_handlers,
+            configured_contexts=configured_contexts,
+            collected_results=ordered_results,
+            refresh_usage=refresh_usage,
+            full_output=full_output,
+            include_pending=False,
+            persist_history=True,
+        )
+
+
+def _resolve_chat_account_stats_request(
+    *,
+    instance_ids: tuple[str, ...] | None,
+    providers: tuple[str, ...] | None,
+    start_path: Path | str,
+) -> tuple[
+    tuple[AccountProviderHandler, ...],
+    tuple[AccountProviderContext, ...],
+    dict[str, AccountProviderHandler],
+]:
     provider_handlers = supported_account_provider_families()
     if providers is not None:
         allowed_providers = set(providers)
@@ -196,25 +284,52 @@ def chat_account_stats(
             suffix = "s" if len(missing_ids) != 1 else ""
             raise CliError(f"unknown account instance id{suffix}: {', '.join(missing_ids)}")
 
-    provider_payloads: list[dict[str, Any]] = []
-    account_count = 0
-    ok_count = 0
-    error_count = 0
-
     provider_handlers_by_name = {
         provider_handler.family: provider_handler for provider_handler in provider_handlers
     }
+    return provider_handlers, configured_contexts, provider_handlers_by_name
+
+
+def _build_chat_account_stats_payload(
+    *,
+    provider_handlers: tuple[AccountProviderHandler, ...],
+    configured_contexts: tuple[AccountProviderContext, ...],
+    collected_results: list[AccountCollectionResult | None],
+    refresh_usage: bool,
+    full_output: bool,
+    include_pending: bool,
+    persist_history: bool,
+) -> dict[str, object]:
+    del refresh_usage
+
+    provider_payloads: list[dict[str, Any]] = []
     provider_accounts_by_name = {
         provider_handler.family: [] for provider_handler in provider_handlers
     }
-    collected_account_results = _collect_account_results(
-        configured_contexts=configured_contexts,
-        provider_handlers_by_name=provider_handlers_by_name,
-        refresh_usage=refresh_usage,
-    )
 
-    for provider_name, account_payload in collected_account_results:
+    ok_count = 0
+    error_count = 0
+    pending_count = 0
+    account_count = 0
+
+    for index, context in enumerate(configured_contexts):
+        collected_result = collected_results[index]
+        if collected_result is None:
+            if not include_pending:
+                continue
+            account_payload = _pending_account_result(context)
+            provider_name = context.provider
+            pending_count += 1
+        else:
+            account_payload = collected_result.account_payload
+            provider_name = collected_result.provider_name
+            check_status = _string_or_none(account_payload.get("check_status"))
+            if check_status == "ok":
+                ok_count += 1
+            elif check_status == "error":
+                error_count += 1
         provider_accounts_by_name[provider_name].append(account_payload)
+        account_count += 1
 
     for provider_handler in provider_handlers:
         provider_accounts = provider_accounts_by_name[provider_handler.family]
@@ -222,17 +337,15 @@ def chat_account_stats(
         provider_error_count = sum(
             1 for account in provider_accounts if account.get("check_status") == "error"
         )
-        provider_payload = {
-            "provider": provider_handler.family,
-            "account_count": len(provider_accounts),
-            "ok_count": provider_ok_count,
-            "error_count": provider_error_count,
-            "accounts": provider_accounts,
-        }
-        provider_payloads.append(provider_payload)
-        account_count += provider_payload["account_count"]
-        ok_count += provider_ok_count
-        error_count += provider_error_count
+        provider_payloads.append(
+            {
+                "provider": provider_handler.family,
+                "account_count": len(provider_accounts),
+                "ok_count": provider_ok_count,
+                "error_count": provider_error_count,
+                "accounts": provider_accounts,
+            }
+        )
 
     output_providers = (
         provider_payloads
@@ -249,7 +362,11 @@ def chat_account_stats(
         "error_count": error_count,
         "providers": output_providers,
     }
-    payload["history"] = _persist_chat_account_stats_payload(payload)
+    if pending_count > 0:
+        payload["pending_count"] = pending_count
+        payload["completed_count"] = ok_count + error_count
+    if persist_history:
+        payload["history"] = _persist_chat_account_stats_payload(payload)
     return payload
 
 
@@ -267,29 +384,59 @@ def _collect_account_results(
     provider_handlers_by_name: dict[str, AccountProviderHandler],
     refresh_usage: bool,
 ) -> list[tuple[str, dict[str, Any]]]:
+    ordered_results: list[tuple[str, dict[str, Any]] | None] = [None] * len(configured_contexts)
+    for collected_result in _iter_account_collection_results(
+        configured_contexts=configured_contexts,
+        provider_handlers_by_name=provider_handlers_by_name,
+        refresh_usage=refresh_usage,
+    ):
+        ordered_results[collected_result.index] = (
+            collected_result.provider_name,
+            collected_result.account_payload,
+        )
+    return [result for result in ordered_results if result is not None]
+
+
+def _iter_account_collection_results(
+    *,
+    configured_contexts: tuple[AccountProviderContext, ...],
+    provider_handlers_by_name: dict[str, AccountProviderHandler],
+    refresh_usage: bool,
+) -> tuple[AccountCollectionResult, ...]:
     if not configured_contexts:
-        return []
+        return
 
     if len(configured_contexts) == 1:
         context = configured_contexts[0]
         provider_handler = provider_handlers_by_name[context.provider]
-        return [(context.provider, provider_handler.collect_stats(context, refresh_usage))]
+        account_payload = provider_handler.collect_stats(context, refresh_usage)
+        if not isinstance(account_payload, dict):
+            raise CliError("account provider collector must return a JSON object payload")
+        yield AccountCollectionResult(
+            index=0,
+            provider_name=context.provider,
+            account_payload=account_payload,
+        )
+        return
 
     max_workers = min(MAX_ACCOUNT_COLLECTION_WORKERS, len(configured_contexts))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures: list[tuple[str, object]] = []
-        for context in configured_contexts:
+        future_lookup: dict[Future[dict[str, Any]], tuple[int, str]] = {}
+        for index, context in enumerate(configured_contexts):
             provider_handler = provider_handlers_by_name[context.provider]
             future = executor.submit(provider_handler.collect_stats, context, refresh_usage)
-            futures.append((context.provider, future))
+            future_lookup[future] = (index, context.provider)
 
-        collected_results: list[tuple[str, dict[str, Any]]] = []
-        for provider_name, future in futures:
+        for future in as_completed(future_lookup):
+            index, provider_name = future_lookup[future]
             account_payload = future.result()
             if not isinstance(account_payload, dict):
                 raise CliError("account provider collector must return a JSON object payload")
-            collected_results.append((provider_name, account_payload))
-        return collected_results
+            yield AccountCollectionResult(
+                index=index,
+                provider_name=provider_name,
+                account_payload=account_payload,
+            )
 
 
 def format_chat_account_stats_markdown(payload: dict[str, object]) -> str:
@@ -612,6 +759,13 @@ def _format_chat_account_usage_fallback_lines(account: dict[str, Any]) -> list[s
         detail_lines = _format_chat_account_usage_error_detail_lines(account_error)
         if detail_lines is not None:
             lines.extend(f"   | {detail}" for detail in detail_lines)
+        return lines
+
+    if check_status == "pending" or usage_status == "pending":
+        lines = ["refresh | pending"]
+        pending_detail = usage_message or _string_or_none(account.get("summary"))
+        if pending_detail is not None:
+            lines.extend(f"   | {detail}" for detail in _wrap_chat_account_usage_error_text(pending_detail))
         return lines
 
     if usage_status == "unavailable":
@@ -3233,6 +3387,23 @@ def _error_account_result(
     return result
 
 
+def _pending_account_result(instance: AccountProviderContext) -> dict[str, Any]:
+    result = {
+        "id": instance.instance_id,
+        "label": instance.label,
+        "provider": instance.provider,
+        "check_status": "pending",
+        "cli_command": list(instance.cli_command),
+        "timeout_sec": instance.timeout_sec,
+        "summary": "Refreshing account status...",
+        "usage_status": "pending",
+        "usage_message": "Waiting for provider response.",
+    }
+    if instance.usage_progression_limit is not None:
+        result["usage_progression_limit"] = instance.usage_progression_limit
+    return result
+
+
 def _load_string_argv(value: object, *, field_name: str) -> tuple[str, ...]:
     if not isinstance(value, list):
         raise CliError(f"{field_name} must be a JSON array")
@@ -3420,5 +3591,6 @@ __all__ = [
     "configured_account_provider_instances",
     "format_chat_account_stats_markdown",
     "format_chat_account_stats_usage",
+    "iter_chat_account_stats_refresh_payloads",
     "supported_account_provider_families",
 ]
