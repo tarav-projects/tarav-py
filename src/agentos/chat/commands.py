@@ -6,7 +6,7 @@ import select
 import sys
 import time
 from pathlib import Path
-from typing import TextIO
+from typing import Callable, TextIO
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
@@ -321,10 +321,8 @@ def _load_session_user_turns(session: dict[str, object]) -> list[DialogTurn]:
 
     provider = _string_or_none(session.get("provider"))
     session_id = _string_or_none(session.get("session_id")) or ""
-
-    try:
-        turns = _load_session_turns(provider=provider, path=path, session_id=session_id)
-    except (CliError, OSError, json.JSONDecodeError):
+    turns = _safe_load_session_turns(provider=provider, path=path, session_id=session_id)
+    if turns is None:
         return []
 
     return [turn for turn in turns if turn.role == "user"]
@@ -335,6 +333,7 @@ def _load_session_turns(
     provider: str | None,
     path: Path,
     session_id: str,
+    gemini_session_data: dict[str, object] | None = None,
 ) -> list[DialogTurn]:
     if provider == "claude-code":
         if path.suffix == ".jsonl":
@@ -353,7 +352,9 @@ def _load_session_turns(
         )
 
     if provider == "gemini-cli":
-        session_data = load_gemini_cli_session_data(path)
+        session_data = gemini_session_data
+        if session_data is None:
+            session_data = load_gemini_cli_session_data(path)
         return extract_dialog_from_gemini_cli_session(
             session_data=session_data,
             session_id=str(session_data.get("sessionId") or session_id),
@@ -379,24 +380,36 @@ def _load_session_turns(
     return []
 
 
-def _load_turns_for_card_session_context(
+def _safe_load_session_turns(
+    *,
+    provider: str | None,
+    path: Path,
+    session_id: str,
+    gemini_session_data: dict[str, object] | None = None,
+) -> list[DialogTurn] | None:
+    try:
+        return _load_session_turns(
+            provider=provider,
+            path=path,
+            session_id=session_id,
+            gemini_session_data=gemini_session_data,
+        )
+    except (CliError, OSError, json.JSONDecodeError):
+        return None
+
+
+def _load_turn_summary_for_card_session_context(
     *,
     provider: str | None,
     path: Path,
     session_id: str,
     gemini_session_data: dict[str, object] | None = None,
 ) -> tuple[float | None, str | None] | None:
-    resolved_session_id = session_id
-    if provider == "gemini-cli":
-        session_data = gemini_session_data
-        if session_data is None:
-            session_data = load_gemini_cli_session_data(path)
-        resolved_session_id = str(session_data.get("sessionId") or session_id)
-
-    turns = _load_session_turns(
+    turns = _safe_load_session_turns(
         provider=provider,
         path=path,
-        session_id=resolved_session_id,
+        session_id=session_id,
+        gemini_session_data=gemini_session_data,
     )
     if not turns:
         return None
@@ -462,7 +475,7 @@ def _load_card_session_context(
     try:
         if provider == "claude-code":
             if path.suffix == ".jsonl":
-                loaded = _load_turns_for_card_session_context(
+                loaded = _load_turn_summary_for_card_session_context(
                     provider=provider,
                     path=path,
                     session_id=session_id,
@@ -478,7 +491,7 @@ def _load_card_session_context(
 
         if provider == "gemini-cli":
             session_data = load_gemini_cli_session_data(path)
-            loaded = _load_turns_for_card_session_context(
+            loaded = _load_turn_summary_for_card_session_context(
                 provider=provider,
                 path=path,
                 session_id=session_id,
@@ -488,7 +501,7 @@ def _load_card_session_context(
                 created_at, preview = loaded
                 return created_at or coerce_timestamp(session_data.get("startTime")), preview
 
-        loaded = _load_turns_for_card_session_context(
+        loaded = _load_turn_summary_for_card_session_context(
             provider=provider,
             path=path,
             session_id=session_id,

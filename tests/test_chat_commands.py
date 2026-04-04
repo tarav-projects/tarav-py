@@ -4,9 +4,11 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from agentos.chat import commands as chat_commands
 from agentos.cli import main
 
 
@@ -134,3 +136,59 @@ def test_chat_debug_find_returns_live_match_and_findings(
     assert payload["search_finding_count"] >= 1
     assert payload["search_findings"]
     assert payload["provider_diagnostics"]
+
+
+def test_load_card_session_context_loads_gemini_session_data_once(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    session_path = tmp_path / "gemini-session.json"
+    _write(session_path, "{}")
+
+    observed_load_calls: list[Path] = []
+    session_data = {
+        "sessionId": "gemini-session-1",
+        "startTime": "2026-03-08T10:00:00Z",
+    }
+
+    def fake_load_gemini_cli_session_data(path: Path) -> dict[str, object]:
+        observed_load_calls.append(path)
+        return session_data
+
+    def fake_extract_dialog_from_gemini_cli_session(
+        *,
+        session_data: dict[str, object],
+        session_id: str,
+        raw: bool,
+    ) -> list[SimpleNamespace]:
+        assert session_data is not None
+        assert session_id == "gemini-session-1"
+        assert raw is False
+        return [
+            SimpleNamespace(
+                timestamp="2026-03-08T11:00:00Z",
+                role="user",
+                text="hello from gemini",
+            )
+        ]
+
+    monkeypatch.setattr(
+        chat_commands,
+        "load_gemini_cli_session_data",
+        fake_load_gemini_cli_session_data,
+    )
+    monkeypatch.setattr(
+        chat_commands,
+        "extract_dialog_from_gemini_cli_session",
+        fake_extract_dialog_from_gemini_cli_session,
+    )
+
+    created_at, preview = chat_commands._load_card_session_context(
+        provider="gemini-cli",
+        path=session_path,
+        session_id="fallback-session-id",
+    )
+
+    assert observed_load_calls == [session_path]
+    assert created_at == datetime(2026, 3, 8, 11, 0, tzinfo=timezone.utc).timestamp()
+    assert preview == "hello from gemini"
