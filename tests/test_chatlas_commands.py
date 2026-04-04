@@ -185,11 +185,13 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
     assert payload["normalized_session_count"] == 1
     assert payload["derived_transcript_session_count"] == 1
     assert payload["derived_summary_count"] == 1
+    assert payload["derived_summary_counts"] == {"brief": 1, "detailed": 1}
     assert payload["instances"][0]["instance"] == "default"
     assert payload["instances"][0]["destination_root"] == str(destination_root)
     assert payload["manifest_path"] is not None
     assert Path(payload["normalized_sessions_path"]).is_file()
     assert Path(payload["derived_summaries_path"]).is_file()
+    assert Path(payload["derived_summary_paths"]["detailed"]).is_file()
     assert (
         destination_root
         / "sessions"
@@ -330,6 +332,48 @@ def test_chatlas_update_uses_configured_extra_codex_instance(
     assert payload["normalized_session_count"] == 2
 
 
+def test_chatlas_update_uses_shared_claude_code_home_slots(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    claude_cli_home = home / ".claude"
+    claude_desktop_home = home / "Library" / "Application Support" / "Claude"
+    (claude_cli_home / "projects").mkdir(parents=True, exist_ok=True)
+    (claude_desktop_home / "claude-code-sessions").mkdir(parents=True, exist_ok=True)
+    _write(claude_cli_home / "README.md", "cli root\n")
+    _write(claude_desktop_home / "desktop-state.json", "{}\n")
+
+    assert main(["chatlas", "update", "--provider", "claude-code"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    destination_cli_root = _chatlas_home_root(agentos_home, home, claude_cli_home)
+    destination_desktop_root = _chatlas_home_root(agentos_home, home, claude_desktop_home)
+    instance = payload["instances"][0]
+
+    assert payload["instance_count"] == 1
+    assert payload["synced_instance_count"] == 1
+    assert payload["normalized_session_count"] == 0
+    assert instance["instance"] == "default"
+    assert instance["destination_root"] is None
+    assert instance["destination_roots"] == {
+        "cli": str(destination_cli_root),
+        "desktop": str(destination_desktop_root),
+    }
+    assert instance["homes"] == {
+        "cli": str(claude_cli_home),
+        "desktop": str(claude_desktop_home),
+    }
+    assert (destination_cli_root / "README.md").is_file()
+    assert (destination_desktop_root / "desktop-state.json").is_file()
+
+
 def test_chatlas_stats_reports_normalized_counts(
     tmp_path: Path,
     monkeypatch,
@@ -363,6 +407,7 @@ def test_chatlas_stats_reports_normalized_counts(
     assert payload["stats"]["provider_count"] == 1
     assert payload["stats"]["derived_transcript_session_count"] == 1
     assert payload["stats"]["derived_summary_count"] == 1
+    assert payload["stats"]["derived_summary_counts"] == {"brief": 1, "detailed": 1}
     assert payload["stats"]["by_provider"][0]["provider"] == "codex"
     assert payload["stats"]["last_update_recorded_at"] is not None
     assert payload["stats"]["last_update_manifest_path"] is not None
@@ -406,6 +451,8 @@ def test_chatlas_query_matches_normalized_thread_name(
     assert session["native"] == {"thread_name": thread_name}
     assert session["match"]["fields"] == [{"field": "thread_name", "value": thread_name}]
     assert session["summary"]["turn_count"] == 0
+    assert session["summary_levels"]["brief"]["level"] == "brief"
+    assert session["summary_levels"]["detailed"]["level"] == "detailed"
 
 
 def test_chatlas_query_supports_user_contain_transcript_filter(
@@ -443,6 +490,7 @@ def test_chatlas_query_supports_user_contain_transcript_filter(
     assert payload["selection"]["user_contain"] == "searchable user"
     assert payload["sessions"][0]["transcript_filter_match"] == {"user_contain": "searchable user"}
     assert payload["sessions"][0]["summary"]["first_user_text"] == "searchable user text"
+    assert payload["sessions"][0]["summary_levels"]["detailed"]["user_turn_previews"] == ["searchable user text"]
 
 
 def test_chatlas_query_supports_text_contain_filter(
@@ -556,3 +604,56 @@ def test_chatlas_export_supports_jsonl_transcript_output(
     assert [line["role"] for line in payload_lines] == ["user", "assistant"]
     assert payload_lines[0]["text"] == "jsonl export user"
     assert payload_lines[1]["text"] == "jsonl export assistant"
+
+
+def test_chatlas_export_supports_detailed_summary_json_output(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    thread_name = "summary-export-thread"
+    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    _write_codex_dialog_rollout(
+        rollout_path,
+        session_id=session_id,
+        user_text="summary export user",
+        assistant_text="summary export assistant",
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(
+        [
+            "chatlas",
+            "export",
+            thread_name,
+            "--kind",
+            "summary",
+            "--summary-level",
+            "detailed",
+            "--format",
+            "json",
+        ]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["level"] == "detailed"
+    assert payload["first_user_text"] == "summary export user"
+    assert payload["last_assistant_text"] == "summary export assistant"
+    assert payload["turn_previews"] == [
+        {"role": "user", "text_preview": "summary export user"},
+        {"role": "assistant", "text_preview": "summary export assistant"},
+    ]

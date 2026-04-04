@@ -34,6 +34,11 @@
 - [x] Materialize derived session summaries under `derived/summaries/`.
 - [x] Extend `agentos chatlas query` with transcript-content filters.
 - [x] Add targeted tests for summary generation and transcript-content query behavior.
+- [x] Move raw mirroring ownership fully under `agentos chatlas`.
+- [x] Delete the leftover `agentos.chat.archive` subsystem.
+- [x] Centralize provider home-slot topology shared by `agentos chat` and `agentos chatlas`.
+- [x] Materialize multiple derived summary levels.
+- [x] Extend `agentos chatlas export` to export summaries as first-class artifacts.
 - [x] Run focused tests.
 
 ## Progress Notes
@@ -60,6 +65,18 @@
 - `agentos chatlas query --text-contain ...`
 - `agentos chatlas query --user-contain ...`
 - query results now include summary payloads when available
+- Implemented boundary cleanup:
+- moved raw mirroring/provider-home support into `src/agentos/chatlas/raw.py`
+- switched `agentos chatlas` to use Chatlas-owned provider support instead of `agentos.chat.archive`
+- deleted `src/agentos/chat/archive.py`
+- Implemented provider-topology SSOT cleanup:
+- moved canonical home-slot and capability definitions into `src/agentos/chat/providers.py`
+- changed `src/agentos/chat/core.py` and `src/agentos/chatlas/raw.py` to build handlers from the shared provider registry
+- added a Chatlas regression test for the shared multi-home `claude-code` topology
+- Implemented summary-level slice:
+- derived summaries now materialize both `brief` and `detailed` levels under `derived/summaries/`
+- query results expose the default brief summary plus `summary_levels`
+- `agentos chatlas export` now supports summary export with `--kind summary --summary-level ...`
 - Focused verification:
 - `uv run pytest tests/test_chatlas_commands.py -q`
 - `uv run pytest tests/test_chat_commands.py tests/test_chat_extract_commands.py tests/test_chat_accounts_commands.py tests/test_chatlas_commands.py -q`

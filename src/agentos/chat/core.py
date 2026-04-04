@@ -13,11 +13,11 @@ from urllib.parse import unquote
 from agentos._core.errors import CliError
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.chat.providers import (
-    ProviderFamily,
+    canonical_chat_provider_specs,
     ProviderInstanceConfigEntry,
     ProviderInstanceConfigSource,
+    ProviderHomeSlot,
     load_provider_instance_config_entries,
-    require_canonical_provider_family,
 )
 from agentos.chat.sessions import (
     BackingArtifact,
@@ -52,66 +52,13 @@ _SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
     field_prefix="chat.session.provider_instances",
 )
 
-
-@dataclass(frozen=True)
-class ProviderHomeSlot:
-    key: str
-    default_home: str
-    direct_relpaths: tuple[str, ...]
-    grep_relpaths: tuple[str, ...] = ()
-    sqlite_db_relpaths: tuple[str, ...] = ()
-    direct_anchor_roles: tuple[str, ...] = ()
-    sqlite_db_anchor_roles: tuple[str, ...] = ()
-
-    def build_paths(self, *, home: Path) -> tuple[tuple[Path, ...], tuple[Path, ...], tuple[Path, ...]]:
-        return (
-            tuple(_join_provider_home(home, relpath) for relpath in self.direct_relpaths),
-            tuple(_join_provider_home(home, relpath) for relpath in self.grep_relpaths),
-            tuple(_join_provider_home(home, relpath) for relpath in self.sqlite_db_relpaths),
-        )
-
-    def build_anchors(self, *, home: Path) -> tuple[ProviderInstanceAnchor, ...]:
-        direct_roles = self.direct_anchor_roles or tuple(
-            f"direct_target_{index + 1}" for index, _ in enumerate(self.direct_relpaths)
-        )
-        sqlite_roles = self.sqlite_db_anchor_roles or tuple(
-            f"sqlite_db_{index + 1}" for index, _ in enumerate(self.sqlite_db_relpaths)
-        )
-        if len(direct_roles) != len(self.direct_relpaths):
-            raise ValueError(f"provider slot {self.key} direct anchor roles must match direct relpaths")
-        if len(sqlite_roles) != len(self.sqlite_db_relpaths):
-            raise ValueError(f"provider slot {self.key} sqlite anchor roles must match sqlite db relpaths")
-
-        anchors = [
-            ProviderInstanceAnchor(
-                role=role,
-                path=_join_provider_home(home, relpath),
-                slot=self.key,
-            )
-            for role, relpath in zip(direct_roles, self.direct_relpaths, strict=True)
-        ]
-        anchors.extend(
-            ProviderInstanceAnchor(
-                role=role,
-                path=_join_provider_home(home, relpath),
-                slot=self.key,
-            )
-            for role, relpath in zip(sqlite_roles, self.sqlite_db_relpaths, strict=True)
-        )
-        return tuple(anchors)
-
-
 @dataclass(frozen=True)
 class SessionProviderHandler:
-    provider_family: ProviderFamily
+    family: str
     home_slots: tuple[ProviderHomeSlot, ...]
     discover_sources: Callable[[SessionProviderContext], list[SessionSource]]
     find_sources: Callable[[SessionProviderContext, str], list[SessionSource]]
     build_source_stats: Callable[[SessionSource], dict[str, Any]]
-
-    @property
-    def family(self) -> str:
-        return self.provider_family.family
 
     def supported_home_keys(self) -> tuple[str, ...]:
         return tuple(slot.key for slot in self.home_slots)
@@ -285,17 +232,8 @@ def _make_typed_session_stats_builder(
 
 
 def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
-    return (
-        SessionProviderHandler(
-            provider_family=require_canonical_provider_family("copilot-cli"),
-            home_slots=(
-                ProviderHomeSlot(
-                    key="home",
-                    default_home="~/.copilot",
-                    direct_relpaths=("session-state",),
-                    direct_anchor_roles=("session_state_root",),
-                ),
-            ),
+    session_factories = {
+        "copilot-cli": dict(
             discover_sources=_make_direct_session_discovery(_list_copilot_sessions),
             find_sources=_make_direct_session_finder(
                 _find_copilot_sessions,
@@ -306,16 +244,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
                 _build_copilot_cli_session_stats,
             ),
         ),
-        SessionProviderHandler(
-            provider_family=require_canonical_provider_family("gemini-cli"),
-            home_slots=(
-                ProviderHomeSlot(
-                    key="home",
-                    default_home="~/.gemini",
-                    direct_relpaths=("tmp", "history"),
-                    direct_anchor_roles=("tmp_root", "history_root"),
-                ),
-            ),
+        "gemini-cli": dict(
             discover_sources=_make_direct_session_discovery(_list_gemini_sessions),
             find_sources=_make_direct_session_finder(
                 _find_gemini_sessions,
@@ -326,16 +255,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
                 _build_gemini_cli_session_stats,
             ),
         ),
-        SessionProviderHandler(
-            provider_family=require_canonical_provider_family("codex"),
-            home_slots=(
-                ProviderHomeSlot(
-                    key="home",
-                    default_home="~/.codex",
-                    direct_relpaths=("sessions", "archived_sessions", "session_index.jsonl"),
-                    direct_anchor_roles=("sessions_root", "archive_root", "session_index"),
-                ),
-            ),
+        "codex": dict(
             discover_sources=_make_direct_session_discovery(_list_codex_sessions),
             find_sources=_make_direct_session_finder(
                 _find_codex_sessions,
@@ -346,24 +266,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
                 _build_codex_session_stats,
             ),
         ),
-        SessionProviderHandler(
-            provider_family=require_canonical_provider_family("claude-code"),
-            home_slots=(
-                ProviderHomeSlot(
-                    key="cli",
-                    default_home="~/.claude",
-                    direct_relpaths=("projects",),
-                    grep_relpaths=("",),
-                    direct_anchor_roles=("projects_root",),
-                ),
-                ProviderHomeSlot(
-                    key="desktop",
-                    default_home="~/Library/Application Support/Claude",
-                    direct_relpaths=("claude-code-sessions",),
-                    grep_relpaths=("claude-code-sessions",),
-                    direct_anchor_roles=("desktop_sessions_root",),
-                ),
-            ),
+        "claude-code": dict(
             discover_sources=_make_direct_session_discovery(_list_claude_code_sessions),
             find_sources=_make_direct_session_finder(
                 _find_claude_code_sessions,
@@ -374,19 +277,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
                 _build_claude_code_session_stats,
             ),
         ),
-        SessionProviderHandler(
-            provider_family=require_canonical_provider_family("opencode"),
-            home_slots=(
-                ProviderHomeSlot(
-                    key="home",
-                    default_home="~/.local/share/opencode",
-                    direct_relpaths=("storage/session_diff",),
-                    grep_relpaths=("storage", "log"),
-                    sqlite_db_relpaths=("opencode.db",),
-                    direct_anchor_roles=("session_diff_root",),
-                    sqlite_db_anchor_roles=("sqlite_db",),
-                ),
-            ),
+        "opencode": dict(
             discover_sources=_make_direct_session_discovery(
                 _list_opencode_sessions,
                 include_sqlite=True,
@@ -401,16 +292,7 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
                 _build_opencode_session_stats,
             ),
         ),
-        SessionProviderHandler(
-            provider_family=require_canonical_provider_family("openclaw"),
-            home_slots=(
-                ProviderHomeSlot(
-                    key="home",
-                    default_home="~/.openclaw",
-                    direct_relpaths=("agents",),
-                    direct_anchor_roles=("agents_root",),
-                ),
-            ),
+        "openclaw": dict(
             discover_sources=_make_direct_session_discovery(_list_openclaw_sessions),
             find_sources=_make_direct_session_finder(
                 _find_openclaw_sessions,
@@ -421,7 +303,23 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
                 _build_openclaw_session_stats,
             ),
         ),
-    )
+    }
+    handlers: list[SessionProviderHandler] = []
+    for provider_spec in canonical_chat_provider_specs():
+        if not provider_spec.supports_session_discovery:
+            continue
+        handler_kwargs = session_factories.get(provider_spec.family)
+        if handler_kwargs is None:
+            continue
+        home_slots = tuple(slot for slot in provider_spec.home_slots if slot.supports_session_discovery())
+        handlers.append(
+            SessionProviderHandler(
+                family=provider_spec.family,
+                home_slots=home_slots,
+                **handler_kwargs,
+            )
+        )
+    return tuple(handlers)
 
 
 def configured_provider_instances(*, start_path: Path | str = ".") -> tuple[ProviderInstance, ...]:
@@ -603,13 +501,6 @@ def _build_explicit_provider_instance_anchors(
         for index, path in enumerate(sqlite_db_paths)
     )
     return tuple(anchors)
-
-
-def _join_provider_home(home: Path, relpath: str) -> Path:
-    if not relpath:
-        return home
-    return home / relpath
-
 
 def _dedupe_provider_instances(provider_instances: tuple[ProviderInstance, ...]) -> tuple[ProviderInstance, ...]:
     unique_instances: dict[tuple[object, ...], ProviderInstance] = {}

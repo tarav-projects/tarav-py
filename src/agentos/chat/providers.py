@@ -22,6 +22,71 @@ class ProviderFamily:
     family: str
 
 
+@dataclass(frozen=True)
+class ProviderHomeSlot:
+    key: str
+    default_home: str
+    direct_relpaths: tuple[str, ...] = ()
+    grep_relpaths: tuple[str, ...] = ()
+    sqlite_db_relpaths: tuple[str, ...] = ()
+    direct_anchor_roles: tuple[str, ...] = ()
+    sqlite_db_anchor_roles: tuple[str, ...] = ()
+
+    def build_paths(self, *, home: Path) -> tuple[tuple[Path, ...], tuple[Path, ...], tuple[Path, ...]]:
+        return (
+            tuple(_join_provider_home(home, relpath) for relpath in self.direct_relpaths),
+            tuple(_join_provider_home(home, relpath) for relpath in self.grep_relpaths),
+            tuple(_join_provider_home(home, relpath) for relpath in self.sqlite_db_relpaths),
+        )
+
+    def build_anchors(self, *, home: Path) -> tuple["ProviderInstanceAnchor", ...]:
+        direct_roles = self.direct_anchor_roles or tuple(
+            f"direct_target_{index + 1}" for index, _ in enumerate(self.direct_relpaths)
+        )
+        sqlite_roles = self.sqlite_db_anchor_roles or tuple(
+            f"sqlite_db_{index + 1}" for index, _ in enumerate(self.sqlite_db_relpaths)
+        )
+        if len(direct_roles) != len(self.direct_relpaths):
+            raise ValueError(f"provider slot {self.key} direct anchor roles must match direct relpaths")
+        if len(sqlite_roles) != len(self.sqlite_db_relpaths):
+            raise ValueError(f"provider slot {self.key} sqlite anchor roles must match sqlite db relpaths")
+
+        anchors = [
+            ProviderInstanceAnchor(
+                role=role,
+                path=_join_provider_home(home, relpath),
+                slot=self.key,
+            )
+            for role, relpath in zip(direct_roles, self.direct_relpaths, strict=True)
+        ]
+        anchors.extend(
+            ProviderInstanceAnchor(
+                role=role,
+                path=_join_provider_home(home, relpath),
+                slot=self.key,
+            )
+            for role, relpath in zip(sqlite_roles, self.sqlite_db_relpaths, strict=True)
+        )
+        return tuple(anchors)
+
+    def supports_session_discovery(self) -> bool:
+        return bool(self.direct_relpaths or self.sqlite_db_relpaths)
+
+
+@dataclass(frozen=True)
+class ChatProviderSpec:
+    provider_family: ProviderFamily
+    home_slots: tuple[ProviderHomeSlot, ...]
+    supports_session_discovery: bool = True
+    supports_chatlas_raw: bool = True
+    chatlas_default_excludes: tuple[str, ...] = ()
+    chatlas_default_includes: tuple[str, ...] = ()
+
+    @property
+    def family(self) -> str:
+        return self.provider_family.family
+
+
 _CANONICAL_PROVIDER_FAMILIES = tuple(
     ProviderFamily(family=family_name)
     for family_name in (
@@ -39,10 +104,22 @@ _CANONICAL_PROVIDER_FAMILIES_BY_NAME = {
     provider_family.family: provider_family
     for provider_family in _CANONICAL_PROVIDER_FAMILIES
 }
+_CANONICAL_CHAT_PROVIDER_SPECS: tuple[ChatProviderSpec, ...] = ()
 
 
 def canonical_provider_families() -> tuple[ProviderFamily, ...]:
     return _CANONICAL_PROVIDER_FAMILIES
+
+
+def canonical_chat_provider_specs() -> tuple[ChatProviderSpec, ...]:
+    return _CANONICAL_CHAT_PROVIDER_SPECS
+
+
+def canonical_chat_provider_spec_for_name(family_name: str) -> ChatProviderSpec | None:
+    for provider_spec in _CANONICAL_CHAT_PROVIDER_SPECS:
+        if provider_spec.family == family_name:
+            return provider_spec
+    return None
 
 
 def canonical_provider_family_for_name(family_name: str) -> ProviderFamily | None:
@@ -54,6 +131,149 @@ def require_canonical_provider_family(family_name: str) -> ProviderFamily:
     if provider_family is None:
         raise ValueError(f"unknown provider family: {family_name}")
     return provider_family
+
+
+_CANONICAL_CHAT_PROVIDER_SPECS = (
+    ChatProviderSpec(
+        provider_family=require_canonical_provider_family("copilot-cli"),
+        home_slots=(
+            ProviderHomeSlot(
+                key="home",
+                default_home="~/.copilot",
+                direct_relpaths=("session-state",),
+                direct_anchor_roles=("session_state_root",),
+            ),
+        ),
+        chatlas_default_excludes=(
+            "pkg/",
+            "logs/",
+            "ide/",
+        ),
+    ),
+    ChatProviderSpec(
+        provider_family=require_canonical_provider_family("gemini-cli"),
+        home_slots=(
+            ProviderHomeSlot(
+                key="home",
+                default_home="~/.gemini",
+                direct_relpaths=("tmp", "history"),
+                direct_anchor_roles=("tmp_root", "history_root"),
+            ),
+        ),
+        chatlas_default_excludes=(
+            "tmp/bin/",
+            "oauth_creds.json",
+            "google_accounts.json",
+        ),
+    ),
+    ChatProviderSpec(
+        provider_family=require_canonical_provider_family("codex"),
+        home_slots=(
+            ProviderHomeSlot(
+                key="home",
+                default_home="~/.codex",
+                direct_relpaths=("sessions", "archived_sessions", "session_index.jsonl"),
+                direct_anchor_roles=("sessions_root", "archive_root", "session_index"),
+            ),
+        ),
+        chatlas_default_excludes=(
+            "log/",
+            "vendor_imports/",
+            "worktrees/",
+            "shell_snapshots/",
+            "models_cache.json",
+            "sqlite/",
+            "tmp/",
+            "auth.json",
+            "skills",
+        ),
+    ),
+    ChatProviderSpec(
+        provider_family=require_canonical_provider_family("claude-code"),
+        home_slots=(
+            ProviderHomeSlot(
+                key="cli",
+                default_home="~/.claude",
+                direct_relpaths=("projects",),
+                grep_relpaths=("",),
+                direct_anchor_roles=("projects_root",),
+            ),
+            ProviderHomeSlot(
+                key="desktop",
+                default_home="~/Library/Application Support/Claude",
+                direct_relpaths=("claude-code-sessions",),
+                grep_relpaths=("claude-code-sessions",),
+                direct_anchor_roles=("desktop_sessions_root",),
+            ),
+        ),
+        chatlas_default_excludes=(
+            "debug/",
+            "telemetry/",
+            "cache/",
+            "statsig/",
+            "shell-snapshots/",
+            "paste-cache/",
+            "session-env/",
+            "downloads/",
+            "ide/",
+            "plugins/",
+            "skills",
+        ),
+    ),
+    ChatProviderSpec(
+        provider_family=require_canonical_provider_family("opencode"),
+        home_slots=(
+            ProviderHomeSlot(
+                key="home",
+                default_home="~/.local/share/opencode",
+                direct_relpaths=("storage/session_diff",),
+                grep_relpaths=("storage", "log"),
+                sqlite_db_relpaths=("opencode.db",),
+                direct_anchor_roles=("session_diff_root",),
+                sqlite_db_anchor_roles=("sqlite_db",),
+            ),
+        ),
+    ),
+    ChatProviderSpec(
+        provider_family=require_canonical_provider_family("openclaw"),
+        home_slots=(
+            ProviderHomeSlot(
+                key="home",
+                default_home="~/.openclaw",
+                direct_relpaths=("agents",),
+                direct_anchor_roles=("agents_root",),
+            ),
+        ),
+        chatlas_default_excludes=("agents/*/agent/auth*.json",),
+        chatlas_default_includes=(
+            "agents/*/sessions/**",
+            "agents/*/agent/*.md",
+            "agents/*/agent/*.json",
+            "agents/*/agent/*.toml",
+            "agents/*/agent/*.yaml",
+            "agents/*/agent/*.yml",
+            "agents/*/agent/*.ini",
+            "workspace/AGENTS.md",
+            "workspace/BOOTSTRAP.md",
+            "workspace/HEARTBEAT.md",
+            "workspace/IDENTITY.md",
+            "workspace/SOUL.md",
+            "workspace/TOOLS.md",
+            "workspace/USER.md",
+            "cron/jobs.json",
+        ),
+    ),
+    ChatProviderSpec(
+        provider_family=require_canonical_provider_family("agents"),
+        home_slots=(
+            ProviderHomeSlot(
+                key="home",
+                default_home="~/.agents",
+            ),
+        ),
+        supports_session_discovery=False,
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -191,6 +411,12 @@ def _provider_instance_fingerprint(
     return digest.hexdigest()
 
 
+def _join_provider_home(home: Path, relpath: str) -> Path:
+    if not relpath:
+        return home
+    return home / relpath
+
+
 @dataclass(frozen=True)
 class ProviderInstance:
     family: str
@@ -302,11 +528,15 @@ class ProviderInstance:
 
 
 __all__ = [
+    "canonical_chat_provider_spec_for_name",
+    "canonical_chat_provider_specs",
     "canonical_provider_families",
     "canonical_provider_family_for_name",
+    "ChatProviderSpec",
     "load_chat_config_documents",
     "load_provider_instance_config_entries",
     "ProviderFamily",
+    "ProviderHomeSlot",
     "ProviderInstanceConfigEntry",
     "ProviderInstanceConfigSource",
     "ProviderInstance",

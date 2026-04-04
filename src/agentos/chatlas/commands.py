@@ -3,11 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 
-from agentos.chat.archive import supported_archive_provider_families
 from agentos.chatlas.core import chatlas_export, chatlas_query, chatlas_stats, chatlas_update
+from agentos.chatlas.raw import supported_chatlas_provider_families
 
 _CHATLAS_PROVIDER_CHOICES = tuple(
-    provider_family.family for provider_family in supported_archive_provider_families()
+    provider_family.family for provider_family in supported_chatlas_provider_families()
 )
 
 
@@ -43,6 +43,8 @@ def _cmd_chatlas_export(args: argparse.Namespace) -> int:
         chatlas_export(
             query=args.query,
             providers=tuple(args.providers) if args.providers else None,
+            artifact_kind=args.artifact_kind,
+            summary_level=args.summary_level,
             output_format=args.output_format,
         )
     )
@@ -114,7 +116,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
 
     export_parser = chatlas_subparsers.add_parser(
         "export",
-        help="Export one normalized Chatlas session as a derived transcript.",
+        help="Export one normalized Chatlas session as a derived transcript or summary artifact.",
     )
     export_parser.add_argument(
         "query",
@@ -128,10 +130,24 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Restrict export to a provider family. Repeat to include multiple providers.",
     )
     export_parser.add_argument(
+        "--kind",
+        choices=("transcript", "summary"),
+        default="transcript",
+        dest="artifact_kind",
+        help="Artifact kind to export (default: transcript).",
+    )
+    export_parser.add_argument(
+        "--summary-level",
+        choices=("brief", "detailed"),
+        default="brief",
+        dest="summary_level",
+        help="Summary level used when --kind summary is selected (default: brief).",
+    )
+    export_parser.add_argument(
         "--format",
-        choices=("jsonl", "markdown"),
+        choices=("json", "jsonl", "markdown"),
         default="markdown",
         dest="output_format",
-        help="Transcript output format (default: markdown).",
+        help="Output format. Transcript supports markdown/jsonl; summary supports markdown/json.",
     )
     export_parser.set_defaults(handler=_cmd_chatlas_export)

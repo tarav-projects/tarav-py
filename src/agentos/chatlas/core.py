@@ -10,21 +10,6 @@ from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.git_ops import run_git
 from agentos._core.project import agentos_home_dir
-from agentos.chat.archive import (
-    _archive_home_destination,
-    _archive_single_instance,
-    _build_archive_provider_context,
-    _dedupe_archive_instances,
-    _provider_instances_from_config_entries,
-    _validate_unique_archive_destinations,
-    supported_archive_provider_families,
-)
-from agentos.chat.providers import (
-    ProviderInstance,
-    ProviderInstanceConfigSource,
-    load_chat_config_documents,
-    provider_instance_config_entries_from_config,
-)
 from agentos.chat.core import (
     _build_common_session_stats,
     _build_provider_context,
@@ -33,16 +18,34 @@ from agentos.chat.core import (
     _provider_family_for_name,
 )
 from agentos.chat.extractors import extract_chat_session
+from agentos.chat.providers import (
+    ProviderInstance,
+    ProviderInstanceConfigSource,
+    load_chat_config_documents,
+    provider_instance_config_entries_from_config,
+)
+from agentos.chatlas.raw import (
+    _build_chatlas_provider_context,
+    _chatlas_home_destination,
+    _dedupe_chatlas_instances,
+    _mirror_chatlas_provider_instance,
+    _provider_instances_from_config_entries,
+    _validate_unique_chatlas_destinations,
+    supported_chatlas_provider_families,
+)
 
 CHATLAS_DIRNAME = "chatlas"
 DEFAULT_CHATLAS_COMMIT_PREFIX = "chatlas update"
 _NORMALIZED_SESSIONS_RELATIVE_PATH = Path("normalized") / "sessions.jsonl"
 _DERIVED_TRANSCRIPTS_RELATIVE_ROOT = Path("derived") / "transcripts"
-_DERIVED_SUMMARIES_RELATIVE_PATH = Path("derived") / "summaries" / "sessions.jsonl"
+_DERIVED_SUMMARIES_RELATIVE_ROOT = Path("derived") / "summaries"
+_DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH = _DERIVED_SUMMARIES_RELATIVE_ROOT / "brief.jsonl"
+_DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH = _DERIVED_SUMMARIES_RELATIVE_ROOT / "detailed.jsonl"
 _CHATLAS_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
     object_path=("chatlas", "provider_instances"),
     field_prefix="chatlas.provider_instances",
 )
+_SUMMARY_LEVELS = ("brief", "detailed")
 
 
 @dataclass(frozen=True)
@@ -51,13 +54,22 @@ class ChatlasSettings:
     provider_instances: tuple[ProviderInstance, ...]
 
 
+@dataclass(frozen=True)
+class ChatlasSessionSelection:
+    session: dict[str, Any]
+    matched_fields: tuple[tuple[str, str], ...]
+    transcript_filter_match: dict[str, str]
+    summary: dict[str, Any] | None
+    summary_levels: dict[str, dict[str, Any]]
+
+
 def default_chatlas_root() -> Path:
     return agentos_home_dir() / CHATLAS_DIRNAME
 
 
 def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSettings:
     commit_prefix = DEFAULT_CHATLAS_COMMIT_PREFIX
-    provider_instances = [family.default_instance() for family in supported_archive_provider_families()]
+    provider_instances = [family.default_instance() for family in supported_chatlas_provider_families()]
 
     for config in load_chat_config_documents(start_path=start_path):
         chatlas_config = _chatlas_config_from_config(config)
@@ -79,8 +91,8 @@ def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSetti
             )
         )
 
-    deduped_instances = _dedupe_archive_instances(tuple(provider_instances))
-    _validate_unique_archive_destinations(deduped_instances)
+    deduped_instances = _dedupe_chatlas_instances(tuple(provider_instances))
+    _validate_unique_chatlas_destinations(deduped_instances)
     return ChatlasSettings(
         commit_prefix=commit_prefix,
         provider_instances=deduped_instances,
@@ -94,7 +106,7 @@ def chatlas_update(
     start_path: Path | str = ".",
 ) -> dict[str, object]:
     settings = configured_chatlas_settings(start_path=start_path)
-    chatlas_root_path = (chatlas_root or default_chatlas_root()).expanduser().resolve()
+    chatlas_root_path = _resolve_chatlas_root(chatlas_root)
     raw_root = chatlas_root_path / "raw"
     normalized_root = chatlas_root_path / "normalized"
     derived_root = chatlas_root_path / "derived"
@@ -106,16 +118,16 @@ def chatlas_update(
             for instance in selected_instances
             if instance.family in providers
         )
-    selected_contexts = tuple(_build_archive_provider_context(instance) for instance in selected_instances)
+    selected_contexts = tuple(_build_chatlas_provider_context(instance) for instance in selected_instances)
 
     instance_payloads: list[dict[str, object]] = []
     synced_instance_count = 0
     skipped_instance_count = 0
 
     for context in selected_contexts:
-        instance_payload = _archive_single_instance(
+        instance_payload = _mirror_chatlas_provider_instance(
             context=context,
-            archive_root=raw_root,
+            raw_root=raw_root,
         )
         instance_payloads.append(instance_payload)
         if bool(instance_payload["synced"]):
@@ -155,7 +167,7 @@ def chatlas_update(
                 skipped_instance_count=skipped_instance_count,
                 normalized_session_count=len(normalized_sessions),
                 derived_transcript_session_count=derived_transcript_session_count,
-                derived_summary_count=derived_summary_count,
+                derived_summary_counts=derived_summary_count,
                 instance_payloads=instance_payloads,
             ),
         )
@@ -188,8 +200,13 @@ def chatlas_update(
         "normalized_sessions_path": str(chatlas_root_path / _NORMALIZED_SESSIONS_RELATIVE_PATH),
         "normalized_session_count": len(normalized_sessions),
         "derived_transcript_session_count": derived_transcript_session_count,
-        "derived_summaries_path": str(chatlas_root_path / _DERIVED_SUMMARIES_RELATIVE_PATH),
-        "derived_summary_count": derived_summary_count,
+        "derived_summaries_path": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
+        "derived_summary_paths": {
+            "brief": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
+            "detailed": str(chatlas_root_path / _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH),
+        },
+        "derived_summary_count": derived_summary_count["brief"],
+        "derived_summary_counts": derived_summary_count,
         "manifest_path": None if manifest_path is None else str(manifest_path),
         "commit_prefix": settings.commit_prefix,
         "provider_count": len(provider_names),
@@ -208,10 +225,8 @@ def chatlas_stats(
     providers: tuple[str, ...] | None = None,
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
-    chatlas_root_path = (chatlas_root or default_chatlas_root()).expanduser().resolve()
-    sessions = _load_normalized_sessions(chatlas_root_path)
-    if providers is not None:
-        sessions = [session for session in sessions if session.get("provider") in set(providers)]
+    chatlas_root_path = _resolve_chatlas_root(chatlas_root)
+    sessions = _selected_normalized_sessions(chatlas_root_path, providers=providers)
 
     sessions_by_provider: dict[str, list[dict[str, Any]]] = {}
     for session in sessions:
@@ -234,7 +249,7 @@ def chatlas_stats(
         for provider, provider_sessions in sorted(sessions_by_provider.items())
     ]
     latest_manifest = _latest_update_manifest(chatlas_root_path)
-    summaries = _summaries_by_uri(chatlas_root_path)
+    summary_levels_by_uri = _summary_levels_by_uri(chatlas_root_path)
 
     return {
         "status": "ok",
@@ -254,8 +269,16 @@ def chatlas_stats(
             "derived_summary_count": sum(
                 1
                 for session in sessions
-                if _string_or_none(session.get("uri")) in summaries
+                if _session_summary_for_uri(summary_levels_by_uri, session) is not None
             ),
+            "derived_summary_counts": {
+                level: sum(
+                    1
+                    for session in sessions
+                    if _session_summary_for_uri(summary_levels_by_uri, session, level=level) is not None
+                )
+                for level in _SUMMARY_LEVELS
+            },
             "by_provider": by_provider,
             "last_update_recorded_at": None if latest_manifest is None else latest_manifest.get("recorded_at"),
             "last_update_manifest_path": None if latest_manifest is None else latest_manifest.get("_manifest_path"),
@@ -283,39 +306,22 @@ def chatlas_query(
     if normalized_query is None and normalized_text_contain is None and normalized_user_contain is None:
         raise CliError("query, --text-contain, or --user-contain is required")
 
-    chatlas_root_path = (chatlas_root or default_chatlas_root()).expanduser().resolve()
-    sessions = _load_normalized_sessions(chatlas_root_path)
-    if providers is not None:
-        requested_providers = set(providers)
-        sessions = [session for session in sessions if session.get("provider") in requested_providers]
-    summaries = _summaries_by_uri(chatlas_root_path)
+    chatlas_root_path = _resolve_chatlas_root(chatlas_root)
+    selections = _select_chatlas_sessions(
+        chatlas_root_path,
+        query=normalized_query,
+        text_contain=normalized_text_contain,
+        user_contain=normalized_user_contain,
+        providers=providers,
+    )
 
     matched_sessions: list[dict[str, Any]] = []
-    for session in sessions:
-        matched_fields = (
-            _matched_normalized_session_fields(session, query=normalized_query)
-            if normalized_query is not None
-            else ()
-        )
-        if normalized_query is not None and not matched_fields:
-            continue
-        if normalized_text_contain is not None and not _session_text_contains(
-            chatlas_root_path,
-            session,
-            text=normalized_text_contain,
-        ):
-            continue
-        if normalized_user_contain is not None and not _session_text_contains(
-            chatlas_root_path,
-            session,
-            text=normalized_user_contain,
-            role="user",
-        ):
-            continue
-        enriched = dict(session)
-        uri = _string_or_none(session.get("uri"))
-        if uri is not None and uri in summaries:
-            enriched["summary"] = summaries[uri]
+    for selection in selections:
+        enriched = dict(selection.session)
+        if selection.summary is not None:
+            enriched["summary"] = selection.summary
+        if selection.summary_levels:
+            enriched["summary_levels"] = selection.summary_levels
         if normalized_query is not None:
             enriched["match"] = {
                 "query": normalized_query,
@@ -325,20 +331,15 @@ def chatlas_query(
                         "field": field_name,
                         "value": value,
                     }
-                    for field_name, value in matched_fields
+                    for field_name, value in selection.matched_fields
                 ],
             }
-        transcript_filters: dict[str, str] = {}
-        if normalized_text_contain is not None:
-            transcript_filters["text_contain"] = normalized_text_contain
-        if normalized_user_contain is not None:
-            transcript_filters["user_contain"] = normalized_user_contain
-        if transcript_filters:
-            enriched["transcript_filter_match"] = transcript_filters
+        if selection.transcript_filter_match:
+            enriched["transcript_filter_match"] = selection.transcript_filter_match
         matched_sessions.append(enriched)
 
     matched_sessions.sort(key=lambda session: str(session.get("session_id", "")))
-    expansions = ["backing_artifacts", "summary"]
+    expansions = ["backing_artifacts", "summary", "summary_levels"]
     if normalized_query is not None:
         expansions.append("match")
     if normalized_text_contain is not None or normalized_user_contain is not None:
@@ -363,30 +364,45 @@ def chatlas_export(
     *,
     query: str,
     providers: tuple[str, ...] | None = None,
+    artifact_kind: str = "transcript",
+    summary_level: str = "brief",
     output_format: str = "markdown",
     chatlas_root: Path | None = None,
 ) -> str:
-    if output_format not in {"jsonl", "markdown"}:
+    if artifact_kind not in {"transcript", "summary"}:
+        raise CliError(f"unsupported export kind: {artifact_kind}")
+    if summary_level not in _SUMMARY_LEVELS:
+        raise CliError(f"unsupported summary level: {summary_level}")
+    if output_format not in {"json", "jsonl", "markdown"}:
         raise CliError(f"unsupported export format: {output_format}")
+    if artifact_kind == "transcript" and output_format not in {"jsonl", "markdown"}:
+        raise CliError("transcript export format must be jsonl or markdown")
+    if artifact_kind == "summary" and output_format not in {"json", "markdown"}:
+        raise CliError("summary export format must be json or markdown")
 
-    chatlas_root_path = (chatlas_root or default_chatlas_root()).expanduser().resolve()
-    sessions = _load_normalized_sessions(chatlas_root_path)
-    if providers is not None:
-        requested_providers = set(providers)
-        sessions = [session for session in sessions if session.get("provider") in requested_providers]
+    normalized_query = query.strip()
+    if not normalized_query:
+        raise CliError("query must not be empty")
 
-    matched_sessions = [
-        session
-        for session in sessions
-        if _matched_normalized_session_fields(session, query=query.strip())
-    ]
-    if not matched_sessions:
+    chatlas_root_path = _resolve_chatlas_root(chatlas_root)
+    selections = _select_chatlas_sessions(
+        chatlas_root_path,
+        query=normalized_query,
+        providers=providers,
+    )
+    if not selections:
         raise CliError(f"no normalized Chatlas session matched query {query}")
-    if len(matched_sessions) > 1:
-        choices = ", ".join(str(session.get("uri")) for session in matched_sessions[:5])
+    if len(selections) > 1:
+        choices = ", ".join(str(selection.session.get("uri")) for selection in selections[:5])
         raise CliError(f"multiple Chatlas sessions matched query {query}: {choices}")
 
-    session = matched_sessions[0]
+    session = selections[0].session
+    if artifact_kind == "summary":
+        summary = selections[0].summary_levels.get(summary_level)
+        if summary is None:
+            summary = _build_session_summary(chatlas_root_path, session, level=summary_level)
+        return _render_summary(summary, output_format=output_format)
+
     transcript_path = _derived_transcript_path(chatlas_root_path, session, output_format=output_format)
     if transcript_path.is_file():
         return transcript_path.read_text(encoding="utf-8")
@@ -427,7 +443,7 @@ def _build_update_manifest(
     skipped_instance_count: int,
     normalized_session_count: int,
     derived_transcript_session_count: int,
-    derived_summary_count: int,
+    derived_summary_counts: dict[str, int],
     instance_payloads: list[dict[str, object]],
 ) -> dict[str, object]:
     provider_names = _unique_strings(
@@ -450,7 +466,8 @@ def _build_update_manifest(
         "skipped_instance_count": skipped_instance_count,
         "normalized_session_count": normalized_session_count,
         "derived_transcript_session_count": derived_transcript_session_count,
-        "derived_summary_count": derived_summary_count,
+        "derived_summary_count": derived_summary_counts["brief"],
+        "derived_summary_counts": derived_summary_counts,
         "instances": instance_payloads,
     }
 
@@ -462,6 +479,10 @@ def _write_update_manifest(*, chatlas_root: Path, payload: dict[str, object]) ->
     manifest_path = manifest_dir / f"{_compact_timestamp(recorded_at)}.json"
     manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return manifest_path
+
+
+def _resolve_chatlas_root(chatlas_root: Path | None) -> Path:
+    return (chatlas_root or default_chatlas_root()).expanduser().resolve()
 
 
 def _compact_timestamp(value: str) -> str:
@@ -532,15 +553,22 @@ def _materialize_derived_summaries(
     *,
     chatlas_root: Path,
     normalized_sessions: list[dict[str, Any]],
-) -> int:
-    summaries = [
-        _build_session_summary(chatlas_root, session)
-        for session in normalized_sessions
-    ]
-    summaries_path = chatlas_root / _DERIVED_SUMMARIES_RELATIVE_PATH
-    rendered = "".join(json.dumps(summary, sort_keys=True) + "\n" for summary in summaries)
-    _write_text_if_changed(summaries_path, rendered)
-    return len(summaries)
+) -> dict[str, int]:
+    summary_rows_by_level = {
+        level: [
+            _build_session_summary(chatlas_root, session, level=level)
+            for session in normalized_sessions
+        ]
+        for level in _SUMMARY_LEVELS
+    }
+    for level, rows in summary_rows_by_level.items():
+        summaries_path = chatlas_root / _summary_relative_path(level)
+        rendered = "".join(json.dumps(summary, sort_keys=True) + "\n" for summary in rows)
+        _write_text_if_changed(summaries_path, rendered)
+    return {
+        level: len(rows)
+        for level, rows in summary_rows_by_level.items()
+    }
 
 
 def _discover_normalized_sessions(
@@ -579,8 +607,8 @@ def _chatlas_session_provider_instance(
     sqlite_db_paths: list[Path] = []
 
     for _, source_home_path in archive_provider_instance.homes:
-        raw_home_path = _archive_home_destination(
-            archive_root=raw_root,
+        raw_home_path = _chatlas_home_destination(
+            raw_root=raw_root,
             home_path=source_home_path,
         )
         home_slot = _match_session_home_slot(provider_handler.family, source_home_path)
@@ -638,16 +666,19 @@ def _normalized_session_record(session) -> dict[str, Any]:
     return payload
 
 
-def _build_session_summary(chatlas_root: Path, session: dict[str, Any]) -> dict[str, Any]:
+def _build_session_summary(chatlas_root: Path, session: dict[str, Any], *, level: str = "brief") -> dict[str, Any]:
+    if level not in _SUMMARY_LEVELS:
+        raise CliError(f"unsupported summary level: {level}")
+
     turns = _load_transcript_turns(chatlas_root, session)
     user_turns = [turn for turn in turns if _string_or_none(turn.get("role")) == "user"]
     assistant_turns = [turn for turn in turns if _string_or_none(turn.get("role")) == "assistant"]
     first_user_text = _first_turn_text(user_turns)
     last_assistant_text = _last_turn_text(assistant_turns)
     preview_source = first_user_text or last_assistant_text or _first_turn_text(turns)
-    return {
-        "class": "agentos.chatlas.session_summary",
+    base_summary = {
         "schema_version": 1,
+        "level": level,
         "uri": session.get("uri"),
         "provider": session.get("provider"),
         "provider_instance_fingerprint": session.get("provider_instance_fingerprint"),
@@ -662,6 +693,17 @@ def _build_session_summary(chatlas_root: Path, session: dict[str, Any]) -> dict[
         "last_assistant_text": last_assistant_text,
         "text_preview": _truncate_summary_text(preview_source),
     }
+    if level == "brief":
+        base_summary["class"] = "agentos.chatlas.session_summary"
+        return base_summary
+
+    base_summary["class"] = "agentos.chatlas.session_summary.detailed"
+    base_summary["first_turn_text"] = _first_turn_text(turns)
+    base_summary["last_turn_text"] = _last_turn_text(turns)
+    base_summary["user_turn_previews"] = _turn_text_previews(user_turns, limit=3)
+    base_summary["assistant_turn_previews"] = _turn_text_previews(assistant_turns, limit=3)
+    base_summary["turn_previews"] = _turn_previews(turns, limit=6)
+    return base_summary
 
 
 def _session_has_exportable_transcript(session: dict[str, Any]) -> bool:
@@ -710,44 +752,65 @@ def _session_fs_component(value: str) -> str:
 
 
 def _load_normalized_sessions(chatlas_root: Path) -> list[dict[str, Any]]:
-    path = chatlas_root / _NORMALIZED_SESSIONS_RELATIVE_PATH
-    if not path.is_file():
-        return []
-
-    sessions: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        payload = json.loads(stripped)
-        if isinstance(payload, dict):
-            sessions.append(payload)
-    return sessions
+    return _load_jsonl_dict_rows(chatlas_root / _NORMALIZED_SESSIONS_RELATIVE_PATH)
 
 
 def _load_derived_summaries(chatlas_root: Path) -> list[dict[str, Any]]:
-    path = chatlas_root / _DERIVED_SUMMARIES_RELATIVE_PATH
+    return _load_derived_summaries_for_level(chatlas_root, level="brief")
+
+
+def _load_derived_summaries_for_level(chatlas_root: Path, *, level: str) -> list[dict[str, Any]]:
+    return _load_jsonl_dict_rows(chatlas_root / _summary_relative_path(level))
+
+
+def _load_jsonl_dict_rows(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
 
-    summaries: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         payload = json.loads(stripped)
         if isinstance(payload, dict):
-            summaries.append(payload)
-    return summaries
+            rows.append(payload)
+    return rows
 
 
-def _summaries_by_uri(chatlas_root: Path) -> dict[str, dict[str, Any]]:
-    rows = _load_derived_summaries(chatlas_root)
-    return {
-        uri: row
-        for row in rows
-        if (uri := _string_or_none(row.get("uri"))) is not None
-    }
+def _selected_normalized_sessions(
+    chatlas_root: Path,
+    *,
+    providers: tuple[str, ...] | None = None,
+) -> list[dict[str, Any]]:
+    sessions = _load_normalized_sessions(chatlas_root)
+    if providers is None:
+        return sessions
+    requested_providers = set(providers)
+    return [session for session in sessions if session.get("provider") in requested_providers]
+
+
+def _summary_levels_by_uri(chatlas_root: Path) -> dict[str, dict[str, dict[str, Any]]]:
+    summary_levels_by_uri: dict[str, dict[str, dict[str, Any]]] = {}
+    for level in _SUMMARY_LEVELS:
+        for row in _load_derived_summaries_for_level(chatlas_root, level=level):
+            uri = _string_or_none(row.get("uri"))
+            if uri is None:
+                continue
+            summary_levels_by_uri.setdefault(uri, {})[level] = row
+    return summary_levels_by_uri
+
+
+def _session_summary_for_uri(
+    summary_levels_by_uri: dict[str, dict[str, dict[str, Any]]],
+    session: dict[str, Any],
+    *,
+    level: str = "brief",
+) -> dict[str, Any] | None:
+    uri = _string_or_none(session.get("uri"))
+    if uri is None:
+        return None
+    return summary_levels_by_uri.get(uri, {}).get(level)
 
 
 def _latest_update_manifest(chatlas_root: Path) -> dict[str, Any] | None:
@@ -815,20 +878,64 @@ def _string_or_none(value: object) -> str | None:
     return stripped
 
 
-def _load_transcript_turns(chatlas_root: Path, session: dict[str, Any]) -> list[dict[str, Any]]:
-    transcript_path = _derived_transcript_path(chatlas_root, session, output_format="jsonl")
-    if not transcript_path.is_file():
-        return []
-
-    turns: list[dict[str, Any]] = []
-    for line in transcript_path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped:
+def _select_chatlas_sessions(
+    chatlas_root: Path,
+    *,
+    query: str | None = None,
+    text_contain: str | None = None,
+    user_contain: str | None = None,
+    providers: tuple[str, ...] | None = None,
+) -> list[ChatlasSessionSelection]:
+    summary_levels_by_uri = _summary_levels_by_uri(chatlas_root)
+    selections: list[ChatlasSessionSelection] = []
+    for session in _selected_normalized_sessions(chatlas_root, providers=providers):
+        matched_fields = _matched_normalized_session_fields(session, query=query)
+        if query is not None and not matched_fields:
             continue
-        payload = json.loads(stripped)
-        if isinstance(payload, dict):
-            turns.append(payload)
-    return turns
+        transcript_filter_match = _transcript_filter_match(
+            chatlas_root,
+            session,
+            text_contain=text_contain,
+            user_contain=user_contain,
+        )
+        if text_contain is not None or user_contain is not None:
+            if transcript_filter_match is None:
+                continue
+        selections.append(
+            ChatlasSessionSelection(
+                session=session,
+                matched_fields=matched_fields,
+                transcript_filter_match=transcript_filter_match or {},
+                summary=_session_summary_for_uri(summary_levels_by_uri, session),
+                summary_levels=summary_levels_by_uri.get(_string_or_none(session.get("uri")) or "", {}),
+            )
+        )
+    return selections
+
+
+def _transcript_filter_match(
+    chatlas_root: Path,
+    session: dict[str, Any],
+    *,
+    text_contain: str | None = None,
+    user_contain: str | None = None,
+) -> dict[str, str] | None:
+    matched: dict[str, str] = {}
+    if text_contain is not None:
+        if not _session_text_contains(chatlas_root, session, text=text_contain):
+            return None
+        matched["text_contain"] = text_contain
+    if user_contain is not None:
+        if not _session_text_contains(chatlas_root, session, text=user_contain, role="user"):
+            return None
+        matched["user_contain"] = user_contain
+    return matched
+
+
+def _load_transcript_turns(chatlas_root: Path, session: dict[str, Any]) -> list[dict[str, Any]]:
+    return _load_jsonl_dict_rows(
+        _derived_transcript_path(chatlas_root, session, output_format="jsonl")
+    )
 
 
 def _session_text_contains(
@@ -874,6 +981,84 @@ def _truncate_summary_text(text: str | None, *, limit: int = 120) -> str | None:
     if len(normalized) <= limit:
         return normalized
     return normalized[: limit - 1].rstrip() + "…"
+
+
+def _turn_text_previews(turns: list[dict[str, Any]], *, limit: int) -> list[str]:
+    previews: list[str] = []
+    for turn in turns:
+        text = _truncate_summary_text(_string_or_none(turn.get("text")), limit=160)
+        if text is None:
+            continue
+        previews.append(text)
+        if len(previews) >= limit:
+            break
+    return previews
+
+
+def _turn_previews(turns: list[dict[str, Any]], *, limit: int) -> list[dict[str, str]]:
+    previews: list[dict[str, str]] = []
+    for turn in turns:
+        role = _string_or_none(turn.get("role"))
+        text_preview = _truncate_summary_text(_string_or_none(turn.get("text")), limit=160)
+        if role is None or text_preview is None:
+            continue
+        previews.append(
+            {
+                "role": role,
+                "text_preview": text_preview,
+            }
+        )
+        if len(previews) >= limit:
+            break
+    return previews
+
+
+def _summary_relative_path(level: str) -> Path:
+    if level == "brief":
+        return _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH
+    if level == "detailed":
+        return _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH
+    raise CliError(f"unsupported summary level: {level}")
+
+
+def _render_summary(summary: dict[str, Any], *, output_format: str) -> str:
+    if output_format == "json":
+        return json.dumps(summary, indent=2)
+    if output_format != "markdown":
+        raise CliError(f"unsupported summary output format: {output_format}")
+
+    lines = [
+        f"# Chatlas Summary ({summary.get('level', 'brief')})",
+        "",
+        f"- URI: {summary.get('uri')}",
+        f"- Provider: {summary.get('provider')}",
+        f"- Session ID: {summary.get('session_id')}",
+        f"- Display Name: {summary.get('display_name')}",
+        f"- Turns: {summary.get('turn_count', 0)}",
+        f"- User Turns: {summary.get('user_turn_count', 0)}",
+        f"- Assistant Turns: {summary.get('assistant_turn_count', 0)}",
+    ]
+    text_preview = _string_or_none(summary.get("text_preview"))
+    if text_preview is not None:
+        lines.extend(["", "## Preview", "", text_preview])
+    first_user_text = _string_or_none(summary.get("first_user_text"))
+    if first_user_text is not None:
+        lines.extend(["", "## First User", "", first_user_text])
+    last_assistant_text = _string_or_none(summary.get("last_assistant_text"))
+    if last_assistant_text is not None:
+        lines.extend(["", "## Last Assistant", "", last_assistant_text])
+    turn_previews = summary.get("turn_previews")
+    if isinstance(turn_previews, list) and turn_previews:
+        lines.extend(["", "## Outline", ""])
+        for preview in turn_previews:
+            if not isinstance(preview, dict):
+                continue
+            role = _string_or_none(preview.get("role")) or "unknown"
+            preview_text = _string_or_none(preview.get("text_preview"))
+            if preview_text is None:
+                continue
+            lines.append(f"- {role}: {preview_text}")
+    return "\n".join(lines)
 
 
 def _write_text_if_changed(path: Path, text: str) -> None:
