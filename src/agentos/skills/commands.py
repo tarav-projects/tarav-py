@@ -6,24 +6,41 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos.utils.skills import (
+    global_public_skills_depot,
+    prune_global_skills_depot,
     prune_skills_target,
-    require_skills_project_root,
     resolve_skill,
-    resolve_project_skills_dir,
+    resolve_skills_command_project_root,
+    resolve_project_skills_depot,
     resolve_skills_path,
     list_resolved_skills,
+    sync_global_skills_depot,
     sync_skills_target,
 )
 
 
 def _resolve_project_and_target(args: argparse.Namespace) -> tuple[Path, Path]:
-    project_root = require_skills_project_root(Path.cwd())
-    target_dir = resolve_project_skills_dir(project_root, skills_folder=args.skills_folder)
+    if getattr(args, "global_depot", False) and args.skills_depot is not None:
+        raise CliError("--global-depot cannot be combined with --skills-depot")
+    if getattr(args, "global_depot", False):
+        return (Path(), global_public_skills_depot())
+    project_root = resolve_skills_command_project_root(Path.cwd())
+    target_dir = resolve_project_skills_depot(project_root, skills_depot=args.skills_depot)
     return (project_root, target_dir)
 
 
+def _format_skills_list_rows(skills: list) -> list[str]:
+    source_labels = [f"{skill.source_kind}[{skill.resolved_from_index}]" for skill in skills]
+    name_width = max(len(skill.name) for skill in skills)
+    source_width = max(len(label) for label in source_labels)
+    return [
+        f"{skill.name.ljust(name_width)}  {source_label.ljust(source_width)}  {skill.path}"
+        for skill, source_label in zip(skills, source_labels)
+    ]
+
+
 def _cmd_skills_list(args: argparse.Namespace) -> int:
-    skills = list_resolved_skills(Path.cwd(), skills_folder=args.skills_folder)
+    skills = list_resolved_skills(Path.cwd(), skills_depot=args.skills_depot)
     if args.json:
         print(
             json.dumps(
@@ -45,14 +62,14 @@ def _cmd_skills_list(args: argparse.Namespace) -> int:
         print("No skills found.")
         return 0
 
-    for skill in skills:
-        print(f"{skill.name}\t{skill.source_kind}[{skill.resolved_from_index}]\t{skill.path}")
+    for row in _format_skills_list_rows(skills):
+        print(row)
     return 0
 
 
 def _cmd_skills_path(args: argparse.Namespace) -> int:
     if args.name:
-        skill = resolve_skill(args.name, Path.cwd(), skills_folder=args.skills_folder)
+        skill = resolve_skill(args.name, Path.cwd(), skills_depot=args.skills_depot)
         if skill is None:
             raise CliError(f"skill not found in effective skills path: {args.name}")
         print(skill.name)
@@ -60,14 +77,17 @@ def _cmd_skills_path(args: argparse.Namespace) -> int:
         print(f"source_kind: {skill.source_kind}")
         print(f"path: {skill.path}")
     else:
-        for entry in resolve_skills_path(Path.cwd(), skills_folder=args.skills_folder):
+        for entry in resolve_skills_path(Path.cwd(), skills_depot=args.skills_depot):
             print(f"PATH[{entry.resolved_from_index}] {entry.source_kind} {entry.root}")
     return 0
 
 
 def _cmd_skills_sync(args: argparse.Namespace) -> int:
     project_root, target_dir = _resolve_project_and_target(args)
-    result = sync_skills_target(project_root, target_dir, dry_run=args.dry_run)
+    if args.global_depot:
+        result = sync_global_skills_depot(target_dir, dry_run=args.dry_run)
+    else:
+        result = sync_skills_target(project_root, target_dir, dry_run=args.dry_run)
 
     if result.created_links or result.updated_links or result.removed_links:
         for link_path in result.created_links:
@@ -99,7 +119,10 @@ def _cmd_skills_sync(args: argparse.Namespace) -> int:
 
 def _cmd_skills_prune(args: argparse.Namespace) -> int:
     project_root, target_dir = _resolve_project_and_target(args)
-    pruned_links = prune_skills_target(project_root, target_dir, dry_run=args.dry_run)
+    if args.global_depot:
+        pruned_links = prune_global_skills_depot(target_dir, dry_run=args.dry_run)
+    else:
+        pruned_links = prune_skills_target(project_root, target_dir, dry_run=args.dry_run)
 
     if pruned_links:
         for link_path in pruned_links:
@@ -133,10 +156,10 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Emit resolved skills as structured JSON records.",
     )
     skills_list_parser.add_argument(
-        "--skills-folder",
+        "--skills-depot",
         type=Path,
         default=None,
-        help="Project-relative project skills root override for the first PATH entry (default: skills).",
+        help="Project-relative project skills depot override for the first PATH entry (default: project config or skills).",
     )
     skills_list_parser.set_defaults(handler=_cmd_skills_list)
 
@@ -150,22 +173,27 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Optional skill name.",
     )
     skills_path_parser.add_argument(
-        "--skills-folder",
+        "--skills-depot",
         type=Path,
         default=None,
-        help="Project-relative project skills root override for the first PATH entry (default: skills).",
+        help="Project-relative project skills depot override for the first PATH entry (default: project config or skills).",
     )
     skills_path_parser.set_defaults(handler=_cmd_skills_path)
 
     skills_sync_parser = skills_subparsers.add_parser(
         "sync",
-        help="Sync configured skills.imports into the effective project skills folder via symlinks.",
+        help="Sync configured skills.imports into the effective project skills depot via symlinks, falling back to the current folder when no project marker exists.",
     )
     skills_sync_parser.add_argument(
-        "--skills-folder",
+        "--skills-depot",
         type=Path,
         default=None,
-        help="Project-relative skills target folder override (default: skills).",
+        help="Project-relative project skills depot override (default: project config or current-folder skills).",
+    )
+    skills_sync_parser.add_argument(
+        "--global-depot",
+        action="store_true",
+        help="Operate on the global public skills depot instead of a project depot.",
     )
     skills_sync_parser.add_argument(
         "--dry-run",
@@ -176,13 +204,18 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
 
     skills_prune_parser = skills_subparsers.add_parser(
         "prune",
-        help="Delete broken managed symlinks from the effective project skills folder.",
+        help="Delete broken managed symlinks from the effective project skills depot, falling back to the current folder when no project marker exists.",
     )
     skills_prune_parser.add_argument(
-        "--skills-folder",
+        "--skills-depot",
         type=Path,
         default=None,
-        help="Project-relative skills target folder override (default: skills).",
+        help="Project-relative project skills depot override (default: project config or current-folder skills).",
+    )
+    skills_prune_parser.add_argument(
+        "--global-depot",
+        action="store_true",
+        help="Operate on the global public skills depot instead of a project depot.",
     )
     skills_prune_parser.add_argument(
         "--dry-run",

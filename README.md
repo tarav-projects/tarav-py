@@ -22,17 +22,24 @@ Current baseline includes:
 
 `agentos skills` exposes local skills-directory helpers:
 
-- Commands resolve skills through an ordered skills path.
-- Outside a project the default path is `~/.agentos/skills`.
-- Inside an `agentos` project the default path is `<project>/skills`, then `~/.agentos/skills`.
+- Commands resolve skills through an ordered depot-based path.
+- Outside a project the default public path is `~/.agents/skills`.
+- Inside an `agentos` project the default public path is the project `skills.skills_depot` (or `<project>/skills` when unset), then `~/.agents/skills`.
 - Imports are declared in `<project>/.agentos/config.json` under `skills.imports`.
+- The project published destination is configured under `<project>/.agentos/config.json` as `skills.skills_depot`.
+- For `sync` and `prune`, if no `.agentos/project.json` is found, the current folder is treated as an implicit project root with default skills config.
+- `sync` uses project `skills.imports` when present; if that field is missing, it falls back to `~/.agentos/config.json` `skills.imports`.
+- An explicit project `skills.imports: []` disables the global fallback.
+- Relative global fallback import paths are resolved under `~/.agentos/`.
 - `list`: print effective top-level skills with winning source provenance (`--json` optional)
 - `path`: print the ordered skills path, or resolve one specific skill through it
-- `sync`: discover all imported `SKILL.md` directories and sync them into the effective target folder via symlinks
+- `sync`: discover all imported `SKILL.md` directories and sync them into the effective project skills depot via symlinks
 - `sync --dry-run`: print planned symlink creations, updates, and stale-link removals without writing filesystem changes
-- `prune`: remove broken managed symlinks from the effective target folder
+- `sync --global-depot`: sync global `skills.imports` into the global public depot `~/.agents/skills`
+- `prune`: remove broken managed symlinks from the effective project skills depot
 - `prune --dry-run`: print broken managed symlinks that would be removed without writing filesystem changes
-- `--skills-folder <path>`: override the project-local root used as the first path entry; defaults to `<project>/skills`
+- `prune --global-depot`: prune broken managed symlinks from the global public depot `~/.agents/skills`
+- `--skills-depot <path>`: override the project-local depot used as the first path entry and sync/prune target; defaults to project config `skills.skills_depot` or current-folder `skills`
 
 ## Tape CLI (folder-backed default)
 
