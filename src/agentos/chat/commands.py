@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import select
 import sys
 import time
@@ -10,7 +9,7 @@ from typing import Callable, TextIO
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos.chat._cli_common import normalize_updated_since
+from agentos.chat._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
 from agentos.chat.accounts import (
     chat_account_stats,
     format_chat_account_stats_markdown,
@@ -80,7 +79,7 @@ def _cmd_chat_debug_list(args: argparse.Namespace) -> int:
         sort=args.sort,
         full_output=args.full_output,
         limit=None if user_contain is not None else limit,
-        providers=tuple(args.providers) if args.providers else None,
+        providers=optional_string_tuple(args.providers),
         extractable_only=args.extractable,
         updated_after=normalize_updated_since(args.updated_since),
     )
@@ -91,7 +90,7 @@ def _cmd_chat_debug_list(args: argparse.Namespace) -> int:
     if args.output_format == "card":
         print(_format_chat_session_list_card(payload, now=time.time()))
         return 0
-    print(json.dumps(payload, indent=2))
+    print(format_json_output(payload))
     return 0
 
 
@@ -104,7 +103,7 @@ def _cmd_chat_debug_find(args: argparse.Namespace) -> int:
         full_output=args.full_output,
     )
     payload["command"] = "chat debug find"
-    print(json.dumps(payload, indent=2))
+    print(format_json_output(payload))
     return 0
 
 
@@ -143,8 +142,8 @@ def _cmd_chat_accounts_stats(args: argparse.Namespace) -> int:
 
 def _render_chat_accounts_stats_output(args: argparse.Namespace) -> str:
     payload = chat_account_stats(
-        instance_ids=tuple(args.instance_ids) if args.instance_ids else None,
-        providers=tuple(args.providers) if args.providers else None,
+        instance_ids=optional_string_tuple(args.instance_ids),
+        providers=optional_string_tuple(args.providers),
         refresh_usage=args.refresh_usage,
         full_output=args.full_output,
     )
@@ -159,7 +158,7 @@ def _format_chat_accounts_stats_payload_output(
         return format_chat_account_stats_markdown(payload)
     if args.output_format == "usage":
         return format_chat_account_stats_usage(payload)
-    return json.dumps(payload, indent=2)
+    return format_json_output(payload)
 
 
 def _loop_chat_accounts_stats(
@@ -211,8 +210,8 @@ def _render_chat_accounts_stats_progressive_tty(
     interval_sec: float,
 ) -> None:
     for payload in iter_chat_account_stats_refresh_payloads(
-        instance_ids=tuple(args.instance_ids) if args.instance_ids else None,
-        providers=tuple(args.providers) if args.providers else None,
+        instance_ids=optional_string_tuple(args.instance_ids),
+        providers=optional_string_tuple(args.providers),
         refresh_usage=args.refresh_usage,
         full_output=args.full_output,
     ):

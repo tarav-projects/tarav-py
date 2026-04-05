@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import argparse
-import json
 
-from agentos.chat._cli_common import normalize_updated_since
+from agentos.chat._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
 from agentos.chatlas.core import (
     chatlas_export,
     chatlas_query,
@@ -19,18 +18,18 @@ _CHATLAS_PROVIDER_CHOICES = tuple(
 
 def _cmd_chatlas_update(args: argparse.Namespace) -> int:
     payload = chatlas_update(
-        providers=tuple(args.providers) if args.providers else None,
+        providers=optional_string_tuple(args.providers),
     )
-    print(json.dumps(payload, indent=2))
+    print(format_json_output(payload))
     return 0
 
 
 def _cmd_chatlas_stats(args: argparse.Namespace) -> int:
     payload = chatlas_stats(
-        providers=tuple(args.providers) if args.providers else None,
+        providers=optional_string_tuple(args.providers),
         full_output=args.full_output,
     )
-    print(json.dumps(payload, indent=2))
+    print(format_json_output(payload))
     return 0
 
 
@@ -39,7 +38,7 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
         query=args.query,
         text_contain=args.text_contain,
         user_contain=args.user_contain,
-        providers=tuple(args.providers) if args.providers else None,
+        providers=optional_string_tuple(args.providers),
         sort=args.sort,
         limit=args.limit,
         extractable_only=args.extractable,
@@ -51,7 +50,7 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
         include_transcript_filter_match=args.include_transcript_filter_match,
         include_provider_stats=args.include_provider_stats,
     )
-    print(json.dumps(payload, indent=2))
+    print(format_json_output(payload))
     return 0
 
 
@@ -59,7 +58,7 @@ def _cmd_chatlas_export(args: argparse.Namespace) -> int:
     print(
         chatlas_export(
             query=args.query,
-            providers=tuple(args.providers) if args.providers else None,
+            providers=optional_string_tuple(args.providers),
             artifact_kind=args.artifact_kind,
             summary_level=args.summary_level,
             output_format=args.output_format,

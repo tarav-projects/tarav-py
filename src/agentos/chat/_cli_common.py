@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import time
+from typing import Sequence
 
 from agentos._core.errors import CliError
 
@@ -33,4 +34,16 @@ def normalize_updated_since(value: str | None) -> float | None:
     return time.time() - (amount * multiplier)
 
 
-__all__ = ["normalize_updated_since"]
+def optional_string_tuple(values: Sequence[str] | None) -> tuple[str, ...] | None:
+    if not values:
+        return None
+    return tuple(values)
+
+
+def format_json_output(payload: object) -> str:
+    import json
+
+    return json.dumps(payload, indent=2)
+
+
+__all__ = ["format_json_output", "normalize_updated_since", "optional_string_tuple"]
