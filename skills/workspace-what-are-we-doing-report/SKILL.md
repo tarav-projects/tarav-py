@@ -1,5 +1,5 @@
 ---
-name: workspace-what-are-we-doing-report
+name: agentos-workspace-what-are-we-doing-report
 description: Reconstruct work in progress after a crash using `notes/live` and git evidence. USE WHEN the user wants an evidence-backed snapshot of what was completed, planned, and in progress in the workspace after losing session context.
 user-invocable: true
 disable-model-invocation: true

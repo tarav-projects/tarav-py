@@ -1,5 +1,5 @@
 ---
-name: design-discussion
+name: agentos-design-discussion
 description: Collaborative design conversation mode for architecture or product decisions. Use when the user wants iterative back-and-forth suggestions, critique, and refinement toward convergence, not a structured interview or questionnaire.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: design-interview
+name: agentos-design-interview
 description: 'Gather requirements and make design decisions through Q&A conversation. Use ONLY when explicitly triggered by name (for example: "$design-interview" or "use design-interview"). Do not auto-apply from inferred intent.'
 ---
 

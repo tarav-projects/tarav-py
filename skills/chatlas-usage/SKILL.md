@@ -1,5 +1,5 @@
 ---
-name: chatlas-usage
+name: agentos-chatlas-usage
 description: Use when Codex needs to work with chat session data in `agentos` through the maintained Chatlas dataset rather than live provider debug commands. Trigger for Chatlas tasks such as refreshing the dataset, querying sessions, resolving one session by id/URI/name/native field, inspecting summaries or provider stats, or exporting transcripts and summaries.
 ---
 

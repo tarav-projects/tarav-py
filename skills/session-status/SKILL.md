@@ -1,5 +1,5 @@
 ---
-name: session-status
+name: agentos-session-status
 description: "Reconnect the user with the current session state. Maintains a session todo list and provides context on what's happening and what's next. USE WHEN the user says 'status', 'catch me up', 'what are we doing', 'what's next', 'anything left', 'what's missing', or similar reconnect requests."
 ---
 

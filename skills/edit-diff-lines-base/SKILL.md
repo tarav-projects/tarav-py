@@ -1,5 +1,5 @@
 ---
-name: edit-diff-lines-base
+name: agentos-edit-diff-lines-base
 description: Define the edit-diff-lines format for proposing text changes as unified diff lines. USE WHEN creating or applying skills that should present file or in-chat edits for human review instead of rewriting text directly.
 ---
 

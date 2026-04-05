@@ -1,5 +1,5 @@
 ---
-name: codebase-general-cleanup
+name: agentos-codebase-general-cleanup
 description: Improve a git-tracked codebase in place by making targeted cleanup refactors. USE WHEN the user wants the agent to simplify code, reduce duplication, address SSOT or DRY violations, remove poor abstractions, centralize repeated knowledge, tighten boundaries, or generally clean up a repository after implementation; create a checkpoint commit before editing, apply the improvements, and summarize the results.
 ---
 

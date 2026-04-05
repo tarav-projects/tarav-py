@@ -1,5 +1,5 @@
 ---
-name: session-zip-transcript
+name: agentos-session-zip-transcript
 description: Resolve a chat session from a session id, session URI, or provider-agnostic query, extract its conversation with `agentos chatlas`, and return a compressed transcript artifact. Use when the user wants prior session context loaded in a smaller form that preserves full user turns but not the exact original assistant wording.
 ---
 

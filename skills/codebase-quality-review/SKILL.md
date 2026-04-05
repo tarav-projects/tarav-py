@@ -1,5 +1,5 @@
 ---
-name: codebase-quality-review
+name: agentos-codebase-quality-review
 description: Analyze a codebase to find organization, readability, and maintainability issues, then propose incremental improvements. USE WHEN the user wants a quality review focused on unorganized structure, suboptimal patterns, or maintainability problems.
 ---
 

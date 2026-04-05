@@ -1,5 +1,5 @@
 ---
-name: codebase-ssot-check
+name: agentos-codebase-ssot-check
 description: Scan a codebase for Single Source of Truth (SSOT) violations. USE WHEN the user wants duplicated knowledge, bypassed interfaces, repeated constants, or decentralized decisions identified in the current project.
 user-invocable: true
 disable-model-invocation: true

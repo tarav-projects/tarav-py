@@ -1,5 +1,5 @@
 ---
-name: git-commit-trigger
+name: agentos-git-commit-trigger
 description: Run a deterministic semantic git commit flow across existing repositories. USE WHEN the user explicitly invokes `$git-commit-trigger` and wants changes grouped into focused Conventional Commits without tests, pushes, or repository initialization.
 allowed-tools: Bash(git status *, git rev-parse *, git add *, git diff *, git diff --staged *, git commit *, git log *, git show *, git -C *, find *, rg *, sed *, mktemp, cat *, rm *)
 ---
