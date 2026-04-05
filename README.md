@@ -27,6 +27,7 @@ Current baseline includes:
 - Inside an `agentos` project the default public path is the project `skills.skills_depot` (or `<project>/skills` when unset), then `~/.agents/skills`.
 - Imports are declared in `<project>/.agentos/config.json` under `skills.imports`.
 - The project published destination is configured under `<project>/.agentos/config.json` as `skills.skills_depot`.
+- Imported skills are published into the depot as `<import-name>-<skill-folder-name>` by default.
 - For `sync` and `prune`, if no `.agentos/project.json` is found, the current folder is treated as an implicit project root with default skills config.
 - `sync` uses project `skills.imports` when present; if that field is missing, it falls back to `~/.agentos/config.json` `skills.imports`.
 - An explicit project `skills.imports: []` disables the global fallback.

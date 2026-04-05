@@ -94,8 +94,8 @@ def test_skills_sync_creates_symlinks_from_configured_imports(
     assert main(["skills", "sync"]) == 0
     stdout = capsys.readouterr().out
 
-    alpha_link = project_root / "skills" / "alpha-skill"
-    beta_link = project_root / "skills" / "beta-skill"
+    alpha_link = project_root / "skills" / "shared-alpha-skill"
+    beta_link = project_root / "skills" / "shared-beta-skill"
     assert "created:" in stdout
     assert alpha_link.is_symlink()
     assert beta_link.is_symlink()
@@ -121,14 +121,14 @@ def test_skills_sync_uses_skills_depot_override(tmp_path: Path, monkeypatch, cap
     assert main(["skills", "sync", "--skills-depot", ".agents/skills"]) == 0
     capsys.readouterr()
 
-    override_link = project_root / ".agents" / "skills" / "alpha-skill"
-    default_link = project_root / "skills" / "alpha-skill"
+    override_link = project_root / ".agents" / "skills" / "shared-alpha-skill"
+    default_link = project_root / "skills" / "shared-alpha-skill"
     assert override_link.is_symlink()
     assert override_link.resolve() == alpha_skill.resolve()
     assert not default_link.exists()
 
 
-def test_skills_sync_errors_on_duplicate_imported_skill_names(
+def test_skills_sync_allows_same_skill_name_across_different_import_prefixes(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -150,10 +150,91 @@ def test_skills_sync_errors_on_duplicate_imported_skill_names(
     )
 
     monkeypatch.chdir(project_root)
+    assert main(["skills", "sync"]) == 0
+    capsys.readouterr()
+    assert (project_root / "skills" / "first-alpha-skill").is_symlink()
+    assert (project_root / "skills" / "second-alpha-skill").is_symlink()
+
+
+def test_skills_sync_errors_on_duplicate_mapped_skill_names_within_import(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    first_root = tmp_path / "first"
+    _create_skill(first_root / "group-one" / "alpha-skill")
+    _create_skill(first_root / "group-two" / "alpha-skill")
+
+    _write_project_config(
+        project_root,
+        [{"name": "first", "path": "../first"}],
+    )
+
+    monkeypatch.chdir(project_root)
     assert main(["skills", "sync"]) == 1
     stderr = capsys.readouterr().err
     assert "duplicate imported skill names" in stderr
-    assert not (project_root / "skills" / "alpha-skill").exists()
+    assert "first-alpha-skill" in stderr
+    assert not (project_root / "skills" / "first-alpha-skill").exists()
+
+
+def test_skills_sync_does_not_duplicate_existing_import_prefix(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    external_root = tmp_path / "external-skills"
+    prefixed_skill = external_root / "phd-document-collector-base"
+    _create_skill(prefixed_skill)
+
+    _write_project_config(
+        project_root,
+        [{"name": "phd", "path": "../external-skills"}],
+    )
+
+    monkeypatch.chdir(project_root)
+    assert main(["skills", "sync"]) == 0
+    capsys.readouterr()
+
+    expected_link = project_root / "skills" / "phd-document-collector-base"
+    duplicated_link = project_root / "skills" / "phd-phd-document-collector-base"
+    assert expected_link.is_symlink()
+    assert expected_link.resolve() == prefixed_skill.resolve()
+    assert not duplicated_link.exists()
+
+
+def test_skills_sync_does_not_duplicate_exact_import_name(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    external_root = tmp_path / "external-skills"
+    exact_skill = external_root / "spec-surfaces"
+    _create_skill(exact_skill)
+
+    _write_project_config(
+        project_root,
+        [{"name": "spec-surfaces", "path": "../external-skills"}],
+    )
+
+    monkeypatch.chdir(project_root)
+    assert main(["skills", "sync"]) == 0
+    capsys.readouterr()
+
+    expected_link = project_root / "skills" / "spec-surfaces"
+    duplicated_link = project_root / "skills" / "spec-surfaces-spec-surfaces"
+    assert expected_link.is_symlink()
+    assert expected_link.resolve() == exact_skill.resolve()
+    assert not duplicated_link.exists()
 
 
 def test_skills_sync_updates_previous_managed_link(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -184,7 +265,7 @@ def test_skills_sync_updates_previous_managed_link(tmp_path: Path, monkeypatch, 
     assert main(["skills", "sync"]) == 0
     stdout = capsys.readouterr().out
 
-    alpha_link = project_root / "skills" / "alpha-skill"
+    alpha_link = project_root / "skills" / "shared-alpha-skill"
     assert "updated:" in stdout
     assert alpha_link.is_symlink()
     assert alpha_link.resolve() == second_skill.resolve()
@@ -215,7 +296,7 @@ def test_skills_sync_removes_stale_managed_link_when_import_removed(
     assert main(["skills", "sync"]) == 0
     stdout = capsys.readouterr().out
 
-    alpha_link = project_root / "skills" / "alpha-skill"
+    alpha_link = project_root / "skills" / "shared-alpha-skill"
     assert "removed stale link:" in stdout
     assert not alpha_link.exists()
     assert not alpha_link.is_symlink()
@@ -238,7 +319,7 @@ def test_skills_sync_errors_on_unmanaged_conflicting_path(
         [{"name": "shared", "path": "../external-skills"}],
     )
 
-    conflicting_path = project_root / "skills" / "alpha-skill"
+    conflicting_path = project_root / "skills" / "shared-alpha-skill"
     conflicting_path.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.chdir(project_root)
@@ -272,7 +353,7 @@ def test_skills_prune_removes_broken_managed_symlink(tmp_path: Path, monkeypatch
     assert main(["skills", "prune"]) == 0
     stdout = capsys.readouterr().out
 
-    alpha_link = project_root / "skills" / "alpha-skill"
+    alpha_link = project_root / "skills" / "shared-alpha-skill"
     assert f"removed: {alpha_link}" in stdout
     assert not alpha_link.exists()
     assert not alpha_link.is_symlink()
@@ -309,10 +390,10 @@ def test_skills_list_and_path_use_effective_project_target(
     assert listed == [
         {
             "name": "alpha-skill",
-            "resolved_from_index": 0,
-            "source_kind": "project",
-            "root": str((project_root / ".agents" / "skills").resolve()),
-            "path": str(project_root / ".agents" / "skills" / "alpha-skill"),
+            "resolved_from_index": 1,
+            "source_kind": "global",
+            "root": str(global_skills_root.resolve()),
+            "path": str(global_skills_root / "alpha-skill"),
         },
         {
             "name": "gamma-skill",
@@ -320,6 +401,13 @@ def test_skills_list_and_path_use_effective_project_target(
             "source_kind": "global",
             "root": str(global_skills_root.resolve()),
             "path": str(gamma_skill),
+        },
+        {
+            "name": "shared-alpha-skill",
+            "resolved_from_index": 0,
+            "source_kind": "project",
+            "root": str((project_root / ".agents" / "skills").resolve()),
+            "path": str(project_root / ".agents" / "skills" / "shared-alpha-skill"),
         },
     ]
 
@@ -330,20 +418,21 @@ def test_skills_list_and_path_use_effective_project_target(
         f"PATH[1] global {global_skills_root.resolve()}",
     ]
 
-    assert main(["skills", "path", "alpha-skill"]) == 0
+    assert main(["skills", "path", "shared-alpha-skill"]) == 0
     skill_path_lines = capsys.readouterr().out.strip().splitlines()
     assert skill_path_lines == [
-        "alpha-skill",
+        "shared-alpha-skill",
         "resolved_from: PATH[0]",
         "source_kind: project",
-        f"path: {project_root / '.agents' / 'skills' / 'alpha-skill'}",
+        f"path: {project_root / '.agents' / 'skills' / 'shared-alpha-skill'}",
     ]
 
     assert main(["skills", "list"]) == 0
     list_lines = capsys.readouterr().out.strip().splitlines()
     assert list_lines == [
-        f"alpha-skill  project[0]  {project_root / '.agents' / 'skills' / 'alpha-skill'}",
-        f"gamma-skill  global[1]   {gamma_skill}",
+        f"alpha-skill         global[1]   {global_skills_root / 'alpha-skill'}",
+        f"gamma-skill         global[1]   {gamma_skill}",
+        f"shared-alpha-skill  project[0]  {project_root / '.agents' / 'skills' / 'shared-alpha-skill'}",
     ]
 
 
@@ -414,18 +503,18 @@ def test_skills_depot_override_affects_list_and_path(
     listed = json.loads(capsys.readouterr().out)
     assert listed == [
         {
-            "name": "alpha-skill",
-            "resolved_from_index": 0,
-            "source_kind": "project",
-            "root": str((project_root / ".agents" / "skills").resolve()),
-            "path": str(project_root / ".agents" / "skills" / "alpha-skill"),
-        },
-        {
             "name": "gamma-skill",
             "resolved_from_index": 1,
             "source_kind": "global",
             "root": str(global_skills_root.resolve()),
             "path": str(gamma_skill),
+        },
+        {
+            "name": "shared-alpha-skill",
+            "resolved_from_index": 0,
+            "source_kind": "project",
+            "root": str((project_root / ".agents" / "skills").resolve()),
+            "path": str(project_root / ".agents" / "skills" / "shared-alpha-skill"),
         },
     ]
 
@@ -461,7 +550,7 @@ def test_skills_sync_falls_back_to_global_imports_when_project_imports_missing(
     assert main(["skills", "sync"]) == 0
     stdout = capsys.readouterr().out
 
-    linked_skill = project_root / "skills" / "alpha-skill"
+    linked_skill = project_root / "skills" / "global-shared-alpha-skill"
     assert "created:" in stdout
     assert linked_skill.is_symlink()
     assert linked_skill.resolve() == alpha_skill.resolve()
@@ -499,7 +588,7 @@ def test_skills_sync_project_imports_override_global_fallback(
     assert main(["skills", "sync"]) == 0
     capsys.readouterr()
 
-    linked_skill = project_root / "skills" / "alpha-skill"
+    linked_skill = project_root / "skills" / "project-shared-alpha-skill"
     assert linked_skill.is_symlink()
     assert linked_skill.resolve() == project_alpha_skill.resolve()
 
@@ -528,7 +617,7 @@ def test_skills_sync_explicit_empty_project_imports_disable_global_fallback(
     stdout = capsys.readouterr().out
 
     assert "No changes." in stdout
-    assert not (project_root / "skills" / "alpha-skill").exists()
+    assert not (project_root / "skills" / "global-shared-alpha-skill").exists()
 
 
 def test_skills_sync_global_depot_uses_global_imports_without_project(
@@ -554,7 +643,7 @@ def test_skills_sync_global_depot_uses_global_imports_without_project(
     assert main(["skills", "sync", "--global-depot"]) == 0
     stdout = capsys.readouterr().out
 
-    linked_skill = global_depot / "alpha-skill"
+    linked_skill = global_depot / "global-shared-alpha-skill"
     assert "created:" in stdout
     assert linked_skill.is_symlink()
     assert linked_skill.resolve() == alpha_skill.resolve()
@@ -588,7 +677,7 @@ def test_skills_prune_global_depot_removes_broken_managed_symlink(
     assert main(["skills", "prune", "--global-depot"]) == 0
     stdout = capsys.readouterr().out
 
-    linked_skill = global_depot / "alpha-skill"
+    linked_skill = global_depot / "global-shared-alpha-skill"
     assert f"removed: {linked_skill}" in stdout
     assert not linked_skill.exists()
     assert not linked_skill.is_symlink()
@@ -635,7 +724,7 @@ def test_skills_sync_uses_current_folder_as_implicit_project_root(
     assert main(["skills", "sync", "--dry-run"]) == 0
     stdout = capsys.readouterr().out
 
-    expected_link = workspace / "skills" / "alpha-skill"
+    expected_link = workspace / "skills" / "global-shared-alpha-skill"
     assert f"DRY-RUN would create: {expected_link}" in stdout
     assert not expected_link.exists()
     assert not (workspace / ".agentos").exists()
@@ -669,6 +758,6 @@ def test_skills_prune_uses_current_folder_as_implicit_project_root(
     assert main(["skills", "prune"]) == 0
     stdout = capsys.readouterr().out
 
-    linked_skill = workspace / "skills" / "alpha-skill"
+    linked_skill = workspace / "skills" / "global-shared-alpha-skill"
     assert f"removed: {linked_skill}" in stdout
     assert not linked_skill.exists()

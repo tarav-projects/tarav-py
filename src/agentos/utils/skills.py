@@ -307,8 +307,11 @@ def discover_imported_skills(imports: list[SkillsImport]) -> list[DiscoveredSkil
 
     for item in imports:
         for skill_dir in discover_skill_dirs(item.root):
+            mapped_name = skill_dir.name
+            if mapped_name != item.name and not mapped_name.startswith(f"{item.name}-"):
+                mapped_name = f"{item.name}-{mapped_name}"
             skill = DiscoveredSkill(
-                name=skill_dir.name,
+                name=mapped_name,
                 source_path=skill_dir.resolve(),
                 import_name=item.name,
             )
