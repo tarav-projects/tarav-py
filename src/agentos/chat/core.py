@@ -14,10 +14,8 @@ from agentos._core.errors import CliError
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
-    ProviderInstanceConfigEntry,
-    ProviderInstanceConfigSource,
     ProviderHomeSlot,
-    load_provider_instance_config_entries,
+    load_configured_provider_instances,
 )
 from agentos.chat.sessions import (
     BackingArtifact,
@@ -29,7 +27,6 @@ from agentos.chat.sessions import (
     OpenclawSessionSource,
     OpencodeSessionSource,
     ProviderInstance,
-    ProviderInstanceAnchor,
     SessionSource,
     coerce_timestamp,
     safe_path_mtime,
@@ -47,10 +44,6 @@ TEXT_FILE_SUFFIXES = {
 }
 MAX_GREP_FILE_BYTES = 5 * 1024 * 1024
 SESSION_SORT_CHOICES = {"lexical", "newest", "oldest"}
-_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
-    object_path=("chat", "session", "provider_instances"),
-    field_prefix="chat.session.provider_instances",
-)
 
 @dataclass(frozen=True)
 class SessionProviderHandler:
@@ -59,6 +52,11 @@ class SessionProviderHandler:
     discover_sources: Callable[[SessionProviderContext], list[SessionSource]]
     find_sources: Callable[[SessionProviderContext, str], list[SessionSource]]
     build_source_stats: Callable[[SessionSource], dict[str, Any]]
+    cli_command: tuple[str, ...] = ()
+    run_args: tuple[str, ...] = ()
+    default_model: str | None = None
+    model_flag: str | None = None
+    prompt_flag: str | None = None
 
     def supported_home_keys(self) -> tuple[str, ...]:
         return tuple(slot.key for slot in self.home_slots)
@@ -72,93 +70,6 @@ class SessionProviderHandler:
         query: str,
     ) -> list[ChatSession]:
         return _wrap_session_sources(self.find_sources(context, query))
-
-    def default_instance(self) -> ProviderInstance:
-        return self.instance_from_homes(
-            {
-                slot.key: slot.default_home
-                for slot in self.home_slots
-            },
-            index=None,
-            is_default=True,
-        )
-
-    def instance_from_home(
-        self,
-        home: str,
-        *,
-        index: int | None,
-        is_default: bool,
-    ) -> ProviderInstance:
-        if len(self.home_slots) != 1:
-            supported_keys = ", ".join(self.supported_home_keys())
-            field_name = _provider_instance_field_name(index=index, field="home")
-            homes_field_name = _provider_instance_field_name(index=index, field="homes")
-            raise CliError(
-                f"{field_name} is only supported for providers with a single home root; "
-                f"use {homes_field_name} with keys: {supported_keys}"
-            )
-        slot = self.home_slots[0]
-        return self.instance_from_homes({slot.key: home}, index=index, is_default=is_default)
-
-    def instance_from_homes(
-        self,
-        homes: dict[str, str],
-        *,
-        index: int | None,
-        is_default: bool,
-    ) -> ProviderInstance:
-        supported_slots = {slot.key: slot for slot in self.home_slots}
-        unsupported_keys = sorted(key for key in homes if key not in supported_slots)
-        homes_field_name = _provider_instance_field_name(index=index, field="homes")
-        if unsupported_keys:
-            supported_keys = ", ".join(self.supported_home_keys())
-            unsupported_keys_text = ", ".join(unsupported_keys)
-            raise CliError(
-                f"{homes_field_name} contains unsupported keys for provider {self.family}: "
-                f"{unsupported_keys_text} (supported: {supported_keys})"
-            )
-
-        normalized_homes: list[tuple[str, Path]] = []
-        direct_targets: list[Path] = []
-        grep_targets: list[Path] = []
-        sqlite_db_paths: list[Path] = []
-        anchors: list[ProviderInstanceAnchor] = []
-
-        for slot in self.home_slots:
-            raw_home = homes.get(slot.key)
-            if raw_home is None:
-                continue
-            normalized_home = Path(
-                _normalize_provider_home(
-                    raw_home,
-                    field_name=f"{homes_field_name}.{slot.key}",
-                )
-            ).expanduser().resolve()
-            normalized_homes.append((slot.key, normalized_home))
-            slot_direct_paths, slot_grep_paths, slot_sqlite_db_paths = slot.build_paths(
-                home=normalized_home,
-            )
-            direct_targets.extend(slot_direct_paths)
-            grep_targets.extend(slot_grep_paths or slot_direct_paths)
-            sqlite_db_paths.extend(slot_sqlite_db_paths)
-            anchors.extend(slot.build_anchors(home=normalized_home))
-
-        if not direct_targets and not sqlite_db_paths:
-            supported_keys = ", ".join(self.supported_home_keys())
-            raise CliError(
-                f"{homes_field_name} must include at least one supported home key: {supported_keys}"
-            )
-
-        return ProviderInstance(
-            family=self.family,
-            homes=tuple(normalized_homes),
-            direct_targets=_unique_paths(tuple(direct_targets)),
-            grep_targets=_unique_paths(tuple(grep_targets)),
-            sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
-            anchors=tuple(anchors),
-            is_default=is_default,
-        )
 
 
 @dataclass(frozen=True)
@@ -265,6 +176,10 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
                 CodexSessionSource,
                 _build_codex_session_stats,
             ),
+            cli_command=("codex",),
+            run_args=("exec", "--dangerously-bypass-approvals-and-sandbox"),
+            default_model="gpt-5.4",
+            model_flag="--model",
         ),
         "claude-code": dict(
             discover_sources=_make_direct_session_discovery(_list_claude_code_sessions),
@@ -323,145 +238,13 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
 
 
 def configured_provider_instances(*, start_path: Path | str = ".") -> tuple[ProviderInstance, ...]:
-    provider_instances = [family.default_instance() for family in supported_provider_families()]
-    provider_instances.extend(_load_configured_provider_instances(start_path=start_path))
-    return _dedupe_provider_instances(tuple(provider_instances))
-
-
-def _load_configured_provider_instances(*, start_path: Path | str = ".") -> tuple[ProviderInstance, ...]:
-    entries = load_provider_instance_config_entries(
-        start_path=start_path,
-        sources=(_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE,),
+    supported_families = {provider_handler.family for provider_handler in supported_provider_families()}
+    provider_instances = tuple(
+        provider_instance
+        for provider_instance in load_configured_provider_instances(start_path=start_path)
+        if provider_instance.family in supported_families
     )
-    return tuple(_provider_instance_from_config(entry) for entry in entries)
-
-
-def _provider_instance_from_config(entry: ProviderInstanceConfigEntry) -> ProviderInstance:
-    raw_instance = entry.raw_instance
-    family_name = raw_instance.get("provider")
-    if not isinstance(family_name, str) or not family_name:
-        raise CliError(f"{entry.item_path()}.provider is required")
-
-    family = _provider_family_for_name(family_name)
-    if family is None:
-        supported_providers = ", ".join(
-            sorted(provider_family.family for provider_family in supported_provider_families())
-        )
-        raise CliError(
-            f"{entry.item_path()}.provider must be one of: {supported_providers}"
-        )
-
-    home = raw_instance.get("home")
-    raw_homes = raw_instance.get("homes")
-    raw_direct_paths = raw_instance.get("direct_paths")
-    raw_grep_paths = raw_instance.get("grep_paths")
-    raw_sqlite_db_paths = raw_instance.get("sqlite_db_paths")
-    raw_sqlite_db_path = raw_instance.get("sqlite_db_path")
-
-    if home is not None and raw_homes is not None:
-        raise CliError(
-            f"{entry.item_path()} must not define both home and homes"
-        )
-    if raw_sqlite_db_path is not None and raw_sqlite_db_paths is not None:
-        raise CliError(
-            f"{entry.item_path()} must not define both sqlite_db_path and sqlite_db_paths"
-        )
-
-    direct_paths = _load_optional_string_tuple(
-        raw_direct_paths,
-        field_name=entry.field_name("direct_paths"),
-    )
-    grep_paths = _load_optional_string_tuple(
-        raw_grep_paths,
-        field_name=entry.field_name("grep_paths"),
-    )
-    sqlite_db_paths = _load_optional_string_tuple(
-        raw_sqlite_db_paths if raw_sqlite_db_paths is not None else raw_sqlite_db_path,
-        field_name=entry.field_name("sqlite_db_paths"),
-    )
-    homes = _load_optional_string_mapping(
-        raw_homes,
-        field_name=entry.field_name("homes"),
-    )
-
-    if home is not None:
-        normalized_home = _normalize_provider_home(
-            home,
-            field_name=entry.field_name("home"),
-        )
-        if direct_paths or grep_paths or sqlite_db_paths:
-            raise CliError(
-                f"{entry.item_path()} must define either home or explicit paths, not both"
-            )
-        return family.instance_from_home(normalized_home, index=entry.index, is_default=False)
-
-    if homes:
-        if len(family.home_slots) == 1:
-            raise CliError(
-                f"{entry.field_name('homes')} is only supported for providers with multiple home roots; "
-                f"use {entry.field_name('home')}"
-            )
-        if direct_paths or grep_paths or sqlite_db_paths:
-            raise CliError(
-                f"{entry.item_path()} must define either homes or explicit paths, not both"
-            )
-        return family.instance_from_homes(homes, index=entry.index, is_default=False)
-
-    if not direct_paths:
-        raise CliError(
-            f"{entry.item_path()} must define home, homes, or direct_paths"
-        )
-
-    resolved_direct_targets = _resolve_raw_paths(direct_paths)
-    resolved_grep_targets = _resolve_raw_paths(grep_paths) if grep_paths else resolved_direct_targets
-    resolved_sqlite_db_paths = _resolve_raw_paths(sqlite_db_paths)
-    return ProviderInstance(
-        family=family_name,
-        homes=(),
-        direct_targets=resolved_direct_targets,
-        grep_targets=resolved_grep_targets,
-        sqlite_db_paths=resolved_sqlite_db_paths,
-        anchors=_build_explicit_provider_instance_anchors(
-            direct_targets=resolved_direct_targets,
-            sqlite_db_paths=resolved_sqlite_db_paths,
-        ),
-        is_default=False,
-    )
-
-
-def _load_optional_string_tuple(value: object, *, field_name: str) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            raise CliError(f"{field_name} must not be empty")
-        return (stripped,)
-    if not isinstance(value, list):
-        raise CliError(f"{field_name} must be a string or array of strings")
-
-    items: list[str] = []
-    for index, item in enumerate(value):
-        if not isinstance(item, str) or not item.strip():
-            raise CliError(f"{field_name}[{index}] must be a non-empty string")
-        items.append(item.strip())
-    return tuple(items)
-
-
-def _load_optional_string_mapping(value: object, *, field_name: str) -> dict[str, str]:
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise CliError(f"{field_name} must be a JSON object")
-
-    items: dict[str, str] = {}
-    for key, item in value.items():
-        if not isinstance(key, str) or not key.strip():
-            raise CliError(f"{field_name} contains an invalid key")
-        if not isinstance(item, str) or not item.strip():
-            raise CliError(f"{field_name}.{key} must be a non-empty string")
-        items[key.strip()] = item.strip()
-    return items
+    return _dedupe_provider_instances(provider_instances)
 
 
 def _provider_family_for_name(family_name: str) -> SessionProviderHandler | None:
@@ -470,49 +253,12 @@ def _provider_family_for_name(family_name: str) -> SessionProviderHandler | None
             return family
     return None
 
-
-def _provider_instance_field_name(*, index: int | None, field: str) -> str:
-    if index is None:
-        return field
-    return f"chat.session.provider_instances[{index}].{field}"
-
-
-def _normalize_provider_home(home: object, *, field_name: str) -> str:
-    if not isinstance(home, str) or not home.strip():
-        raise CliError(f"{field_name} must be a non-empty string")
-    return home.strip()
-
-
-def _resolve_raw_paths(raw_paths: tuple[str, ...]) -> tuple[Path, ...]:
-    return _unique_paths(tuple(Path(raw_path).expanduser().resolve() for raw_path in raw_paths))
-
-
-def _build_explicit_provider_instance_anchors(
-    *,
-    direct_targets: tuple[Path, ...],
-    sqlite_db_paths: tuple[Path, ...],
-) -> tuple[ProviderInstanceAnchor, ...]:
-    anchors = [
-        ProviderInstanceAnchor(role=f"direct_target_{index + 1}", path=path)
-        for index, path in enumerate(direct_targets)
-    ]
-    anchors.extend(
-        ProviderInstanceAnchor(role=f"sqlite_db_{index + 1}", path=path)
-        for index, path in enumerate(sqlite_db_paths)
-    )
-    return tuple(anchors)
-
 def _dedupe_provider_instances(provider_instances: tuple[ProviderInstance, ...]) -> tuple[ProviderInstance, ...]:
     unique_instances: dict[tuple[object, ...], ProviderInstance] = {}
     for provider_instance in provider_instances:
         key = provider_instance.identity_key()
         if key not in unique_instances:
             unique_instances[key] = provider_instance
-            continue
-        existing = unique_instances[key]
-        if existing.is_default or not provider_instance.is_default:
-            continue
-        unique_instances[key] = provider_instance
     return tuple(unique_instances.values())
 
 

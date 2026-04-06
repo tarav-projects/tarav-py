@@ -26,6 +26,7 @@ from agentos.chat.extractors import extract_chat_session
 from agentos.chat.providers import (
     ProviderInstance,
     ProviderInstanceConfigSource,
+    load_configured_provider_instances,
     load_chat_config_documents,
     provider_instance_config_entries_from_config,
 )
@@ -55,10 +56,6 @@ _CHATLAS_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
     object_path=("chatlas", "provider_instances"),
     field_prefix="chatlas.provider_instances",
 )
-_CHAT_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
-    object_path=("chat", "session", "provider_instances"),
-    field_prefix="chat.session.provider_instances",
-)
 _SUMMARY_LEVELS = ("brief", "detailed")
 _PROGRESS_PREFIX = "[chatlas]"
 
@@ -84,7 +81,14 @@ def default_chatlas_root() -> Path:
 
 def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSettings:
     commit_prefix = DEFAULT_CHATLAS_COMMIT_PREFIX
-    provider_instances = [family.default_instance() for family in supported_chatlas_provider_families()]
+    supported_families = {
+        provider_handler.family for provider_handler in supported_chatlas_provider_families()
+    }
+    provider_instances = [
+        provider_instance
+        for provider_instance in load_configured_provider_instances(start_path=start_path)
+        if provider_instance.family in supported_families
+    ]
 
     for config in load_chat_config_documents(start_path=start_path):
         chatlas_config = _chatlas_config_from_config(config)
@@ -103,14 +107,6 @@ def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSetti
                     )
                 )
             )
-        provider_instances.extend(
-            _provider_instances_from_config_entries(
-                provider_instance_config_entries_from_config(
-                    config,
-                    source=_CHAT_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE,
-                )
-            )
-        )
 
     deduped_instances = _dedupe_chatlas_instances(tuple(provider_instances))
     _validate_unique_chatlas_destinations(deduped_instances)

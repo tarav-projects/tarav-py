@@ -164,14 +164,40 @@ def _write_global_config(
     *,
     provider_instances: list[dict[str, object]] | None = None,
 ) -> None:
+    home = path.parent.parent / "home"
     _write(
         path,
         json.dumps(
             {
                 "class": "agentos.global.config",
                 "schema_version": 1,
-                "chatlas": {
-                    "provider_instances": provider_instances or [],
+                "chat": {
+                    "provider_instances": [
+                        {
+                            "provider": "codex",
+                            "id": "codex-main",
+                            "home": str(home / ".codex"),
+                            "cli_command": ["/opt/homebrew/bin/codex"],
+                            "env": {
+                                "CODEX_HOME": str(home / ".codex"),
+                            },
+                        },
+                        {
+                            "provider": "claude-code",
+                            "id": "claude-main",
+                            "homes": {
+                                "cli": str(home / ".claude"),
+                                "desktop": str(home / "Library" / "Application Support" / "Claude"),
+                            },
+                            "cli_command": ["/opt/homebrew/bin/claude"],
+                        },
+                        {
+                            "provider": "openclaw",
+                            "id": "openclaw-main",
+                            "home": str(home / ".openclaw"),
+                        },
+                        *(provider_instances or []),
+                    ]
                 },
             }
         ),
@@ -205,6 +231,7 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     thread_name = "chatlas-default-thread"
@@ -237,7 +264,7 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
     assert payload["derived_transcript_session_count"] == 1
     assert payload["derived_summary_count"] == 1
     assert payload["derived_summary_counts"] == {"brief": 1, "detailed": 1}
-    assert payload["instances"][0]["instance"] == "default"
+    assert payload["instances"][0]["instance"] == "codex-main"
     assert payload["instances"][0]["destination_root"] == str(destination_root)
     assert payload["manifest_path"] is not None
     assert Path(payload["normalized_sessions_path"]).is_file()
@@ -292,6 +319,7 @@ def test_chatlas_update_second_run_skips_commit_when_unchanged(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     _write_codex_rollout(
@@ -323,6 +351,7 @@ def test_chatlas_update_preserves_archived_sessions_when_source_home_disappears(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     rollout_path = (
@@ -371,6 +400,7 @@ def test_chatlas_update_skips_transient_missing_source_files(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     _write_codex_rollout(
@@ -413,6 +443,7 @@ def test_chatlas_update_emits_progress_to_stderr(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     _write_codex_rollout(
@@ -425,7 +456,7 @@ def test_chatlas_update_emits_progress_to_stderr(
 
     assert '"command": "chatlas update"' in captured.out
     assert "[chatlas] update start:" in captured.err
-    assert "[chatlas] codex/default: archive start" in captured.err
+    assert "[chatlas] codex/codex-main: archive start" in captured.err
     assert "[chatlas] normalized sessions:" in captured.err
 
 
@@ -466,7 +497,7 @@ def test_chatlas_update_uses_configured_extra_codex_instance(
         provider_instances=[
             {
                 "provider": "codex",
-                "instance": "jp",
+                "id": "jp",
                 "home": str(extra_codex_home),
             }
         ],
@@ -479,7 +510,7 @@ def test_chatlas_update_uses_configured_extra_codex_instance(
 
     assert payload["instance_count"] == 2
     assert payload["synced_instance_count"] == 2
-    assert instance_names == ["default", "jp"]
+    assert instance_names == ["codex-main", "jp"]
     assert (
         _chatlas_home_root(agentos_home, home, home / ".codex")
         / "sessions"
@@ -509,6 +540,7 @@ def test_chatlas_update_uses_shared_claude_code_home_slots(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     claude_cli_home = home / ".claude"
     claude_desktop_home = home / "Library" / "Application Support" / "Claude"
@@ -527,7 +559,7 @@ def test_chatlas_update_uses_shared_claude_code_home_slots(
     assert payload["instance_count"] == 1
     assert payload["synced_instance_count"] == 1
     assert payload["normalized_session_count"] == 0
-    assert instance["instance"] == "default"
+    assert instance["instance"] == "claude-main"
     assert instance["destination_root"] is None
     assert instance["destination_roots"] == {
         "cli": str(destination_cli_root),
@@ -551,6 +583,7 @@ def test_chatlas_stats_reports_normalized_counts(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     _write_codex_rollout(
@@ -598,6 +631,7 @@ def test_chatlas_query_matches_normalized_thread_name(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     thread_name = "query-thread"
@@ -652,6 +686,7 @@ def test_chatlas_query_can_include_provider_stats_for_exact_session_queries(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     thread_name = "provider-stats-thread"
@@ -689,6 +724,7 @@ def test_chatlas_query_matches_openclaw_logical_session_keys(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "9ce6dc88-dd77-4ea1-9c6b-2c4e9fd5d401"
     session_key = "agent:main:telegram:direct:734641842"
@@ -736,6 +772,7 @@ def test_chatlas_query_supports_user_contain_transcript_filter(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     _write_codex_dialog_rollout(
@@ -785,6 +822,7 @@ def test_chatlas_query_supports_text_contain_filter(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     _write_codex_dialog_rollout(
@@ -829,6 +867,7 @@ def test_chatlas_export_returns_derived_markdown_transcript(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     thread_name = "export-thread"
@@ -867,6 +906,7 @@ def test_chatlas_export_supports_jsonl_transcript_output(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
@@ -907,6 +947,7 @@ def test_chatlas_export_supports_detailed_summary_json_output(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     thread_name = "summary-export-thread"

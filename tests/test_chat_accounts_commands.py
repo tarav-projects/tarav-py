@@ -79,9 +79,7 @@ def _write_global_config(
                 "class": "agentos.global.config",
                 "schema_version": 1,
                 "chat": {
-                    "accounts": {
-                        "provider_instances": provider_instances or [],
-                    }
+                    "provider_instances": provider_instances or [],
                 },
             }
         ),

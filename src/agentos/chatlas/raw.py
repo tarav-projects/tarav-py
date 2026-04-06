@@ -29,17 +29,6 @@ class ChatlasProviderHandler:
     def supported_home_keys(self) -> tuple[str, ...]:
         return tuple(slot.key for slot in self.home_slots)
 
-    def default_instance(self) -> ProviderInstance:
-        return self.instance_from_homes(
-            {slot.key: slot.default_home for slot in self.home_slots},
-            field_prefix="chatlas.provider_instances",
-            index=None,
-            is_default=True,
-            instance_name=None,
-            includes=(),
-            excludes=(),
-        )
-
     def instance_from_home(
         self,
         home: str,
@@ -137,6 +126,7 @@ class ChatlasProviderContext:
     provider_handler: ChatlasProviderHandler
     provider_instance: ProviderInstance
     resolved_instance_name: str
+    effective_includes: tuple[str, ...]
     effective_excludes: tuple[str, ...]
 
     def destination_root(self, raw_root: Path) -> Path:
@@ -164,7 +154,7 @@ class ChatlasProviderContext:
             "instance": self.resolved_instance_name,
             "is_default": self.provider_instance.is_default,
             "homes": {key: str(path) for key, path in self.provider_instance.homes},
-            "includes": list(self.provider_instance.includes),
+            "includes": list(self.effective_includes),
             "excludes": list(self.effective_excludes),
             "destination_root": str(self.destination_root(raw_root)) if len(self.provider_instance.homes) == 1 else None,
             "destination_roots": destination_roots,
@@ -345,8 +335,12 @@ def _build_chatlas_provider_context(provider_instance: ProviderInstance) -> Chat
         provider_handler=provider_handler,
         provider_instance=provider_instance,
         resolved_instance_name=_resolve_chatlas_instance_name(provider_instance),
+        effective_includes=_unique_strings(
+            provider_handler.default_includes + provider_instance.includes
+        ),
         effective_excludes=_unique_strings(
-            provider_instance.excludes
+            provider_handler.default_excludes
+            + provider_instance.excludes
             + _derived_chatlas_instance_excludes(provider_instance.family, provider_instance.homes)
         ),
     )
@@ -382,7 +376,7 @@ def _mirror_chatlas_provider_instance(
             archive_stats = _mirror_chatlas_home(
                 source_path=home_path,
                 destination_path=destination_path,
-                includes=context.provider_instance.includes,
+                includes=context.effective_includes,
                 excludes=context.effective_excludes,
                 progress=progress,
                 progress_label=f"{context.provider_instance.family}/{context.resolved_instance_name}:{home_key}",
@@ -610,11 +604,6 @@ def _dedupe_chatlas_instances(provider_instances: tuple[ProviderInstance, ...]) 
         key = provider_instance.identity_key()
         if key not in unique_instances:
             unique_instances[key] = provider_instance
-            continue
-
-        existing = unique_instances[key]
-        if existing.is_default and not provider_instance.is_default:
-            unique_instances[key] = provider_instance
     return tuple(unique_instances.values())
 
 
@@ -669,8 +658,6 @@ def _derive_chatlas_instance_name(
 def _resolve_chatlas_instance_name(provider_instance: ProviderInstance) -> str:
     if provider_instance.instance_id is not None:
         return provider_instance.instance_id
-    if provider_instance.is_default:
-        return "default"
     derived_name = _derive_chatlas_instance_name(provider_instance.family, provider_instance.homes)
     if derived_name is not None:
         return derived_name

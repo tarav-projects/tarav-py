@@ -19,14 +19,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agentos._core.errors import CliError
-from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
 from agentos.chat.providers import (
     ProviderFamily,
     ProviderInstance,
-    ProviderInstanceConfigEntry,
-    ProviderInstanceConfigSource,
-    load_provider_instance_config_entries,
+    load_configured_provider_instances,
     require_canonical_provider_family,
 )
 from agentos.tara_tapes.core import (
@@ -61,10 +58,6 @@ COPILOT_GITHUB_API_VERSION = "2025-04-01"
 CHAT_USAGE_BURST_LABEL = "Burst"
 CHAT_USAGE_WEEKLY_LABEL = "Weekly"
 CHAT_ACCOUNT_USAGE_ERROR_DETAIL_WIDTH = 78
-_ACCOUNT_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
-    object_path=("chat", "accounts", "provider_instances"),
-    field_prefix="chat.accounts.provider_instances",
-)
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
@@ -152,12 +145,18 @@ def configured_account_provider_instances(
     *,
     start_path: Path | str = ".",
 ) -> tuple[ProviderInstance, ...]:
-    entries = load_provider_instance_config_entries(
-        start_path=start_path,
-        sources=(_ACCOUNT_PROVIDER_INSTANCE_CONFIG_SOURCE,),
+    supported_families = {provider_handler.family for provider_handler in supported_account_provider_families()}
+    provider_instances = tuple(
+        provider_instance
+        for provider_instance in load_configured_provider_instances(start_path=start_path)
+        if provider_instance.family in supported_families
     )
-    provider_instances = [_account_provider_instance_from_config(entry) for entry in entries]
-
+    for provider_instance in provider_instances:
+        if _account_provider_requires_cli_command(provider_instance.family) and not provider_instance.cli_command:
+            raise CliError(
+                f"chat.provider_instances entry {provider_instance.instance_id!r} for provider "
+                f"{provider_instance.family} must define cli_command"
+            )
     _validate_unique_account_instance_ids(tuple(provider_instances))
     return tuple(provider_instances)
 
@@ -1192,110 +1191,19 @@ def _usage_time_ratio_value(used_percent: int, elapsed_percent: int) -> float:
     return clamped_used_percent / clamped_elapsed_percent
 
 
-def _account_provider_instance_from_config(
-    entry: ProviderInstanceConfigEntry,
-) -> ProviderInstance:
-    raw_instance = entry.raw_instance
-    family_name = raw_instance.get("provider")
-    if not isinstance(family_name, str) or not family_name:
-        raise CliError(f"{entry.field_name('provider')} is required")
-
-    if _account_provider_handler_for_name(family_name) is None:
-        supported_providers = ", ".join(
-            sorted(provider_family.family for provider_family in supported_account_provider_families())
-        )
-        raise CliError(
-            f"{entry.field_name('provider')} must be one of: {supported_providers}"
-        )
-
-    raw_instance_id = raw_instance.get("id")
-    if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
-        raise CliError(f"{entry.field_name('id')} is required")
-    instance_id = validate_string_for_path(
-        raw_instance_id.strip(),
-        field_name=entry.field_name("id"),
-    )
-
-    raw_label = raw_instance.get("label")
-    if raw_label is None:
-        label = instance_id
-    elif not isinstance(raw_label, str) or not raw_label.strip():
-        raise CliError(f"{entry.field_name('label')} must be a non-empty string")
-    else:
-        label = raw_label.strip()
-
-    raw_cli_command = raw_instance.get("cli_command")
-    if raw_cli_command is None:
-        cli_command = _default_account_provider_cli_command(family_name)
-    else:
-        cli_command = _load_string_argv(
-            raw_cli_command,
-            field_name=entry.field_name("cli_command"),
-        )
-    if not cli_command and _account_provider_requires_cli_command(family_name):
-        raise CliError(f"{entry.field_name('cli_command')} must not be empty")
-
-    raw_env = raw_instance.get("env")
-    env = _load_string_mapping(
-        raw_env,
-        field_name=entry.field_name("env"),
-    )
-
-    raw_timeout_sec = raw_instance.get("timeout_sec")
-    if raw_timeout_sec is None:
-        timeout_sec = DEFAULT_ACCOUNT_TIMEOUT_SEC
-    elif isinstance(raw_timeout_sec, bool) or not isinstance(raw_timeout_sec, int) or raw_timeout_sec < 1:
-        raise CliError(
-            f"{entry.field_name('timeout_sec')} must be an integer greater than 0"
-        )
-    else:
-        timeout_sec = raw_timeout_sec
-
-    raw_live_usage_refresh = raw_instance.get("live_usage_refresh")
-    if raw_live_usage_refresh is None:
-        live_usage_refresh = False
-    elif not isinstance(raw_live_usage_refresh, bool):
-        raise CliError(
-            f"{entry.field_name('live_usage_refresh')} must be a boolean"
-        )
-    else:
-        live_usage_refresh = raw_live_usage_refresh
-
-    raw_usage_progression_limit = raw_instance.get("usage_progression_limit")
-    if raw_usage_progression_limit is None:
-        usage_progression_limit = None
-    elif not isinstance(raw_usage_progression_limit, str) or not raw_usage_progression_limit.strip():
-        raise CliError(
-            f"{entry.field_name('usage_progression_limit')} must be a non-empty string"
-        )
-    else:
-        usage_progression_limit = raw_usage_progression_limit.strip()
-
-    return ProviderInstance(
-        family=family_name,
-        instance_id=instance_id,
-        label=label,
-        cli_command=cli_command,
-        env=env,
-        timeout_sec=timeout_sec,
-        live_usage_refresh=live_usage_refresh,
-        usage_progression_limit=usage_progression_limit,
-    )
-
-
 def _validate_unique_account_instance_ids(
     provider_instances: tuple[ProviderInstance, ...],
 ) -> None:
     seen_instances: dict[str, ProviderInstance] = {}
     for provider_instance in provider_instances:
         if provider_instance.instance_id is None:
-            raise CliError("chat.accounts.provider_instances ids must not be empty")
+            raise CliError("chat.provider_instances ids must not be empty")
         existing = seen_instances.get(provider_instance.instance_id)
         if existing is None:
             seen_instances[provider_instance.instance_id] = provider_instance
             continue
         raise CliError(
-            "chat.accounts.provider_instances ids must be unique; "
+            "chat.provider_instances ids must be unique; "
             f"duplicate id {provider_instance.instance_id} for providers "
             f"{existing.family} and {provider_instance.family}"
         )
@@ -1303,12 +1211,6 @@ def _validate_unique_account_instance_ids(
 
 def _account_provider_requires_cli_command(family_name: str) -> bool:
     return family_name in {"codex", "claude-code"}
-
-
-def _default_account_provider_cli_command(family_name: str) -> tuple[str, ...]:
-    if family_name == "copilot":
-        return ("copilot",)
-    return ()
 
 
 def _account_provider_handler_for_name(family_name: str) -> AccountProviderHandler | None:
@@ -3409,41 +3311,6 @@ def _pending_account_result(instance: AccountProviderContext) -> dict[str, Any]:
     if instance.usage_progression_limit is not None:
         result["usage_progression_limit"] = instance.usage_progression_limit
     return result
-
-
-def _load_string_argv(value: object, *, field_name: str) -> tuple[str, ...]:
-    if not isinstance(value, list):
-        raise CliError(f"{field_name} must be a JSON array")
-
-    argv: list[str] = []
-    for index, item in enumerate(value):
-        if not isinstance(item, str) or not item.strip():
-            raise CliError(f"{field_name}[{index}] must be a non-empty string")
-        argv.append(_expand_user_home(item.strip()))
-    return tuple(argv)
-
-
-def _load_string_mapping(value: object, *, field_name: str) -> tuple[tuple[str, str], ...]:
-    if value is None:
-        return ()
-    if not isinstance(value, dict):
-        raise CliError(f"{field_name} must be a JSON object")
-
-    items: list[tuple[str, str]] = []
-    for key, item in value.items():
-        if not isinstance(key, str) or not key:
-            raise CliError(f"{field_name} keys must be non-empty strings")
-        if not isinstance(item, str):
-            raise CliError(f"{field_name}.{key} must be a string")
-        items.append((key, _expand_user_home(item)))
-    return tuple(items)
-
-
-def _expand_user_home(value: str) -> str:
-    if value.startswith("~"):
-        return str(Path(value).expanduser())
-    return value
-
 
 def _string_or_none(value: object) -> str | None:
     if value is None:
