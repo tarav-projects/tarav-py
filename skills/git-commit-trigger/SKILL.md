@@ -1,6 +1,6 @@
 ---
 name: agentos-git-commit-trigger
-description: Run a deterministic semantic git commit flow across existing repositories. USE WHEN the user explicitly invokes `$git-commit-trigger` and wants changes grouped into focused Conventional Commits without tests, pushes, or repository initialization.
+description: Run a deterministic semantic git commit flow across existing repositories. USE WHEN the user explicitly invokes `$agentos-git-commit-trigger` and wants changes grouped into focused Conventional Commits without tests, pushes, or repository initialization.
 allowed-tools: Bash(git status *, git rev-parse *, git add *, git diff *, git diff --staged *, git commit *, git log *, git show *, git -C *, find *, rg *, sed *, mktemp, cat *, rm *)
 ---
 
@@ -10,7 +10,7 @@ Commit changes in existing Git repositories using a deterministic semantic multi
 
 ## Trigger Policy
 
-Use this skill only when explicitly invoked by name (for example: `$git-commit-trigger`).
+Use this skill only when explicitly invoked by name (for example: `$agentos-git-commit-trigger`).
 Do not run this workflow automatically at the end of unrelated tasks.
 
 ## Workflow

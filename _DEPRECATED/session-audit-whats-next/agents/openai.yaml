@@ -1,0 +1,4 @@
+interface:
+  display_name: "session-audit-whats-next"
+  short_description: "Audit a chat for unfinished work first"
+  default_prompt: "Use $session-audit-whats-next to check whether this chat still has unresolved significant items before proposing next steps."

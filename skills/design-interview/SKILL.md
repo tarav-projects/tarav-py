@@ -1,6 +1,6 @@
 ---
 name: agentos-design-interview
-description: 'Gather requirements and make design decisions through Q&A conversation. Use ONLY when explicitly triggered by name (for example: "$design-interview" or "use design-interview"). Do not auto-apply from inferred intent.'
+description: 'Gather requirements and make design decisions through Q&A conversation. Use ONLY when explicitly triggered by name (for example: "$agentos-design-interview" or "use agentos-design-interview"). Do not auto-apply from inferred intent.'
 ---
 
 # Design Interview
@@ -83,7 +83,7 @@ x3) different options
 
 ### Phase 0: Bootstrap
 
-When `/design-interview` is called without a referenced document or clear context:
+When `/agentos-design-interview` is called without a referenced document or clear context:
 
 1. Ask one adaptive opener in plain text: *"What do we want to design or decide?"*
 2. If the user has context but not yet a concrete decision list, allow a short context dump before switching into the question loop.
