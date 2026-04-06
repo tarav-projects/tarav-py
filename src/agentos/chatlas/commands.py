@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from agentos.chat._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
 from agentos.chatlas.core import (
@@ -8,6 +9,7 @@ from agentos.chatlas.core import (
     chatlas_query,
     chatlas_stats,
     chatlas_update,
+    format_chatlas_stats_markdown,
 )
 from agentos.chatlas.raw import supported_chatlas_provider_families
 
@@ -19,6 +21,7 @@ _CHATLAS_PROVIDER_CHOICES = tuple(
 def _cmd_chatlas_update(args: argparse.Namespace) -> int:
     payload = chatlas_update(
         providers=optional_string_tuple(args.providers),
+        progress=lambda message: print(message, file=sys.stderr, flush=True),
     )
     print(format_json_output(payload))
     return 0
@@ -29,6 +32,9 @@ def _cmd_chatlas_stats(args: argparse.Namespace) -> int:
         providers=optional_string_tuple(args.providers),
         full_output=args.full_output,
     )
+    if args.output_format == "markdown":
+        print(format_chatlas_stats_markdown(payload))
+        return 0
     print(format_json_output(payload))
     return 0
 
@@ -102,6 +108,13 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "--full-output",
         action="store_true",
         help="Keep zero-session providers in stats.by_provider.",
+    )
+    stats_parser.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        dest="output_format",
+        help="Output format (default: markdown).",
     )
     stats_parser.set_defaults(handler=_cmd_chatlas_stats)
 

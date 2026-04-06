@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
-import subprocess
+import shutil
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PurePosixPath
+from typing import Any, Callable
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
+from agentos._core.scan import normalize_rel, should_exclude
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
     canonical_chat_provider_spec_for_name,
@@ -355,9 +356,10 @@ def _mirror_chatlas_provider_instance(
     *,
     context: ChatlasProviderContext,
     raw_root: Path,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, object]:
     home_results: list[dict[str, object]] = []
-    synced = False
+    archived = False
 
     for home_key, home_path in context.provider_instance.homes:
         exists = home_path.is_dir()
@@ -373,14 +375,21 @@ def _mirror_chatlas_provider_instance(
             "synced": False,
         }
         if exists:
-            _mirror_chatlas_home(
+            _emit_raw_progress(
+                progress,
+                f"{context.provider_instance.family}/{context.resolved_instance_name}:{home_key} archive {home_path}",
+            )
+            archive_stats = _mirror_chatlas_home(
                 source_path=home_path,
                 destination_path=destination_path,
                 includes=context.provider_instance.includes,
                 excludes=context.effective_excludes,
+                progress=progress,
+                progress_label=f"{context.provider_instance.family}/{context.resolved_instance_name}:{home_key}",
             )
             home_payload["synced"] = True
-            synced = True
+            home_payload.update(archive_stats)
+            archived = True
         home_results.append(home_payload)
 
     missing_home_keys = [
@@ -392,7 +401,7 @@ def _mirror_chatlas_provider_instance(
     payload = context.summary(raw_root)
     payload.update(
         {
-            "synced": synced,
+            "synced": archived,
             "missing_home_keys": missing_home_keys,
             "homes_status": home_results,
         }
@@ -414,42 +423,165 @@ def _mirror_chatlas_home(
     destination_path: Path,
     includes: tuple[str, ...],
     excludes: tuple[str, ...],
-) -> None:
+    progress: Callable[[str], None] | None = None,
+    progress_label: str | None = None,
+) -> dict[str, object]:
     destination_path.mkdir(parents=True, exist_ok=True)
-    command = [
-        "rsync",
-        "-a",
-        "--delete",
-        "--delete-excluded",
-        "--exclude",
-        ".git",
-    ]
+    # Chatlas keeps an append-preserving archive of selected provider files.
+    archive_stats = {
+        "added_file_count": 0,
+        "updated_file_count": 0,
+        "unchanged_file_count": 0,
+        "skipped_file_count": 0,
+        "skipped_file_examples": [],
+    }
+    effective_excludes = (".git",) + excludes
+    processed_file_count = 0
 
-    if includes:
-        command.extend(["--prune-empty-dirs", "--include", "*/"])
-        for pattern in excludes:
-            command.extend(["--exclude", pattern])
-        for pattern in includes:
-            command.extend(["--include", pattern])
-        command.extend(["--exclude", "*"])
-    else:
-        for pattern in excludes:
-            command.extend(["--exclude", pattern])
+    for source_file, rel_path in _iter_chatlas_archive_source_files(
+        source_path=source_path,
+        includes=includes,
+        excludes=effective_excludes,
+    ):
+        destination_file = destination_path / rel_path
+        copy_result = _copy_chatlas_archive_file(
+            source_path=source_file,
+            destination_path=destination_file,
+        )
+        if copy_result == "added":
+            archive_stats["added_file_count"] += 1
+        elif copy_result == "updated":
+            archive_stats["updated_file_count"] += 1
+        elif copy_result == "unchanged":
+            archive_stats["unchanged_file_count"] += 1
+        else:
+            archive_stats["skipped_file_count"] += 1
+            skipped_examples = archive_stats["skipped_file_examples"]
+            if len(skipped_examples) < 20:
+                skipped_examples.append(rel_path.as_posix())
+        processed_file_count += 1
+        if progress is not None and processed_file_count % 250 == 0:
+            _emit_raw_progress(
+                progress,
+                f"{progress_label or destination_path.name}: {processed_file_count} files scanned "
+                f"(added={archive_stats['added_file_count']} updated={archive_stats['updated_file_count']} "
+                f"unchanged={archive_stats['unchanged_file_count']} skipped={archive_stats['skipped_file_count']})",
+            )
 
-    source_text = str(source_path)
-    if not source_text.endswith("/"):
-        source_text += "/"
-    command.extend([source_text, str(destination_path)])
-
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        check=False,
+    _emit_raw_progress(
+        progress,
+        f"{progress_label or destination_path.name}: done "
+        f"(scanned={processed_file_count} added={archive_stats['added_file_count']} "
+        f"updated={archive_stats['updated_file_count']} unchanged={archive_stats['unchanged_file_count']} "
+        f"skipped={archive_stats['skipped_file_count']})",
     )
-    if result.returncode != 0:
-        details = result.stderr.strip() or result.stdout.strip() or "rsync failed"
-        raise CliError(details)
+
+    return archive_stats
+
+
+def _emit_raw_progress(progress: Callable[[str], None] | None, message: str) -> None:
+    if progress is None:
+        return
+    progress(message)
+
+
+def _iter_chatlas_archive_source_files(
+    *,
+    source_path: Path,
+    includes: tuple[str, ...],
+    excludes: tuple[str, ...],
+):
+    for dirpath, dirnames, filenames in os.walk(source_path):
+        current = Path(dirpath)
+        rel_current = PurePosixPath(
+            normalize_rel(PurePosixPath(current.relative_to(source_path).as_posix()))
+        )
+        if normalize_rel(rel_current) and should_exclude(rel_current, excludes):
+            dirnames[:] = []
+            continue
+
+        pruned_dirs: list[str] = []
+        for dirname in dirnames:
+            rel_dir = PurePosixPath(
+                normalize_rel(PurePosixPath((current / dirname).relative_to(source_path).as_posix()))
+            )
+            if not should_exclude(rel_dir, excludes):
+                pruned_dirs.append(dirname)
+        dirnames[:] = pruned_dirs
+
+        for filename in filenames:
+            file_path = current / filename
+            rel_file = PurePosixPath(file_path.relative_to(source_path).as_posix())
+            if should_exclude(rel_file, excludes):
+                continue
+            if includes and not _chatlas_archive_path_matches_includes(rel_file, includes):
+                continue
+            yield file_path, Path(rel_file.as_posix())
+
+
+def _chatlas_archive_path_matches_includes(rel_path: PurePosixPath, includes: tuple[str, ...]) -> bool:
+    rel_value = normalize_rel(rel_path)
+    if not rel_value:
+        return False
+
+    for raw_pattern in includes:
+        pattern = raw_pattern.strip().strip("/")
+        if not pattern:
+            continue
+        if rel_value == pattern:
+            return True
+        if pattern.endswith("/**"):
+            prefix = pattern[:-3].rstrip("/")
+            if prefix and (rel_value == prefix or rel_value.startswith(f"{prefix}/")):
+                return True
+        if PurePosixPath(rel_value).match(pattern):
+            return True
+    return False
+
+
+def _copy_chatlas_archive_file(
+    *,
+    source_path: Path,
+    destination_path: Path,
+) -> str:
+    try:
+        destination_exists = destination_path.exists()
+        if destination_exists and _chatlas_archive_files_match(source_path, destination_path):
+            return "unchanged"
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, destination_path)
+    except FileNotFoundError:
+        return "skipped"
+    except OSError as exc:
+        raise CliError(f"failed to archive {source_path}: {exc}") from exc
+    return "updated" if destination_exists else "added"
+
+
+def _chatlas_archive_files_match(source_path: Path, destination_path: Path) -> bool:
+    try:
+        source_stat = source_path.stat()
+        destination_stat = destination_path.stat()
+    except FileNotFoundError:
+        raise
+    except OSError:
+        return False
+
+    if source_stat.st_size != destination_stat.st_size:
+        return False
+
+    try:
+        with source_path.open("rb") as source_handle, destination_path.open("rb") as destination_handle:
+            while True:
+                source_chunk = source_handle.read(1024 * 1024)
+                destination_chunk = destination_handle.read(1024 * 1024)
+                if source_chunk != destination_chunk:
+                    return False
+                if not source_chunk:
+                    return True
+    except FileNotFoundError:
+        raise
+    except OSError:
+        return False
 
 
 def _chatlas_home_relpath(home_path: Path) -> Path:

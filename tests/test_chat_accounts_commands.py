@@ -1978,6 +1978,41 @@ def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -
     assert payload["usage_summary"] == "Weekly 42%"
 
 
+def test_terminate_pty_process_ignores_repeated_wait_timeouts(monkeypatch) -> None:
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.wait_calls = 0
+            self.kill_calls = 0
+            self.terminate_calls = 0
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            self.terminate_calls += 1
+
+        def wait(self, timeout: float) -> int:
+            del timeout
+            self.wait_calls += 1
+            raise subprocess.TimeoutExpired(["claude"], chat_accounts.CLAUDE_REFRESH_TERMINATE_WAIT_SEC)
+
+        def kill(self) -> None:
+            self.kill_calls += 1
+
+    closed_fds: list[int] = []
+    monkeypatch.setattr(chat_accounts, "_write_pty", lambda master_fd, payload: None)
+    monkeypatch.setattr(chat_accounts.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(chat_accounts.os, "close", lambda master_fd: closed_fds.append(master_fd))
+
+    process = FakeProcess()
+    chat_accounts._terminate_pty_process(process, 123)
+
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 1
+    assert process.wait_calls == 2
+    assert closed_fds == [123]
+
+
 def test_chat_accounts_stats_keeps_per_account_errors_in_payload(
     tmp_path: Path,
     monkeypatch,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -312,6 +313,122 @@ def test_chatlas_update_second_run_skips_commit_when_unchanged(
     assert _git_output(chatlas_root, "rev-list", "--count", "HEAD") == "1"
 
 
+def test_chatlas_update_preserves_archived_sessions_when_source_home_disappears(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    rollout_path = (
+        home
+        / ".codex"
+        / "sessions"
+        / "2026"
+        / "03"
+        / "25"
+        / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    )
+    _write_codex_rollout(rollout_path, session_id=session_id)
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name="archived-thread",
+    )
+
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    shutil.rmtree(home / ".codex")
+
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    archived_rollout = _chatlas_home_root(agentos_home, home, home / ".codex") / rollout_path.relative_to(home / ".codex")
+
+    assert payload["changes_detected"] is False
+    assert payload["committed"] is False
+    assert payload["synced_instance_count"] == 0
+    assert payload["skipped_instance_count"] == 1
+    assert payload["normalized_session_count"] == 1
+    assert archived_rollout.is_file()
+
+
+def test_chatlas_update_skips_transient_missing_source_files(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from agentos.chatlas import raw as chatlas_raw
+
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
+        session_id=session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name="transient-thread",
+    )
+    _write(home / ".codex" / "notes.md", "# notes\n")
+
+    original_copy2 = chatlas_raw.shutil.copy2
+
+    def flaky_copy2(source: Path | str, destination: Path | str, *args, **kwargs):
+        source_path = Path(source)
+        if source_path.name == "notes.md":
+            source_path.unlink()
+        return original_copy2(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(chatlas_raw.shutil, "copy2", flaky_copy2)
+
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    home_status = payload["instances"][0]["homes_status"][0]
+    assert payload["normalized_session_count"] == 1
+    assert home_status["skipped_file_count"] == 1
+    assert home_status["skipped_file_examples"] == ["notes.md"]
+
+
+def test_chatlas_update_emits_progress_to_stderr(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
+        session_id=session_id,
+    )
+
+    assert main(["chatlas", "update", "--provider", "codex"]) == 0
+    captured = capsys.readouterr()
+
+    assert '"command": "chatlas update"' in captured.out
+    assert "[chatlas] update start:" in captured.err
+    assert "[chatlas] codex/default: archive start" in captured.err
+    assert "[chatlas] normalized sessions:" in captured.err
+
+
 def test_chatlas_update_uses_configured_extra_codex_instance(
     tmp_path: Path,
     monkeypatch,
@@ -450,8 +567,16 @@ def test_chatlas_stats_reports_normalized_counts(
     _ = json.loads(capsys.readouterr().out)
 
     assert main(["chatlas", "stats"]) == 0
-    payload = json.loads(capsys.readouterr().out)
+    rendered = capsys.readouterr().out
 
+    assert "# Chatlas Stats" in rendered
+    assert "- Providers: 1" in rendered
+    assert "- Sessions: 1" in rendered
+    assert "## codex" in rendered
+    assert "- Derived transcripts: 1" in rendered
+
+    assert main(["chatlas", "stats", "--format", "json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
     assert payload["command"] == "chatlas stats"
     assert payload["stats"]["session_count"] == 1
     assert payload["stats"]["provider_count"] == 1

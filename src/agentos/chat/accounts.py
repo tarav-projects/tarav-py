@@ -2690,8 +2690,15 @@ def _terminate_pty_process(process: subprocess.Popen[bytes], master_fd: int) -> 
         try:
             process.wait(timeout=CLAUDE_REFRESH_TERMINATE_WAIT_SEC)
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=CLAUDE_REFRESH_TERMINATE_WAIT_SEC)
+            if process.poll() is None:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+            try:
+                process.wait(timeout=CLAUDE_REFRESH_TERMINATE_WAIT_SEC)
+            except subprocess.TimeoutExpired:
+                pass
         try:
             os.close(master_fd)
         except OSError:

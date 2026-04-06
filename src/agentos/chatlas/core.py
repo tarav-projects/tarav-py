@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import quote
 
 from agentos._core.clock import utc_now_iso
@@ -60,6 +60,7 @@ _CHAT_SESSION_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
     field_prefix="chat.session.provider_instances",
 )
 _SUMMARY_LEVELS = ("brief", "detailed")
+_PROGRESS_PREFIX = "[chatlas]"
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,7 @@ def chatlas_update(
     providers: tuple[str, ...] | None = None,
     chatlas_root: Path | None = None,
     start_path: Path | str = ".",
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, object]:
     settings = configured_chatlas_settings(start_path=start_path)
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
@@ -139,35 +141,56 @@ def chatlas_update(
             if instance.family in providers
         )
     selected_contexts = tuple(_build_chatlas_provider_context(instance) for instance in selected_instances)
+    _emit_chatlas_progress(
+        progress,
+        f"update start: {len(selected_contexts)} instance(s) -> {chatlas_root_path}",
+    )
 
     instance_payloads: list[dict[str, object]] = []
     synced_instance_count = 0
     skipped_instance_count = 0
 
     for context in selected_contexts:
+        context_label = _chatlas_progress_context_label(context)
+        _emit_chatlas_progress(progress, f"{context_label}: archive start")
         instance_payload = _mirror_chatlas_provider_instance(
             context=context,
             raw_root=raw_root,
+            progress=progress,
         )
         instance_payloads.append(instance_payload)
         if bool(instance_payload["synced"]):
             synced_instance_count += 1
         else:
             skipped_instance_count += 1
+        _emit_chatlas_progress(
+            progress,
+            f"{context_label}: archive done (synced={bool(instance_payload['synced'])})",
+        )
 
     _ensure_git_repo(chatlas_root_path)
+    _emit_chatlas_progress(progress, "materializing normalized sessions")
     normalized_sessions = _materialize_normalized_sessions(
         chatlas_root=chatlas_root_path,
         provider_instances=settings.provider_instances,
     )
+    _emit_chatlas_progress(progress, f"normalized sessions: {len(normalized_sessions)}")
+    _emit_chatlas_progress(progress, "materializing derived transcripts")
     derived_transcript_session_count = _materialize_derived_transcripts(
         chatlas_root=chatlas_root_path,
         normalized_sessions=normalized_sessions,
     )
+    _emit_chatlas_progress(progress, f"derived transcripts: {derived_transcript_session_count}")
+    _emit_chatlas_progress(progress, "materializing derived summaries")
     derived_summary_counts = _materialize_derived_summaries(
         chatlas_root=chatlas_root_path,
         normalized_sessions=normalized_sessions,
     )
+    _emit_chatlas_progress(
+        progress,
+        f"derived summaries: brief={derived_summary_counts['brief']} detailed={derived_summary_counts['detailed']}",
+    )
+    _emit_chatlas_progress(progress, "checking git status")
     dataset_changes_detected = bool(run_git(chatlas_root_path, "status", "--porcelain"))
 
     recorded_at = utc_now_iso()
@@ -192,11 +215,13 @@ def chatlas_update(
             ),
         )
         run_git(chatlas_root_path, "add", "-A")
+        _emit_chatlas_progress(progress, "staged dataset changes")
 
     committed = False
     commit_message: str | None = None
     if dataset_changes_detected and run_git(chatlas_root_path, "status", "--porcelain").strip():
         commit_message = f"{settings.commit_prefix}: {recorded_at}"
+        _emit_chatlas_progress(progress, f"creating commit: {commit_message}")
         run_git(
             chatlas_root_path,
             "-c",
@@ -208,6 +233,8 @@ def chatlas_update(
             commit_message,
         )
         committed = True
+    else:
+        _emit_chatlas_progress(progress, "no git commit needed")
 
     provider_names = _unique_strings(tuple(context.provider_instance.family for context in selected_contexts))
     return {
@@ -238,6 +265,18 @@ def chatlas_update(
         "commit_message": commit_message,
         "instances": instance_payloads,
     }
+
+
+def _emit_chatlas_progress(progress: Callable[[str], None] | None, message: str) -> None:
+    if progress is None:
+        return
+    progress(f"{_PROGRESS_PREFIX} {message}")
+
+
+def _chatlas_progress_context_label(context) -> str:
+    instance = context.resolved_instance_name
+    provider = context.provider_instance.family
+    return f"{provider}/{instance}"
 
 
 def chatlas_stats(
@@ -294,6 +333,74 @@ def chatlas_stats(
             "last_update_manifest_path": None if latest_manifest is None else latest_manifest.get("_manifest_path"),
         },
     }
+
+
+def format_chatlas_stats_markdown(payload: dict[str, object]) -> str:
+    stats = payload.get("stats")
+    if not isinstance(stats, dict):
+        stats = {}
+
+    lines = [
+        "# Chatlas Stats",
+        "",
+        f"- Providers: {stats.get('provider_count', 0)}",
+        f"- Sessions: {stats.get('session_count', 0)}",
+        f"- Extractable: {stats.get('extractable_session_count', 0)}",
+        f"- Non-extractable: {stats.get('non_extractable_session_count', 0)}",
+        f"- Derived transcripts: {stats.get('derived_transcript_session_count', 0)}",
+        f"- Derived summaries: {stats.get('derived_summary_count', 0)}",
+    ]
+
+    last_update_recorded_at = stats.get("last_update_recorded_at")
+    if last_update_recorded_at is not None:
+        lines.append(f"- Last update: {last_update_recorded_at}")
+
+    last_update_manifest_path = stats.get("last_update_manifest_path")
+    if last_update_manifest_path is not None:
+        lines.append(f"- Manifest: {last_update_manifest_path}")
+
+    providers = stats.get("by_provider")
+    if not isinstance(providers, list) or not providers:
+        return "\n".join(lines)
+
+    for provider_payload in providers:
+        if not isinstance(provider_payload, dict):
+            continue
+        provider_name = provider_payload.get("provider", "unknown")
+        lines.extend(
+            [
+                "",
+                f"## {provider_name}",
+                "",
+                f"- Sessions: {provider_payload.get('session_count', 0)}",
+                f"- Extractable: {provider_payload.get('extractable_session_count', 0)}",
+                f"- Non-extractable: {provider_payload.get('non_extractable_session_count', 0)}",
+            ]
+        )
+
+        oldest_session_id = provider_payload.get("oldest_session_id")
+        oldest_session_at = provider_payload.get("oldest_session_at")
+        if oldest_session_id is not None:
+            oldest_text = str(oldest_session_id)
+            oldest_name = provider_payload.get("oldest_session_name")
+            if oldest_name is not None:
+                oldest_text += f" [{oldest_name}]"
+            if oldest_session_at is not None:
+                oldest_text += f" ({oldest_session_at})"
+            lines.append(f"- Oldest: {oldest_text}")
+
+        latest_session_id = provider_payload.get("latest_session_id")
+        latest_session_at = provider_payload.get("latest_session_at")
+        if latest_session_id is not None:
+            latest_text = str(latest_session_id)
+            latest_name = provider_payload.get("latest_session_name")
+            if latest_name is not None:
+                latest_text += f" [{latest_name}]"
+            if latest_session_at is not None:
+                latest_text += f" ({latest_session_at})"
+            lines.append(f"- Latest: {latest_text}")
+
+    return "\n".join(lines)
 
 
 def chatlas_query(
@@ -1420,5 +1527,6 @@ __all__ = [
     "chatlas_update",
     "configured_chatlas_settings",
     "default_chatlas_root",
+    "format_chatlas_stats_markdown",
     "resolve_chatlas_sessions",
 ]
