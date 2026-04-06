@@ -64,25 +64,37 @@ Keep it simple:
 ## Default Output Shape
 
 ```
-[Session title — one line]
+[Session title — plain text, no markdown]
 
 ## Todo
 - [x] done item — brief description
-- [x] done item — brief description
 - [ ] open item — brief description → next action
-- [ ] open item — brief description → next action
-- [ ] suggested: derived task the agent sees as a natural next step → next action
+- [ ] suggested: derived task → next action
 
 ## Context
-- what/why bullet
-- current focus bullet
+- one sentence bullet
+- one sentence bullet
 ```
 
-### Output rules
-- **Session title**: one specific line naming the current focus, under 10 words. Not generic.
-- **Todo list**: done items first (recent/relevant ones), then open items, then suggested items. Each open/suggested item ends with a concrete next action after `→`. Suggested items are prefixed with `suggested:` so the user can distinguish them from committed work.
-- **Context section**: 2-4 bullet-point sentences covering what we're doing, why, and current focus.
+### Format rules
+- **Session title**: plain text line, under 10 words, naming the current focus. No `**bold**`, no `#` heading, no markdown formatting. Brackets optional.
+- **Checkboxes only**: done items use `- [x]`, open/suggested use `- [ ]`. No other bullet styles in the todo list.
+- **Item shape**: `short name — brief description` for done items. `short name — brief description → next action` for open/suggested. The em dash `—` separates name from description. The arrow `→` separates description from next action. Every open/suggested item MUST have a `→` clause — if you can't name a next action, the item isn't concrete enough to list.
+- **One line per item**: no nested bullets, no multi-line items. If it needs two lines to explain, it's too detailed.
+- **Whitespace**: blank line between title and `## Todo`, blank line between `## Todo` and `## Context`. No blank lines between list items.
 - **Empty sections**: if there are no done items or no open items, omit that part of the list rather than showing an empty section.
+
+### Done item pruning
+- Show at most 3–5 recent done items that inform current work.
+- Prune older completions that no longer matter for what's next.
+- The todo list is a status tool, not a changelog or session history.
+
+### Context rules
+- 2–4 bullets, one sentence each, max.
+- Cover what/why/where-we-are. No implementation details.
+
+### Anti-pattern: session-as-history
+The todo list reflects **current state**, not session history. Do not reconstruct the full arc of work done in the session. A reader should understand what's live and what's next in under 10 seconds.
 
 ## Adapting to User Direction
 
