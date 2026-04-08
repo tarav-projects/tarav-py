@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,12 +33,15 @@ from agentos.chat.providers import (
 )
 from agentos.chat.sessions import ChatSession, coerce_timestamp
 from agentos.chatlas.raw import (
+    ChatlasProviderMirrorResult,
     _build_chatlas_provider_context,
     _chatlas_home_destination,
     _dedupe_chatlas_instances,
+    _load_chatlas_raw_scan_cache,
     _mirror_chatlas_provider_instance,
     _provider_instances_from_config_entries,
     _validate_unique_chatlas_destinations,
+    _write_chatlas_raw_scan_cache,
     supported_chatlas_provider_families,
 )
 
@@ -58,6 +62,7 @@ _CHATLAS_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
 )
 _SUMMARY_LEVELS = ("brief", "detailed")
 _PROGRESS_PREFIX = "[chatlas]"
+_MAX_CHATLAS_ARCHIVE_WORKERS = 4
 
 
 @dataclass(frozen=True)
@@ -73,6 +78,13 @@ class ChatlasSessionSelection:
     transcript_filter_match: dict[str, str]
     summary: dict[str, Any] | None
     summary_levels: dict[str, dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class ChatlasArchiveResult:
+    index: int
+    payload: dict[str, object]
+    scan_cache_updates: dict[str, dict[str, dict[str, int]]]
 
 
 def default_chatlas_root() -> Path:
@@ -121,6 +133,7 @@ def chatlas_update(
     providers: tuple[str, ...] | None = None,
     chatlas_root: Path | None = None,
     start_path: Path | str = ".",
+    use_scan_cache: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, object]:
     settings = configured_chatlas_settings(start_path=start_path)
@@ -128,6 +141,12 @@ def chatlas_update(
     raw_root = chatlas_root_path / "raw"
     normalized_root = chatlas_root_path / "normalized"
     derived_root = chatlas_root_path / "derived"
+    _ensure_git_repo(chatlas_root_path)
+    if use_scan_cache:
+        _ensure_chatlas_cache_gitignore(chatlas_root_path)
+        raw_scan_cache = _load_chatlas_raw_scan_cache(chatlas_root_path)
+    else:
+        raw_scan_cache = {}
 
     selected_instances = settings.provider_instances
     if providers is not None:
@@ -142,29 +161,19 @@ def chatlas_update(
         f"update start: {len(selected_contexts)} instance(s) -> {chatlas_root_path}",
     )
 
-    instance_payloads: list[dict[str, object]] = []
-    synced_instance_count = 0
-    skipped_instance_count = 0
+    archive_results = _archive_chatlas_provider_instances(
+        selected_contexts=selected_contexts,
+        raw_root=raw_root,
+        progress=progress,
+        use_scan_cache=use_scan_cache,
+        raw_scan_cache=raw_scan_cache,
+    )
+    instance_payloads = [result.payload for result in archive_results]
+    synced_instance_count = sum(1 for payload in instance_payloads if bool(payload["synced"]))
+    skipped_instance_count = len(instance_payloads) - synced_instance_count
+    if use_scan_cache:
+        raw_scan_cache = _merge_chatlas_raw_scan_cache(raw_scan_cache, archive_results)
 
-    for context in selected_contexts:
-        context_label = _chatlas_progress_context_label(context)
-        _emit_chatlas_progress(progress, f"{context_label}: archive start")
-        instance_payload = _mirror_chatlas_provider_instance(
-            context=context,
-            raw_root=raw_root,
-            progress=progress,
-        )
-        instance_payloads.append(instance_payload)
-        if bool(instance_payload["synced"]):
-            synced_instance_count += 1
-        else:
-            skipped_instance_count += 1
-        _emit_chatlas_progress(
-            progress,
-            f"{context_label}: archive done (synced={bool(instance_payload['synced'])})",
-        )
-
-    _ensure_git_repo(chatlas_root_path)
     _emit_chatlas_progress(progress, "materializing normalized sessions")
     normalized_sessions = _materialize_normalized_sessions(
         chatlas_root=chatlas_root_path,
@@ -232,6 +241,9 @@ def chatlas_update(
     else:
         _emit_chatlas_progress(progress, "no git commit needed")
 
+    if use_scan_cache:
+        _write_chatlas_raw_scan_cache(chatlas_root_path, raw_scan_cache)
+
     provider_names = _unique_strings(tuple(context.provider_instance.family for context in selected_contexts))
     return {
         "status": "ok",
@@ -251,6 +263,7 @@ def chatlas_update(
         "derived_summary_count": derived_summary_counts["brief"],
         "derived_summary_counts": derived_summary_counts,
         "manifest_path": None if manifest_path is None else str(manifest_path),
+        "scan_cache_enabled": use_scan_cache,
         "commit_prefix": settings.commit_prefix,
         "provider_count": len(provider_names),
         "instance_count": len(selected_contexts),
@@ -273,6 +286,95 @@ def _chatlas_progress_context_label(context) -> str:
     instance = context.resolved_instance_name
     provider = context.provider_instance.family
     return f"{provider}/{instance}"
+
+
+def _archive_chatlas_provider_instances(
+    *,
+    selected_contexts: tuple[object, ...],
+    raw_root: Path,
+    progress: Callable[[str], None] | None,
+    use_scan_cache: bool,
+    raw_scan_cache: dict[str, dict[str, dict[str, int]]],
+) -> tuple[ChatlasArchiveResult, ...]:
+    if not selected_contexts:
+        return ()
+
+    if len(selected_contexts) == 1:
+        context = selected_contexts[0]
+        context_label = _chatlas_progress_context_label(context)
+        _emit_chatlas_progress(progress, f"{context_label}: archive start")
+        mirror_result = _mirror_chatlas_provider_instance(
+            context=context,
+            raw_root=raw_root,
+            progress=progress,
+            scan_cache=raw_scan_cache,
+            use_scan_cache=use_scan_cache,
+        )
+        _emit_chatlas_progress(
+            progress,
+            f"{context_label}: archive done (synced={bool(mirror_result.payload['synced'])})",
+        )
+        return (
+            ChatlasArchiveResult(
+                index=0,
+                payload=mirror_result.payload,
+                scan_cache_updates=mirror_result.scan_cache_updates,
+            ),
+        )
+
+    max_workers = min(_MAX_CHATLAS_ARCHIVE_WORKERS, len(selected_contexts))
+    results: list[ChatlasArchiveResult] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_lookup: dict[Future[ChatlasProviderMirrorResult], tuple[int, str]] = {}
+        for index, context in enumerate(selected_contexts):
+            context_label = _chatlas_progress_context_label(context)
+            _emit_chatlas_progress(progress, f"{context_label}: archive start")
+            future = executor.submit(
+                _mirror_chatlas_provider_instance,
+                context=context,
+                raw_root=raw_root,
+                progress=progress,
+                scan_cache=raw_scan_cache,
+                use_scan_cache=use_scan_cache,
+            )
+            future_lookup[future] = (index, context_label)
+
+        for future in as_completed(future_lookup):
+            index, context_label = future_lookup[future]
+            mirror_result = future.result()
+            _emit_chatlas_progress(
+                progress,
+                f"{context_label}: archive done (synced={bool(mirror_result.payload['synced'])})",
+            )
+            results.append(
+                ChatlasArchiveResult(
+                    index=index,
+                    payload=mirror_result.payload,
+                    scan_cache_updates=mirror_result.scan_cache_updates,
+                )
+            )
+
+    return tuple(sorted(results, key=lambda result: result.index))
+
+
+def _merge_chatlas_raw_scan_cache(
+    current_cache: dict[str, dict[str, dict[str, int]]],
+    archive_results: tuple[ChatlasArchiveResult, ...],
+) -> dict[str, dict[str, dict[str, int]]]:
+    merged_cache = {
+        home_key: {
+            rel_path: dict(metadata)
+            for rel_path, metadata in home_entries.items()
+        }
+        for home_key, home_entries in current_cache.items()
+    }
+    for archive_result in archive_results:
+        for home_key, home_entries in archive_result.scan_cache_updates.items():
+            merged_cache[home_key] = {
+                rel_path: dict(metadata)
+                for rel_path, metadata in home_entries.items()
+            }
+    return merged_cache
 
 
 def chatlas_stats(
@@ -637,6 +739,18 @@ def _ensure_git_repo(repo_root: Path) -> None:
         raise CliError(f"chatlas git path is not a directory: {git_dir}")
     if not git_dir.exists():
         run_git(repo_root, "init")
+
+
+def _ensure_chatlas_cache_gitignore(chatlas_root: Path) -> None:
+    gitignore_path = chatlas_root / ".gitignore"
+    ignore_line = "/cache/"
+    existing = ""
+    if gitignore_path.exists():
+        existing = gitignore_path.read_text(encoding="utf-8")
+        if ignore_line in existing.splitlines():
+            return
+    separator = "" if not existing or existing.endswith("\n") else "\n"
+    gitignore_path.write_text(existing + separator + ignore_line + "\n", encoding="utf-8")
 
 
 def _build_update_manifest(

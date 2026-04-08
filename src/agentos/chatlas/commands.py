@@ -21,6 +21,7 @@ _CHATLAS_PROVIDER_CHOICES = tuple(
 def _cmd_chatlas_update(args: argparse.Namespace) -> int:
     payload = chatlas_update(
         providers=optional_string_tuple(args.providers),
+        use_scan_cache=args.use_scan_cache,
         progress=lambda message: print(message, file=sys.stderr, flush=True),
     )
     print(format_json_output(payload))
@@ -90,6 +91,11 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         action="append",
         dest="providers",
         help="Restrict the update run to a provider family. Repeat to include multiple providers.",
+    )
+    update_parser.add_argument(
+        "--use-scan-cache",
+        action="store_true",
+        help="Use a local mtime/size cache to skip unchanged archive files faster.",
     )
     update_parser.set_defaults(handler=_cmd_chatlas_update)
 

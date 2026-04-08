@@ -341,6 +341,58 @@ def test_chatlas_update_second_run_skips_commit_when_unchanged(
     assert _git_output(chatlas_root, "rev-list", "--count", "HEAD") == "1"
 
 
+def test_chatlas_update_use_scan_cache_skips_destination_compare_and_ignores_cache(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from agentos.chatlas import raw as chatlas_raw
+
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
+        session_id=session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name="cached-thread",
+    )
+    _write(home / ".codex" / "notes.md", "# notes\n")
+
+    assert main(["chatlas", "update", "--provider", "codex", "--use-scan-cache"]) == 0
+    first_payload = json.loads(capsys.readouterr().out)
+
+    chatlas_root = agentos_home / "chatlas"
+    cache_path = chatlas_raw._chatlas_raw_scan_cache_path(chatlas_root)
+
+    assert first_payload["scan_cache_enabled"] is True
+    assert cache_path.is_file()
+    assert "/cache/" in (chatlas_root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert _git_output(chatlas_root, "ls-files", "cache/raw-scan-v1.json") == ""
+    assert _git_output(chatlas_root, "status", "--porcelain") == ""
+
+    def fail_match(*args, **kwargs):
+        raise AssertionError("expected scan cache to bypass destination content comparison")
+
+    monkeypatch.setattr(chatlas_raw, "_chatlas_archive_files_match", fail_match)
+
+    assert main(["chatlas", "update", "--provider", "codex", "--use-scan-cache"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["scan_cache_enabled"] is True
+    assert payload["changes_detected"] is False
+    assert payload["committed"] is False
+    assert _git_output(chatlas_root, "status", "--porcelain") == ""
+
+
 def test_chatlas_update_preserves_archived_sessions_when_source_home_disappears(
     tmp_path: Path,
     monkeypatch,

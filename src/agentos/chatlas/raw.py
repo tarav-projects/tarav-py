@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -11,12 +12,19 @@ from agentos._core.path_validation import validate_string_for_path
 from agentos._core.scan import normalize_rel, should_exclude
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
-    canonical_chat_provider_spec_for_name,
+    ProviderInstanceConfigEntry,
+    ProviderHomeSlot,
     ProviderInstance,
     ProviderInstanceAnchor,
-    ProviderHomeSlot,
-    ProviderInstanceConfigEntry,
+    canonical_chat_provider_spec_for_name,
 )
+
+_CHATLAS_RAW_SCAN_CACHE_RELATIVE_PATH = Path("cache") / "raw-scan-v1.json"
+
+
+ChatlasRawScanCacheEntry = dict[str, int]
+ChatlasRawScanCacheHome = dict[str, ChatlasRawScanCacheEntry]
+ChatlasRawScanCache = dict[str, ChatlasRawScanCacheHome]
 
 
 @dataclass(frozen=True)
@@ -159,6 +167,18 @@ class ChatlasProviderContext:
             "destination_root": str(self.destination_root(raw_root)) if len(self.provider_instance.homes) == 1 else None,
             "destination_roots": destination_roots,
         }
+
+
+@dataclass(frozen=True)
+class ChatlasHomeMirrorResult:
+    archive_stats: dict[str, object]
+    scan_cache_entries: ChatlasRawScanCacheHome
+
+
+@dataclass(frozen=True)
+class ChatlasProviderMirrorResult:
+    payload: dict[str, object]
+    scan_cache_updates: ChatlasRawScanCache
 
 
 def _build_chatlas_provider_handler(provider_spec) -> ChatlasProviderHandler:
@@ -351,8 +371,11 @@ def _mirror_chatlas_provider_instance(
     context: ChatlasProviderContext,
     raw_root: Path,
     progress: Callable[[str], None] | None = None,
-) -> dict[str, object]:
+    scan_cache: ChatlasRawScanCache | None = None,
+    use_scan_cache: bool = False,
+) -> ChatlasProviderMirrorResult:
     home_results: list[dict[str, object]] = []
+    scan_cache_updates: ChatlasRawScanCache = {}
     archived = False
 
     for home_key, home_path in context.provider_instance.homes:
@@ -373,16 +396,24 @@ def _mirror_chatlas_provider_instance(
                 progress,
                 f"{context.provider_instance.family}/{context.resolved_instance_name}:{home_key} archive {home_path}",
             )
-            archive_stats = _mirror_chatlas_home(
+            cache_home_key = _chatlas_raw_scan_cache_home_key(
+                raw_root=raw_root,
+                destination_path=destination_path,
+            )
+            archive_result = _mirror_chatlas_home(
                 source_path=home_path,
                 destination_path=destination_path,
                 includes=context.effective_includes,
                 excludes=context.effective_excludes,
                 progress=progress,
                 progress_label=f"{context.provider_instance.family}/{context.resolved_instance_name}:{home_key}",
+                scan_cache_entries=None if scan_cache is None else scan_cache.get(cache_home_key),
+                use_scan_cache=use_scan_cache,
             )
             home_payload["synced"] = True
-            home_payload.update(archive_stats)
+            home_payload.update(archive_result.archive_stats)
+            if use_scan_cache:
+                scan_cache_updates[cache_home_key] = archive_result.scan_cache_entries
             archived = True
         home_results.append(home_payload)
 
@@ -400,7 +431,10 @@ def _mirror_chatlas_provider_instance(
             "homes_status": home_results,
         }
     )
-    return payload
+    return ChatlasProviderMirrorResult(
+        payload=payload,
+        scan_cache_updates=scan_cache_updates,
+    )
 
 
 def _chatlas_home_destination(
@@ -419,7 +453,9 @@ def _mirror_chatlas_home(
     excludes: tuple[str, ...],
     progress: Callable[[str], None] | None = None,
     progress_label: str | None = None,
-) -> dict[str, object]:
+    scan_cache_entries: ChatlasRawScanCacheHome | None = None,
+    use_scan_cache: bool = False,
+) -> ChatlasHomeMirrorResult:
     destination_path.mkdir(parents=True, exist_ok=True)
     # Chatlas keeps an append-preserving archive of selected provider files.
     archive_stats = {
@@ -431,6 +467,7 @@ def _mirror_chatlas_home(
     }
     effective_excludes = (".git",) + excludes
     processed_file_count = 0
+    next_scan_cache_entries: ChatlasRawScanCacheHome = {}
 
     for source_file, rel_path in _iter_chatlas_archive_source_files(
         source_path=source_path,
@@ -438,10 +475,29 @@ def _mirror_chatlas_home(
         excludes=effective_excludes,
     ):
         destination_file = destination_path / rel_path
-        copy_result = _copy_chatlas_archive_file(
-            source_path=source_file,
-            destination_path=destination_file,
-        )
+        rel_path_text = rel_path.as_posix()
+        try:
+            source_signature = _chatlas_archive_source_signature(source_file)
+        except FileNotFoundError:
+            source_signature = None
+            copy_result = "skipped"
+        else:
+            cached_entry = None if scan_cache_entries is None else scan_cache_entries.get(rel_path_text)
+            if (
+                use_scan_cache
+                and cached_entry is not None
+                and _chatlas_raw_scan_cache_entry_matches(cached_entry, source_signature)
+                and _chatlas_archive_destination_matches_size(
+                    destination_file,
+                    expected_size=source_signature["size"],
+                )
+            ):
+                copy_result = "unchanged"
+            else:
+                copy_result = _copy_chatlas_archive_file(
+                    source_path=source_file,
+                    destination_path=destination_file,
+                )
         if copy_result == "added":
             archive_stats["added_file_count"] += 1
         elif copy_result == "updated":
@@ -453,6 +509,8 @@ def _mirror_chatlas_home(
             skipped_examples = archive_stats["skipped_file_examples"]
             if len(skipped_examples) < 20:
                 skipped_examples.append(rel_path.as_posix())
+        if source_signature is not None and copy_result != "skipped":
+            next_scan_cache_entries[rel_path_text] = source_signature
         processed_file_count += 1
         if progress is not None and processed_file_count % 250 == 0:
             _emit_raw_progress(
@@ -470,7 +528,10 @@ def _mirror_chatlas_home(
         f"skipped={archive_stats['skipped_file_count']})",
     )
 
-    return archive_stats
+    return ChatlasHomeMirrorResult(
+        archive_stats=archive_stats,
+        scan_cache_entries=next_scan_cache_entries,
+    )
 
 
 def _emit_raw_progress(progress: Callable[[str], None] | None, message: str) -> None:
@@ -576,6 +637,106 @@ def _chatlas_archive_files_match(source_path: Path, destination_path: Path) -> b
         raise
     except OSError:
         return False
+
+
+def _chatlas_archive_source_signature(source_path: Path) -> ChatlasRawScanCacheEntry:
+    try:
+        source_stat = source_path.stat()
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise CliError(f"failed to stat archive source file {source_path}: {exc}") from exc
+    return {
+        "mtime_ns": int(source_stat.st_mtime_ns),
+        "size": int(source_stat.st_size),
+    }
+
+
+def _chatlas_archive_destination_matches_size(destination_path: Path, *, expected_size: int) -> bool:
+    try:
+        return destination_path.stat().st_size == expected_size
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+
+
+def _chatlas_raw_scan_cache_entry_matches(
+    entry: ChatlasRawScanCacheEntry,
+    source_signature: ChatlasRawScanCacheEntry,
+) -> bool:
+    return (
+        entry.get("mtime_ns") == source_signature["mtime_ns"]
+        and entry.get("size") == source_signature["size"]
+    )
+
+
+def _chatlas_raw_scan_cache_home_key(*, raw_root: Path, destination_path: Path) -> str:
+    relative_destination = destination_path.relative_to(raw_root)
+    return normalize_rel(PurePosixPath(relative_destination.as_posix()))
+
+
+def _chatlas_raw_scan_cache_path(chatlas_root: Path) -> Path:
+    return chatlas_root / _CHATLAS_RAW_SCAN_CACHE_RELATIVE_PATH
+
+
+def _load_chatlas_raw_scan_cache(chatlas_root: Path) -> ChatlasRawScanCache:
+    cache_path = _chatlas_raw_scan_cache_path(chatlas_root)
+    if not cache_path.is_file():
+        return {}
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        return {}
+    raw_homes = payload.get("homes")
+    if not isinstance(raw_homes, dict):
+        return {}
+
+    homes: ChatlasRawScanCache = {}
+    for home_key, raw_entries in raw_homes.items():
+        if not isinstance(home_key, str) or not home_key.strip() or not isinstance(raw_entries, dict):
+            continue
+        home_entries: ChatlasRawScanCacheHome = {}
+        for rel_path, raw_entry in raw_entries.items():
+            if not isinstance(rel_path, str) or not rel_path.strip() or not isinstance(raw_entry, dict):
+                continue
+            mtime_ns = raw_entry.get("mtime_ns")
+            size = raw_entry.get("size")
+            if not isinstance(mtime_ns, int) or not isinstance(size, int):
+                continue
+            if mtime_ns < 0 or size < 0:
+                continue
+            home_entries[rel_path] = {
+                "mtime_ns": mtime_ns,
+                "size": size,
+            }
+        homes[home_key] = home_entries
+    return homes
+
+
+def _write_chatlas_raw_scan_cache(chatlas_root: Path, cache: ChatlasRawScanCache) -> None:
+    cache_path = _chatlas_raw_scan_cache_path(chatlas_root)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "class": "agentos.chatlas.raw_scan_cache",
+        "schema_version": 1,
+        "homes": {
+            home_key: {
+                rel_path: {
+                    "mtime_ns": int(entry["mtime_ns"]),
+                    "size": int(entry["size"]),
+                }
+                for rel_path, entry in sorted(home_entries.items())
+            }
+            for home_key, home_entries in sorted(cache.items())
+        },
+    }
+    rendered = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+    if cache_path.exists() and cache_path.read_text(encoding="utf-8") == rendered:
+        return
+    cache_path.write_text(rendered, encoding="utf-8")
 
 
 def _chatlas_home_relpath(home_path: Path) -> Path:
