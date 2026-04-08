@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
@@ -173,12 +174,14 @@ class ChatlasProviderContext:
 class ChatlasHomeMirrorResult:
     archive_stats: dict[str, object]
     scan_cache_entries: ChatlasRawScanCacheHome
+    elapsed_seconds: float
 
 
 @dataclass(frozen=True)
 class ChatlasProviderMirrorResult:
     payload: dict[str, object]
     scan_cache_updates: ChatlasRawScanCache
+    elapsed_seconds: float
 
 
 def _build_chatlas_provider_handler(provider_spec) -> ChatlasProviderHandler:
@@ -372,8 +375,9 @@ def _mirror_chatlas_provider_instance(
     raw_root: Path,
     progress: Callable[[str], None] | None = None,
     scan_cache: ChatlasRawScanCache | None = None,
-    use_scan_cache: bool = False,
+    scan_cache_enabled: bool = True,
 ) -> ChatlasProviderMirrorResult:
+    started_at = time.perf_counter()
     home_results: list[dict[str, object]] = []
     scan_cache_updates: ChatlasRawScanCache = {}
     archived = False
@@ -408,11 +412,11 @@ def _mirror_chatlas_provider_instance(
                 progress=progress,
                 progress_label=f"{context.provider_instance.family}/{context.resolved_instance_name}:{home_key}",
                 scan_cache_entries=None if scan_cache is None else scan_cache.get(cache_home_key),
-                use_scan_cache=use_scan_cache,
+                scan_cache_enabled=scan_cache_enabled,
             )
             home_payload["synced"] = True
             home_payload.update(archive_result.archive_stats)
-            if use_scan_cache:
+            if scan_cache_enabled:
                 scan_cache_updates[cache_home_key] = archive_result.scan_cache_entries
             archived = True
         home_results.append(home_payload)
@@ -434,6 +438,7 @@ def _mirror_chatlas_provider_instance(
     return ChatlasProviderMirrorResult(
         payload=payload,
         scan_cache_updates=scan_cache_updates,
+        elapsed_seconds=time.perf_counter() - started_at,
     )
 
 
@@ -454,8 +459,9 @@ def _mirror_chatlas_home(
     progress: Callable[[str], None] | None = None,
     progress_label: str | None = None,
     scan_cache_entries: ChatlasRawScanCacheHome | None = None,
-    use_scan_cache: bool = False,
+    scan_cache_enabled: bool = True,
 ) -> ChatlasHomeMirrorResult:
+    started_at = time.perf_counter()
     destination_path.mkdir(parents=True, exist_ok=True)
     # Chatlas keeps an append-preserving archive of selected provider files.
     archive_stats = {
@@ -484,7 +490,7 @@ def _mirror_chatlas_home(
         else:
             cached_entry = None if scan_cache_entries is None else scan_cache_entries.get(rel_path_text)
             if (
-                use_scan_cache
+                scan_cache_enabled
                 and cached_entry is not None
                 and _chatlas_raw_scan_cache_entry_matches(cached_entry, source_signature)
                 and _chatlas_archive_destination_matches_size(
@@ -517,20 +523,23 @@ def _mirror_chatlas_home(
                 progress,
                 f"{progress_label or destination_path.name}: {processed_file_count} files scanned "
                 f"(added={archive_stats['added_file_count']} updated={archive_stats['updated_file_count']} "
-                f"unchanged={archive_stats['unchanged_file_count']} skipped={archive_stats['skipped_file_count']})",
+                f"unchanged={archive_stats['unchanged_file_count']} skipped={archive_stats['skipped_file_count']} "
+                f"elapsed={_format_wall_clock_elapsed(time.perf_counter() - started_at)})",
             )
 
+    elapsed_seconds = time.perf_counter() - started_at
     _emit_raw_progress(
         progress,
         f"{progress_label or destination_path.name}: done "
         f"(scanned={processed_file_count} added={archive_stats['added_file_count']} "
         f"updated={archive_stats['updated_file_count']} unchanged={archive_stats['unchanged_file_count']} "
-        f"skipped={archive_stats['skipped_file_count']})",
+        f"skipped={archive_stats['skipped_file_count']} elapsed={_format_wall_clock_elapsed(elapsed_seconds)})",
     )
 
     return ChatlasHomeMirrorResult(
         archive_stats=archive_stats,
         scan_cache_entries=next_scan_cache_entries,
+        elapsed_seconds=elapsed_seconds,
     )
 
 
@@ -538,6 +547,10 @@ def _emit_raw_progress(progress: Callable[[str], None] | None, message: str) -> 
     if progress is None:
         return
     progress(message)
+
+
+def _format_wall_clock_elapsed(elapsed_seconds: float) -> str:
+    return f"{elapsed_seconds:.2f}s"
 
 
 def _iter_chatlas_archive_source_files(

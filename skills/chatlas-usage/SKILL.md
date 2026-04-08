@@ -19,10 +19,16 @@ Prefer `agentos chatlas ...` for normal session workflows. Use `agentos chat deb
 ## Working Rules
 
 - Treat Chatlas as the source of truth for session data.
+- Default Chatlas dataset root is `~/Documents/chatlas`.
 - Do not use removed `agentos chat session ...` commands.
 - Do not default to `agentos chat debug ...` for normal session lookup or export.
 - If the task depends on fresh provider state, run `agentos chatlas update` before querying.
 - If the user is only asking about already-materialized dataset contents, query first and avoid unnecessary updates.
+- `agentos chatlas update` uses the raw scan cache by default; disable only with `--scan-cache=false` when you need a deep archive scan.
+- `agentos chatlas update` uses the normalized session cache by default; disable only with `--normalized-cache=false` when you need a deep normalized-session rebuild.
+- `agentos chatlas update` uses the derived transcript cache by default; disable only with `--transcript-cache=false` when you need a deep transcript rebuild.
+- `agentos chatlas update` prints progress to stderr by default; disable live feedback with `--verbose-mode=quiet`.
+- `agentos chatlas update` prints no final stdout payload by default; request machine-readable output with `--output-mode=json`.
 
 ## Query Workflow
 
@@ -38,6 +44,11 @@ agentos chatlas query "<query>" --include-match
 agentos chatlas query "<query>" --include-match --include-provider-stats
 agentos chatlas query --user-contain "<text>" --include-summary
 agentos chatlas query "<query>" --include-artifacts
+agentos chatlas update
+agentos chatlas update --scan-cache=false
+agentos chatlas update --normalized-cache=false
+agentos chatlas update --transcript-cache=false
+agentos chatlas update --verbose-mode=quiet --output-mode=json
 ```
 
 Use these flags intentionally:

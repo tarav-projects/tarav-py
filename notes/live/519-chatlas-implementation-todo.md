@@ -10,7 +10,7 @@
 - [x] Add a top-level `agentos chatlas` CLI surface.
 - [x] Remove the `agentos chat archive` command surface.
 - [x] Implement `agentos chatlas update`.
-- [x] Store Chatlas data under a dedicated git-backed root at `~/.agentos/chatlas`.
+- [x] Store Chatlas data under a dedicated git-backed root at `~/Documents/chatlas`.
 - [x] Create the initial Chatlas dataset layout:
 - [x] `raw/`
 - [x] `manifests/updates/`
@@ -47,7 +47,8 @@
 - No backward-compatibility shim should remain for `agentos chat archive`.
 - Implemented first slice:
 - top-level `agentos chatlas update`
-- new Chatlas root at `~/.agentos/chatlas`
+- new Chatlas root at `~/Documents/chatlas`
+- existing default Chatlas repos should migrate from `~/.agentos/chatlas` to `~/Documents/chatlas`
 - raw mirror output under `raw/`
 - update manifests under `manifests/updates/`
 - fresh `chatlas.provider_instances` config namespace

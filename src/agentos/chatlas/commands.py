@@ -16,15 +16,34 @@ from agentos.chatlas.raw import supported_chatlas_provider_families
 _CHATLAS_PROVIDER_CHOICES = tuple(
     provider_family.family for provider_family in supported_chatlas_provider_families()
 )
+_CHATLAS_UPDATE_VERBOSE_MODES = ("progress", "quiet")
+_CHATLAS_UPDATE_OUTPUT_MODES = ("none", "json")
+
+
+def _chatlas_update_progress_handler(verbose_mode: str):
+    if verbose_mode == "quiet":
+        return None
+    return lambda message: print(message, file=sys.stderr, flush=True)
+
+
+def _emit_chatlas_update_output(*, payload: dict[str, object], output_mode: str) -> None:
+    if output_mode == "none":
+        return
+    if output_mode == "json":
+        print(format_json_output(payload))
+        return
+    raise AssertionError(f"unsupported chatlas update output mode: {output_mode}")
 
 
 def _cmd_chatlas_update(args: argparse.Namespace) -> int:
     payload = chatlas_update(
         providers=optional_string_tuple(args.providers),
-        use_scan_cache=args.use_scan_cache,
-        progress=lambda message: print(message, file=sys.stderr, flush=True),
+        scan_cache_enabled=args.scan_cache == "true",
+        normalized_cache_enabled=args.normalized_cache == "true",
+        transcript_cache_enabled=args.transcript_cache == "true",
+        progress=_chatlas_update_progress_handler(args.verbose_mode),
     )
-    print(format_json_output(payload))
+    _emit_chatlas_update_output(payload=payload, output_mode=args.output_mode)
     return 0
 
 
@@ -93,9 +112,34 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Restrict the update run to a provider family. Repeat to include multiple providers.",
     )
     update_parser.add_argument(
-        "--use-scan-cache",
-        action="store_true",
-        help="Use a local mtime/size cache to skip unchanged archive files faster.",
+        "--verbose-mode",
+        choices=_CHATLAS_UPDATE_VERBOSE_MODES,
+        default="progress",
+        help="Progress feedback mode: `progress` prints live update messages to stderr; `quiet` disables them (default: progress).",
+    )
+    update_parser.add_argument(
+        "--output-mode",
+        choices=_CHATLAS_UPDATE_OUTPUT_MODES,
+        default="none",
+        help="Final command output mode: `none` prints nothing after the update; `json` prints the update payload (default: none).",
+    )
+    update_parser.add_argument(
+        "--scan-cache",
+        choices=("true", "false"),
+        default="true",
+        help="Use the local raw-scan cache during archive scans (default: true).",
+    )
+    update_parser.add_argument(
+        "--transcript-cache",
+        choices=("true", "false"),
+        default="true",
+        help="Use the local derived transcript cache during transcript materialization (default: true).",
+    )
+    update_parser.add_argument(
+        "--normalized-cache",
+        choices=("true", "false"),
+        default="true",
+        help="Use the local normalized session cache during normalized session materialization (default: true).",
     )
     update_parser.set_defaults(handler=_cmd_chatlas_update)
 

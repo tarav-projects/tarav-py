@@ -19,7 +19,7 @@
 - `src/agentos/chat/providers.py`
 
 ## Storage Contract Direction
-- Default Chatlas root should live under `~/.agentos/chatlas`.
+- Default Chatlas root should live under `~/Documents/chatlas`.
 - Chatlas should be git-backed.
 - Checked-in SSOT should stay text-friendly and append-friendly.
 - Local query databases or indexes should be generated from the checked-in dataset rather than becoming the primary source of truth.
