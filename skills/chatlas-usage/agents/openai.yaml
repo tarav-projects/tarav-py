@@ -1,4 +1,4 @@
 interface:
-  display_name: "Chatlas Usage"
+  display_name: "agentos-chatlas-usage"
   short_description: "Use Chatlas as the default chat dataset surface."
   default_prompt: "Use $chatlas-usage to work with chat session data through Chatlas instead of live provider debug commands."
