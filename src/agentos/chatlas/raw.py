@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import time
@@ -19,6 +18,7 @@ from agentos.chat.providers import (
     ProviderInstanceAnchor,
     canonical_chat_provider_spec_for_name,
 )
+from agentos.chatlas._cache_io import load_chatlas_cache_section, write_chatlas_cache_section
 
 _CHATLAS_RAW_SCAN_CACHE_RELATIVE_PATH = Path("cache") / "raw-scan-v1.json"
 
@@ -694,19 +694,10 @@ def _chatlas_raw_scan_cache_path(chatlas_root: Path) -> Path:
 
 
 def _load_chatlas_raw_scan_cache(chatlas_root: Path) -> ChatlasRawScanCache:
-    cache_path = _chatlas_raw_scan_cache_path(chatlas_root)
-    if not cache_path.is_file():
-        return {}
-    try:
-        payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-        return {}
-    raw_homes = payload.get("homes")
-    if not isinstance(raw_homes, dict):
-        return {}
-
+    raw_homes = load_chatlas_cache_section(
+        _chatlas_raw_scan_cache_path(chatlas_root),
+        entries_key="homes",
+    )
     homes: ChatlasRawScanCache = {}
     for home_key, raw_entries in raw_homes.items():
         if not isinstance(home_key, str) or not home_key.strip() or not isinstance(raw_entries, dict):
@@ -730,12 +721,11 @@ def _load_chatlas_raw_scan_cache(chatlas_root: Path) -> ChatlasRawScanCache:
 
 
 def _write_chatlas_raw_scan_cache(chatlas_root: Path, cache: ChatlasRawScanCache) -> None:
-    cache_path = _chatlas_raw_scan_cache_path(chatlas_root)
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "class": "agentos.chatlas.raw_scan_cache",
-        "schema_version": 1,
-        "homes": {
+    write_chatlas_cache_section(
+        _chatlas_raw_scan_cache_path(chatlas_root),
+        cache_class="agentos.chatlas.raw_scan_cache",
+        entries_key="homes",
+        entries={
             home_key: {
                 rel_path: {
                     "mtime_ns": int(entry["mtime_ns"]),
@@ -745,11 +735,7 @@ def _write_chatlas_raw_scan_cache(chatlas_root: Path, cache: ChatlasRawScanCache
             }
             for home_key, home_entries in sorted(cache.items())
         },
-    }
-    rendered = json.dumps(payload, sort_keys=True, indent=2) + "\n"
-    if cache_path.exists() and cache_path.read_text(encoding="utf-8") == rendered:
-        return
-    cache_path.write_text(rendered, encoding="utf-8")
+    )
 
 
 def _chatlas_home_relpath(home_path: Path) -> Path:

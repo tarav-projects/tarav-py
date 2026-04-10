@@ -977,11 +977,14 @@ def test_chatlas_query_matches_normalized_thread_name(
     assert payload["session_count"] == 1
     session = payload["sessions"][0]
     assert session["provider"] == "codex"
+    assert session["instance"] == "codex-main"
     assert session["session_id"] == session_id
     assert session["display_name"] == thread_name
     assert session["native"] == {"thread_name": thread_name}
     assert session["match"]["fields"] == [{"field": "thread_name", "value": thread_name}]
+    assert session["summary"]["instance"] == "codex-main"
     assert session["summary"]["turn_count"] == 0
+    assert session["summary_levels"]["brief"]["instance"] == "codex-main"
     assert session["summary_levels"]["brief"]["level"] == "brief"
     assert session["summary_levels"]["detailed"]["level"] == "detailed"
 
@@ -1022,6 +1025,100 @@ def test_chatlas_query_can_include_provider_stats_for_exact_session_queries(
     assert session["match"]["fields"] == [{"field": "thread_name", "value": thread_name}]
     assert session["provider_stats"]["has_rollout_artifact"] is True
     assert session["provider_stats"]["dialog_turn_count"] == 2
+
+
+def test_chatlas_query_supports_instance_matching_filtering_and_compact_output(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    extra_codex_home = home / ".codex-jp"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    default_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    extra_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd6"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{default_session_id}.jsonl",
+        session_id=default_session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=default_session_id,
+        thread_name="default-thread",
+    )
+    _write_codex_rollout(
+        extra_codex_home / "sessions" / "2026" / "03" / "26" / f"rollout-2026-03-26T01-05-38-{extra_session_id}.jsonl",
+        session_id=extra_session_id,
+    )
+    _write_codex_session_index(
+        extra_codex_home / "session_index.jsonl",
+        session_id=extra_session_id,
+        thread_name="jp-thread",
+    )
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "jp",
+                "home": str(extra_codex_home),
+            }
+        ],
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(["chatlas", "query", "jp", "--include-match", "--compact"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session_count"] == 1
+    assert payload["sessions"][0]["instance"] == "jp"
+    assert payload["sessions"][0]["match"]["fields"] == [{"field": "instance", "value": "jp"}]
+    assert set(payload["sessions"][0]) == {
+        "provider",
+        "instance",
+        "session_id",
+        "display_name",
+        "updated_at",
+        "match",
+    }
+
+    assert main(
+        [
+            "chatlas",
+            "query",
+            "--provider",
+            "codex",
+            "--instance",
+            "jp",
+            "--compact",
+        ]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["selection"]["filters"]["instances"] == ["jp"]
+    assert payload["selection"]["filters"]["compact"] is True
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "codex"
+    assert session["instance"] == "jp"
+    assert session["session_id"] == extra_session_id
+    assert set(session) == {"provider", "instance", "session_id", "display_name", "updated_at"}
+
+    assert main(["chatlas", "query", "--provider", "codex", "--sort", "lexical", "--compact"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session_count"] == 2
+    assert [session["instance"] for session in payload["sessions"]] == ["codex-main", "jp"]
+    for session in payload["sessions"]:
+        assert "primary_backing_artifact" not in session
+        assert "native" not in session
+        assert set(session) == {"provider", "instance", "session_id", "display_name", "updated_at"}
 
 
 def test_chatlas_query_matches_openclaw_logical_session_keys(

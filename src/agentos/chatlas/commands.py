@@ -65,6 +65,7 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
         text_contain=args.text_contain,
         user_contain=args.user_contain,
         providers=optional_string_tuple(args.providers),
+        instances=optional_string_tuple(args.instances),
         sort=args.sort,
         limit=args.limit,
         extractable_only=args.extractable,
@@ -75,6 +76,7 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
         include_summary_levels=tuple(args.summary_levels or ()),
         include_transcript_filter_match=args.include_transcript_filter_match,
         include_provider_stats=args.include_provider_stats,
+        compact=args.compact,
     )
     print(format_json_output(payload))
     return 0
@@ -175,7 +177,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     query_parser.add_argument(
         "query",
         nargs="?",
-        help="Exact query value matched against URI, session id, display name, fingerprint, and native fields.",
+        help="Exact query value matched against URI, instance, session id, display name, fingerprint, and native fields.",
     )
     query_parser.add_argument(
         "--text-contain",
@@ -195,6 +197,12 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         action="append",
         dest="providers",
         help="Restrict query to a provider family. Repeat to include multiple providers.",
+    )
+    query_parser.add_argument(
+        "--instance",
+        action="append",
+        dest="instances",
+        help="Restrict query to a resolved Chatlas instance name. Repeat to include multiple instances.",
     )
     query_parser.add_argument(
         "--sort",
@@ -217,6 +225,11 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "--updated-since",
         default=None,
         help="Keep only sessions updated within the given lookback, e.g. 72h or 3d.",
+    )
+    query_parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="Return compact identifier-oriented session rows instead of the full normalized session payload.",
     )
     query_parser.add_argument(
         "--include-match",

@@ -7,7 +7,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 from urllib.parse import quote
 
 from agentos._core.clock import utc_now_iso
@@ -37,6 +37,11 @@ from agentos.chat.providers import (
     provider_instance_config_entries_from_config,
 )
 from agentos.chat.sessions import ChatSession, coerce_timestamp
+from agentos.chatlas._cache_io import (
+    load_chatlas_cache_section,
+    write_chatlas_cache_section,
+    write_text_if_changed,
+)
 from agentos.chatlas.raw import (
     ChatlasProviderMirrorResult,
     _build_chatlas_provider_context,
@@ -45,6 +50,7 @@ from agentos.chatlas.raw import (
     _load_chatlas_raw_scan_cache,
     _mirror_chatlas_provider_instance,
     _provider_instances_from_config_entries,
+    _resolve_chatlas_instance_name,
     _validate_unique_chatlas_destinations,
     _write_chatlas_raw_scan_cache,
     supported_chatlas_provider_families,
@@ -74,6 +80,7 @@ _SUMMARY_LEVELS = ("brief", "detailed")
 _PROGRESS_PREFIX = "[chatlas]"
 _MAX_CHATLAS_ARCHIVE_WORKERS = 4
 _CHATLAS_DOCUMENTS_DIRNAME = "Documents"
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -108,6 +115,13 @@ class ChatlasNormalizedSessionMaterialization:
 class ChatlasDerivedTranscriptMaterialization:
     session_count: int
     transcript_cache: dict[str, dict[str, object]]
+
+
+@dataclass
+class ChatlasUpdateCaches:
+    raw_scan: dict[str, dict[str, dict[str, int]]]
+    normalized_sessions: dict[str, dict[str, object]]
+    transcripts: dict[str, dict[str, object]]
 
 
 def default_chatlas_root() -> Path:
@@ -173,18 +187,12 @@ def chatlas_update(
     _ensure_git_repo(chatlas_root_path)
     if scan_cache_enabled or normalized_cache_enabled or transcript_cache_enabled:
         _ensure_chatlas_cache_gitignore(chatlas_root_path)
-    if scan_cache_enabled:
-        raw_scan_cache = _load_chatlas_raw_scan_cache(chatlas_root_path)
-    else:
-        raw_scan_cache = {}
-    if normalized_cache_enabled:
-        normalized_session_cache = _load_normalized_session_cache(chatlas_root_path)
-    else:
-        normalized_session_cache = {}
-    if transcript_cache_enabled:
-        transcript_cache = _load_derived_transcript_cache(chatlas_root_path)
-    else:
-        transcript_cache = {}
+    update_caches = _load_chatlas_update_caches(
+        chatlas_root=chatlas_root_path,
+        scan_cache_enabled=scan_cache_enabled,
+        normalized_cache_enabled=normalized_cache_enabled,
+        transcript_cache_enabled=transcript_cache_enabled,
+    )
 
     selected_instances = settings.provider_instances
     if providers is not None:
@@ -205,55 +213,57 @@ def chatlas_update(
         raw_root=raw_root,
         progress=progress,
         scan_cache_enabled=scan_cache_enabled,
-        raw_scan_cache=raw_scan_cache,
+        raw_scan_cache=update_caches.raw_scan,
     )
     instance_payloads = [result.payload for result in archive_results]
     synced_instance_count = sum(1 for payload in instance_payloads if bool(payload["synced"]))
     skipped_instance_count = len(instance_payloads) - synced_instance_count
     if scan_cache_enabled:
-        raw_scan_cache = _merge_chatlas_raw_scan_cache(raw_scan_cache, archive_results)
+        update_caches.raw_scan = _merge_chatlas_raw_scan_cache(update_caches.raw_scan, archive_results)
     _emit_chatlas_archive_summary(
         progress=progress,
         instance_payloads=instance_payloads,
         elapsed_seconds=time.perf_counter() - archive_started_at,
     )
 
-    _emit_chatlas_progress(progress, "materializing normalized sessions")
-    normalized_started_at = time.perf_counter()
-    normalized_materialization = _materialize_normalized_sessions(
-        chatlas_root=chatlas_root_path,
-        provider_instances=settings.provider_instances,
-        normalized_session_cache=normalized_session_cache,
-        normalized_cache_enabled=normalized_cache_enabled,
+    normalized_materialization = _run_chatlas_timed_phase(
+        progress=progress,
+        start_message="materializing normalized sessions",
+        finish_message=lambda materialization: (
+            f"normalized sessions: {len(materialization.sessions)}"
+        ),
+        run=lambda: _materialize_normalized_sessions(
+            chatlas_root=chatlas_root_path,
+            provider_instances=settings.provider_instances,
+            normalized_session_cache=update_caches.normalized_sessions,
+            normalized_cache_enabled=normalized_cache_enabled,
+        ),
     )
     normalized_sessions = normalized_materialization.sessions
-    _emit_chatlas_progress(
-        progress,
-        f"normalized sessions: {len(normalized_sessions)} (elapsed={_format_wall_clock_elapsed(time.perf_counter() - normalized_started_at)})",
-    )
-    _emit_chatlas_progress(progress, "materializing derived transcripts")
-    transcripts_started_at = time.perf_counter()
-    transcript_materialization = _materialize_derived_transcripts(
-        chatlas_root=chatlas_root_path,
-        normalized_sessions=normalized_sessions,
-        transcript_cache=transcript_cache,
-        transcript_cache_enabled=transcript_cache_enabled,
+    transcript_materialization = _run_chatlas_timed_phase(
+        progress=progress,
+        start_message="materializing derived transcripts",
+        finish_message=lambda materialization: (
+            f"derived transcripts: {materialization.session_count}"
+        ),
+        run=lambda: _materialize_derived_transcripts(
+            chatlas_root=chatlas_root_path,
+            normalized_sessions=normalized_sessions,
+            transcript_cache=update_caches.transcripts,
+            transcript_cache_enabled=transcript_cache_enabled,
+        ),
     )
     derived_transcript_session_count = transcript_materialization.session_count
-    _emit_chatlas_progress(
-        progress,
-        f"derived transcripts: {derived_transcript_session_count} (elapsed={_format_wall_clock_elapsed(time.perf_counter() - transcripts_started_at)})",
-    )
-    _emit_chatlas_progress(progress, "materializing derived summaries")
-    summaries_started_at = time.perf_counter()
-    derived_summary_counts = _materialize_derived_summaries(
-        chatlas_root=chatlas_root_path,
-        normalized_sessions=normalized_sessions,
-    )
-    _emit_chatlas_progress(
-        progress,
-        f"derived summaries: brief={derived_summary_counts['brief']} detailed={derived_summary_counts['detailed']} "
-        f"(elapsed={_format_wall_clock_elapsed(time.perf_counter() - summaries_started_at)})",
+    derived_summary_counts = _run_chatlas_timed_phase(
+        progress=progress,
+        start_message="materializing derived summaries",
+        finish_message=lambda counts: (
+            f"derived summaries: brief={counts['brief']} detailed={counts['detailed']}"
+        ),
+        run=lambda: _materialize_derived_summaries(
+            chatlas_root=chatlas_root_path,
+            normalized_sessions=normalized_sessions,
+        ),
     )
     _emit_chatlas_progress(progress, "checking git status")
     dataset_changes_detected = bool(run_git(chatlas_root_path, "status", "--porcelain"))
@@ -301,15 +311,15 @@ def chatlas_update(
     else:
         _emit_chatlas_progress(progress, "no git commit needed")
 
-    if scan_cache_enabled:
-        _write_chatlas_raw_scan_cache(chatlas_root_path, raw_scan_cache)
-    if normalized_cache_enabled:
-        _write_normalized_session_cache(
-            chatlas_root_path,
-            normalized_materialization.normalized_session_cache,
-        )
-    if transcript_cache_enabled:
-        _write_derived_transcript_cache(chatlas_root_path, transcript_materialization.transcript_cache)
+    update_caches.normalized_sessions = normalized_materialization.normalized_session_cache
+    update_caches.transcripts = transcript_materialization.transcript_cache
+    _write_chatlas_update_caches(
+        chatlas_root=chatlas_root_path,
+        caches=update_caches,
+        scan_cache_enabled=scan_cache_enabled,
+        normalized_cache_enabled=normalized_cache_enabled,
+        transcript_cache_enabled=transcript_cache_enabled,
+    )
 
     provider_names = _unique_strings(tuple(context.provider_instance.family for context in selected_contexts))
     return {
@@ -361,6 +371,71 @@ def _format_wall_clock_elapsed(elapsed_seconds: float) -> str:
     return f"{elapsed_seconds:.2f}s"
 
 
+def _run_chatlas_timed_phase(
+    *,
+    progress: Callable[[str], None] | None,
+    start_message: str,
+    finish_message: Callable[[T], str],
+    run: Callable[[], T],
+) -> T:
+    _emit_chatlas_progress(progress, start_message)
+    started_at = time.perf_counter()
+    result = run()
+    _emit_chatlas_progress(
+        progress,
+        f"{finish_message(result)} (elapsed={_format_wall_clock_elapsed(time.perf_counter() - started_at)})",
+    )
+    return result
+
+
+def _load_chatlas_update_caches(
+    *,
+    chatlas_root: Path,
+    scan_cache_enabled: bool,
+    normalized_cache_enabled: bool,
+    transcript_cache_enabled: bool,
+) -> ChatlasUpdateCaches:
+    return ChatlasUpdateCaches(
+        raw_scan=_load_chatlas_raw_scan_cache(chatlas_root) if scan_cache_enabled else {},
+        normalized_sessions=(
+            _load_normalized_session_cache(chatlas_root) if normalized_cache_enabled else {}
+        ),
+        transcripts=(
+            _load_derived_transcript_cache(chatlas_root) if transcript_cache_enabled else {}
+        ),
+    )
+
+
+def _write_chatlas_update_caches(
+    *,
+    chatlas_root: Path,
+    caches: ChatlasUpdateCaches,
+    scan_cache_enabled: bool,
+    normalized_cache_enabled: bool,
+    transcript_cache_enabled: bool,
+) -> None:
+    if scan_cache_enabled:
+        _write_chatlas_raw_scan_cache(chatlas_root, caches.raw_scan)
+    if normalized_cache_enabled:
+        _write_normalized_session_cache(chatlas_root, caches.normalized_sessions)
+    if transcript_cache_enabled:
+        _write_derived_transcript_cache(chatlas_root, caches.transcripts)
+
+
+def _emit_chatlas_archive_done(
+    progress: Callable[[str], None] | None,
+    *,
+    context_label: str,
+    mirror_result: ChatlasProviderMirrorResult,
+) -> None:
+    _emit_chatlas_progress(
+        progress,
+        f"{context_label}: archive done "
+        f"(synced={bool(mirror_result.payload['synced'])}, "
+        f"elapsed={_format_wall_clock_elapsed(mirror_result.elapsed_seconds)})",
+    )
+
+
 def _archive_chatlas_provider_instances(
     *,
     selected_contexts: tuple[object, ...],
@@ -383,12 +458,7 @@ def _archive_chatlas_provider_instances(
             scan_cache=raw_scan_cache,
             scan_cache_enabled=scan_cache_enabled,
         )
-        _emit_chatlas_progress(
-            progress,
-            f"{context_label}: archive done "
-            f"(synced={bool(mirror_result.payload['synced'])}, "
-            f"elapsed={_format_wall_clock_elapsed(mirror_result.elapsed_seconds)})",
-        )
+        _emit_chatlas_archive_done(progress, context_label=context_label, mirror_result=mirror_result)
         return (
             ChatlasArchiveResult(
                 index=0,
@@ -417,12 +487,7 @@ def _archive_chatlas_provider_instances(
         for future in as_completed(future_lookup):
             index, context_label = future_lookup[future]
             mirror_result = future.result()
-            _emit_chatlas_progress(
-                progress,
-                f"{context_label}: archive done "
-                f"(synced={bool(mirror_result.payload['synced'])}, "
-                f"elapsed={_format_wall_clock_elapsed(mirror_result.elapsed_seconds)})",
-            )
+            _emit_chatlas_archive_done(progress, context_label=context_label, mirror_result=mirror_result)
             results.append(
                 ChatlasArchiveResult(
                     index=index,
@@ -694,6 +759,7 @@ def chatlas_query(
     text_contain: str | None = None,
     user_contain: str | None = None,
     providers: tuple[str, ...] | None = None,
+    instances: tuple[str, ...] | None = None,
     chatlas_root: Path | None = None,
     sort: str = "lexical",
     limit: int | None = None,
@@ -705,12 +771,14 @@ def chatlas_query(
     include_summary_levels: tuple[str, ...] = (),
     include_transcript_filter_match: bool = False,
     include_provider_stats: bool = False,
+    compact: bool = False,
 ) -> dict[str, object]:
     _validate_chatlas_sort(sort)
     _validate_chatlas_limit(limit)
     normalized_query = None if query is None else query.strip()
     normalized_text_contain = None if text_contain is None else text_contain.strip()
     normalized_user_contain = None if user_contain is None else user_contain.strip()
+    normalized_instances = _normalize_chatlas_instance_filters(instances)
     if normalized_query == "":
         normalized_query = None
     if normalized_text_contain == "":
@@ -726,6 +794,7 @@ def chatlas_query(
         text_contain=normalized_text_contain,
         user_contain=normalized_user_contain,
         providers=providers,
+        instances=normalized_instances,
         extractable_only=extractable_only,
         updated_after=updated_after,
     )
@@ -735,9 +804,12 @@ def chatlas_query(
 
     matched_sessions: list[dict[str, Any]] = []
     for selection in selections:
-        enriched = dict(selection.session)
-        if not include_artifacts:
-            enriched.pop("backing_artifacts", None)
+        if compact:
+            enriched = _compact_chatlas_session_payload(selection.session)
+        else:
+            enriched = dict(selection.session)
+            if not include_artifacts:
+                enriched.pop("backing_artifacts", None)
         if include_summary:
             enriched["summary"] = selection.summary or _build_session_summary(chatlas_root_path, selection.session, level="brief")
         if normalized_summary_levels:
@@ -797,6 +869,8 @@ def chatlas_query(
                 "updated_after": _format_stats_timestamp(updated_after),
                 "text_contain": normalized_text_contain,
                 "user_contain": normalized_user_contain,
+                "instances": list(normalized_instances) if normalized_instances is not None else None,
+                "compact": compact,
             },
         },
         "expansions": expansions,
@@ -854,7 +928,7 @@ def chatlas_export(
         return transcript_path.read_text(encoding="utf-8")
 
     rendered = _render_transcript(session, output_format=output_format)
-    _write_text_if_changed(transcript_path, rendered)
+    write_text_if_changed(transcript_path, rendered)
     return rendered
 
 
@@ -987,7 +1061,7 @@ def _write_update_manifest(*, chatlas_root: Path, payload: dict[str, object]) ->
     manifest_dir.mkdir(parents=True, exist_ok=True)
     recorded_at = str(payload["recorded_at"])
     manifest_path = manifest_dir / f"{_compact_timestamp(recorded_at)}.json"
-    manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    write_text_if_changed(manifest_path, json.dumps(payload, indent=2) + "\n")
     return manifest_path
 
 
@@ -1105,7 +1179,7 @@ def _materialize_normalized_sessions(
     normalized_path = chatlas_root / _NORMALIZED_SESSIONS_RELATIVE_PATH
     normalized_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = "".join(json.dumps(session, sort_keys=True) + "\n" for session in normalized_sessions)
-    _write_text_if_changed(normalized_path, rendered)
+    write_text_if_changed(normalized_path, rendered)
     return ChatlasNormalizedSessionMaterialization(
         sessions=normalized_sessions,
         normalized_session_cache=next_normalized_session_cache,
@@ -1161,7 +1235,7 @@ def _materialize_derived_transcripts(
         for output_format, rendered_output in rendered_outputs.items():
             transcript_path = _derived_transcript_path(chatlas_root, session, output_format=output_format)
             transcript_path.parent.mkdir(parents=True, exist_ok=True)
-            _write_text_if_changed(transcript_path, rendered_output)
+            write_text_if_changed(transcript_path, rendered_output)
             expected_paths.add(transcript_path)
         next_transcript_cache[transcript_cache_key] = source_signature
 
@@ -1188,7 +1262,7 @@ def _materialize_derived_summaries(
     for level, rows in summary_rows_by_level.items():
         summaries_path = chatlas_root / _summary_relative_path(level)
         rendered = "".join(json.dumps(summary, sort_keys=True) + "\n" for summary in rows)
-        _write_text_if_changed(summaries_path, rendered)
+        write_text_if_changed(summaries_path, rendered)
     return {
         level: len(rows)
         for level, rows in summary_rows_by_level.items()
@@ -1296,6 +1370,7 @@ def _normalized_session_record(session) -> dict[str, Any]:
         session,
         include_artifacts=True,
     )
+    payload["instance"] = _chatlas_instance_name(session.provider_instance)
     payload["class"] = "agentos.chatlas.session"
     payload["schema_version"] = 1
     return payload
@@ -1316,6 +1391,7 @@ def _build_session_summary(chatlas_root: Path, session: dict[str, Any], *, level
         "level": level,
         "uri": session.get("uri"),
         "provider": session.get("provider"),
+        "instance": session.get("instance"),
         "provider_instance_fingerprint": session.get("provider_instance_fingerprint"),
         "session_id": session.get("session_id"),
         "display_name": session.get("display_name"),
@@ -1401,6 +1477,7 @@ def _normalized_session_source_signature(session: ChatSession) -> dict[str, obje
     primary_backing_artifact = session.primary_backing_artifact()
     return {
         "provider": session.provider,
+        "instance": _chatlas_instance_name(session.provider_instance),
         "provider_instance_fingerprint": session.provider_instance.fingerprint,
         "session_id": session.session_id,
         "display_name": session.display_name(),
@@ -1503,12 +1580,17 @@ def _session_matches_query_filters(
     *,
     extractable_only: bool,
     updated_after: float | None,
+    instances: frozenset[str] | None,
 ) -> bool:
     if extractable_only and not bool(session.get("extractable")):
         return False
     if updated_after is not None:
         timestamp = _chatlas_session_sort_timestamp(session)
         if timestamp is None or timestamp < updated_after:
+            return False
+    if instances is not None:
+        instance = _string_or_none(session.get("instance"))
+        if instance is None or instance not in instances:
             return False
     return True
 
@@ -1649,6 +1731,7 @@ def _matched_normalized_session_fields(
     matched_fields: list[tuple[str, str]] = []
     for field_name in (
         "uri",
+        "instance",
         "provider_instance_fingerprint",
         "session_id",
     ):
@@ -1743,16 +1826,19 @@ def _select_chatlas_sessions(
     text_contain: str | None = None,
     user_contain: str | None = None,
     providers: tuple[str, ...] | None = None,
+    instances: tuple[str, ...] | None = None,
     extractable_only: bool = False,
     updated_after: float | None = None,
 ) -> list[ChatlasSessionSelection]:
     summary_levels_by_uri = _summary_levels_by_uri(chatlas_root)
+    instance_filters = None if instances is None else frozenset(instances)
     selections: list[ChatlasSessionSelection] = []
     for session in _selected_normalized_sessions(chatlas_root, providers=providers):
         if not _session_matches_query_filters(
             session,
             extractable_only=extractable_only,
             updated_after=updated_after,
+            instances=instance_filters,
         ):
             continue
         matched_fields = _matched_normalized_session_fields(session, query=query)
@@ -1822,6 +1908,33 @@ def _session_text_contains(
         if needle in turn_text.casefold():
             return True
     return False
+
+
+def _chatlas_instance_name(provider_instance: ProviderInstance) -> str:
+    return _resolve_chatlas_instance_name(provider_instance)
+
+
+def _normalize_chatlas_instance_filters(instances: tuple[str, ...] | None) -> tuple[str, ...] | None:
+    if not instances:
+        return None
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for instance in instances:
+        stripped = instance.strip()
+        if not stripped or stripped in seen:
+            continue
+        seen.add(stripped)
+        normalized.append(stripped)
+    return tuple(normalized) or None
+
+
+def _compact_chatlas_session_payload(session: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for field_name in ("provider", "instance", "session_id", "display_name", "updated_at"):
+        value = session.get(field_name)
+        if value is not None:
+            payload[field_name] = value
+    return payload
 
 
 def _first_turn_text(turns: list[dict[str, Any]]) -> str | None:
@@ -1926,31 +2039,15 @@ def _render_summary(summary: dict[str, Any], *, output_format: str) -> str:
     return "\n".join(lines)
 
 
-def _write_text_if_changed(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists() and path.read_text(encoding="utf-8") == text:
-        return
-    path.write_text(text, encoding="utf-8")
-
-
 def _normalized_session_cache_path(chatlas_root: Path) -> Path:
     return chatlas_root / _NORMALIZED_SESSION_CACHE_RELATIVE_PATH
 
 
 def _load_normalized_session_cache(chatlas_root: Path) -> dict[str, dict[str, object]]:
-    cache_path = _normalized_session_cache_path(chatlas_root)
-    if not cache_path.is_file():
-        return {}
-    try:
-        payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-        return {}
-    raw_sessions = payload.get("sessions")
-    if not isinstance(raw_sessions, dict):
-        return {}
-
+    raw_sessions = load_chatlas_cache_section(
+        _normalized_session_cache_path(chatlas_root),
+        entries_key="sessions",
+    )
     sessions: dict[str, dict[str, object]] = {}
     for session_key, raw_entry in raw_sessions.items():
         if not isinstance(session_key, str) or not session_key.strip() or not isinstance(raw_entry, dict):
@@ -1970,23 +2067,18 @@ def _write_normalized_session_cache(
     chatlas_root: Path,
     normalized_session_cache: dict[str, dict[str, object]],
 ) -> None:
-    cache_path = _normalized_session_cache_path(chatlas_root)
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "class": "agentos.chatlas.normalized_session_cache",
-        "schema_version": 1,
-        "sessions": {
+    write_chatlas_cache_section(
+        _normalized_session_cache_path(chatlas_root),
+        cache_class="agentos.chatlas.normalized_session_cache",
+        entries_key="sessions",
+        entries={
             session_key: {
                 "source_signature": dict(entry["source_signature"]),
                 "session": dict(entry["session"]),
             }
             for session_key, entry in sorted(normalized_session_cache.items())
         },
-    }
-    rendered = json.dumps(payload, sort_keys=True, indent=2) + "\n"
-    if cache_path.exists() and cache_path.read_text(encoding="utf-8") == rendered:
-        return
-    cache_path.write_text(rendered, encoding="utf-8")
+    )
 
 
 def _derived_transcript_cache_path(chatlas_root: Path) -> Path:
@@ -1994,19 +2086,10 @@ def _derived_transcript_cache_path(chatlas_root: Path) -> Path:
 
 
 def _load_derived_transcript_cache(chatlas_root: Path) -> dict[str, dict[str, object]]:
-    cache_path = _derived_transcript_cache_path(chatlas_root)
-    if not cache_path.is_file():
-        return {}
-    try:
-        payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-        return {}
-    raw_sessions = payload.get("sessions")
-    if not isinstance(raw_sessions, dict):
-        return {}
-
+    raw_sessions = load_chatlas_cache_section(
+        _derived_transcript_cache_path(chatlas_root),
+        entries_key="sessions",
+    )
     sessions: dict[str, dict[str, object]] = {}
     for session_key, raw_entry in raw_sessions.items():
         if not isinstance(session_key, str) or not session_key.strip() or not isinstance(raw_entry, dict):
@@ -2039,12 +2122,11 @@ def _load_derived_transcript_cache(chatlas_root: Path) -> dict[str, dict[str, ob
 
 
 def _write_derived_transcript_cache(chatlas_root: Path, transcript_cache: dict[str, dict[str, object]]) -> None:
-    cache_path = _derived_transcript_cache_path(chatlas_root)
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "class": "agentos.chatlas.derived_transcript_cache",
-        "schema_version": 1,
-        "sessions": {
+    write_chatlas_cache_section(
+        _derived_transcript_cache_path(chatlas_root),
+        cache_class="agentos.chatlas.derived_transcript_cache",
+        entries_key="sessions",
+        entries={
             session_key: {
                 "source_path": str(entry["source_path"]),
                 "size": int(entry["size"]),
@@ -2054,11 +2136,7 @@ def _write_derived_transcript_cache(chatlas_root: Path, transcript_cache: dict[s
             }
             for session_key, entry in sorted(transcript_cache.items())
         },
-    }
-    rendered = json.dumps(payload, sort_keys=True, indent=2) + "\n"
-    if cache_path.exists() and cache_path.read_text(encoding="utf-8") == rendered:
-        return
-    cache_path.write_text(rendered, encoding="utf-8")
+    )
 
 
 def _chatlas_cache_path_signature(path: Path) -> dict[str, object]:
