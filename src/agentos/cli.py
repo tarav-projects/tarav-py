@@ -10,6 +10,7 @@ from agentos._core.errors import CliError
 from agentos.chat import register_chat_commands
 from agentos.chatlas import register_chatlas_commands
 from agentos.mdblocks.commands import register_mdblocks_commands
+from agentos.mission import register_mission_commands
 from agentos.prefix.commands import register_prefix_commands
 from agentos.project import register_project_commands
 from agentos.refs import register_refs_commands
@@ -44,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_prefix_commands(subparsers)
     register_utils_commands(subparsers)
     register_mdblocks_commands(subparsers)
+    register_mission_commands(subparsers)
     return parser
 
 
