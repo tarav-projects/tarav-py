@@ -132,7 +132,7 @@ class UsageOverTimeLimitData:
 class AccountLimit:
     limit_class: str
     limit_name: str
-    limit_label: str
+    limit_label: str | None
     usage_over_time: UsageOverTimeLimitData | None = None
     provider_limit: dict[str, Any] | None = None
 
@@ -1219,20 +1219,29 @@ def _usage_limit_label(limit_payload: dict[str, Any]) -> str | None:
     return _string_or_none(limit_payload.get("limit_label"))
 
 
-def _usage_limit_usage_over_time(limit_payload: dict[str, Any]) -> dict[str, Any] | None:
+def _usage_limit_usage_over_time_data(limit_payload: dict[str, Any]) -> UsageOverTimeLimitData | None:
     raw_payload = limit_payload.get("usage_over_time")
     if raw_payload is None:
         return None
     if not isinstance(raw_payload, dict):
         raise CliError("usage_over_time limit payload must be an object")
-    return raw_payload
+    return UsageOverTimeLimitData(
+        used_percent=_optional_int(raw_payload.get("used_percent"), field_name="used_percent"),
+        period_started_at=_string_or_none(raw_payload.get("period_started_at")),
+        period_ends_at=_string_or_none(raw_payload.get("period_ends_at")),
+        period_duration_mins=_optional_int(
+            raw_payload.get("period_duration_mins"),
+            field_name="period_duration_mins",
+        ),
+        resets_at=_string_or_none(raw_payload.get("resets_at")),
+    )
 
 
 def _usage_limit_used_percent(limit_payload: dict[str, Any]) -> int | None:
-    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    usage_over_time = _usage_limit_usage_over_time_data(limit_payload)
     if usage_over_time is None:
         return None
-    return _optional_int(usage_over_time.get("used_percent"), field_name="used_percent")
+    return usage_over_time.used_percent
 
 
 def _format_usage_limit_used_line(limit_payload: dict[str, Any]) -> str | None:
@@ -1387,13 +1396,11 @@ def _format_usage_limit_time_meta_line(
 
 
 def _format_usage_limit_reset_at(limit_payload: dict[str, Any]) -> str | None:
-    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    usage_over_time = _usage_limit_usage_over_time_data(limit_payload)
     if usage_over_time is None:
         return None
 
-    raw_reset_at = _string_or_none(usage_over_time.get("resets_at")) or _string_or_none(
-        usage_over_time.get("period_ends_at")
-    )
+    raw_reset_at = _usage_over_time_reset_at(usage_over_time)
     if raw_reset_at is None:
         return None
 
@@ -1408,14 +1415,11 @@ def _format_usage_limit_remaining(
     if recorded_at is None:
         return None
 
-    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    usage_over_time = _usage_limit_usage_over_time_data(limit_payload)
     if usage_over_time is None:
         return None
 
-    raw_reset_at = _string_or_none(usage_over_time.get("resets_at")) or _string_or_none(
-        usage_over_time.get("period_ends_at")
-    )
-    reset_at = _parse_iso_datetime_or_none(raw_reset_at)
+    reset_at = _parse_iso_datetime_or_none(_usage_over_time_reset_at(usage_over_time))
     if reset_at is None:
         return None
 
@@ -1446,37 +1450,41 @@ def _format_usage_limit_elapsed_percent(
 
 
 def _usage_limit_period_started_at(limit_payload: dict[str, Any]) -> datetime.datetime | None:
-    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    usage_over_time = _usage_limit_usage_over_time_data(limit_payload)
     if usage_over_time is None:
         return None
-
-    raw_period_started_at = _string_or_none(usage_over_time.get("period_started_at"))
-    period_started_at = _parse_iso_datetime_or_none(raw_period_started_at)
-    if period_started_at is not None:
-        return period_started_at
-
-    period_duration_mins = _optional_int(
-        usage_over_time.get("period_duration_mins"),
-        field_name="period_duration_mins",
-    )
-    if period_duration_mins is None:
-        return None
-
-    period_ends_at = _usage_limit_period_ends_at(limit_payload)
-    if period_ends_at is None:
-        return None
-    return period_ends_at - datetime.timedelta(minutes=period_duration_mins)
+    return _usage_over_time_period_started_at(usage_over_time)
 
 
 def _usage_limit_period_ends_at(limit_payload: dict[str, Any]) -> datetime.datetime | None:
-    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    usage_over_time = _usage_limit_usage_over_time_data(limit_payload)
     if usage_over_time is None:
         return None
+    return _usage_over_time_period_ends_at(usage_over_time)
 
-    raw_period_ends_at = _string_or_none(usage_over_time.get("period_ends_at")) or _string_or_none(
-        usage_over_time.get("resets_at")
-    )
-    return _parse_iso_datetime_or_none(raw_period_ends_at)
+
+def _usage_over_time_reset_at(usage_over_time: UsageOverTimeLimitData) -> str | None:
+    return usage_over_time.resets_at or usage_over_time.period_ends_at
+
+
+def _usage_over_time_period_started_at(
+    usage_over_time: UsageOverTimeLimitData,
+) -> datetime.datetime | None:
+    period_started_at = _parse_iso_datetime_or_none(usage_over_time.period_started_at)
+    if period_started_at is not None:
+        return period_started_at
+    if usage_over_time.period_duration_mins is None:
+        return None
+    period_ends_at = _usage_over_time_period_ends_at(usage_over_time)
+    if period_ends_at is None:
+        return None
+    return period_ends_at - datetime.timedelta(minutes=usage_over_time.period_duration_mins)
+
+
+def _usage_over_time_period_ends_at(
+    usage_over_time: UsageOverTimeLimitData,
+) -> datetime.datetime | None:
+    return _parse_iso_datetime_or_none(usage_over_time.period_ends_at or usage_over_time.resets_at)
 
 
 def _format_remaining_duration(diff_seconds: int) -> str:
