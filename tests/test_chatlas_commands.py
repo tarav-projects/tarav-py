@@ -932,8 +932,12 @@ def test_chatlas_update_uses_shared_claude_code_home_slots(
     claude_desktop_home = home / "Library" / "Application Support" / "Claude"
     (claude_cli_home / "projects").mkdir(parents=True, exist_ok=True)
     (claude_desktop_home / "claude-code-sessions").mkdir(parents=True, exist_ok=True)
+    (claude_desktop_home / "Cache").mkdir(parents=True, exist_ok=True)
+    (claude_desktop_home / "vm_bundles" / "claudevm.bundle").mkdir(parents=True, exist_ok=True)
     _write(claude_cli_home / "README.md", "cli root\n")
     _write(claude_desktop_home / "desktop-state.json", "{}\n")
+    _write(claude_desktop_home / "Cache" / "cache.bin", "cache\n")
+    _write(claude_desktop_home / "vm_bundles" / "claudevm.bundle" / "rootfs.img", "vm\n")
 
     assert main(_chatlas_update_argv("--provider", "claude-code")) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -957,6 +961,8 @@ def test_chatlas_update_uses_shared_claude_code_home_slots(
     }
     assert (destination_cli_root / "README.md").is_file()
     assert (destination_desktop_root / "desktop-state.json").is_file()
+    assert not (destination_desktop_root / "Cache").exists()
+    assert not (destination_desktop_root / "vm_bundles").exists()
 
 
 def test_chatlas_stats_reports_normalized_counts(
