@@ -67,20 +67,62 @@ def _account_context(
     )
 
 
+def _usage_over_time_limit_payload(
+    *,
+    limit_name: str,
+    limit_label: str,
+    used_percent: int | None,
+    period_started_at: str | None = None,
+    period_ends_at: str | None = None,
+    period_duration_mins: int | None = None,
+    resets_at: str | None = None,
+    provider_limit: dict[str, object] | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "limit_class": "usage_over_time",
+        "limit_name": limit_name,
+        "limit_label": limit_label,
+        "usage_over_time": {
+            "used_percent": used_percent,
+            "period_started_at": period_started_at,
+            "period_ends_at": period_ends_at,
+        },
+    }
+    usage_over_time = payload["usage_over_time"]
+    assert isinstance(usage_over_time, dict)
+    if period_duration_mins is not None:
+        usage_over_time["period_duration_mins"] = period_duration_mins
+    if resets_at is not None:
+        usage_over_time["resets_at"] = resets_at
+    if provider_limit is not None:
+        payload["provider_limit"] = provider_limit
+    return payload
+
+
+def _usage_over_time_data(limit_payload: dict[str, object]) -> dict[str, object]:
+    payload = limit_payload["usage_over_time"]
+    assert isinstance(payload, dict)
+    return payload
+
+
 def _write_global_config(
     path: Path,
     *,
     provider_instances: list[dict[str, object]] | None = None,
+    accounts_usage_total: dict[str, object] | None = None,
 ) -> None:
+    chat_payload: dict[str, object] = {
+        "provider_instances": provider_instances or [],
+    }
+    if accounts_usage_total is not None:
+        chat_payload["accounts_usage_total"] = accounts_usage_total
     _write(
         path,
         json.dumps(
             {
                 "class": "agentos.global.config",
                 "schema_version": 1,
-                "chat": {
-                    "provider_instances": provider_instances or [],
-                },
+                "chat": chat_payload,
             }
         ),
     )
@@ -240,12 +282,15 @@ def test_chat_accounts_stats_summarizes_configured_provider_instances(
     assert codex_account["usage_summary"] == "Burst 0%, Weekly 99%"
     assert codex_account["usage_source"] == "app-server"
     codex_limits = codex_account["usage"]["limits"]
-    assert codex_limits[0]["period_duration_mins"] == 300
-    assert codex_limits[0]["period_started_at"] == "2026-03-26T00:40:41Z"
-    assert codex_limits[0]["period_ends_at"] == "2026-03-26T05:40:41Z"
-    assert codex_limits[1]["period_duration_mins"] == 10_080
-    assert codex_limits[1]["period_started_at"] == "2026-03-19T21:10:27Z"
-    assert codex_limits[1]["period_ends_at"] == "2026-03-26T21:10:27Z"
+    assert codex_limits[0]["limit_class"] == "usage_over_time"
+    assert codex_limits[0]["limit_name"] == "burst"
+    assert _usage_over_time_data(codex_limits[0])["period_duration_mins"] == 300
+    assert _usage_over_time_data(codex_limits[0])["period_started_at"] == "2026-03-26T00:40:41Z"
+    assert _usage_over_time_data(codex_limits[0])["period_ends_at"] == "2026-03-26T05:40:41Z"
+    assert codex_limits[1]["limit_name"] == "weekly"
+    assert _usage_over_time_data(codex_limits[1])["period_duration_mins"] == 10_080
+    assert _usage_over_time_data(codex_limits[1])["period_started_at"] == "2026-03-19T21:10:27Z"
+    assert _usage_over_time_data(codex_limits[1])["period_ends_at"] == "2026-03-26T21:10:27Z"
 
     claude_account = providers["claude-code"]["accounts"][0]
     assert claude_account["id"] == "claude-main"
@@ -404,7 +449,8 @@ def test_chat_accounts_stats_summarizes_configured_copilot_account(
     assert copilot_account["provider_status"]["copilot_cli_probe"]["session_id"] == "session-123"
     copilot_limits = copilot_account["usage"]["limits"]
     assert [limit["limit_label"] for limit in copilot_limits] == ["Premium", "Chat"]
-    assert [limit["used_percent"] for limit in copilot_limits] == [10, 50]
+    assert [limit["limit_name"] for limit in copilot_limits] == ["premium", "chat"]
+    assert [_usage_over_time_data(limit)["used_percent"] for limit in copilot_limits] == [10, 50]
     assert observed_calls == [
         [
             "copilot",
@@ -558,16 +604,18 @@ def test_chat_accounts_stats_refresh_usage_enables_claude_live_usage(
             "usage": {
                 "kind": "subscription_rate_limit",
                 "limits": [
-                    {
-                        "limit_type": "five_hour",
-                        "limit_label": "Burst",
-                        "used_percent": 1,
-                    },
-                    {
-                        "limit_type": "seven_day",
-                        "limit_label": "Weekly",
-                        "used_percent": 100,
-                    },
+                    _usage_over_time_limit_payload(
+                        limit_name="burst",
+                        limit_label="Burst",
+                        used_percent=1,
+                        provider_limit={"limit_type": "five_hour"},
+                    ),
+                    _usage_over_time_limit_payload(
+                        limit_name="weekly",
+                        limit_label="Weekly",
+                        used_percent=100,
+                        provider_limit={"limit_type": "seven_day"},
+                    ),
                 ],
             },
             "provider_status": {
@@ -674,6 +722,7 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
         "configured_account_provider_instances",
         lambda start_path=".": instances,
     )
+    monkeypatch.setattr(chat_accounts, "load_chat_accounts_usage_total_config", lambda start_path=".": None)
     monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
     monkeypatch.setattr(chat_accounts, "_utc_now_iso", lambda: "2026-03-25T12:00:00Z")
 
@@ -742,6 +791,7 @@ def test_iter_chat_account_stats_refresh_payloads_yields_partial_updates_as_acco
         "configured_account_provider_instances",
         lambda start_path=".": instances,
     )
+    monkeypatch.setattr(chat_accounts, "load_chat_accounts_usage_total_config", lambda start_path=".": None)
     monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
 
     payloads = chat_accounts.iter_chat_account_stats_refresh_payloads()
@@ -883,11 +933,12 @@ def test_loop_chat_accounts_stats_repeats_until_keyboard_interrupt(monkeypatch) 
 
     wait_calls: list[float] = []
 
-    def fake_wait(interval_sec: float, input_stream) -> None:  # type: ignore[no-untyped-def]
+    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
         del input_stream
         wait_calls.append(interval_sec)
         if len(wait_calls) >= 2:
             raise KeyboardInterrupt()
+        return False
 
     output_stream = io.StringIO()
     exit_code = chat_commands._loop_chat_accounts_stats(
@@ -900,11 +951,12 @@ def test_loop_chat_accounts_stats_repeats_until_keyboard_interrupt(monkeypatch) 
 
     rendered = output_stream.getvalue()
     assert exit_code == 0
-    assert wait_calls == [60.0, 60.0]
+    assert wait_calls == [60.0, 61.0]
     assert "snapshot-1" in rendered
     assert "snapshot-2" in rendered
     assert rendered.count(chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE) == 1
     assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
+    assert "[loop] refreshes every 61s; press Enter to refresh now; Ctrl-C to stop" in rendered
 
 
 def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> None:
@@ -929,7 +981,7 @@ def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> No
         assert loop_args is args
         events.append("render")
 
-    def fake_wait(interval_sec: float, input_stream) -> None:  # type: ignore[no-untyped-def]
+    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
         del interval_sec, input_stream
         raise KeyboardInterrupt()
 
@@ -977,13 +1029,14 @@ def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetc
         assert loop_args is args
         events.append(f"render:{len([event for event in events if event.startswith('render:')]) + 1}")
 
-    def fake_wait(interval_sec: float, input_stream) -> None:  # type: ignore[no-untyped-def]
+    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
         nonlocal wait_calls
         del interval_sec, input_stream
         wait_calls += 1
         events.append(f"wait:{wait_calls}")
         if wait_calls >= 2:
             raise KeyboardInterrupt()
+        return False
 
     class FakeTTYOutput(io.StringIO):
         def isatty(self) -> bool:
@@ -1095,13 +1148,96 @@ def test_wait_for_chat_accounts_loop_trigger_returns_immediately_on_enter() -> N
         write_stream.write("\n")
         write_stream.flush()
         start = time.perf_counter()
-        chat_commands._wait_for_chat_accounts_loop_trigger(1.0, FakeTTYInput(read_stream))
+        triggered_by_user = chat_commands._wait_for_chat_accounts_loop_trigger(1.0, FakeTTYInput(read_stream))
         elapsed = time.perf_counter() - start
     finally:
         read_stream.close()
         write_stream.close()
 
+    assert triggered_by_user is True
     assert elapsed < 0.5
+
+
+def test_loop_chat_accounts_stats_resets_interval_after_enter(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="json",
+        loop=True,
+    )
+
+    outputs = iter(("snapshot-1", "snapshot-2", "snapshot-3"))
+    monkeypatch.setattr(
+        chat_commands,
+        "_render_chat_accounts_stats_output",
+        lambda loop_args: next(outputs),
+    )
+
+    wait_calls: list[float] = []
+
+    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
+        del input_stream
+        wait_calls.append(interval_sec)
+        if len(wait_calls) == 1:
+            return False
+        if len(wait_calls) == 2:
+            return True
+        raise KeyboardInterrupt()
+
+    output_stream = io.StringIO()
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=output_stream,
+        interval_sec=60.0,
+        wait_for_trigger=fake_wait,
+    )
+
+    rendered = output_stream.getvalue()
+    assert exit_code == 0
+    assert wait_calls == [60.0, 61.0, 60.0]
+    assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
+    assert "[loop] refreshes every 61s; press Enter to refresh now; Ctrl-C to stop" in rendered
+
+
+def test_loop_chat_accounts_stats_caps_interval_at_ten_minutes(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="json",
+        loop=True,
+    )
+
+    monkeypatch.setattr(
+        chat_commands,
+        "_render_chat_accounts_stats_output",
+        lambda loop_args: "snapshot",
+    )
+
+    wait_calls: list[float] = []
+
+    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
+        del input_stream
+        wait_calls.append(interval_sec)
+        if len(wait_calls) >= 3:
+            raise KeyboardInterrupt()
+        return False
+
+    output_stream = io.StringIO()
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=output_stream,
+        interval_sec=599.0,
+        wait_for_trigger=fake_wait,
+    )
+
+    assert exit_code == 0
+    assert wait_calls == [599.0, 600.0, 600.0]
 
 
 def test_format_display_datetime_local_converts_utc_timestamp() -> None:
@@ -1280,10 +1416,13 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> No
                             "usage": {
                                 "limits": [
                                     {
-                                        "limit_label": "Burst",
-                                        "used_percent": 70,
-                                        "period_started_at": "2026-03-25T04:30:00Z",
-                                        "period_ends_at": "2026-03-25T14:30:00Z",
+                                        **_usage_over_time_limit_payload(
+                                            limit_name="burst",
+                                            limit_label="Burst",
+                                            used_percent=70,
+                                            period_started_at="2026-03-25T04:30:00Z",
+                                            period_ends_at="2026-03-25T14:30:00Z",
+                                        ),
                                     }
                                 ]
                             },
@@ -1295,16 +1434,22 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> No
                             "usage": {
                                 "limits": [
                                     {
-                                        "limit_label": "Burst",
-                                        "used_percent": 20,
-                                        "period_started_at": "2026-03-25T09:30:00Z",
-                                        "period_ends_at": "2026-03-25T14:30:00Z",
+                                        **_usage_over_time_limit_payload(
+                                            limit_name="burst",
+                                            limit_label="Burst",
+                                            used_percent=20,
+                                            period_started_at="2026-03-25T09:30:00Z",
+                                            period_ends_at="2026-03-25T14:30:00Z",
+                                        ),
                                     },
                                     {
-                                        "limit_label": "Weekly",
-                                        "used_percent": 100,
-                                        "period_started_at": "2026-03-19T12:00:00Z",
-                                        "period_ends_at": "2026-03-26T12:00:00Z",
+                                        **_usage_over_time_limit_payload(
+                                            limit_name="weekly",
+                                            limit_label="Weekly",
+                                            used_percent=100,
+                                            period_started_at="2026-03-19T12:00:00Z",
+                                            period_ends_at="2026-03-26T12:00:00Z",
+                                        ),
                                     },
                                 ]
                             },
@@ -1362,16 +1507,22 @@ def test_format_chat_account_stats_usage_shows_cold_marker_only_on_most_active_l
                             "usage": {
                                 "limits": [
                                     {
-                                        "limit_label": "Burst",
-                                        "used_percent": 20,
-                                        "period_started_at": "2026-03-25T09:30:00Z",
-                                        "period_ends_at": "2026-03-25T14:30:00Z",
+                                        **_usage_over_time_limit_payload(
+                                            limit_name="burst",
+                                            limit_label="Burst",
+                                            used_percent=20,
+                                            period_started_at="2026-03-25T09:30:00Z",
+                                            period_ends_at="2026-03-25T14:30:00Z",
+                                        ),
                                     },
                                     {
-                                        "limit_label": "Weekly",
-                                        "used_percent": 70,
-                                        "period_started_at": "2026-03-19T12:00:00Z",
-                                        "period_ends_at": "2026-03-26T12:00:00Z",
+                                        **_usage_over_time_limit_payload(
+                                            limit_name="weekly",
+                                            limit_label="Weekly",
+                                            used_percent=70,
+                                            period_started_at="2026-03-19T12:00:00Z",
+                                            period_ends_at="2026-03-26T12:00:00Z",
+                                        ),
                                     },
                                 ]
                             },
@@ -1523,6 +1674,138 @@ def test_chat_accounts_stats_usage_compacts_codex_token_expired_errors(
     assert "     | Sign in again with the configured Codex CLI and refresh." in output
     assert "backend-api/wham/usage" not in output
     assert "body={" not in output
+
+
+def test_chat_accounts_stats_usage_shows_top_level_selected_accounts_aggregate(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "codex-a",
+                "label": "Codex A",
+                "cli_command": ["codex"],
+            },
+            {
+                "provider": "codex",
+                "id": "codex-b",
+                "label": "Codex B",
+                "cli_command": ["codex"],
+            },
+            {
+                "provider": "claude-code",
+                "id": "claude-main",
+                "label": "Claude main",
+                "cli_command": ["claude"],
+            },
+        ],
+        accounts_usage_total={
+            "label": "Selected accounts aggregate",
+            "instance_ids": ["codex-a", "codex-b", "claude-main"],
+            "limit_class": "usage_over_time",
+            "limit_name": "weekly",
+        },
+    )
+
+    monkeypatch.setattr(chat_accounts, "_utc_now_iso", lambda: "2026-03-25T12:00:00Z")
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del capture_output, text, check, env, timeout
+        if command == ["codex", "login", "status"]:
+            return subprocess.CompletedProcess(command, 0, stdout="Logged in using ChatGPT\n", stderr="")
+        if command == ["claude", "auth", "status", "--json"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "loggedIn": True,
+                        "authMethod": "claude.ai",
+                        "subscriptionType": "pro",
+                    }
+                ),
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    def fake_codex_usage(instance: chat_accounts.AccountProviderContext) -> dict[str, object]:
+        used_percent = 20 if instance.instance_id == "codex-a" else 40
+        return {
+            "rateLimits": {
+                "limitId": "codex",
+                "primary": {
+                    "usedPercent": 0,
+                    "windowDurationMins": 300,
+                    "resetsAt": 1_774_526_400,
+                },
+                "secondary": {
+                    "usedPercent": used_percent,
+                    "windowDurationMins": 10_080,
+                    "resetsAt": 1_774_526_400,
+                },
+            }
+        }
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+    monkeypatch.setattr(chat_accounts, "_read_codex_account_rate_limits", fake_codex_usage)
+
+    assert main(["chat", "accounts", "stats", "--output", "usage"]) == 0
+    output = capsys.readouterr().out
+
+    assert "Selected accounts aggregate:" in output
+    assert "  usage/time | 30% / 86% = 0.3 | Weekly ❄️❄️ 👨‍🦱" in output
+    assert "  coverage | 2/3 accounts" in output
+    assert "--------------------------" in output
+    assert output.index("Selected accounts aggregate:") < output.index("⬢ codex-b (Codex B):")
+
+
+def test_chat_accounts_stats_usage_total_rejects_unknown_instance_ids(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "codex-a",
+                "label": "Codex A",
+                "cli_command": ["codex"],
+            }
+        ],
+        accounts_usage_total={
+            "instance_ids": ["missing-account"],
+            "limit_class": "usage_over_time",
+            "limit_name": "weekly",
+        },
+    )
+
+    with pytest.raises(chat_accounts.CliError, match="chat.accounts_usage_total.instance_ids references unknown"):
+        chat_accounts.chat_account_stats()
 
 
 def test_chat_accounts_stats_usage_compacts_claude_authentication_failures(
@@ -1799,10 +2082,12 @@ def test_parse_claude_code_live_usage_output_derives_period_bounds() -> None:
     assert payload["usage_summary"] == "Weekly 42%"
     assert payload["usage_refresh_cost_usd"] == 0.004
     limit_payload = payload["usage"]["limits"][0]
-    assert limit_payload["period_duration_mins"] == 10_080
-    assert limit_payload["period_started_at"] == "2026-03-19T21:10:27Z"
-    assert limit_payload["period_ends_at"] == "2026-03-26T21:10:27Z"
-    assert limit_payload["resets_at"] == "2026-03-26T21:10:27Z"
+    assert limit_payload["limit_class"] == "usage_over_time"
+    assert limit_payload["limit_name"] == "weekly"
+    assert _usage_over_time_data(limit_payload)["period_duration_mins"] == 10_080
+    assert _usage_over_time_data(limit_payload)["period_started_at"] == "2026-03-19T21:10:27Z"
+    assert _usage_over_time_data(limit_payload)["period_ends_at"] == "2026-03-26T21:10:27Z"
+    assert _usage_over_time_data(limit_payload)["resets_at"] == "2026-03-26T21:10:27Z"
 
 
 def test_format_remaining_duration_uses_human_day_hour_minute_units() -> None:
@@ -1818,20 +2103,26 @@ def test_format_usage_limit_elapsed_percent_uses_period_bounds() -> None:
 
     assert (
         chat_accounts._format_usage_limit_elapsed_percent(
-            {
-                "period_started_at": "2026-03-25T12:00:00Z",
-                "period_ends_at": "2026-03-25T13:00:00Z",
-            },
+            _usage_over_time_limit_payload(
+                limit_name="hourly",
+                limit_label="Hourly",
+                used_percent=0,
+                period_started_at="2026-03-25T12:00:00Z",
+                period_ends_at="2026-03-25T13:00:00Z",
+            ),
             recorded_at=recorded_at,
         )
         == 50
     )
     assert (
         chat_accounts._format_usage_limit_elapsed_percent(
-            {
-                "period_ends_at": "2026-03-25T13:00:00Z",
-                "period_duration_mins": 60,
-            },
+            _usage_over_time_limit_payload(
+                limit_name="hourly",
+                limit_label="Hourly",
+                used_percent=0,
+                period_ends_at="2026-03-25T13:00:00Z",
+                period_duration_mins=60,
+            ),
             recorded_at=recorded_at,
         )
         == 50
@@ -1858,13 +2149,14 @@ def test_parse_copilot_usage_response_falls_back_to_monthly_quotas() -> None:
     assert payload["usage_summary"] == "Premium 75%, Chat 75%"
     limits = payload["usage"]["limits"]
     assert [limit["limit_label"] for limit in limits] == ["Premium", "Chat"]
-    assert [limit["used_percent"] for limit in limits] == [75, 75]
-    assert [limit["period_duration_mins"] for limit in limits] == [44_640, 44_640]
-    assert [limit["period_started_at"] for limit in limits] == [
+    assert [limit["limit_name"] for limit in limits] == ["premium", "chat"]
+    assert [_usage_over_time_data(limit)["used_percent"] for limit in limits] == [75, 75]
+    assert [_usage_over_time_data(limit)["period_duration_mins"] for limit in limits] == [44_640, 44_640]
+    assert [_usage_over_time_data(limit)["period_started_at"] for limit in limits] == [
         "2026-03-01T00:00:00Z",
         "2026-03-01T00:00:00Z",
     ]
-    assert [limit["period_ends_at"] for limit in limits] == [
+    assert [_usage_over_time_data(limit)["period_ends_at"] for limit in limits] == [
         "2026-04-01T00:00:00Z",
         "2026-04-01T00:00:00Z",
     ]
@@ -1914,13 +2206,14 @@ def test_parse_claude_code_statusline_usage_output_includes_five_hour_and_seven_
     assert payload["usage"]["refresh_model"] == "claude-haiku-4-5-20251001"
     assert payload["usage"]["refresh_session_id"] == "session-123"
     limits = payload["usage"]["limits"]
-    assert [limit["limit_type"] for limit in limits] == ["five_hour", "seven_day"]
-    assert limits[0]["period_duration_mins"] == 300
-    assert limits[0]["period_started_at"] == "2026-03-26T10:00:00Z"
-    assert limits[0]["period_ends_at"] == "2026-03-26T15:00:00Z"
-    assert limits[1]["period_duration_mins"] == 10_080
-    assert limits[1]["period_started_at"] == "2026-03-20T10:00:00Z"
-    assert limits[1]["period_ends_at"] == "2026-03-27T10:00:00Z"
+    assert [limit["limit_name"] for limit in limits] == ["burst", "weekly"]
+    assert [limit["provider_limit"]["limit_type"] for limit in limits] == ["five_hour", "seven_day"]
+    assert _usage_over_time_data(limits[0])["period_duration_mins"] == 300
+    assert _usage_over_time_data(limits[0])["period_started_at"] == "2026-03-26T10:00:00Z"
+    assert _usage_over_time_data(limits[0])["period_ends_at"] == "2026-03-26T15:00:00Z"
+    assert _usage_over_time_data(limits[1])["period_duration_mins"] == 10_080
+    assert _usage_over_time_data(limits[1])["period_started_at"] == "2026-03-20T10:00:00Z"
+    assert _usage_over_time_data(limits[1])["period_ends_at"] == "2026-03-27T10:00:00Z"
 
 
 def test_claude_code_refresh_workspace_root_is_instance_scoped() -> None:

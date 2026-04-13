@@ -1,0 +1,4 @@
+interface:
+  display_name: "chatlas-query-session"
+  short_description: "Query Chatlas sessions with compact metadata only."
+  default_prompt: "Run this skill as a separate agent by default. Use $chatlas-query-session to find Chatlas sessions by id, metadata, or transcript filters without exporting transcripts, and return only compact metadata-oriented results."

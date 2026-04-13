@@ -23,6 +23,7 @@ from agentos._core.project import agentos_home_dir
 from agentos.chat.providers import (
     ProviderFamily,
     ProviderInstance,
+    load_chat_config_documents,
     load_configured_provider_instances,
     require_canonical_provider_family,
 )
@@ -110,6 +111,32 @@ class AccountCollectionResult:
     account_payload: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class AccountUsageTotalConfig:
+    label: str
+    instance_ids: tuple[str, ...]
+    limit_class: str
+    limit_name: str
+
+
+@dataclass(frozen=True)
+class UsageOverTimeLimitData:
+    used_percent: int | None
+    period_started_at: str | None
+    period_ends_at: str | None
+    period_duration_mins: int | None = None
+    resets_at: str | None = None
+
+
+@dataclass(frozen=True)
+class AccountLimit:
+    limit_class: str
+    limit_name: str
+    limit_label: str
+    usage_over_time: UsageOverTimeLimitData | None = None
+    provider_limit: dict[str, Any] | None = None
+
+
 class AccountCommandError(Exception):
     def __init__(
         self,
@@ -191,7 +218,7 @@ def iter_chat_account_stats_refresh_payloads(
     full_output: bool = False,
     start_path: Path | str = ".",
 ) -> tuple[dict[str, object], ...]:
-    provider_handlers, configured_contexts, provider_handlers_by_name = _resolve_chat_account_stats_request(
+    provider_handlers, configured_contexts, provider_handlers_by_name, usage_total_config = _resolve_chat_account_stats_request(
         instance_ids=instance_ids,
         providers=providers,
         start_path=start_path,
@@ -203,6 +230,7 @@ def iter_chat_account_stats_refresh_payloads(
             provider_handlers=provider_handlers,
             configured_contexts=configured_contexts,
             collected_results=ordered_results,
+            usage_total_config=usage_total_config,
             refresh_usage=refresh_usage,
             full_output=full_output,
             include_pending=True,
@@ -222,6 +250,7 @@ def iter_chat_account_stats_refresh_payloads(
             provider_handlers=provider_handlers,
             configured_contexts=configured_contexts,
             collected_results=ordered_results,
+            usage_total_config=usage_total_config,
             refresh_usage=refresh_usage,
             full_output=full_output,
             include_pending=not is_final,
@@ -233,6 +262,7 @@ def iter_chat_account_stats_refresh_payloads(
             provider_handlers=provider_handlers,
             configured_contexts=configured_contexts,
             collected_results=ordered_results,
+            usage_total_config=usage_total_config,
             refresh_usage=refresh_usage,
             full_output=full_output,
             include_pending=False,
@@ -249,6 +279,7 @@ def _resolve_chat_account_stats_request(
     tuple[AccountProviderHandler, ...],
     tuple[AccountProviderContext, ...],
     dict[str, AccountProviderHandler],
+    AccountUsageTotalConfig | None,
 ]:
     provider_handlers = supported_account_provider_families()
     if providers is not None:
@@ -259,10 +290,24 @@ def _resolve_chat_account_stats_request(
             if provider_handler.family in allowed_providers
         )
 
-    configured_contexts = tuple(
+    all_configured_contexts = tuple(
         _build_account_provider_context(instance)
         for instance in configured_account_provider_instances(start_path=start_path)
     )
+    usage_total_config = load_chat_accounts_usage_total_config(start_path=start_path)
+    if usage_total_config is not None:
+        available_instance_ids = {context.instance_id for context in all_configured_contexts}
+        missing_ids = [
+            instance_id for instance_id in usage_total_config.instance_ids if instance_id not in available_instance_ids
+        ]
+        if missing_ids:
+            suffix = "s" if len(missing_ids) != 1 else ""
+            raise CliError(
+                f"chat.accounts_usage_total.instance_ids references unknown account instance id{suffix}: "
+                f"{', '.join(missing_ids)}"
+            )
+
+    configured_contexts = all_configured_contexts
     if providers is not None:
         configured_contexts = tuple(
             context
@@ -286,7 +331,7 @@ def _resolve_chat_account_stats_request(
     provider_handlers_by_name = {
         provider_handler.family: provider_handler for provider_handler in provider_handlers
     }
-    return provider_handlers, configured_contexts, provider_handlers_by_name
+    return provider_handlers, configured_contexts, provider_handlers_by_name, usage_total_config
 
 
 def _build_chat_account_stats_payload(
@@ -294,12 +339,14 @@ def _build_chat_account_stats_payload(
     provider_handlers: tuple[AccountProviderHandler, ...],
     configured_contexts: tuple[AccountProviderContext, ...],
     collected_results: list[AccountCollectionResult | None],
+    usage_total_config: AccountUsageTotalConfig | None,
     refresh_usage: bool,
     full_output: bool,
     include_pending: bool,
     persist_history: bool,
 ) -> dict[str, object]:
     del refresh_usage
+    recorded_at = _utc_now_iso()
 
     provider_payloads: list[dict[str, Any]] = []
     provider_accounts_by_name = {
@@ -354,13 +401,21 @@ def _build_chat_account_stats_payload(
     payload: dict[str, object] = {
         "status": "ok",
         "command": "chat accounts stats",
-        "recorded_at": _utc_now_iso(),
+        "recorded_at": recorded_at,
         "provider_count": len(output_providers),
         "account_count": account_count,
         "ok_count": ok_count,
         "error_count": error_count,
         "providers": output_providers,
     }
+    usage_total_payload = _build_chat_accounts_usage_total_payload(
+        usage_total_config=usage_total_config,
+        configured_contexts=configured_contexts,
+        collected_results=collected_results,
+        recorded_at=recorded_at,
+    )
+    if usage_total_payload is not None:
+        payload["accounts_usage_total"] = usage_total_payload
     if pending_count > 0:
         payload["pending_count"] = pending_count
         payload["completed_count"] = ok_count + error_count
@@ -591,6 +646,12 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
         lines.append(f"- Recorded at: {recorded_at_display}")
     recorded_at_dt = _parse_iso_datetime_or_none(recorded_at)
 
+    usage_total_payload = payload.get("accounts_usage_total")
+    if isinstance(usage_total_payload, dict):
+        if len(lines) > 2:
+            lines.append("")
+        lines.extend(_format_chat_accounts_usage_total_block(usage_total_payload))
+
     raw_providers = payload.get("providers")
     if not isinstance(raw_providers, list):
         return "\n".join(lines)
@@ -618,11 +679,277 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
         return "\n".join(lines)
 
     account_blocks = [_format_chat_account_usage_block(account, recorded_at=recorded_at_dt) for account in accounts]
+    if isinstance(usage_total_payload, dict):
+        lines.append("")
+        lines.append("--------------------------")
     for index, account_block in enumerate(account_blocks):
-        if index > 0:
+        if index > 0 or isinstance(usage_total_payload, dict):
             lines.append("")
         lines.extend(account_block)
     return "\n".join(lines)
+
+
+def load_chat_accounts_usage_total_config(
+    *,
+    start_path: Path | str = ".",
+) -> AccountUsageTotalConfig | None:
+    result: AccountUsageTotalConfig | None = None
+    for config in load_chat_config_documents(start_path=start_path):
+        chat_config = config.get("chat")
+        if chat_config is None:
+            continue
+        if not isinstance(chat_config, dict):
+            raise CliError("config field chat must be a JSON object")
+        raw_total = chat_config.get("accounts_usage_total")
+        if raw_total is None:
+            continue
+        if not isinstance(raw_total, dict):
+            raise CliError("config field chat.accounts_usage_total must be a JSON object")
+        result = _account_usage_total_config_from_raw(raw_total)
+    return result
+
+
+def _account_usage_total_config_from_raw(raw_total: dict[str, object]) -> AccountUsageTotalConfig:
+    raw_label = raw_total.get("label")
+    if raw_label is None:
+        label = "Selected accounts aggregate"
+    elif not isinstance(raw_label, str) or not raw_label.strip():
+        raise CliError("chat.accounts_usage_total.label must be a non-empty string")
+    else:
+        label = raw_label.strip()
+
+    raw_limit_class = raw_total.get("limit_class")
+    if not isinstance(raw_limit_class, str) or not raw_limit_class.strip():
+        raise CliError("chat.accounts_usage_total.limit_class must be a non-empty string")
+    limit_class = raw_limit_class.strip()
+
+    raw_limit_name = raw_total.get("limit_name")
+    if not isinstance(raw_limit_name, str) or not raw_limit_name.strip():
+        raise CliError("chat.accounts_usage_total.limit_name must be a non-empty string")
+    limit_name = raw_limit_name.strip()
+
+    raw_instance_ids = raw_total.get("instance_ids")
+    if not isinstance(raw_instance_ids, list) or not raw_instance_ids:
+        raise CliError("chat.accounts_usage_total.instance_ids must be a non-empty JSON array")
+
+    instance_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for index, raw_instance_id in enumerate(raw_instance_ids):
+        if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
+            raise CliError(f"chat.accounts_usage_total.instance_ids[{index}] must be a non-empty string")
+        instance_id = raw_instance_id.strip()
+        if instance_id in seen_ids:
+            raise CliError(
+                "chat.accounts_usage_total.instance_ids must be unique; "
+                f"duplicate id {instance_id}"
+            )
+        seen_ids.add(instance_id)
+        instance_ids.append(instance_id)
+
+    return AccountUsageTotalConfig(
+        label=label,
+        instance_ids=tuple(instance_ids),
+        limit_class=limit_class,
+        limit_name=limit_name,
+    )
+
+
+def _account_limit_payload(limit: AccountLimit) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "limit_class": limit.limit_class,
+        "limit_name": limit.limit_name,
+        "limit_label": limit.limit_label,
+    }
+    if limit.usage_over_time is not None:
+        usage_payload: dict[str, Any] = {
+            "used_percent": limit.usage_over_time.used_percent,
+            "period_started_at": limit.usage_over_time.period_started_at,
+            "period_ends_at": limit.usage_over_time.period_ends_at,
+        }
+        if limit.usage_over_time.period_duration_mins is not None:
+            usage_payload["period_duration_mins"] = limit.usage_over_time.period_duration_mins
+        if limit.usage_over_time.resets_at is not None:
+            usage_payload["resets_at"] = limit.usage_over_time.resets_at
+        payload["usage_over_time"] = usage_payload
+    if limit.provider_limit:
+        payload["provider_limit"] = limit.provider_limit
+    return payload
+
+
+def _usage_over_time_limit(
+    *,
+    limit_name: str,
+    limit_label: str,
+    used_percent: int | None,
+    period_started_at: str | None,
+    period_ends_at: str | None,
+    period_duration_mins: int | None = None,
+    resets_at: str | None = None,
+    provider_limit: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return _account_limit_payload(
+        AccountLimit(
+            limit_class="usage_over_time",
+            limit_name=limit_name,
+            limit_label=limit_label,
+            usage_over_time=UsageOverTimeLimitData(
+                used_percent=used_percent,
+                period_started_at=period_started_at,
+                period_ends_at=period_ends_at,
+                period_duration_mins=period_duration_mins,
+                resets_at=resets_at,
+            ),
+            provider_limit=provider_limit,
+        )
+    )
+
+
+def _build_chat_accounts_usage_total_payload(
+    *,
+    usage_total_config: AccountUsageTotalConfig | None,
+    configured_contexts: tuple[AccountProviderContext, ...],
+    collected_results: list[AccountCollectionResult | None],
+    recorded_at: str,
+) -> dict[str, Any] | None:
+    if usage_total_config is None:
+        return None
+
+    accounts_by_id: dict[str, dict[str, Any]] = {}
+    for index, context in enumerate(configured_contexts):
+        collected_result = collected_results[index]
+        if collected_result is None:
+            continue
+        accounts_by_id[context.instance_id] = collected_result.account_payload
+
+    selected_instance_ids = [
+        instance_id for instance_id in usage_total_config.instance_ids if instance_id in accounts_by_id
+    ]
+    included_instance_ids: list[str] = []
+    used_percents: list[int] = []
+    elapsed_percents: list[int] = []
+
+    recorded_at_dt = _parse_iso_datetime_or_none(recorded_at)
+    for instance_id in selected_instance_ids:
+        account_payload = accounts_by_id[instance_id]
+        limit_payload = _find_account_limit_payload(
+            account_payload,
+            limit_class=usage_total_config.limit_class,
+            limit_name=usage_total_config.limit_name,
+        )
+        if limit_payload is None:
+            continue
+        used_percent = _usage_limit_used_percent(limit_payload)
+        elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at_dt)
+        if not isinstance(used_percent, int) or elapsed_percent is None:
+            continue
+        included_instance_ids.append(instance_id)
+        used_percents.append(used_percent)
+        elapsed_percents.append(elapsed_percent)
+
+    selected_count = len(selected_instance_ids)
+    included_count = len(included_instance_ids)
+    payload: dict[str, Any] = {
+        "label": usage_total_config.label,
+        "limit_class": usage_total_config.limit_class,
+        "limit_name": usage_total_config.limit_name,
+        "configured_instance_ids": list(usage_total_config.instance_ids),
+        "selected_instance_ids": selected_instance_ids,
+        "selected_count": selected_count,
+        "included_instance_ids": included_instance_ids,
+        "included_count": included_count,
+    }
+
+    if included_count == 0:
+        payload["usage_status"] = "unavailable"
+        payload["usage_message"] = (
+            f"No selected accounts had usable {usage_total_config.limit_name} data."
+        )
+        return payload
+
+    avg_used_percent = _rounded_percent(sum(used_percents) / included_count)
+    avg_elapsed_percent = _rounded_percent(sum(elapsed_percents) / included_count)
+    aggregate_payload: dict[str, Any] = {
+        "used_percent": avg_used_percent,
+        "elapsed_percent": avg_elapsed_percent,
+    }
+    if avg_elapsed_percent > 0:
+        aggregate_payload["ratio"] = _usage_time_ratio_value(avg_used_percent, avg_elapsed_percent)
+    payload["usage_status"] = "ok"
+    payload["aggregate"] = aggregate_payload
+    if included_instance_ids:
+        first_limit_payload = _find_account_limit_payload(
+            accounts_by_id[included_instance_ids[0]],
+            limit_class=usage_total_config.limit_class,
+            limit_name=usage_total_config.limit_name,
+        )
+        if first_limit_payload is not None:
+            limit_label = _usage_limit_label(first_limit_payload)
+            if limit_label is not None:
+                payload["limit_label"] = limit_label
+    return payload
+
+
+def _find_account_limit_payload(
+    account_payload: dict[str, Any],
+    *,
+    limit_class: str,
+    limit_name: str,
+) -> dict[str, Any] | None:
+    usage = account_payload.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    raw_limits = usage.get("limits")
+    if not isinstance(raw_limits, list):
+        return None
+    for raw_limit in raw_limits:
+        if not isinstance(raw_limit, dict):
+            continue
+        if _usage_limit_class(raw_limit) == limit_class and _usage_limit_name(raw_limit) == limit_name:
+            return raw_limit
+    return None
+
+
+def _format_chat_accounts_usage_total_block(usage_total_payload: dict[str, Any]) -> list[str]:
+    label = _string_or_none(usage_total_payload.get("label")) or "Selected accounts aggregate"
+    lines = [f"{label}:"]
+
+    usage_status = _string_or_none(usage_total_payload.get("usage_status"))
+    aggregate = usage_total_payload.get("aggregate")
+    limit_label = _string_or_none(usage_total_payload.get("limit_label"))
+    if usage_status == "ok" and isinstance(aggregate, dict):
+        used_percent = _optional_int(aggregate.get("used_percent"), field_name="used_percent")
+        elapsed_percent = _optional_int(aggregate.get("elapsed_percent"), field_name="elapsed_percent")
+        if used_percent is not None and elapsed_percent is not None:
+            line = (
+                "usage/time"
+                f" | {_format_usage_percent_plain(used_percent)} / {_format_usage_percent_plain(elapsed_percent)}"
+                f" = {_format_usage_time_ratio(used_percent, elapsed_percent)}"
+            )
+            if limit_label is not None:
+                line = f"{line} | {limit_label}"
+            markers: list[str] = []
+            ratio_value = _usage_time_ratio_value(used_percent, elapsed_percent) if elapsed_percent > 0 else None
+            ratio_marker = _usage_peak_ratio_marker(ratio_value)
+            if ratio_marker is not None:
+                markers.append(ratio_marker)
+            markers.append(_usage_progression_marker(used_percent))
+            time_marker = _usage_time_progression_marker(elapsed_percent)
+            if time_marker is not None:
+                markers.append(time_marker)
+            if markers:
+                line = f"{line} {' '.join(markers)}"
+            lines.append(f"  {line}")
+    else:
+        lines.append("  usage | unavailable")
+        usage_message = _string_or_none(usage_total_payload.get("usage_message"))
+        if usage_message is not None:
+            lines.append(f"     | {usage_message}")
+
+    included_count = _optional_int(usage_total_payload.get("included_count"), field_name="included_count")
+    selected_count = _optional_int(usage_total_payload.get("selected_count"), field_name="selected_count")
+    if included_count is not None and selected_count is not None:
+        lines.append(f"  coverage | {included_count}/{selected_count} accounts")
+    return lines
 
 
 def _format_chat_account_usage_block(
@@ -872,7 +1199,7 @@ def _format_chat_account_usage_summary(account: dict[str, Any]) -> str:
 
 def _format_usage_limit_compact(limit_payload: dict[str, Any]) -> str | None:
     label = _usage_limit_label(limit_payload)
-    used_percent = limit_payload.get("used_percent")
+    used_percent = _usage_limit_used_percent(limit_payload)
     if label is None and not isinstance(used_percent, int):
         return None
     if isinstance(used_percent, int):
@@ -880,13 +1207,37 @@ def _format_usage_limit_compact(limit_payload: dict[str, Any]) -> str | None:
     return label
 
 
+def _usage_limit_class(limit_payload: dict[str, Any]) -> str | None:
+    return _string_or_none(limit_payload.get("limit_class"))
+
+
+def _usage_limit_name(limit_payload: dict[str, Any]) -> str | None:
+    return _string_or_none(limit_payload.get("limit_name"))
+
+
 def _usage_limit_label(limit_payload: dict[str, Any]) -> str | None:
-    return _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
+    return _string_or_none(limit_payload.get("limit_label"))
+
+
+def _usage_limit_usage_over_time(limit_payload: dict[str, Any]) -> dict[str, Any] | None:
+    raw_payload = limit_payload.get("usage_over_time")
+    if raw_payload is None:
+        return None
+    if not isinstance(raw_payload, dict):
+        raise CliError("usage_over_time limit payload must be an object")
+    return raw_payload
+
+
+def _usage_limit_used_percent(limit_payload: dict[str, Any]) -> int | None:
+    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    if usage_over_time is None:
+        return None
+    return _optional_int(usage_over_time.get("used_percent"), field_name="used_percent")
 
 
 def _format_usage_limit_used_line(limit_payload: dict[str, Any]) -> str | None:
     label = _usage_limit_label(limit_payload)
-    used_percent = limit_payload.get("used_percent")
+    used_percent = _usage_limit_used_percent(limit_payload)
     if label is None and not isinstance(used_percent, int):
         return None
     if isinstance(used_percent, int):
@@ -940,7 +1291,7 @@ def _format_usage_limit_usage_time_line(
     show_progression_marker: bool = False,
 ) -> str | None:
     label = _usage_limit_label(limit_payload)
-    used_percent = limit_payload.get("used_percent")
+    used_percent = _usage_limit_used_percent(limit_payload)
     elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at)
     if not isinstance(used_percent, int) or elapsed_percent is None:
         return None
@@ -1036,8 +1387,12 @@ def _format_usage_limit_time_meta_line(
 
 
 def _format_usage_limit_reset_at(limit_payload: dict[str, Any]) -> str | None:
-    raw_reset_at = _string_or_none(limit_payload.get("resets_at")) or _string_or_none(
-        limit_payload.get("period_ends_at")
+    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    if usage_over_time is None:
+        return None
+
+    raw_reset_at = _string_or_none(usage_over_time.get("resets_at")) or _string_or_none(
+        usage_over_time.get("period_ends_at")
     )
     if raw_reset_at is None:
         return None
@@ -1053,8 +1408,12 @@ def _format_usage_limit_remaining(
     if recorded_at is None:
         return None
 
-    raw_reset_at = _string_or_none(limit_payload.get("resets_at")) or _string_or_none(
-        limit_payload.get("period_ends_at")
+    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    if usage_over_time is None:
+        return None
+
+    raw_reset_at = _string_or_none(usage_over_time.get("resets_at")) or _string_or_none(
+        usage_over_time.get("period_ends_at")
     )
     reset_at = _parse_iso_datetime_or_none(raw_reset_at)
     if reset_at is None:
@@ -1087,12 +1446,19 @@ def _format_usage_limit_elapsed_percent(
 
 
 def _usage_limit_period_started_at(limit_payload: dict[str, Any]) -> datetime.datetime | None:
-    raw_period_started_at = _string_or_none(limit_payload.get("period_started_at"))
+    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    if usage_over_time is None:
+        return None
+
+    raw_period_started_at = _string_or_none(usage_over_time.get("period_started_at"))
     period_started_at = _parse_iso_datetime_or_none(raw_period_started_at)
     if period_started_at is not None:
         return period_started_at
 
-    period_duration_mins = _optional_int(limit_payload.get("period_duration_mins"), field_name="period_duration_mins")
+    period_duration_mins = _optional_int(
+        usage_over_time.get("period_duration_mins"),
+        field_name="period_duration_mins",
+    )
     if period_duration_mins is None:
         return None
 
@@ -1103,8 +1469,12 @@ def _usage_limit_period_started_at(limit_payload: dict[str, Any]) -> datetime.da
 
 
 def _usage_limit_period_ends_at(limit_payload: dict[str, Any]) -> datetime.datetime | None:
-    raw_period_ends_at = _string_or_none(limit_payload.get("period_ends_at")) or _string_or_none(
-        limit_payload.get("resets_at")
+    usage_over_time = _usage_limit_usage_over_time(limit_payload)
+    if usage_over_time is None:
+        return None
+
+    raw_period_ends_at = _string_or_none(usage_over_time.get("period_ends_at")) or _string_or_none(
+        usage_over_time.get("resets_at")
     )
     return _parse_iso_datetime_or_none(raw_period_ends_at)
 
@@ -1155,7 +1525,7 @@ def _usage_limit_time_ratio_value(
     *,
     recorded_at: datetime.datetime | None,
 ) -> float | None:
-    used_percent = limit_payload.get("used_percent")
+    used_percent = _usage_limit_used_percent(limit_payload)
     elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at)
     if not isinstance(used_percent, int) or elapsed_percent is None:
         return None
@@ -1167,7 +1537,7 @@ def _usage_limit_display_ratio_value(
     *,
     recorded_at: datetime.datetime | None,
 ) -> float | None:
-    used_percent = limit_payload.get("used_percent")
+    used_percent = _usage_limit_used_percent(limit_payload)
     elapsed_percent = _format_usage_limit_elapsed_percent(limit_payload, recorded_at=recorded_at)
     if not isinstance(used_percent, int) or elapsed_percent is None or elapsed_percent <= 0:
         return None
@@ -1476,6 +1846,7 @@ def _parse_copilot_usage_response(payload: dict[str, Any]) -> dict[str, Any]:
     limits: list[dict[str, Any]] = []
     premium_limit = _copilot_limit_from_snapshot(
         premium_snapshot,
+        name="premium",
         label="Premium",
         period_started_at=period_started_at,
         period_ends_at=period_ends_at,
@@ -1485,6 +1856,7 @@ def _parse_copilot_usage_response(payload: dict[str, Any]) -> dict[str, Any]:
         limits.append(premium_limit)
     chat_limit = _copilot_limit_from_snapshot(
         chat_snapshot,
+        name="chat",
         label="Chat",
         period_started_at=period_started_at,
         period_ends_at=period_ends_at,
@@ -1699,6 +2071,7 @@ def _copilot_quota_snapshot_is_placeholder(snapshot: dict[str, Any]) -> bool:
 def _copilot_limit_from_snapshot(
     snapshot: dict[str, Any] | None,
     *,
+    name: str,
     label: str,
     period_started_at: str | None = None,
     period_ends_at: str | None = None,
@@ -1714,17 +2087,14 @@ def _copilot_limit_from_snapshot(
     if percent_remaining is None:
         return None
 
-    limit_payload: dict[str, Any] = {
-        "limit_label": label,
-        "used_percent": _rounded_percent(100 - percent_remaining),
-    }
-    if period_duration_mins is not None:
-        limit_payload["period_duration_mins"] = period_duration_mins
-    if period_started_at is not None:
-        limit_payload["period_started_at"] = period_started_at
-    if period_ends_at is not None:
-        limit_payload["period_ends_at"] = period_ends_at
-    return limit_payload
+    return _usage_over_time_limit(
+        limit_name=name,
+        limit_label=label,
+        used_percent=_rounded_percent(100 - percent_remaining),
+        period_started_at=period_started_at,
+        period_ends_at=period_ends_at,
+        period_duration_mins=period_duration_mins,
+    )
 
 
 def _copilot_monthly_period_bounds(payload: dict[str, Any]) -> tuple[str | None, str | None, int | None]:
@@ -2309,19 +2679,34 @@ def _parse_codex_snapshot_windows(
             period_duration_mins=window_duration_mins,
         )
         limits.append(
-            {
-                "limit_id": limit_id,
-                "window_key": window_key,
-                "window_label": _codex_window_label(window_duration_mins, window_key=window_key),
-                "used_percent": used_percent,
-                "resets_at": _iso_from_epoch_seconds(resets_at_epoch),
-                "window_duration_mins": window_duration_mins,
-                "period_duration_mins": window_duration_mins,
-                "period_started_at": period_started_at,
-                "period_ends_at": period_ends_at,
-            }
+            _usage_over_time_limit(
+                limit_name=_codex_window_name(window_duration_mins, window_key=window_key),
+                limit_label=_codex_window_label(window_duration_mins, window_key=window_key),
+                used_percent=used_percent,
+                period_started_at=period_started_at,
+                period_ends_at=period_ends_at,
+                period_duration_mins=window_duration_mins,
+                resets_at=_iso_from_epoch_seconds(resets_at_epoch),
+                provider_limit={
+                    "limit_id": limit_id,
+                    "window_key": window_key,
+                    "window_duration_mins": window_duration_mins,
+                },
+            )
         )
     return limits
+
+
+def _codex_window_name(window_duration_mins: int | None, *, window_key: str) -> str:
+    if window_duration_mins == 300:
+        return "burst"
+    if window_duration_mins == 1_440:
+        return "daily"
+    if window_duration_mins == 10_080:
+        return "weekly"
+    if window_duration_mins is not None:
+        return f"{window_duration_mins}m"
+    return window_key
 
 
 def _codex_window_label(window_duration_mins: int | None, *, window_key: str) -> str:
@@ -2684,15 +3069,18 @@ def _parse_claude_code_statusline_usage_output(statusline_payload: dict[str, Any
             period_duration_mins=period_duration_mins,
         )
         limits.append(
-            {
-                "limit_type": limit_type,
-                "limit_label": _claude_rate_limit_label(limit_type),
-                "used_percent": used_percent,
-                "resets_at": _iso_from_epoch_seconds(resets_at_epoch),
-                "period_duration_mins": period_duration_mins,
-                "period_started_at": period_started_at,
-                "period_ends_at": period_ends_at,
-            }
+            _usage_over_time_limit(
+                limit_name=_claude_rate_limit_name(limit_type),
+                limit_label=_claude_rate_limit_label(limit_type),
+                used_percent=used_percent,
+                period_started_at=period_started_at,
+                period_ends_at=period_ends_at,
+                period_duration_mins=period_duration_mins,
+                resets_at=_iso_from_epoch_seconds(resets_at_epoch),
+                provider_limit={
+                    "limit_type": limit_type,
+                },
+            )
         )
 
     usage_payload: dict[str, Any] = {
@@ -2761,24 +3149,27 @@ def _parse_claude_code_live_usage_output(stdout: str) -> dict[str, Any]:
         resets_at_epoch=resets_at_epoch,
         period_duration_mins=period_duration_mins,
     )
-    limit_payload = {
-        "limit_type": rate_limit_type,
-        "limit_label": _claude_rate_limit_label(rate_limit_type),
-        "used_percent": used_percent,
-        "resets_at": _iso_from_epoch_seconds(resets_at_epoch),
-        "period_duration_mins": period_duration_mins,
-        "period_started_at": period_started_at,
-        "period_ends_at": period_ends_at,
-        "status": _string_or_none(rate_limit_info.get("status")),
-        "is_using_overage": _optional_bool(
-            rate_limit_info.get("isUsingOverage"),
-            field_name="claude isUsingOverage",
-        ),
-        "surpassed_threshold": _optional_float(
-            rate_limit_info.get("surpassedThreshold"),
-            field_name="claude surpassedThreshold",
-        ),
-    }
+    limit_payload = _usage_over_time_limit(
+        limit_name=_claude_rate_limit_name(rate_limit_type),
+        limit_label=_claude_rate_limit_label(rate_limit_type),
+        used_percent=used_percent,
+        period_started_at=period_started_at,
+        period_ends_at=period_ends_at,
+        period_duration_mins=period_duration_mins,
+        resets_at=_iso_from_epoch_seconds(resets_at_epoch),
+        provider_limit={
+            "limit_type": rate_limit_type,
+            "status": _string_or_none(rate_limit_info.get("status")),
+            "is_using_overage": _optional_bool(
+                rate_limit_info.get("isUsingOverage"),
+                field_name="claude isUsingOverage",
+            ),
+            "surpassed_threshold": _optional_float(
+                rate_limit_info.get("surpassedThreshold"),
+                field_name="claude surpassedThreshold",
+            ),
+        },
+    )
 
     usage_payload: dict[str, Any] = {
         "usage_status": "ok",
@@ -2834,6 +3225,20 @@ def _claude_rate_limit_label(rate_limit_type: str | None) -> str:
     return rate_limit_type or "usage"
 
 
+def _claude_rate_limit_name(rate_limit_type: str | None) -> str:
+    if rate_limit_type == "five_hour":
+        return "burst"
+    if rate_limit_type == "seven_day":
+        return "weekly"
+    if rate_limit_type == "seven_day_opus":
+        return "weekly_opus"
+    if rate_limit_type == "seven_day_sonnet":
+        return "weekly_sonnet"
+    if rate_limit_type == "overage":
+        return "extra"
+    return rate_limit_type or "usage"
+
+
 def _claude_rate_limit_duration_mins(rate_limit_type: str | None) -> int | None:
     if rate_limit_type == "five_hour":
         return 300
@@ -2843,8 +3248,8 @@ def _claude_rate_limit_duration_mins(rate_limit_type: str | None) -> int | None:
 
 
 def _format_limit_summary(limit_payload: dict[str, Any]) -> str:
-    label = _string_or_none(limit_payload.get("window_label")) or _string_or_none(limit_payload.get("limit_label"))
-    used_percent = limit_payload.get("used_percent")
+    label = _usage_limit_label(limit_payload)
+    used_percent = _usage_limit_used_percent(limit_payload)
     if label is not None and isinstance(used_percent, int):
         return f"{label} {used_percent}%"
     if isinstance(used_percent, int):

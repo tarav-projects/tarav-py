@@ -576,6 +576,82 @@ def test_chatlas_update_can_disable_normalized_cache(
     assert normalized_record_calls["count"] > 0
 
 
+def test_chatlas_update_disable_cache_overrides_all_individual_cache_flags(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from agentos.chatlas import core as chatlas_core
+    from agentos.chatlas import raw as chatlas_raw
+
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
+        session_id=session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name="master-disable-cache-thread",
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    original_match = chatlas_raw._chatlas_archive_files_match
+    original_normalized_record = chatlas_core._normalized_session_record
+    original_render = chatlas_core._render_transcript
+    calls = {
+        "match": 0,
+        "normalized_record": 0,
+        "render": 0,
+    }
+
+    def counting_match(*args, **kwargs):
+        calls["match"] += 1
+        return original_match(*args, **kwargs)
+
+    def counting_normalized_record(*args, **kwargs):
+        calls["normalized_record"] += 1
+        return original_normalized_record(*args, **kwargs)
+
+    def counting_render(*args, **kwargs):
+        calls["render"] += 1
+        return original_render(*args, **kwargs)
+
+    monkeypatch.setattr(chatlas_raw, "_chatlas_archive_files_match", counting_match)
+    monkeypatch.setattr(chatlas_core, "_normalized_session_record", counting_normalized_record)
+    monkeypatch.setattr(chatlas_core, "_render_transcript", counting_render)
+
+    assert main(
+        _chatlas_update_argv(
+            "--provider",
+            "codex",
+            "--disable-cache",
+            "--scan-cache=true",
+            "--normalized-cache=true",
+            "--transcript-cache=true",
+        )
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["scan_cache_enabled"] is False
+    assert payload["normalized_cache_enabled"] is False
+    assert payload["transcript_cache_enabled"] is False
+    assert payload["changes_detected"] is False
+    assert payload["committed"] is False
+    assert calls["match"] > 0
+    assert calls["normalized_record"] > 0
+    assert calls["render"] > 0
+
+
 def test_chatlas_stats_migrates_legacy_default_chatlas_root(
     tmp_path: Path,
     monkeypatch,

@@ -36,11 +36,12 @@ def _emit_chatlas_update_output(*, payload: dict[str, object], output_mode: str)
 
 
 def _cmd_chatlas_update(args: argparse.Namespace) -> int:
+    disable_cache = args.disable_cache
     payload = chatlas_update(
         providers=optional_string_tuple(args.providers),
-        scan_cache_enabled=args.scan_cache == "true",
-        normalized_cache_enabled=args.normalized_cache == "true",
-        transcript_cache_enabled=args.transcript_cache == "true",
+        scan_cache_enabled=not disable_cache and args.scan_cache == "true",
+        normalized_cache_enabled=not disable_cache and args.normalized_cache == "true",
+        transcript_cache_enabled=not disable_cache and args.transcript_cache == "true",
         progress=_chatlas_update_progress_handler(args.verbose_mode),
     )
     _emit_chatlas_update_output(payload=payload, output_mode=args.output_mode)
@@ -124,6 +125,11 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         choices=_CHATLAS_UPDATE_OUTPUT_MODES,
         default="none",
         help="Final command output mode: `none` prints nothing after the update; `json` prints the update payload (default: none).",
+    )
+    update_parser.add_argument(
+        "--disable-cache",
+        action="store_true",
+        help="Disable all Chatlas update caches. Overrides `--scan-cache`, `--normalized-cache`, and `--transcript-cache`.",
     )
     update_parser.add_argument(
         "--scan-cache",

@@ -52,6 +52,9 @@ _CHAT_ACCOUNTS_PROVIDER_CHOICES = tuple(
     provider_family.family for provider_family in supported_account_provider_families()
 )
 _CHAT_ACCOUNTS_LOOP_INTERVAL_SEC = 60.0
+_CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC = 60.0
+_CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC = 1.0
+_CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC = 600.0
 _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE = "[loop] refreshing..."
 
 
@@ -173,6 +176,7 @@ def _loop_chat_accounts_stats(
     output_stream = output_stream or sys.stdout
     wait_for_trigger = wait_for_trigger or _wait_for_chat_accounts_loop_trigger
     tty_output = _stream_is_tty(output_stream)
+    current_interval_sec = interval_sec
 
     first_iteration = True
     while True:
@@ -180,7 +184,7 @@ def _loop_chat_accounts_stats(
             _render_chat_accounts_stats_progressive_tty(
                 args,
                 output_stream=output_stream,
-                interval_sec=interval_sec,
+                interval_sec=current_interval_sec,
             )
         else:
             rendered_output = _render_chat_accounts_stats_output(args)
@@ -188,15 +192,23 @@ def _loop_chat_accounts_stats(
                 output_stream.write("\n")
             output_stream.write(rendered_output)
             output_stream.write(
-                f"\n\n[loop] refreshes every {int(interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
+                f"\n\n[loop] refreshes every {int(current_interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
             )
             output_stream.flush()
         first_iteration = False
 
         try:
-            wait_for_trigger(interval_sec, input_stream)
+            triggered_by_user = wait_for_trigger(current_interval_sec, input_stream)
         except KeyboardInterrupt:
             return 0
+
+        if triggered_by_user:
+            current_interval_sec = _CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC
+        else:
+            current_interval_sec = min(
+                _CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC,
+                current_interval_sec + _CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC,
+            )
 
         if not tty_output:
             output_stream.write(_CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n")
@@ -239,19 +251,20 @@ def _format_chat_accounts_refresh_progress(payload: dict[str, object]) -> str | 
     return f"[refresh] {raw_completed_count}/{raw_account_count} complete; {raw_pending_count} pending"
 
 
-def _wait_for_chat_accounts_loop_trigger(interval_sec: float, input_stream: TextIO) -> None:
+def _wait_for_chat_accounts_loop_trigger(interval_sec: float, input_stream: TextIO) -> bool:
     if interval_sec <= 0:
-        return
+        return False
 
     if not _stream_is_tty(input_stream):
         time.sleep(interval_sec)
-        return
+        return False
 
     ready, _, _ = select.select([input_stream], [], [], interval_sec)
     if not ready:
-        return
+        return False
 
     input_stream.readline()
+    return True
 
 
 def _stream_is_tty(stream: TextIO) -> bool:
