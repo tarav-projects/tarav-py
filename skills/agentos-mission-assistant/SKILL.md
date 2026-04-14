@@ -66,6 +66,22 @@ When suggesting a mission, propose concrete values:
 
 Present the proposal and let the user confirm or adjust before running the command.
 
+### Protocol-level validation
+
+For spec, protocol, or contract work, validation does not have to be an end-user feature check.
+
+It is valid for a mission's validation to point at a mechanistic repo-local validation surface such as:
+- a `doctor` command
+- a linter
+- a schema or protocol checker
+- another explicit `check` command
+
+Prefer concrete validation commands when they exist. Examples:
+- `paperson doctor <project-id>`
+- `agentos mdblocks lint`
+
+When this kind of command exists, treat it as a strong validation surface for mission progress and mission closure.
+
 ### When to suggest activating a mission
 
 - The user starts working on something that matches an existing mission's goal.
@@ -97,7 +113,45 @@ Do NOT auto-close. Always confirm with the user.
 When work advances a mission (code written, tests passing, decisions made):
 - Suggest marking relevant todos as done.
 - Suggest adding notes for decisions or links to artifacts (live-notes, PRs, etc.).
+- If the mission is about specs or protocol-level behavior, suggest rerunning the relevant `doctor`/lint/check command and capturing the result.
 - Keep it lightweight — one-line suggestions, not a ceremony.
+
+## Mission Templates
+
+Mission templates are project-local skills that define conventions for recurring kinds of missions. They live in the project's `skills/` directory like any other skill.
+
+### What a template is
+
+A skill with `type: mission.template` in its frontmatter. It contains guidance for the agent on how to create a specific kind of mission — goal phrasing, default todos, notes conventions, validation patterns, links to relevant surfaces.
+
+Templates can be named however makes sense for the project. Discovery is done by frontmatter type, not by naming convention.
+
+### Template frontmatter
+
+```yaml
+---
+name: bug-fix
+type: mission.template
+description: Template for bug fix missions
+---
+```
+
+### Discovering templates
+
+```sh
+agentos mission templates --list
+agentos mission templates --list --json
+# equivalent to: agentos skills query type=mission.template
+```
+
+### How to use templates
+
+When creating a mission:
+1. Check if a relevant template exists (`agentos mission templates --list`)
+2. If found, read the template SKILL.md and follow its guidance
+3. If not found, create the mission freeform as usual
+
+The user may also ask to create a new template from an existing mission pattern.
 
 ## Conventions
 
