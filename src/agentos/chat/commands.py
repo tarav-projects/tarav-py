@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import math
 import select
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, TextIO
 
@@ -55,7 +57,66 @@ _CHAT_ACCOUNTS_LOOP_INTERVAL_SEC = 60.0
 _CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC = 60.0
 _CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC = 1.0
 _CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC = 600.0
+_CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC = 1.0
 _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE = "[loop] refreshing..."
+
+
+@dataclass
+class _ChatAccountsStatsLoopFrame:
+    interval_sec: float
+    body_text: str = ""
+    refresh_progress_text: str | None = None
+    next_refresh_at_monotonic: float | None = None
+    refreshing: bool = False
+
+    def begin_refresh(self, *, interval_sec: float) -> None:
+        self.interval_sec = interval_sec
+        self.refreshing = True
+        self.next_refresh_at_monotonic = None
+        self.refresh_progress_text = None
+        if not self.body_text:
+            self.body_text = _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE
+
+    def apply_payload(self, *, rendered_body_text: str, refresh_progress_text: str | None) -> None:
+        self.body_text = rendered_body_text
+        self.refresh_progress_text = refresh_progress_text
+
+    def finish_refresh(self, *, next_refresh_at_monotonic: float) -> None:
+        self.refreshing = False
+        self.refresh_progress_text = None
+        self.next_refresh_at_monotonic = next_refresh_at_monotonic
+
+    def remaining_refresh_sec(self, *, now_monotonic: float) -> float:
+        if self.next_refresh_at_monotonic is None:
+            return 0.0
+        return max(0.0, self.next_refresh_at_monotonic - now_monotonic)
+
+    def render_text(self, *, now_monotonic: float) -> str:
+        sections: list[str] = []
+        if self.refresh_progress_text is not None:
+            sections.append(self.refresh_progress_text)
+        sections.append(self.body_text or _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE)
+        sections.append(self.footer_text(now_monotonic=now_monotonic))
+        return "\n\n".join(sections)
+
+    def footer_text(self, *, now_monotonic: float) -> str:
+        if self.refreshing or self.next_refresh_at_monotonic is None:
+            return _format_chat_accounts_loop_refreshing_status(self.interval_sec)
+        return _format_chat_accounts_loop_status(
+            self.interval_sec,
+            remaining_sec=self.remaining_refresh_sec(now_monotonic=now_monotonic),
+        )
+
+
+@dataclass(frozen=True)
+class _ChatAccountsStatsLoopTTYRenderer:
+    output_stream: TextIO
+    now_monotonic: Callable[[], float] = time.monotonic
+
+    def paint(self, frame: _ChatAccountsStatsLoopFrame) -> None:
+        _clear_terminal_screen(self.output_stream)
+        self.output_stream.write(frame.render_text(now_monotonic=self.now_monotonic()))
+        self.output_stream.flush()
 
 
 def _normalize_session_limit(limit: int | None) -> int | None:
@@ -170,22 +231,31 @@ def _loop_chat_accounts_stats(
     input_stream: TextIO | None = None,
     output_stream: TextIO | None = None,
     interval_sec: float = _CHAT_ACCOUNTS_LOOP_INTERVAL_SEC,
-    wait_for_trigger: Callable[[float, TextIO], None] | None = None,
+    wait_for_trigger: Callable[[float, TextIO], bool] | None = None,
 ) -> int:
     input_stream = input_stream or sys.stdin
     output_stream = output_stream or sys.stdout
     wait_for_trigger = wait_for_trigger or _wait_for_chat_accounts_loop_trigger
     tty_output = _stream_is_tty(output_stream)
     current_interval_sec = interval_sec
+    tty_frame = _ChatAccountsStatsLoopFrame(interval_sec=current_interval_sec) if tty_output else None
+    tty_renderer = (
+        _ChatAccountsStatsLoopTTYRenderer(output_stream=output_stream) if tty_output else None
+    )
 
     first_iteration = True
     while True:
         if tty_output:
             _render_chat_accounts_stats_progressive_tty(
                 args,
-                output_stream=output_stream,
+                frame=tty_frame,
+                renderer=tty_renderer,
                 interval_sec=current_interval_sec,
             )
+            assert tty_frame is not None
+            assert tty_renderer is not None
+            tty_frame.finish_refresh(next_refresh_at_monotonic=time.monotonic() + current_interval_sec)
+            tty_renderer.paint(tty_frame)
         else:
             rendered_output = _render_chat_accounts_stats_output(args)
             if not first_iteration:
@@ -198,8 +268,18 @@ def _loop_chat_accounts_stats(
         first_iteration = False
 
         try:
-            triggered_by_user = wait_for_trigger(current_interval_sec, input_stream)
+            if tty_output and wait_for_trigger is _wait_for_chat_accounts_loop_trigger:
+                triggered_by_user = _wait_for_chat_accounts_loop_trigger_with_tty_countdown(
+                    tty_frame,
+                    tty_renderer,
+                    input_stream,
+                )
+            else:
+                triggered_by_user = wait_for_trigger(current_interval_sec, input_stream)
         except KeyboardInterrupt:
+            if tty_output:
+                output_stream.write("\n")
+                output_stream.flush()
             return 0
 
         if triggered_by_user:
@@ -218,26 +298,26 @@ def _loop_chat_accounts_stats(
 def _render_chat_accounts_stats_progressive_tty(
     args: argparse.Namespace,
     *,
-    output_stream: TextIO,
+    frame: _ChatAccountsStatsLoopFrame | None,
+    renderer: _ChatAccountsStatsLoopTTYRenderer | None,
     interval_sec: float,
 ) -> None:
+    if frame is None or renderer is None:
+        raise CliError("TTY frame rendering requires both a frame and renderer")
+
+    frame.begin_refresh(interval_sec=interval_sec)
+    renderer.paint(frame)
     for payload in iter_chat_account_stats_refresh_payloads(
         instance_ids=optional_string_tuple(args.instance_ids),
         providers=optional_string_tuple(args.providers),
         refresh_usage=args.refresh_usage,
         full_output=args.full_output,
     ):
-        rendered_output = _format_chat_accounts_stats_payload_output(args, payload)
-        _clear_terminal_screen(output_stream)
-        refresh_progress = _format_chat_accounts_refresh_progress(payload)
-        if refresh_progress is not None:
-            output_stream.write(refresh_progress)
-            output_stream.write("\n\n")
-        output_stream.write(rendered_output)
-        output_stream.write(
-            f"\n\n[loop] refreshes every {int(interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
+        frame.apply_payload(
+            rendered_body_text=_format_chat_accounts_stats_payload_output(args, payload),
+            refresh_progress_text=_format_chat_accounts_refresh_progress(payload),
         )
-        output_stream.flush()
+        renderer.paint(frame)
 
 
 def _format_chat_accounts_refresh_progress(payload: dict[str, object]) -> str | None:
@@ -267,6 +347,38 @@ def _wait_for_chat_accounts_loop_trigger(interval_sec: float, input_stream: Text
     return True
 
 
+def _wait_for_chat_accounts_loop_trigger_with_tty_countdown(
+    frame: _ChatAccountsStatsLoopFrame | None,
+    renderer: _ChatAccountsStatsLoopTTYRenderer | None,
+    input_stream: TextIO,
+    *,
+    tick_sec: float = _CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC,
+) -> bool:
+    if frame is None or renderer is None:
+        raise CliError("TTY countdown requires both a frame and renderer")
+    if frame.next_refresh_at_monotonic is None:
+        return False
+
+    tty_input = _stream_is_tty(input_stream)
+    while True:
+        remaining_sec = frame.remaining_refresh_sec(now_monotonic=time.monotonic())
+        if remaining_sec <= 0:
+            renderer.paint(frame)
+            return False
+
+        wait_timeout = min(tick_sec, remaining_sec)
+        if tty_input:
+            ready, _, _ = select.select([input_stream], [], [], wait_timeout)
+            if ready:
+                input_stream.readline()
+                return True
+        else:
+            time.sleep(wait_timeout)
+        renderer.paint(frame)
+        if remaining_sec <= tick_sec:
+            return False
+
+
 def _stream_is_tty(stream: TextIO) -> bool:
     isatty = getattr(stream, "isatty", None)
     if isatty is None:
@@ -280,6 +392,31 @@ def _stream_is_tty(stream: TextIO) -> bool:
 def _clear_terminal_screen(output_stream: TextIO) -> None:
     output_stream.write("\033[2J\033[H")
     output_stream.flush()
+
+
+def _format_chat_accounts_loop_status(interval_sec: float, *, remaining_sec: float | None = None) -> str:
+    interval_text = f"{int(interval_sec)}s"
+    if remaining_sec is None:
+        return f"[loop] refreshes every {interval_text}; press Enter to refresh now; Ctrl-C to stop"
+    remaining_text = _format_chat_accounts_loop_countdown(remaining_sec)
+    return (
+        f"[loop] refreshes every {interval_text}; next refresh in {remaining_text}; "
+        "press Enter to refresh now; Ctrl-C to stop"
+    )
+
+
+def _format_chat_accounts_loop_refreshing_status(interval_sec: float) -> str:
+    interval_text = f"{int(interval_sec)}s"
+    return f"[loop] refreshing... next interval {interval_text}; Ctrl-C to stop"
+
+
+def _format_chat_accounts_loop_countdown(remaining_sec: float) -> str:
+    total_seconds = max(0, math.ceil(remaining_sec))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
 
 
 def _filter_payload_by_user_contain(

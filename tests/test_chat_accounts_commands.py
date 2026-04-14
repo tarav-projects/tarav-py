@@ -974,11 +974,14 @@ def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> No
     def fake_render_progressive(
         loop_args: argparse.Namespace,
         *,
-        output_stream,
+        frame,
+        renderer,
         interval_sec: float,
     ) -> None:  # type: ignore[no-untyped-def]
-        del output_stream, interval_sec
+        del interval_sec
         assert loop_args is args
+        assert frame is not None
+        assert renderer is not None
         events.append("render")
 
     def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
@@ -1022,11 +1025,14 @@ def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetc
     def fake_render_progressive(
         loop_args: argparse.Namespace,
         *,
-        output_stream,
+        frame,
+        renderer,
         interval_sec: float,
     ) -> None:  # type: ignore[no-untyped-def]
-        del output_stream, interval_sec
+        del interval_sec
         assert loop_args is args
+        assert frame is not None
+        assert renderer is not None
         events.append(f"render:{len([event for event in events if event.startswith('render:')]) + 1}")
 
     def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
@@ -1064,6 +1070,21 @@ def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetc
     ]
 
 
+def test_chat_accounts_stats_loop_frame_renders_progress_body_and_countdown() -> None:
+    frame = chat_commands._ChatAccountsStatsLoopFrame(
+        interval_sec=60.0,
+        body_text="snapshot-final",
+        refresh_progress_text="[refresh] 1/2 complete; 1 pending",
+        next_refresh_at_monotonic=65.0,
+    )
+
+    rendered = frame.render_text(now_monotonic=5.0)
+
+    assert "[refresh] 1/2 complete; 1 pending" in rendered
+    assert "snapshot-final" in rendered
+    assert "next refresh in 01:00" in rendered
+
+
 def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapshot(monkeypatch) -> None:
     args = argparse.Namespace(
         instance_ids=[],
@@ -1074,7 +1095,8 @@ def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapsh
         loop=True,
     )
 
-    events: list[str] = []
+    rendered_frames: list[str] = []
+    clear_calls = 0
 
     monkeypatch.setattr(
         chat_commands,
@@ -1090,41 +1112,42 @@ def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapsh
     def fake_format(loop_args: argparse.Namespace, payload: dict[str, object]) -> str:
         assert loop_args is args
         pending_count = payload.get("pending_count")
-        events.append(f"format:{pending_count if pending_count is not None else 'final'}")
         if pending_count is not None:
             return f"snapshot-pending-{pending_count}"
         return "snapshot-final"
 
     def fake_clear(output_stream) -> None:  # type: ignore[no-untyped-def]
+        nonlocal clear_calls
         del output_stream
-        events.append("clear")
+        clear_calls += 1
 
     class FakeTTYOutput(io.StringIO):
-        def isatty(self) -> bool:
-            return True
-
         def write(self, text: str) -> int:
-            if text.startswith("snapshot-"):
-                events.append(f"write:{text}")
+            rendered_frames.append(text)
             return super().write(text)
 
     monkeypatch.setattr(chat_commands, "_format_chat_accounts_stats_payload_output", fake_format)
     monkeypatch.setattr(chat_commands, "_clear_terminal_screen", fake_clear)
 
+    frame = chat_commands._ChatAccountsStatsLoopFrame(interval_sec=60.0)
+    renderer = chat_commands._ChatAccountsStatsLoopTTYRenderer(
+        output_stream=FakeTTYOutput(),
+        now_monotonic=lambda: 0.0,
+    )
+
     chat_commands._render_chat_accounts_stats_progressive_tty(
         args,
-        output_stream=FakeTTYOutput(),
+        frame=frame,
+        renderer=renderer,
         interval_sec=60.0,
     )
 
-    assert events == [
-        "format:2",
-        "clear",
-        "write:snapshot-pending-2",
-        "format:final",
-        "clear",
-        "write:snapshot-final",
-    ]
+    assert clear_calls == 3
+    assert rendered_frames[0].startswith(chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE)
+    assert "snapshot-pending-2" in rendered_frames[1]
+    assert "[refresh] 0/2 complete; 2 pending" in rendered_frames[1]
+    assert "snapshot-final" in rendered_frames[2]
+    assert "next refresh in" not in rendered_frames[2]
 
 
 def test_wait_for_chat_accounts_loop_trigger_returns_immediately_on_enter() -> None:
@@ -1156,6 +1179,98 @@ def test_wait_for_chat_accounts_loop_trigger_returns_immediately_on_enter() -> N
 
     assert triggered_by_user is True
     assert elapsed < 0.5
+
+
+def test_wait_for_chat_accounts_loop_trigger_with_tty_countdown_repaints_full_frame(monkeypatch) -> None:
+    wait_times = iter((0.0, 1.0))
+    renderer_times = iter((1.0, 2.0))
+    monkeypatch.setattr(chat_commands.time, "monotonic", lambda: next(wait_times))
+    monkeypatch.setattr(chat_commands.time, "sleep", lambda seconds: None)
+
+    output_stream = io.StringIO()
+    frame = chat_commands._ChatAccountsStatsLoopFrame(
+        interval_sec=2.0,
+        body_text="snapshot-final",
+    )
+    frame.finish_refresh(next_refresh_at_monotonic=2.0)
+    renderer = chat_commands._ChatAccountsStatsLoopTTYRenderer(
+        output_stream=output_stream,
+        now_monotonic=lambda: next(renderer_times),
+    )
+
+    triggered_by_user = chat_commands._wait_for_chat_accounts_loop_trigger_with_tty_countdown(
+        frame,
+        renderer,
+        io.StringIO(),
+    )
+
+    rendered = output_stream.getvalue()
+    assert triggered_by_user is False
+    assert rendered.count("snapshot-final") == 2
+    assert "next refresh in 00:01" in rendered
+    assert "next refresh in 00:00" in rendered
+    assert rendered.count("\033[2J\033[H") == 2
+
+
+def test_loop_chat_accounts_stats_uses_tty_countdown_between_refreshes(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="json",
+        loop=True,
+    )
+
+    events: list[str] = []
+
+    def fake_render_progressive(
+        loop_args: argparse.Namespace,
+        *,
+        frame,
+        renderer,
+        interval_sec: float,
+    ) -> None:  # type: ignore[no-untyped-def]
+        assert loop_args is args
+        assert frame is not None
+        assert renderer is not None
+        events.append(f"render:{interval_sec}")
+
+    def fake_wait_with_countdown(
+        frame,
+        renderer,
+        input_stream,
+        *,
+        tick_sec: float = 1.0,
+    ) -> bool:  # type: ignore[no-untyped-def]
+        del input_stream, tick_sec
+        assert frame is not None
+        assert renderer is not None
+        assert frame.refreshing is False
+        assert frame.next_refresh_at_monotonic is not None
+        events.append(f"countdown:{frame.interval_sec}")
+        raise KeyboardInterrupt()
+
+    class FakeTTYOutput(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_progressive_tty", fake_render_progressive)
+    monkeypatch.setattr(
+        chat_commands,
+        "_wait_for_chat_accounts_loop_trigger_with_tty_countdown",
+        fake_wait_with_countdown,
+    )
+
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=FakeTTYOutput(),
+        interval_sec=60.0,
+    )
+
+    assert exit_code == 0
+    assert events == ["render:60.0", "countdown:60.0"]
 
 
 def test_loop_chat_accounts_stats_resets_interval_after_enter(monkeypatch) -> None:
