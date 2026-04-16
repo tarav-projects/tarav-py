@@ -7,8 +7,10 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos.utils.skills import (
     global_public_skills_depot,
+    parse_skill_frontmatter,
     prune_global_skills_depot,
     prune_skills_target,
+    query_skills,
     resolve_skill,
     resolve_skills_command_project_root,
     resolve_project_skills_depot,
@@ -41,29 +43,39 @@ def _format_skills_list_rows(skills: list) -> list[str]:
 
 def _cmd_skills_list(args: argparse.Namespace) -> int:
     skills = list_resolved_skills(Path.cwd(), skills_depot=args.skills_depot)
+    include_fm = getattr(args, "frontmatter", False)
+
     if args.json:
-        print(
-            json.dumps(
-                [
-                    {
-                        "name": skill.name,
-                        "resolved_from_index": skill.resolved_from_index,
-                        "source_kind": skill.source_kind,
-                        "root": str(skill.root),
-                        "path": str(skill.path),
-                    }
-                    for skill in skills
-                ]
-            )
-        )
+        records = []
+        for skill in skills:
+            record = {
+                "name": skill.name,
+                "resolved_from_index": skill.resolved_from_index,
+                "source_kind": skill.source_kind,
+                "root": str(skill.root),
+                "path": str(skill.path),
+            }
+            if include_fm:
+                record["frontmatter"] = parse_skill_frontmatter(skill.path)
+            records.append(record)
+        print(json.dumps(records))
         return 0
 
     if not skills:
         print("No skills found.")
         return 0
 
-    for row in _format_skills_list_rows(skills):
-        print(row)
+    if include_fm:
+        for skill in skills:
+            fm = parse_skill_frontmatter(skill.path)
+            parts = [skill.name]
+            for k, v in fm.items():
+                if k != "name":
+                    parts.append(f"{k}={v}")
+            print("  ".join(parts))
+    else:
+        for row in _format_skills_list_rows(skills):
+            print(row)
     return 0
 
 
@@ -117,6 +129,59 @@ def _cmd_skills_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_skills_query(args: argparse.Namespace) -> int:
+    if not args.filters:
+        args._parser.print_help()
+        return 0
+
+    filters: dict[str, str] = {}
+    for pair in args.filters:
+        if "=" not in pair:
+            raise CliError(f"invalid filter (expected key=value): {pair}")
+        key, _, value = pair.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            raise CliError(f"empty filter key in: {pair}")
+        filters[key] = value
+
+    results = query_skills(
+        Path.cwd(),
+        skills_depot=args.skills_depot,
+        filters=filters,
+    )
+
+    if args.json:
+        print(
+            json.dumps(
+                [
+                    {
+                        "name": skill.name,
+                        "resolved_from_index": skill.resolved_from_index,
+                        "source_kind": skill.source_kind,
+                        "path": str(skill.path),
+                        "frontmatter": fm,
+                    }
+                    for skill, fm in results
+                ],
+                indent=2,
+            )
+        )
+        return 0
+
+    if not results:
+        print("No matching skills found.")
+        return 0
+
+    for skill, fm in results:
+        parts = [skill.name]
+        for k, v in fm.items():
+            if k != "name":
+                parts.append(f"{k}={v}")
+        print("  ".join(parts))
+    return 0
+
+
 def _cmd_skills_prune(args: argparse.Namespace) -> int:
     project_root, target_dir = _resolve_project_and_target(args)
     if args.global_depot:
@@ -156,6 +221,11 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Emit resolved skills as structured JSON records.",
     )
     skills_list_parser.add_argument(
+        "--frontmatter",
+        action="store_true",
+        help="Include parsed frontmatter fields in the output.",
+    )
+    skills_list_parser.add_argument(
         "--skills-depot",
         type=Path,
         default=None,
@@ -179,6 +249,28 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Project-relative project skills depot override for the first PATH entry (default: project config or skills).",
     )
     skills_path_parser.set_defaults(handler=_cmd_skills_path)
+
+    skills_query_parser = skills_subparsers.add_parser(
+        "query",
+        help="Query skills by frontmatter fields (key=value filters).",
+    )
+    skills_query_parser.add_argument(
+        "filters",
+        nargs="*",
+        help="Frontmatter filters as key=value pairs (e.g. type=mission.template).",
+    )
+    skills_query_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit matching skills with frontmatter as structured JSON.",
+    )
+    skills_query_parser.add_argument(
+        "--skills-depot",
+        type=Path,
+        default=None,
+        help="Project-relative project skills depot override.",
+    )
+    skills_query_parser.set_defaults(handler=_cmd_skills_query, _parser=skills_query_parser)
 
     skills_sync_parser = skills_subparsers.add_parser(
         "sync",

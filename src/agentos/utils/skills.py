@@ -19,6 +19,7 @@ from agentos._core.project import (
 )
 
 SKILL_MARKER_FILENAME = "SKILL.md"
+_FRONTMATTER_DELIMITER = "---"
 DEFAULT_PROJECT_SKILLS_DEPOT_DIRNAME = "skills"
 DEFAULT_GLOBAL_PUBLIC_SKILLS_HOME_DIRNAME = ".agents"
 DEFAULT_GLOBAL_PUBLIC_SKILLS_DEPOT_DIRNAME = "skills"
@@ -433,6 +434,51 @@ def resolve_skill(
             resolved_from_index=entry.resolved_from_index,
         )
     return None
+
+
+def parse_skill_frontmatter(skill_dir: Path) -> dict[str, str]:
+    marker = skill_dir / SKILL_MARKER_FILENAME
+    if not marker.is_file():
+        return {}
+    try:
+        text = marker.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != _FRONTMATTER_DELIMITER:
+        return {}
+
+    frontmatter: dict[str, str] = {}
+    for line in lines[1:]:
+        stripped = line.strip()
+        if stripped == _FRONTMATTER_DELIMITER:
+            break
+        colon_pos = stripped.find(":")
+        if colon_pos < 1:
+            continue
+        key = stripped[:colon_pos].strip()
+        value = stripped[colon_pos + 1:].strip()
+        if key:
+            frontmatter[key] = value
+    return frontmatter
+
+
+def query_skills(
+    start_path: Path | str = ".",
+    *,
+    skills_depot: Path | None = None,
+    filters: dict[str, str] | None = None,
+) -> list[tuple[ResolvedSkill, dict[str, str]]]:
+    skills = list_resolved_skills(start_path, skills_depot=skills_depot)
+    results: list[tuple[ResolvedSkill, dict[str, str]]] = []
+    for skill in skills:
+        fm = parse_skill_frontmatter(skill.path)
+        if filters:
+            if not all(fm.get(k) == v for k, v in filters.items()):
+                continue
+        results.append((skill, fm))
+    return results
 
 
 def _resolved_symlink_target(path: Path) -> Path:
