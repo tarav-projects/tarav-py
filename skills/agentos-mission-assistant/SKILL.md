@@ -32,14 +32,22 @@ agentos mission done [name]
 agentos mission park [name]
 
 # Read
-agentos mission status [name]       # active mission if no name given
+agentos mission status [name]       # most recently active mission if no name given
 agentos mission list
 
 # Update
-agentos mission todo add "text"     # --mission <name> to target non-active
+agentos mission todo add "text"     # --mission <name> to target a specific mission
 agentos mission todo done <index>   # 1-based index
-agentos mission note "text"         # --mission <name> to target non-active
+agentos mission note "text"         # --mission <name> to target a specific mission
 agentos mission fork "text"         # --as-mission <name> to also create new mission
+
+# Help (progressive disclosure)
+agentos mission help [name]         # show all help entries (one line each)
+agentos mission help [name] <field> # drill into a specific field
+agentos mission help-set <field> "text"  # set help text for a field
+
+# Templates
+agentos mission templates --list
 ```
 
 All commands accept `--json` for structured output.
@@ -86,6 +94,7 @@ When this kind of command exists, treat it as a strong validation surface for mi
 
 - The user starts working on something that matches an existing mission's goal.
 - Say what you see: "This looks like it fits mission X — want me to activate it?"
+- Activation is not exclusive. It bumps that mission to the top of recent activity and resumes it if needed.
 
 ### When to suggest a fork
 
@@ -115,6 +124,39 @@ When work advances a mission (code written, tests passing, decisions made):
 - Suggest adding notes for decisions or links to artifacts (live-notes, PRs, etc.).
 - If the mission is about specs or protocol-level behavior, suggest rerunning the relevant `doctor`/lint/check command and capturing the result.
 - Keep it lightweight — one-line suggestions, not a ceremony.
+
+## Mission Help
+
+The `help` field is the mission's self-documentation layer — like AGENTS.md for a mission. It provides the minimal context an agent needs to understand non-obvious fields and mission-specific meaning.
+
+### How it works
+
+- Each entry maps a field name to help text (string) or a structured object (progressive disclosure)
+- String entries print directly
+- Object entries have a `help` key for the summary; other keys are children accessible by drilling in with the field name
+- CLI shows `[+]` marker on entries with children
+
+### When to update help
+
+- When a mission has custom fields (from templates or added during work) — document them
+- When a standard field has mission-specific context (e.g. validation means "run this specific command")
+- When accumulated context would help a future session understand the mission faster
+- Keep help entries concise — this is a quick-reference layer, not a log
+
+### Progressive disclosure convention
+
+Use string for simple fields. Use objects when a field needs background or sub-structure:
+
+```json
+"help": {
+  "deploy_target": "Staging environment for this rollout",
+  "compliance_scope": {
+    "help": "Legal requirement driving this work",
+    "background": "SOC2 audit flagged session tokens in Q1",
+    "contacts": "Legal: Maria, Security: James"
+  }
+}
+```
 
 ## Mission Templates
 
@@ -158,4 +200,4 @@ The user may also ask to create a new template from an existing mission pattern.
 - Mission names are kebab-case and filesystem-safe.
 - Notes are the catch-all. Relations between missions, links to plans, context, decisions — all go in notes as plain text.
 - Forks prefixed with `FORK:` in notes are unresolved ideas. They can be triaged into todos, new missions, or discarded.
-- The active mission (via `_active.json`) is the default target for todo/note/fork commands.
+- When a command omits a mission name, it targets the most recently active mission with `status == active`, ranked by each mission's `last_activity`.

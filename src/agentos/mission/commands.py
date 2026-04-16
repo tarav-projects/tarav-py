@@ -2,19 +2,25 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos._core.clock import utc_now_iso
 from agentos._core.project import require_agentos_project_root
+from agentos.utils.skills import query_skills
 
 from .core import (
     create_mission,
+    get_help,
+    help_has_children,
+    help_summary,
     list_missions,
-    load_active,
     load_mission,
+    mission_last_activity,
+    most_recent_active_mission_name,
     resolve_mission_name,
-    save_active,
     save_mission,
+    set_help_entry,
+    touch_mission,
     todo_progress,
 )
 
@@ -39,12 +45,15 @@ def _cmd_new(args: argparse.Namespace) -> int:
 
 def _cmd_activate(args: argparse.Namespace) -> int:
     root = _project_root()
-    load_mission(root, args.name)  # ensure it exists
-    save_active(root, args.name)
+    mission = load_mission(root, args.name)
+    mission["status"] = "active"
+    mission["finished"] = None
+    touch_mission(mission)
+    save_mission(root, mission)
     if args.json:
-        print(json.dumps({"active": args.name}))
+        print(json.dumps(mission, indent=2))
     else:
-        print(f"active mission: {args.name}")
+        print(f"mission activated: {args.name}")
     return 0
 
 
@@ -55,6 +64,9 @@ def _format_status(mission: dict) -> str:
     lines.append(f"mission: {mission['name']} [{mission['status']}]")
     lines.append(f"goal:    {mission['goal']}")
     lines.append(f"check:   {mission['validation']}")
+    last_activity = mission_last_activity(mission)
+    if last_activity:
+        lines.append(f"last:    {last_activity}")
 
     todos = mission.get("todos", [])
     if todos:
@@ -92,12 +104,8 @@ def _cmd_done(args: argparse.Namespace) -> int:
     name = resolve_mission_name(root, args.name)
     mission = load_mission(root, name)
     mission["status"] = "done"
-    mission["finished"] = utc_now_iso()
+    mission["finished"] = touch_mission(mission)
     save_mission(root, mission)
-
-    active = load_active(root)
-    if active == name:
-        save_active(root, None)
 
     if args.json:
         print(json.dumps(mission, indent=2))
@@ -113,11 +121,8 @@ def _cmd_park(args: argparse.Namespace) -> int:
     name = resolve_mission_name(root, args.name)
     mission = load_mission(root, name)
     mission["status"] = "parked"
+    touch_mission(mission)
     save_mission(root, mission)
-
-    active = load_active(root)
-    if active == name:
-        save_active(root, None)
 
     if args.json:
         print(json.dumps(mission, indent=2))
@@ -128,7 +133,7 @@ def _cmd_park(args: argparse.Namespace) -> int:
 
 # ── mission list ─────────────────────────────────────────────────────
 
-def _format_list(missions: list[dict], active_name: str | None) -> str:
+def _format_list(missions: list[dict], default_name: str | None) -> str:
     if not missions:
         return "no missions"
 
@@ -144,21 +149,24 @@ def _format_list(missions: list[dict], active_name: str | None) -> str:
             continue
         if lines:
             lines.append("")
-        lines.append(f"{status}:")
+        heading = status if status != "active" else "active (most recent first)"
+        lines.append(f"{heading}:")
         for m in group:
             name = m["name"]
             goal = m.get("goal", "")
             if len(goal) > 50:
                 goal = goal[:47] + "..."
             done_count, total = todo_progress(m)
-            marker = " *" if name == active_name else ""
+            marker = "  (default)" if name == default_name and status == "active" else ""
+            last_activity = mission_last_activity(m)
+            last_label = f"  [last {last_activity}]" if last_activity and status != "done" else ""
             if status == "done":
                 finished = m.get("finished", "")
-                if finished:
-                    finished = finished[:10]
                 lines.append(f"  {name}{marker}  {goal}  [done {finished}]")
             else:
-                lines.append(f"  {name}{marker}  {goal}  [{done_count}/{total} todos]")
+                lines.append(
+                    f"  {name}{marker}  {goal}  [{done_count}/{total} todos]{last_label}"
+                )
 
     return "\n".join(lines)
 
@@ -166,11 +174,11 @@ def _format_list(missions: list[dict], active_name: str | None) -> str:
 def _cmd_list(args: argparse.Namespace) -> int:
     root = _project_root()
     missions = list_missions(root)
-    active_name = load_active(root)
+    default_name = most_recent_active_mission_name(root)
     if args.json:
-        print(json.dumps({"active": active_name, "missions": missions}, indent=2))
+        print(json.dumps({"default": default_name, "missions": missions}, indent=2))
     else:
-        print(_format_list(missions, active_name))
+        print(_format_list(missions, default_name))
     return 0
 
 
@@ -181,6 +189,7 @@ def _cmd_todo_add(args: argparse.Namespace) -> int:
     name = resolve_mission_name(root, args.mission)
     mission = load_mission(root, name)
     mission.setdefault("todos", []).append({"text": args.text, "done": False})
+    touch_mission(mission)
     save_mission(root, mission)
     idx = len(mission["todos"])
     if args.json:
@@ -201,6 +210,7 @@ def _cmd_todo_done(args: argparse.Namespace) -> int:
     if idx < 1 or idx > len(todos):
         raise CliError(f"todo index {idx} out of range (1-{len(todos)})")
     todos[idx - 1]["done"] = True
+    touch_mission(mission)
     save_mission(root, mission)
     if args.json:
         print(json.dumps({"mission": name, "index": idx, "done": True}))
@@ -216,6 +226,7 @@ def _cmd_note(args: argparse.Namespace) -> int:
     name = resolve_mission_name(root, args.mission)
     mission = load_mission(root, name)
     mission.setdefault("notes", []).append(args.text)
+    touch_mission(mission)
     save_mission(root, mission)
     if args.json:
         print(json.dumps({"mission": name, "note": args.text}))
@@ -236,6 +247,7 @@ def _cmd_fork(args: argparse.Namespace) -> int:
         mission.setdefault("notes", []).append(
             f"FORK: {args.text} → spawned mission '{args.as_mission}'"
         )
+        touch_mission(mission)
         save_mission(root, mission)
         if args.json:
             print(json.dumps({
@@ -247,12 +259,117 @@ def _cmd_fork(args: argparse.Namespace) -> int:
             print(f"forked from {name} → new mission: {args.as_mission}")
     else:
         mission.setdefault("notes", []).append(f"FORK: {args.text}")
+        touch_mission(mission)
         save_mission(root, mission)
         if args.json:
             print(json.dumps({"mission": name, "fork": args.text}))
         else:
             print(f"fork noted on {name}")
 
+    return 0
+
+
+# ── mission help ─────────────────────────────────────────────────────
+
+def _format_help_overview(mission: dict) -> str:
+    help_obj = get_help(mission)
+    if not help_obj:
+        return f"mission: {mission['name']}\nno help entries"
+    lines = [f"mission: {mission['name']}", ""]
+    for field, entry in help_obj.items():
+        summary = help_summary(entry)
+        marker = "  [+]" if help_has_children(entry) else ""
+        lines.append(f"{field}: {summary}{marker}")
+    return "\n".join(lines)
+
+
+def _format_help_detail(mission: dict, field: str) -> str:
+    help_obj = get_help(mission)
+    entry = help_obj.get(field)
+    if entry is None:
+        return f"no help entry for: {field}"
+    if isinstance(entry, str):
+        return f"{field}: {entry}"
+    if isinstance(entry, dict):
+        lines = [f"{field}: {help_summary(entry)}"]
+        for k, v in entry.items():
+            if k == "help":
+                continue
+            if isinstance(v, str):
+                lines.append(f"  {k}: {v}")
+            elif isinstance(v, dict):
+                lines.append(f"  {k}: {help_summary(v)}  [+]")
+            else:
+                lines.append(f"  {k}: {v}")
+        return "\n".join(lines)
+    return f"{field}: {entry}"
+
+
+def _cmd_help(args: argparse.Namespace) -> int:
+    root = _project_root()
+    name = resolve_mission_name(root, args.name)
+    mission = load_mission(root, name)
+
+    if args.json:
+        help_obj = get_help(mission)
+        if args.field:
+            entry = help_obj.get(args.field)
+            print(json.dumps({"mission": name, "field": args.field, "help": entry}, indent=2))
+        else:
+            print(json.dumps({"mission": name, "help": help_obj}, indent=2))
+        return 0
+
+    if args.field:
+        print(_format_help_detail(mission, args.field))
+    else:
+        print(_format_help_overview(mission))
+    return 0
+
+
+def _cmd_help_set(args: argparse.Namespace) -> int:
+    root = _project_root()
+    name = resolve_mission_name(root, args.mission)
+    mission = load_mission(root, name)
+    set_help_entry(mission, args.field, args.text)
+    touch_mission(mission)
+    save_mission(root, mission)
+    if args.json:
+        print(json.dumps({"mission": name, "field": args.field, "help": args.text}))
+    else:
+        print(f"help set for {args.field} on {name}")
+    return 0
+
+
+# ── mission templates ────────────────────────────────────────────────
+
+def _cmd_templates(args: argparse.Namespace) -> int:
+    results = query_skills(
+        Path.cwd(),
+        filters={"type": "mission.template"},
+    )
+
+    if args.json:
+        print(json.dumps(
+            [
+                {
+                    "name": skill.name,
+                    "source_kind": skill.source_kind,
+                    "path": str(skill.path),
+                    "frontmatter": fm,
+                }
+                for skill, fm in results
+            ],
+            indent=2,
+        ))
+        return 0
+
+    if not results:
+        print("no mission templates found")
+        return 0
+
+    for skill, fm in results:
+        desc = fm.get("description", "")
+        print(f"  {skill.name}  {desc}")
     return 0
 
 
@@ -265,7 +382,7 @@ def _add_json_flag(parser: argparse.ArgumentParser) -> None:
 def _add_mission_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--mission", default=None,
-        help="Target mission name (default: active mission).",
+        help="Target mission name (default: most recently active mission).",
     )
 
 
@@ -285,26 +402,26 @@ def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(handler=_cmd_new)
 
     # activate
-    p = mission_subs.add_parser("activate", help="Set the active mission.")
+    p = mission_subs.add_parser("activate", help="Mark a mission as recently active and resume it.")
     p.add_argument("name", help="Mission name to activate.")
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_activate)
 
     # status
     p = mission_subs.add_parser("status", help="Show mission status.")
-    p.add_argument("name", nargs="?", default=None, help="Mission name (default: active).")
+    p.add_argument("name", nargs="?", default=None, help="Mission name (default: most recently active).")
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_status)
 
     # done
     p = mission_subs.add_parser("done", help="Mark a mission as done.")
-    p.add_argument("name", nargs="?", default=None, help="Mission name (default: active).")
+    p.add_argument("name", nargs="?", default=None, help="Mission name (default: most recently active).")
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_done)
 
     # park
     p = mission_subs.add_parser("park", help="Park a mission for later.")
-    p.add_argument("name", nargs="?", default=None, help="Mission name (default: active).")
+    p.add_argument("name", nargs="?", default=None, help="Mission name (default: most recently active).")
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_park)
 
@@ -312,6 +429,27 @@ def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     p = mission_subs.add_parser("list", help="List all missions.")
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_list)
+
+    # help show
+    p = mission_subs.add_parser("help", help="Show help entries for a mission.")
+    p.add_argument("name", nargs="?", default=None, help="Mission name (default: most recently active).")
+    p.add_argument("field", nargs="?", default=None, help="Drill into a specific field.")
+    _add_json_flag(p)
+    p.set_defaults(handler=_cmd_help)
+
+    # help set (as separate top-level subcommand)
+    p = mission_subs.add_parser("help-set", help="Set a help entry for a mission field.")
+    p.add_argument("field", help="Field name to document.")
+    p.add_argument("text", help="Help text for the field.")
+    _add_mission_flag(p)
+    _add_json_flag(p)
+    p.set_defaults(handler=_cmd_help_set)
+
+    # templates
+    p = mission_subs.add_parser("templates", help="List mission template skills.")
+    p.add_argument("--list", action="store_true", dest="list_templates", help="List available mission templates.")
+    _add_json_flag(p)
+    p.set_defaults(handler=_cmd_templates)
 
     # todo (nested subcommands)
     todo_parser = mission_subs.add_parser("todo", help="Manage mission todos.")

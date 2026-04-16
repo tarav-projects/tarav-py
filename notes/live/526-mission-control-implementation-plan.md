@@ -16,7 +16,6 @@ Missions live in `.agentos/missions/` (project-scoped, requires agentos project)
 
 ```
 .agentos/missions/
-  _active.json              # {"active": "auth-rewrite"} or {"active": null}
   auth-rewrite.mission.json # one file per mission
 ```
 
@@ -31,6 +30,7 @@ Missions live in `.agentos/missions/` (project-scoped, requires agentos project)
   "validation": "All tests pass + JWT integration tests green",
   "status": "active",
   "created": "2026-04-12T10:00:00Z",
+  "last_activity": "2026-04-12T10:00:00Z",
   "finished": null,
   "todos": [
     {"text": "swap middleware", "done": false},
@@ -40,15 +40,6 @@ Missions live in `.agentos/missions/` (project-scoped, requires agentos project)
     "Related to rate-limiter mission — shares the middleware layer",
     "Plan lives in live-notes/auth-plan"
   ]
-}
-```
-
-### Active File Schema
-
-```json
-{
-  "class": "agentos.mission.active",
-  "active": "auth-rewrite"
 }
 ```
 
@@ -73,14 +64,11 @@ Functions:
 
 - `missions_dir(project_root) -> Path` — returns `.agentos/missions/`, creates if needed
 - `mission_path(project_root, name) -> Path` — returns path for a named mission file
-- `active_path(project_root) -> Path` — returns `_active.json` path
 - `load_mission(project_root, name) -> dict` — read + validate a mission file
 - `save_mission(project_root, mission) -> None` — write mission file
-- `load_active(project_root) -> str | None` — read current active mission name
-- `save_active(project_root, name | None) -> None` — set active mission
 - `list_missions(project_root) -> list[dict]` — load all missions
 - `create_mission(project_root, name, goal, validation) -> dict` — create + save new mission
-- `resolve_mission_name(project_root, name | None) -> str` — if name is None, use active; error if neither
+- `resolve_mission_name(project_root, name | None) -> str` — if name is None, use the most recently active mission; error if none
 
 Validation:
 - Mission name: kebab-case, filesystem-safe (reuse `validate_string_for_path`)
@@ -97,35 +85,34 @@ Follow existing patterns (`prefix/commands.py` as template).
 - `--json` flag for structured output
 
 #### `agentos mission activate <name>`
-- Sets `_active.json` to point at this mission
+- Marks the mission as recently active
+- Sets status to `active`
 - Mission must exist
 - `--json` flag
 
 #### `agentos mission status [name]`
-- If no name: show active mission
+- If no name: show the most recently active mission
 - If name given: show that mission
 - Prints goal, validation, status, todos (with indices), notes
 - `--json` flag dumps the full mission object
 
 #### `agentos mission done [name]`
-- Resolves name (or active)
+- Resolves name (or most recent active)
 - Sets status to `done`, sets `finished` timestamp
-- If this was the active mission, clears `_active.json`
 - `--json` flag
 
 #### `agentos mission park [name]`
-- Resolves name (or active)
+- Resolves name (or most recent active)
 - Sets status to `parked`
-- If this was the active mission, clears `_active.json`
 - `--json` flag
 
 #### `agentos mission list`
-- Shows all missions grouped by status
+- Shows all missions grouped by status and ranked by `last_activity`
 - Columns: name, status, goal (truncated), todo progress (e.g. 2/5)
 - `--json` flag
 
 #### `agentos mission todo add "text"`
-- Appends to active (or `--mission <name>`) mission's todos
+- Appends to most recent active (or `--mission <name>`) mission's todos
 - `--json` flag
 
 #### `agentos mission todo done <index>`
@@ -133,7 +120,7 @@ Follow existing patterns (`prefix/commands.py` as template).
 - `--json` flag
 
 #### `agentos mission note "text"`
-- Appends to active (or `--mission <name>`) mission's notes
+- Appends to most recent active (or `--mission <name>`) mission's notes
 - `--json` flag
 
 #### `agentos mission fork "text" [--as-mission <name>]`
@@ -161,6 +148,7 @@ uv tool install --reinstall --editable .
 mission: auth-rewrite [active]
 goal:    Replace session auth with JWT
 check:   All tests pass + JWT integration tests green
+last:    2026-04-12T10:15:00Z
 
 todos:
   1. [ ] swap middleware
@@ -174,11 +162,11 @@ notes:
 ### `mission list` example output:
 
 ```
-active:
-  auth-rewrite    Replace session auth with JWT              [2/3 todos]
+active (most recent first):
+  auth-rewrite    Replace session auth with JWT              [2/3 todos]  [last 2026-04-12]
 
 parked:
-  rate-limiter    Rework rate limiting middleware             [0/1 todos]
+  rate-limiter    Rework rate limiting middleware             [0/1 todos]  [last 2026-04-11]
 
 done:
   setup-ci        Configure CI pipeline                      [done 2026-04-10]
@@ -190,5 +178,5 @@ done:
 - **No structured relations** — relations are just notes text. Keeps the system simple.
 - **1-based todo indexing** — matches human-friendly display.
 - **`fork` is sugar** — it's just `note` + optionally `new`. Could be removed without losing capability.
-- **Active is explicit** — creating a mission doesn't auto-activate. You choose when to connect.
+- **Multiple active missions** — there is no singleton active-mission pointer; commands default to the most recently active open mission.
 - **`--json` everywhere** — consistent with all other agentos subcommands for agent consumption.

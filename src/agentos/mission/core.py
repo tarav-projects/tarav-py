@@ -10,10 +10,8 @@ from agentos._core.project import project_agentos_dir
 
 MISSION_SCHEMA_VERSION = 1
 MISSION_CLASS = "agentos.mission"
-ACTIVE_CLASS = "agentos.mission.active"
 VALID_STATUSES = ("active", "done", "parked")
 MISSION_SUFFIX = ".mission.json"
-ACTIVE_FILENAME = "_active.json"
 
 
 def missions_dir(project_root: Path) -> Path:
@@ -24,10 +22,6 @@ def missions_dir(project_root: Path) -> Path:
 
 def mission_path(project_root: Path, name: str) -> Path:
     return missions_dir(project_root) / f"{name}{MISSION_SUFFIX}"
-
-
-def active_path(project_root: Path) -> Path:
-    return missions_dir(project_root) / ACTIVE_FILENAME
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -45,32 +39,50 @@ def _read_json(path: Path) -> dict:
     return payload
 
 
-def load_active(project_root: Path) -> str | None:
-    p = active_path(project_root)
-    if not p.exists():
+def _string_or_none(value: object) -> str | None:
+    if value is None:
         return None
-    data = _read_json(p)
-    value = data.get("active")
-    if value is None or value == "":
+    text = str(value).strip()
+    if not text:
         return None
-    return str(value)
+    return text
 
 
-def save_active(project_root: Path, name: str | None) -> None:
-    _write_json(active_path(project_root), {
-        "class": ACTIVE_CLASS,
-        "active": name,
-    })
+def mission_last_activity(mission: dict) -> str | None:
+    return (
+        _string_or_none(mission.get("last_activity"))
+        or _string_or_none(mission.get("finished"))
+        or _string_or_none(mission.get("created"))
+    )
+
+
+def _normalize_mission(mission: dict, *, source_name: str) -> dict:
+    if mission.get("class") != MISSION_CLASS:
+        raise CliError(f"invalid mission file: {source_name}")
+
+    status = mission.get("status", "active")
+    if status not in VALID_STATUSES:
+        raise CliError(
+            f"invalid mission status in {source_name}: {status!r} "
+            f"(expected one of: {', '.join(VALID_STATUSES)})"
+        )
+
+    normalized = dict(mission)
+    normalized["status"] = status
+    normalized.setdefault("todos", [])
+    normalized.setdefault("notes", [])
+
+    last_activity = mission_last_activity(normalized)
+    if last_activity is not None:
+        normalized["last_activity"] = last_activity
+    return normalized
 
 
 def load_mission(project_root: Path, name: str) -> dict:
     p = mission_path(project_root, name)
     if not p.exists():
         raise CliError(f"mission not found: {name}")
-    data = _read_json(p)
-    if data.get("class") != MISSION_CLASS:
-        raise CliError(f"invalid mission file: {p.name}")
-    return data
+    return _normalize_mission(_read_json(p), source_name=p.name)
 
 
 def save_mission(project_root: Path, mission: dict) -> None:
@@ -84,9 +96,17 @@ def list_missions(project_root: Path) -> list[dict]:
     for p in sorted(d.iterdir()):
         if p.name.endswith(MISSION_SUFFIX) and p.is_file():
             try:
-                results.append(_read_json(p))
+                results.append(_normalize_mission(_read_json(p), source_name=p.name))
             except CliError:
                 continue
+    results.sort(
+        key=lambda mission: (
+            mission_last_activity(mission) or "",
+            _string_or_none(mission.get("created")) or "",
+            mission.get("name", ""),
+        ),
+        reverse=True,
+    )
     return results
 
 
@@ -100,6 +120,7 @@ def create_mission(
     if mission_path(project_root, validated_name).exists():
         raise CliError(f"mission already exists: {validated_name}")
 
+    created = utc_now_iso()
     mission = {
         "class": MISSION_CLASS,
         "schema_version": MISSION_SCHEMA_VERSION,
@@ -107,7 +128,8 @@ def create_mission(
         "goal": goal.strip(),
         "validation": validation.strip(),
         "status": "active",
-        "created": utc_now_iso(),
+        "created": created,
+        "last_activity": created,
         "finished": None,
         "todos": [],
         "notes": [],
@@ -116,16 +138,52 @@ def create_mission(
     return mission
 
 
+def touch_mission(mission: dict, *, timestamp: str | None = None) -> str:
+    touched_at = timestamp or utc_now_iso()
+    mission["last_activity"] = touched_at
+    return touched_at
+
+
+def most_recent_active_mission_name(project_root: Path) -> str | None:
+    for mission in list_missions(project_root):
+        if mission.get("status", "active") == "active":
+            return mission["name"]
+    return None
+
+
 def resolve_mission_name(project_root: Path, name: str | None) -> str:
     if name is not None:
         return name
-    active = load_active(project_root)
-    if active is None:
-        raise CliError("no mission specified and no active mission set")
-    return active
+    recent = most_recent_active_mission_name(project_root)
+    if recent is None:
+        raise CliError("no mission specified and no recent active mission found")
+    return recent
 
 
 def todo_progress(mission: dict) -> tuple[int, int]:
     todos = mission.get("todos", [])
     done = sum(1 for t in todos if t.get("done"))
     return done, len(todos)
+
+
+# ── help ────────────────────────────────────────────────────────────
+
+
+def get_help(mission: dict) -> dict:
+    return mission.get("help", {})
+
+
+def set_help_entry(mission: dict, field: str, value: str | dict) -> None:
+    mission.setdefault("help", {})[field] = value
+
+
+def help_summary(entry: str | dict) -> str:
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        return str(entry.get("help", ""))
+    return str(entry)
+
+
+def help_has_children(entry: object) -> bool:
+    return isinstance(entry, dict)

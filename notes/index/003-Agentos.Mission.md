@@ -24,6 +24,8 @@ A mission has a small structured header and a freeform notes section:
 - **goal** — concise statement of what we're trying to achieve
 - **validation** — how we know it's done
 - **status** — `active`, `done`, or `parked`
+- **last_activity** — the last time this mission was explicitly worked on or resumed; used for ranking and default selection
+- **help** — self-documenting annotation layer; maps field names to help text (string) or structured objects with progressive disclosure
 - **todos** — lightweight checklist (micro-missions, goals/validations can be implicit)
 - **notes** — append-only freeform text list: relations, links, decisions, context
 
@@ -31,12 +33,17 @@ A mission has a small structured header and a freeform notes section:
 
 ```
 .agentos/missions/
-  _active.json              # {"active": "mission-name"} or {"active": null}
   auth-rewrite.mission.json
   rate-limiter.mission.json
 ```
 
 One file per mission. Flat directory. No nesting.
+
+Default mission selection is derived, not stored:
+
+- when a command omits the mission name, it targets the most recently active mission with `status == active`
+- the ranking signal is each mission's `last_activity`
+- multiple missions may be active at once
 
 ## Key Concepts
 
@@ -57,6 +64,26 @@ No structured relation system. Relations are just notes entries:
 - `"Related to rate-limiter — shares the middleware layer"`
 - `"Spawned from auth-rewrite fork #2"`
 
+### Help (progressive disclosure)
+
+The `help` field makes the mission file self-documenting. It maps field names to help text:
+
+- **string value** → printed directly
+- **object value** → has a `help` key for the summary; other keys are children accessible by drilling in
+
+```json
+"help": {
+  "deploy_target": "Target environment for rollout",
+  "validation": {
+    "help": "Two-step: automated + manual",
+    "automated": "Run paperson doctor proj-123",
+    "manual": "Sign-off from security team"
+  }
+}
+```
+
+`agentos mission help` shows one line per field. Object entries show `[+]` to indicate children. Drill into a field name to see the full entry.
+
 ## CLI Surface
 
 ```
@@ -70,7 +97,12 @@ agentos mission todo add "..."
 agentos mission todo done <index>
 agentos mission note "..."
 agentos mission fork "..." [--as-mission <name>]
+agentos mission help [name] [field]
+agentos mission help-set <field> "text"
+agentos mission templates --list
 ```
+
+`agentos mission activate <name>` does not set a singleton global pointer. It bumps that mission's `last_activity` and resumes it into `active` status so default selection can find it by recency.
 
 ## Agent Behavior
 
