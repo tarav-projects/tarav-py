@@ -94,7 +94,6 @@ _CANONICAL_PROVIDER_FAMILIES = tuple(
         "agents",
         "claude-code",
         "codex",
-        "copilot",
         "copilot-cli",
         "gemini-cli",
         "opencode",
@@ -529,7 +528,7 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
     else:
         model_flag = raw_model_flag.strip()
     if raw_prompt_flag is None:
-        prompt_flag = None
+        prompt_flag = _provider_family_default_prompt_flag(family_name)
     elif not isinstance(raw_prompt_flag, str) or not raw_prompt_flag.strip():
         raise CliError(f"{entry.field_name('prompt_flag')} must be a non-empty string")
     else:
@@ -721,7 +720,7 @@ def _join_provider_home(home: Path, relpath: str) -> Path:
 def _provider_family_default_cli_command(family_name: str) -> tuple[str, ...]:
     if family_name == "codex":
         return ("codex",)
-    if family_name == "copilot":
+    if family_name == "copilot-cli":
         return ("copilot",)
     return ()
 
@@ -729,6 +728,8 @@ def _provider_family_default_cli_command(family_name: str) -> tuple[str, ...]:
 def _provider_family_default_run_args(family_name: str) -> tuple[str, ...]:
     if family_name == "codex":
         return ("exec", "--dangerously-bypass-approvals-and-sandbox")
+    if family_name == "copilot-cli":
+        return ("--allow-all-tools", "--no-ask-user")
     if family_name == "opencode":
         return ("run",)
     return ()
@@ -743,8 +744,16 @@ def _provider_family_default_model(family_name: str) -> str | None:
 def _provider_family_default_model_flag(family_name: str) -> str | None:
     if family_name == "codex":
         return "--model"
+    if family_name == "copilot-cli":
+        return "--model"
     if family_name == "opencode":
         return "--model"
+    return None
+
+
+def _provider_family_default_prompt_flag(family_name: str) -> str | None:
+    if family_name == "copilot-cli":
+        return "-p"
     return None
 
 

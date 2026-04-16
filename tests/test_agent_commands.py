@@ -172,6 +172,78 @@ def test_agent_run_requires_configured_provider_instance(
     assert "no configured provider instances found for provider codex" in capsys.readouterr().err
 
 
+def test_agent_run_uses_copilot_cli_provider_instance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot-cli",
+                "id": "copilot-main",
+                "label": "Copilot main",
+            }
+        ],
+    )
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        cwd: str,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        observed["command"] = command
+        observed["cwd"] = cwd
+        observed["env_home"] = env["HOME"]
+        observed["check"] = check
+        return subprocess.CompletedProcess(command, 0)
+
+    import agentos.agent.commands as agent_commands
+
+    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "copilot-cli",
+                "--instance",
+                "copilot-main",
+                "--model",
+                "gpt-5.2",
+                "--",
+                "hello from agentos",
+            ]
+        )
+        == 0
+    )
+
+    assert observed["command"] == [
+        "copilot",
+        "--allow-all-tools",
+        "--no-ask-user",
+        "--model",
+        "gpt-5.2",
+        "-p",
+        "hello from agentos",
+    ]
+    assert observed["env_home"] == str(home)
+    assert observed["check"] is False
+    assert observed["cwd"] == str(Path.cwd().resolve())
+
+
 def test_agent_list_prints_configured_instances(
     tmp_path: Path,
     monkeypatch,

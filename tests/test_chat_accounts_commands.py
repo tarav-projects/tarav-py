@@ -320,7 +320,7 @@ def test_chat_accounts_stats_summarizes_configured_copilot_account(
         agentos_home / "config.json",
         provider_instances=[
             {
-                "provider": "copilot",
+                "provider": "copilot-cli",
                 "id": "copilot-main",
                 "label": "Copilot main",
             }
@@ -434,7 +434,7 @@ def test_chat_accounts_stats_summarizes_configured_copilot_account(
     copilot_account = payload["providers"][0]["accounts"][0]
     assert copilot_account["id"] == "copilot-main"
     assert copilot_account["label"] == "Copilot main"
-    assert copilot_account["provider"] == "copilot"
+    assert copilot_account["provider"] == "copilot-cli"
     assert copilot_account["check_status"] == "ok"
     assert copilot_account["cli_command"] == ["copilot"]
     assert copilot_account["auth_summary"] == "Copilot CLI ready (gpt-4.1)"
@@ -486,7 +486,7 @@ def test_chat_accounts_stats_degrades_when_copilot_github_token_fetch_fails(
         agentos_home / "config.json",
         provider_instances=[
             {
-                "provider": "copilot",
+                "provider": "copilot-cli",
                 "id": "copilot-main",
                 "label": "Copilot main",
             }
@@ -1432,7 +1432,7 @@ def test_chat_accounts_stats_supports_full_output_and_markdown(
     assert main(["chat", "accounts", "stats", "--full-output"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["provider_count"] == 3
-    assert [provider["provider"] for provider in payload["providers"]] == ["codex", "claude-code", "copilot"]
+    assert [provider["provider"] for provider in payload["providers"]] == ["codex", "claude-code", "copilot-cli"]
     assert all(provider["account_count"] == 0 for provider in payload["providers"])
 
     assert main(["chat", "accounts", "stats", "--full-output", "--output", "markdown"]) == 0
@@ -1443,7 +1443,7 @@ def test_chat_accounts_stats_supports_full_output_and_markdown(
     assert "- History segment: " in output
     assert "## codex" in output
     assert "## claude-code" in output
-    assert "## copilot" in output
+    assert "## copilot-cli" in output
 
 
 def test_chat_accounts_stats_supports_compact_usage_output(
@@ -1587,7 +1587,7 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> No
                         {
                             "id": "burst-high",
                             "label": "Burst high",
-                            "provider": "copilot",
+                            "provider": "copilot-cli",
                             "usage": {
                                 "limits": [
                                     {

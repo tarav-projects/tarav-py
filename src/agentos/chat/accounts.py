@@ -162,7 +162,7 @@ def supported_account_provider_families() -> tuple[AccountProviderHandler, ...]:
             collect_stats=_collect_claude_code_account_stats,
         ),
         AccountProviderHandler(
-            provider_family=require_canonical_provider_family("copilot"),
+            provider_family=require_canonical_provider_family("copilot-cli"),
             collect_stats=_collect_copilot_account_stats,
         ),
     )
@@ -1010,7 +1010,7 @@ def _chat_account_provider_icon(provider: str | None) -> str | None:
         return "⬢"
     if provider == "claude-code":
         return "✺"
-    if provider == "copilot":
+    if provider == "copilot-cli":
         return "🤖"
     return None
 
