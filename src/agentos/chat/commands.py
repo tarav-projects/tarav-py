@@ -7,7 +7,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, TextIO
+from typing import Any, Callable, TextIO
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
@@ -93,10 +93,10 @@ class _ChatAccountsStatsLoopFrame:
 
     def render_text(self, *, now_monotonic: float) -> str:
         sections: list[str] = []
+        sections.append(self.footer_text(now_monotonic=now_monotonic))
         if self.refresh_progress_text is not None:
             sections.append(self.refresh_progress_text)
         sections.append(self.body_text or _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE)
-        sections.append(self.footer_text(now_monotonic=now_monotonic))
         return "\n\n".join(sections)
 
     def footer_text(self, *, now_monotonic: float) -> str:
@@ -108,15 +108,62 @@ class _ChatAccountsStatsLoopFrame:
         )
 
 
-@dataclass(frozen=True)
 class _ChatAccountsStatsLoopTTYRenderer:
-    output_stream: TextIO
-    now_monotonic: Callable[[], float] = time.monotonic
+    def __init__(
+        self,
+        *,
+        output_stream: TextIO,
+        now_monotonic: Callable[[], float] = time.monotonic,
+        live_factory: Callable[..., Any] | None = None,
+    ) -> None:
+        self.output_stream = output_stream
+        self.now_monotonic = now_monotonic
+        self._live_factory = live_factory
+        self._console: Any | None = None
+        self._live: Any | None = None
+
+    def start(self) -> None:
+        if self._live is not None:
+            return
+        from rich.console import Console
+        from rich.live import Live
+        from rich.text import Text
+
+        if self._console is None:
+            self._console = Console(file=self.output_stream, force_terminal=True, color_system=None)
+        live_factory = self._live_factory or Live
+        self._live = live_factory(
+            Text(""),
+            console=self._console,
+            screen=True,
+            auto_refresh=False,
+            transient=False,
+            redirect_stdout=False,
+            redirect_stderr=False,
+            vertical_overflow="ellipsis",
+        )
+        self._live.start(refresh=True)
+
+    def stop(self) -> None:
+        if self._live is None:
+            return
+        live = self._live
+        self._live = None
+        live.stop()
 
     def paint(self, frame: _ChatAccountsStatsLoopFrame) -> None:
-        _clear_terminal_screen(self.output_stream)
-        self.output_stream.write(frame.render_text(now_monotonic=self.now_monotonic()))
-        self.output_stream.flush()
+        if self._live is None:
+            self.start()
+        from rich.text import Text
+
+        assert self._live is not None
+        self._live.update(
+            Text(
+                frame.render_text(now_monotonic=self.now_monotonic()),
+                overflow="fold",
+            ),
+            refresh=True,
+        )
 
 
 def _normalize_session_limit(limit: int | None) -> int | None:
@@ -244,30 +291,32 @@ def _loop_chat_accounts_stats(
     )
 
     first_iteration = True
-    while True:
-        if tty_output:
-            _render_chat_accounts_stats_progressive_tty(
-                args,
-                frame=tty_frame,
-                renderer=tty_renderer,
-                interval_sec=current_interval_sec,
-            )
-            assert tty_frame is not None
-            assert tty_renderer is not None
-            tty_frame.finish_refresh(next_refresh_at_monotonic=time.monotonic() + current_interval_sec)
-            tty_renderer.paint(tty_frame)
-        else:
-            rendered_output = _render_chat_accounts_stats_output(args)
-            if not first_iteration:
-                output_stream.write("\n")
-            output_stream.write(rendered_output)
-            output_stream.write(
-                f"\n\n[loop] refreshes every {int(current_interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
-            )
-            output_stream.flush()
-        first_iteration = False
+    if tty_renderer is not None:
+        tty_renderer.start()
+    try:
+        while True:
+            if tty_output:
+                _render_chat_accounts_stats_progressive_tty(
+                    args,
+                    frame=tty_frame,
+                    renderer=tty_renderer,
+                    interval_sec=current_interval_sec,
+                )
+                assert tty_frame is not None
+                assert tty_renderer is not None
+                tty_frame.finish_refresh(next_refresh_at_monotonic=time.monotonic() + current_interval_sec)
+                tty_renderer.paint(tty_frame)
+            else:
+                rendered_output = _render_chat_accounts_stats_output(args)
+                if not first_iteration:
+                    output_stream.write("\n")
+                output_stream.write(rendered_output)
+                output_stream.write(
+                    f"\n\n[loop] refreshes every {int(current_interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
+                )
+                output_stream.flush()
+            first_iteration = False
 
-        try:
             if tty_output and wait_for_trigger is _wait_for_chat_accounts_loop_trigger:
                 triggered_by_user = _wait_for_chat_accounts_loop_trigger_with_tty_countdown(
                     tty_frame,
@@ -276,23 +325,23 @@ def _loop_chat_accounts_stats(
                 )
             else:
                 triggered_by_user = wait_for_trigger(current_interval_sec, input_stream)
-        except KeyboardInterrupt:
-            if tty_output:
-                output_stream.write("\n")
+
+            if triggered_by_user:
+                current_interval_sec = _CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC
+            else:
+                current_interval_sec = min(
+                    _CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC,
+                    current_interval_sec + _CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC,
+                )
+
+            if not tty_output:
+                output_stream.write(_CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n")
                 output_stream.flush()
-            return 0
-
-        if triggered_by_user:
-            current_interval_sec = _CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC
-        else:
-            current_interval_sec = min(
-                _CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC,
-                current_interval_sec + _CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC,
-            )
-
-        if not tty_output:
-            output_stream.write(_CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n")
-            output_stream.flush()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        if tty_renderer is not None:
+            tty_renderer.stop()
 
 
 def _render_chat_accounts_stats_progressive_tty(
@@ -387,11 +436,6 @@ def _stream_is_tty(stream: TextIO) -> bool:
         return bool(isatty())
     except OSError:
         return False
-
-
-def _clear_terminal_screen(output_stream: TextIO) -> None:
-    output_stream.write("\033[2J\033[H")
-    output_stream.flush()
 
 
 def _format_chat_accounts_loop_status(interval_sec: float, *, remaining_sec: float | None = None) -> str:

@@ -1095,9 +1095,6 @@ def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapsh
         loop=True,
     )
 
-    rendered_frames: list[str] = []
-    clear_calls = 0
-
     monkeypatch.setattr(
         chat_commands,
         "iter_chat_account_stats_refresh_payloads",
@@ -1116,23 +1113,37 @@ def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapsh
             return f"snapshot-pending-{pending_count}"
         return "snapshot-final"
 
-    def fake_clear(output_stream) -> None:  # type: ignore[no-untyped-def]
-        nonlocal clear_calls
-        del output_stream
-        clear_calls += 1
+    class FakeLive:
+        def __init__(self, renderable, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            self.initial_renderable = renderable
+            self.kwargs = kwargs
+            self.started_with_refresh: list[bool] = []
+            self.updated_frames: list[str] = []
 
-    class FakeTTYOutput(io.StringIO):
-        def write(self, text: str) -> int:
-            rendered_frames.append(text)
-            return super().write(text)
+        def start(self, *, refresh: bool = False) -> None:
+            self.started_with_refresh.append(refresh)
+
+        def update(self, renderable, *, refresh: bool = False) -> None:  # type: ignore[no-untyped-def]
+            assert refresh is True
+            self.updated_frames.append(renderable.plain)
+
+        def stop(self) -> None:
+            pass
+
+    live_instances: list[FakeLive] = []
+
+    def fake_live_factory(renderable, **kwargs) -> FakeLive:  # type: ignore[no-untyped-def]
+        live = FakeLive(renderable, **kwargs)
+        live_instances.append(live)
+        return live
 
     monkeypatch.setattr(chat_commands, "_format_chat_accounts_stats_payload_output", fake_format)
-    monkeypatch.setattr(chat_commands, "_clear_terminal_screen", fake_clear)
 
     frame = chat_commands._ChatAccountsStatsLoopFrame(interval_sec=60.0)
     renderer = chat_commands._ChatAccountsStatsLoopTTYRenderer(
-        output_stream=FakeTTYOutput(),
+        output_stream=io.StringIO(),
         now_monotonic=lambda: 0.0,
+        live_factory=fake_live_factory,
     )
 
     chat_commands._render_chat_accounts_stats_progressive_tty(
@@ -1142,7 +1153,14 @@ def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapsh
         interval_sec=60.0,
     )
 
-    assert clear_calls == 3
+    assert len(live_instances) == 1
+    live = live_instances[0]
+    assert live.kwargs["screen"] is True
+    assert live.kwargs["auto_refresh"] is False
+    assert live.kwargs["transient"] is False
+    assert live.started_with_refresh == [True]
+    rendered_frames = live.updated_frames
+    assert len(rendered_frames) == 3
     assert rendered_frames[0].startswith(chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE)
     assert "snapshot-pending-2" in rendered_frames[1]
     assert "[refresh] 0/2 complete; 2 pending" in rendered_frames[1]
@@ -1187,15 +1205,38 @@ def test_wait_for_chat_accounts_loop_trigger_with_tty_countdown_repaints_full_fr
     monkeypatch.setattr(chat_commands.time, "monotonic", lambda: next(wait_times))
     monkeypatch.setattr(chat_commands.time, "sleep", lambda seconds: None)
 
-    output_stream = io.StringIO()
+    class FakeLive:
+        def __init__(self, renderable, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            del renderable
+            self.kwargs = kwargs
+            self.updated_frames: list[str] = []
+
+        def start(self, *, refresh: bool = False) -> None:
+            assert refresh is True
+
+        def update(self, renderable, *, refresh: bool = False) -> None:  # type: ignore[no-untyped-def]
+            assert refresh is True
+            self.updated_frames.append(renderable.plain)
+
+        def stop(self) -> None:
+            pass
+
+    live_instances: list[FakeLive] = []
+
+    def fake_live_factory(renderable, **kwargs) -> FakeLive:  # type: ignore[no-untyped-def]
+        live = FakeLive(renderable, **kwargs)
+        live_instances.append(live)
+        return live
+
     frame = chat_commands._ChatAccountsStatsLoopFrame(
         interval_sec=2.0,
         body_text="snapshot-final",
     )
     frame.finish_refresh(next_refresh_at_monotonic=2.0)
     renderer = chat_commands._ChatAccountsStatsLoopTTYRenderer(
-        output_stream=output_stream,
+        output_stream=io.StringIO(),
         now_monotonic=lambda: next(renderer_times),
+        live_factory=fake_live_factory,
     )
 
     triggered_by_user = chat_commands._wait_for_chat_accounts_loop_trigger_with_tty_countdown(
@@ -1204,12 +1245,13 @@ def test_wait_for_chat_accounts_loop_trigger_with_tty_countdown_repaints_full_fr
         io.StringIO(),
     )
 
-    rendered = output_stream.getvalue()
+    assert len(live_instances) == 1
+    assert live_instances[0].kwargs["screen"] is True
+    rendered = "\n".join(live_instances[0].updated_frames)
     assert triggered_by_user is False
     assert rendered.count("snapshot-final") == 2
     assert "next refresh in 00:01" in rendered
     assert "next refresh in 00:00" in rendered
-    assert rendered.count("\033[2J\033[H") == 2
 
 
 def test_loop_chat_accounts_stats_uses_tty_countdown_between_refreshes(monkeypatch) -> None:

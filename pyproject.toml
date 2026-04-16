@@ -13,6 +13,7 @@ dependencies = [
     "jsonschema>=4.25.1",
     "jmespath>=1.0.1",
     "tara-stdlib-py",
+    "rich>=13.7,<16",
 ]
 
 [tool.uv.sources]
