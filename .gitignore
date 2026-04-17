@@ -1,5 +1,8 @@
 ## CUSTOM
 
+.agentos/state/
+.agents/skills/
+
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,julia,macos,windows,linux,visualstudiocode,git

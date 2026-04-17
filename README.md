@@ -25,16 +25,22 @@ Current baseline includes:
 Current public surface:
 
 - `list`: return the routed skill catalog visible to the caller context (`--json` optional)
+- `import`: materialize the routed skill catalog into the resolved local skill depot
+- `path --depot`: print the routed local skills depot path for the current caller context
 - `path <name>`: resolve one routed skill name to its loadable path
-- `--project <path>`: optional caller project root override for routing on both commands
+- `--project [path]`: optional caller project root override for routing on all commands; when passed without a value, use current `pwd`
 
 Current routing model:
 
-- caller context resolves from `--project`, then agentos project root from `cwd`, then raw `pwd`
-- profile selection uses the closest matching bound parent context from global config
-- missing binding falls back to profile `base`
-- selected profiles materialize into `~/.agentos/skills-depot/<profile>/`
-- public output is served from the routed depot only, not from raw skill sources
+- local context resolves from `--project`, then nearest local `.agents/` directory, then agentos project root
+- `~/.agents` is not used as the public routed skills surface for this flow
+- profile selection uses local project config override first, then global `default_profile`, then hardcoded `default`
+- imports are declared once in `imports_registry`
+- packages group reusable ordered import sets
+- profiles choose packages, optional inline imports, and a local `skill_depot`
+- when no local context exists, public commands return an empty routed catalog or a local-context error
+- `list` and `path` are config-derived and do not materialize symlinks
+- `import` is the only public command that syncs the local routed depot
 
 Global config shape:
 
@@ -49,16 +55,21 @@ Global config shape:
           "path": "/Users/pereiro/projects/agentos/skills"
         }
       },
-      "bindings": [
-        { "root": "/abs/project/root", "profile": "agentos" }
-      ],
-      "profiles": {
-        "base": {
-          "imports": []
-        },
-        "agentos": {
+      "packages": {
+        "core": {
           "imports": [
-            { "name": "agentos" },
+            { "name": "agentos" }
+          ]
+        }
+      },
+      "default_profile": "default",
+      "profiles": {
+        "default": {
+          "skill_depot": ".agents/skills",
+          "packages": [
+            { "name": "core" }
+          ],
+          "imports": [
             { "name": "scratch", "path": "skills" }
           ]
         }
@@ -71,9 +82,13 @@ Global config shape:
 Output notes:
 
 - `list` includes at least `name`, `description`, `source`, and routed absolute `path`
+- `path --depot` prints the routed local depot absolute path
 - `path <name>` prints the routed absolute path only
+- those routed paths are predictive until `import` syncs the depot
 - when the selected profile exposes no skills, `list` returns an authoritative empty result
+- package references are objects
 - profile import entries are always objects
+- `{ "profile": "research" }` can be set in local `.agentos/config.json` under `skills.routing`
 - `{ "name": "agentos" }` resolves through `imports_registry`
 - `{ "name": "scratch", "path": "skills" }` is an inline import definition
 

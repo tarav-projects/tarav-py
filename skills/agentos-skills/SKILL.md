@@ -13,13 +13,15 @@ This skill exists as a compatibility hook for traditional skill loaders. It teac
 
 1. Run `agentos skills list` to inspect the routed skill catalog for the current caller context.
 2. If acting on another project, pass `--project <root>` to the command.
-3. Choose one skill from that routed catalog.
-4. Run `agentos skills path <name>` to resolve the routed loadable path for that skill.
-5. Read the target skill from the returned path and follow it.
+3. If the routed catalog is non-empty, run `agentos skills import` once for that caller context to materialize the local skill depot.
+4. Choose one skill from that routed catalog.
+5. Run `agentos skills path <name>` to resolve the local routed loadable path for that skill.
+6. Read the target skill from the returned path and follow it.
 
 ## Rules
 
 - Treat `agentos skills` as the only public discovery surface for skills.
+- `agentos skills import` is the only public sync step that materializes routed skills into the local depot.
 - Do not inspect other skill folders directly for discovery.
 - Do not assume hidden registries, depots, or imports are available.
 - If `agentos skills list` returns no skills, treat that result as authoritative.
