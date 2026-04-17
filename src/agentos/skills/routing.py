@@ -24,7 +24,10 @@ from agentos.utils.skills import (
     parse_skill_frontmatter,
 )
 
-DEFAULT_ROUTED_SKILLS_DEPOT = Path(".agents/skills")
+DEFAULT_ROUTED_SKILLS_DEPOTS = (
+    ".agents/skills",
+    ".claude/skills",
+)
 LOCAL_AGENTS_DIRNAME = ".agents"
 DEFAULT_ROUTED_PROFILE_NAME = "default"
 ROUTED_SKILLS_STATE_FILENAME = "skills-routing-links.json"
@@ -33,24 +36,18 @@ ROUTED_SKILLS_STATE_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
-class SkillsRoutingRegistryImport:
+class SkillsRoutingSource:
     name: str
-    path_text: str
+    path_text: str | None
+    package_payload: object | None
     enabled: bool
-
-
-@dataclass(frozen=True)
-class SkillsRoutingPackage:
-    name: str
-    imports_payload: object
 
 
 @dataclass(frozen=True)
 class SkillsRoutingProfile:
     name: str
-    skill_depot_text: str | None
-    packages_payload: object
-    imports_payload: object
+    depots_payload: object | None
+    sources_payload: object
 
 
 @dataclass(frozen=True)
@@ -58,8 +55,9 @@ class RoutedSkillsSelection:
     caller_root: Path
     local_context_root: Path | None
     profile_name: str | None
-    depot_root: Path | None
-    imports: list[SkillsImport]
+    depot_roots: tuple[Path, ...]
+    sources: list[SkillsImport]
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -67,14 +65,61 @@ class RoutedSkillRecord:
     name: str
     description: str
     source: str
-    path: Path
+    paths: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
+class RoutedSkillsDepotImportResult:
+    depot_root: Path
+    sync_result: SkillsSyncResult
 
 
 @dataclass(frozen=True)
 class RoutedSkillsImportResult:
     selection: RoutedSkillsSelection
     skills: list[RoutedSkillRecord]
-    sync_result: SkillsSyncResult
+    depot_results: tuple[RoutedSkillsDepotImportResult, ...]
+
+
+@dataclass(frozen=True)
+class RoutedSkillsStatusEntry:
+    name: str
+    path: Path
+    source: str | None
+    expected_source_path: Path | None
+    actual_entry_kind: str | None
+    actual_link_target: str | None
+    actual_resolved_target: Path | None
+
+
+@dataclass(frozen=True)
+class RoutedSkillsDepotStatusResult:
+    depot_root: Path
+    matching: list[RoutedSkillsStatusEntry]
+    missing: list[RoutedSkillsStatusEntry]
+    broken: list[RoutedSkillsStatusEntry]
+    unsynced: list[RoutedSkillsStatusEntry]
+    conflicts: list[RoutedSkillsStatusEntry]
+    extra: list[RoutedSkillsStatusEntry]
+
+
+@dataclass(frozen=True)
+class _RoutedSkillsDepotSyncPlan:
+    caller_root: Path
+    depot_root: Path
+    target_key: str
+    create_specs: tuple[tuple[Path, str], ...]
+    update_specs: tuple[tuple[Path, str], ...]
+    remove_specs: tuple[Path, ...]
+    matching_links: tuple[Path, ...]
+    final_links: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class RoutedSkillsStatusResult:
+    selection: RoutedSkillsSelection
+    skills: list[RoutedSkillRecord]
+    depot_statuses: tuple[RoutedSkillsDepotStatusResult, ...]
 
 
 def resolve_routed_skills_caller_root(
@@ -147,61 +192,53 @@ def _parse_default_profile_name(payload: object) -> str | None:
     return validate_string_for_path(normalized_name, field_name="routing default profile name")
 
 
-def _parse_routing_imports_registry(payload: object) -> dict[str, SkillsRoutingRegistryImport]:
+def _parse_routing_sources_registry(payload: object) -> dict[str, SkillsRoutingSource]:
     if payload is None:
         return {}
     if not isinstance(payload, dict):
-        raise CliError("global config field skills.routing.imports_registry must be an object")
+        raise CliError("global config field skills.routing.sources must be an object")
 
-    registry: dict[str, SkillsRoutingRegistryImport] = {}
+    registry: dict[str, SkillsRoutingSource] = {}
     for raw_name, raw_entry in payload.items():
         if not isinstance(raw_name, str) or not raw_name.strip():
-            raise CliError("global config field skills.routing.imports_registry keys must be non-empty strings")
-        name = validate_string_for_path(raw_name, field_name="routing import registry name")
+            raise CliError("global config field skills.routing.sources keys must be non-empty strings")
+        name = validate_string_for_path(raw_name, field_name="routing source name")
         if not isinstance(raw_entry, dict):
-            raise CliError(f"global config field skills.routing.imports_registry.{name} must be an object")
-
-        path_value = raw_entry.get("path")
-        path_text = str(path_value).strip()
-        if not path_text:
-            raise CliError(
-                f"global config field skills.routing.imports_registry.{name}.path is required"
-            )
+            raise CliError(f"global config field skills.routing.sources.{name} must be an object")
 
         enabled = raw_entry.get("enabled", True)
         if not isinstance(enabled, bool):
             raise CliError(
-                f"global config field skills.routing.imports_registry.{name}.enabled must be a boolean"
+                f"global config field skills.routing.sources.{name}.enabled must be a boolean"
             )
 
-        registry[name] = SkillsRoutingRegistryImport(
+        has_path = "path" in raw_entry
+        has_package = "package" in raw_entry
+        if has_path == has_package:
+            raise CliError(
+                f"global config field skills.routing.sources.{name} must define exactly one of path or package"
+            )
+
+        if has_path:
+            path_text = str(raw_entry.get("path", "")).strip()
+            if not path_text:
+                raise CliError(f"global config field skills.routing.sources.{name}.path is required")
+            registry[name] = SkillsRoutingSource(
+                name=name,
+                path_text=path_text,
+                package_payload=None,
+                enabled=enabled,
+            )
+            continue
+
+        registry[name] = SkillsRoutingSource(
             name=name,
-            path_text=path_text,
+            path_text=None,
+            package_payload=raw_entry.get("package"),
             enabled=enabled,
         )
 
     return registry
-
-
-def _parse_routing_packages(payload: object) -> dict[str, SkillsRoutingPackage]:
-    if payload is None:
-        return {}
-    if not isinstance(payload, dict):
-        raise CliError("global config field skills.routing.packages must be an object")
-
-    packages: dict[str, SkillsRoutingPackage] = {}
-    for raw_name, raw_package in payload.items():
-        if not isinstance(raw_name, str) or not raw_name.strip():
-            raise CliError("global config field skills.routing.packages keys must be non-empty strings")
-        name = validate_string_for_path(raw_name, field_name="routing package name")
-        if not isinstance(raw_package, dict):
-            raise CliError(f"global config field skills.routing.packages.{name} must be an object")
-        packages[name] = SkillsRoutingPackage(
-            name=name,
-            imports_payload=raw_package.get("imports", []),
-        )
-
-    return packages
 
 
 def _parse_routing_profiles(payload: object) -> dict[str, SkillsRoutingProfile]:
@@ -218,25 +255,23 @@ def _parse_routing_profiles(payload: object) -> dict[str, SkillsRoutingProfile]:
         if not isinstance(raw_profile, dict):
             raise CliError(f"global config field skills.routing.profiles.{name} must be an object")
 
-        skill_depot_text: str | None = None
         if "skill_depot" in raw_profile:
-            raw_skill_depot = raw_profile["skill_depot"]
-            if not isinstance(raw_skill_depot, str):
-                raise CliError(
-                    f"global config field skills.routing.profiles.{name}.skill_depot must be a string"
-                )
-            normalized_skill_depot = raw_skill_depot.strip()
-            if not normalized_skill_depot:
-                raise CliError(
-                    f"global config field skills.routing.profiles.{name}.skill_depot must not be empty"
-                )
-            skill_depot_text = normalized_skill_depot
+            raise CliError(
+                f"global config field skills.routing.profiles.{name}.skill_depot is no longer supported; use depots"
+            )
+        if "packages" in raw_profile:
+            raise CliError(
+                f"global config field skills.routing.profiles.{name}.packages is no longer supported; use sources"
+            )
+        if "imports" in raw_profile:
+            raise CliError(
+                f"global config field skills.routing.profiles.{name}.imports is no longer supported; use sources"
+            )
 
         profiles[name] = SkillsRoutingProfile(
             name=name,
-            skill_depot_text=skill_depot_text,
-            packages_payload=raw_profile.get("packages", []),
-            imports_payload=raw_profile.get("imports", []),
+            depots_payload=raw_profile.get("depots"),
+            sources_payload=raw_profile.get("sources", []),
         )
 
     return profiles
@@ -244,23 +279,26 @@ def _parse_routing_profiles(payload: object) -> dict[str, SkillsRoutingProfile]:
 
 def _load_routing_configuration() -> tuple[
     dict[str, SkillsRoutingProfile],
-    dict[str, SkillsRoutingPackage],
-    dict[str, SkillsRoutingRegistryImport],
+    dict[str, SkillsRoutingSource],
     str | None,
 ]:
     routing = _load_routing_section()
+    if "imports_registry" in routing:
+        raise CliError("global config field skills.routing.imports_registry is no longer supported; use sources")
+    if "packages" in routing:
+        raise CliError("global config field skills.routing.packages is no longer supported; use sources")
+
     profiles = _parse_routing_profiles(routing.get("profiles"))
-    packages = _parse_routing_packages(routing.get("packages"))
-    imports_registry = _parse_routing_imports_registry(routing.get("imports_registry"))
+    sources_registry = _parse_routing_sources_registry(routing.get("sources"))
     default_profile_name = _parse_default_profile_name(routing.get("default_profile"))
 
     if default_profile_name is not None and default_profile_name not in profiles:
         raise CliError(f"routing default profile references unknown profile: {default_profile_name}")
 
-    return profiles, packages, imports_registry, default_profile_name
+    return profiles, sources_registry, default_profile_name
 
 
-def _resolve_import_root(path_text: str, *, base_root: Path, field_name: str) -> Path:
+def _resolve_source_root(path_text: str, *, base_root: Path, field_name: str) -> Path:
     candidate = Path(path_text).expanduser()
     if not candidate.is_absolute():
         candidate = base_root / candidate
@@ -272,167 +310,247 @@ def _resolve_import_root(path_text: str, *, base_root: Path, field_name: str) ->
     return resolved
 
 
-def _append_imports_from_payload(
-    payload: object,
+def _append_direct_source(
+    name: str,
+    path_text: str,
     *,
-    config_label: str,
-    inline_base_root: Path,
-    imports_registry: dict[str, SkillsRoutingRegistryImport],
+    base_root: Path,
+    field_name: str,
     seen_names: set[str],
-    resolved_imports: list[SkillsImport],
+    resolved_sources: list[SkillsImport],
 ) -> None:
-    if not isinstance(payload, list):
-        raise CliError(f"{config_label}.imports must be an array")
+    if name in seen_names:
+        raise CliError(f"duplicate enabled routing source name: {name}")
 
-    for index, item in enumerate(payload):
-        item_label = f"{config_label}.imports[{index}]"
-        if not isinstance(item, dict):
-            raise CliError(f"{item_label} must be an object")
-
-        enabled = item.get("enabled", True)
-        if not isinstance(enabled, bool):
-            raise CliError(f"{item_label}.enabled must be a boolean")
-        if not enabled:
-            continue
-
-        name = validate_string_for_path(
-            item.get("name", ""),
-            field_name=f"{item_label}.name",
+    resolved_sources.append(
+        SkillsImport(
+            name=name,
+            root=_resolve_source_root(
+                path_text,
+                base_root=base_root,
+                field_name=field_name,
+            ),
+            configured_path=path_text,
         )
-
-        if name in seen_names:
-            raise CliError(f"duplicate enabled routing import name: {name}")
-
-        if "path" in item:
-            path_text = str(item["path"]).strip()
-            if not path_text:
-                raise CliError(f"{item_label}.path must not be empty")
-            resolved_imports.append(
-                SkillsImport(
-                    name=name,
-                    root=_resolve_import_root(
-                        path_text,
-                        base_root=inline_base_root,
-                        field_name=item_label,
-                    ),
-                    configured_path=path_text,
-                )
-            )
-            seen_names.add(name)
-            continue
-
-        registry_entry = imports_registry.get(name)
-        if registry_entry is None:
-            raise CliError(f"routing import references unknown registry entry: {name}")
-        if not registry_entry.enabled:
-            continue
-
-        resolved_imports.append(
-            SkillsImport(
-                name=name,
-                root=_resolve_import_root(
-                    registry_entry.path_text,
-                    base_root=agentos_home_dir(),
-                    field_name=f"global config field skills.routing.imports_registry.{name}",
-                ),
-                configured_path=registry_entry.path_text,
-            )
-        )
-        seen_names.add(name)
+    )
+    seen_names.add(name)
 
 
-def _resolve_profile_imports(
-    profile: SkillsRoutingProfile,
+def _append_sources_from_registry_reference(
+    source_name: str,
     *,
-    packages: dict[str, SkillsRoutingPackage],
-    imports_registry: dict[str, SkillsRoutingRegistryImport],
-    caller_root: Path,
-) -> list[SkillsImport]:
-    resolved_imports: list[SkillsImport] = []
-    seen_names: set[str] = set()
+    sources_registry: dict[str, SkillsRoutingSource],
+    seen_names: set[str],
+    resolved_sources: list[SkillsImport],
+    registry_stack: tuple[str, ...],
+) -> None:
+    registry_entry = sources_registry.get(source_name)
+    if registry_entry is None:
+        raise CliError(f"routing source references unknown registry source: {source_name}")
+    if not registry_entry.enabled:
+        return
+    if source_name in registry_stack:
+        cycle = " -> ".join([*registry_stack, source_name])
+        raise CliError(f"routing source cycle detected: {cycle}")
 
-    packages_payload = profile.packages_payload
-    if not isinstance(packages_payload, list):
-        raise CliError(
-            f"global config field skills.routing.profiles.{profile.name}.packages must be an array"
-        )
-
-    for index, item in enumerate(packages_payload):
-        item_label = f"global config field skills.routing.profiles.{profile.name}.packages[{index}]"
-        if not isinstance(item, dict):
-            raise CliError(f"{item_label} must be an object")
-
-        enabled = item.get("enabled", True)
-        if not isinstance(enabled, bool):
-            raise CliError(f"{item_label}.enabled must be a boolean")
-        if not enabled:
-            continue
-
-        package_name = validate_string_for_path(
-            item.get("name", ""),
-            field_name=f"{item_label}.name",
-        )
-        package = packages.get(package_name)
-        if package is None:
-            raise CliError(f"routing profile references unknown package: {package_name}")
-
-        _append_imports_from_payload(
-            package.imports_payload,
-            config_label=f"global config field skills.routing.packages.{package_name}",
-            inline_base_root=caller_root,
-            imports_registry=imports_registry,
+    if registry_entry.path_text is not None:
+        _append_direct_source(
+            registry_entry.name,
+            registry_entry.path_text,
+            base_root=agentos_home_dir(),
+            field_name=f"global config field skills.routing.sources.{registry_entry.name}",
             seen_names=seen_names,
-            resolved_imports=resolved_imports,
+            resolved_sources=resolved_sources,
         )
+        return
 
-    _append_imports_from_payload(
-        profile.imports_payload,
-        config_label=f"global config field skills.routing.profiles.{profile.name}",
-        inline_base_root=caller_root,
-        imports_registry=imports_registry,
+    _append_sources_from_payload(
+        registry_entry.package_payload,
+        payload_label=f"global config field skills.routing.sources.{registry_entry.name}.package",
+        inline_base_root=agentos_home_dir(),
+        sources_registry=sources_registry,
         seen_names=seen_names,
-        resolved_imports=resolved_imports,
+        resolved_sources=resolved_sources,
+        registry_stack=(*registry_stack, source_name),
     )
 
-    return resolved_imports
+
+def _append_sources_from_payload(
+    payload: object,
+    *,
+    payload_label: str,
+    inline_base_root: Path,
+    sources_registry: dict[str, SkillsRoutingSource],
+    seen_names: set[str],
+    resolved_sources: list[SkillsImport],
+    registry_stack: tuple[str, ...] = (),
+) -> None:
+    if not isinstance(payload, list):
+        raise CliError(f"{payload_label} must be an array")
+
+    for index, item in enumerate(payload):
+        item_label = f"{payload_label}[{index}]"
+        if not isinstance(item, dict):
+            raise CliError(f"{item_label} must be an object")
+
+        enabled = item.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise CliError(f"{item_label}.enabled must be a boolean")
+        if not enabled:
+            continue
+
+        has_path = "path" in item
+        has_package = "package" in item
+        if has_path and has_package:
+            raise CliError(f"{item_label} must define exactly one of path or package")
+
+        if has_path:
+            name = validate_string_for_path(
+                item.get("name", ""),
+                field_name=f"{item_label}.name",
+            )
+            path_text = str(item.get("path", "")).strip()
+            if not path_text:
+                raise CliError(f"{item_label}.path must not be empty")
+            _append_direct_source(
+                name,
+                path_text,
+                base_root=inline_base_root,
+                field_name=item_label,
+                seen_names=seen_names,
+                resolved_sources=resolved_sources,
+            )
+            continue
+
+        if has_package:
+            _append_sources_from_payload(
+                item.get("package"),
+                payload_label=f"{item_label}.package",
+                inline_base_root=inline_base_root,
+                sources_registry=sources_registry,
+                seen_names=seen_names,
+                resolved_sources=resolved_sources,
+                registry_stack=registry_stack,
+            )
+            continue
+
+        source_name = validate_string_for_path(
+            item.get("name", ""),
+            field_name=f"{item_label}.name",
+        )
+        _append_sources_from_registry_reference(
+            source_name,
+            sources_registry=sources_registry,
+            seen_names=seen_names,
+            resolved_sources=resolved_sources,
+            registry_stack=registry_stack,
+        )
 
 
-def _resolve_profile_skill_depot(profile: SkillsRoutingProfile, caller_root: Path) -> Path:
-    configured = profile.skill_depot_text or str(DEFAULT_ROUTED_SKILLS_DEPOT)
-    candidate = Path(configured).expanduser()
-    if not candidate.is_absolute():
-        candidate = caller_root / candidate
-    return candidate.resolve()
+def _resolve_profile_sources(
+    profile: SkillsRoutingProfile,
+    *,
+    sources_registry: dict[str, SkillsRoutingSource],
+    caller_root: Path,
+) -> list[SkillsImport]:
+    resolved_sources: list[SkillsImport] = []
+    seen_names: set[str] = set()
+
+    _append_sources_from_payload(
+        profile.sources_payload,
+        payload_label=f"global config field skills.routing.profiles.{profile.name}.sources",
+        inline_base_root=caller_root,
+        sources_registry=sources_registry,
+        seen_names=seen_names,
+        resolved_sources=resolved_sources,
+    )
+
+    return resolved_sources
 
 
-def _load_local_routing_profile_name(context_root: Path) -> str | None:
+def _resolve_profile_depots(profile: SkillsRoutingProfile, caller_root: Path) -> tuple[Path, ...]:
+    depots_payload = profile.depots_payload
+    configured_depots = DEFAULT_ROUTED_SKILLS_DEPOTS if depots_payload is None else depots_payload
+
+    if not isinstance(configured_depots, list | tuple):
+        raise CliError(f"global config field skills.routing.profiles.{profile.name}.depots must be an array")
+    if not configured_depots:
+        raise CliError(
+            f"global config field skills.routing.profiles.{profile.name}.depots must not be empty"
+        )
+
+    resolved_depots: list[Path] = []
+    seen_roots: set[Path] = set()
+    for index, item in enumerate(configured_depots):
+        item_label = f"global config field skills.routing.profiles.{profile.name}.depots[{index}]"
+        if not isinstance(item, str):
+            raise CliError(f"{item_label} must be a string")
+        depot_text = item.strip()
+        if not depot_text:
+            raise CliError(f"{item_label} must not be empty")
+
+        candidate = Path(depot_text).expanduser()
+        if candidate.is_absolute():
+            raise CliError(f"{item_label} must be a relative project path")
+
+        resolved_candidate = (caller_root / candidate).resolve()
+        try:
+            resolved_candidate.relative_to(caller_root)
+        except ValueError as exc:
+            raise CliError(f"{item_label} must stay inside the project root: {caller_root}") from exc
+
+        if resolved_candidate in seen_roots:
+            raise CliError(f"duplicate resolved routing depot path: {resolved_candidate}")
+        seen_roots.add(resolved_candidate)
+        resolved_depots.append(resolved_candidate)
+
+    return tuple(resolved_depots)
+
+
+def _load_local_routing_profile_name(context_root: Path) -> tuple[str | None, tuple[str, ...]]:
     config_path = project_config_path(context_root)
     if not config_path.exists():
-        return None
+        return None, ()
+    try:
+        if config_path.resolve() == global_config_path().resolve():
+            return (
+                None,
+                (
+                    (
+                        f"ignoring local project config {config_path} because it resolves to the "
+                        f"global config {global_config_path()}"
+                    ),
+                ),
+            )
+    except OSError:
+        pass
 
     payload = load_project_config(config_path)
     skills_section = payload.get("skills")
     if skills_section is None:
-        return None
+        return None, ()
     if not isinstance(skills_section, dict):
         raise CliError("project config field skills must be a JSON object")
 
     routing = skills_section.get("routing")
     if routing is None:
-        return None
+        return None, ()
     if not isinstance(routing, dict):
         raise CliError("project config field skills.routing must be a JSON object")
 
     profile_value = routing.get("profile")
     if profile_value is None:
-        return None
+        return None, ()
     if not isinstance(profile_value, str):
         raise CliError("project config field skills.routing.profile must be a string")
 
     normalized_name = profile_value.strip()
     if not normalized_name:
         raise CliError("project config field skills.routing.profile must not be empty")
-    return validate_string_for_path(normalized_name, field_name="project routing profile name")
+    return (
+        validate_string_for_path(normalized_name, field_name="project routing profile name"),
+        (),
+    )
 
 
 def resolve_routed_skills_selection(
@@ -451,18 +569,19 @@ def resolve_routed_skills_selection(
         local_context_root = _resolve_local_agents_context_root(raw_start_root)
         if local_context_root is None:
             local_context_root = find_agentos_project_root(raw_start_root)
-    profiles, packages, imports_registry, default_profile_name = _load_routing_configuration()
+    profiles, sources_registry, default_profile_name = _load_routing_configuration()
 
     if local_context_root is None:
         return RoutedSkillsSelection(
             caller_root=raw_start_root,
             local_context_root=None,
             profile_name=None,
-            depot_root=None,
-            imports=[],
+            depot_roots=(),
+            sources=[],
+            warnings=(),
         )
 
-    local_profile_name = _load_local_routing_profile_name(local_context_root)
+    local_profile_name, selection_warnings = _load_local_routing_profile_name(local_context_root)
     selected_profile_name = local_profile_name or default_profile_name or DEFAULT_ROUTED_PROFILE_NAME
 
     profile = profiles.get(selected_profile_name)
@@ -473,21 +592,22 @@ def resolve_routed_skills_selection(
             caller_root=local_context_root,
             local_context_root=local_context_root,
             profile_name=None,
-            depot_root=None,
-            imports=[],
+            depot_roots=(),
+            sources=[],
+            warnings=selection_warnings,
         )
 
     return RoutedSkillsSelection(
         caller_root=local_context_root,
         local_context_root=local_context_root,
         profile_name=profile.name,
-        depot_root=_resolve_profile_skill_depot(profile, local_context_root),
-        imports=_resolve_profile_imports(
+        depot_roots=_resolve_profile_depots(profile, local_context_root),
+        sources=_resolve_profile_sources(
             profile,
-            packages=packages,
-            imports_registry=imports_registry,
+            sources_registry=sources_registry,
             caller_root=local_context_root,
         ),
+        warnings=selection_warnings,
     )
 
 
@@ -514,6 +634,33 @@ def _resolved_symlink_target(path: Path) -> Path:
     if link_target.is_absolute():
         return link_target.resolve()
     return (path.parent / link_target).resolve()
+
+
+def _list_visible_depot_entries(depot_root: Path) -> list[Path]:
+    normalized_depot_root = depot_root.expanduser().resolve()
+    if not normalized_depot_root.exists():
+        return []
+    if not normalized_depot_root.is_dir():
+        raise CliError(f"routed skills depot is not a directory: {normalized_depot_root}")
+
+    return sorted(
+        [
+            child
+            for child in normalized_depot_root.iterdir()
+            if not child.name.startswith(".")
+        ],
+        key=lambda path: path.name,
+    )
+
+
+def _entry_kind(path: Path) -> str:
+    if path.is_symlink():
+        return "symlink"
+    if path.is_dir():
+        return "directory"
+    if path.is_file():
+        return "file"
+    return "other"
 
 
 def _load_routed_skills_state(caller_root: Path) -> dict[str, dict[str, str]]:
@@ -582,11 +729,13 @@ def _write_routed_skills_state(caller_root: Path, state: dict[str, dict[str, str
     state_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def _sync_routed_profile_depot(
+def _plan_routed_profile_depot_sync(
     caller_root: Path,
     depot_root: Path,
     discovered: list[DiscoveredSkill],
-) -> SkillsSyncResult:
+    *,
+    force: bool = False,
+) -> _RoutedSkillsDepotSyncPlan:
     normalized_caller_root = caller_root.expanduser().resolve()
     normalized_depot_root = depot_root.expanduser().resolve()
     if normalized_depot_root.exists() and not normalized_depot_root.is_dir():
@@ -604,37 +753,61 @@ def _sync_routed_profile_depot(
     desired_names: set[str] = set()
     conflicts: list[tuple[Path, str]] = []
 
-    for skill in discovered:
-        desired_names.add(skill.name)
-        link_path = normalized_depot_root / skill.name
-        desired_source = skill.source_path.resolve()
-        desired_link_target = _relative_symlink_target(link_path, desired_source)
+    if force:
+        if normalized_depot_root.exists():
+            remove_specs = sorted(
+                [
+                    child
+                    for child in normalized_depot_root.iterdir()
+                    if child.is_symlink()
+                ],
+                key=lambda path: path.name,
+            )
 
-        if link_path.exists() or link_path.is_symlink():
-            if link_path.is_symlink():
-                actual_link_target = os.readlink(link_path)
-                if _resolved_symlink_target(link_path) == desired_source:
-                    matching_links.append(link_path)
-                    final_links[skill.name] = actual_link_target
-                    continue
-                if previous_links.get(skill.name) == actual_link_target:
-                    update_specs.append((link_path, desired_link_target))
-                    final_links[skill.name] = desired_link_target
-                    continue
-            conflicts.append((link_path, desired_source.as_posix()))
-            continue
+        for skill in discovered:
+            desired_names.add(skill.name)
+            link_path = normalized_depot_root / skill.name
+            desired_source = skill.source_path.resolve()
+            desired_link_target = _relative_symlink_target(link_path, desired_source)
 
-        create_specs.append((link_path, desired_link_target))
-        final_links[skill.name] = desired_link_target
+            if link_path.exists() and not link_path.is_symlink():
+                conflicts.append((link_path, desired_source.as_posix()))
+                continue
 
-    for skill_name, previous_link_target in previous_links.items():
-        if skill_name in desired_names:
-            continue
-        link_path = normalized_depot_root / skill_name
-        if not link_path.is_symlink():
-            continue
-        if os.readlink(link_path) == previous_link_target:
-            remove_specs.append(link_path)
+            create_specs.append((link_path, desired_link_target))
+            final_links[skill.name] = desired_link_target
+    else:
+        for skill in discovered:
+            desired_names.add(skill.name)
+            link_path = normalized_depot_root / skill.name
+            desired_source = skill.source_path.resolve()
+            desired_link_target = _relative_symlink_target(link_path, desired_source)
+
+            if link_path.exists() or link_path.is_symlink():
+                if link_path.is_symlink():
+                    actual_link_target = os.readlink(link_path)
+                    if _resolved_symlink_target(link_path) == desired_source:
+                        matching_links.append(link_path)
+                        final_links[skill.name] = actual_link_target
+                        continue
+                    if previous_links.get(skill.name) == actual_link_target:
+                        update_specs.append((link_path, desired_link_target))
+                        final_links[skill.name] = desired_link_target
+                        continue
+                conflicts.append((link_path, desired_source.as_posix()))
+                continue
+
+            create_specs.append((link_path, desired_link_target))
+            final_links[skill.name] = desired_link_target
+
+        for skill_name, previous_link_target in previous_links.items():
+            if skill_name in desired_names:
+                continue
+            link_path = normalized_depot_root / skill_name
+            if not link_path.is_symlink():
+                continue
+            if os.readlink(link_path) == previous_link_target:
+                remove_specs.append(link_path)
 
     if conflicts:
         conflict_entries = ", ".join(
@@ -642,27 +815,41 @@ def _sync_routed_profile_depot(
         )
         raise CliError(f"routed skills sync found conflicting existing paths: {conflict_entries}")
 
-    if create_specs or update_specs:
-        normalized_depot_root.mkdir(parents=True, exist_ok=True)
-    for link_path in remove_specs:
+    return _RoutedSkillsDepotSyncPlan(
+        caller_root=normalized_caller_root,
+        depot_root=normalized_depot_root,
+        target_key=target_key,
+        create_specs=tuple(create_specs),
+        update_specs=tuple(update_specs),
+        remove_specs=tuple(remove_specs),
+        matching_links=tuple(matching_links),
+        final_links=tuple(sorted(final_links.items())),
+    )
+
+
+def _apply_routed_profile_depot_sync(plan: _RoutedSkillsDepotSyncPlan) -> SkillsSyncResult:
+    if plan.create_specs or plan.update_specs:
+        plan.depot_root.mkdir(parents=True, exist_ok=True)
+    for link_path in plan.remove_specs:
         if link_path.is_symlink():
             link_path.unlink()
-    for link_path, _ in update_specs:
+    for link_path, _ in plan.update_specs:
         link_path.unlink()
-    for link_path, link_target in create_specs + update_specs:
+    for link_path, link_target in plan.create_specs + plan.update_specs:
         link_path.symlink_to(link_target, target_is_directory=True)
 
-    if final_links:
-        state[target_key] = dict(sorted(final_links.items()))
+    state = _load_routed_skills_state(plan.caller_root)
+    if plan.final_links:
+        state[plan.target_key] = dict(plan.final_links)
     else:
-        state.pop(target_key, None)
-    _write_routed_skills_state(normalized_caller_root, state)
+        state.pop(plan.target_key, None)
+    _write_routed_skills_state(plan.caller_root, state)
 
     return SkillsSyncResult(
-        created_links=[path for path, _ in create_specs],
-        updated_links=[path for path, _ in update_specs],
-        removed_links=remove_specs,
-        matching_links=matching_links,
+        created_links=[path for path, _ in plan.create_specs],
+        updated_links=[path for path, _ in plan.update_specs],
+        removed_links=list(plan.remove_specs),
+        matching_links=list(plan.matching_links),
     )
 
 
@@ -670,9 +857,6 @@ def _routed_records_from_discovered(
     selection: RoutedSkillsSelection,
     discovered: list[DiscoveredSkill],
 ) -> list[RoutedSkillRecord]:
-    if selection.depot_root is None:
-        return []
-
     routed_skills: list[RoutedSkillRecord] = []
     for skill in discovered:
         frontmatter = parse_skill_frontmatter(skill.source_path)
@@ -681,7 +865,7 @@ def _routed_records_from_discovered(
                 name=skill.name,
                 description=frontmatter.get("description", ""),
                 source=skill.import_name,
-                path=selection.depot_root / skill.name,
+                paths=tuple(depot_root / skill.name for depot_root in selection.depot_roots),
             )
         )
 
@@ -695,8 +879,178 @@ def list_routed_skills(
     project: Path | str | None = None,
 ) -> tuple[RoutedSkillsSelection, list[RoutedSkillRecord]]:
     selection = resolve_routed_skills_selection(start_path, project=project)
-    discovered = discover_imported_skills(selection.imports)
+    discovered = discover_imported_skills(selection.sources)
     return selection, _routed_records_from_discovered(selection, discovered)
+
+
+def _routed_skills_status_for_depot(
+    depot_root: Path,
+    *,
+    routed_skills: list[RoutedSkillRecord],
+    discovered_by_name: dict[str, DiscoveredSkill],
+) -> RoutedSkillsDepotStatusResult:
+    matching: list[RoutedSkillsStatusEntry] = []
+    missing: list[RoutedSkillsStatusEntry] = []
+    broken: list[RoutedSkillsStatusEntry] = []
+    unsynced: list[RoutedSkillsStatusEntry] = []
+    conflicts: list[RoutedSkillsStatusEntry] = []
+    extra: list[RoutedSkillsStatusEntry] = []
+
+    expected_names = {skill.name for skill in routed_skills}
+
+    for skill in routed_skills:
+        discovered_skill = discovered_by_name[skill.name]
+        path = depot_root / skill.name
+        expected_source_path = discovered_skill.source_path.resolve()
+
+        if path.is_symlink():
+            actual_link_target = os.readlink(path)
+            if not path.exists():
+                broken.append(
+                    RoutedSkillsStatusEntry(
+                        name=skill.name,
+                        path=path,
+                        source=skill.source,
+                        expected_source_path=expected_source_path,
+                        actual_entry_kind="symlink",
+                        actual_link_target=actual_link_target,
+                        actual_resolved_target=None,
+                    )
+                )
+                continue
+
+            actual_resolved_target = _resolved_symlink_target(path)
+            if actual_resolved_target == expected_source_path:
+                matching.append(
+                    RoutedSkillsStatusEntry(
+                        name=skill.name,
+                        path=path,
+                        source=skill.source,
+                        expected_source_path=expected_source_path,
+                        actual_entry_kind="symlink",
+                        actual_link_target=actual_link_target,
+                        actual_resolved_target=actual_resolved_target,
+                    )
+                )
+                continue
+
+            unsynced.append(
+                RoutedSkillsStatusEntry(
+                    name=skill.name,
+                    path=path,
+                    source=skill.source,
+                    expected_source_path=expected_source_path,
+                    actual_entry_kind="symlink",
+                    actual_link_target=actual_link_target,
+                    actual_resolved_target=actual_resolved_target,
+                )
+            )
+            continue
+
+        if path.exists():
+            conflicts.append(
+                RoutedSkillsStatusEntry(
+                    name=skill.name,
+                    path=path,
+                    source=skill.source,
+                    expected_source_path=expected_source_path,
+                    actual_entry_kind=_entry_kind(path),
+                    actual_link_target=None,
+                    actual_resolved_target=None,
+                )
+            )
+            continue
+
+        missing.append(
+            RoutedSkillsStatusEntry(
+                name=skill.name,
+                path=path,
+                source=skill.source,
+                expected_source_path=expected_source_path,
+                actual_entry_kind=None,
+                actual_link_target=None,
+                actual_resolved_target=None,
+            )
+        )
+
+    for path in _list_visible_depot_entries(depot_root):
+        if path.name in expected_names:
+            continue
+
+        if path.is_symlink():
+            actual_link_target = os.readlink(path)
+            if not path.exists():
+                broken.append(
+                    RoutedSkillsStatusEntry(
+                        name=path.name,
+                        path=path,
+                        source=None,
+                        expected_source_path=None,
+                        actual_entry_kind="symlink",
+                        actual_link_target=actual_link_target,
+                        actual_resolved_target=None,
+                    )
+                )
+                continue
+
+            extra.append(
+                RoutedSkillsStatusEntry(
+                    name=path.name,
+                    path=path,
+                    source=None,
+                    expected_source_path=None,
+                    actual_entry_kind="symlink",
+                    actual_link_target=actual_link_target,
+                    actual_resolved_target=_resolved_symlink_target(path),
+                )
+            )
+            continue
+
+        extra.append(
+            RoutedSkillsStatusEntry(
+                name=path.name,
+                path=path,
+                source=None,
+                expected_source_path=None,
+                actual_entry_kind=_entry_kind(path),
+                actual_link_target=None,
+                actual_resolved_target=None,
+            )
+        )
+
+    return RoutedSkillsDepotStatusResult(
+        depot_root=depot_root,
+        matching=matching,
+        missing=missing,
+        broken=broken,
+        unsynced=unsynced,
+        conflicts=conflicts,
+        extra=extra,
+    )
+
+
+def routed_skills_status(
+    start_path: Path | str = ".",
+    *,
+    project: Path | str | None = None,
+) -> RoutedSkillsStatusResult:
+    selection = resolve_routed_skills_selection(start_path, project=project)
+    discovered = discover_imported_skills(selection.sources)
+    routed_skills = _routed_records_from_discovered(selection, discovered)
+    discovered_by_name = {skill.name: skill for skill in discovered}
+
+    return RoutedSkillsStatusResult(
+        selection=selection,
+        skills=routed_skills,
+        depot_statuses=tuple(
+            _routed_skills_status_for_depot(
+                depot_root,
+                routed_skills=routed_skills,
+                discovered_by_name=discovered_by_name,
+            )
+            for depot_root in selection.depot_roots
+        ),
+    )
 
 
 def resolve_routed_skill(
@@ -717,26 +1071,37 @@ def import_routed_skills(
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
+    force: bool = False,
 ) -> RoutedSkillsImportResult:
     selection = resolve_routed_skills_selection(start_path, project=project)
-    discovered = discover_imported_skills(selection.imports)
+    discovered = discover_imported_skills(selection.sources)
     routed_skills = _routed_records_from_discovered(selection, discovered)
 
-    if selection.depot_root is None:
+    if not selection.depot_roots:
         return RoutedSkillsImportResult(
             selection=selection,
             skills=routed_skills,
-            sync_result=SkillsSyncResult(
-                created_links=[],
-                updated_links=[],
-                removed_links=[],
-                matching_links=[],
-            ),
+            depot_results=(),
         )
 
-    sync_result = _sync_routed_profile_depot(selection.caller_root, selection.depot_root, discovered)
+    sync_plans = tuple(
+        _plan_routed_profile_depot_sync(
+            selection.caller_root,
+            depot_root,
+            discovered,
+            force=force,
+        )
+        for depot_root in selection.depot_roots
+    )
+
     return RoutedSkillsImportResult(
         selection=selection,
         skills=routed_skills,
-        sync_result=sync_result,
+        depot_results=tuple(
+            RoutedSkillsDepotImportResult(
+                depot_root=plan.depot_root,
+                sync_result=_apply_routed_profile_depot_sync(plan),
+            )
+            for plan in sync_plans
+        ),
     )

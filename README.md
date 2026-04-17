@@ -20,14 +20,16 @@ Current baseline includes:
 
 ## Skills CLI
 
-`agentos skills` exposes the public routed skills surface.
+`agentos skills` controls the project-local routed skills depots.
 
 Current public surface:
 
-- `list`: return the routed skill catalog visible to the caller context (`--json` optional)
-- `import`: materialize the routed skill catalog into the resolved local skill depot
-- `path --depot`: print the routed local skills depot path for the current caller context
-- `path <name>`: resolve one routed skill name to its loadable path
+- `list`: return the desired routed skill catalog visible to the caller context (`--json` optional)
+- `import`: reconcile the desired routed skill catalog into every resolved local project skill depot
+- `import --force`: rebuild the depot symlink layer in every resolved depot by deleting existing depot symlinks, then recreating the routed symlink set
+- `status`: analyze every resolved local skill depot against the desired routed catalog (`--json` optional)
+- `path --depot`: print the resolved local project skill depot paths for the current caller context
+- `path <name>`: resolve one routed skill name to all of its local load paths
 - `--project [path]`: optional caller project root override for routing on all commands; when passed without a value, use current `pwd`
 
 Current routing model:
@@ -35,12 +37,18 @@ Current routing model:
 - local context resolves from `--project`, then nearest local `.agents/` directory, then agentos project root
 - `~/.agents` is not used as the public routed skills surface for this flow
 - profile selection uses local project config override first, then global `default_profile`, then hardcoded `default`
-- imports are declared once in `imports_registry`
-- packages group reusable ordered import sets
-- profiles choose packages, optional inline imports, and a local `skill_depot`
+- sources are declared once in `sources`
+- a source is either a direct `{ "path": "..." }` leaf or a `{ "package": [...] }` composite
+- package lists expand left to right and can mix registry references with inline direct sources
+- profiles choose ordered `sources` and one or more relative `depots`
+- relative registry source paths resolve from `AGENTOS_HOME`; inline profile source paths resolve from the caller project root
+- when `depots` is omitted, the default depots are `.agents/skills` and `.claude/skills`
+- all depots are equal; there is no canonical or primary depot
 - when no local context exists, public commands return an empty routed catalog or a local-context error
 - `list` and `path` are config-derived and do not materialize symlinks
-- `import` is the only public command that syncs the local routed depot
+- `import` performs an incremental managed sync of every routed depot
+- `import --force` resets every depot symlink layer to routed state without deleting non-symlink conflicts
+- `status` analyzes the current state of every routed depot without syncing it
 
 Global config shape:
 
@@ -50,14 +58,12 @@ Global config shape:
   "schema_version": 1,
   "skills": {
     "routing": {
-      "imports_registry": {
+      "sources": {
         "agentos": {
           "path": "/Users/pereiro/projects/agentos/skills"
-        }
-      },
-      "packages": {
+        },
         "core": {
-          "imports": [
+          "package": [
             { "name": "agentos" }
           ]
         }
@@ -65,11 +71,12 @@ Global config shape:
       "default_profile": "default",
       "profiles": {
         "default": {
-          "skill_depot": ".agents/skills",
-          "packages": [
-            { "name": "core" }
+          "depots": [
+            ".agents/skills",
+            ".claude/skills"
           ],
-          "imports": [
+          "sources": [
+            { "name": "core" },
             { "name": "scratch", "path": "skills" }
           ]
         }
@@ -81,16 +88,19 @@ Global config shape:
 
 Output notes:
 
-- `list` includes at least `name`, `description`, `source`, and routed absolute `path`
-- `path --depot` prints the routed local depot absolute path
-- `path <name>` prints the routed absolute path only
-- those routed paths are predictive until `import` syncs the depot
+- plain `list` output shows only the canonical skill name and import/source provenance
+- `list --json` includes at least `name`, `description`, `source`, and routed absolute `paths`
+- `path --depot` prints one routed local depot absolute path per line
+- `path <name>` prints one routed absolute skill path per line, one per depot
+- plain `import` output includes the sync mode, catalog size, depot count, and per-depot created/updated/removed/matching counts
+- `status` reports matching, missing, broken, unsynced, conflicting, and extra entries per depot
+- those routed paths are predictive until `import` syncs the depots
 - when the selected profile exposes no skills, `list` returns an authoritative empty result
-- package references are objects
-- profile import entries are always objects
+- profile source entries are always objects
 - `{ "profile": "research" }` can be set in local `.agentos/config.json` under `skills.routing`
-- `{ "name": "agentos" }` resolves through `imports_registry`
-- `{ "name": "scratch", "path": "skills" }` is an inline import definition
+- `{ "name": "agentos" }` resolves through `sources`
+- `{ "name": "scratch", "path": "skills" }` is an inline direct source definition
+- `{ "name": "core" }` can resolve to a package source which expands into direct sources
 
 ## Tape CLI (folder-backed default)
 

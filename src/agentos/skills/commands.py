@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from agentos._core.errors import CliError
@@ -10,6 +11,7 @@ from agentos.skills.routing import (
     list_routed_skills,
     resolve_routed_skill,
     resolve_routed_skills_selection,
+    routed_skills_status,
 )
 
 NO_ROUTED_SKILLS_MESSAGE = (
@@ -18,18 +20,149 @@ NO_ROUTED_SKILLS_MESSAGE = (
 NO_ROUTED_PROFILE_MESSAGE = "no local routed skills context is available for this caller context"
 
 
-def _format_routed_skill_cards(skills: list) -> str:
-    return "\n\n".join(
+def _format_routed_skill_list(skills: list) -> str:
+    return "\n".join(f"{skill.name} ({skill.source})" for skill in skills)
+
+
+def _serialize_status_entry(entry) -> dict[str, str | None]:
+    return {
+        "name": entry.name,
+        "path": str(entry.path),
+        "source": entry.source,
+        "expected_source_path": (
+            str(entry.expected_source_path) if entry.expected_source_path is not None else None
+        ),
+        "actual_entry_kind": entry.actual_entry_kind,
+        "actual_link_target": entry.actual_link_target,
+        "actual_resolved_target": (
+            str(entry.actual_resolved_target) if entry.actual_resolved_target is not None else None
+        ),
+    }
+
+
+def _serialize_skill_record(skill) -> dict[str, object]:
+    return {
+        "name": skill.name,
+        "description": skill.description,
+        "source": skill.source,
+        "paths": [str(path) for path in skill.paths],
+    }
+
+
+def _format_status_entries(title: str, lines: list[str]) -> str:
+    if not lines:
+        return ""
+    return "\n".join([title, *lines])
+
+
+def _format_depot_status(depot_status) -> str:
+    issue_count = (
+        len(depot_status.missing)
+        + len(depot_status.broken)
+        + len(depot_status.unsynced)
+        + len(depot_status.conflicts)
+        + len(depot_status.extra)
+    )
+    overall_state = "clean" if issue_count == 0 else "issues found"
+
+    lines = [
+        f"Depot: {depot_status.depot_root}",
+        f"- state: {overall_state}",
+        f"- matching: {len(depot_status.matching)}",
+        f"- missing: {len(depot_status.missing)}",
+        f"- broken: {len(depot_status.broken)}",
+        f"- unsynced: {len(depot_status.unsynced)}",
+        f"- conflicts: {len(depot_status.conflicts)}",
+        f"- extra: {len(depot_status.extra)}",
+    ]
+
+    sections = [
+        _format_status_entries(
+            "Depot symlinks:",
+            [
+                f"- {entry.name} ({entry.source}) -> {entry.actual_resolved_target}"
+                for entry in depot_status.matching
+            ],
+        ),
+        _format_status_entries(
+            "Missing symlinks:",
+            [
+                f"- {entry.name} ({entry.source}) expected {entry.expected_source_path}"
+                for entry in depot_status.missing
+            ],
+        ),
+        _format_status_entries(
+            "Broken symlinks:",
+            [
+                f"- {entry.name} -> {entry.actual_link_target}"
+                for entry in depot_status.broken
+            ],
+        ),
+        _format_status_entries(
+            "Unsynced symlinks:",
+            [
+                (
+                    f"- {entry.name} expected {entry.expected_source_path} "
+                    f"actual {entry.actual_resolved_target}"
+                )
+                for entry in depot_status.unsynced
+            ],
+        ),
+        _format_status_entries(
+            "Conflicting entries:",
+            [
+                f"- {entry.name} at {entry.path} is a {entry.actual_entry_kind}"
+                for entry in depot_status.conflicts
+            ],
+        ),
+        _format_status_entries(
+            "Extra entries:",
+            [
+                (
+                    f"- {entry.name} ({entry.actual_entry_kind})"
+                    if entry.actual_entry_kind != "symlink"
+                    else f"- {entry.name} -> {entry.actual_resolved_target}"
+                )
+                for entry in depot_status.extra
+            ],
+        ),
+    ]
+
+    return "\n\n".join([lines[0], "\n".join(lines[1:]), *[section for section in sections if section]])
+
+
+def _format_routed_skills_status(status) -> str:
+    lines = [
+        "Routed skills status",
+        f"- profile: {status.selection.profile_name}",
+        f"- expected: {len(status.skills)}",
+        f"- depots: {len(status.depot_statuses)}",
+    ]
+    depot_sections = [_format_depot_status(depot_status) for depot_status in status.depot_statuses]
+    return "\n\n".join([lines[0], "\n".join(lines[1:]), *depot_sections])
+
+
+def _format_routed_skills_import(result, *, force: bool) -> str:
+    lines = [
+        "Routed skills import complete",
+        f"- mode: {'force' if force else 'sync'}",
+        f"- profile: {result.selection.profile_name}",
+        f"- catalog: {len(result.skills)}",
+        f"- depots: {len(result.depot_results)}",
+    ]
+    depot_sections = [
         "\n".join(
             [
-                skill.name,
-                f"- source: {skill.source}",
-                f"- path: {skill.path}",
-                f"- description: {skill.description}",
+                f"Depot: {depot_result.depot_root}",
+                f"- created: {len(depot_result.sync_result.created_links)}",
+                f"- updated: {len(depot_result.sync_result.updated_links)}",
+                f"- removed: {len(depot_result.sync_result.removed_links)}",
+                f"- matching: {len(depot_result.sync_result.matching_links)}",
             ]
         )
-        for skill in skills
-    )
+        for depot_result in result.depot_results
+    ]
+    return "\n\n".join([lines[0], "\n".join(lines[1:]), *depot_sections])
 
 
 def _add_project_argument(parser: argparse.ArgumentParser) -> None:
@@ -43,21 +176,19 @@ def _add_project_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _emit_selection_warnings(selection) -> None:
+    for warning in selection.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+
+
 def _cmd_skills_list(args: argparse.Namespace) -> int:
-    _, skills = list_routed_skills(Path.cwd(), project=args.project)
+    selection, skills = list_routed_skills(Path.cwd(), project=args.project)
+    _emit_selection_warnings(selection)
 
     if args.json:
         print(
             json.dumps(
-                [
-                    {
-                        "name": skill.name,
-                        "description": skill.description,
-                        "source": skill.source,
-                        "path": str(skill.path),
-                    }
-                    for skill in skills
-                ]
+                [_serialize_skill_record(skill) for skill in skills]
             )
         )
         return 0
@@ -66,39 +197,64 @@ def _cmd_skills_list(args: argparse.Namespace) -> int:
         print(NO_ROUTED_SKILLS_MESSAGE)
         return 0
 
-    print(_format_routed_skill_cards(skills))
+    print(_format_routed_skill_list(skills))
     return 0
 
 
 def _cmd_skills_import(args: argparse.Namespace) -> int:
-    result = import_routed_skills(Path.cwd(), project=args.project)
+    result = import_routed_skills(Path.cwd(), project=args.project, force=args.force)
+    _emit_selection_warnings(result.selection)
 
-    if result.selection.profile_name is None or result.selection.depot_root is None:
+    if result.selection.profile_name is None or not result.selection.depot_roots:
         print(NO_ROUTED_SKILLS_MESSAGE)
         return 0
 
-    print(
-        "\n".join(
-            [
-                "Routed skills import complete",
-                f"- depot: {result.selection.depot_root}",
-                f"- catalog: {len(result.skills)}",
-                f"- created: {len(result.sync_result.created_links)}",
-                f"- updated: {len(result.sync_result.updated_links)}",
-                f"- removed: {len(result.sync_result.removed_links)}",
-                f"- matching: {len(result.sync_result.matching_links)}",
-            ]
+    print(_format_routed_skills_import(result, force=args.force))
+    return 0
+
+
+def _cmd_skills_status(args: argparse.Namespace) -> int:
+    status = routed_skills_status(Path.cwd(), project=args.project)
+    _emit_selection_warnings(status.selection)
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "profile": status.selection.profile_name,
+                    "expected": len(status.skills),
+                    "depots": [
+                        {
+                            "depot": str(depot_status.depot_root),
+                            "matching": [_serialize_status_entry(entry) for entry in depot_status.matching],
+                            "missing": [_serialize_status_entry(entry) for entry in depot_status.missing],
+                            "broken": [_serialize_status_entry(entry) for entry in depot_status.broken],
+                            "unsynced": [_serialize_status_entry(entry) for entry in depot_status.unsynced],
+                            "conflicts": [_serialize_status_entry(entry) for entry in depot_status.conflicts],
+                            "extra": [_serialize_status_entry(entry) for entry in depot_status.extra],
+                        }
+                        for depot_status in status.depot_statuses
+                    ],
+                }
+            )
         )
-    )
+        return 0
+
+    if not status.selection.depot_roots:
+        print(NO_ROUTED_SKILLS_MESSAGE)
+        return 0
+
+    print(_format_routed_skills_status(status))
     return 0
 
 
 def _cmd_skills_path(args: argparse.Namespace) -> int:
     if args.depot:
         selection = resolve_routed_skills_selection(Path.cwd(), project=args.project)
-        if selection.depot_root is None:
+        _emit_selection_warnings(selection)
+        if not selection.depot_roots:
             raise CliError(NO_ROUTED_PROFILE_MESSAGE)
-        print(selection.depot_root)
+        print("\n".join(str(depot_root) for depot_root in selection.depot_roots))
         return 0
 
     if args.name is None:
@@ -106,8 +262,9 @@ def _cmd_skills_path(args: argparse.Namespace) -> int:
         return 0
 
     selection, skill = resolve_routed_skill(args.name, Path.cwd(), project=args.project)
+    _emit_selection_warnings(selection)
     if skill is not None:
-        print(skill.path)
+        print("\n".join(str(path) for path in skill.paths))
         return 0
     if selection.profile_name is None:
         raise CliError(NO_ROUTED_PROFILE_MESSAGE)
@@ -117,7 +274,7 @@ def _cmd_skills_path(args: argparse.Namespace) -> int:
 def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
     skills_parser = subparsers.add_parser(
         "skills",
-        help="Inspect the public routed skills catalog.",
+        help="Control the project-local routed skills depots.",
     )
     skills_subparsers = skills_parser.add_subparsers(dest="skills_command")
 
@@ -135,14 +292,31 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
 
     skills_import_parser = skills_subparsers.add_parser(
         "import",
-        help="Materialize the routed skills catalog into the resolved local skill depot.",
+        help="Sync the routed skills catalog into the resolved local project skill depots.",
+    )
+    skills_import_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Delete every symlink currently present in every resolved depot, then recreate the routed symlink set.",
     )
     _add_project_argument(skills_import_parser)
     skills_import_parser.set_defaults(handler=_cmd_skills_import)
 
+    skills_status_parser = skills_subparsers.add_parser(
+        "status",
+        help="Analyze the current state of the routed local skills depots.",
+    )
+    skills_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit routed skills depot status as structured JSON.",
+    )
+    _add_project_argument(skills_status_parser)
+    skills_status_parser.set_defaults(handler=_cmd_skills_status)
+
     skills_path_parser = skills_subparsers.add_parser(
         "path",
-        help="Resolve one routed skill to its local loadable path, or print the routed local depot path.",
+        help="Resolve one routed skill to its local loadable paths, or print the routed local depot paths.",
     )
     skills_path_parser.add_argument(
         "name",

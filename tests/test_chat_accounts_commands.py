@@ -25,6 +25,29 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _span_tuples(rendered) -> list[tuple[int, int, str]]:  # type: ignore[no-untyped-def]
+    return [(span.start, span.end, str(span.style)) for span in rendered.spans]
+
+
+def _offset_gradient_runs(
+    offset: int,
+    start_cell: int,
+    end_cell: int,
+    *,
+    width: int,
+    palette: tuple[str, ...],
+) -> list[tuple[int, int, str]]:
+    return [
+        (offset + start, offset + end, style)
+        for start, end, style in chat_commands._cell_gradient_runs(
+            start_cell,
+            end_cell,
+            width=width,
+            palette=palette,
+        )
+    ]
+
+
 def _account_instance(
     *,
     provider: str,
@@ -1091,21 +1114,34 @@ def test_inline_progress_text_styles_fill_and_track_spans() -> None:
     label = "    resets | Mon | 3d"
     geometry = chat_commands._InlineBarGroupGeometry(prefix_width=0, main_width=40, suffix_width=0)
     rendered = chat_commands._inline_progress_text(label, 25, geometry)
+    expected_fill_spans = _offset_gradient_runs(
+        0,
+        0,
+        10,
+        width=40,
+        palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
+    )
 
     assert rendered.plain == label.ljust(40)
-    assert [(span.start, span.end, str(span.style)) for span in rendered.spans] == [
+    assert _span_tuples(rendered) == [
         (0, 40, chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE),
-        (0, 10, chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE),
+        *expected_fill_spans,
     ]
 
     full = chat_commands._inline_progress_text(label, 100, geometry)
-    assert (0, 40, chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE) in [
-        (span.start, span.end, str(span.style)) for span in full.spans
-    ]
+    full_fill_spans = _offset_gradient_runs(
+        0,
+        0,
+        40,
+        width=40,
+        palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
+    )
+    assert full_fill_spans[0] in _span_tuples(full)
+    assert full_fill_spans[-1] in _span_tuples(full)
 
     empty = chat_commands._inline_progress_text(label, 0, geometry)
-    assert (0, 40, chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE) not in [
-        (span.start, span.end, str(span.style)) for span in empty.spans
+    assert _span_tuples(empty) == [
+        (0, 40, chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE),
     ]
 
 
@@ -1118,7 +1154,14 @@ def test_inline_usage_time_text_styles_usage_fill_only() -> None:
         used_percent=70,
         geometry=geometry,
     )
-    spans = [(span.start, span.end, str(span.style)) for span in rendered.spans]
+    spans = _span_tuples(rendered)
+    expected_fill_spans = _offset_gradient_runs(
+        0,
+        0,
+        33,
+        width=48,
+        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+    )
 
     assert rendered.plain == label.ljust(48)
     assert chat_commands._usage_time_line_data(label) == chat_commands._UsageTimeLineData(
@@ -1127,7 +1170,42 @@ def test_inline_usage_time_text_styles_usage_fill_only() -> None:
         ratio=1.4,
     )
     assert (0, 48, chat_commands._CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE) in spans
-    assert (0, 33, chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE) in spans
+    assert expected_fill_spans[0] in spans
+    assert expected_fill_spans[-1] in spans
+
+
+def test_inline_bar_palette_cell_styles_are_interpolated() -> None:
+    assert chat_commands._cell_gradient_style(
+        0,
+        width=5,
+        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+    ) == "bright_white on #14b8a6"
+    assert chat_commands._cell_gradient_style(
+        2,
+        width=5,
+        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+    ) == "bright_white on #facc15"
+    assert chat_commands._cell_gradient_style(
+        4,
+        width=5,
+        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+    ) == "bright_white on #dc2626"
+    assert chat_commands._cell_gradient_style(
+        1,
+        width=3,
+        palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
+    ) == "bright_white on #0891b2"
+    assert chat_commands._cell_gradient_style(
+        1,
+        width=3,
+        palette=chat_commands._CHAT_ACCOUNTS_RATIO_SLOW_BAR_PALETTE,
+    ) == "bright_white on #3b82f6"
+    assert chat_commands._cell_gradient_style(
+        1,
+        width=3,
+        palette=chat_commands._CHAT_ACCOUNTS_RATIO_FAST_BAR_PALETTE,
+    ) == "bright_white on #f59e0b"
+    assert chat_commands._sample_hex_palette(("#000000", "#ffffff"), 0.5) == "#808080"
 
 
 def test_inline_bar_row_places_emoji_suffix_outside_bar_main_text() -> None:
@@ -1147,21 +1225,26 @@ def test_inline_bar_row_places_emoji_suffix_outside_bar_main_text() -> None:
     )
 
     rendered = chat_commands._render_inline_bar_row(row, geometry)
-    spans = [(span.start, span.end, str(span.style)) for span in rendered.spans]
+    spans = _span_tuples(rendered)
     track_span = (0, len(main_text), chat_commands._CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE)
-    usage_span = next(
-        span
-        for span in rendered.spans
-        if str(span.style) == chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE
+    fill_cells = math.floor(geometry.main_width * 0.2)
+    usage_spans = _offset_gradient_runs(
+        0,
+        0,
+        fill_cells,
+        width=geometry.main_width,
+        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
     )
 
     assert main_text == "  usage/time | 20% /  7% = 2.9 | Weekly"
     assert suffix_text == " 🔥🔥"
     assert rendered.plain == line
     assert track_span in spans
-    assert usage_span.start == 0
+    assert usage_spans[0] in spans
+    assert usage_spans[-1] in spans
+    assert usage_spans[0][0] == 0
     assert cell_len(rendered.plain[: len(main_text)]) == geometry.main_width
-    assert cell_len(rendered.plain[usage_span.start:usage_span.end]) == math.floor(geometry.main_width * 0.2)
+    assert usage_spans[-1][1] == fill_cells
 
 
 def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() -> None:
@@ -1201,43 +1284,60 @@ def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() ->
     second_reset_start = rendered.plain.index("      resets | Fri 04-17")
     first_suffix_start = rendered.plain.index("🔥")
     second_suffix_start = rendered.plain.index("❄️")
+    spans = _span_tuples(rendered)
+    first_usage_spans = _offset_gradient_runs(
+        first_usage_start,
+        0,
+        math.floor(shared_width * 0.75),
+        width=shared_width,
+        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+    )
+    second_usage_spans = _offset_gradient_runs(
+        second_usage_start,
+        0,
+        math.floor(shared_width * 0.25),
+        width=shared_width,
+        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+    )
+    first_reset_spans = _offset_gradient_runs(
+        first_reset_start,
+        0,
+        math.floor(shared_width * 0.5),
+        width=shared_width,
+        palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
+    )
+    second_reset_spans = _offset_gradient_runs(
+        second_reset_start,
+        0,
+        math.floor(shared_width * 0.5),
+        width=shared_width,
+        palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
+    )
 
     assert first_usage_main in rendered.plain
     assert (
         first_usage_start,
         first_usage_start + shared_width,
         chat_commands._CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE,
-    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
-    assert (
-        first_usage_start,
-        first_usage_start + math.floor(shared_width * 0.75),
-        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE,
-    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
-    assert (
-        second_usage_start,
-        second_usage_start + math.floor(shared_width * 0.25),
-        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE,
-    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
+    ) in spans
+    assert first_usage_spans[0] in spans
+    assert first_usage_spans[-1] in spans
+    assert second_usage_spans[0] in spans
+    assert second_usage_spans[-1] in spans
     assert (
         first_reset_start,
         first_reset_start + shared_width,
         chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE,
-    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
-    assert (
-        first_reset_start,
-        first_reset_start + math.floor(shared_width * 0.5),
-        chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE,
-    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
+    ) in spans
+    assert first_reset_spans[0] in spans
+    assert first_reset_spans[-1] in spans
     assert (
         second_reset_start,
         second_reset_start + shared_width,
         chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE,
-    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
-    assert (
-        second_reset_start,
-        second_reset_start + math.floor(shared_width * 0.5),
-        chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE,
-    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
+    ) in spans
+    assert second_reset_spans[0] in spans
+    assert second_reset_spans[-1] in spans
     assert first_suffix_start == first_usage_start + shared_width + 1
     assert second_suffix_start == second_usage_start + shared_width + 1
 
@@ -1271,24 +1371,44 @@ def test_loop_rich_text_keeps_ratio_bar_only_for_selected_accounts_aggregate() -
     center = shared_width // 2
     aggregate_start = rendered.plain.index(aggregate_usage_main)
     account_start = rendered.plain.index(account_usage_main)
-
-    assert (
-        aggregate_start + center - math.floor(center * 0.7),
-        aggregate_start + center,
-        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE,
-    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
-    assert (
-        account_start,
-        account_start + math.floor(shared_width * 0.75),
-        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE,
-    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
-    assert all(
-        not (
-            span.start == account_start + center
-            and str(span.style) == chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE
-        )
-        for span in rendered.spans
+    spans = _span_tuples(rendered)
+    ratio_range = chat_commands._ratio_cell_range(
+        0.3,
+        chat_commands._InlineBarGroupGeometry(prefix_width=0, main_width=shared_width, suffix_width=0),
     )
+    assert ratio_range is not None
+    ratio_start, ratio_end, ratio_palette = ratio_range
+    aggregate_ratio_spans = _offset_gradient_runs(
+        aggregate_start,
+        ratio_start,
+        ratio_end,
+        width=shared_width,
+        palette=ratio_palette,
+    )
+    account_usage_spans = _offset_gradient_runs(
+        account_start,
+        0,
+        math.floor(shared_width * 0.75),
+        width=shared_width,
+        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+    )
+    account_row_spans = [
+        span for span in spans if account_start <= span[0] and span[1] <= account_start + shared_width
+    ]
+
+    assert center == shared_width // 2
+    assert ratio_start == center - math.floor(center * 0.7)
+    assert ratio_end == center
+    assert aggregate_ratio_spans[0] in spans
+    assert aggregate_ratio_spans[-1] in spans
+    assert account_row_spans == [
+        (
+            account_start,
+            account_start + shared_width,
+            chat_commands._CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE,
+        ),
+        *account_usage_spans,
+    ]
 
 
 def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapshot(monkeypatch) -> None:

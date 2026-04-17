@@ -65,12 +65,30 @@ _CHAT_ACCOUNTS_USAGE_TIME_RE = re.compile(
     r"^\s*usage/time\s*\|\s*(?P<used_percent>\d{1,3})%\s*/\s*(?P<elapsed_percent>\d{1,3})%"
     r"\s*=\s*(?P<ratio>n/a|\d+(?:\.\d+)?)"
 )
-_CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE = "bright_white on dark_cyan"
 _CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE = "bright_white on grey15"
 _CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE = "bright_white on grey15"
-_CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE = "bright_white on dark_green"
-_CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE = "bright_white on dark_orange"
-_CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE = "bright_white on dark_blue"
+_CHAT_ACCOUNTS_USAGE_BAR_PALETTE = (
+    "#14b8a6",
+    "#84cc16",
+    "#facc15",
+    "#f97316",
+    "#dc2626",
+)
+_CHAT_ACCOUNTS_RESET_BAR_PALETTE = (
+    "#0f766e",
+    "#0891b2",
+    "#2563eb",
+)
+_CHAT_ACCOUNTS_RATIO_SLOW_BAR_PALETTE = (
+    "#64748b",
+    "#3b82f6",
+    "#1d4ed8",
+)
+_CHAT_ACCOUNTS_RATIO_FAST_BAR_PALETTE = (
+    "#64748b",
+    "#f59e0b",
+    "#dc2626",
+)
 _CHAT_ACCOUNTS_USAGE_SUFFIX_MARKERS = (
     "🔥🔥",
     "❄️❄️",
@@ -374,9 +392,14 @@ def _inline_progress_text(label: str, percent: int | float, geometry: _InlineBar
         fill_cells = max(1, math.floor(geometry.main_width * normalized_percent / 100.0))
     text = Text(row, overflow="fold")
     text.stylize(_CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE, 0, len(row))
-    fill_end = _cell_offset_to_text_index(row, fill_cells)
-    if fill_end > 0:
-        text.stylize(_CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE, 0, fill_end)
+    _stylize_cell_gradient(
+        text,
+        row,
+        0,
+        fill_cells,
+        width=geometry.main_width,
+        palette=_CHAT_ACCOUNTS_RESET_BAR_PALETTE,
+    )
     return text
 
 
@@ -397,11 +420,24 @@ def _inline_usage_time_text(
     if show_ratio_bar:
         ratio_range = _ratio_cell_range(ratio, geometry)
         if ratio_range is not None:
-            ratio_start, ratio_end, ratio_style = ratio_range
-            _stylize_cell_range(text, row, ratio_start, ratio_end, ratio_style)
+            ratio_start, ratio_end, ratio_palette = ratio_range
+            _stylize_cell_gradient(
+                text,
+                row,
+                ratio_start,
+                ratio_end,
+                width=geometry.main_width,
+                palette=ratio_palette,
+            )
     else:
         usage_range = _percent_cell_range(used_percent, geometry.main_width)
-        _stylize_cell_range(text, row, *usage_range, _CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE)
+        _stylize_cell_gradient(
+            text,
+            row,
+            *usage_range,
+            width=geometry.main_width,
+            palette=_CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+        )
     return text
 
 
@@ -417,7 +453,7 @@ def _percent_cell_range(percent: int | float, width: int) -> tuple[int, int]:
 def _ratio_cell_range(
     ratio: float | None,
     geometry: _InlineBarGroupGeometry,
-) -> tuple[int, int, str] | None:
+) -> tuple[int, int, tuple[str, ...]] | None:
     if ratio is None:
         return None
 
@@ -429,11 +465,11 @@ def _ratio_cell_range(
     if normalized_ratio > 1.0:
         right_width = geometry.main_width - center
         fill_width = _inline_centered_ratio_fill_width(right_width, normalized_ratio - 1.0)
-        return (center, center + fill_width, _CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE)
+        return (center, center + fill_width, _CHAT_ACCOUNTS_RATIO_FAST_BAR_PALETTE)
 
     left_width = center
     fill_width = _inline_centered_ratio_fill_width(left_width, 1.0 - normalized_ratio)
-    return (center - fill_width, center, _CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE)
+    return (center - fill_width, center, _CHAT_ACCOUNTS_RATIO_SLOW_BAR_PALETTE)
 
 
 def _inline_bar_row(label: str, geometry: _InlineBarGroupGeometry) -> str:
@@ -472,6 +508,101 @@ def _stylize_cell_range(text: Any, row: str, start_cell: int, end_cell: int, sty
     style_end = _cell_offset_to_text_index(row, end_cell)
     if style_end > style_start:
         text.stylize(style, style_start, style_end)
+
+
+def _stylize_cell_gradient(
+    text: Any,
+    row: str,
+    start_cell: int,
+    end_cell: int,
+    *,
+    width: int,
+    palette: tuple[str, ...],
+) -> None:
+    for run_start, run_end, style in _cell_gradient_runs(start_cell, end_cell, width=width, palette=palette):
+        _stylize_cell_range(text, row, run_start, run_end, style)
+
+
+def _cell_gradient_runs(
+    start_cell: int,
+    end_cell: int,
+    *,
+    width: int,
+    palette: tuple[str, ...],
+) -> list[tuple[int, int, str]]:
+    if end_cell <= start_cell or width <= 0:
+        return []
+
+    runs: list[tuple[int, int, str]] = []
+    current_style: str | None = None
+    current_start = start_cell
+    last_cell = start_cell
+    for cell in range(start_cell, end_cell):
+        style = _cell_gradient_style(cell, width=width, palette=palette)
+        if current_style is None:
+            current_style = style
+            current_start = cell
+        elif style != current_style:
+            runs.append((current_start, cell, current_style))
+            current_style = style
+            current_start = cell
+        last_cell = cell + 1
+
+    if current_style is not None:
+        runs.append((current_start, last_cell, current_style))
+    return runs
+
+
+def _cell_gradient_style(cell: int, *, width: int, palette: tuple[str, ...]) -> str:
+    if width <= 1:
+        position = 1.0
+    else:
+        position = _clamp(cell / (width - 1), 0.0, 1.0)
+    return _background_palette_style(palette, position)
+
+
+def _background_palette_style(palette: tuple[str, ...], position: float) -> str:
+    return f"bright_white on {_sample_hex_palette(palette, position)}"
+
+
+def _sample_hex_palette(palette: tuple[str, ...], position: float) -> str:
+    if not palette:
+        raise ValueError("palette must contain at least one color")
+    if len(palette) == 1:
+        return palette[0]
+
+    normalized_position = _clamp(position, 0.0, 1.0)
+    scaled_position = normalized_position * (len(palette) - 1)
+    left_index = int(math.floor(scaled_position))
+    right_index = min(len(palette) - 1, left_index + 1)
+    if left_index == right_index:
+        return palette[left_index]
+    return _interpolate_hex_color(
+        palette[left_index],
+        palette[right_index],
+        scaled_position - left_index,
+    )
+
+
+def _interpolate_hex_color(left_color: str, right_color: str, fraction: float) -> str:
+    left_rgb = _hex_to_rgb(left_color)
+    right_rgb = _hex_to_rgb(right_color)
+    normalized_fraction = _clamp(fraction, 0.0, 1.0)
+    channels = tuple(
+        round(left_channel + ((right_channel - left_channel) * normalized_fraction))
+        for left_channel, right_channel in zip(left_rgb, right_rgb)
+    )
+    return f"#{channels[0]:02x}{channels[1]:02x}{channels[2]:02x}"
+
+
+def _hex_to_rgb(color: str) -> tuple[int, int, int]:
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        raise ValueError(f"invalid hex color: {color}")
+    return (int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16))
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return min(maximum, max(minimum, value))
 
 
 def _inline_centered_ratio_fill_width(half_width: int, fraction: float) -> int:
