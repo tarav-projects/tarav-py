@@ -62,24 +62,21 @@ _CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC = 1.0
 _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE = "[loop] refreshing..."
 _CHAT_ACCOUNTS_INLINE_BAR_GROUP_ID = "chat-accounts-stats"
 _CHAT_ACCOUNTS_USAGE_TIME_RE = re.compile(
-    r"^\s*usage/time\s*\|\s*\d{1,3}%\s*/\s*(?P<elapsed_percent>\d{1,3})%"
+    r"^\s*usage/time\s*\|\s*(?P<used_percent>\d{1,3})%\s*/\s*(?P<elapsed_percent>\d{1,3})%"
     r"\s*=\s*(?P<ratio>n/a|\d+(?:\.\d+)?)"
 )
 _CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE = "bright_white on dark_cyan"
 _CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE = "bright_white on grey15"
+_CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE = "bright_white on grey15"
+_CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE = "bright_white on dark_green"
 _CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE = "bright_white on dark_orange"
 _CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE = "bright_white on dark_blue"
-_CHAT_ACCOUNTS_USAGE_TIME_RATIO_TRACK_STYLE = "bright_white on grey15"
 _CHAT_ACCOUNTS_USAGE_SUFFIX_MARKERS = (
     "🔥🔥",
     "❄️❄️",
     "🔥",
     "❄️",
-    "💀",
-    "👨‍🦳",
-    "👨‍🦰",
-    "👨‍🦱",
-    "👶",
+    "☠️",
     "🕒",
 )
 
@@ -101,8 +98,10 @@ class _InlineProgressBar:
 
 
 @dataclass(frozen=True)
-class _InlineCenteredRatioBar:
-    ratio: float | None
+class _InlineUsageTimeBar:
+    used_percent: int | float
+    ratio: float | None = None
+    show_ratio_bar: bool = False
 
 
 @dataclass(frozen=True)
@@ -116,11 +115,12 @@ class _InlineBarRow:
     prefix_text: str
     main_text: str
     suffix_text: str
-    bar: _InlineProgressBar | _InlineCenteredRatioBar
+    bar: _InlineProgressBar | _InlineUsageTimeBar
 
 
 @dataclass(frozen=True)
 class _UsageTimeLineData:
+    used_percent: int
     elapsed_percent: int
     ratio: float | None
 
@@ -264,8 +264,14 @@ def _inline_bar_rows(lines: list[str]) -> list[_InlineTextRow | _InlineBarRow]:
     rows: list[_InlineTextRow | _InlineBarRow] = []
     current_group_id: str | None = None
     current_elapsed_percent: int | None = None
+    next_usage_time_is_aggregate = False
 
     for line in lines:
+        if line == "Selected accounts aggregate:":
+            next_usage_time_is_aggregate = True
+            rows.append(_InlineTextRow(line))
+            continue
+
         usage_time_data = _usage_time_line_data(line)
         if usage_time_data is not None:
             main_text, suffix_text = _split_usage_time_main_suffix(line)
@@ -275,9 +281,14 @@ def _inline_bar_rows(lines: list[str]) -> list[_InlineTextRow | _InlineBarRow]:
                     prefix_text="",
                     main_text=main_text,
                     suffix_text=suffix_text,
-                    bar=_InlineCenteredRatioBar(usage_time_data.ratio),
+                    bar=_InlineUsageTimeBar(
+                        used_percent=usage_time_data.used_percent,
+                        ratio=usage_time_data.ratio,
+                        show_ratio_bar=next_usage_time_is_aggregate,
+                    ),
                 )
             )
+            next_usage_time_is_aggregate = False
             current_group_id = _CHAT_ACCOUNTS_INLINE_BAR_GROUP_ID
             current_elapsed_percent = usage_time_data.elapsed_percent
             continue
@@ -299,6 +310,7 @@ def _inline_bar_rows(lines: list[str]) -> list[_InlineTextRow | _InlineBarRow]:
         if not line.strip():
             current_group_id = None
             current_elapsed_percent = None
+            next_usage_time_is_aggregate = False
         rows.append(_InlineTextRow(line))
 
     return rows
@@ -332,7 +344,13 @@ def _render_inline_bar_row(row: _InlineBarRow, geometry: _InlineBarGroupGeometry
     if isinstance(row.bar, _InlineProgressBar):
         rendered = _inline_progress_text(row.main_text, row.bar.percent, geometry)
     else:
-        rendered = _inline_centered_ratio_text(row.main_text, row.bar.ratio, geometry)
+        rendered = _inline_usage_time_text(
+            row.main_text,
+            used_percent=row.bar.used_percent,
+            ratio=row.bar.ratio,
+            show_ratio_bar=row.bar.show_ratio_bar,
+            geometry=geometry,
+        )
 
     if geometry.suffix_width > 0:
         rendered.append(set_cell_size(row.suffix_text, geometry.suffix_width))
@@ -362,35 +380,60 @@ def _inline_progress_text(label: str, percent: int | float, geometry: _InlineBar
     return text
 
 
-def _inline_centered_ratio_text(label: str, ratio: float | None, geometry: _InlineBarGroupGeometry) -> Any:
+def _inline_usage_time_text(
+    label: str,
+    *,
+    used_percent: int | float,
+    geometry: _InlineBarGroupGeometry,
+    ratio: float | None = None,
+    show_ratio_bar: bool = False,
+) -> Any:
     from rich.text import Text
 
     row = _inline_bar_row(label, geometry)
     text = Text(row, overflow="fold")
-    text.stylize(_CHAT_ACCOUNTS_USAGE_TIME_RATIO_TRACK_STYLE, 0, len(row))
+    text.stylize(_CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE, 0, len(row))
+
+    if show_ratio_bar:
+        ratio_range = _ratio_cell_range(ratio, geometry)
+        if ratio_range is not None:
+            ratio_start, ratio_end, ratio_style = ratio_range
+            _stylize_cell_range(text, row, ratio_start, ratio_end, ratio_style)
+    else:
+        usage_range = _percent_cell_range(used_percent, geometry.main_width)
+        _stylize_cell_range(text, row, *usage_range, _CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE)
+    return text
+
+
+def _percent_cell_range(percent: int | float, width: int) -> tuple[int, int]:
+    normalized_percent = min(100.0, max(0.0, float(percent)))
+    if normalized_percent <= 0:
+        return (0, 0)
+    if normalized_percent >= 100:
+        return (0, width)
+    return (0, max(1, math.floor(width * normalized_percent / 100.0)))
+
+
+def _ratio_cell_range(
+    ratio: float | None,
+    geometry: _InlineBarGroupGeometry,
+) -> tuple[int, int, str] | None:
     if ratio is None:
-        return text
+        return None
 
     normalized_ratio = min(2.0, max(0.0, ratio))
     if math.isclose(normalized_ratio, 1.0):
-        return text
+        return None
 
     center = geometry.center
     if normalized_ratio > 1.0:
         right_width = geometry.main_width - center
         fill_width = _inline_centered_ratio_fill_width(right_width, normalized_ratio - 1.0)
-        fill_start = _cell_offset_to_text_index(row, center)
-        fill_end = _cell_offset_to_text_index(row, center + fill_width)
-        if fill_end > fill_start:
-            text.stylize(_CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE, fill_start, fill_end)
-    else:
-        left_width = center
-        fill_width = _inline_centered_ratio_fill_width(left_width, 1.0 - normalized_ratio)
-        fill_start = _cell_offset_to_text_index(row, center - fill_width)
-        fill_end = _cell_offset_to_text_index(row, center)
-        if fill_end > fill_start:
-            text.stylize(_CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE, fill_start, fill_end)
-    return text
+        return (center, center + fill_width, _CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE)
+
+    left_width = center
+    fill_width = _inline_centered_ratio_fill_width(left_width, 1.0 - normalized_ratio)
+    return (center - fill_width, center, _CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE)
 
 
 def _inline_bar_row(label: str, geometry: _InlineBarGroupGeometry) -> str:
@@ -422,6 +465,15 @@ def _cell_offset_to_text_index(text: str, cell_offset: int) -> int:
     return len(text)
 
 
+def _stylize_cell_range(text: Any, row: str, start_cell: int, end_cell: int, style: str) -> None:
+    if end_cell <= start_cell:
+        return
+    style_start = _cell_offset_to_text_index(row, start_cell)
+    style_end = _cell_offset_to_text_index(row, end_cell)
+    if style_end > style_start:
+        text.stylize(style, style_start, style_end)
+
+
 def _inline_centered_ratio_fill_width(half_width: int, fraction: float) -> int:
     if half_width <= 0:
         return 0
@@ -439,6 +491,7 @@ def _usage_time_line_data(line: str) -> _UsageTimeLineData | None:
     raw_ratio = match.group("ratio")
     ratio = None if raw_ratio == "n/a" else float(raw_ratio)
     return _UsageTimeLineData(
+        used_percent=min(100, int(match.group("used_percent"))),
         elapsed_percent=min(100, int(match.group("elapsed_percent"))),
         ratio=ratio,
     )

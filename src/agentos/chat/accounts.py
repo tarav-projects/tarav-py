@@ -932,7 +932,9 @@ def _format_chat_accounts_usage_total_block(usage_total_payload: dict[str, Any])
             ratio_marker = _usage_peak_ratio_marker(ratio_value)
             if ratio_marker is not None:
                 markers.append(ratio_marker)
-            markers.append(_usage_progression_marker(used_percent))
+            progression_marker = _usage_progression_marker(used_percent)
+            if progression_marker is not None:
+                markers.append(progression_marker)
             time_marker = _usage_time_progression_marker(elapsed_percent)
             if time_marker is not None:
                 markers.append(time_marker)
@@ -1319,8 +1321,9 @@ def _format_usage_limit_usage_time_line(
         peak_ratio_marker = _usage_peak_ratio_marker(ratio_value)
         if peak_ratio_marker is not None:
             markers.append(peak_ratio_marker)
-    if show_progression_marker:
-        markers.append(_usage_progression_marker(used_percent))
+    progression_marker = _usage_progression_marker(used_percent)
+    if progression_marker is not None:
+        markers.append(progression_marker)
     time_progression_marker = _usage_time_progression_marker(elapsed_percent)
     if time_progression_marker is not None:
         markers.append(time_progression_marker)
@@ -1329,16 +1332,10 @@ def _format_usage_limit_usage_time_line(
     return line
 
 
-def _usage_progression_marker(used_percent: int) -> str:
-    if used_percent >= 90:
-        return "💀"
-    if used_percent >= 75:
-        return "👨‍🦳"
-    if used_percent >= 50:
-        return "👨‍🦰"
-    if used_percent >= 25:
-        return "👨‍🦱"
-    return "👶"
+def _usage_progression_marker(used_percent: int) -> str | None:
+    if used_percent >= 100:
+        return "☠️"
+    return None
 
 
 def _usage_peak_ratio_marker(ratio_value: float | None) -> str | None:

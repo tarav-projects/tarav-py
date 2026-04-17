@@ -1109,34 +1109,29 @@ def test_inline_progress_text_styles_fill_and_track_spans() -> None:
     ]
 
 
-def test_inline_centered_ratio_text_styles_directional_fill_from_center() -> None:
-    label = "  usage/time | 75% / 50% = 1.5 | Weekly"
-    geometry = chat_commands._InlineBarGroupGeometry(prefix_width=0, main_width=40, suffix_width=0)
+def test_inline_usage_time_text_styles_usage_fill_only() -> None:
+    label = "  usage/time | 70% / 50% = 1.4 | Burst"
+    geometry = chat_commands._InlineBarGroupGeometry(prefix_width=0, main_width=48, suffix_width=0)
 
-    faster = chat_commands._inline_centered_ratio_text(label, 1.5, geometry)
-    assert faster.plain == label.ljust(40)
-    assert (0, 40, chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_TRACK_STYLE) in [
-        (span.start, span.end, str(span.style)) for span in faster.spans
-    ]
-    assert (20, 30, chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE) in [
-        (span.start, span.end, str(span.style)) for span in faster.spans
-    ]
-
-    slower = chat_commands._inline_centered_ratio_text(label, 0.5, geometry)
-    assert (10, 20, chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE) in [
-        (span.start, span.end, str(span.style)) for span in slower.spans
-    ]
-
-    neutral = chat_commands._inline_centered_ratio_text(label, 1.0, geometry)
-    assert all(
-        str(span.style) != chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE
-        and str(span.style) != chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE
-        for span in neutral.spans
+    rendered = chat_commands._inline_usage_time_text(
+        label,
+        used_percent=70,
+        geometry=geometry,
     )
+    spans = [(span.start, span.end, str(span.style)) for span in rendered.spans]
+
+    assert rendered.plain == label.ljust(48)
+    assert chat_commands._usage_time_line_data(label) == chat_commands._UsageTimeLineData(
+        used_percent=70,
+        elapsed_percent=50,
+        ratio=1.4,
+    )
+    assert (0, 48, chat_commands._CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE) in spans
+    assert (0, 33, chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE) in spans
 
 
 def test_inline_bar_row_places_emoji_suffix_outside_bar_main_text() -> None:
-    line = "  usage/time | 20% /  7% = 2.9 | Weekly 🔥🔥 👶"
+    line = "  usage/time | 20% /  7% = 2.9 | Weekly 🔥🔥"
     main_text, suffix_text = chat_commands._split_usage_time_main_suffix(line)
     geometry = chat_commands._InlineBarGroupGeometry(
         prefix_width=0,
@@ -1148,30 +1143,30 @@ def test_inline_bar_row_places_emoji_suffix_outside_bar_main_text() -> None:
         prefix_text="",
         main_text=main_text,
         suffix_text=suffix_text,
-        bar=chat_commands._InlineCenteredRatioBar(2.9),
+        bar=chat_commands._InlineUsageTimeBar(used_percent=20),
     )
 
     rendered = chat_commands._render_inline_bar_row(row, geometry)
     spans = [(span.start, span.end, str(span.style)) for span in rendered.spans]
-    track_span = (0, len(main_text), chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_TRACK_STYLE)
-    fill_span = next(
+    track_span = (0, len(main_text), chat_commands._CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE)
+    usage_span = next(
         span
         for span in rendered.spans
-        if str(span.style) == chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE
+        if str(span.style) == chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE
     )
 
     assert main_text == "  usage/time | 20% /  7% = 2.9 | Weekly"
-    assert suffix_text == " 🔥🔥 👶"
+    assert suffix_text == " 🔥🔥"
     assert rendered.plain == line
     assert track_span in spans
-    assert fill_span.end == len(main_text)
+    assert usage_span.start == 0
     assert cell_len(rendered.plain[: len(main_text)]) == geometry.main_width
-    assert cell_len(rendered.plain[fill_span.start:fill_span.end]) == geometry.main_width - geometry.center
+    assert cell_len(rendered.plain[usage_span.start:usage_span.end]) == math.floor(geometry.main_width * 0.2)
 
 
 def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() -> None:
-    first_usage = "  usage/time | 75% / 50% = 1.5 | Weekly Account 🔥 👨‍🦳"
-    second_usage = "  usage/time | 25% / 50% = 0.5 | Burst ❄️ 👨‍🦰"
+    first_usage = "  usage/time | 75% / 50% = 1.5 | Weekly Account 🔥"
+    second_usage = "  usage/time | 25% / 50% = 0.5 | Burst ❄️"
     first_usage_main = "  usage/time | 75% / 50% = 1.5 | Weekly Account"
     second_usage_main = "  usage/time | 25% / 50% = 0.5 | Burst"
     first_reset = "      resets | Mon 04-20 12:01 | 3d 11h 43m"
@@ -1200,29 +1195,28 @@ def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() ->
         cell_len(first_reset),
         cell_len(second_reset),
     )
-    center = shared_width // 2
     first_usage_start = rendered.plain.index(first_usage_main)
     second_usage_start = rendered.plain.index(second_usage_main)
     first_reset_start = rendered.plain.index("      resets | Mon 04-20")
     second_reset_start = rendered.plain.index("      resets | Fri 04-17")
-    first_suffix_start = rendered.plain.index("🔥 👨‍🦳")
-    second_suffix_start = rendered.plain.index("❄️ 👨‍🦰")
+    first_suffix_start = rendered.plain.index("🔥")
+    second_suffix_start = rendered.plain.index("❄️")
 
     assert first_usage_main in rendered.plain
     assert (
         first_usage_start,
         first_usage_start + shared_width,
-        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_TRACK_STYLE,
+        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE,
     ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
     assert (
-        first_usage_start + center,
-        first_usage_start + center + math.floor((shared_width - center) * 0.5),
-        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE,
+        first_usage_start,
+        first_usage_start + math.floor(shared_width * 0.75),
+        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE,
     ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
     assert (
-        second_usage_start + center - math.floor(center * 0.5),
-        second_usage_start + center,
-        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE,
+        second_usage_start,
+        second_usage_start + math.floor(shared_width * 0.25),
+        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE,
     ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
     assert (
         first_reset_start,
@@ -1246,6 +1240,55 @@ def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() ->
     ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
     assert first_suffix_start == first_usage_start + shared_width + 1
     assert second_suffix_start == second_usage_start + shared_width + 1
+
+
+def test_loop_rich_text_keeps_ratio_bar_only_for_selected_accounts_aggregate() -> None:
+    aggregate_usage = "  usage/time | 30% / 86% = 0.3 | Weekly ❄️❄️"
+    aggregate_usage_main = "  usage/time | 30% / 86% = 0.3 | Weekly"
+    account_usage = "  usage/time | 75% / 50% = 1.5 | Weekly 🔥"
+    account_usage_main = "  usage/time | 75% / 50% = 1.5 | Weekly"
+    reset = "      resets | Mon 04-20 12:01 | 3d 11h 43m"
+    frame = chat_commands._ChatAccountsStatsLoopFrame(
+        interval_sec=60.0,
+        body_text=(
+            "Selected accounts aggregate:\n"
+            f"{aggregate_usage}\n"
+            "  coverage | 2/3 accounts\n"
+            "\n"
+            "⬢ codex-a (Codex A):\n"
+            f"{account_usage}\n"
+            f"{reset}"
+        ),
+        next_refresh_at_monotonic=65.0,
+    )
+
+    rendered = chat_commands._render_chat_accounts_stats_loop_rich_text(
+        frame,
+        now_monotonic=5.0,
+        width=48,
+    )
+    shared_width = max(cell_len(aggregate_usage_main), cell_len(account_usage_main), cell_len(reset))
+    center = shared_width // 2
+    aggregate_start = rendered.plain.index(aggregate_usage_main)
+    account_start = rendered.plain.index(account_usage_main)
+
+    assert (
+        aggregate_start + center - math.floor(center * 0.7),
+        aggregate_start + center,
+        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE,
+    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
+    assert (
+        account_start,
+        account_start + math.floor(shared_width * 0.75),
+        chat_commands._CHAT_ACCOUNTS_USAGE_TIME_USAGE_STYLE,
+    ) in [(span.start, span.end, str(span.style)) for span in rendered.spans]
+    assert all(
+        not (
+            span.start == account_start + center
+            and str(span.style) == chat_commands._CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE
+        )
+        for span in rendered.spans
+    )
 
 
 def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapshot(monkeypatch) -> None:
@@ -1713,7 +1756,7 @@ def test_chat_accounts_stats_supports_compact_usage_output(
     assert "# Chat Accounts Usage" in output
     assert "- Recorded at: 2026-03-25 08:00:00 CDT" in output
     assert "⬢ codex-tk (Codex tk):" in output
-    assert "  usage/time | 64% /  0% = n/a | Burst 👨‍🦰" in output
+    assert "  usage/time | 64% /  0% = n/a | Burst" in output
     assert "      resets | Wed 03-26 01:40 | 17h 40m" in output
     assert "  usage/time | 20% / 80% = 0.2 | Weekly" in output
     assert "      resets | Wed 03-26 17:10 | 1d 9h 10m" in output
@@ -1783,8 +1826,8 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> No
     assert "🤖 burst-high (Burst high):" in output
     assert "⬢ steady-low (Steady low):" in output
     assert output.index("burst-high (Burst high):") < output.index("steady-low (Steady low):")
-    assert "  usage/time | 100% / 86% = 1.2 | Weekly 🔥 💀" in output
-    assert "  usage/time | 70% / 75% = 0.9 | Burst ❄️ 👨‍🦰" in output
+    assert "  usage/time | 100% / 86% = 1.2 | Weekly 🔥 ☠️" in output
+    assert "  usage/time | 70% / 75% = 0.9 | Burst ❄️" in output
 
 
 def test_format_chat_account_stats_usage_shows_pending_refresh_accounts() -> None:
@@ -1854,7 +1897,7 @@ def test_format_chat_account_stats_usage_shows_cold_marker_only_on_most_active_l
     )
 
     assert "  usage/time | 20% / 50% = 0.4 | Burst" in output
-    assert "  usage/time | 70% / 86% = 0.8 | Weekly ❄️ 👨‍🦰" in output
+    assert "  usage/time | 70% / 86% = 0.8 | Weekly ❄️" in output
 
 
 def test_usage_peak_ratio_marker_gradient() -> None:
@@ -2091,7 +2134,7 @@ def test_chat_accounts_stats_usage_shows_top_level_selected_accounts_aggregate(
     output = capsys.readouterr().out
 
     assert "Selected accounts aggregate:" in output
-    assert "  usage/time | 30% / 86% = 0.3 | Weekly ❄️❄️ 👨‍🦱" in output
+    assert "  usage/time | 30% / 86% = 0.3 | Weekly ❄️❄️" in output
     assert "  coverage | 2/3 accounts" in output
     assert "--------------------------" in output
     assert output.index("Selected accounts aggregate:") < output.index("⬢ codex-b (Codex B):")
@@ -2325,11 +2368,10 @@ def test_format_chat_account_usage_error_detail_lines_wrap_long_messages() -> No
 
 
 def test_usage_progression_marker_evolves_with_usage_percent() -> None:
-    assert chat_accounts._usage_progression_marker(10) == "👶"
-    assert chat_accounts._usage_progression_marker(40) == "👨‍🦱"
-    assert chat_accounts._usage_progression_marker(60) == "👨‍🦰"
-    assert chat_accounts._usage_progression_marker(80) == "👨‍🦳"
-    assert chat_accounts._usage_progression_marker(95) == "💀"
+    assert chat_accounts._usage_progression_marker(10) is None
+    assert chat_accounts._usage_progression_marker(40) is None
+    assert chat_accounts._usage_progression_marker(99) is None
+    assert chat_accounts._usage_progression_marker(100) == "☠️"
 
 
 def test_usage_time_progression_marker_only_appears_above_ninety_percent() -> None:
