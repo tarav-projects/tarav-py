@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import re
 import select
 import sys
 import time
@@ -59,6 +60,69 @@ _CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC = 1.0
 _CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC = 600.0
 _CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC = 1.0
 _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE = "[loop] refreshing..."
+_CHAT_ACCOUNTS_INLINE_BAR_GROUP_ID = "chat-accounts-stats"
+_CHAT_ACCOUNTS_USAGE_TIME_RE = re.compile(
+    r"^\s*usage/time\s*\|\s*\d{1,3}%\s*/\s*(?P<elapsed_percent>\d{1,3})%"
+    r"\s*=\s*(?P<ratio>n/a|\d+(?:\.\d+)?)"
+)
+_CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE = "bright_white on dark_cyan"
+_CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE = "bright_white on grey15"
+_CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE = "bright_white on dark_orange"
+_CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE = "bright_white on dark_blue"
+_CHAT_ACCOUNTS_USAGE_TIME_RATIO_TRACK_STYLE = "bright_white on grey15"
+_CHAT_ACCOUNTS_USAGE_SUFFIX_MARKERS = (
+    "🔥🔥",
+    "❄️❄️",
+    "🔥",
+    "❄️",
+    "💀",
+    "👨‍🦳",
+    "👨‍🦰",
+    "👨‍🦱",
+    "👶",
+    "🕒",
+)
+
+
+@dataclass(frozen=True)
+class _InlineBarGroupGeometry:
+    prefix_width: int
+    main_width: int
+    suffix_width: int
+
+    @property
+    def center(self) -> int:
+        return self.main_width // 2
+
+
+@dataclass(frozen=True)
+class _InlineProgressBar:
+    percent: int | float
+
+
+@dataclass(frozen=True)
+class _InlineCenteredRatioBar:
+    ratio: float | None
+
+
+@dataclass(frozen=True)
+class _InlineTextRow:
+    text: str
+
+
+@dataclass(frozen=True)
+class _InlineBarRow:
+    group_id: str
+    prefix_text: str
+    main_text: str
+    suffix_text: str
+    bar: _InlineProgressBar | _InlineCenteredRatioBar
+
+
+@dataclass(frozen=True)
+class _UsageTimeLineData:
+    elapsed_percent: int
+    ratio: float | None
 
 
 @dataclass
@@ -130,7 +194,12 @@ class _ChatAccountsStatsLoopTTYRenderer:
         from rich.text import Text
 
         if self._console is None:
-            self._console = Console(file=self.output_stream, force_terminal=True, color_system=None)
+            self._console = Console(
+                file=self.output_stream,
+                force_terminal=True,
+                color_system="auto",
+                no_color=False,
+            )
         live_factory = self._live_factory or Live
         self._live = live_factory(
             Text(""),
@@ -154,16 +223,250 @@ class _ChatAccountsStatsLoopTTYRenderer:
     def paint(self, frame: _ChatAccountsStatsLoopFrame) -> None:
         if self._live is None:
             self.start()
-        from rich.text import Text
 
         assert self._live is not None
+        assert self._console is not None
         self._live.update(
-            Text(
-                frame.render_text(now_monotonic=self.now_monotonic()),
-                overflow="fold",
+            _render_chat_accounts_stats_loop_rich_text(
+                frame,
+                now_monotonic=self.now_monotonic(),
+                width=self._console.width,
             ),
             refresh=True,
         )
+
+
+def _render_chat_accounts_stats_loop_rich_text(
+    frame: _ChatAccountsStatsLoopFrame,
+    *,
+    now_monotonic: float,
+    width: int,
+) -> Any:
+    from rich.text import Text
+
+    rendered_text = frame.render_text(now_monotonic=now_monotonic)
+    lines = rendered_text.splitlines()
+    rows = _inline_bar_rows(lines)
+    group_geometries = _inline_bar_group_geometries(rows, fallback_width=width)
+    rendered = Text(overflow="fold")
+    for line_index, row in enumerate(rows):
+        if line_index > 0:
+            rendered.append("\n")
+
+        if isinstance(row, _InlineTextRow):
+            rendered.append(row.text)
+            continue
+        rendered.append_text(_render_inline_bar_row(row, group_geometries[row.group_id]))
+    return rendered
+
+
+def _inline_bar_rows(lines: list[str]) -> list[_InlineTextRow | _InlineBarRow]:
+    rows: list[_InlineTextRow | _InlineBarRow] = []
+    current_group_id: str | None = None
+    current_elapsed_percent: int | None = None
+
+    for line in lines:
+        usage_time_data = _usage_time_line_data(line)
+        if usage_time_data is not None:
+            main_text, suffix_text = _split_usage_time_main_suffix(line)
+            rows.append(
+                _InlineBarRow(
+                    group_id=_CHAT_ACCOUNTS_INLINE_BAR_GROUP_ID,
+                    prefix_text="",
+                    main_text=main_text,
+                    suffix_text=suffix_text,
+                    bar=_InlineCenteredRatioBar(usage_time_data.ratio),
+                )
+            )
+            current_group_id = _CHAT_ACCOUNTS_INLINE_BAR_GROUP_ID
+            current_elapsed_percent = usage_time_data.elapsed_percent
+            continue
+
+        if _is_reset_line(line) and current_group_id is not None and current_elapsed_percent is not None:
+            rows.append(
+                _InlineBarRow(
+                    group_id=current_group_id,
+                    prefix_text="",
+                    main_text=line,
+                    suffix_text="",
+                    bar=_InlineProgressBar(current_elapsed_percent),
+                )
+            )
+            current_group_id = None
+            current_elapsed_percent = None
+            continue
+
+        if not line.strip():
+            current_group_id = None
+            current_elapsed_percent = None
+        rows.append(_InlineTextRow(line))
+
+    return rows
+
+
+def _inline_bar_group_geometries(
+    rows: list[_InlineTextRow | _InlineBarRow],
+    *,
+    fallback_width: int,
+) -> dict[str, _InlineBarGroupGeometry]:
+    from rich.cells import cell_len
+
+    grouped_rows: dict[str, list[_InlineBarRow]] = {}
+    for row in rows:
+        if isinstance(row, _InlineBarRow):
+            grouped_rows.setdefault(row.group_id, []).append(row)
+
+    geometries: dict[str, _InlineBarGroupGeometry] = {}
+    for group_id, group_rows in grouped_rows.items():
+        geometries[group_id] = _InlineBarGroupGeometry(
+            prefix_width=max((cell_len(row.prefix_text) for row in group_rows), default=0),
+            main_width=max((cell_len(row.main_text) for row in group_rows), default=max(1, int(fallback_width))),
+            suffix_width=max((cell_len(row.suffix_text) for row in group_rows), default=0),
+        )
+    return geometries
+
+
+def _render_inline_bar_row(row: _InlineBarRow, geometry: _InlineBarGroupGeometry) -> Any:
+    from rich.cells import set_cell_size
+
+    if isinstance(row.bar, _InlineProgressBar):
+        rendered = _inline_progress_text(row.main_text, row.bar.percent, geometry)
+    else:
+        rendered = _inline_centered_ratio_text(row.main_text, row.bar.ratio, geometry)
+
+    if geometry.suffix_width > 0:
+        rendered.append(set_cell_size(row.suffix_text, geometry.suffix_width))
+    if geometry.prefix_width > 0:
+        prefixed = _unstyled_text(set_cell_size(row.prefix_text, geometry.prefix_width))
+        prefixed.append_text(rendered)
+        return prefixed
+    return rendered
+
+
+def _inline_progress_text(label: str, percent: int | float, geometry: _InlineBarGroupGeometry) -> Any:
+    from rich.text import Text
+
+    normalized_percent = min(100.0, max(0.0, float(percent)))
+    row = _inline_bar_row(label, geometry)
+    if normalized_percent <= 0:
+        fill_cells = 0
+    elif normalized_percent >= 100:
+        fill_cells = geometry.main_width
+    else:
+        fill_cells = max(1, math.floor(geometry.main_width * normalized_percent / 100.0))
+    text = Text(row, overflow="fold")
+    text.stylize(_CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE, 0, len(row))
+    fill_end = _cell_offset_to_text_index(row, fill_cells)
+    if fill_end > 0:
+        text.stylize(_CHAT_ACCOUNTS_RESET_PROGRESS_FILL_STYLE, 0, fill_end)
+    return text
+
+
+def _inline_centered_ratio_text(label: str, ratio: float | None, geometry: _InlineBarGroupGeometry) -> Any:
+    from rich.text import Text
+
+    row = _inline_bar_row(label, geometry)
+    text = Text(row, overflow="fold")
+    text.stylize(_CHAT_ACCOUNTS_USAGE_TIME_RATIO_TRACK_STYLE, 0, len(row))
+    if ratio is None:
+        return text
+
+    normalized_ratio = min(2.0, max(0.0, ratio))
+    if math.isclose(normalized_ratio, 1.0):
+        return text
+
+    center = geometry.center
+    if normalized_ratio > 1.0:
+        right_width = geometry.main_width - center
+        fill_width = _inline_centered_ratio_fill_width(right_width, normalized_ratio - 1.0)
+        fill_start = _cell_offset_to_text_index(row, center)
+        fill_end = _cell_offset_to_text_index(row, center + fill_width)
+        if fill_end > fill_start:
+            text.stylize(_CHAT_ACCOUNTS_USAGE_TIME_RATIO_FAST_STYLE, fill_start, fill_end)
+    else:
+        left_width = center
+        fill_width = _inline_centered_ratio_fill_width(left_width, 1.0 - normalized_ratio)
+        fill_start = _cell_offset_to_text_index(row, center - fill_width)
+        fill_end = _cell_offset_to_text_index(row, center)
+        if fill_end > fill_start:
+            text.stylize(_CHAT_ACCOUNTS_USAGE_TIME_RATIO_SLOW_STYLE, fill_start, fill_end)
+    return text
+
+
+def _inline_bar_row(label: str, geometry: _InlineBarGroupGeometry) -> str:
+    from rich.cells import cell_len, set_cell_size
+
+    return set_cell_size(label, max(geometry.main_width, cell_len(label)))
+
+
+def _unstyled_text(value: str) -> Any:
+    from rich.text import Text
+
+    return Text(value, overflow="fold")
+
+
+def _cell_offset_to_text_index(text: str, cell_offset: int) -> int:
+    from rich.cells import split_graphemes
+
+    if cell_offset <= 0:
+        return 0
+    cell_position = 0
+    graphemes, _ = split_graphemes(text)
+    for start, end, cell_size in graphemes:
+        next_cell_position = cell_position + cell_size
+        if next_cell_position == cell_offset:
+            return end
+        if next_cell_position > cell_offset:
+            return start
+        cell_position = next_cell_position
+    return len(text)
+
+
+def _inline_centered_ratio_fill_width(half_width: int, fraction: float) -> int:
+    if half_width <= 0:
+        return 0
+    if fraction <= 0:
+        return 0
+    if fraction >= 1:
+        return half_width
+    return max(1, math.floor(half_width * fraction))
+
+
+def _usage_time_line_data(line: str) -> _UsageTimeLineData | None:
+    match = _CHAT_ACCOUNTS_USAGE_TIME_RE.match(line)
+    if match is None:
+        return None
+    raw_ratio = match.group("ratio")
+    ratio = None if raw_ratio == "n/a" else float(raw_ratio)
+    return _UsageTimeLineData(
+        elapsed_percent=min(100, int(match.group("elapsed_percent"))),
+        ratio=ratio,
+    )
+
+
+def _split_usage_time_main_suffix(line: str) -> tuple[str, str]:
+    main_text = line.rstrip()
+    suffix_markers: list[str] = []
+    while True:
+        matched_marker = None
+        for marker in _CHAT_ACCOUNTS_USAGE_SUFFIX_MARKERS:
+            if main_text.endswith(marker):
+                marker_start = len(main_text) - len(marker)
+                if marker_start == 0 or main_text[marker_start - 1].isspace():
+                    matched_marker = marker
+                    break
+        if matched_marker is None:
+            break
+        suffix_markers.append(matched_marker)
+        main_text = main_text[: -len(matched_marker)].rstrip()
+
+    if not suffix_markers:
+        return line, ""
+    return main_text, " " + " ".join(reversed(suffix_markers))
+
+
+def _is_reset_line(line: str) -> bool:
+    return line.strip().startswith("resets |")
 
 
 def _normalize_session_limit(limit: int | None) -> int | None:
