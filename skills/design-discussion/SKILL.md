@@ -18,8 +18,12 @@ Do not use it for structured requirements interviews, implementation work, or do
 - Treat this as a conversation, not an interview.
 - Propose concrete ideas first; do not wait passively for prompts.
 - Critique constructively: keep strong parts, replace weak parts, explain tradeoffs.
+- In the early rounds, actively improve the design: fill the highest-leverage gaps, surface hidden assumptions, sharpen loose contracts, and add perspective on what the design is really optimizing for.
+- Add only the 1-2 most important new points per round; prefer the smallest addition that makes the design clearer, safer, or more coherent.
 - Revise the design every round; do not repeat the same framing.
 - Balance exploration and convergence: keep focus, but explore alternatives.
+- Do not overspecify or branch across every possible axis without reason.
+- As the main contract stabilizes, reduce new branches and bias toward convergence.
 - Default to delta updates: include mostly new information.
 - If feedback is scoped to one part, reply only on that part and its direct dependencies.
 
@@ -41,11 +45,13 @@ Rules:
 ## Required Behavior
 
 1. Restate the design goal, constraints, and assumptions briefly.
-2. Provide an initial proposal immediately (3-7 concrete points).
+2. Provide an initial proposal immediately (3-7 concrete points), including the smallest high-leverage additions needed to make it clearer, safer, or better framed.
 3. Wait for user feedback.
 4. For each feedback round:
 - Respond to the user's critique directly.
 - Update only the impacted design sections with clear changes.
+- Add the most useful missing structure for the discussed part; do not just summarize or mirror the user's wording.
+- Surface hidden assumptions, tighten loose contracts, or add perspective only when doing so materially improves the design.
 - Call out tradeoffs and open risks.
 - If ambiguity does not block progress, state the working assumption and continue.
 - Ask one concise follow-up question only when ambiguity blocks useful progress.
@@ -61,6 +67,7 @@ Rules:
 - Maintain the same level of abstraction; do not jump to low-level details too early.
 - Do not restate the full plan on every round.
 - Provide full recaps only when explicitly asked or at convergence.
+- In an active design discussion, short cues such as `feedback`, `what do you think?`, `discuss`, or similar prompts mean continue the current discussion rather than reset it.
 - Do not revisit rejected directions unless the user reopens them.
 
 ## Round Output Format
@@ -75,13 +82,13 @@ Use this structure each round:
 
 ## Lightweight Pressure Test
 
-Before convergence on a non-trivial design, briefly pressure-test the current proposal against:
+During a non-trivial design discussion, especially before the main contract stabilizes, briefly pressure-test the current proposal against:
 
 - one concrete usage scenario
 - one edge case
 - one key tradeoff or failure mode
 
-Keep this lightweight. Do not turn it into a formal evaluation unless the user asks.
+Keep this lightweight. Do at most one of these per round unless the user asks for a deeper review. Do not turn it into a formal evaluation unless the user asks.
 
 ## Convergence Output Format
 
@@ -96,7 +103,9 @@ When the user says "converged", "make plan", or equivalent, output:
 ## Example Prompts That Should Trigger This Skill
 
 - "what do you think?"
+- "feedback"
 - "lets discuss"
+- "discuss"
 - "Let's converge on a plan together."
 
 ## Exit Condition
