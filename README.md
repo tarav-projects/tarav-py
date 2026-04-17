@@ -20,27 +20,53 @@ Current baseline includes:
 
 ## Skills CLI
 
-`agentos skills` exposes local skills-directory helpers:
+`agentos skills` exposes the public routed skills surface.
 
-- Commands resolve skills through an ordered depot-based path.
-- Outside a project the default public path is `~/.agents/skills`.
-- Inside an `agentos` project the default public path is the project `skills.skills_depot` (or `<project>/skills` when unset), then `~/.agents/skills`.
-- Imports are declared in `<project>/.agentos/config.json` under `skills.imports`.
-- The project published destination is configured under `<project>/.agentos/config.json` as `skills.skills_depot`.
-- Imported skills are published into the depot as `<import-name>-<skill-folder-name>` by default.
-- For `sync` and `prune`, if no `.agentos/project.json` is found, the current folder is treated as an implicit project root with default skills config.
-- `sync` uses project `skills.imports` when present; if that field is missing, it falls back to `~/.agentos/config.json` `skills.imports`.
-- An explicit project `skills.imports: []` disables the global fallback.
-- Relative global fallback import paths are resolved under `~/.agentos/`.
-- `list`: print effective top-level skills with winning source provenance (`--json` optional)
-- `path`: print the ordered skills path, or resolve one specific skill through it
-- `sync`: discover all imported `SKILL.md` directories and sync them into the effective project skills depot via symlinks
-- `sync --dry-run`: print planned symlink creations, updates, and stale-link removals without writing filesystem changes
-- `sync --global-depot`: sync global `skills.imports` into the global public depot `~/.agents/skills`
-- `prune`: remove broken managed symlinks from the effective project skills depot
-- `prune --dry-run`: print broken managed symlinks that would be removed without writing filesystem changes
-- `prune --global-depot`: prune broken managed symlinks from the global public depot `~/.agents/skills`
-- `--skills-depot <path>`: override the project-local depot used as the first path entry and sync/prune target; defaults to project config `skills.skills_depot` or current-folder `skills`
+Current public surface:
+
+- `list`: return the routed skill catalog visible to the caller context (`--json` optional)
+- `path <name>`: resolve one routed skill name to its loadable path
+- `--project <path>`: optional caller project root override for routing on both commands
+
+Current routing model:
+
+- caller context resolves from `--project`, then agentos project root from `cwd`, then raw `pwd`
+- profile selection uses the closest matching bound parent context from global config
+- missing binding falls back to profile `base`
+- selected profiles materialize into `~/.agentos/skills-depot/<profile>/`
+- public output is served from the routed depot only, not from raw skill sources
+
+Global config shape:
+
+```json
+{
+  "class": "agentos.global.config",
+  "schema_version": 1,
+  "skills": {
+    "routing": {
+      "bindings": [
+        { "root": "/abs/project/root", "profile": "agentos" }
+      ],
+      "profiles": {
+        "base": {
+          "imports": []
+        },
+        "agentos": {
+          "imports": [
+            { "name": "local", "path": "skills" }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+Output notes:
+
+- `list` includes at least `name`, `description`, `source`, and routed absolute `path`
+- `path <name>` prints the routed absolute path only
+- when the selected profile exposes no skills, `list` returns an authoritative empty result
 
 ## Tape CLI (folder-backed default)
 
