@@ -1,0 +1,4 @@
+interface:
+  display_name: "agentos-team"
+  short_description: "Designer and implementer teamwork through impl-req handoffs"
+  default_prompt: "Work inside agentos-team, route to the requested role, use impl-req live-notes as shared artifacts, and keep role boundaries strict."
