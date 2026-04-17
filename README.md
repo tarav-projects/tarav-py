@@ -44,6 +44,11 @@ Global config shape:
   "schema_version": 1,
   "skills": {
     "routing": {
+      "imports_registry": {
+        "agentos": {
+          "path": "/Users/pereiro/projects/agentos/skills"
+        }
+      },
       "bindings": [
         { "root": "/abs/project/root", "profile": "agentos" }
       ],
@@ -53,7 +58,8 @@ Global config shape:
         },
         "agentos": {
           "imports": [
-            { "name": "local", "path": "skills" }
+            { "name": "agentos" },
+            { "name": "scratch", "path": "skills" }
           ]
         }
       }
@@ -67,6 +73,9 @@ Output notes:
 - `list` includes at least `name`, `description`, `source`, and routed absolute `path`
 - `path <name>` prints the routed absolute path only
 - when the selected profile exposes no skills, `list` returns an authoritative empty result
+- profile import entries are always objects
+- `{ "name": "agentos" }` resolves through `imports_registry`
+- `{ "name": "scratch", "path": "skills" }` is an inline import definition
 
 ## Tape CLI (folder-backed default)
 

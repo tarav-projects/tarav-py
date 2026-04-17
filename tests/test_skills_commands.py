@@ -32,6 +32,7 @@ def _create_skill(path: Path, *, description: str) -> None:
 def _write_global_routing_config(
     agentos_home: Path,
     *,
+    imports_registry: dict[str, dict[str, object]] | None = None,
     profiles: dict[str, dict[str, object]] | None = None,
     bindings: list[dict[str, object]] | None = None,
 ) -> None:
@@ -41,6 +42,7 @@ def _write_global_routing_config(
         "schema_version": 1,
         "skills": {
             "routing": {
+                "imports_registry": {} if imports_registry is None else imports_registry,
                 "profiles": {} if profiles is None else profiles,
                 "bindings": [] if bindings is None else bindings,
             }
@@ -85,10 +87,13 @@ def test_skills_list_uses_base_profile_when_no_binding_matches(
 
     _write_global_routing_config(
         agentos_home,
+        imports_registry={
+            "base": {"path": "skills"},
+        },
         profiles={
             "base": {
                 "imports": [
-                    {"name": "base", "path": "skills"},
+                    {"name": "base"},
                 ]
             }
         },
@@ -118,10 +123,13 @@ def test_skills_list_renders_card_like_output(capsys, monkeypatch, tmp_path: Pat
 
     _write_global_routing_config(
         agentos_home,
+        imports_registry={
+            "base": {"path": "skills"},
+        },
         profiles={
             "base": {
                 "imports": [
-                    {"name": "base", "path": "skills"},
+                    {"name": "base"},
                 ]
             }
         },
@@ -151,10 +159,13 @@ def test_skills_list_uses_agentos_project_root_before_pwd(
 
     _write_global_routing_config(
         agentos_home,
+        imports_registry={
+            "project": {"path": "skills"},
+        },
         profiles={
             "project-profile": {
                 "imports": [
-                    {"name": "project", "path": "skills"},
+                    {"name": "project"},
                 ]
             }
         },
@@ -193,15 +204,19 @@ def test_skills_list_uses_closest_bound_parent_context(
 
     _write_global_routing_config(
         agentos_home,
+        imports_registry={
+            "parent": {"path": "skills"},
+            "child": {"path": "skills"},
+        },
         profiles={
             "parent-profile": {
                 "imports": [
-                    {"name": "parent", "path": "skills"},
+                    {"name": "parent"},
                 ]
             },
             "child-profile": {
                 "imports": [
-                    {"name": "child", "path": "skills"},
+                    {"name": "child"},
                 ]
             },
         },
@@ -264,10 +279,13 @@ def test_skills_path_returns_routed_symlink_path(capsys, monkeypatch, tmp_path: 
 
     _write_global_routing_config(
         agentos_home,
+        imports_registry={
+            "base": {"path": "skills"},
+        },
         profiles={
             "base": {
                 "imports": [
-                    {"name": "base", "path": "skills"},
+                    {"name": "base"},
                 ]
             }
         },
@@ -290,6 +308,82 @@ def test_skills_path_returns_routed_not_found(capsys, monkeypatch, tmp_path: Pat
     assert main(["skills", "path", "agentos-live-note-base"]) == 1
     assert capsys.readouterr().err.strip() == (
         "error: skill not found in routed skills: agentos-live-note-base"
+    )
+
+
+def test_skills_profile_imports_support_mixed_registry_and_inline_entries(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    registry_root = tmp_path / "registry-source"
+    inline_root = tmp_path / "inline-source"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    _create_skill(registry_root / "alpha-skill", description="Registry alpha skill")
+    _create_skill(inline_root / "beta-skill", description="Inline beta skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        imports_registry={
+            "registry": {"path": str(registry_root)},
+        },
+        profiles={
+            "base": {
+                "imports": [
+                    {"name": "registry"},
+                    {"name": "inline", "path": str(inline_root)},
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+
+    assert listed == [
+        {
+            "name": "inline-beta-skill",
+            "description": "Inline beta skill",
+            "source": "inline",
+            "path": str(agentos_home / "skills-depot" / "base" / "inline-beta-skill"),
+        },
+        {
+            "name": "registry-alpha-skill",
+            "description": "Registry alpha skill",
+            "source": "registry",
+            "path": str(agentos_home / "skills-depot" / "base" / "registry-alpha-skill"),
+        },
+    ]
+
+
+def test_skills_profile_import_ref_errors_on_unknown_registry_entry(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    _write_global_routing_config(
+        agentos_home,
+        profiles={
+            "base": {
+                "imports": [
+                    {"name": "missing"},
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list"]) == 1
+    assert capsys.readouterr().err.strip() == (
+        "error: routing profile import references unknown registry entry: base/missing"
     )
 
 

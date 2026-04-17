@@ -93,9 +93,12 @@ Reason:
 The current global routing config now uses only one routed profile:
 
 - profile: `base`
-- imports:
+- registry entries:
   - `agentos`
   - `md-library`
+- imports:
+  - `{ "name": "agentos" }`
+  - `{ "name": "md-library" }`
 
 No extra profiles or bindings have been created yet.
 

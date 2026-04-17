@@ -117,6 +117,44 @@ def _parse_routing_profiles(payload: object) -> dict[str, SkillsRoutingProfile]:
     return profiles
 
 
+def _parse_routing_imports_registry(payload: object) -> dict[str, dict[str, object]]:
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        raise CliError("global config field skills.routing.imports_registry must be an object")
+
+    registry: dict[str, dict[str, object]] = {}
+    for raw_name, raw_entry in payload.items():
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise CliError("global config field skills.routing.imports_registry keys must be non-empty strings")
+        name = validate_string_for_path(raw_name, field_name="routing import registry name")
+        if not isinstance(raw_entry, dict):
+            raise CliError(f"global config field skills.routing.imports_registry.{name} must be an object")
+
+        path_value = raw_entry.get("path")
+        path_text = str(path_value).strip()
+        if not path_text:
+            raise CliError(
+                f"global config field skills.routing.imports_registry.{name}.path is required"
+            )
+
+        registry_entry: dict[str, object] = {
+            "name": name,
+            "path": path_text,
+        }
+        if "enabled" in raw_entry:
+            enabled = raw_entry["enabled"]
+            if not isinstance(enabled, bool):
+                raise CliError(
+                    f"global config field skills.routing.imports_registry.{name}.enabled must be a boolean"
+                )
+            registry_entry["enabled"] = enabled
+
+        registry[name] = registry_entry
+
+    return registry
+
+
 def _parse_routing_bindings(payload: object) -> list[SkillsRoutingBinding]:
     if payload is None:
         return []
@@ -151,9 +189,14 @@ def _parse_routing_bindings(payload: object) -> list[SkillsRoutingBinding]:
     return bindings
 
 
-def _load_routing_profiles_and_bindings() -> tuple[dict[str, SkillsRoutingProfile], list[SkillsRoutingBinding]]:
+def _load_routing_profiles_and_bindings() -> tuple[
+    dict[str, SkillsRoutingProfile],
+    dict[str, dict[str, object]],
+    list[SkillsRoutingBinding],
+]:
     routing = _load_routing_section()
     profiles = _parse_routing_profiles(routing.get("profiles"))
+    imports_registry = _parse_routing_imports_registry(routing.get("imports_registry"))
     bindings = _parse_routing_bindings(routing.get("bindings"))
 
     for binding in bindings:
@@ -162,7 +205,65 @@ def _load_routing_profiles_and_bindings() -> tuple[dict[str, SkillsRoutingProfil
         if binding.profile not in profiles:
             raise CliError(f"routing binding references unknown profile: {binding.profile}")
 
-    return profiles, bindings
+    return profiles, imports_registry, bindings
+
+
+def _resolve_profile_imports_payload(
+    profile: SkillsRoutingProfile,
+    imports_registry: dict[str, dict[str, object]],
+) -> list[dict[str, object]]:
+    payload = profile.imports_payload
+    if not isinstance(payload, list):
+        raise CliError(
+            f"global config field skills.routing.profiles.{profile.name}.imports must be an array"
+        )
+
+    resolved: list[dict[str, object]] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, dict):
+            raise CliError(
+                f"global config field skills.routing.profiles.{profile.name}.imports[{index}] must be an object"
+            )
+
+        name = validate_string_for_path(
+            item.get("name", ""),
+            field_name=(
+                f"global config field skills.routing.profiles.{profile.name}.imports[{index}].name"
+            ),
+        )
+
+        if "enabled" in item and not isinstance(item["enabled"], bool):
+            raise CliError(
+                f"global config field skills.routing.profiles.{profile.name}.imports[{index}].enabled must be a boolean"
+            )
+
+        if "path" in item:
+            path_text = str(item["path"]).strip()
+            if not path_text:
+                raise CliError(
+                    f"global config field skills.routing.profiles.{profile.name}.imports[{index}].path must not be empty"
+                )
+            resolved_item: dict[str, object] = {
+                "name": name,
+                "path": path_text,
+            }
+            if "enabled" in item:
+                resolved_item["enabled"] = item["enabled"]
+            resolved.append(resolved_item)
+            continue
+
+        registry_entry = imports_registry.get(name)
+        if registry_entry is None:
+            raise CliError(
+                f"routing profile import references unknown registry entry: {profile.name}/{name}"
+            )
+
+        resolved_item = dict(registry_entry)
+        if "enabled" in item:
+            resolved_item["enabled"] = item["enabled"]
+        resolved.append(resolved_item)
+
+    return resolved
 
 
 def _select_closest_binding(
@@ -199,7 +300,7 @@ def resolve_routed_skills_selection(
     project: Path | str | None = None,
 ) -> RoutedSkillsSelection:
     caller_root = resolve_routed_skills_caller_root(start_path, project=project)
-    profiles, bindings = _load_routing_profiles_and_bindings()
+    profiles, imports_registry, bindings = _load_routing_profiles_and_bindings()
     matched_binding = _select_closest_binding(caller_root, bindings)
 
     profile_name = matched_binding.profile if matched_binding is not None else "base"
@@ -210,8 +311,9 @@ def resolve_routed_skills_selection(
             raise CliError(f"routing profile not found: {profile_name}")
         imports: list[SkillsImport] = []
     else:
+        resolved_imports_payload = _resolve_profile_imports_payload(profile, imports_registry)
         imports = _parse_skills_imports(
-            profile.imports_payload,
+            resolved_imports_payload,
             config_label=f"global config field skills.routing.profiles.{profile_name}",
             base_root=matched_binding.root if matched_binding is not None else caller_root,
         )
