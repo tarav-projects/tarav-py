@@ -15,9 +15,9 @@ from agentos.skills.routing import (
 )
 
 NO_ROUTED_SKILLS_MESSAGE = (
-    "No routed skills are available for this caller context."
+    "No routed skills are available for this project target."
 )
-NO_ROUTED_PROFILE_MESSAGE = "no local routed skills context is available for this caller context"
+NO_ROUTED_PROFILE_MESSAGE = "no routed skills depots are configured for this project target"
 
 
 def _format_routed_skill_list(skills: list) -> str:
@@ -172,7 +172,7 @@ def _add_project_argument(parser: argparse.ArgumentParser) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Optional caller project root override for routing. When passed without a path, use current `pwd`.",
+        help="Project target override. Bare --project targets current pwd. Routed skills require an existing project.",
     )
 
 
@@ -274,13 +274,13 @@ def _cmd_skills_path(args: argparse.Namespace) -> int:
 def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
     skills_parser = subparsers.add_parser(
         "skills",
-        help="Control the project-local routed skills depots.",
+        help="Control project-local routed skills for an existing Agentos project.",
     )
     skills_subparsers = skills_parser.add_subparsers(dest="skills_command")
 
     skills_list_parser = skills_subparsers.add_parser(
         "list",
-        help="List routed skills visible to the current caller context.",
+        help="List routed skills visible to the resolved project target.",
     )
     skills_list_parser.add_argument(
         "--json",
@@ -292,7 +292,7 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
 
     skills_import_parser = skills_subparsers.add_parser(
         "import",
-        help="Sync the routed skills catalog into the resolved local project skill depots.",
+        help="Sync the routed skills catalog into the depots configured for the resolved existing project.",
     )
     skills_import_parser.add_argument(
         "--force",
@@ -304,7 +304,7 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
 
     skills_status_parser = skills_subparsers.add_parser(
         "status",
-        help="Analyze the current state of the routed local skills depots.",
+        help="Analyze the routed skills depots for the resolved existing project.",
     )
     skills_status_parser.add_argument(
         "--json",
@@ -316,7 +316,7 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
 
     skills_path_parser = skills_subparsers.add_parser(
         "path",
-        help="Resolve one routed skill to its local loadable paths, or print the routed local depot paths.",
+        help="Resolve one routed skill to its loadable project-local paths, or print the configured depot paths.",
     )
     skills_path_parser.add_argument(
         "name",
@@ -326,7 +326,7 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
     skills_path_parser.add_argument(
         "--depot",
         action="store_true",
-        help="Print the routed local skills depot path for the current caller context.",
+        help="Print the routed skills depot paths for the resolved existing project.",
     )
     _add_project_argument(skills_path_parser)
     skills_path_parser.set_defaults(handler=_cmd_skills_path)

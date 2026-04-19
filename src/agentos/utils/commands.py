@@ -67,7 +67,7 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
 
     tmp_folder_parser = utils_subparsers.add_parser(
         "tmp-folder",
-        help="Create temporary folders under .agentos/tmp.",
+        help="Allocate temporary folders under an existing project's .agentos/tmp.",
     )
     tmp_folder_subparsers = tmp_folder_parser.add_subparsers(
         dest="utils_tmp_folder_command",
@@ -76,7 +76,7 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
 
     tmp_folder_new_parser = tmp_folder_subparsers.add_parser(
         "new",
-        help="Generate a random tmp-folder path under .agentos/tmp.",
+        help="Generate a random tmp-folder path under the resolved existing project's .agentos/tmp.",
     )
     tmp_folder_new_parser.add_argument(
         "--create",
@@ -89,6 +89,6 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override. Bare --project targets current pwd.",
+        help="Project target override. Bare --project targets current pwd. Tmp-folder allocation requires an existing project.",
     )
     tmp_folder_new_parser.set_defaults(handler=_cmd_utils_tmp_folder_new)

@@ -32,7 +32,12 @@ You can target a tape in two ways:
 - Project mode: `--tape <name>` resolves to `<project>/.agentos/tapes/<name>/`
 - Headless mode: `--root <folder>` uses an explicit tape folder path
 
-Project mode requires being inside an AgentOS project (`agentos init`).
+Project mode requires an existing Agentos project.
+
+- Implicit project mode: parent-walk discovery from `cwd`
+- Explicit project mode: `--project <path>` or bare `--project` for current directory
+- If the resolved project target is not an existing project, project mode fails and should be
+  initialized first with `agentos init --scope project --project ...`
 
 ## 4) Write semantics (`--init`)
 
@@ -54,28 +59,28 @@ Behavior:
 Initialize project and tape:
 
 ```sh
-uv run agentos init --scope project --root .
-uv run agentos tape init --tape bla --naming sequential --max-records-per-segment 1000
-uv run agentos tape init --tape bla --tape-class events.demo --data-schema-json '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["k"],"properties":{"k":{"type":"string"}},"additionalProperties":false}'
-uv run agentos tape init --tape bla --allowed-classes-json '["event.alpha","event.beta"]'
+agentos init --scope project --project .
+agentos tape init --tape bla --naming sequential --max-records-per-segment 1000
+agentos tape init --tape bla --tape-class events.demo --data-schema-json '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["k"],"properties":{"k":{"type":"string"}},"additionalProperties":false}'
+agentos tape init --tape bla --allowed-classes-json '["event.alpha","event.beta"]'
 ```
 
 Append one record:
 
 ```sh
-uv run agentos tape append \
+agentos tape append \
   --tape bla \
   --writer-id proc-a \
   --class event.alpha
 
-uv run agentos tape append \
+agentos tape append \
   --tape bla \
   --writer-id proc-a \
   --class event.alpha \
   --data-json '{"k":"v"}'
 
 # optional timestamp override (otherwise created_at is auto-generated)
-uv run agentos tape append \
+agentos tape append \
   --tape bla \
   --writer-id proc-a \
   --class event.alpha \
@@ -85,7 +90,7 @@ uv run agentos tape append \
 Append a batch:
 
 ```sh
-uv run agentos tape append-batch \
+agentos tape append-batch \
   --tape bla \
   --writer-id proc-a \
   --entries-json '[
@@ -97,30 +102,30 @@ uv run agentos tape append-batch \
 Consolidate staged records into committed segments:
 
 ```sh
-uv run agentos tape consolidate --tape bla
+agentos tape consolidate --tape bla
 ```
 
 Read committed or best-effort:
 
 ```sh
-uv run agentos tape query --tape bla --mode committed --count
-uv run agentos tape query --tape bla --mode best_effort --with-source --last 20
-uv run agentos tape query --tape bla --mode best_effort --jmes "[?data.task_id=='task-123']"
+agentos tape query --tape bla --mode committed --count
+agentos tape query --tape bla --mode best_effort --with-source --last 20
+agentos tape query --tape bla --mode best_effort --jmes "[?data.task_id=='task-123']"
 # one-call convenience: consolidate before querying committed view
-uv run agentos tape query --tape bla --mode committed --count --consolidate
+agentos tape query --tape bla --mode committed --count --consolidate
 ```
 
 Verify segment header consistency:
 
 ```sh
-uv run agentos tape verify --tape bla
+agentos tape verify --tape bla
 ```
 
 Inspect effective config and health:
 
 ```sh
-uv run agentos tape config --tape bla
-uv run agentos tape doctor --tape bla
+agentos tape config --tape bla
+agentos tape doctor --tape bla
 ```
 
 ## 6) Headless mode example
@@ -128,7 +133,7 @@ uv run agentos tape doctor --tape bla
 If no project context is available, target a folder directly:
 
 ```sh
-uv run agentos tape append \
+agentos tape append \
   --root /tmp/demo-tape \
   --writer-id proc-headless \
   --class event.headless \

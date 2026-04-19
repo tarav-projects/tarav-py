@@ -76,13 +76,13 @@ def _cmd_rev_parse(args: argparse.Namespace) -> int:
 def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
     init_parser = subparsers.add_parser(
         "init",
-        help="Initialize local or global agentos storage.",
+        help="Initialize a project target or the global agentos home.",
     )
     init_parser.add_argument(
         "--scope",
         choices=["project", "global"],
         default="project",
-        help="Initialization scope (default: project).",
+        help="Initialization scope. Project scope targets a local Agentos.Project; global scope initializes ~/.agentos (default: project).",
     )
     init_parser.add_argument(
         "--project",
@@ -90,7 +90,7 @@ def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
         nargs="?",
         const=Path("."),
         default=Path("."),
-        help="Project target for --scope project (default: current directory). Bare --project targets current pwd.",
+        help="Project target for --scope project. Bare --project targets current pwd and may be initialized if missing.",
     )
     init_parser.add_argument(
         "--project-id",
@@ -106,7 +106,7 @@ def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
 
     rev_parse_parser = subparsers.add_parser(
         "rev-parse",
-        help="Git-like project context introspection.",
+        help="Inspect Agentos.Project resolution state without requiring an existing project.",
     )
     rev_parse_flags = rev_parse_parser.add_mutually_exclusive_group(required=True)
     rev_parse_flags.add_argument(

@@ -7,7 +7,7 @@ import pytest
 
 from agentos.cli import build_parser, main
 
-NO_ROUTED_SKILLS_MESSAGE = "No routed skills are available for this caller context."
+NO_ROUTED_SKILLS_MESSAGE = "No routed skills are available for this project target."
 DEFAULT_DEPOT_PATHS = (Path(".agents/skills"), Path(".claude/skills"))
 
 

@@ -396,14 +396,14 @@ def _add_project_argument(parser: argparse.ArgumentParser) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override. Bare --project targets current pwd.",
+        help="Project target override. Bare --project targets current pwd. Mission commands require an existing project.",
     )
 
 
 def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     mission_parser = subparsers.add_parser(
         "mission",
-        help="Mission control — coordinate named blocks of work.",
+        help="Project-scoped mission control for an existing Agentos project.",
     )
     mission_subs = mission_parser.add_subparsers(dest="mission_command")
 

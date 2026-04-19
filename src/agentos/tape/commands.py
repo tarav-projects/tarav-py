@@ -762,7 +762,7 @@ def _add_tape_target_group(parser: argparse.ArgumentParser) -> None:
     target_group.add_argument(
         "--tape",
         dest="tape_name",
-        help="Logical tape name resolved to <project>/.agentos/tapes/<name>/.",
+        help="Logical tape name resolved inside the resolved existing project as <project>/.agentos/tapes/<name>/.",
     )
     target_group.add_argument(
         "--root",
@@ -775,7 +775,7 @@ def _add_tape_target_group(parser: argparse.ArgumentParser) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override for --tape mode. Bare --project targets current pwd.",
+        help="Project target override for --tape mode only. Bare --project targets current pwd. --tape requires an existing project; not valid with --root.",
     )
 
 
