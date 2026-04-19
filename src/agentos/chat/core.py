@@ -14,6 +14,7 @@ from agentos._core.errors import CliError
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
+    default_provider_instances,
     ProviderHomeSlot,
     load_configured_provider_instances,
 )
@@ -247,6 +248,12 @@ def configured_provider_instances(*, start_path: Path | str = ".") -> tuple[Prov
     return _dedupe_provider_instances(provider_instances)
 
 
+def _session_provider_instances(*, start_path: Path | str = ".") -> tuple[ProviderInstance, ...]:
+    configured_instances = configured_provider_instances(start_path=start_path)
+    default_instances = default_provider_instances(supports_session_discovery_only=True)
+    return _dedupe_provider_instances(configured_instances + default_instances)
+
+
 def _provider_family_for_name(family_name: str) -> SessionProviderHandler | None:
     for family in supported_provider_families():
         if family.family == family_name:
@@ -270,11 +277,12 @@ def list_chat_sessions(
     providers: tuple[str, ...] | None = None,
     extractable_only: bool = False,
     updated_after: float | None = None,
+    start_path: Path | str = ".",
 ) -> dict[str, object]:
     _validate_sort_choice(sort)
     _validate_session_limit(limit)
 
-    provider_groups = _iter_provider_context_groups(providers)
+    provider_groups = _iter_provider_context_groups(providers, start_path=start_path)
     discovered_sessions: list[ChatSession] = []
     provider_payloads: list[dict[str, Any]] = []
 
@@ -576,9 +584,10 @@ def find_chat_session(
     include_grep: bool = False,
     full_output: bool = False,
     providers: tuple[str, ...] | None = None,
+    start_path: Path | str = ".",
 ) -> dict[str, object]:
-    provider_groups = _iter_provider_context_groups(providers)
-    sessions = resolve_chat_sessions(query, providers=providers)
+    provider_groups = _iter_provider_context_groups(providers, start_path=start_path)
+    sessions = resolve_chat_sessions(query, providers=providers, start_path=start_path)
     search_findings: list[dict[str, Any]] = []
     search_findings_seen_keys: set[tuple[object, ...]] = set()
     provider_payloads: list[dict[str, Any]] = []
@@ -654,9 +663,10 @@ def resolve_chat_sessions(
     query: str,
     *,
     providers: tuple[str, ...] | None = None,
+    start_path: Path | str = ".",
 ) -> list[ChatSession]:
     resolved_sessions: list[ChatSession] = []
-    for _, contexts in _iter_provider_context_groups(providers):
+    for _, contexts in _iter_provider_context_groups(providers, start_path=start_path):
         for context in contexts:
             resolved_sessions.extend(_find_direct_provider_sessions(context, query))
     return _sort_sessions(_dedupe_sessions(resolved_sessions), "lexical")
@@ -664,8 +674,10 @@ def resolve_chat_sessions(
 
 def _iter_provider_context_groups(
     providers: tuple[str, ...] | None,
+    *,
+    start_path: Path | str = ".",
 ) -> tuple[tuple[SessionProviderHandler, tuple[SessionProviderContext, ...]], ...]:
-    provider_instances = configured_provider_instances()
+    provider_instances = _session_provider_instances(start_path=start_path)
     if providers is not None:
         requested_providers = set(providers)
         provider_instances = tuple(

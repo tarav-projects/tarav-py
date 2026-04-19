@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
 from agentos.chat.core import configured_provider_instances, supported_provider_families
 from agentos.chat.providers import ProviderInstance
@@ -69,11 +70,17 @@ def _format_instance_line(instance: ProviderInstance) -> str:
     return f"{instance.family} [{'; '.join(suffix_parts)}]"
 
 
+def _config_start_path(args: argparse.Namespace) -> Path:
+    if args.project is not None:
+        return normalize_project_target(args.project)
+    return Path.cwd().resolve()
+
+
 def _cmd_agent_list(args: argparse.Namespace) -> int:
-    cwd = Path(args.cwd).expanduser().resolve() if args.cwd else Path.cwd().resolve()
+    config_start_path = _config_start_path(args)
     instances = _list_provider_instances(
         provider=args.provider,
-        start_path=cwd,
+        start_path=config_start_path,
     )
     if args.json:
         payload = {
@@ -136,11 +143,12 @@ def _build_agent_command(
 
 
 def _cmd_agent_run(args: argparse.Namespace) -> int:
+    config_start_path = _config_start_path(args)
     cwd = Path(args.cwd).expanduser().resolve() if args.cwd else Path.cwd().resolve()
     instance = _resolve_provider_instance(
         provider=args.provider,
         instance_id=args.instance,
-        start_path=cwd,
+        start_path=config_start_path,
     )
     prompt = _resolve_prompt(args.prompt)
     command = _build_agent_command(
@@ -171,7 +179,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
 def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     agent_parser = subparsers.add_parser(
         "agent",
-        help="Run configured agent provider instances.",
+        help="Run configured agent provider instances with global/project config resolution.",
     )
     agent_subparsers = agent_parser.add_subparsers(dest="agent_command")
 
@@ -186,9 +194,12 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Optional provider family filter.",
     )
     list_parser.add_argument(
-        "--cwd",
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
         default=None,
-        help="Project/config resolution root (default: current directory).",
+        help="Project target override for config resolution. Bare --project targets current pwd. Agent commands do not require an existing project.",
     )
     list_parser.add_argument(
         "--json",
@@ -218,9 +229,17 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Model override.",
     )
     run_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Project target override for config resolution. Bare --project targets current pwd. Agent commands do not require an existing project.",
+    )
+    run_parser.add_argument(
         "--cwd",
         default=None,
-        help="Working directory override (default: current directory).",
+        help="Working directory override for the launched agent process (default: current directory).",
     )
     run_parser.add_argument(
         "--dry-run",

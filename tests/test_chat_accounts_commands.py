@@ -153,6 +153,42 @@ def _write_global_config(
     )
 
 
+def _write_project_marker(project_root: Path) -> None:
+    _write(
+        project_root / ".agentos" / "project.json",
+        json.dumps(
+            {
+                "class": "agentos.project",
+                "schema_version": 1,
+                "project_id": "00000000-0000-4000-8000-000000000001",
+            }
+        ),
+    )
+
+
+def _write_project_config(
+    path: Path,
+    *,
+    provider_instances: list[dict[str, object]] | None = None,
+    accounts_usage_total: dict[str, object] | None = None,
+) -> None:
+    chat_payload: dict[str, object] = {
+        "provider_instances": provider_instances or [],
+    }
+    if accounts_usage_total is not None:
+        chat_payload["accounts_usage_total"] = accounts_usage_total
+    _write(
+        path,
+        json.dumps(
+            {
+                "class": "agentos.project.config",
+                "schema_version": 1,
+                "chat": chat_payload,
+            }
+        ),
+    )
+
+
 def test_chat_accounts_stats_summarizes_configured_provider_instances(
     tmp_path: Path,
     monkeypatch,
@@ -328,6 +364,115 @@ def test_chat_accounts_stats_summarizes_configured_provider_instances(
     assert claude_account["summary"] == "Logged in via claude.ai (pro)"
     assert claude_account["usage_status"] == "unavailable"
     assert "live usage refresh disabled" in claude_account["usage_message"]
+
+
+def test_chat_accounts_stats_supports_explicit_project_target(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    project_root = tmp_path / "project"
+    workspace = tmp_path / "workspace"
+    home.mkdir()
+    agentos_home.mkdir()
+    project_root.mkdir()
+    workspace.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    monkeypatch.chdir(workspace)
+
+    _write_project_marker(project_root)
+    _write_project_config(
+        project_root / ".agentos" / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "project-codex",
+                "label": "Project Codex",
+                "cli_command": ["/opt/homebrew/bin/codex"],
+                "env": {
+                    "CODEX_HOME": str(home / ".codex-project"),
+                },
+                "timeout_sec": 9,
+            }
+        ],
+    )
+
+    monkeypatch.setattr(chat_accounts, "_utc_now_iso", lambda: "2026-03-25T12:00:00Z")
+
+    observed_calls: list[tuple[list[str], int]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        assert capture_output is True
+        assert text is True
+        assert check is False
+        observed_calls.append((command, timeout))
+        assert env["CODEX_HOME"] == str(home / ".codex-project")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="",
+            stderr="Logged in using ChatGPT\n",
+        )
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        chat_accounts,
+        "_read_codex_account_rate_limits",
+        lambda instance: {
+            "rateLimits": {
+                "limitId": "codex",
+                "primary": {
+                    "usedPercent": 0,
+                    "windowDurationMins": 300,
+                    "resetsAt": 1_774_503_641,
+                },
+                "secondary": {
+                    "usedPercent": 0,
+                    "windowDurationMins": 10_080,
+                    "resetsAt": 1_774_559_427,
+                },
+                "credits": {
+                    "hasCredits": False,
+                    "unlimited": False,
+                    "balance": "0",
+                },
+                "planType": "plus",
+            }
+        },
+    )
+
+    assert (
+        main(
+            [
+                "chat",
+                "accounts",
+                "stats",
+                "--project",
+                str(project_root),
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert observed_calls == [(["/opt/homebrew/bin/codex", "login", "status"], 9)]
+    assert payload["command"] == "chat accounts stats"
+    assert payload["provider_count"] == 1
+    assert payload["account_count"] == 1
+    codex_account = payload["providers"][0]["accounts"][0]
+    assert codex_account["id"] == "project-codex"
+    assert codex_account["label"] == "Project Codex"
 
 
 def test_chat_accounts_stats_summarizes_configured_copilot_account(

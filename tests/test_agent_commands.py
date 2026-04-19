@@ -33,6 +33,38 @@ def _write_global_config(
     )
 
 
+def _write_project_marker(project_root: Path) -> None:
+    _write(
+        project_root / ".agentos" / "project.json",
+        json.dumps(
+            {
+                "class": "agentos.project",
+                "schema_version": 1,
+                "project_id": "00000000-0000-4000-8000-000000000001",
+            }
+        ),
+    )
+
+
+def _write_project_config(
+    path: Path,
+    *,
+    provider_instances: list[dict[str, object]] | None = None,
+) -> None:
+    _write(
+        path,
+        json.dumps(
+            {
+                "class": "agentos.project.config",
+                "schema_version": 1,
+                "chat": {
+                    "provider_instances": provider_instances or [],
+                },
+            }
+        ),
+    )
+
+
 def test_agent_run_uses_configured_provider_instance(
     tmp_path: Path,
     monkeypatch,
@@ -320,3 +352,87 @@ def test_agent_list_json_includes_configured_instance_fields(
     ]
     assert configured["default_model"] == "gpt-5.4"
     assert configured["env"]["CODEX_HOME"] == str(work_home)
+
+
+def test_agent_run_uses_explicit_project_target_for_config_resolution(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    project_root = tmp_path / "project"
+    workspace = tmp_path / "workspace"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    agentos_home.mkdir()
+    project_root.mkdir()
+    workspace.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    monkeypatch.chdir(workspace)
+
+    _write_project_marker(project_root)
+    _write_project_config(
+        project_root / ".agentos" / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "project-work",
+                "label": "Project work",
+                "home": str(work_home),
+                "cli_command": ["/opt/homebrew/bin/codex"],
+                "env": {
+                    "CODEX_HOME": str(work_home),
+                },
+            }
+        ],
+    )
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        cwd: str,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        observed["command"] = command
+        observed["cwd"] = cwd
+        observed["codex_home"] = env["CODEX_HOME"]
+        observed["check"] = check
+        return subprocess.CompletedProcess(command, 0)
+
+    import agentos.agent.commands as agent_commands
+
+    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--instance",
+                "project-work",
+                "--project",
+                str(project_root),
+                "--",
+                "hello from project config",
+            ]
+        )
+        == 0
+    )
+
+    assert observed["command"] == [
+        "/opt/homebrew/bin/codex",
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--model",
+        "gpt-5.4",
+        "hello from project config",
+    ]
+    assert observed["cwd"] == str(workspace.resolve())
+    assert observed["codex_home"] == str(work_home)
+    assert observed["check"] is False

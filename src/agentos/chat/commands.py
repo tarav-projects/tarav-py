@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from agentos._core.errors import CliError
+from agentos._core.project import normalize_project_target
 from agentos._core.path_validation import validate_string_for_path
 from agentos.chat._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
 from agentos.chat.accounts import (
@@ -298,6 +299,7 @@ class _ChatAccountsStatsRefreshWorker:
                 providers=optional_string_tuple(self.args.providers),
                 refresh_usage=self.args.refresh_usage,
                 full_output=self.args.full_output,
+                start_path=_config_start_path(self.args),
             ):
                 self.events.put(_ChatAccountsStatsRefreshPayloadEvent(payload))
         except Exception as exc:
@@ -725,6 +727,7 @@ def _normalize_session_query(query: str) -> str:
 def _cmd_chat_debug_list(args: argparse.Namespace) -> int:
     user_contain = args.user_contain
     limit = _normalize_session_limit(args.limit)
+    config_start_path = _config_start_path(args)
     payload = list_chat_sessions(
         sort=args.sort,
         full_output=args.full_output,
@@ -732,6 +735,7 @@ def _cmd_chat_debug_list(args: argparse.Namespace) -> int:
         providers=optional_string_tuple(args.providers),
         extractable_only=args.extractable,
         updated_after=normalize_updated_since(args.updated_since),
+        start_path=config_start_path,
     )
     payload["command"] = "chat debug list"
     if user_contain is not None:
@@ -751,6 +755,7 @@ def _cmd_chat_debug_find(args: argparse.Namespace) -> int:
         include_artifacts=args.artifacts,
         include_grep=args.grep,
         full_output=args.full_output,
+        start_path=_config_start_path(args),
     )
     payload["command"] = "chat debug find"
     print(format_json_output(payload))
@@ -770,6 +775,13 @@ def _normalize_optional_session_query(
     return _normalize_session_query(session_query)
 
 
+def _config_start_path(args: argparse.Namespace) -> Path:
+    project = getattr(args, "project", None)
+    if project is not None:
+        return normalize_project_target(project)
+    return Path.cwd().resolve()
+
+
 def _cmd_chat_debug_extract(args: argparse.Namespace) -> int:
     session_query = _normalize_optional_session_query(args.session_query, file_path=args.file_path)
     output = extract_chat_session(
@@ -777,6 +789,7 @@ def _cmd_chat_debug_extract(args: argparse.Namespace) -> int:
         file_path=args.file_path,
         output_format=args.output_format,
         raw=args.raw,
+        start_path=_config_start_path(args),
     )
     print(output)
     return 0
@@ -796,6 +809,7 @@ def _render_chat_accounts_stats_output(args: argparse.Namespace) -> str:
         providers=optional_string_tuple(args.providers),
         refresh_usage=args.refresh_usage,
         full_output=args.full_output,
+        start_path=_config_start_path(args),
     )
     return _format_chat_accounts_stats_payload_output(args, payload)
 
@@ -1021,6 +1035,7 @@ def _render_chat_accounts_stats_progressive_tty(
         providers=optional_string_tuple(args.providers),
         refresh_usage=args.refresh_usage,
         full_output=args.full_output,
+        start_path=_config_start_path(args),
     ):
         frame.apply_payload(
             rendered_body_text=_format_chat_accounts_stats_payload_output(args, payload),
@@ -1445,7 +1460,7 @@ def _format_relative_age(timestamp: float | None, *, now: float) -> str:
 def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
     chat_parser = subparsers.add_parser(
         "chat",
-        help="Provider-aware chat workflow utilities.",
+        help="Provider-aware chat utilities with global/project config resolution.",
     )
     chat_subparsers = chat_parser.add_subparsers(dest="chat_command", required=True)
 
@@ -1509,6 +1524,14 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="output_format",
         help="Output format (default: card).",
     )
+    list_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Project target override for config resolution. Bare --project targets current pwd. Chat commands do not require an existing project.",
+    )
     list_parser.set_defaults(handler=_cmd_chat_debug_list)
 
     find_parser = debug_subparsers.add_parser(
@@ -1533,6 +1556,14 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         "--full-output",
         action="store_true",
         help="Include provider diagnostics even for providers with no matched sessions.",
+    )
+    find_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Project target override for config resolution. Bare --project targets current pwd. Chat commands do not require an existing project.",
     )
     find_parser.set_defaults(handler=_cmd_chat_debug_find)
 
@@ -1562,6 +1593,14 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         "--raw",
         action="store_true",
         help="Skip all filtering; emit every content block verbatim.",
+    )
+    extract_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Project target override for config resolution. Bare --project targets current pwd. Chat commands do not require an existing project.",
     )
     extract_parser.set_defaults(handler=_cmd_chat_debug_extract)
 
@@ -1614,5 +1653,13 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         "--loop",
         action="store_true",
         help="Refresh forever every 60 seconds; press Enter to refresh immediately.",
+    )
+    accounts_stats_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Project target override for config resolution. Bare --project targets current pwd. Chat commands do not require an existing project.",
     )
     accounts_stats_parser.set_defaults(handler=_cmd_chat_accounts_stats)

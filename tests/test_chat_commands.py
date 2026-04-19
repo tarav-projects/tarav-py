@@ -59,6 +59,40 @@ def _write_codex_session_index(
     )
 
 
+def _write_project_marker(project_root: Path) -> None:
+    _write(
+        project_root / ".agentos" / "project.json",
+        json.dumps(
+            {
+                "class": "agentos.project",
+                "schema_version": 1,
+                "project_id": "00000000-0000-4000-8000-000000000001",
+            }
+        )
+        + "\n",
+    )
+
+
+def _write_project_config(
+    path: Path,
+    *,
+    provider_instances: list[dict[str, object]] | None = None,
+) -> None:
+    _write(
+        path,
+        json.dumps(
+            {
+                "class": "agentos.project.config",
+                "schema_version": 1,
+                "chat": {
+                    "provider_instances": provider_instances or [],
+                },
+            }
+        )
+        + "\n",
+    )
+
+
 def test_chat_help_exposes_debug_surface(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(["chat", "--help"])
@@ -136,6 +170,70 @@ def test_chat_debug_find_returns_live_match_and_findings(
     assert payload["search_finding_count"] >= 1
     assert payload["search_findings"]
     assert payload["provider_diagnostics"]
+
+
+def test_chat_debug_list_supports_explicit_project_target(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    project_root = tmp_path / "project"
+    workspace = tmp_path / "workspace"
+    home.mkdir()
+    project_root.mkdir()
+    workspace.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(workspace)
+
+    _write_project_marker(project_root)
+    _write_project_config(
+        project_root / ".agentos" / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "project-codex",
+                "home": str(home / ".codex"),
+            }
+        ],
+    )
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    thread_name = "project-debug-thread"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "08" / f"rollout-2026-03-08T01-05-38-{session_id}.jsonl",
+        session_id=session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert (
+        main(
+            [
+                "chat",
+                "debug",
+                "list",
+                "--project",
+                str(project_root),
+                "--provider",
+                "codex",
+                "--output",
+                "json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["command"] == "chat debug list"
+    assert payload["session_count"] == 1
+    session = payload["sessions"][0]
+    assert session["provider"] == "codex"
+    assert session["session_id"] == session_id
+    assert session["display_name"] == thread_name
 
 
 def test_load_card_session_context_loads_gemini_session_data_once(

@@ -416,6 +416,49 @@ def load_configured_provider_instances(*, start_path: Path | str = ".") -> tuple
     return provider_instances
 
 
+def default_provider_instances(
+    *,
+    supports_session_discovery_only: bool = False,
+) -> tuple["ProviderInstance", ...]:
+    instances: list[ProviderInstance] = []
+    for provider_spec in canonical_chat_provider_specs():
+        if supports_session_discovery_only and not provider_spec.supports_session_discovery:
+            continue
+
+        homes: list[tuple[str, Path]] = []
+        direct_targets: list[Path] = []
+        grep_targets: list[Path] = []
+        sqlite_db_paths: list[Path] = []
+        anchors: list[ProviderInstanceAnchor] = []
+
+        for slot in provider_spec.home_slots:
+            home = Path(slot.default_home).expanduser().resolve()
+            homes.append((slot.key, home))
+            slot_direct_paths, slot_grep_paths, slot_sqlite_db_paths = slot.build_paths(home=home)
+            direct_targets.extend(slot_direct_paths)
+            grep_targets.extend(slot_grep_paths or slot_direct_paths)
+            sqlite_db_paths.extend(slot_sqlite_db_paths)
+            anchors.extend(slot.build_anchors(home=home))
+
+        instances.append(
+            ProviderInstance(
+                family=provider_spec.family,
+                homes=tuple(homes),
+                direct_targets=_unique_paths(tuple(direct_targets)),
+                grep_targets=_unique_paths(tuple(grep_targets)),
+                sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
+                cli_command=_provider_family_default_cli_command(provider_spec.family),
+                run_args=_provider_family_default_run_args(provider_spec.family),
+                default_model=_provider_family_default_model(provider_spec.family),
+                model_flag=_provider_family_default_model_flag(provider_spec.family),
+                prompt_flag=_provider_family_default_prompt_flag(provider_spec.family),
+                anchors=tuple(anchors),
+                is_default=True,
+            )
+        )
+    return tuple(instances)
+
+
 def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "ProviderInstance":
     raw_instance = entry.raw_instance
     family_name = raw_instance.get("provider")
@@ -996,6 +1039,7 @@ __all__ = [
     "canonical_provider_family_for_name",
     "ChatProviderSpec",
     "CHAT_PROVIDER_INSTANCE_CONFIG_SOURCE",
+    "default_provider_instances",
     "load_chat_config_documents",
     "load_configured_provider_instances",
     "load_provider_instance_config_entries",

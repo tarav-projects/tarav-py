@@ -102,10 +102,12 @@ def extract_chat_session(
     file_path: str | None = None,
     output_format: str = "jsonl",
     raw: bool = False,
+    start_path: Path | str = ".",
 ) -> str:
     target = _resolve_chat_session_extract_target(
         session_query=session_query,
         file_path=file_path,
+        start_path=start_path,
     )
     return target.extractor.extract_from_path(
         path=target.artifact_path,
@@ -119,6 +121,7 @@ def _resolve_chat_session_extract_target(
     *,
     session_query: str | None,
     file_path: str | None,
+    start_path: Path | str,
 ) -> ResolvedChatSessionExtractTarget:
     if file_path is not None:
         return _resolve_extract_target_from_backing_artifact(
@@ -134,7 +137,7 @@ def _resolve_chat_session_extract_target(
     unsupported_providers: set[str] = set()
     seen_candidates: set[tuple[str, Path]] = set()
 
-    for session in resolve_chat_sessions(requested_session_query):
+    for session in resolve_chat_sessions(requested_session_query, start_path=start_path):
         extractor = _CHAT_SESSION_EXTRACTORS.get(session.provider)
         if extractor is None:
             unsupported_providers.add(session.provider)
