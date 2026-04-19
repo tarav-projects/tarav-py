@@ -469,13 +469,13 @@ def test_chat_accounts_stats_summarizes_configured_copilot_account(
     assert copilot_account["plan"] == "individual"
     assert copilot_account["usage_status"] == "ok"
     assert copilot_account["usage_source"] == "copilot-api"
-    assert copilot_account["usage_summary"] == "Premium 10%, Chat 50%"
-    assert copilot_account["summary"] == "Copilot CLI ready (gpt-4.1); Premium 10%, Chat 50%"
+    assert copilot_account["usage_summary"] == "Chat 50%, Premium 10%"
+    assert copilot_account["summary"] == "Copilot CLI ready (gpt-4.1); Chat 50%, Premium 10%"
     assert copilot_account["provider_status"]["copilot_cli_probe"]["session_id"] == "session-123"
     copilot_limits = copilot_account["usage"]["limits"]
-    assert [limit["limit_label"] for limit in copilot_limits] == ["Premium", "Chat"]
-    assert [limit["limit_name"] for limit in copilot_limits] == ["premium", "chat"]
-    assert [_usage_over_time_data(limit)["used_percent"] for limit in copilot_limits] == [10, 50]
+    assert [limit["limit_label"] for limit in copilot_limits] == ["Chat", "Premium"]
+    assert [limit["limit_name"] for limit in copilot_limits] == ["chat", "premium"]
+    assert [_usage_over_time_data(limit)["used_percent"] for limit in copilot_limits] == [50, 10]
     assert observed_calls == [
         [
             "copilot",
@@ -1580,7 +1580,7 @@ def test_wait_for_chat_accounts_loop_trigger_with_tty_countdown_repaints_full_fr
     assert "next refresh in 00:00" in rendered
 
 
-def test_loop_chat_accounts_stats_uses_tty_countdown_between_refreshes(monkeypatch) -> None:
+def test_loop_chat_accounts_stats_tty_polls_input_while_refresh_runs(monkeypatch) -> None:
     args = argparse.Namespace(
         instance_ids=[],
         providers=None,
@@ -1591,43 +1591,74 @@ def test_loop_chat_accounts_stats_uses_tty_countdown_between_refreshes(monkeypat
     )
 
     events: list[str] = []
+    worker_blocked = threading.Event()
+    finish_refresh = threading.Event()
+    worker_finished = threading.Event()
 
-    def fake_render_progressive(
-        loop_args: argparse.Namespace,
-        *,
-        frame,
-        renderer,
-        interval_sec: float,
-    ) -> None:  # type: ignore[no-untyped-def]
+    def fake_iter_refresh_payloads(**kwargs):  # type: ignore[no-untyped-def]
+        try:
+            assert kwargs["refresh_usage"] is False
+            events.append("refresh:start")
+            yield {"account_count": 1, "pending_count": 1, "completed_count": 0, "providers": []}
+            worker_blocked.set()
+            assert finish_refresh.wait(timeout=2.0)
+            yield {"account_count": 1, "providers": []}
+        finally:
+            worker_finished.set()
+
+    def fake_format(loop_args: argparse.Namespace, payload: dict[str, object]) -> str:
         assert loop_args is args
-        assert frame is not None
-        assert renderer is not None
-        events.append(f"render:{interval_sec}")
+        if "pending_count" in payload:
+            return "snapshot-pending"
+        return "snapshot-final"
 
-    def fake_wait_with_countdown(
-        frame,
-        renderer,
-        input_stream,
-        *,
-        tick_sec: float = 1.0,
-    ) -> bool:  # type: ignore[no-untyped-def]
-        del input_stream, tick_sec
-        assert frame is not None
-        assert renderer is not None
-        assert frame.refreshing is False
-        assert frame.next_refresh_at_monotonic is not None
-        events.append(f"countdown:{frame.interval_sec}")
+    class FakeTTYRenderer:
+        def __init__(self, *, output_stream) -> None:  # type: ignore[no-untyped-def]
+            del output_stream
+            self.frames: list[str] = []
+
+        def start(self) -> None:
+            events.append("renderer:start")
+
+        def stop(self) -> None:
+            events.append("renderer:stop")
+
+        def paint(self, frame) -> None:  # type: ignore[no-untyped-def]
+            self.frames.append(frame.body_text)
+            events.append(f"paint:{frame.refreshing}:{frame.interval_sec}:{frame.body_text}")
+
+    input_calls = 0
+
+    def fake_input_triggered(input_stream, timeout_sec: float) -> bool:  # type: ignore[no-untyped-def]
+        nonlocal input_calls
+        del input_stream
+        assert timeout_sec == chat_commands._CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC
+        input_calls += 1
+        if input_calls == 1:
+            assert worker_blocked.wait(timeout=1.0)
+            events.append("input:enter-during-refresh")
+            finish_refresh.set()
+            return True
+        if input_calls == 2:
+            assert worker_finished.wait(timeout=1.0)
+            return False
         raise KeyboardInterrupt()
 
     class FakeTTYOutput(io.StringIO):
         def isatty(self) -> bool:
             return True
 
-    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_progressive_tty", fake_render_progressive)
+    monkeypatch.setattr(chat_commands, "iter_chat_account_stats_refresh_payloads", fake_iter_refresh_payloads)
+    monkeypatch.setattr(chat_commands, "_format_chat_accounts_stats_payload_output", fake_format)
     monkeypatch.setattr(
         chat_commands,
-        "_wait_for_chat_accounts_loop_trigger_with_tty_countdown",
-        fake_wait_with_countdown,
+        "_ChatAccountsStatsLoopTTYRenderer",
+        FakeTTYRenderer,
+    )
+    monkeypatch.setattr(
+        chat_commands,
+        "_chat_accounts_loop_input_triggered",
+        fake_input_triggered,
     )
 
     exit_code = chat_commands._loop_chat_accounts_stats(
@@ -1638,7 +1669,77 @@ def test_loop_chat_accounts_stats_uses_tty_countdown_between_refreshes(monkeypat
     )
 
     assert exit_code == 0
-    assert events == ["render:60.0", "countdown:60.0"]
+    assert "input:enter-during-refresh" in events
+    assert "snapshot-final" in "\n".join(events)
+    assert events[-1] == "renderer:stop"
+
+
+def test_loop_chat_accounts_stats_tty_stops_renderer_promptly_on_ctrl_c_during_refresh(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="json",
+        loop=True,
+    )
+
+    events: list[str] = []
+    worker_blocked = threading.Event()
+    finish_refresh = threading.Event()
+    worker_finished = threading.Event()
+
+    def fake_iter_refresh_payloads(**kwargs):  # type: ignore[no-untyped-def]
+        del kwargs
+        try:
+            worker_blocked.set()
+            assert finish_refresh.wait(timeout=2.0)
+            yield {"account_count": 1, "providers": []}
+        finally:
+            worker_finished.set()
+
+    class FakeTTYRenderer:
+        def __init__(self, *, output_stream) -> None:  # type: ignore[no-untyped-def]
+            del output_stream
+
+        def start(self) -> None:
+            events.append("renderer:start")
+
+        def stop(self) -> None:
+            events.append("renderer:stop")
+
+        def paint(self, frame) -> None:  # type: ignore[no-untyped-def]
+            events.append(f"paint:{frame.refreshing}")
+
+    def fake_input_triggered(input_stream, timeout_sec: float) -> bool:  # type: ignore[no-untyped-def]
+        del input_stream, timeout_sec
+        assert worker_blocked.wait(timeout=1.0)
+        raise KeyboardInterrupt()
+
+    class FakeTTYOutput(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(chat_commands, "iter_chat_account_stats_refresh_payloads", fake_iter_refresh_payloads)
+    monkeypatch.setattr(chat_commands, "_ChatAccountsStatsLoopTTYRenderer", FakeTTYRenderer)
+    monkeypatch.setattr(chat_commands, "_chat_accounts_loop_input_triggered", fake_input_triggered)
+
+    start = time.perf_counter()
+    try:
+        exit_code = chat_commands._loop_chat_accounts_stats(
+            args,
+            input_stream=io.StringIO(),
+            output_stream=FakeTTYOutput(),
+            interval_sec=60.0,
+        )
+    finally:
+        finish_refresh.set()
+    elapsed = time.perf_counter() - start
+
+    assert exit_code == 0
+    assert elapsed < 0.5
+    assert events == ["renderer:start", "paint:True", "renderer:stop"]
+    assert worker_finished.wait(timeout=1.0)
 
 
 def test_loop_chat_accounts_stats_resets_interval_after_enter(monkeypatch) -> None:
@@ -2628,10 +2729,10 @@ def test_parse_copilot_usage_response_falls_back_to_monthly_quotas() -> None:
     )
 
     assert payload["plan"] == "free"
-    assert payload["usage_summary"] == "Premium 75%, Chat 75%"
+    assert payload["usage_summary"] == "Chat 75%, Premium 75%"
     limits = payload["usage"]["limits"]
-    assert [limit["limit_label"] for limit in limits] == ["Premium", "Chat"]
-    assert [limit["limit_name"] for limit in limits] == ["premium", "chat"]
+    assert [limit["limit_label"] for limit in limits] == ["Chat", "Premium"]
+    assert [limit["limit_name"] for limit in limits] == ["chat", "premium"]
     assert [_usage_over_time_data(limit)["used_percent"] for limit in limits] == [75, 75]
     assert [_usage_over_time_data(limit)["period_duration_mins"] for limit in limits] == [44_640, 44_640]
     assert [_usage_over_time_data(limit)["period_started_at"] for limit in limits] == [

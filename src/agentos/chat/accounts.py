@@ -1849,16 +1849,6 @@ def _parse_copilot_usage_response(payload: dict[str, Any]) -> dict[str, Any]:
     )
 
     limits: list[dict[str, Any]] = []
-    premium_limit = _copilot_limit_from_snapshot(
-        premium_snapshot,
-        name="premium",
-        label="Premium",
-        period_started_at=period_started_at,
-        period_ends_at=period_ends_at,
-        period_duration_mins=period_duration_mins,
-    )
-    if premium_limit is not None:
-        limits.append(premium_limit)
     chat_limit = _copilot_limit_from_snapshot(
         chat_snapshot,
         name="chat",
@@ -1869,6 +1859,16 @@ def _parse_copilot_usage_response(payload: dict[str, Any]) -> dict[str, Any]:
     )
     if chat_limit is not None:
         limits.append(chat_limit)
+    premium_limit = _copilot_limit_from_snapshot(
+        premium_snapshot,
+        name="premium",
+        label="Premium",
+        period_started_at=period_started_at,
+        period_ends_at=period_ends_at,
+        period_duration_mins=period_duration_mins,
+    )
+    if premium_limit is not None:
+        limits.append(premium_limit)
 
     if not limits:
         raise CliError("copilot usage response did not contain any usable quota snapshots")

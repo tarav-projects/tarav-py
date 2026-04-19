@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import math
+import queue
 import re
 import select
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -252,6 +254,56 @@ class _ChatAccountsStatsLoopTTYRenderer:
             ),
             refresh=True,
         )
+
+
+@dataclass(frozen=True)
+class _ChatAccountsStatsRefreshPayloadEvent:
+    payload: dict[str, object]
+
+
+@dataclass(frozen=True)
+class _ChatAccountsStatsRefreshErrorEvent:
+    error: Exception
+
+
+@dataclass(frozen=True)
+class _ChatAccountsStatsRefreshDoneEvent:
+    pass
+
+
+_ChatAccountsStatsRefreshEvent = (
+    _ChatAccountsStatsRefreshPayloadEvent
+    | _ChatAccountsStatsRefreshErrorEvent
+    | _ChatAccountsStatsRefreshDoneEvent
+)
+
+
+class _ChatAccountsStatsRefreshWorker:
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.args = args
+        self.events: queue.Queue[_ChatAccountsStatsRefreshEvent] = queue.Queue()
+        self.thread = threading.Thread(
+            target=self._run,
+            name="agentos-chat-accounts-refresh",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def _run(self) -> None:
+        try:
+            for payload in iter_chat_account_stats_refresh_payloads(
+                instance_ids=optional_string_tuple(self.args.instance_ids),
+                providers=optional_string_tuple(self.args.providers),
+                refresh_usage=self.args.refresh_usage,
+                full_output=self.args.full_output,
+            ):
+                self.events.put(_ChatAccountsStatsRefreshPayloadEvent(payload))
+        except Exception as exc:
+            self.events.put(_ChatAccountsStatsRefreshErrorEvent(exc))
+        finally:
+            self.events.put(_ChatAccountsStatsRefreshDoneEvent())
 
 
 def _render_chat_accounts_stats_loop_rich_text(
@@ -771,6 +823,14 @@ def _loop_chat_accounts_stats(
     output_stream = output_stream or sys.stdout
     wait_for_trigger = wait_for_trigger or _wait_for_chat_accounts_loop_trigger
     tty_output = _stream_is_tty(output_stream)
+    if tty_output and wait_for_trigger is _wait_for_chat_accounts_loop_trigger:
+        return _loop_chat_accounts_stats_tty(
+            args,
+            input_stream=input_stream,
+            output_stream=output_stream,
+            interval_sec=interval_sec,
+        )
+
     current_interval_sec = interval_sec
     tty_frame = _ChatAccountsStatsLoopFrame(interval_sec=current_interval_sec) if tty_output else None
     tty_renderer = (
@@ -831,6 +891,119 @@ def _loop_chat_accounts_stats(
             tty_renderer.stop()
 
 
+def _loop_chat_accounts_stats_tty(
+    args: argparse.Namespace,
+    *,
+    input_stream: TextIO,
+    output_stream: TextIO,
+    interval_sec: float,
+) -> int:
+    current_interval_sec = interval_sec
+    frame = _ChatAccountsStatsLoopFrame(interval_sec=current_interval_sec)
+    renderer = _ChatAccountsStatsLoopTTYRenderer(output_stream=output_stream)
+    refresh_worker: _ChatAccountsStatsRefreshWorker | None = None
+
+    renderer.start()
+    try:
+        refresh_worker = _start_chat_accounts_tty_refresh(
+            args,
+            frame=frame,
+            renderer=renderer,
+            interval_sec=current_interval_sec,
+        )
+        while True:
+            if refresh_worker is not None:
+                refresh_done = _drain_chat_accounts_tty_refresh_events(
+                    args,
+                    frame=frame,
+                    renderer=renderer,
+                    worker=refresh_worker,
+                )
+                if refresh_done:
+                    refresh_worker = None
+                    frame.finish_refresh(next_refresh_at_monotonic=time.monotonic() + current_interval_sec)
+                    renderer.paint(frame)
+
+            if refresh_worker is None:
+                remaining_sec = frame.remaining_refresh_sec(now_monotonic=time.monotonic())
+                if frame.next_refresh_at_monotonic is None or remaining_sec <= 0:
+                    current_interval_sec = min(
+                        _CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC,
+                        current_interval_sec + _CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC,
+                    )
+                    refresh_worker = _start_chat_accounts_tty_refresh(
+                        args,
+                        frame=frame,
+                        renderer=renderer,
+                        interval_sec=current_interval_sec,
+                    )
+                    continue
+                wait_timeout = min(_CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC, remaining_sec)
+            else:
+                wait_timeout = _CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC
+
+            if _chat_accounts_loop_input_triggered(input_stream, wait_timeout):
+                current_interval_sec = _CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC
+                if refresh_worker is None:
+                    refresh_worker = _start_chat_accounts_tty_refresh(
+                        args,
+                        frame=frame,
+                        renderer=renderer,
+                        interval_sec=current_interval_sec,
+                    )
+                else:
+                    frame.interval_sec = current_interval_sec
+                    renderer.paint(frame)
+                continue
+
+            renderer.paint(frame)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        renderer.stop()
+
+
+def _start_chat_accounts_tty_refresh(
+    args: argparse.Namespace,
+    *,
+    frame: _ChatAccountsStatsLoopFrame,
+    renderer: _ChatAccountsStatsLoopTTYRenderer,
+    interval_sec: float,
+) -> _ChatAccountsStatsRefreshWorker:
+    frame.begin_refresh(interval_sec=interval_sec)
+    renderer.paint(frame)
+    worker = _ChatAccountsStatsRefreshWorker(args)
+    worker.start()
+    return worker
+
+
+def _drain_chat_accounts_tty_refresh_events(
+    args: argparse.Namespace,
+    *,
+    frame: _ChatAccountsStatsLoopFrame,
+    renderer: _ChatAccountsStatsLoopTTYRenderer,
+    worker: _ChatAccountsStatsRefreshWorker,
+) -> bool:
+    refresh_done = False
+    while True:
+        try:
+            event = worker.events.get_nowait()
+        except queue.Empty:
+            break
+
+        if isinstance(event, _ChatAccountsStatsRefreshPayloadEvent):
+            frame.apply_payload(
+                rendered_body_text=_format_chat_accounts_stats_payload_output(args, event.payload),
+                refresh_progress_text=_format_chat_accounts_refresh_progress(event.payload),
+            )
+            renderer.paint(frame)
+            continue
+        if isinstance(event, _ChatAccountsStatsRefreshErrorEvent):
+            raise event.error
+        refresh_done = True
+    return refresh_done
+
+
 def _render_chat_accounts_stats_progressive_tty(
     args: argparse.Namespace,
     *,
@@ -881,6 +1054,10 @@ def _wait_for_chat_accounts_loop_trigger(interval_sec: float, input_stream: Text
 
     input_stream.readline()
     return True
+
+
+def _chat_accounts_loop_input_triggered(input_stream: TextIO, timeout_sec: float) -> bool:
+    return _wait_for_chat_accounts_loop_trigger(timeout_sec, input_stream)
 
 
 def _wait_for_chat_accounts_loop_trigger_with_tty_countdown(
