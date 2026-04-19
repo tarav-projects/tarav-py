@@ -1,10 +1,24 @@
 ---
 title: Global Skills Imports Fallback Design
 date: 2026-04-04
-status: draft
+status: superseded
 ---
 
 # Global Skills Imports Fallback Design
+
+## Status
+
+Superseded by the current routed-skills source/profile/depot model and the current
+`Agentos.Project` command policy.
+
+Use these as the canonical current references instead:
+
+- `notes/index/004-Agentos.Project.md`
+- `notes/live/531-project-command-enforcement-impl-req.md`
+- `README.md`
+
+This note is preserved as historical design context for the earlier `skills.imports`
+fallback model.
 
 ## Goal
 

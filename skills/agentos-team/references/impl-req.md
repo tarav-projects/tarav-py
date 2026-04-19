@@ -11,8 +11,8 @@ Shared protocol for `impl-req` artifacts used by `agentos-team` roles.
 
 ## Location And Naming
 
-- Read `~/.agents/skills/agentos-live-note-base/SKILL.md` before suggesting or writing an
-  `impl-req` in `notes/live/`.
+- Read `agentos-live-note-base` from the current available skills surface before
+  suggesting or writing an `impl-req` in `notes/live/`.
 - Use a filename ending in `-impl-req.md` unless the user overrides it.
 
 ## Writing Guidance

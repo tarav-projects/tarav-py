@@ -109,23 +109,25 @@ agentos chat accounts stats --project /path/to/repo --output usage
 
 ## Skills CLI
 
-`agentos skills` controls the project-local routed skills depots.
+`agentos skills` manages project-local imported skills depots.
+
+Canonical contract: `notes/index/005-Agentos.Skills.md`
 
 Current public surface:
 
-- `list`: return the desired routed skill catalog visible to the resolved project target (`--json` optional)
-- `import`: reconcile the desired routed skill catalog into every configured depot for the resolved existing project
-- `import --force`: rebuild the depot symlink layer in every resolved depot by deleting existing depot symlinks, then recreating the routed symlink set
-- `status`: analyze every configured depot for the resolved existing project against the desired routed catalog (`--json` optional)
+- `list`: return the skill catalog selected for import into the resolved project target (`--json` optional)
+- `import`: reconcile the selected skill catalog into every configured depot for the resolved existing project
+- `import --force`: rebuild the depot symlink layer in every resolved depot by deleting existing depot symlinks, then recreating the imported symlink set
+- `status`: analyze every configured depot for the resolved existing project against the selected skill catalog (`--json` optional)
 - `path --depot`: print the configured depot paths for the resolved existing project
-- `path <name>`: resolve one routed skill name to all of its local load paths
+- `path <name>`: resolve one imported skill name to all of its local load paths
 - `--project [path]`: project target override on all commands; bare `--project` means current `pwd`
 
-Current routing model:
+Current import-selection model:
 
-- routed skills resolve from the selected Agentos.Project, either by `--project` or implicit parent-walk from `cwd`
+- imported skills resolve from the selected Agentos.Project, either by `--project` or implicit parent-walk from `cwd`
 - `agentos skills ...` requires an existing project; outside one, commands fail with the missing `.agentos/project.json` error
-- `~/.agents` is not used as the public routed skills surface for this flow
+- global `~/.agents` is not used to discover skills for this flow
 - profile selection uses local project config override first, then global `default_profile`, then hardcoded `default`
 - sources are declared once in `sources`
 - a source is either a direct `{ "path": "..." }` leaf or a `{ "package": [...] }` composite
@@ -135,9 +137,9 @@ Current routing model:
 - when `depots` is omitted, the default depots are `.agents/skills` and `.claude/skills`
 - all depots are equal; there is no canonical or primary depot
 - `list` and `path` are config-derived and do not materialize symlinks
-- `import` performs an incremental managed sync of every routed depot
-- `import --force` resets every depot symlink layer to routed state without deleting non-symlink conflicts
-- `status` analyzes the current state of every routed depot without syncing it
+- `import` performs an incremental managed sync of every configured depot
+- `import --force` resets every depot symlink layer to imported state without deleting non-symlink conflicts
+- `status` analyzes the current state of every configured depot without syncing it
 
 Global config shape:
 
@@ -178,13 +180,14 @@ Global config shape:
 Output notes:
 
 - plain `list` output shows only the canonical skill name and import/source provenance
-- `list --json` includes at least `name`, `description`, `source`, and routed absolute `paths`
-- `path --depot` prints one routed local depot absolute path per line
-- `path <name>` prints one routed absolute skill path per line, one per depot
+- `list --json` includes at least `name`, `description`, `source`, and absolute local `paths`
+- `path --depot` prints one local depot absolute path per line
+- `path <name>` prints one absolute skill path per line, one per depot
 - plain `import` output includes the sync mode, catalog size, depot count, and per-depot created/updated/removed/matching counts
 - `status` reports matching, missing, broken, unsynced, conflicting, and extra entries per depot
-- those routed paths are predictive until `import` syncs the depots
-- when the selected profile exposes no skills, `list` returns an authoritative empty result
+- those local paths are predictive until `import` syncs the depots
+- when the selected profile exposes no skills, `list` returns an empty result
+- there is no bootstrap or compatibility skill for this flow; use CLI help directly when needed
 - profile source entries are always objects
 - `{ "profile": "research" }` can be set in local `.agentos/config.json` under `skills.routing`
 - `{ "name": "agentos" }` resolves through `sources`

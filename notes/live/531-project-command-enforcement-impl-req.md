@@ -76,7 +76,7 @@ The main design drift that existed before implementation is now removed:
 
 - `agentos skills ...` no longer uses standalone `.agents` discovery as a public project
   anchor
-- routed skills now require an `existing project`
+- imported project-local skills now require an `existing project`
 - `mission`, `utils tmp-folder new`, and `tape --tape` now support explicit `--project`
   targeting while preserving implicit parent-walk behavior
 - `agentos init` now uses `--project` for project scope instead of `--root`
@@ -133,7 +133,7 @@ True non-project/global/headless commands:
 Implementation expectations:
 
 - make `agentos skills ...` require the nearest valid agentos project root
-- stop treating bare local `.agents` discovery as sufficient for public routed skills
+- stop treating bare local `.agents` discovery as sufficient for project-local imported skills
 - preserve the explicit-root escape hatch for commands that already support headless mode
 - preserve global-config-backed behavior for `agent` and `chat`
 - make project-required errors consistently mention the missing marker and suggest
@@ -207,8 +207,9 @@ Implementation expectations:
   classifying commands by project anchoring behavior.
 - 2026-04-19: Implementation completed for the intended project-local surfaces. Added the
   `Agentos.Project` index note, shipped shared project-target helpers, changed project init
-  to `--project`, made routed skills require an existing project, added `--project` to
-  `mission`, `utils tmp-folder new`, and `tape --tape`, and updated the targeted tests.
+  to `--project`, made project-local imported skills require an existing project, added
+  `--project` to `mission`, `utils tmp-folder new`, and `tape --tape`, and updated the
+  targeted tests.
 - 2026-04-19: Targeted validation passed for `skills`, `mission`, `tmp-folder`, and tape
   project resolution. Full suite still shows unrelated `chat debug` / `chat extract`
   failures.

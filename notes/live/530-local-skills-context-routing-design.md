@@ -1,10 +1,23 @@
 ---
 title: Local Skills Context Routing Design
 date: 2026-04-17
-status: draft
+status: superseded
 ---
 
 # Local Skills Context Routing Design
+
+## Status
+
+Superseded by the current `Agentos.Project` contract and the shipped project-target
+rules for `agentos skills`.
+
+Use these as the canonical current references instead:
+
+- `notes/index/004-Agentos.Project.md`
+- `notes/live/531-project-command-enforcement-impl-req.md`
+- `README.md`
+
+This note is preserved as historical context for the transition away from bindings.
 
 ## Goal
 

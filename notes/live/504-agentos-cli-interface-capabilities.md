@@ -38,7 +38,7 @@ agentos test --json
 8. `tara-tapes` — Tara spec-first JSONL tape operations
 9. `tape` — folder-backed JSONL tape operations
 10. `git-refs` — git-grounded line-span reference tools
-11. `skills` — project-local routed skills control
+11. `skills` — project-local imported skills control
 12. `prefix` — allocate numeric file prefixes
 13. `utils` — small agent-facing helpers
 14. `mdblocks` — markdown block extraction/search/lint tools
@@ -136,9 +136,9 @@ agentos skills path todo-miner
 ```
 
 Capabilities:
-- list routed skills for the resolved existing project
-- inspect configured depot roots or one routed skill path
-- sync and audit project-local routed skills depots
+- list skills selected for import into the resolved existing project
+- inspect configured depot roots or one imported skill path
+- sync and audit project-local imported skills depots
 
 ### `prefix`
 

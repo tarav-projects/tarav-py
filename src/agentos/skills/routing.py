@@ -623,7 +623,7 @@ def _list_visible_depot_entries(depot_root: Path) -> list[Path]:
     if not normalized_depot_root.exists():
         return []
     if not normalized_depot_root.is_dir():
-        raise CliError(f"routed skills depot is not a directory: {normalized_depot_root}")
+        raise CliError(f"skills depot is not a directory: {normalized_depot_root}")
 
     return sorted(
         [
@@ -650,39 +650,39 @@ def _load_routed_skills_state(caller_root: Path) -> dict[str, dict[str, str]]:
     if not state_path.exists():
         return {}
     if not state_path.is_file():
-        raise CliError(f"routed skills state path is not a file: {state_path}")
+        raise CliError(f"skills import state path is not a file: {state_path}")
 
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise CliError(f"invalid routed skills state JSON: {exc}") from exc
+        raise CliError(f"invalid skills import state JSON: {exc}") from exc
 
     if not isinstance(payload, dict):
-        raise CliError("routed skills state must be a JSON object")
+        raise CliError("skills import state must be a JSON object")
     if payload.get("class") != ROUTED_SKILLS_STATE_CLASS:
-        raise CliError(f"routed skills state field class must be '{ROUTED_SKILLS_STATE_CLASS}'")
+        raise CliError(f"skills import state field class must be '{ROUTED_SKILLS_STATE_CLASS}'")
 
     targets_payload = payload.get("targets", {})
     if not isinstance(targets_payload, dict):
-        raise CliError("routed skills state field targets must be an object")
+        raise CliError("skills import state field targets must be an object")
 
     state: dict[str, dict[str, str]] = {}
     for target_key, target_payload in targets_payload.items():
         if not isinstance(target_key, str) or not target_key:
-            raise CliError("routed skills state target keys must be non-empty strings")
+            raise CliError("skills import state target keys must be non-empty strings")
         if not isinstance(target_payload, dict):
-            raise CliError(f"routed skills state target payload must be an object: {target_key}")
+            raise CliError(f"skills import state target payload must be an object: {target_key}")
         links_payload = target_payload.get("links", {})
         if not isinstance(links_payload, dict):
-            raise CliError(f"routed skills state target links must be an object: {target_key}")
+            raise CliError(f"skills import state target links must be an object: {target_key}")
 
         links: dict[str, str] = {}
         for skill_name, link_target in links_payload.items():
             if not isinstance(skill_name, str) or not skill_name:
-                raise CliError(f"routed skills state skill names must be non-empty strings: {target_key}")
+                raise CliError(f"skills import state skill names must be non-empty strings: {target_key}")
             if not isinstance(link_target, str) or not link_target:
                 raise CliError(
-                    f"routed skills state link targets must be non-empty strings: {target_key}/{skill_name}"
+                    f"skills import state link targets must be non-empty strings: {target_key}/{skill_name}"
                 )
             links[skill_name] = link_target
         state[target_key] = links
@@ -721,7 +721,7 @@ def _plan_routed_profile_depot_sync(
     normalized_caller_root = caller_root.expanduser().resolve()
     normalized_depot_root = depot_root.expanduser().resolve()
     if normalized_depot_root.exists() and not normalized_depot_root.is_dir():
-        raise CliError(f"routed skills depot is not a directory: {normalized_depot_root}")
+        raise CliError(f"skills depot is not a directory: {normalized_depot_root}")
 
     state = _load_routed_skills_state(normalized_caller_root)
     target_key = _state_target_key(normalized_caller_root, normalized_depot_root)
@@ -795,7 +795,7 @@ def _plan_routed_profile_depot_sync(
         conflict_entries = ", ".join(
             f"{path} (expected link to {source_path})" for path, source_path in conflicts
         )
-        raise CliError(f"routed skills sync found conflicting existing paths: {conflict_entries}")
+        raise CliError(f"skills import found conflicting existing paths: {conflict_entries}")
 
     return _RoutedSkillsDepotSyncPlan(
         caller_root=normalized_caller_root,

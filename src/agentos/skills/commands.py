@@ -14,10 +14,8 @@ from agentos.skills.routing import (
     routed_skills_status,
 )
 
-NO_ROUTED_SKILLS_MESSAGE = (
-    "No routed skills are available for this project target."
-)
-NO_ROUTED_PROFILE_MESSAGE = "no routed skills depots are configured for this project target"
+NO_IMPORTED_SKILLS_MESSAGE = "No skills are selected for import into this project target."
+NO_SKILLS_DEPOTS_MESSAGE = "no skills depots are configured for this project target"
 
 
 def _format_routed_skill_list(skills: list) -> str:
@@ -133,7 +131,7 @@ def _format_depot_status(depot_status) -> str:
 
 def _format_routed_skills_status(status) -> str:
     lines = [
-        "Routed skills status",
+        "Skills status",
         f"- profile: {status.selection.profile_name}",
         f"- expected: {len(status.skills)}",
         f"- depots: {len(status.depot_statuses)}",
@@ -144,7 +142,7 @@ def _format_routed_skills_status(status) -> str:
 
 def _format_routed_skills_import(result, *, force: bool) -> str:
     lines = [
-        "Routed skills import complete",
+        "Skills import complete",
         f"- mode: {'force' if force else 'sync'}",
         f"- profile: {result.selection.profile_name}",
         f"- catalog: {len(result.skills)}",
@@ -172,7 +170,7 @@ def _add_project_argument(parser: argparse.ArgumentParser) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override. Bare --project targets current pwd. Routed skills require an existing project.",
+        help="Project target override. Bare --project targets current pwd. Skills commands require an existing project.",
     )
 
 
@@ -194,7 +192,7 @@ def _cmd_skills_list(args: argparse.Namespace) -> int:
         return 0
 
     if not skills:
-        print(NO_ROUTED_SKILLS_MESSAGE)
+        print(NO_IMPORTED_SKILLS_MESSAGE)
         return 0
 
     print(_format_routed_skill_list(skills))
@@ -206,7 +204,7 @@ def _cmd_skills_import(args: argparse.Namespace) -> int:
     _emit_selection_warnings(result.selection)
 
     if result.selection.profile_name is None or not result.selection.depot_roots:
-        print(NO_ROUTED_SKILLS_MESSAGE)
+        print(NO_IMPORTED_SKILLS_MESSAGE)
         return 0
 
     print(_format_routed_skills_import(result, force=args.force))
@@ -241,7 +239,7 @@ def _cmd_skills_status(args: argparse.Namespace) -> int:
         return 0
 
     if not status.selection.depot_roots:
-        print(NO_ROUTED_SKILLS_MESSAGE)
+        print(NO_IMPORTED_SKILLS_MESSAGE)
         return 0
 
     print(_format_routed_skills_status(status))
@@ -253,7 +251,7 @@ def _cmd_skills_path(args: argparse.Namespace) -> int:
         selection = resolve_routed_skills_selection(Path.cwd(), project=args.project)
         _emit_selection_warnings(selection)
         if not selection.depot_roots:
-            raise CliError(NO_ROUTED_PROFILE_MESSAGE)
+            raise CliError(NO_SKILLS_DEPOTS_MESSAGE)
         print("\n".join(str(depot_root) for depot_root in selection.depot_roots))
         return 0
 
@@ -267,66 +265,93 @@ def _cmd_skills_path(args: argparse.Namespace) -> int:
         print("\n".join(str(path) for path in skill.paths))
         return 0
     if selection.profile_name is None:
-        raise CliError(NO_ROUTED_PROFILE_MESSAGE)
-    raise CliError(f"skill not found in routed skills: {args.name}")
+        raise CliError(NO_SKILLS_DEPOTS_MESSAGE)
+    raise CliError(f"skill not found in imported skills: {args.name}")
 
 
 def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
     skills_parser = subparsers.add_parser(
         "skills",
-        help="Control project-local routed skills for an existing Agentos project.",
+        help="Manage project-local imported skills for an existing Agentos project.",
+        description=(
+            "Preview the selected skills catalog for the current project, import it "
+            "into local depots, and inspect depot state."
+        ),
     )
     skills_subparsers = skills_parser.add_subparsers(dest="skills_command")
 
     skills_list_parser = skills_subparsers.add_parser(
         "list",
-        help="List routed skills visible to the resolved project target.",
+        help="List skills selected for import into the resolved project target.",
+        description=(
+            "Preview the skills selected for import into the resolved project target. "
+            "This command is config-derived and does not sync depots."
+        ),
     )
     skills_list_parser.add_argument(
         "--json",
         action="store_true",
-        help="Emit routed skills as structured JSON records.",
+        help="Emit name, description, source, and projected local paths as JSON.",
     )
     _add_project_argument(skills_list_parser)
     skills_list_parser.set_defaults(handler=_cmd_skills_list)
 
     skills_import_parser = skills_subparsers.add_parser(
         "import",
-        help="Sync the routed skills catalog into the depots configured for the resolved existing project.",
+        help="Sync the selected skills into the depots configured for the resolved existing project.",
+        description=(
+            "Import the selected skills into every configured depot for the resolved "
+            "existing project."
+        ),
     )
     skills_import_parser.add_argument(
         "--force",
         action="store_true",
-        help="Delete every symlink currently present in every resolved depot, then recreate the routed symlink set.",
+        help=(
+            "Delete existing symlinks in every resolved depot, then recreate the "
+            "imported symlink set. Conflicting non-symlink entries still error."
+        ),
     )
     _add_project_argument(skills_import_parser)
     skills_import_parser.set_defaults(handler=_cmd_skills_import)
 
     skills_status_parser = skills_subparsers.add_parser(
         "status",
-        help="Analyze the routed skills depots for the resolved existing project.",
+        help="Analyze the imported skills depots for the resolved existing project.",
+        description=(
+            "Compare every configured depot against the selected skills catalog "
+            "without syncing it."
+        ),
     )
     skills_status_parser.add_argument(
         "--json",
         action="store_true",
-        help="Emit routed skills depot status as structured JSON.",
+        help=(
+            "Emit per-depot matching, missing, broken, unsynced, conflicting, "
+            "and extra entries as JSON."
+        ),
     )
     _add_project_argument(skills_status_parser)
     skills_status_parser.set_defaults(handler=_cmd_skills_status)
 
     skills_path_parser = skills_subparsers.add_parser(
         "path",
-        help="Resolve one routed skill to its loadable project-local paths, or print the configured depot paths.",
+        help="Resolve one imported skill to its loadable project-local paths, or print the configured depot paths.",
+        description=(
+            "Print the local load paths for one selected skill, or print the "
+            "configured depot roots with --depot. Paths are predictive until "
+            "import syncs the depots."
+        ),
     )
     skills_path_parser.add_argument(
         "name",
         nargs="?",
-        help="Canonical routed skill name.",
+        help="Canonical selected skill name.",
     )
     skills_path_parser.add_argument(
         "--depot",
         action="store_true",
-        help="Print the routed skills depot paths for the resolved existing project.",
+        help="Print the configured local depot roots instead of a skill path.",
     )
     _add_project_argument(skills_path_parser)
     skills_path_parser.set_defaults(handler=_cmd_skills_path)

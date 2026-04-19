@@ -37,9 +37,9 @@ Rules:
 
 ## Live Note Dependency
 
-When suggesting or writing a decision document in `notes/live/`, read the skill file at
-`~/.agents/skills/agentos-live-note-base/SKILL.md` and follow its protocol for path conventions,
-numbering, and `agentos prefix next` usage.
+When suggesting or writing a decision document in `notes/live/`, read the
+`agentos-live-note-base` skill from the current available skills surface and follow its
+protocol for path conventions, numbering, and `agentos prefix next` usage.
 
 ## Question Templates
 
@@ -136,7 +136,7 @@ The loop ends when user requests an action:
 
 On exit:
 - Build a decision document draft (issue/answer format), keeping only decision-driving Q/A (direct but complete).
-- Read and follow `~/.agents/skills/agentos-live-note-base/SKILL.md` to compute the live-note path.
+- Read and follow `agentos-live-note-base` from the current available skills surface to compute the live-note path.
 - Suggested filename must end with `-interview.md`.
 - Ask explicitly in plain chat text before writing any file:
    - `Do you want me to save this as a live note at <absolute-path>? You can override the path.`

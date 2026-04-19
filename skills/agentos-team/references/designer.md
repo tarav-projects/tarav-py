@@ -40,7 +40,7 @@ When the user explicitly asks for an `impl-req` or asks you to write a live-note
 implementation:
 
 1. Read `references/impl-req.md`.
-2. Read `~/.agents/skills/agentos-live-note-base/SKILL.md`.
+2. Read `agentos-live-note-base` from the current available skills surface.
 3. Compute the canonical live-note path under `notes/live/`.
 4. Use a filename ending in `-impl-req.md` unless the user overrides it.
 5. Write for other-agent consumption, not as a transcript of the chat.

@@ -7,7 +7,7 @@ import pytest
 
 from agentos.cli import build_parser, main
 
-NO_ROUTED_SKILLS_MESSAGE = "No routed skills are available for this project target."
+NO_ROUTED_SKILLS_MESSAGE = "No skills are selected for import into this project target."
 DEFAULT_DEPOT_PATHS = (Path(".agents/skills"), Path(".claude/skills"))
 
 
@@ -107,6 +107,24 @@ def test_skills_list_returns_authoritative_empty_catalog(capsys, monkeypatch, tm
     assert capsys.readouterr().err.strip() == (
         "error: not inside an agentos project (missing .agentos/project.json); run `agentos init`"
     )
+
+
+def test_skills_help_describes_import_manager(capsys) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["skills", "--help"])
+    output = capsys.readouterr().out
+
+    assert "Preview the selected skills catalog for the current project" in output
+    assert "routed" not in output
+
+
+def test_skills_path_help_describes_predictive_paths(capsys) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["skills", "path", "--help"])
+    output = capsys.readouterr().out
+
+    assert "Paths are predictive until import syncs the depots." in output
+    assert "Canonical selected skill name." in output
 
 
 def test_skills_list_uses_default_profile_and_predicts_local_depot_paths(
@@ -476,7 +494,7 @@ def test_skills_path_returns_routed_not_found_for_missing_catalog_skill(
     monkeypatch.chdir(workspace)
     assert main(["skills", "path", "agentos-live-note-base"]) == 1
     assert capsys.readouterr().err.strip() == (
-        "error: skill not found in routed skills: agentos-live-note-base"
+        "error: skill not found in imported skills: agentos-live-note-base"
     )
 
 
@@ -715,7 +733,7 @@ def test_skills_import_materializes_default_local_skill_depots(
     assert main(["skills", "import"]) == 0
     out = capsys.readouterr().out
 
-    assert "Routed skills import complete" in out
+    assert "Skills import complete" in out
     assert "- mode: sync" in out
     assert "- catalog: 1" in out
     assert "- depots: 2" in out
@@ -851,7 +869,7 @@ def test_skills_import_force_rebuilds_depot_symlink_layer(
     assert main(["skills", "import", "--force"]) == 0
     out = capsys.readouterr().out
 
-    assert "Routed skills import complete" in out
+    assert "Skills import complete" in out
     assert "- mode: force" in out
     assert "- created: 1" in out
     assert "- updated: 0" in out
@@ -899,7 +917,7 @@ def test_skills_import_force_preserves_non_symlink_conflicts(
     assert main(["skills", "import", "--force"]) == 1
     stderr = capsys.readouterr().err
 
-    assert "error: routed skills sync found conflicting existing paths:" in stderr
+    assert "error: skills import found conflicting existing paths:" in stderr
     assert str(conflict_path) in stderr
     assert conflict_path.is_dir()
     assert extra_path.is_symlink()
@@ -944,7 +962,7 @@ def test_skills_import_force_preflights_all_default_depots_before_writing(
     assert main(["skills", "import", "--force"]) == 1
     stderr = capsys.readouterr().err
 
-    assert "error: routed skills sync found conflicting existing paths:" in stderr
+    assert "error: skills import found conflicting existing paths:" in stderr
     assert str(claude_path) in stderr
     assert agents_path.is_symlink()
     assert agents_path.resolve() == wrong_skill.resolve()

@@ -1,10 +1,22 @@
 ---
 title: Skills PATH Resolution Design
 date: 2026-04-04
-status: draft
+status: superseded
 ---
 
 # Skills PATH Resolution Design
+
+## Status
+
+Superseded by the current `Agentos.Project` and routed-skills contract.
+
+Use these as the canonical current references instead:
+
+- `notes/index/004-Agentos.Project.md`
+- `notes/live/531-project-command-enforcement-impl-req.md`
+- `README.md`
+
+This note is preserved as historical design context for the earlier PATH-style skills model.
 
 ## Goal
 

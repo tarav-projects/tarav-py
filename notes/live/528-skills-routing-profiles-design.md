@@ -1,10 +1,24 @@
 ---
 title: Skills Routing Profiles Design
 date: 2026-04-16
-status: draft
+status: superseded
 ---
 
 # Skills Routing Profiles Design
+
+## Status
+
+Superseded by the later local/project-target skills model and the current
+`Agentos.Project` enforcement contract.
+
+Use these as the canonical current references instead:
+
+- `notes/index/004-Agentos.Project.md`
+- `notes/live/531-project-command-enforcement-impl-req.md`
+- `README.md`
+
+This note is preserved as historical design context for the earlier caller-context,
+bindings, and `base` profile routing model.
 
 ## Goal
 

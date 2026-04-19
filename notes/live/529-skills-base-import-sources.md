@@ -1,10 +1,21 @@
 ---
 title: Skills Base Import Sources
 date: 2026-04-17
-status: draft
+status: historical
 ---
 
 # Skills Base Import Sources
+
+## Status
+
+Historical inventory note from the earlier `base` routed-profile phase.
+
+The specific `base` profile framing here is no longer the canonical current model.
+Use these as the canonical current references instead:
+
+- `notes/index/004-Agentos.Project.md`
+- `notes/live/531-project-command-enforcement-impl-req.md`
+- `README.md`
 
 ## Goal
 

@@ -46,8 +46,8 @@ Do not auto-apply from generic design, review, or implementation prompts alone.
 ## Live Note Dependency
 
 Before suggesting or writing a live-note in `notes/live/`, read
-`~/.agents/skills/agentos-live-note-base/SKILL.md` and follow its protocol for location,
-numbering, and `agentos prefix next` usage.
+`agentos-live-note-base` from the current available skills surface and follow its
+protocol for location, numbering, and `agentos prefix next` usage.
 
 ## Role Routing
 

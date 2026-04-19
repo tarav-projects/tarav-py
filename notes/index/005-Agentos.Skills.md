@@ -1,0 +1,74 @@
+# Agentos.Skills
+
+Selection and import model for project-local skills in `agentos`.
+
+---
+
+## What It Is
+
+- A small contract for how `agentos` selects skills for one project target.
+- A shared vocabulary for sources, profiles, depots, and imported skills.
+- The boundary between config-derived selection and depot-sync behavior.
+
+## Core Terms
+
+- **`source`** — a direct skill root or package-like expansion that contributes discoverable skills
+- **`profile`** — an ordered selection of sources plus one or more local depots
+- **`depot`** — a project-local directory where imported skill symlinks are materialized
+- **`selected skills`** — the catalog computed from the resolved profile before depot sync
+- **`imported skills`** — the selected skills after `agentos skills import` syncs the depots
+
+## Project Boundary
+
+- `agentos skills ...` is a project command and uses the `Agentos.Project` targeting model.
+- The resolved project target must already be an **`existing project`**.
+- `.agents/`, `.claude/`, or local skill depots do not define project existence by themselves.
+
+## Selection Model
+
+- Profile selection resolves in this order:
+  - local `.agentos/config.json` override at `skills.routing.profile`
+  - global `skills.routing.default_profile`
+  - hardcoded `default`
+- Profiles are defined in global config under `skills.routing.profiles`.
+- Registry sources are defined once in global config under `skills.routing.sources`.
+- A source is either:
+  - a direct `{ "path": "..." }` entry
+  - a `{ "package": [...] }` entry that expands other sources left to right
+- Relative registry source paths resolve from `AGENTOS_HOME`.
+- Relative inline profile source paths resolve from the selected project root.
+
+## Depot Model
+
+- Depots are project-local paths chosen by the resolved profile.
+- When `depots` is omitted, the default depots are:
+  - `.agents/skills`
+  - `.claude/skills`
+- All depots are equal.
+- There is no canonical or primary depot.
+
+## Command Contract
+
+- `list` previews the selected skills.
+  - It is config-derived and does not sync depots.
+- `path` previews the local load paths for one selected skill, or prints depot roots with
+  `--depot`.
+  - It is config-derived and does not sync depots.
+- `import` syncs the selected skills into every configured depot as managed symlinks.
+- `import --force` rebuilds the managed symlink layer in every configured depot.
+  - Conflicting non-symlink entries still error instead of being deleted.
+- `status` compares every configured depot against the selected skills without syncing.
+
+## What This Is Not
+
+- Not a bootstrap skill.
+- Not a compatibility skill layer for skill discovery.
+- Not a global public skills surface.
+- Not direct discovery from raw source roots during normal skill loading.
+
+## Consequences
+
+- The local depots are the loadable skill surface after import.
+- Agents and humans can inspect the operational contract directly through
+  `agentos skills --help` and subcommand help.
+- An empty selected catalog is a normal result, not a special bootstrap condition.
