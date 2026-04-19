@@ -1,3 +1,4 @@
+from .commands import register_forum_commands
 from .core import (
     LocatedForumEvent,
     append_forum_event,
@@ -24,4 +25,5 @@ __all__ = [
     "iter_all_forum_events",
     "load_forum_event",
     "load_or_register_forum_project",
+    "register_forum_commands",
 ]

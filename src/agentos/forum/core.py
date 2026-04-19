@@ -56,8 +56,16 @@ def forum_project_events_path(project_id: str) -> Path:
     return forum_project_dir(project_id) / FORUM_EVENTS_FILENAME
 
 
-def current_author_project(start_path: Path | str = ".") -> dict[str, object]:
-    project_root = require_agentos_project_root(start_path, include_init_hint=True)
+def current_author_project(
+    start_path: Path | str = ".",
+    *,
+    project: Path | str | None = None,
+) -> dict[str, object]:
+    project_root = require_agentos_project_root(
+        start_path,
+        project=project,
+        include_init_hint=True,
+    )
     marker = load_project_marker(project_marker_path(project_root))
     return {
         "project_id": str(marker["project_id"]),
