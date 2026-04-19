@@ -122,6 +122,48 @@ class RoutedSkillsStatusResult:
     depot_statuses: tuple[RoutedSkillsDepotStatusResult, ...]
 
 
+def _parse_enabled_flag(payload: dict[str, object], *, field_label: str) -> bool:
+    enabled = payload.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise CliError(f"{field_label}.enabled must be a boolean")
+    return enabled
+
+
+def _classify_source_item(
+    payload: dict[str, object],
+    *,
+    field_label: str,
+    require_target: bool,
+) -> tuple[bool, bool]:
+    has_path = "path" in payload
+    has_package = "package" in payload
+    if require_target:
+        if has_path == has_package:
+            raise CliError(f"{field_label} must define exactly one of path or package")
+    elif has_path and has_package:
+        raise CliError(f"{field_label} must define exactly one of path or package")
+    return has_path, has_package
+
+
+def _require_source_name(payload: dict[str, object], *, field_label: str) -> str:
+    return validate_string_for_path(
+        payload.get("name", ""),
+        field_name=f"{field_label}.name",
+    )
+
+
+def _require_source_path_text(
+    payload: dict[str, object],
+    *,
+    field_label: str,
+    empty_error_suffix: str = "must not be empty",
+) -> str:
+    path_text = str(payload.get("path", "")).strip()
+    if not path_text:
+        raise CliError(f"{field_label}.path {empty_error_suffix}")
+    return path_text
+
+
 def resolve_routed_skills_caller_root(
     start_path: Path | str = ".",
     *,
@@ -206,23 +248,20 @@ def _parse_routing_sources_registry(payload: object) -> dict[str, SkillsRoutingS
         if not isinstance(raw_entry, dict):
             raise CliError(f"global config field skills.routing.sources.{name} must be an object")
 
-        enabled = raw_entry.get("enabled", True)
-        if not isinstance(enabled, bool):
-            raise CliError(
-                f"global config field skills.routing.sources.{name}.enabled must be a boolean"
-            )
-
-        has_path = "path" in raw_entry
-        has_package = "package" in raw_entry
-        if has_path == has_package:
-            raise CliError(
-                f"global config field skills.routing.sources.{name} must define exactly one of path or package"
-            )
+        item_label = f"global config field skills.routing.sources.{name}"
+        enabled = _parse_enabled_flag(raw_entry, field_label=item_label)
+        has_path, _ = _classify_source_item(
+            raw_entry,
+            field_label=item_label,
+            require_target=True,
+        )
 
         if has_path:
-            path_text = str(raw_entry.get("path", "")).strip()
-            if not path_text:
-                raise CliError(f"global config field skills.routing.sources.{name}.path is required")
+            path_text = _require_source_path_text(
+                raw_entry,
+                field_label=item_label,
+                empty_error_suffix="is required",
+            )
             registry[name] = SkillsRoutingSource(
                 name=name,
                 path_text=path_text,
@@ -393,25 +432,19 @@ def _append_sources_from_payload(
         if not isinstance(item, dict):
             raise CliError(f"{item_label} must be an object")
 
-        enabled = item.get("enabled", True)
-        if not isinstance(enabled, bool):
-            raise CliError(f"{item_label}.enabled must be a boolean")
+        enabled = _parse_enabled_flag(item, field_label=item_label)
         if not enabled:
             continue
 
-        has_path = "path" in item
-        has_package = "package" in item
-        if has_path and has_package:
-            raise CliError(f"{item_label} must define exactly one of path or package")
+        has_path, has_package = _classify_source_item(
+            item,
+            field_label=item_label,
+            require_target=False,
+        )
 
         if has_path:
-            name = validate_string_for_path(
-                item.get("name", ""),
-                field_name=f"{item_label}.name",
-            )
-            path_text = str(item.get("path", "")).strip()
-            if not path_text:
-                raise CliError(f"{item_label}.path must not be empty")
+            name = _require_source_name(item, field_label=item_label)
+            path_text = _require_source_path_text(item, field_label=item_label)
             _append_direct_source(
                 name,
                 path_text,
@@ -434,10 +467,7 @@ def _append_sources_from_payload(
             )
             continue
 
-        source_name = validate_string_for_path(
-            item.get("name", ""),
-            field_name=f"{item_label}.name",
-        )
+        source_name = _require_source_name(item, field_label=item_label)
         _append_sources_from_registry_reference(
             source_name,
             sources_registry=sources_registry,
@@ -873,14 +903,24 @@ def _routed_records_from_discovered(
     return routed_skills
 
 
+def _resolve_routed_skills_catalog(
+    start_path: Path | str = ".",
+    *,
+    project: Path | str | None = None,
+) -> tuple[RoutedSkillsSelection, list[DiscoveredSkill], list[RoutedSkillRecord]]:
+    selection = resolve_routed_skills_selection(start_path, project=project)
+    discovered = discover_imported_skills(selection.sources)
+    routed_skills = _routed_records_from_discovered(selection, discovered)
+    return selection, discovered, routed_skills
+
+
 def list_routed_skills(
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
 ) -> tuple[RoutedSkillsSelection, list[RoutedSkillRecord]]:
-    selection = resolve_routed_skills_selection(start_path, project=project)
-    discovered = discover_imported_skills(selection.sources)
-    return selection, _routed_records_from_discovered(selection, discovered)
+    selection, _, routed_skills = _resolve_routed_skills_catalog(start_path, project=project)
+    return selection, routed_skills
 
 
 def _routed_skills_status_for_depot(
@@ -1034,9 +1074,7 @@ def routed_skills_status(
     *,
     project: Path | str | None = None,
 ) -> RoutedSkillsStatusResult:
-    selection = resolve_routed_skills_selection(start_path, project=project)
-    discovered = discover_imported_skills(selection.sources)
-    routed_skills = _routed_records_from_discovered(selection, discovered)
+    selection, discovered, routed_skills = _resolve_routed_skills_catalog(start_path, project=project)
     discovered_by_name = {skill.name: skill for skill in discovered}
 
     return RoutedSkillsStatusResult(
@@ -1073,9 +1111,7 @@ def import_routed_skills(
     project: Path | str | None = None,
     force: bool = False,
 ) -> RoutedSkillsImportResult:
-    selection = resolve_routed_skills_selection(start_path, project=project)
-    discovered = discover_imported_skills(selection.sources)
-    routed_skills = _routed_records_from_discovered(selection, discovered)
+    selection, discovered, routed_skills = _resolve_routed_skills_catalog(start_path, project=project)
 
     if not selection.depot_roots:
         return RoutedSkillsImportResult(
