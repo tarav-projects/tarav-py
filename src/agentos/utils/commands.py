@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.ids import generate_uuid4_string, validate_uuid_string
@@ -34,6 +35,7 @@ def _cmd_utils_uuid(args: argparse.Namespace) -> int:
 def _cmd_utils_tmp_folder_new(args: argparse.Namespace) -> int:
     folder_path = allocate_project_tmp_folder(
         create=bool(args.create),
+        project=args.project,
     )
     print(str(folder_path))
     return 0
@@ -80,5 +82,13 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
         "--create",
         action="store_true",
         help="Create the generated folder. By default only prints the path.",
+    )
+    tmp_folder_new_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Project target override. Bare --project targets current pwd.",
     )
     tmp_folder_new_parser.set_defaults(handler=_cmd_utils_tmp_folder_new)

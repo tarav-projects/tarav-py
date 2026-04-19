@@ -27,7 +27,7 @@ def test_init_project_writes_class_fields(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["marker"]["class"] == "agentos.project"
@@ -67,7 +67,7 @@ def test_folder_init_resolves_tape_name_to_project_tapes_folder(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -86,7 +86,7 @@ def test_append_requires_explicit_init_for_missing_tape(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -111,7 +111,7 @@ def test_append_with_init_creates_missing_tape(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -141,7 +141,7 @@ def test_append_warns_on_init_option_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -176,7 +176,7 @@ def test_append_warns_for_existing_non_default_tape_without_init_options(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -208,7 +208,7 @@ def test_tape_config_reports_defaults_and_current_config(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -248,7 +248,7 @@ def test_tape_doctor_reports_counts_and_staging_files(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -317,7 +317,7 @@ def test_tape_query_with_consolidate_processes_staging_before_read(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -357,7 +357,7 @@ def test_tape_query_jmes_filters_entries_and_count(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -450,7 +450,7 @@ def test_tape_query_jmes_rejects_invalid_expression_and_non_array_results(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -512,7 +512,7 @@ def test_append_batch_rejects_unknown_record_fields(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -540,7 +540,7 @@ def test_init_accepts_tape_class_and_data_schema(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -573,7 +573,7 @@ def test_append_validates_record_data_with_data_schema(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -635,7 +635,7 @@ def test_append_rejects_class_not_in_allowed_classes(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)

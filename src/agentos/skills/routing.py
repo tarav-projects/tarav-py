@@ -9,12 +9,12 @@ from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import (
     agentos_home_dir,
-    find_agentos_project_root,
     global_config_path,
     load_global_config,
     local_storage_paths,
     load_project_config,
     project_config_path,
+    require_agentos_project_root,
 )
 from agentos.utils.skills import (
     DiscoveredSkill,
@@ -28,7 +28,6 @@ DEFAULT_ROUTED_SKILLS_DEPOTS = (
     ".agents/skills",
     ".claude/skills",
 )
-LOCAL_AGENTS_DIRNAME = ".agents"
 DEFAULT_ROUTED_PROFILE_NAME = "default"
 ROUTED_SKILLS_STATE_FILENAME = "skills-routing-links.json"
 ROUTED_SKILLS_STATE_CLASS = "agentos.skills.routing-state"
@@ -169,38 +168,11 @@ def resolve_routed_skills_caller_root(
     *,
     project: Path | str | None = None,
 ) -> Path:
-    if project is not None:
-        current = Path(project).expanduser().resolve()
-    else:
-        project_root = find_agentos_project_root(start_path)
-        if project_root is not None:
-            return project_root.resolve()
-        current = Path(start_path).expanduser().resolve()
-
-    if current.is_file():
-        return current.parent
-    return current
-
-
-def _resolve_local_agents_context_root(start_path: Path | str = ".") -> Path | None:
-    current = Path(start_path).expanduser().resolve()
-    if current.is_file():
-        current = current.parent
-
-    ignored_global_agents_root = (Path.home().expanduser().resolve() / LOCAL_AGENTS_DIRNAME).resolve()
-
-    while True:
-        candidate = current / LOCAL_AGENTS_DIRNAME
-        try:
-            normalized_candidate = candidate.resolve()
-        except OSError:
-            normalized_candidate = candidate
-        if candidate.is_dir() and normalized_candidate != ignored_global_agents_root:
-            return current
-        parent = current.parent
-        if parent == current:
-            return None
-        current = parent
+    return require_agentos_project_root(
+        start_path,
+        project=project,
+        include_init_hint=True,
+    )
 
 
 def _load_routing_section() -> dict[str, object]:
@@ -588,29 +560,9 @@ def resolve_routed_skills_selection(
     *,
     project: Path | str | None = None,
 ) -> RoutedSkillsSelection:
-    raw_start_root = Path(start_path).expanduser().resolve()
-    if raw_start_root.is_file():
-        raw_start_root = raw_start_root.parent
-
     resolved_start_root = resolve_routed_skills_caller_root(start_path, project=project)
-    if project is not None:
-        local_context_root = resolved_start_root
-    else:
-        local_context_root = _resolve_local_agents_context_root(raw_start_root)
-        if local_context_root is None:
-            local_context_root = find_agentos_project_root(raw_start_root)
     profiles, sources_registry, default_profile_name = _load_routing_configuration()
-
-    if local_context_root is None:
-        return RoutedSkillsSelection(
-            caller_root=raw_start_root,
-            local_context_root=None,
-            profile_name=None,
-            depot_roots=(),
-            sources=[],
-            warnings=(),
-        )
-
+    local_context_root = resolved_start_root
     local_profile_name, selection_warnings = _load_local_routing_profile_name(local_context_root)
     selected_profile_name = local_profile_name or default_profile_name or DEFAULT_ROUTED_PROFILE_NAME
 

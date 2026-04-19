@@ -33,7 +33,7 @@ def _create_skill(path: Path, *, description: str) -> None:
 
 
 def _create_local_agents_context(root: Path) -> None:
-    (root / ".agents").mkdir(parents=True, exist_ok=True)
+    _write_project_marker(root)
 
 
 def _resolved_default_depots(root: Path) -> list[Path]:
@@ -103,8 +103,10 @@ def test_skills_list_returns_authoritative_empty_catalog(capsys, monkeypatch, tm
     workspace.mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(workspace)
 
-    assert main(["skills", "list"]) == 0
-    assert capsys.readouterr().out.strip() == NO_ROUTED_SKILLS_MESSAGE
+    assert main(["skills", "list"]) == 1
+    assert capsys.readouterr().err.strip() == (
+        "error: not inside an agentos project (missing .agentos/project.json); run `agentos init`"
+    )
 
 
 def test_skills_list_uses_default_profile_and_predicts_local_depot_paths(
@@ -258,6 +260,7 @@ def test_skills_list_honors_project_override(capsys, monkeypatch, tmp_path: Path
     target_root = tmp_path / "target-project"
     other_root = tmp_path / "other"
     other_root.mkdir(parents=True, exist_ok=True)
+    _write_project_marker(target_root)
     _create_skill(target_root / "skills" / "alpha-skill", description="Override alpha skill")
 
     _write_global_routing_config(
@@ -292,6 +295,7 @@ def test_skills_list_uses_pwd_when_project_flag_has_no_value(
 ) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     workspace = tmp_path / "workspace"
+    _write_project_marker(workspace)
     _create_skill(workspace / "skills" / "alpha-skill", description="Pwd override alpha skill")
 
     _write_global_routing_config(
@@ -447,7 +451,7 @@ def test_skills_path_with_depot_flag_errors_when_no_context_exists(
 
     assert main(["skills", "path", "--depot"]) == 1
     assert capsys.readouterr().err.strip() == (
-        "error: no local routed skills context is available for this caller context"
+        "error: not inside an agentos project (missing .agentos/project.json); run `agentos init`"
     )
 
 
@@ -734,8 +738,10 @@ def test_skills_import_returns_authoritative_empty_catalog_when_no_context_exist
     workspace.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.chdir(workspace)
-    assert main(["skills", "import"]) == 0
-    assert capsys.readouterr().out.strip() == NO_ROUTED_SKILLS_MESSAGE
+    assert main(["skills", "import"]) == 1
+    assert capsys.readouterr().err.strip() == (
+        "error: not inside an agentos project (missing .agentos/project.json); run `agentos init`"
+    )
 
 
 def test_skills_import_uses_pwd_when_project_flag_has_no_value(
@@ -745,6 +751,7 @@ def test_skills_import_uses_pwd_when_project_flag_has_no_value(
 ) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     workspace = tmp_path / "workspace"
+    _write_project_marker(workspace)
     source_skill = workspace / "skills" / "alpha-skill"
     _create_skill(source_skill, description="Pwd import alpha skill")
 
@@ -767,7 +774,7 @@ def test_skills_import_uses_pwd_when_project_flag_has_no_value(
     assert expected_path.resolve() == source_skill.resolve()
 
 
-def test_skills_import_ignores_global_agentos_symlink_when_project_flag_uses_pwd(
+def test_skills_import_warns_when_local_project_config_resolves_to_global_config(
     capsys,
     monkeypatch,
     tmp_path: Path,
@@ -775,7 +782,8 @@ def test_skills_import_ignores_global_agentos_symlink_when_project_flag_uses_pwd
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     workspace = tmp_path / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
-    (workspace / ".agentos").symlink_to(agentos_home, target_is_directory=True)
+    _write_project_marker(workspace)
+    (workspace / ".agentos" / "config.json").symlink_to(agentos_home / "config.json")
     source_skill = workspace / "skills" / "alpha-skill"
     _create_skill(source_skill, description="Pwd import alpha skill")
 

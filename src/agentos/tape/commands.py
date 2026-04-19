@@ -37,8 +37,11 @@ def _resolve_tape_root(
     *,
     root_path: str | None,
     tape_name: str | None,
+    project: Path | str | None,
 ) -> tuple[Path, dict[str, object]]:
     if root_path is not None:
+        if project is not None:
+            raise CliError("--project is not supported with --root")
         resolved_root = Path(root_path).expanduser().resolve()
         return (
             resolved_root,
@@ -55,6 +58,7 @@ def _resolve_tape_root(
     resolved_root, project_root, normalized_tape = resolve_project_tape_dir(
         tape_name,
         start_path=Path.cwd(),
+        project=project,
     )
     return (
         resolved_root,
@@ -431,6 +435,7 @@ def _cmd_tape_init(args: argparse.Namespace) -> int:
     root_path, resolution = _resolve_tape_root(
         root_path=args.root_path,
         tape_name=args.tape_name,
+        project=args.project,
     )
 
     _validate_tape_type(args.tape_type)
@@ -480,6 +485,7 @@ def _cmd_tape_append(args: argparse.Namespace) -> int:
     root_path, resolution = _resolve_tape_root(
         root_path=args.root_path,
         tape_name=args.tape_name,
+        project=args.project,
     )
 
     config, tape_created, warnings = _prepare_write_context(
@@ -521,6 +527,7 @@ def _cmd_tape_append_batch(args: argparse.Namespace) -> int:
     root_path, resolution = _resolve_tape_root(
         root_path=args.root_path,
         tape_name=args.tape_name,
+        project=args.project,
     )
 
     config, tape_created, warnings = _prepare_write_context(
@@ -570,6 +577,7 @@ def _cmd_tape_consolidate(args: argparse.Namespace) -> int:
     root_path, resolution = _resolve_tape_root(
         root_path=args.root_path,
         tape_name=args.tape_name,
+        project=args.project,
     )
 
     config, tape_created, warnings = _prepare_write_context(
@@ -597,6 +605,7 @@ def _cmd_tape_query(args: argparse.Namespace) -> int:
     root_path, resolution = _resolve_tape_root(
         root_path=args.root_path,
         tape_name=args.tape_name,
+        project=args.project,
     )
     consolidate_payload: dict[str, object] | None = None
     if args.pre_consolidate:
@@ -652,6 +661,7 @@ def _cmd_tape_verify(args: argparse.Namespace) -> int:
     root_path, resolution = _resolve_tape_root(
         root_path=args.root_path,
         tape_name=args.tape_name,
+        project=args.project,
     )
     result = verify_segment_headers(root_path)
     output = _build_tape_output(
@@ -668,6 +678,7 @@ def _cmd_tape_config(args: argparse.Namespace) -> int:
     root_path, resolution = _resolve_tape_root(
         root_path=args.root_path,
         tape_name=args.tape_name,
+        project=args.project,
     )
     config = load_tape_folder_config(root_path)
     output = _build_tape_output(
@@ -687,6 +698,7 @@ def _cmd_tape_doctor(args: argparse.Namespace) -> int:
     root_path, resolution = _resolve_tape_root(
         root_path=args.root_path,
         tape_name=args.tape_name,
+        project=args.project,
     )
     config = load_tape_folder_config(root_path)
     verify_payload = verify_segment_headers(root_path)
@@ -725,6 +737,7 @@ def _cmd_tape_lint(args: argparse.Namespace) -> int:
     root_path, resolution = _resolve_tape_root(
         root_path=args.root_path,
         tape_name=args.tape_name,
+        project=args.project,
     )
     if args.max_findings <= 0:
         raise CliError("--max-findings must be > 0")
@@ -755,6 +768,14 @@ def _add_tape_target_group(parser: argparse.ArgumentParser) -> None:
         "--root",
         dest="root_path",
         help="Explicit tape root directory (headless mode).",
+    )
+    parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Project target override for --tape mode. Bare --project targets current pwd.",
     )
 
 

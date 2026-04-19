@@ -11,9 +11,14 @@ def allocate_project_tmp_folder(
     *,
     create: bool,
     start_path: Path | str = ".",
+    project: Path | str | None = None,
     max_attempts: int = 32,
 ) -> Path:
-    project_root = require_agentos_project_root(start_path)
+    project_root = require_agentos_project_root(
+        start_path,
+        project=project,
+        include_init_hint=True,
+    )
     tmp_root = project_agentos_dir(project_root) / "tmp"
 
     folder_path: Path | None = None

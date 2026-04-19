@@ -13,7 +13,7 @@ def _setup_project_tape(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> Path:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
     monkeypatch.chdir(tmp_path)
     assert main(["tape", "init", "--tape", "bla"]) == 0
@@ -132,7 +132,7 @@ def test_tape_lint_reports_disallowed_record_class(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
     monkeypatch.chdir(tmp_path)
     assert (

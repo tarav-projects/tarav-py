@@ -10,7 +10,7 @@ def test_tmp_folder_new_returns_path_without_creating_directory(
     monkeypatch,
     capsys,
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -30,7 +30,7 @@ def test_tmp_folder_new_returns_distinct_paths_per_call(
     monkeypatch,
     capsys,
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)
@@ -50,7 +50,7 @@ def test_tmp_folder_new_with_create_creates_directory_under_project_tmp(
     monkeypatch,
     capsys,
 ) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
     monkeypatch.chdir(tmp_path)

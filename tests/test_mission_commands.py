@@ -7,7 +7,7 @@ from agentos.cli import main
 
 
 def _init_project(tmp_path: Path, monkeypatch, capsys) -> None:
-    assert main(["init", "--scope", "project", "--root", str(tmp_path)]) == 0
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
     monkeypatch.chdir(tmp_path)
 

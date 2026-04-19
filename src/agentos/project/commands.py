@@ -33,7 +33,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
         print(json.dumps(output, indent=2))
         return 0
 
-    root = args.root.expanduser().resolve()
+    root = args.project.expanduser().resolve()
     payload = initialize_project_layout(
         root,
         ensure=args.ensure,
@@ -85,10 +85,12 @@ def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Initialization scope (default: project).",
     )
     init_parser.add_argument(
-        "--root",
+        "--project",
         type=Path,
+        nargs="?",
+        const=Path("."),
         default=Path("."),
-        help="Project root for --scope project (default: current directory).",
+        help="Project target for --scope project (default: current directory). Bare --project targets current pwd.",
     )
     init_parser.add_argument(
         "--project-id",

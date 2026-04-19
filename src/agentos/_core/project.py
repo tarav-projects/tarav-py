@@ -59,6 +59,23 @@ def find_agentos_project_root(start_path: Path | str = ".") -> Path | None:
         current = parent
 
 
+def normalize_project_target(project_path: Path | str = ".") -> Path:
+    current = Path(project_path).expanduser().resolve()
+    if current.is_file():
+        return current.parent
+    return current
+
+
+def resolve_project_target(
+    start_path: Path | str = ".",
+    *,
+    project: Path | str | None = None,
+) -> Path | None:
+    if project is not None:
+        return normalize_project_target(project)
+    return find_agentos_project_root(start_path)
+
+
 def build_not_inside_project_message(
     *,
     include_init_hint: bool = False,
@@ -79,10 +96,28 @@ def build_not_inside_project_message(
     return message
 
 
-def require_agentos_project_root(start_path: Path | str = ".") -> Path:
-    project_root = find_agentos_project_root(start_path)
+def require_agentos_project_root(
+    start_path: Path | str = ".",
+    *,
+    project: Path | str | None = None,
+    include_init_hint: bool = True,
+    extra_hint: str | None = None,
+) -> Path:
+    project_root = resolve_project_target(start_path, project=project)
     if project_root is None:
-        raise CliError(build_not_inside_project_message())
+        raise CliError(
+            build_not_inside_project_message(
+                include_init_hint=include_init_hint,
+                extra_hint=extra_hint,
+            )
+        )
+    if not project_marker_path(project_root).is_file():
+        raise CliError(
+            build_not_inside_project_message(
+                include_init_hint=include_init_hint,
+                extra_hint=extra_hint,
+            )
+        )
     return project_root
 
 
@@ -136,16 +171,15 @@ def resolve_project_tape_dir(
     tape_name: str,
     *,
     start_path: Path | str = ".",
+    project: Path | str | None = None,
 ) -> tuple[Path, Path, str]:
     normalized_tape_name = validate_string_for_path(tape_name, field_name="tape")
-    project_root = find_agentos_project_root(start_path)
-    if project_root is None:
-        raise CliError(
-            build_not_inside_project_message(
-                include_init_hint=True,
-                extra_hint="pass --root",
-            )
-        )
+    project_root = require_agentos_project_root(
+        start_path,
+        project=project,
+        include_init_hint=True,
+        extra_hint="pass --root",
+    )
     return (project_agentos_dir(project_root) / "tapes" / normalized_tape_name, project_root, normalized_tape_name)
 
 
