@@ -4,8 +4,9 @@
 
 Implemented in the current branch for the intended project-local command surfaces.
 The `Agentos.Project` contract now has an index note, shared project-target helpers are in
-place, and the targeted enforcement/tests are green. Remaining follow-up is docs/help
-cleanup and optional triage of unrelated `chat debug` / `chat extract` test failures.
+place, and the targeted enforcement/tests are green. Follow-up docs/help cleanup is done,
+and the previously unrelated `chat debug` / `chat extract` failures were fixed while
+extending explicit project-target support to the remaining project-aware surfaces.
 
 ## User Intent
 
@@ -79,6 +80,12 @@ The main design drift that existed before implementation is now removed:
 - `mission`, `utils tmp-folder new`, and `tape --tape` now support explicit `--project`
   targeting while preserving implicit parent-walk behavior
 - `agentos init` now uses `--project` for project scope instead of `--root`
+- `agentos doctor` now supports explicit `--project` inspection without requiring an
+  existing project
+- `agentos agent ...` and the relevant `agentos chat ...` leaves now accept explicit
+  `--project` for config resolution without becoming project-required commands
+- `chat debug` again discovers default live provider homes when no explicit provider config
+  is present
 
 ## Requested Change
 
@@ -188,9 +195,7 @@ Implementation expectations:
 
 ## Open Questions
 
-- None for the implemented contract. One residual repo issue remains outside this request:
-  the full suite still has failing `chat debug` / `chat extract` tests unrelated to the
-  project-target rollout.
+- None for the implemented contract.
 
 ## Related Impl-Reqs
 
@@ -207,3 +212,7 @@ Implementation expectations:
 - 2026-04-19: Targeted validation passed for `skills`, `mission`, `tmp-folder`, and tape
   project resolution. Full suite still shows unrelated `chat debug` / `chat extract`
   failures.
+- 2026-04-19: Extended the policy pass across the remaining classified surfaces. Added
+  explicit `--project` inspection to `doctor`, explicit `--project` config-resolution
+  targeting to `agent` and relevant `chat` leaves, restored default live-home discovery for
+  `chat debug`, and added focused tests for `doctor`, `agent`, and `chat`.

@@ -3,13 +3,31 @@
 Core library for agentic workflow primitives, with a companion CLI.
 
 Current baseline includes:
-- project context commands: `init`, `rev-parse`, and scope-aware `doctor`
-- `tara-tapes` for Tara spec-first tape operations
-- `tape` and `git-refs` (from `obacli`)
-- `mdblocks`, `prefix`, `skills`, `utils`, `doctor`, `test`
+- project targeting and diagnostics: `init`, `rev-parse`, `doctor`
+- config-driven provider utilities: `agent`, `chat`, `chatlas`
+- project-scoped tools: `skills`, `mission`, `utils`
+- tape and reference utilities: `tape`, `tara-tapes`, `git-refs`
+- document and numbering tools: `mdblocks`, `prefix`
+- smoke and support commands: `test`
 
 `agentos` is the core Python package/library.
 `agentos` is the CLI entrypoint/layer.
+
+## Agentos.Project
+
+`agentos` uses a git-like local project model.
+
+- canonical project marker: `<project>/.agentos/project.json`
+- implicit project targeting: parent-walk discovery from `cwd`
+- explicit project targeting: `--project <path>`
+- bare `--project`: target the current directory
+
+Command policy depends on the surface:
+
+- `doctor` can inspect a project target without requiring an existing project
+- `agent ...` and the relevant `chat ...` leaves use `--project` for config resolution only
+- `skills ...`, `mission ...`, `utils tmp-folder new`, and `tape --tape ...` require an existing project
+- `init --scope project --project ...` may initialize an explicit project target
 
 ## Utils CLI
 
@@ -18,33 +36,104 @@ Current baseline includes:
 - `uuid`: generate one or more UUIDv4 values (`--count`, `--json`)
 - `tmp-folder new`: allocate a unique path under `<project>/.agentos/tmp/` (`--create` optional)
 
+## Doctor CLI
+
+`agentos doctor` inspects environment state plus Agentos.Project resolution.
+
+- `--scope project|global|auto`: choose how effective storage paths are resolved
+- `--project [path]`: inspect an explicit project target; bare `--project` means current `pwd`
+- `doctor` does not require the selected target to already be an existing project
+
+Quick examples:
+
+```sh
+agentos doctor
+agentos doctor --project
+agentos doctor --project /path/to/repo
+agentos doctor --scope global
+```
+
+## Agent CLI
+
+`agentos agent` runs configured provider instances.
+
+Current public surface:
+
+- `list`: list available configured provider instances
+- `run`: resolve one provider instance and execute it with a prompt
+- `--project [path]`: use that project target for config resolution; bare `--project` means current `pwd`
+- `--cwd`: on `agent run`, override only the launched process working directory
+
+Resolution notes:
+
+- provider instances may come from global config and from the selected project's `.agentos/config.json`
+- `agent` commands are project-aware, but they do not require an existing project
+- `--project` controls config lookup; `--cwd` controls where the subprocess runs
+
+Quick examples:
+
+```sh
+agentos agent list
+agentos agent list --project
+agentos agent run --provider codex --instance work -- "inspect this repo"
+agentos agent run --provider codex --instance work --project /path/to/repo --cwd /tmp/work -- "do the task"
+```
+
+## Chat CLI
+
+`agentos chat` is the provider-facing live surface, distinct from `agentos chatlas`.
+
+Current public surface:
+
+- `debug list`: inventory live provider sessions directly from configured homes
+- `debug find`: resolve a provider-agnostic session query against live provider data
+- `debug extract`: extract dialog from a live session query or explicit artifact path
+- `accounts stats`: query configured account status and usage across supported providers
+- `--project [path]`: use that project target for config resolution; bare `--project` means current `pwd`
+
+Resolution notes:
+
+- `chat` commands are project-aware, but they do not require an existing project
+- when no explicit provider config exists, `chat debug` still discovers the default live provider homes
+- `--project` affects config resolution only; it does not turn `chat` into a project-required surface
+
+Quick examples:
+
+```sh
+agentos chat debug list --provider codex --output json
+agentos chat debug list --project /path/to/repo --provider codex
+agentos chat debug find 019ccafa-7835-7fc3-ac17-0e0a0f675fd5 --project
+agentos chat debug extract 019ccafa-7835-7fc3-ac17-0e0a0f675fd5 --project /path/to/repo
+agentos chat accounts stats --project /path/to/repo --output usage
+```
+
 ## Skills CLI
 
 `agentos skills` controls the project-local routed skills depots.
 
 Current public surface:
 
-- `list`: return the desired routed skill catalog visible to the caller context (`--json` optional)
-- `import`: reconcile the desired routed skill catalog into every resolved local project skill depot
+- `list`: return the desired routed skill catalog visible to the resolved project target (`--json` optional)
+- `import`: reconcile the desired routed skill catalog into every configured depot for the resolved existing project
 - `import --force`: rebuild the depot symlink layer in every resolved depot by deleting existing depot symlinks, then recreating the routed symlink set
-- `status`: analyze every resolved local skill depot against the desired routed catalog (`--json` optional)
-- `path --depot`: print the resolved local project skill depot paths for the current caller context
+- `status`: analyze every configured depot for the resolved existing project against the desired routed catalog (`--json` optional)
+- `path --depot`: print the configured depot paths for the resolved existing project
 - `path <name>`: resolve one routed skill name to all of its local load paths
-- `--project [path]`: optional caller project root override for routing on all commands; when passed without a value, use current `pwd`
+- `--project [path]`: project target override on all commands; bare `--project` means current `pwd`
 
 Current routing model:
 
-- local context resolves from `--project`, then nearest local `.agents/` directory, then agentos project root
+- routed skills resolve from the selected Agentos.Project, either by `--project` or implicit parent-walk from `cwd`
+- `agentos skills ...` requires an existing project; outside one, commands fail with the missing `.agentos/project.json` error
 - `~/.agents` is not used as the public routed skills surface for this flow
 - profile selection uses local project config override first, then global `default_profile`, then hardcoded `default`
 - sources are declared once in `sources`
 - a source is either a direct `{ "path": "..." }` leaf or a `{ "package": [...] }` composite
 - package lists expand left to right and can mix registry references with inline direct sources
 - profiles choose ordered `sources` and one or more relative `depots`
-- relative registry source paths resolve from `AGENTOS_HOME`; inline profile source paths resolve from the caller project root
+- relative registry source paths resolve from `AGENTOS_HOME`; inline profile source paths resolve from the selected project root
 - when `depots` is omitted, the default depots are `.agents/skills` and `.claude/skills`
 - all depots are equal; there is no canonical or primary depot
-- when no local context exists, public commands return an empty routed catalog or a local-context error
 - `list` and `path` are config-derived and do not materialize symlinks
 - `import` performs an incremental managed sync of every routed depot
 - `import --force` resets every depot symlink layer to routed state without deleting non-symlink conflicts
@@ -135,21 +224,21 @@ Quick examples:
 
 ```sh
 # project-scoped tape
-uv run agentos tape init --tape bla
-uv run agentos tape init --tape bla --tape-class events.demo --data-schema-json '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["k"],"properties":{"k":{"type":"string"}},"additionalProperties":false}'
-uv run agentos tape init --tape bla --allowed-classes-json '["event.alpha","event.beta"]'
-uv run agentos tape append --tape bla --writer-id proc-a --class event.alpha
-uv run agentos tape append --tape bla --writer-id proc-a --class event.alpha --data-json '{"k":"v"}'
-uv run agentos tape append --tape bla --writer-id proc-a --class event.alpha --override-created-at 2026-03-01T10:11:12Z
-uv run agentos tape consolidate --tape bla
-uv run agentos tape query --tape bla --mode best_effort --count
-uv run agentos tape query --tape bla --mode committed --count --consolidate
-uv run agentos tape query --tape bla --mode best_effort --jmes "[?data.task_id=='task-123']"
-uv run agentos tape config --tape bla
-uv run agentos tape doctor --tape bla
+agentos tape init --tape bla
+agentos tape init --tape bla --tape-class events.demo --data-schema-json '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["k"],"properties":{"k":{"type":"string"}},"additionalProperties":false}'
+agentos tape init --tape bla --allowed-classes-json '["event.alpha","event.beta"]'
+agentos tape append --tape bla --writer-id proc-a --class event.alpha
+agentos tape append --tape bla --writer-id proc-a --class event.alpha --data-json '{"k":"v"}'
+agentos tape append --tape bla --writer-id proc-a --class event.alpha --override-created-at 2026-03-01T10:11:12Z
+agentos tape consolidate --tape bla
+agentos tape query --tape bla --mode best_effort --count
+agentos tape query --tape bla --mode committed --count --consolidate
+agentos tape query --tape bla --mode best_effort --jmes "[?data.task_id=='task-123']"
+agentos tape config --tape bla
+agentos tape doctor --tape bla
 
 # headless explicit root
-uv run agentos tape append --root /tmp/my-tape --writer-id proc-a --class event.alpha --init
+agentos tape append --root /tmp/my-tape --writer-id proc-a --class event.alpha --init
 ```
 
 ## Tara Tapes CLI
