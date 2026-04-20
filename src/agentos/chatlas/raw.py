@@ -12,7 +12,6 @@ from agentos._core.path_validation import validate_string_for_path
 from agentos._core.scan import normalize_rel, should_exclude
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
-    ProviderInstanceConfigEntry,
     ProviderHomeSlot,
     ProviderInstance,
     ProviderInstanceAnchor,
@@ -202,97 +201,10 @@ _CHATLAS_PROVIDER_HANDLERS_BY_NAME = {
     provider_handler.family: provider_handler
     for provider_handler in _CHATLAS_PROVIDER_HANDLERS
 }
-_CHATLAS_PROVIDER_NAMES = tuple(sorted(_CHATLAS_PROVIDER_HANDLERS_BY_NAME))
 
 
 def supported_chatlas_provider_families() -> tuple[ChatlasProviderHandler, ...]:
     return _CHATLAS_PROVIDER_HANDLERS
-
-
-def _provider_instances_from_config_entries(
-    entries: tuple[ProviderInstanceConfigEntry, ...],
-) -> tuple[ProviderInstance, ...]:
-    return tuple(_chatlas_instance_from_raw_config(entry) for entry in entries)
-
-
-def _chatlas_instance_from_raw_config(entry: ProviderInstanceConfigEntry) -> ProviderInstance:
-    raw_instance = entry.raw_instance
-    family_name = raw_instance.get("provider")
-    if not isinstance(family_name, str) or not family_name:
-        raise CliError(f"{entry.field_name('provider')} is required")
-
-    provider_handler = _chatlas_provider_handler_for_name(family_name)
-    if provider_handler is None:
-        supported_providers = ", ".join(_CHATLAS_PROVIDER_NAMES)
-        raise CliError(
-            f"{entry.field_name('provider')} must be one of: {supported_providers}"
-        )
-
-    home = raw_instance.get("home")
-    raw_homes = raw_instance.get("homes")
-    raw_instance_name = raw_instance.get("instance")
-    if home is not None and raw_homes is not None:
-        raise CliError(
-            f"{entry.item_path()} must not define both home and homes"
-        )
-
-    includes = _load_optional_string_tuple(
-        raw_instance.get("includes"),
-        field_name=entry.field_name("includes"),
-    )
-    excludes = _load_optional_string_tuple(
-        raw_instance.get("excludes"),
-        field_name=entry.field_name("excludes"),
-    )
-    homes = _load_optional_string_mapping(
-        raw_homes,
-        field_name=entry.field_name("homes"),
-    )
-
-    instance_name: str | None = None
-    if raw_instance_name is not None:
-        if not isinstance(raw_instance_name, str) or not raw_instance_name.strip():
-            raise CliError(f"{entry.field_name('instance')} must be a non-empty string")
-        instance_name = raw_instance_name.strip()
-
-    if home is not None:
-        normalized_home = _normalize_chatlas_home(
-            home,
-            field_name=entry.field_name("home"),
-        )
-        if homes:
-            raise CliError(
-                f"{entry.item_path()} must define either home or homes, not both"
-            )
-        return provider_handler.instance_from_home(
-            normalized_home,
-            field_prefix=entry.field_prefix,
-            index=entry.index,
-            is_default=False,
-            instance_name=instance_name,
-            includes=includes,
-            excludes=excludes,
-        )
-
-    if homes:
-        if len(provider_handler.home_slots) == 1:
-            raise CliError(
-                f"{entry.field_name('homes')} is only supported for providers with multiple home roots; "
-                f"use {entry.field_name('home')}"
-            )
-        return provider_handler.instance_from_homes(
-            homes,
-            field_prefix=entry.field_prefix,
-            index=entry.index,
-            is_default=False,
-            instance_name=instance_name,
-            includes=includes,
-            excludes=excludes,
-        )
-
-    raise CliError(
-        f"{entry.item_path()} must define home or homes"
-    )
 
 
 def _chatlas_provider_handler_for_name(family_name: str) -> ChatlasProviderHandler | None:
@@ -312,41 +224,6 @@ def _normalize_chatlas_home(home: object, *, field_name: str) -> str:
     if not isinstance(home, str) or not home.strip():
         raise CliError(f"{field_name} must be a non-empty string")
     return home.strip()
-
-
-def _load_optional_string_tuple(value: object, *, field_name: str) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            raise CliError(f"{field_name} must not be empty")
-        return (stripped,)
-    if not isinstance(value, list):
-        raise CliError(f"{field_name} must be a string or array of strings")
-
-    items: list[str] = []
-    for index, item in enumerate(value):
-        if not isinstance(item, str) or not item.strip():
-            raise CliError(f"{field_name}[{index}] must be a non-empty string")
-        items.append(item.strip())
-    return tuple(items)
-
-
-def _load_optional_string_mapping(value: object, *, field_name: str) -> dict[str, str]:
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise CliError(f"{field_name} must be a JSON object")
-
-    items: dict[str, str] = {}
-    for key, item in value.items():
-        if not isinstance(key, str) or not key.strip():
-            raise CliError(f"{field_name} contains an invalid key")
-        if not isinstance(item, str) or not item.strip():
-            raise CliError(f"{field_name}.{key} must be a non-empty string")
-        items[key.strip()] = item.strip()
-    return items
 
 
 def _build_chatlas_provider_context(provider_instance: ProviderInstance) -> ChatlasProviderContext:

@@ -31,10 +31,8 @@ from agentos.chat.core import (
 from agentos.chat.extractors import extract_chat_session
 from agentos.chat.providers import (
     ProviderInstance,
-    ProviderInstanceConfigSource,
     load_configured_provider_instances,
     load_chat_config_documents,
-    provider_instance_config_entries_from_config,
 )
 from agentos.chat.sessions import ChatSession, coerce_timestamp
 from agentos.chatlas._cache_io import (
@@ -49,7 +47,6 @@ from agentos.chatlas.raw import (
     _dedupe_chatlas_instances,
     _load_chatlas_raw_scan_cache,
     _mirror_chatlas_provider_instance,
-    _provider_instances_from_config_entries,
     _resolve_chatlas_instance_name,
     _validate_unique_chatlas_destinations,
     _write_chatlas_raw_scan_cache,
@@ -72,10 +69,6 @@ _SUMMARY_RELATIVE_PATHS = {
     "brief": _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH,
     "detailed": _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH,
 }
-_CHATLAS_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
-    object_path=("chatlas", "provider_instances"),
-    field_prefix="chatlas.provider_instances",
-)
 _SUMMARY_LEVELS = ("brief", "detailed")
 _PROGRESS_PREFIX = "[chatlas]"
 _MAX_CHATLAS_ARCHIVE_WORKERS = 4
@@ -137,11 +130,37 @@ def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSetti
     supported_families = {
         provider_handler.family for provider_handler in supported_chatlas_provider_families()
     }
-    provider_instances = [
-        provider_instance
-        for provider_instance in load_configured_provider_instances(start_path=start_path)
-        if provider_instance.family in supported_families
-    ]
+    all_provider_instances = load_configured_provider_instances(start_path=start_path)
+    selected_instance_ids = load_chatlas_instance_ids(start_path=start_path)
+    if selected_instance_ids is None:
+        provider_instances: tuple[ProviderInstance, ...] = ()
+    else:
+        instances_by_id = {
+            provider_instance.instance_id: provider_instance
+            for provider_instance in all_provider_instances
+            if provider_instance.instance_id is not None
+        }
+        missing_ids = [
+            instance_id for instance_id in selected_instance_ids if instance_id not in instances_by_id
+        ]
+        if missing_ids:
+            suffix = "s" if len(missing_ids) != 1 else ""
+            raise CliError(
+                f"chatlas.instance_ids references unknown configured instance id{suffix}: "
+                f"{', '.join(missing_ids)}"
+            )
+        unsupported_ids = [
+            instance_id
+            for instance_id in selected_instance_ids
+            if instances_by_id[instance_id].family not in supported_families
+        ]
+        if unsupported_ids:
+            suffix = "s" if len(unsupported_ids) != 1 else ""
+            raise CliError(
+                f"chatlas.instance_ids references unsupported Chatlas instance id{suffix}: "
+                f"{', '.join(unsupported_ids)}"
+            )
+        provider_instances = tuple(instances_by_id[instance_id] for instance_id in selected_instance_ids)
 
     for config in load_chat_config_documents(start_path=start_path):
         chatlas_config = _chatlas_config_from_config(config)
@@ -152,21 +171,42 @@ def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSetti
                     raise CliError("config field chatlas.commit_prefix must be a non-empty string")
                 commit_prefix = raw_commit_prefix.strip()
 
-            provider_instances.extend(
-                _provider_instances_from_config_entries(
-                    provider_instance_config_entries_from_config(
-                        config,
-                        source=_CHATLAS_PROVIDER_INSTANCE_CONFIG_SOURCE,
-                    )
-                )
-            )
-
-    deduped_instances = _dedupe_chatlas_instances(tuple(provider_instances))
+    deduped_instances = _dedupe_chatlas_instances(provider_instances)
     _validate_unique_chatlas_destinations(deduped_instances)
     return ChatlasSettings(
         commit_prefix=commit_prefix,
         provider_instances=deduped_instances,
     )
+
+
+def load_chatlas_instance_ids(
+    *,
+    start_path: Path | str = ".",
+) -> tuple[str, ...] | None:
+    result: tuple[str, ...] | None = None
+    for config in load_chat_config_documents(start_path=start_path):
+        chatlas_config = _chatlas_config_from_config(config)
+        if chatlas_config is None or "instance_ids" not in chatlas_config:
+            continue
+        raw_instance_ids = chatlas_config["instance_ids"]
+        if not isinstance(raw_instance_ids, list):
+            raise CliError("config field chatlas.instance_ids must be a JSON array")
+
+        instance_ids: list[str] = []
+        seen_ids: set[str] = set()
+        for index, raw_instance_id in enumerate(raw_instance_ids):
+            if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
+                raise CliError(f"chatlas.instance_ids[{index}] must be a non-empty string")
+            instance_id = raw_instance_id.strip()
+            if instance_id in seen_ids:
+                raise CliError(
+                    "chatlas.instance_ids must be unique; "
+                    f"duplicate id {instance_id}"
+                )
+            seen_ids.add(instance_id)
+            instance_ids.append(instance_id)
+        result = tuple(instance_ids)
+    return result
 
 
 def chatlas_update(

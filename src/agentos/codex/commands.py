@@ -11,6 +11,12 @@ from typing import Any
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir, global_config_path, load_global_config
+from agentos.chat.providers import (
+    AGENT_INSTANCE_CONFIG_SOURCE,
+    ProviderInstance,
+    provider_instance_config_entries_from_config,
+    provider_instance_from_config_entry,
+)
 
 CODEX_AUTH_FILENAME = "auth.json"
 CODEX_DEFAULT_EXECUTABLE = "/opt/homebrew/bin/codex"
@@ -67,6 +73,86 @@ def _normalize_string_tuple(value: object, *, field_name: str) -> tuple[str, ...
     return tuple(normalized)
 
 
+def _load_global_agent_instances(config: dict[str, object]) -> tuple[ProviderInstance, ...]:
+    entries = provider_instance_config_entries_from_config(
+        config,
+        source=AGENT_INSTANCE_CONFIG_SOURCE,
+    )
+    instances = tuple(provider_instance_from_config_entry(entry) for entry in entries)
+    seen_ids: dict[str, ProviderInstance] = {}
+    for instance in instances:
+        if instance.instance_id is None:
+            raise CliError("agent.instances ids must not be empty")
+        existing = seen_ids.get(instance.instance_id)
+        if existing is None:
+            seen_ids[instance.instance_id] = instance
+            continue
+        raise CliError(
+            "agent.instances ids must be unique; "
+            f"duplicate id {instance.instance_id} for providers "
+            f"{existing.family} and {instance.family}"
+        )
+    return instances
+
+
+def _resolve_codex_mux_default_instance(
+    raw_default_instance_id: object,
+    *,
+    config: dict[str, object],
+) -> ProviderInstance:
+    default_instance_id = validate_string_for_path(
+        _require_non_empty_string(
+            raw_default_instance_id,
+            field_name="codex.mux.default_instance_id",
+        ),
+        field_name="codex.mux.default_instance_id",
+    )
+    instances_by_id = {
+        instance.instance_id: instance
+        for instance in _load_global_agent_instances(config)
+        if instance.instance_id is not None
+    }
+    instance = instances_by_id.get(default_instance_id)
+    if instance is None:
+        raise CliError(
+            "codex.mux.default_instance_id references unknown agent instance id: "
+            f"{default_instance_id}"
+        )
+    if instance.family != "codex":
+        raise CliError(
+            "codex.mux.default_instance_id must reference an agent.instances codex entry; "
+            f"got {default_instance_id} ({instance.family})"
+        )
+    return instance
+
+
+def _resolve_codex_mux_instance_home(instance: ProviderInstance) -> Path:
+    homes = instance.homes_map()
+    home = homes.get("home")
+    if home is None and len(instance.homes) == 1:
+        home = instance.homes[0][1]
+    if home is None:
+        raise CliError(
+            f"agent.instances entry {instance.instance_id!r} for provider codex "
+            "must define home for codex.mux.default_instance_id"
+        )
+    return home
+
+
+def _resolve_codex_mux_instance_executable(instance: ProviderInstance) -> str:
+    if not instance.cli_command:
+        raise CliError(
+            f"agent.instances entry {instance.instance_id!r} for provider codex "
+            "must define cli_command for codex.mux.default_instance_id"
+        )
+    return instance.cli_command[0]
+
+
+def _resolve_codex_mux_instance_base_args(instance: ProviderInstance) -> tuple[str, ...]:
+    cli_tail = instance.cli_command[1:] if len(instance.cli_command) > 1 else ()
+    return (*cli_tail, *instance.run_args)
+
+
 def _load_codex_mux_config() -> CodexMuxConfig:
     config_path = global_config_path(agentos_home_dir())
     config: dict[str, object] = {}
@@ -81,19 +167,53 @@ def _load_codex_mux_config() -> CodexMuxConfig:
     else:
         mux_config = raw_mux
 
-    raw_default_home = mux_config.get("default_home", str(Path.home() / CODEX_DEFAULT_HOME_DIRNAME))
+    raw_default_instance_id = mux_config.get("default_instance_id")
+    default_instance: ProviderInstance | None = None
+    if raw_default_instance_id is not None:
+        default_instance = _resolve_codex_mux_default_instance(
+            raw_default_instance_id,
+            config=config,
+        )
+
+    raw_default_home = mux_config.get("default_home")
     raw_accounts_root = mux_config.get(
         "accounts_root",
         str(agentos_home_dir().joinpath(*CODEX_MANAGED_ACCOUNTS_DIR)),
     )
-    raw_executable = mux_config.get("executable", CODEX_DEFAULT_EXECUTABLE)
-    raw_base_args = mux_config.get("base_args", list(CODEX_DEFAULT_BASE_ARGS))
+    raw_executable = mux_config.get("executable")
+    raw_base_args = mux_config.get("base_args")
+
+    if raw_default_home is None:
+        default_home = (
+            _resolve_codex_mux_instance_home(default_instance)
+            if default_instance is not None
+            else (Path.home() / CODEX_DEFAULT_HOME_DIRNAME).expanduser().resolve()
+        )
+    else:
+        default_home = _normalize_path_value(raw_default_home, field_name="codex.mux.default_home")
+
+    if raw_executable is None:
+        executable = (
+            _resolve_codex_mux_instance_executable(default_instance)
+            if default_instance is not None
+            else CODEX_DEFAULT_EXECUTABLE
+        )
+    else:
+        executable = _require_non_empty_string(raw_executable, field_name="codex.mux.executable")
+
+    if raw_base_args is None:
+        if default_instance is not None:
+            base_args = _resolve_codex_mux_instance_base_args(default_instance)
+        else:
+            base_args = CODEX_DEFAULT_BASE_ARGS
+    else:
+        base_args = _normalize_string_tuple(raw_base_args, field_name="codex.mux.base_args")
 
     return CodexMuxConfig(
-        default_home=_normalize_path_value(raw_default_home, field_name="codex.mux.default_home"),
+        default_home=default_home,
         accounts_root=_normalize_path_value(raw_accounts_root, field_name="codex.mux.accounts_root"),
-        executable=_require_non_empty_string(raw_executable, field_name="codex.mux.executable"),
-        base_args=_normalize_string_tuple(raw_base_args, field_name="codex.mux.base_args"),
+        executable=executable,
+        base_args=base_args,
     )
 
 
@@ -245,7 +365,10 @@ def register_codex_commands(subparsers: argparse._SubParsersAction) -> None:
     codex_parser.add_argument(
         "--home",
         default=None,
-        help="Raw CODEX_HOME path override. Defaults to codex.mux.default_home or ~/.codex.",
+        help=(
+            "Raw CODEX_HOME path override. Defaults to codex.mux.default_home, "
+            "codex.mux.default_instance_id, or ~/.codex."
+        ),
     )
     codex_parser.add_argument(
         "--dry-run",

@@ -186,6 +186,268 @@ def test_codex_command_reads_codex_mux_global_config(
     assert _readlink(configured_home / "auth.json") == managed_auth
 
 
+def test_codex_command_derives_mux_defaults_from_agent_instance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    managed_auth = agentos_home / "accounts" / "codex" / "mm" / "auth.json"
+    instance_home = tmp_path / "instance-codex-home"
+    _write(managed_auth, '{"token":"mm"}\n')
+    _write_global_config(
+        agentos_home / "config.json",
+        {
+            "agent": {
+                "instances": [
+                    {
+                        "provider": "codex",
+                        "id": "codex-main",
+                        "home": str(instance_home),
+                        "cli_command": ["/usr/local/bin/instance-codex"],
+                        "run_args": ["exec", "--dangerously-bypass-approvals-and-sandbox"],
+                    }
+                ]
+            },
+            "codex": {
+                "mux": {
+                    "default_instance_id": "codex-main",
+                }
+            },
+        },
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        observed["command"] = command
+        observed["codex_home"] = env["CODEX_HOME"]
+        observed["check"] = check
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert main(["codex", "--account", "mm", "--", "hello"]) == 0
+
+    assert observed == {
+        "command": [
+            "/usr/local/bin/instance-codex",
+            "exec",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "hello",
+        ],
+        "codex_home": str(instance_home.resolve()),
+        "check": False,
+    }
+    assert _readlink(instance_home / "auth.json") == managed_auth
+
+
+def test_codex_command_explicit_mux_fields_override_default_instance_launcher(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    configured_home = tmp_path / "configured-codex-home"
+    accounts_root = tmp_path / "codex-accounts-store"
+    managed_auth = accounts_root / "mm" / "auth.json"
+    instance_home = tmp_path / "instance-codex-home"
+    _write(managed_auth, '{"token":"mm"}\n')
+    _write_global_config(
+        agentos_home / "config.json",
+        {
+            "agent": {
+                "instances": [
+                    {
+                        "provider": "codex",
+                        "id": "codex-main",
+                        "home": str(instance_home),
+                        "cli_command": ["/usr/local/bin/instance-codex"],
+                        "run_args": ["exec", "--dangerously-bypass-approvals-and-sandbox"],
+                    }
+                ]
+            },
+            "codex": {
+                "mux": {
+                    "default_instance_id": "codex-main",
+                    "default_home": str(configured_home),
+                    "accounts_root": str(accounts_root),
+                    "executable": "/opt/override-codex",
+                    "base_args": ["--from-mux"],
+                }
+            },
+        },
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        observed["command"] = command
+        observed["codex_home"] = env["CODEX_HOME"]
+        observed["check"] = check
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert main(["codex", "--account", "mm", "--", "hello"]) == 0
+
+    assert observed == {
+        "command": [
+            "/opt/override-codex",
+            "--from-mux",
+            "hello",
+        ],
+        "codex_home": str(configured_home.resolve()),
+        "check": False,
+    }
+    assert _readlink(configured_home / "auth.json") == managed_auth
+
+
+def test_codex_command_home_flag_overrides_default_instance_home(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    explicit_home = tmp_path / "explicit-codex-home"
+    managed_auth = agentos_home / "accounts" / "codex" / "mm" / "auth.json"
+    instance_home = tmp_path / "instance-codex-home"
+    _write(managed_auth, '{"token":"mm"}\n')
+    _write_global_config(
+        agentos_home / "config.json",
+        {
+            "agent": {
+                "instances": [
+                    {
+                        "provider": "codex",
+                        "id": "codex-main",
+                        "home": str(instance_home),
+                        "cli_command": ["/usr/local/bin/instance-codex"],
+                        "run_args": ["exec", "--dangerously-bypass-approvals-and-sandbox"],
+                    }
+                ]
+            },
+            "codex": {
+                "mux": {
+                    "default_instance_id": "codex-main",
+                }
+            },
+        },
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        observed["command"] = command
+        observed["codex_home"] = env["CODEX_HOME"]
+        observed["check"] = check
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert main(["codex", "--account", "mm", "--home", str(explicit_home), "--", "hello"]) == 0
+
+    assert observed["command"] == [
+        "/usr/local/bin/instance-codex",
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "hello",
+    ]
+    assert observed["codex_home"] == str(explicit_home.resolve())
+    assert observed["check"] is False
+    assert _readlink(explicit_home / "auth.json") == managed_auth
+
+
+def test_codex_command_rejects_unknown_default_instance_id(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    _write_global_config(
+        agentos_home / "config.json",
+        {
+            "codex": {
+                "mux": {
+                    "default_instance_id": "missing",
+                }
+            },
+        },
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    assert main(["codex", "--dry-run"]) == 1
+
+    captured = capsys.readouterr()
+    assert "codex.mux.default_instance_id references unknown agent instance id: missing" in captured.err
+
+
+def test_codex_command_rejects_non_codex_default_instance_id(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    _write_global_config(
+        agentos_home / "config.json",
+        {
+            "agent": {
+                "instances": [
+                    {
+                        "provider": "pi",
+                        "id": "pi-main",
+                        "home": str(tmp_path / "pi-home"),
+                    }
+                ]
+            },
+            "codex": {
+                "mux": {
+                    "default_instance_id": "pi-main",
+                }
+            },
+        },
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    assert main(["codex", "--dry-run"]) == 1
+
+    captured = capsys.readouterr()
+    assert (
+        "codex.mux.default_instance_id must reference an agent.instances codex entry; "
+        "got pi-main (pi)"
+    ) in captured.err
+
+
 def test_codex_command_just_link_switches_auth_without_launching_codex(
     tmp_path: Path,
     monkeypatch,

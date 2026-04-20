@@ -12,6 +12,9 @@ import pytest
 from agentos.cli import main
 
 
+_DEFAULT_CHATLAS_INSTANCE_IDS = object()
+
+
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -292,44 +295,57 @@ def _write_global_config(
     path: Path,
     *,
     provider_instances: list[dict[str, object]] | None = None,
+    chatlas_instance_ids: list[str] | None | object = _DEFAULT_CHATLAS_INSTANCE_IDS,
 ) -> None:
     home = path.parent.parent / "home"
+    configured_instances = [
+        {
+            "provider": "codex",
+            "id": "codex-main",
+            "home": str(home / ".codex"),
+            "cli_command": ["/opt/homebrew/bin/codex"],
+            "env": {
+                "CODEX_HOME": str(home / ".codex"),
+            },
+        },
+        {
+            "provider": "claude-code",
+            "id": "claude-main",
+            "homes": {
+                "cli": str(home / ".claude"),
+                "desktop": str(home / "Library" / "Application Support" / "Claude"),
+            },
+            "cli_command": ["/opt/homebrew/bin/claude"],
+        },
+        {
+            "provider": "openclaw",
+            "id": "openclaw-main",
+            "home": str(home / ".openclaw"),
+        },
+        *(provider_instances or []),
+    ]
+    payload: dict[str, object] = {
+        "class": "agentos.global.config",
+        "schema_version": 1,
+        "agent": {
+            "instances": configured_instances,
+        },
+    }
+    if chatlas_instance_ids is _DEFAULT_CHATLAS_INSTANCE_IDS:
+        payload["chatlas"] = {
+            "instance_ids": [
+                instance_id
+                for instance in configured_instances
+                if isinstance((instance_id := instance.get("id")), str)
+            ],
+        }
+    elif chatlas_instance_ids is not None:
+        payload["chatlas"] = {
+            "instance_ids": chatlas_instance_ids,
+        }
     _write(
         path,
-        json.dumps(
-            {
-                "class": "agentos.global.config",
-                "schema_version": 1,
-                "agent": {
-                    "instances": [
-                        {
-                            "provider": "codex",
-                            "id": "codex-main",
-                            "home": str(home / ".codex"),
-                            "cli_command": ["/opt/homebrew/bin/codex"],
-                            "env": {
-                                "CODEX_HOME": str(home / ".codex"),
-                            },
-                        },
-                        {
-                            "provider": "claude-code",
-                            "id": "claude-main",
-                            "homes": {
-                                "cli": str(home / ".claude"),
-                                "desktop": str(home / "Library" / "Application Support" / "Claude"),
-                            },
-                            "cli_command": ["/opt/homebrew/bin/claude"],
-                        },
-                        {
-                            "provider": "openclaw",
-                            "id": "openclaw-main",
-                            "home": str(home / ".openclaw"),
-                        },
-                        *(provider_instances or []),
-                    ]
-                },
-            }
-        ),
+        json.dumps(payload),
     )
 
 
@@ -1295,6 +1311,157 @@ def test_chatlas_update_uses_configured_extra_codex_instance(
         / f"rollout-2026-03-26T01-05-38-{extra_session_id}.jsonl"
     ).exists()
     assert payload["normalized_session_count"] == 2
+
+
+def test_chatlas_update_respects_chatlas_instance_selection(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    extra_codex_home = home / ".codex-jp"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    default_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    extra_session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd6"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{default_session_id}.jsonl",
+        session_id=default_session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=default_session_id,
+        thread_name="default-thread",
+    )
+    _write_codex_rollout(
+        extra_codex_home / "sessions" / "2026" / "03" / "26" / f"rollout-2026-03-26T01-05-38-{extra_session_id}.jsonl",
+        session_id=extra_session_id,
+    )
+    _write_codex_session_index(
+        extra_codex_home / "session_index.jsonl",
+        session_id=extra_session_id,
+        thread_name="jp-thread",
+    )
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "jp",
+                "home": str(extra_codex_home),
+            }
+        ],
+        chatlas_instance_ids=["jp"],
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["instance_count"] == 1
+    assert payload["synced_instance_count"] == 1
+    assert payload["normalized_session_count"] == 1
+    assert [instance["instance"] for instance in payload["instances"]] == ["jp"]
+    assert not _chatlas_home_root(home, home / ".codex").exists()
+    assert (
+        _chatlas_home_root(home, extra_codex_home)
+        / "sessions"
+        / "2026"
+        / "03"
+        / "26"
+        / f"rollout-2026-03-26T01-05-38-{extra_session_id}.jsonl"
+    ).exists()
+
+
+@pytest.mark.parametrize(
+    "chatlas_instance_ids",
+    [
+        pytest.param(None, id="missing-selector"),
+        pytest.param([], id="empty-selector"),
+    ],
+)
+def test_chatlas_update_requires_explicit_chatlas_instance_selection(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+    chatlas_instance_ids: list[str] | None,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        chatlas_instance_ids=chatlas_instance_ids,
+    )
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
+        session_id=session_id,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["instance_count"] == 0
+    assert payload["synced_instance_count"] == 0
+    assert payload["skipped_instance_count"] == 0
+    assert payload["normalized_session_count"] == 0
+    assert payload["instances"] == []
+    assert not _chatlas_home_root(home, home / ".codex").exists()
+
+
+def test_chatlas_update_rejects_unknown_chatlas_instance_ids(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        chatlas_instance_ids=["missing"],
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 1
+    assert "chatlas.instance_ids references unknown configured instance id: missing" in capsys.readouterr().err
+
+
+def test_chatlas_update_rejects_unsupported_chatlas_instance_ids(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.chatlas import core as chatlas_core
+    from agentos.chatlas import raw as chatlas_raw
+
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        chatlas_instance_ids=["claude-main"],
+    )
+    monkeypatch.setattr(
+        chatlas_core,
+        "supported_chatlas_provider_families",
+        lambda: tuple(
+            handler
+            for handler in chatlas_raw.supported_chatlas_provider_families()
+            if handler.family == "codex"
+        ),
+    )
+
+    with pytest.raises(chatlas_core.CliError, match="chatlas.instance_ids references unsupported Chatlas instance id: claude-main"):
+        chatlas_core.configured_chatlas_settings()
 
 
 def test_chatlas_update_uses_shared_claude_code_home_slots(
