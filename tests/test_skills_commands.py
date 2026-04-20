@@ -7,7 +7,7 @@ import pytest
 
 from agentos.cli import build_parser, main
 
-NO_ROUTED_SKILLS_MESSAGE = "No skills are selected for import into this project target."
+NO_SELECTED_SKILLS_MESSAGE = "No skills are selected for import into this project target."
 DEFAULT_DEPOT_PATHS = (Path(".agents/skills"), Path(".claude/skills"))
 
 
@@ -473,7 +473,7 @@ def test_skills_path_with_depot_flag_errors_when_no_context_exists(
     )
 
 
-def test_skills_path_returns_routed_not_found_for_missing_catalog_skill(
+def test_skills_path_returns_not_found_for_missing_catalog_skill(
     capsys,
     monkeypatch,
     tmp_path: Path,

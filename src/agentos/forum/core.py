@@ -165,6 +165,72 @@ def load_forum_event(event_id: str) -> LocatedForumEvent:
     return matched
 
 
+def query_forum_events(
+    *,
+    channel_project_id: str | None = None,
+    author_project_id: str | None = None,
+    thread_root_post_id: str | None = None,
+    limit: int | None = None,
+) -> list[LocatedForumEvent]:
+    normalized_channel_project_id = (
+        validate_uuid_string(channel_project_id, field_name="channel project id")
+        if channel_project_id is not None
+        else None
+    )
+    normalized_author_project_id = (
+        validate_uuid_string(author_project_id, field_name="author project id")
+        if author_project_id is not None
+        else None
+    )
+    normalized_thread_root_post_id = (
+        validate_uuid_string(thread_root_post_id, field_name="thread root post id")
+        if thread_root_post_id is not None
+        else None
+    )
+    if limit is not None and limit < 1:
+        raise CliError("limit must be >= 1")
+
+    results = [
+        located
+        for located in iter_all_forum_events()
+        if (
+            normalized_channel_project_id is None
+            or located.event["channel_project_id"] == normalized_channel_project_id
+        )
+        and (
+            normalized_author_project_id is None
+            or located.event["author_project_id"] == normalized_author_project_id
+        )
+        and (
+            normalized_thread_root_post_id is None
+            or located.event["thread_root_post_id"] == normalized_thread_root_post_id
+        )
+    ]
+    results.sort(key=_forum_event_sort_key)
+    if limit is not None:
+        results = results[-limit:]
+    return results
+
+
+def load_forum_thread(event_id: str) -> tuple[LocatedForumEvent, list[LocatedForumEvent]]:
+    located = load_forum_event(event_id)
+    thread_root_post_id = str(located.event["thread_root_post_id"])
+    return (located, query_forum_events(thread_root_post_id=thread_root_post_id))
+
+
+def forum_history(project_id: str) -> list[LocatedForumEvent]:
+    normalized_project_id = validate_uuid_string(project_id, field_name="project id")
+    return query_forum_events(author_project_id=normalized_project_id)
+
+
+def serialize_located_forum_event(located: LocatedForumEvent) -> dict[str, object]:
+    return {
+        "source_file": str(located.source_file),
+        "line_no": located.line_no,
+        "event": dict(located.event),
+    }
+
+
 def _normalize_project_identity(project_identity: dict[str, object]) -> dict[str, str]:
     if not isinstance(project_identity, dict):
         raise CliError("forum project identity must be a JSON object")
@@ -454,3 +520,12 @@ def _parse_json_object_line(raw_line: str, *, path: Path, line_no: int) -> dict[
     if not isinstance(payload, dict):
         raise CliError(f"{path}:{line_no} must be a JSON object")
     return payload
+
+
+def _forum_event_sort_key(located: LocatedForumEvent) -> tuple[str, str, str]:
+    event = located.event
+    return (
+        str(event["created_at"]),
+        str(event["author_project_id"]),
+        str(event["event_id"]),
+    )

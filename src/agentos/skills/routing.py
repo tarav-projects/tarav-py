@@ -16,7 +16,7 @@ from agentos._core.project import (
     project_config_path,
     require_agentos_project_root,
 )
-from agentos.utils.skills import (
+from agentos.skills.catalog import (
     DiscoveredSkill,
     SkillsImport,
     SkillsSyncResult,
@@ -24,14 +24,14 @@ from agentos.utils.skills import (
     parse_skill_frontmatter,
 )
 
-DEFAULT_ROUTED_SKILLS_DEPOTS = (
+DEFAULT_SKILLS_DEPOTS = (
     ".agents/skills",
     ".claude/skills",
 )
-DEFAULT_ROUTED_PROFILE_NAME = "default"
-ROUTED_SKILLS_STATE_FILENAME = "skills-routing-links.json"
-ROUTED_SKILLS_STATE_CLASS = "agentos.skills.routing-state"
-ROUTED_SKILLS_STATE_SCHEMA_VERSION = 1
+DEFAULT_SKILLS_PROFILE_NAME = "default"
+SKILLS_STATE_FILENAME = "skills-routing-links.json"
+SKILLS_STATE_CLASS = "agentos.skills.routing-state"
+SKILLS_STATE_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,7 @@ class SkillsRoutingProfile:
 
 
 @dataclass(frozen=True)
-class RoutedSkillsSelection:
+class SkillsSelection:
     caller_root: Path
     local_context_root: Path | None
     profile_name: str | None
@@ -60,7 +60,7 @@ class RoutedSkillsSelection:
 
 
 @dataclass(frozen=True)
-class RoutedSkillRecord:
+class SelectedSkillRecord:
     name: str
     description: str
     source: str
@@ -68,20 +68,26 @@ class RoutedSkillRecord:
 
 
 @dataclass(frozen=True)
-class RoutedSkillsDepotImportResult:
+class SelectedSkillMatch:
+    skill: SelectedSkillRecord
+    frontmatter: dict[str, str]
+
+
+@dataclass(frozen=True)
+class SkillsDepotImportResult:
     depot_root: Path
     sync_result: SkillsSyncResult
 
 
 @dataclass(frozen=True)
-class RoutedSkillsImportResult:
-    selection: RoutedSkillsSelection
-    skills: list[RoutedSkillRecord]
-    depot_results: tuple[RoutedSkillsDepotImportResult, ...]
+class SkillsImportResult:
+    selection: SkillsSelection
+    skills: list[SelectedSkillRecord]
+    depot_results: tuple[SkillsDepotImportResult, ...]
 
 
 @dataclass(frozen=True)
-class RoutedSkillsStatusEntry:
+class SkillsStatusEntry:
     name: str
     path: Path
     source: str | None
@@ -92,18 +98,18 @@ class RoutedSkillsStatusEntry:
 
 
 @dataclass(frozen=True)
-class RoutedSkillsDepotStatusResult:
+class SkillsDepotStatusResult:
     depot_root: Path
-    matching: list[RoutedSkillsStatusEntry]
-    missing: list[RoutedSkillsStatusEntry]
-    broken: list[RoutedSkillsStatusEntry]
-    unsynced: list[RoutedSkillsStatusEntry]
-    conflicts: list[RoutedSkillsStatusEntry]
-    extra: list[RoutedSkillsStatusEntry]
+    matching: list[SkillsStatusEntry]
+    missing: list[SkillsStatusEntry]
+    broken: list[SkillsStatusEntry]
+    unsynced: list[SkillsStatusEntry]
+    conflicts: list[SkillsStatusEntry]
+    extra: list[SkillsStatusEntry]
 
 
 @dataclass(frozen=True)
-class _RoutedSkillsDepotSyncPlan:
+class _SkillsDepotSyncPlan:
     caller_root: Path
     depot_root: Path
     target_key: str
@@ -115,10 +121,10 @@ class _RoutedSkillsDepotSyncPlan:
 
 
 @dataclass(frozen=True)
-class RoutedSkillsStatusResult:
-    selection: RoutedSkillsSelection
-    skills: list[RoutedSkillRecord]
-    depot_statuses: tuple[RoutedSkillsDepotStatusResult, ...]
+class SkillsStatusResult:
+    selection: SkillsSelection
+    skills: list[SelectedSkillRecord]
+    depot_statuses: tuple[SkillsDepotStatusResult, ...]
 
 
 def _parse_enabled_flag(payload: dict[str, object], *, field_label: str) -> bool:
@@ -163,7 +169,7 @@ def _require_source_path_text(
     return path_text
 
 
-def resolve_routed_skills_caller_root(
+def resolve_skills_caller_root(
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
@@ -472,7 +478,7 @@ def _resolve_profile_sources(
 
 def _resolve_profile_depots(profile: SkillsRoutingProfile, caller_root: Path) -> tuple[Path, ...]:
     depots_payload = profile.depots_payload
-    configured_depots = DEFAULT_ROUTED_SKILLS_DEPOTS if depots_payload is None else depots_payload
+    configured_depots = DEFAULT_SKILLS_DEPOTS if depots_payload is None else depots_payload
 
     if not isinstance(configured_depots, list | tuple):
         raise CliError(f"global config field skills.routing.profiles.{profile.name}.depots must be an array")
@@ -555,22 +561,22 @@ def _load_local_routing_profile_name(context_root: Path) -> tuple[str | None, tu
     )
 
 
-def resolve_routed_skills_selection(
+def resolve_skills_selection(
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
-) -> RoutedSkillsSelection:
-    resolved_start_root = resolve_routed_skills_caller_root(start_path, project=project)
+) -> SkillsSelection:
+    resolved_start_root = resolve_skills_caller_root(start_path, project=project)
     profiles, sources_registry, default_profile_name = _load_routing_configuration()
     local_context_root = resolved_start_root
     local_profile_name, selection_warnings = _load_local_routing_profile_name(local_context_root)
-    selected_profile_name = local_profile_name or default_profile_name or DEFAULT_ROUTED_PROFILE_NAME
+    selected_profile_name = local_profile_name or default_profile_name or DEFAULT_SKILLS_PROFILE_NAME
 
     profile = profiles.get(selected_profile_name)
     if profile is None:
         if local_profile_name is not None:
             raise CliError(f"routing profile not found: {selected_profile_name}")
-        return RoutedSkillsSelection(
+        return SkillsSelection(
             caller_root=local_context_root,
             local_context_root=local_context_root,
             profile_name=None,
@@ -579,7 +585,7 @@ def resolve_routed_skills_selection(
             warnings=selection_warnings,
         )
 
-    return RoutedSkillsSelection(
+    return SkillsSelection(
         caller_root=local_context_root,
         local_context_root=local_context_root,
         profile_name=profile.name,
@@ -593,8 +599,8 @@ def resolve_routed_skills_selection(
     )
 
 
-def _routed_skills_state_path(caller_root: Path) -> Path:
-    return local_storage_paths(caller_root)["state"] / ROUTED_SKILLS_STATE_FILENAME
+def _skills_state_path(caller_root: Path) -> Path:
+    return local_storage_paths(caller_root)["state"] / SKILLS_STATE_FILENAME
 
 
 def _state_target_key(base_root: Path, target_dir: Path) -> str:
@@ -645,8 +651,8 @@ def _entry_kind(path: Path) -> str:
     return "other"
 
 
-def _load_routed_skills_state(caller_root: Path) -> dict[str, dict[str, str]]:
-    state_path = _routed_skills_state_path(caller_root)
+def _load_skills_state(caller_root: Path) -> dict[str, dict[str, str]]:
+    state_path = _skills_state_path(caller_root)
     if not state_path.exists():
         return {}
     if not state_path.is_file():
@@ -659,8 +665,8 @@ def _load_routed_skills_state(caller_root: Path) -> dict[str, dict[str, str]]:
 
     if not isinstance(payload, dict):
         raise CliError("skills import state must be a JSON object")
-    if payload.get("class") != ROUTED_SKILLS_STATE_CLASS:
-        raise CliError(f"skills import state field class must be '{ROUTED_SKILLS_STATE_CLASS}'")
+    if payload.get("class") != SKILLS_STATE_CLASS:
+        raise CliError(f"skills import state field class must be '{SKILLS_STATE_CLASS}'")
 
     targets_payload = payload.get("targets", {})
     if not isinstance(targets_payload, dict):
@@ -690,8 +696,8 @@ def _load_routed_skills_state(caller_root: Path) -> dict[str, dict[str, str]]:
     return state
 
 
-def _write_routed_skills_state(caller_root: Path, state: dict[str, dict[str, str]]) -> None:
-    state_path = _routed_skills_state_path(caller_root)
+def _write_skills_state(caller_root: Path, state: dict[str, dict[str, str]]) -> None:
+    state_path = _skills_state_path(caller_root)
     normalized_state = {target_key: links for target_key, links in state.items() if links}
 
     if not normalized_state:
@@ -701,8 +707,8 @@ def _write_routed_skills_state(caller_root: Path, state: dict[str, dict[str, str
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "class": ROUTED_SKILLS_STATE_CLASS,
-        "schema_version": ROUTED_SKILLS_STATE_SCHEMA_VERSION,
+        "class": SKILLS_STATE_CLASS,
+        "schema_version": SKILLS_STATE_SCHEMA_VERSION,
         "targets": {
             target_key: {"links": dict(sorted(links.items()))}
             for target_key, links in sorted(normalized_state.items())
@@ -711,19 +717,19 @@ def _write_routed_skills_state(caller_root: Path, state: dict[str, dict[str, str
     state_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def _plan_routed_profile_depot_sync(
+def _plan_profile_depot_sync(
     caller_root: Path,
     depot_root: Path,
     discovered: list[DiscoveredSkill],
     *,
     force: bool = False,
-) -> _RoutedSkillsDepotSyncPlan:
+) -> _SkillsDepotSyncPlan:
     normalized_caller_root = caller_root.expanduser().resolve()
     normalized_depot_root = depot_root.expanduser().resolve()
     if normalized_depot_root.exists() and not normalized_depot_root.is_dir():
         raise CliError(f"skills depot is not a directory: {normalized_depot_root}")
 
-    state = _load_routed_skills_state(normalized_caller_root)
+    state = _load_skills_state(normalized_caller_root)
     target_key = _state_target_key(normalized_caller_root, normalized_depot_root)
     previous_links = state.get(target_key, {})
 
@@ -797,7 +803,7 @@ def _plan_routed_profile_depot_sync(
         )
         raise CliError(f"skills import found conflicting existing paths: {conflict_entries}")
 
-    return _RoutedSkillsDepotSyncPlan(
+    return _SkillsDepotSyncPlan(
         caller_root=normalized_caller_root,
         depot_root=normalized_depot_root,
         target_key=target_key,
@@ -809,7 +815,7 @@ def _plan_routed_profile_depot_sync(
     )
 
 
-def _apply_routed_profile_depot_sync(plan: _RoutedSkillsDepotSyncPlan) -> SkillsSyncResult:
+def _apply_profile_depot_sync(plan: _SkillsDepotSyncPlan) -> SkillsSyncResult:
     if plan.create_specs or plan.update_specs:
         plan.depot_root.mkdir(parents=True, exist_ok=True)
     for link_path in plan.remove_specs:
@@ -820,12 +826,12 @@ def _apply_routed_profile_depot_sync(plan: _RoutedSkillsDepotSyncPlan) -> Skills
     for link_path, link_target in plan.create_specs + plan.update_specs:
         link_path.symlink_to(link_target, target_is_directory=True)
 
-    state = _load_routed_skills_state(plan.caller_root)
+    state = _load_skills_state(plan.caller_root)
     if plan.final_links:
         state[plan.target_key] = dict(plan.final_links)
     else:
         state.pop(plan.target_key, None)
-    _write_routed_skills_state(plan.caller_root, state)
+    _write_skills_state(plan.caller_root, state)
 
     return SkillsSyncResult(
         created_links=[path for path, _ in plan.create_specs],
@@ -835,15 +841,15 @@ def _apply_routed_profile_depot_sync(plan: _RoutedSkillsDepotSyncPlan) -> Skills
     )
 
 
-def _routed_records_from_discovered(
-    selection: RoutedSkillsSelection,
+def _selected_records_from_discovered(
+    selection: SkillsSelection,
     discovered: list[DiscoveredSkill],
-) -> list[RoutedSkillRecord]:
-    routed_skills: list[RoutedSkillRecord] = []
+) -> list[SelectedSkillRecord]:
+    selected_skills: list[SelectedSkillRecord] = []
     for skill in discovered:
         frontmatter = parse_skill_frontmatter(skill.source_path)
-        routed_skills.append(
-            RoutedSkillRecord(
+        selected_skills.append(
+            SelectedSkillRecord(
                 name=skill.name,
                 description=frontmatter.get("description", ""),
                 source=skill.import_name,
@@ -851,46 +857,65 @@ def _routed_records_from_discovered(
             )
         )
 
-    routed_skills.sort(key=lambda item: item.name)
-    return routed_skills
+    selected_skills.sort(key=lambda item: item.name)
+    return selected_skills
 
 
-def _resolve_routed_skills_catalog(
+def _resolve_selected_skills_catalog(
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
-) -> tuple[RoutedSkillsSelection, list[DiscoveredSkill], list[RoutedSkillRecord]]:
-    selection = resolve_routed_skills_selection(start_path, project=project)
+) -> tuple[SkillsSelection, list[DiscoveredSkill], list[SelectedSkillRecord]]:
+    selection = resolve_skills_selection(start_path, project=project)
     discovered = discover_imported_skills(selection.sources)
-    routed_skills = _routed_records_from_discovered(selection, discovered)
-    return selection, discovered, routed_skills
+    selected_skills = _selected_records_from_discovered(selection, discovered)
+    return selection, discovered, selected_skills
 
 
-def list_routed_skills(
+def list_selected_skills(
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
-) -> tuple[RoutedSkillsSelection, list[RoutedSkillRecord]]:
-    selection, _, routed_skills = _resolve_routed_skills_catalog(start_path, project=project)
-    return selection, routed_skills
+) -> tuple[SkillsSelection, list[SelectedSkillRecord]]:
+    selection, _, selected_skills = _resolve_selected_skills_catalog(start_path, project=project)
+    return selection, selected_skills
 
 
-def _routed_skills_status_for_depot(
+def query_selected_skills(
+    start_path: Path | str = ".",
+    *,
+    project: Path | str | None = None,
+    filters: dict[str, str] | None = None,
+) -> tuple[SkillsSelection, list[SelectedSkillMatch]]:
+    selection, discovered, selected_skills = _resolve_selected_skills_catalog(start_path, project=project)
+    discovered_by_name = {skill.name: skill for skill in discovered}
+    results: list[SelectedSkillMatch] = []
+
+    for skill in selected_skills:
+        frontmatter = parse_skill_frontmatter(discovered_by_name[skill.name].source_path)
+        if filters and not all(frontmatter.get(key) == value for key, value in filters.items()):
+            continue
+        results.append(SelectedSkillMatch(skill=skill, frontmatter=frontmatter))
+
+    return selection, results
+
+
+def _selected_skills_status_for_depot(
     depot_root: Path,
     *,
-    routed_skills: list[RoutedSkillRecord],
+    selected_skills: list[SelectedSkillRecord],
     discovered_by_name: dict[str, DiscoveredSkill],
-) -> RoutedSkillsDepotStatusResult:
-    matching: list[RoutedSkillsStatusEntry] = []
-    missing: list[RoutedSkillsStatusEntry] = []
-    broken: list[RoutedSkillsStatusEntry] = []
-    unsynced: list[RoutedSkillsStatusEntry] = []
-    conflicts: list[RoutedSkillsStatusEntry] = []
-    extra: list[RoutedSkillsStatusEntry] = []
+) -> SkillsDepotStatusResult:
+    matching: list[SkillsStatusEntry] = []
+    missing: list[SkillsStatusEntry] = []
+    broken: list[SkillsStatusEntry] = []
+    unsynced: list[SkillsStatusEntry] = []
+    conflicts: list[SkillsStatusEntry] = []
+    extra: list[SkillsStatusEntry] = []
 
-    expected_names = {skill.name for skill in routed_skills}
+    expected_names = {skill.name for skill in selected_skills}
 
-    for skill in routed_skills:
+    for skill in selected_skills:
         discovered_skill = discovered_by_name[skill.name]
         path = depot_root / skill.name
         expected_source_path = discovered_skill.source_path.resolve()
@@ -899,7 +924,7 @@ def _routed_skills_status_for_depot(
             actual_link_target = os.readlink(path)
             if not path.exists():
                 broken.append(
-                    RoutedSkillsStatusEntry(
+                    SkillsStatusEntry(
                         name=skill.name,
                         path=path,
                         source=skill.source,
@@ -914,7 +939,7 @@ def _routed_skills_status_for_depot(
             actual_resolved_target = _resolved_symlink_target(path)
             if actual_resolved_target == expected_source_path:
                 matching.append(
-                    RoutedSkillsStatusEntry(
+                    SkillsStatusEntry(
                         name=skill.name,
                         path=path,
                         source=skill.source,
@@ -927,7 +952,7 @@ def _routed_skills_status_for_depot(
                 continue
 
             unsynced.append(
-                RoutedSkillsStatusEntry(
+                SkillsStatusEntry(
                     name=skill.name,
                     path=path,
                     source=skill.source,
@@ -941,7 +966,7 @@ def _routed_skills_status_for_depot(
 
         if path.exists():
             conflicts.append(
-                RoutedSkillsStatusEntry(
+                SkillsStatusEntry(
                     name=skill.name,
                     path=path,
                     source=skill.source,
@@ -954,7 +979,7 @@ def _routed_skills_status_for_depot(
             continue
 
         missing.append(
-            RoutedSkillsStatusEntry(
+            SkillsStatusEntry(
                 name=skill.name,
                 path=path,
                 source=skill.source,
@@ -973,7 +998,7 @@ def _routed_skills_status_for_depot(
             actual_link_target = os.readlink(path)
             if not path.exists():
                 broken.append(
-                    RoutedSkillsStatusEntry(
+                    SkillsStatusEntry(
                         name=path.name,
                         path=path,
                         source=None,
@@ -986,7 +1011,7 @@ def _routed_skills_status_for_depot(
                 continue
 
             extra.append(
-                RoutedSkillsStatusEntry(
+                SkillsStatusEntry(
                     name=path.name,
                     path=path,
                     source=None,
@@ -999,7 +1024,7 @@ def _routed_skills_status_for_depot(
             continue
 
         extra.append(
-            RoutedSkillsStatusEntry(
+            SkillsStatusEntry(
                 name=path.name,
                 path=path,
                 source=None,
@@ -1010,7 +1035,7 @@ def _routed_skills_status_for_depot(
             )
         )
 
-    return RoutedSkillsDepotStatusResult(
+    return SkillsDepotStatusResult(
         depot_root=depot_root,
         matching=matching,
         missing=missing,
@@ -1021,21 +1046,21 @@ def _routed_skills_status_for_depot(
     )
 
 
-def routed_skills_status(
+def selected_skills_status(
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
-) -> RoutedSkillsStatusResult:
-    selection, discovered, routed_skills = _resolve_routed_skills_catalog(start_path, project=project)
+) -> SkillsStatusResult:
+    selection, discovered, selected_skills = _resolve_selected_skills_catalog(start_path, project=project)
     discovered_by_name = {skill.name: skill for skill in discovered}
 
-    return RoutedSkillsStatusResult(
+    return SkillsStatusResult(
         selection=selection,
-        skills=routed_skills,
+        skills=selected_skills,
         depot_statuses=tuple(
-            _routed_skills_status_for_depot(
+            _selected_skills_status_for_depot(
                 depot_root,
-                routed_skills=routed_skills,
+                selected_skills=selected_skills,
                 discovered_by_name=discovered_by_name,
             )
             for depot_root in selection.depot_roots
@@ -1043,37 +1068,37 @@ def routed_skills_status(
     )
 
 
-def resolve_routed_skill(
+def resolve_selected_skill(
     name: str,
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
-) -> tuple[RoutedSkillsSelection, RoutedSkillRecord | None]:
+) -> tuple[SkillsSelection, SelectedSkillRecord | None]:
     normalized_name = validate_string_for_path(name, field_name="skill name")
-    selection, routed_skills = list_routed_skills(start_path, project=project)
-    for skill in routed_skills:
+    selection, selected_skills = list_selected_skills(start_path, project=project)
+    for skill in selected_skills:
         if skill.name == normalized_name:
             return selection, skill
     return selection, None
 
 
-def import_routed_skills(
+def import_selected_skills(
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
     force: bool = False,
-) -> RoutedSkillsImportResult:
-    selection, discovered, routed_skills = _resolve_routed_skills_catalog(start_path, project=project)
+) -> SkillsImportResult:
+    selection, discovered, selected_skills = _resolve_selected_skills_catalog(start_path, project=project)
 
     if not selection.depot_roots:
-        return RoutedSkillsImportResult(
+        return SkillsImportResult(
             selection=selection,
-            skills=routed_skills,
+            skills=selected_skills,
             depot_results=(),
         )
 
     sync_plans = tuple(
-        _plan_routed_profile_depot_sync(
+        _plan_profile_depot_sync(
             selection.caller_root,
             depot_root,
             discovered,
@@ -1082,13 +1107,13 @@ def import_routed_skills(
         for depot_root in selection.depot_roots
     )
 
-    return RoutedSkillsImportResult(
+    return SkillsImportResult(
         selection=selection,
-        skills=routed_skills,
+        skills=selected_skills,
         depot_results=tuple(
-            RoutedSkillsDepotImportResult(
+            SkillsDepotImportResult(
                 depot_root=plan.depot_root,
-                sync_result=_apply_routed_profile_depot_sync(plan),
+                sync_result=_apply_profile_depot_sync(plan),
             )
             for plan in sync_plans
         ),

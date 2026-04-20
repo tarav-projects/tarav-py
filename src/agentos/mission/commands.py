@@ -6,7 +6,7 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.project import require_agentos_project_root
-from agentos.utils.skills import query_skills
+from agentos.skills.routing import query_selected_skills
 
 from .core import (
     create_mission,
@@ -346,8 +346,10 @@ def _cmd_help_set(args: argparse.Namespace) -> int:
 # ── mission templates ────────────────────────────────────────────────
 
 def _cmd_templates(args: argparse.Namespace) -> int:
-    results = query_skills(
+    root = _project_root(args)
+    _, results = query_selected_skills(
         Path.cwd(),
+        project=root,
         filters={"type": "mission.template"},
     )
 
@@ -355,12 +357,12 @@ def _cmd_templates(args: argparse.Namespace) -> int:
         print(json.dumps(
             [
                 {
-                    "name": skill.name,
-                    "source_kind": skill.source_kind,
-                    "path": str(skill.path),
-                    "frontmatter": fm,
+                    "name": match.skill.name,
+                    "source": match.skill.source,
+                    "paths": [str(path) for path in match.skill.paths],
+                    "frontmatter": match.frontmatter,
                 }
-                for skill, fm in results
+                for match in results
             ],
             indent=2,
         ))
@@ -370,9 +372,9 @@ def _cmd_templates(args: argparse.Namespace) -> int:
         print("no mission templates found")
         return 0
 
-    for skill, fm in results:
-        desc = fm.get("description", "")
-        print(f"  {skill.name}  {desc}")
+    for match in results:
+        desc = match.frontmatter.get("description", "")
+        print(f"  {match.skill.name} ({match.skill.source})  {desc}")
     return 0
 
 
@@ -470,6 +472,7 @@ def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     # templates
     p = mission_subs.add_parser("templates", help="List mission template skills.")
     p.add_argument("--list", action="store_true", dest="list_templates", help="List available mission templates.")
+    _add_project_argument(p)
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_templates)
 

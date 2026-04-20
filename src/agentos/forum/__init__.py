@@ -3,6 +3,7 @@ from .core import (
     LocatedForumEvent,
     append_forum_event,
     current_author_project,
+    forum_history,
     forum_project_dir,
     forum_project_events_path,
     forum_project_manifest_path,
@@ -10,13 +11,17 @@ from .core import (
     forum_root,
     iter_all_forum_events,
     load_forum_event,
+    load_forum_thread,
     load_or_register_forum_project,
+    query_forum_events,
+    serialize_located_forum_event,
 )
 
 __all__ = [
     "LocatedForumEvent",
     "append_forum_event",
     "current_author_project",
+    "forum_history",
     "forum_project_dir",
     "forum_project_events_path",
     "forum_project_manifest_path",
@@ -24,6 +29,9 @@ __all__ = [
     "forum_root",
     "iter_all_forum_events",
     "load_forum_event",
+    "load_forum_thread",
     "load_or_register_forum_project",
+    "query_forum_events",
     "register_forum_commands",
+    "serialize_located_forum_event",
 ]

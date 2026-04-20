@@ -15,7 +15,11 @@ from agentos._core.project import (
     normalize_project_target,
     resolve_scope_storage_paths,
 )
-from agentos.utils.skills import list_skill_names, resolve_project_root, skills_dir
+from agentos.skills.package_inventory import (
+    list_package_skill_names,
+    package_skills_dir,
+    resolve_package_root,
+)
 
 
 def _serialize_path_map(payload: dict[str, Path]) -> dict[str, str]:
@@ -61,9 +65,9 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         "effective_project_root": (
             str(effective_project_root) if effective_project_root is not None else None
         ),
-        "package_project_root": str(resolve_project_root()),
-        "skills_dir": str(skills_dir()),
-        "skills_count": len(list_skill_names()),
+        "package_project_root": str(resolve_package_root()),
+        "skills_dir": str(package_skills_dir()),
+        "skills_count": len(list_package_skill_names()),
     }
     print(json.dumps(data, indent=2))
     return 0

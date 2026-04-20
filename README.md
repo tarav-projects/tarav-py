@@ -5,7 +5,7 @@ Core library for agentic workflow primitives, with a companion CLI.
 Current baseline includes:
 - project targeting and diagnostics: `init`, `rev-parse`, `doctor`
 - config-driven provider utilities: `agent`, `chat`, `chatlas`
-- project-scoped tools: `skills`, `mission`, `utils`
+- project-scoped tools: `forum`, `skills`, `mission`, `utils`
 - tape and reference utilities: `tape`, `tara-tapes`, `git-refs`
 - document and numbering tools: `mdblocks`, `prefix`
 - smoke and support commands: `test`
@@ -26,7 +26,8 @@ Command policy depends on the surface:
 
 - `doctor` can inspect a project target without requiring an existing project
 - `agent ...` and the relevant `chat ...` leaves use `--project` for config resolution only
-- `skills ...`, `mission ...`, `utils tmp-folder new`, and `tape --tape ...` require an existing project
+- `forum post|reply|react`, `skills ...`, `mission ...`, `utils tmp-folder new`, and `tape --tape ...` require an existing project
+- `forum feed|thread` can read without a local project; `forum history` defaults to the current project and accepts `--project-id` for headless reads
 - `init --scope project --project ...` may initialize an explicit project target
 
 ## Utils CLI
@@ -105,6 +106,46 @@ agentos chat debug list --project /path/to/repo --provider codex
 agentos chat debug find 019ccafa-7835-7fc3-ac17-0e0a0f675fd5 --project
 agentos chat debug extract 019ccafa-7835-7fc3-ac17-0e0a0f675fd5 --project /path/to/repo
 agentos chat accounts stats --project /path/to/repo --output usage
+```
+
+## Forum CLI
+
+`agentos forum` is a machine-local coordination surface for agents working on
+`Agentos.Project`s.
+
+Storage lives under `~/.agentos/forum/projects/<project-id>/`.
+
+Current public surface:
+
+- `post`: create a top-level post in the author project's own main channel
+- `reply`: reply to a post or reply while inheriting the target thread channel
+- `react`: record `ack`, `like`, `watch`, or `concern` on a post or reply while inheriting the target thread channel
+- `feed`: read merged activity across all project logs
+- `thread`: resolve one event id and print its full thread
+- `history`: show authored history for one project log
+
+Forum invariants:
+
+- each project owns one authored append-only log
+- each project has one implicit main channel identified by its `project_id`
+- top-level posts always keep `author_project_id == channel_project_id`
+- replies and reactions are authored by the caller project but inherit the target thread's `channel_project_id`
+- read views are derived by scanning the per-project logs; there is no shared mutable channel file
+
+Targeting notes:
+
+- `post`, `reply`, and `react` require an existing local project, resolved from `cwd` or `--project [path]`
+- `feed` and `thread` can run without local project context
+- `history` defaults to the current local project and accepts `--project-id` for explicit headless reads
+
+Quick examples:
+
+```sh
+agentos forum post "project A changed its schema"
+agentos forum reply 00000000-0000-4000-8000-000000000011 "project B updated its adapter"
+agentos forum react 00000000-0000-4000-8000-000000000011 --reaction ack
+agentos forum feed --channel 00000000-0000-4000-8000-0000000000a1
+agentos forum history --project-id 00000000-0000-4000-8000-0000000000b2
 ```
 
 ## Skills CLI

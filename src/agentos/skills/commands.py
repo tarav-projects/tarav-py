@@ -7,18 +7,18 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos.skills.routing import (
-    import_routed_skills,
-    list_routed_skills,
-    resolve_routed_skill,
-    resolve_routed_skills_selection,
-    routed_skills_status,
+    import_selected_skills,
+    list_selected_skills,
+    resolve_selected_skill,
+    resolve_skills_selection,
+    selected_skills_status,
 )
 
 NO_IMPORTED_SKILLS_MESSAGE = "No skills are selected for import into this project target."
 NO_SKILLS_DEPOTS_MESSAGE = "no skills depots are configured for this project target"
 
 
-def _format_routed_skill_list(skills: list) -> str:
+def _format_selected_skill_list(skills: list) -> str:
     return "\n".join(f"{skill.name} ({skill.source})" for skill in skills)
 
 
@@ -129,7 +129,7 @@ def _format_depot_status(depot_status) -> str:
     return "\n\n".join([lines[0], "\n".join(lines[1:]), *[section for section in sections if section]])
 
 
-def _format_routed_skills_status(status) -> str:
+def _format_selected_skills_status(status) -> str:
     lines = [
         "Skills status",
         f"- profile: {status.selection.profile_name}",
@@ -140,7 +140,7 @@ def _format_routed_skills_status(status) -> str:
     return "\n\n".join([lines[0], "\n".join(lines[1:]), *depot_sections])
 
 
-def _format_routed_skills_import(result, *, force: bool) -> str:
+def _format_selected_skills_import(result, *, force: bool) -> str:
     lines = [
         "Skills import complete",
         f"- mode: {'force' if force else 'sync'}",
@@ -180,7 +180,7 @@ def _emit_selection_warnings(selection) -> None:
 
 
 def _cmd_skills_list(args: argparse.Namespace) -> int:
-    selection, skills = list_routed_skills(Path.cwd(), project=args.project)
+    selection, skills = list_selected_skills(Path.cwd(), project=args.project)
     _emit_selection_warnings(selection)
 
     if args.json:
@@ -195,24 +195,24 @@ def _cmd_skills_list(args: argparse.Namespace) -> int:
         print(NO_IMPORTED_SKILLS_MESSAGE)
         return 0
 
-    print(_format_routed_skill_list(skills))
+    print(_format_selected_skill_list(skills))
     return 0
 
 
 def _cmd_skills_import(args: argparse.Namespace) -> int:
-    result = import_routed_skills(Path.cwd(), project=args.project, force=args.force)
+    result = import_selected_skills(Path.cwd(), project=args.project, force=args.force)
     _emit_selection_warnings(result.selection)
 
     if result.selection.profile_name is None or not result.selection.depot_roots:
         print(NO_IMPORTED_SKILLS_MESSAGE)
         return 0
 
-    print(_format_routed_skills_import(result, force=args.force))
+    print(_format_selected_skills_import(result, force=args.force))
     return 0
 
 
 def _cmd_skills_status(args: argparse.Namespace) -> int:
-    status = routed_skills_status(Path.cwd(), project=args.project)
+    status = selected_skills_status(Path.cwd(), project=args.project)
     _emit_selection_warnings(status.selection)
 
     if args.json:
@@ -242,13 +242,13 @@ def _cmd_skills_status(args: argparse.Namespace) -> int:
         print(NO_IMPORTED_SKILLS_MESSAGE)
         return 0
 
-    print(_format_routed_skills_status(status))
+    print(_format_selected_skills_status(status))
     return 0
 
 
 def _cmd_skills_path(args: argparse.Namespace) -> int:
     if args.depot:
-        selection = resolve_routed_skills_selection(Path.cwd(), project=args.project)
+        selection = resolve_skills_selection(Path.cwd(), project=args.project)
         _emit_selection_warnings(selection)
         if not selection.depot_roots:
             raise CliError(NO_SKILLS_DEPOTS_MESSAGE)
@@ -259,7 +259,7 @@ def _cmd_skills_path(args: argparse.Namespace) -> int:
         args._parser.print_help()
         return 0
 
-    selection, skill = resolve_routed_skill(args.name, Path.cwd(), project=args.project)
+    selection, skill = resolve_selected_skill(args.name, Path.cwd(), project=args.project)
     _emit_selection_warnings(selection)
     if skill is not None:
         print("\n".join(str(path) for path in skill.paths))
