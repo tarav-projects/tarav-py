@@ -31,8 +31,10 @@ from agentos.chat.core import (
 from agentos.chat.extractors import extract_chat_session
 from agentos.chat.providers import (
     ProviderInstance,
-    load_configured_provider_instances,
     load_chat_config_documents,
+    load_configured_provider_instances,
+    load_unique_string_list,
+    select_configured_provider_instances,
 )
 from agentos.chat.sessions import ChatSession, coerce_timestamp
 from agentos.chatlas._cache_io import (
@@ -132,35 +134,14 @@ def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSetti
     }
     all_provider_instances = load_configured_provider_instances(start_path=start_path)
     selected_instance_ids = load_chatlas_instance_ids(start_path=start_path)
-    if selected_instance_ids is None:
-        provider_instances: tuple[ProviderInstance, ...] = ()
-    else:
-        instances_by_id = {
-            provider_instance.instance_id: provider_instance
-            for provider_instance in all_provider_instances
-            if provider_instance.instance_id is not None
-        }
-        missing_ids = [
-            instance_id for instance_id in selected_instance_ids if instance_id not in instances_by_id
-        ]
-        if missing_ids:
-            suffix = "s" if len(missing_ids) != 1 else ""
-            raise CliError(
-                f"chatlas.instance_ids references unknown configured instance id{suffix}: "
-                f"{', '.join(missing_ids)}"
-            )
-        unsupported_ids = [
-            instance_id
-            for instance_id in selected_instance_ids
-            if instances_by_id[instance_id].family not in supported_families
-        ]
-        if unsupported_ids:
-            suffix = "s" if len(unsupported_ids) != 1 else ""
-            raise CliError(
-                f"chatlas.instance_ids references unsupported Chatlas instance id{suffix}: "
-                f"{', '.join(unsupported_ids)}"
-            )
-        provider_instances = tuple(instances_by_id[instance_id] for instance_id in selected_instance_ids)
+    provider_instances = select_configured_provider_instances(
+        all_provider_instances,
+        selected_instance_ids=selected_instance_ids,
+        supported_families=supported_families,
+        selector_field_name="chatlas.instance_ids",
+        unsupported_instance_label="Chatlas",
+        default_to_supported_families=False,
+    )
 
     for config in load_chat_config_documents(start_path=start_path):
         chatlas_config = _chatlas_config_from_config(config)
@@ -188,24 +169,11 @@ def load_chatlas_instance_ids(
         chatlas_config = _chatlas_config_from_config(config)
         if chatlas_config is None or "instance_ids" not in chatlas_config:
             continue
-        raw_instance_ids = chatlas_config["instance_ids"]
-        if not isinstance(raw_instance_ids, list):
-            raise CliError("config field chatlas.instance_ids must be a JSON array")
-
-        instance_ids: list[str] = []
-        seen_ids: set[str] = set()
-        for index, raw_instance_id in enumerate(raw_instance_ids):
-            if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
-                raise CliError(f"chatlas.instance_ids[{index}] must be a non-empty string")
-            instance_id = raw_instance_id.strip()
-            if instance_id in seen_ids:
-                raise CliError(
-                    "chatlas.instance_ids must be unique; "
-                    f"duplicate id {instance_id}"
-                )
-            seen_ids.add(instance_id)
-            instance_ids.append(instance_id)
-        result = tuple(instance_ids)
+        result = load_unique_string_list(
+            chatlas_config["instance_ids"],
+            container_field_name="config field chatlas.instance_ids",
+            item_field_name="chatlas.instance_ids",
+        )
     return result
 
 

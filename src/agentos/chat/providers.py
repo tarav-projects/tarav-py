@@ -452,6 +452,82 @@ def load_configured_provider_instances(*, start_path: Path | str = ".") -> tuple
     return provider_instances
 
 
+def select_configured_provider_instances(
+    configured_instances: tuple["ProviderInstance", ...],
+    *,
+    selected_instance_ids: tuple[str, ...] | None,
+    supported_families: set[str],
+    selector_field_name: str,
+    unsupported_instance_label: str,
+    default_to_supported_families: bool,
+) -> tuple["ProviderInstance", ...]:
+    if selected_instance_ids is None:
+        if not default_to_supported_families:
+            return ()
+        return tuple(
+            provider_instance
+            for provider_instance in configured_instances
+            if provider_instance.family in supported_families
+        )
+
+    instances_by_id = {
+        provider_instance.instance_id: provider_instance
+        for provider_instance in configured_instances
+        if provider_instance.instance_id is not None
+    }
+    missing_ids = [
+        instance_id for instance_id in selected_instance_ids if instance_id not in instances_by_id
+    ]
+    if missing_ids:
+        suffix = "s" if len(missing_ids) != 1 else ""
+        raise CliError(
+            f"{selector_field_name} references unknown configured instance id{suffix}: "
+            f"{', '.join(missing_ids)}"
+        )
+
+    unsupported_ids = [
+        instance_id
+        for instance_id in selected_instance_ids
+        if instances_by_id[instance_id].family not in supported_families
+    ]
+    if unsupported_ids:
+        suffix = "s" if len(unsupported_ids) != 1 else ""
+        raise CliError(
+            f"{selector_field_name} references unsupported {unsupported_instance_label} "
+            f"instance id{suffix}: {', '.join(unsupported_ids)}"
+        )
+    return tuple(instances_by_id[instance_id] for instance_id in selected_instance_ids)
+
+
+def load_unique_string_list(
+    value: object,
+    *,
+    container_field_name: str,
+    item_field_name: str | None = None,
+    require_non_empty: bool = False,
+) -> tuple[str, ...]:
+    normalized_item_field_name = item_field_name or container_field_name
+    if not isinstance(value, list):
+        array_kind = "non-empty JSON array" if require_non_empty else "JSON array"
+        raise CliError(f"{container_field_name} must be a {array_kind}")
+    if require_non_empty and not value:
+        raise CliError(f"{container_field_name} must be a non-empty JSON array")
+
+    items: list[str] = []
+    seen_ids: set[str] = set()
+    for index, raw_item in enumerate(value):
+        if not isinstance(raw_item, str) or not raw_item.strip():
+            raise CliError(f"{normalized_item_field_name}[{index}] must be a non-empty string")
+        item = raw_item.strip()
+        if item in seen_ids:
+            raise CliError(
+                f"{normalized_item_field_name} must be unique; duplicate id {item}"
+            )
+        seen_ids.add(item)
+        items.append(item)
+    return tuple(items)
+
+
 def default_provider_instances(
     *,
     supports_session_discovery_only: bool = False,
@@ -1084,6 +1160,7 @@ __all__ = [
     "default_provider_instances",
     "load_chat_config_documents",
     "load_configured_provider_instances",
+    "load_unique_string_list",
     "load_provider_instance_config_entries",
     "ProviderFamily",
     "ProviderHomeSlot",
@@ -1094,4 +1171,5 @@ __all__ = [
     "provider_instance_from_config_entry",
     "provider_instance_config_entries_from_config",
     "require_canonical_provider_family",
+    "select_configured_provider_instances",
 ]

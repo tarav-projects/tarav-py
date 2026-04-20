@@ -1464,6 +1464,26 @@ def test_chatlas_update_rejects_unsupported_chatlas_instance_ids(
         chatlas_core.configured_chatlas_settings()
 
 
+def test_chatlas_update_rejects_duplicate_chatlas_instance_ids(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.chatlas import core as chatlas_core
+
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        chatlas_instance_ids=["codex-main", "codex-main"],
+    )
+
+    with pytest.raises(chatlas_core.CliError, match="chatlas.instance_ids must be unique; duplicate id codex-main"):
+        chatlas_core.load_chatlas_instance_ids()
+
+
 def test_chatlas_update_uses_shared_claude_code_home_slots(
     tmp_path: Path,
     monkeypatch,

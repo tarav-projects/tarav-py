@@ -25,7 +25,9 @@ from agentos.chat.providers import (
     ProviderInstance,
     load_chat_config_documents,
     load_configured_provider_instances,
+    load_unique_string_list,
     require_canonical_provider_family,
+    select_configured_provider_instances,
 )
 from agentos.tara_tapes.core import (
     append_tara_tape_stage_record,
@@ -176,39 +178,14 @@ def configured_account_provider_instances(
     supported_families = {provider_handler.family for provider_handler in supported_account_provider_families()}
     all_provider_instances = load_configured_provider_instances(start_path=start_path)
     selected_instance_ids = load_agent_accounts_instance_ids(start_path=start_path)
-    if selected_instance_ids is None:
-        provider_instances = tuple(
-            provider_instance
-            for provider_instance in all_provider_instances
-            if provider_instance.family in supported_families
-        )
-    else:
-        instances_by_id = {
-            provider_instance.instance_id: provider_instance
-            for provider_instance in all_provider_instances
-            if provider_instance.instance_id is not None
-        }
-        missing_ids = [
-            instance_id for instance_id in selected_instance_ids if instance_id not in instances_by_id
-        ]
-        if missing_ids:
-            suffix = "s" if len(missing_ids) != 1 else ""
-            raise CliError(
-                f"agent.accounts.instance_ids references unknown configured instance id{suffix}: "
-                f"{', '.join(missing_ids)}"
-            )
-        unsupported_ids = [
-            instance_id
-            for instance_id in selected_instance_ids
-            if instances_by_id[instance_id].family not in supported_families
-        ]
-        if unsupported_ids:
-            suffix = "s" if len(unsupported_ids) != 1 else ""
-            raise CliError(
-                f"agent.accounts.instance_ids references unsupported account instance id{suffix}: "
-                f"{', '.join(unsupported_ids)}"
-            )
-        provider_instances = tuple(instances_by_id[instance_id] for instance_id in selected_instance_ids)
+    provider_instances = select_configured_provider_instances(
+        all_provider_instances,
+        selected_instance_ids=selected_instance_ids,
+        supported_families=supported_families,
+        selector_field_name="agent.accounts.instance_ids",
+        unsupported_instance_label="account",
+        default_to_supported_families=True,
+    )
     for provider_instance in provider_instances:
         if _account_provider_requires_cli_command(provider_instance.family) and not provider_instance.cli_command:
             raise CliError(
@@ -747,23 +724,11 @@ def load_agent_accounts_instance_ids(
     raw_instance_ids = accounts_config.get("instance_ids")
     if raw_instance_ids is None:
         return None
-    if not isinstance(raw_instance_ids, list) or not raw_instance_ids:
-        raise CliError("agent.accounts.instance_ids must be a non-empty JSON array")
-
-    instance_ids: list[str] = []
-    seen_ids: set[str] = set()
-    for index, raw_instance_id in enumerate(raw_instance_ids):
-        if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
-            raise CliError(f"agent.accounts.instance_ids[{index}] must be a non-empty string")
-        instance_id = raw_instance_id.strip()
-        if instance_id in seen_ids:
-            raise CliError(
-                "agent.accounts.instance_ids must be unique; "
-                f"duplicate id {instance_id}"
-            )
-        seen_ids.add(instance_id)
-        instance_ids.append(instance_id)
-    return tuple(instance_ids)
+    return load_unique_string_list(
+        raw_instance_ids,
+        container_field_name="agent.accounts.instance_ids",
+        require_non_empty=True,
+    )
 
 
 def _load_agent_accounts_config(*, start_path: Path | str = ".") -> dict[str, object] | None:
@@ -803,22 +768,11 @@ def _account_usage_total_config_from_raw(raw_total: dict[str, object]) -> Accoun
     limit_name = raw_limit_name.strip()
 
     raw_instance_ids = raw_total.get("instance_ids")
-    if not isinstance(raw_instance_ids, list) or not raw_instance_ids:
-        raise CliError("agent.accounts.usage_total.instance_ids must be a non-empty JSON array")
-
-    instance_ids: list[str] = []
-    seen_ids: set[str] = set()
-    for index, raw_instance_id in enumerate(raw_instance_ids):
-        if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
-            raise CliError(f"agent.accounts.usage_total.instance_ids[{index}] must be a non-empty string")
-        instance_id = raw_instance_id.strip()
-        if instance_id in seen_ids:
-            raise CliError(
-                "agent.accounts.usage_total.instance_ids must be unique; "
-                f"duplicate id {instance_id}"
-            )
-        seen_ids.add(instance_id)
-        instance_ids.append(instance_id)
+    instance_ids = load_unique_string_list(
+        raw_instance_ids,
+        container_field_name="agent.accounts.usage_total.instance_ids",
+        require_non_empty=True,
+    )
 
     return AccountUsageTotalConfig(
         label=label,

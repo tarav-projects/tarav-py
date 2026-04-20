@@ -2547,6 +2547,25 @@ def test_chat_accounts_stats_usage_total_rejects_unknown_instance_ids(
         chat_accounts.chat_account_stats()
 
 
+def test_chat_accounts_rejects_empty_account_instance_ids(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        account_instance_ids=[],
+    )
+
+    with pytest.raises(chat_accounts.CliError, match="agent.accounts.instance_ids must be a non-empty JSON array"):
+        chat_accounts.configured_account_provider_instances()
+
+
 def test_chat_accounts_stats_usage_compacts_claude_authentication_failures(
     tmp_path: Path,
     monkeypatch,
