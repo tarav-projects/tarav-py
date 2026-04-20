@@ -21,7 +21,6 @@ from agentos.chat.accounts import (
     format_chat_account_stats_markdown,
     format_chat_account_stats_usage,
     iter_chat_account_stats_refresh_payloads,
-    supported_account_provider_families,
 )
 from agentos.chat.core import (
     find_chat_session,
@@ -59,9 +58,6 @@ from agentos.chat.sessions import coerce_timestamp
 
 
 _CHAT_PROVIDER_CHOICES = tuple(provider_family.family for provider_family in supported_provider_families())
-_CHAT_ACCOUNTS_PROVIDER_CHOICES = tuple(
-    provider_family.family for provider_family in supported_account_provider_families()
-)
 _CHAT_ACCOUNTS_LOOP_INTERVAL_SEC = 60.0
 _CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC = 60.0
 _CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC = 1.0
@@ -1616,63 +1612,3 @@ def register_chat_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Project target override for config resolution. Bare --project targets current pwd. Chat commands do not require an existing project.",
     )
     extract_parser.set_defaults(handler=_cmd_chat_debug_extract)
-
-    accounts_parser = chat_subparsers.add_parser(
-        "accounts",
-        help="Query configured account status across supported providers.",
-    )
-    accounts_subparsers = accounts_parser.add_subparsers(
-        dest="chat_accounts_command",
-        required=True,
-    )
-
-    accounts_stats_parser = accounts_subparsers.add_parser(
-        "stats",
-        help="Aggregate configured account status and usage checks across supported providers.",
-    )
-    accounts_stats_parser.add_argument(
-        "instance_ids",
-        nargs="*",
-        help="Optional configured account instance ids to query. Defaults to all configured instances.",
-    )
-    accounts_stats_parser.add_argument(
-        "--provider",
-        choices=_CHAT_ACCOUNTS_PROVIDER_CHOICES,
-        action="append",
-        dest="providers",
-        help="Restrict checks to a provider. Repeat to include multiple providers.",
-    )
-    accounts_stats_parser.add_argument(
-        "--output",
-        choices=("json", "markdown", "usage"),
-        default="json",
-        dest="output_format",
-        help="Output format (default: json).",
-    )
-    accounts_stats_parser.add_argument(
-        "--full-output",
-        action="store_true",
-        help="Keep zero-account provider diagnostics in the providers array.",
-    )
-    accounts_stats_parser.add_argument(
-        "--refresh-usage",
-        action="store_true",
-        help=(
-            "Allow provider adapters to issue live refresh requests for usage data when needed "
-            "(for example Claude Code)."
-        ),
-    )
-    accounts_stats_parser.add_argument(
-        "--loop",
-        action="store_true",
-        help="Refresh forever every 60 seconds; press Enter to refresh immediately.",
-    )
-    accounts_stats_parser.add_argument(
-        "--project",
-        nargs="?",
-        type=Path,
-        const=Path("."),
-        default=None,
-        help="Project target override for config resolution. Bare --project targets current pwd. Chat commands do not require an existing project.",
-    )
-    accounts_stats_parser.set_defaults(handler=_cmd_chat_accounts_stats)

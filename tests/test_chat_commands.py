@@ -182,8 +182,19 @@ def test_chat_help_exposes_debug_surface(capsys: pytest.CaptureFixture[str]) -> 
     assert exc_info.value.code == 0
     output = capsys.readouterr().out
 
-    assert "{debug,accounts}" in output
+    assert "{debug}" in output
+    assert "accounts" not in output
     assert "session" not in output
+
+
+def test_chat_accounts_surface_is_removed(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["chat", "accounts", "stats"])
+    assert exc_info.value.code == 2
+
+    error_output = capsys.readouterr().err
+    assert "invalid choice" in error_output
+    assert "accounts" in error_output
 
 
 def test_chat_debug_list_returns_live_inventory(

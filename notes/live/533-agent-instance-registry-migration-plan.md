@@ -1,7 +1,7 @@
 ---
 title: Agent Instance Registry Migration Plan
 date: 2026-04-20
-status: draft
+status: active
 ---
 
 # Agent Instance Registry Migration Plan
@@ -25,6 +25,15 @@ Make the product surface and config model line up with actual semantics:
 - `agent accounts stats` is the live account/usage inspection surface
 - `chatlas` is the archived/queryable chat-history surface
 - `chat` is removed instead of remaining a mixed live/runtime/history namespace
+
+## Progress
+
+- Done in worktree: Phase 1 (`agent.instances` canonical registry)
+- Done in worktree: Phase 2 (`agent list` / `agent run` on `agent.instances`)
+- Done in worktree: Phase 3 (`agent accounts stats`, `agent.accounts`)
+- Pending: Phase 4 (`chatlas.instance_ids`)
+- Pending: Phase 5 (`chat` removal)
+- Pending: Phase 6 (Codex mux alignment)
 
 ## Target CLI Surface
 

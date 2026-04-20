@@ -18,16 +18,22 @@ def _write_global_config(
     path: Path,
     *,
     provider_instances: list[dict[str, object]] | None = None,
+    account_instance_ids: list[str] | None = None,
 ) -> None:
+    agent_payload: dict[str, object] = {
+        "instances": provider_instances or [],
+    }
+    if account_instance_ids is not None:
+        agent_payload["accounts"] = {
+            "instance_ids": account_instance_ids,
+        }
     _write(
         path,
         json.dumps(
             {
                 "class": "agentos.global.config",
                 "schema_version": 1,
-                "agent": {
-                    "instances": provider_instances or [],
-                },
+                "agent": agent_payload,
             }
         ),
     )
@@ -50,16 +56,22 @@ def _write_project_config(
     path: Path,
     *,
     provider_instances: list[dict[str, object]] | None = None,
+    account_instance_ids: list[str] | None = None,
 ) -> None:
+    agent_payload: dict[str, object] = {
+        "instances": provider_instances or [],
+    }
+    if account_instance_ids is not None:
+        agent_payload["accounts"] = {
+            "instance_ids": account_instance_ids,
+        }
     _write(
         path,
         json.dumps(
             {
                 "class": "agentos.project.config",
                 "schema_version": 1,
-                "agent": {
-                    "instances": provider_instances or [],
-                },
+                "agent": agent_payload,
             }
         ),
     )
@@ -477,6 +489,37 @@ def test_agent_list_json_includes_configured_instance_fields(
     assert configured["env"]["CODEX_HOME"] == str(work_home)
 
 
+def test_agent_list_accepts_canonical_non_chat_provider_family(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "agents",
+                "id": "agents-main",
+                "label": "Agents main",
+                "cli_command": ["/usr/local/bin/agents-cli"],
+            }
+        ],
+    )
+
+    assert main(["agent", "list", "--provider", "agents"]) == 0
+
+    output_lines = capsys.readouterr().out.strip().splitlines()
+    assert output_lines == [
+        "agents [id=agents-main; Agents main]"
+    ]
+
+
 def test_agent_run_uses_explicit_project_target_for_config_resolution(
     tmp_path: Path,
     monkeypatch,
@@ -559,3 +602,78 @@ def test_agent_run_uses_explicit_project_target_for_config_resolution(
     assert observed["cwd"] == str(workspace.resolve())
     assert observed["codex_home"] == str(work_home)
     assert observed["check"] is False
+
+
+def test_agent_accounts_stats_uses_configured_agent_account_instances(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "codex-main",
+                "label": "Codex main",
+                "cli_command": ["codex"],
+            },
+            {
+                "provider": "claude-code",
+                "id": "claude-main",
+                "label": "Claude main",
+                "cli_command": ["claude"],
+            },
+        ],
+        account_instance_ids=["claude-main"],
+    )
+
+    from agentos.chat import accounts as chat_accounts
+
+    monkeypatch.setattr(chat_accounts, "_utc_now_iso", lambda: "2026-03-25T12:00:00Z")
+
+    observed_calls: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del capture_output, text, check, env, timeout
+        observed_calls.append(command)
+        if command == ["claude", "auth", "status", "--json"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "loggedIn": True,
+                        "authMethod": "claude.ai",
+                        "subscriptionType": "pro",
+                    }
+                ),
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+
+    assert main(["agent", "accounts", "stats"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert observed_calls == [["claude", "auth", "status", "--json"]]
+    assert payload["command"] == "agent accounts stats"
+    assert payload["provider_count"] == 1
+    assert payload["account_count"] == 1
+    assert [provider["provider"] for provider in payload["providers"]] == ["claude-code"]
+    assert payload["providers"][0]["accounts"][0]["id"] == "claude-main"

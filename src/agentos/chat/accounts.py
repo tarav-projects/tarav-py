@@ -59,6 +59,7 @@ COPILOT_GITHUB_API_VERSION = "2025-04-01"
 CHAT_USAGE_BURST_LABEL = "Burst"
 CHAT_USAGE_WEEKLY_LABEL = "Weekly"
 CHAT_ACCOUNT_USAGE_ERROR_DETAIL_WIDTH = 78
+ACCOUNT_STATS_COMMAND_NAME = "agent accounts stats"
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
@@ -173,11 +174,41 @@ def configured_account_provider_instances(
     start_path: Path | str = ".",
 ) -> tuple[ProviderInstance, ...]:
     supported_families = {provider_handler.family for provider_handler in supported_account_provider_families()}
-    provider_instances = tuple(
-        provider_instance
-        for provider_instance in load_configured_provider_instances(start_path=start_path)
-        if provider_instance.family in supported_families
-    )
+    all_provider_instances = load_configured_provider_instances(start_path=start_path)
+    selected_instance_ids = load_agent_accounts_instance_ids(start_path=start_path)
+    if selected_instance_ids is None:
+        provider_instances = tuple(
+            provider_instance
+            for provider_instance in all_provider_instances
+            if provider_instance.family in supported_families
+        )
+    else:
+        instances_by_id = {
+            provider_instance.instance_id: provider_instance
+            for provider_instance in all_provider_instances
+            if provider_instance.instance_id is not None
+        }
+        missing_ids = [
+            instance_id for instance_id in selected_instance_ids if instance_id not in instances_by_id
+        ]
+        if missing_ids:
+            suffix = "s" if len(missing_ids) != 1 else ""
+            raise CliError(
+                f"agent.accounts.instance_ids references unknown configured instance id{suffix}: "
+                f"{', '.join(missing_ids)}"
+            )
+        unsupported_ids = [
+            instance_id
+            for instance_id in selected_instance_ids
+            if instances_by_id[instance_id].family not in supported_families
+        ]
+        if unsupported_ids:
+            suffix = "s" if len(unsupported_ids) != 1 else ""
+            raise CliError(
+                f"agent.accounts.instance_ids references unsupported account instance id{suffix}: "
+                f"{', '.join(unsupported_ids)}"
+            )
+        provider_instances = tuple(instances_by_id[instance_id] for instance_id in selected_instance_ids)
     for provider_instance in provider_instances:
         if _account_provider_requires_cli_command(provider_instance.family) and not provider_instance.cli_command:
             raise CliError(
@@ -303,7 +334,7 @@ def _resolve_chat_account_stats_request(
         if missing_ids:
             suffix = "s" if len(missing_ids) != 1 else ""
             raise CliError(
-                f"chat.accounts_usage_total.instance_ids references unknown account instance id{suffix}: "
+                f"agent.accounts.usage_total.instance_ids references unknown account instance id{suffix}: "
                 f"{', '.join(missing_ids)}"
             )
 
@@ -400,7 +431,7 @@ def _build_chat_account_stats_payload(
     )
     payload: dict[str, object] = {
         "status": "ok",
-        "command": "chat accounts stats",
+        "command": ACCOUNT_STATS_COMMAND_NAME,
         "recorded_at": recorded_at,
         "provider_count": len(output_providers),
         "account_count": account_count,
@@ -495,7 +526,7 @@ def _iter_account_collection_results(
 
 def format_chat_account_stats_markdown(payload: dict[str, object]) -> str:
     lines = [
-        "# Chat Accounts Stats",
+        "# Agent Accounts Stats",
         "",
     ]
 
@@ -636,7 +667,7 @@ def format_chat_account_stats_markdown(payload: dict[str, object]) -> str:
 
 def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
     lines = [
-        "# Chat Accounts Usage",
+        "# Agent Accounts Usage",
         "",
     ]
 
@@ -694,18 +725,61 @@ def load_chat_accounts_usage_total_config(
     start_path: Path | str = ".",
 ) -> AccountUsageTotalConfig | None:
     result: AccountUsageTotalConfig | None = None
+    accounts_config = _load_agent_accounts_config(start_path=start_path)
+    if accounts_config is None:
+        return None
+    raw_total = accounts_config.get("usage_total")
+    if raw_total is None:
+        return None
+    if not isinstance(raw_total, dict):
+        raise CliError("config field agent.accounts.usage_total must be a JSON object")
+    result = _account_usage_total_config_from_raw(raw_total)
+    return result
+
+
+def load_agent_accounts_instance_ids(
+    *,
+    start_path: Path | str = ".",
+) -> tuple[str, ...] | None:
+    accounts_config = _load_agent_accounts_config(start_path=start_path)
+    if accounts_config is None:
+        return None
+    raw_instance_ids = accounts_config.get("instance_ids")
+    if raw_instance_ids is None:
+        return None
+    if not isinstance(raw_instance_ids, list) or not raw_instance_ids:
+        raise CliError("agent.accounts.instance_ids must be a non-empty JSON array")
+
+    instance_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for index, raw_instance_id in enumerate(raw_instance_ids):
+        if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
+            raise CliError(f"agent.accounts.instance_ids[{index}] must be a non-empty string")
+        instance_id = raw_instance_id.strip()
+        if instance_id in seen_ids:
+            raise CliError(
+                "agent.accounts.instance_ids must be unique; "
+                f"duplicate id {instance_id}"
+            )
+        seen_ids.add(instance_id)
+        instance_ids.append(instance_id)
+    return tuple(instance_ids)
+
+
+def _load_agent_accounts_config(*, start_path: Path | str = ".") -> dict[str, object] | None:
+    result: dict[str, object] | None = None
     for config in load_chat_config_documents(start_path=start_path):
-        chat_config = config.get("chat")
-        if chat_config is None:
+        agent_config = config.get("agent")
+        if agent_config is None:
             continue
-        if not isinstance(chat_config, dict):
-            raise CliError("config field chat must be a JSON object")
-        raw_total = chat_config.get("accounts_usage_total")
-        if raw_total is None:
+        if not isinstance(agent_config, dict):
+            raise CliError("config field agent must be a JSON object")
+        raw_accounts = agent_config.get("accounts")
+        if raw_accounts is None:
             continue
-        if not isinstance(raw_total, dict):
-            raise CliError("config field chat.accounts_usage_total must be a JSON object")
-        result = _account_usage_total_config_from_raw(raw_total)
+        if not isinstance(raw_accounts, dict):
+            raise CliError("config field agent.accounts must be a JSON object")
+        result = raw_accounts
     return result
 
 
@@ -714,33 +788,33 @@ def _account_usage_total_config_from_raw(raw_total: dict[str, object]) -> Accoun
     if raw_label is None:
         label = "Selected accounts aggregate"
     elif not isinstance(raw_label, str) or not raw_label.strip():
-        raise CliError("chat.accounts_usage_total.label must be a non-empty string")
+        raise CliError("agent.accounts.usage_total.label must be a non-empty string")
     else:
         label = raw_label.strip()
 
     raw_limit_class = raw_total.get("limit_class")
     if not isinstance(raw_limit_class, str) or not raw_limit_class.strip():
-        raise CliError("chat.accounts_usage_total.limit_class must be a non-empty string")
+        raise CliError("agent.accounts.usage_total.limit_class must be a non-empty string")
     limit_class = raw_limit_class.strip()
 
     raw_limit_name = raw_total.get("limit_name")
     if not isinstance(raw_limit_name, str) or not raw_limit_name.strip():
-        raise CliError("chat.accounts_usage_total.limit_name must be a non-empty string")
+        raise CliError("agent.accounts.usage_total.limit_name must be a non-empty string")
     limit_name = raw_limit_name.strip()
 
     raw_instance_ids = raw_total.get("instance_ids")
     if not isinstance(raw_instance_ids, list) or not raw_instance_ids:
-        raise CliError("chat.accounts_usage_total.instance_ids must be a non-empty JSON array")
+        raise CliError("agent.accounts.usage_total.instance_ids must be a non-empty JSON array")
 
     instance_ids: list[str] = []
     seen_ids: set[str] = set()
     for index, raw_instance_id in enumerate(raw_instance_ids):
         if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
-            raise CliError(f"chat.accounts_usage_total.instance_ids[{index}] must be a non-empty string")
+            raise CliError(f"agent.accounts.usage_total.instance_ids[{index}] must be a non-empty string")
         instance_id = raw_instance_id.strip()
         if instance_id in seen_ids:
             raise CliError(
-                "chat.accounts_usage_total.instance_ids must be unique; "
+                "agent.accounts.usage_total.instance_ids must be unique; "
                 f"duplicate id {instance_id}"
             )
         seen_ids.add(instance_id)
@@ -3619,7 +3693,7 @@ def _persist_chat_account_stats_payload(payload: dict[str, object]) -> dict[str,
             manifest_extra={
                 "record_class": CHAT_ACCOUNT_STATS_RECORD_CLASS,
                 "segment_scheme": "YYYYMM",
-                "command": "chat accounts stats",
+                "command": ACCOUNT_STATS_COMMAND_NAME,
             },
         )
         history_payload = {
@@ -3876,5 +3950,6 @@ __all__ = [
     "format_chat_account_stats_markdown",
     "format_chat_account_stats_usage",
     "iter_chat_account_stats_refresh_payloads",
+    "load_agent_accounts_instance_ids",
     "supported_account_provider_families",
 ]

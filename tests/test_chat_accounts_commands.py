@@ -134,20 +134,24 @@ def _write_global_config(
     path: Path,
     *,
     provider_instances: list[dict[str, object]] | None = None,
+    account_instance_ids: list[str] | None = None,
     accounts_usage_total: dict[str, object] | None = None,
 ) -> None:
-    chat_payload: dict[str, object] = {}
+    agent_payload: dict[str, object] = {
+        "instances": provider_instances or [],
+    }
+    accounts_payload: dict[str, object] = {}
+    if account_instance_ids is not None:
+        accounts_payload["instance_ids"] = account_instance_ids
     if accounts_usage_total is not None:
-        chat_payload["accounts_usage_total"] = accounts_usage_total
+        accounts_payload["usage_total"] = accounts_usage_total
+    if accounts_payload:
+        agent_payload["accounts"] = accounts_payload
     payload: dict[str, object] = {
         "class": "agentos.global.config",
         "schema_version": 1,
-        "agent": {
-            "instances": provider_instances or [],
-        },
+        "agent": agent_payload,
     }
-    if chat_payload:
-        payload["chat"] = chat_payload
     _write(
         path,
         json.dumps(payload),
@@ -171,20 +175,24 @@ def _write_project_config(
     path: Path,
     *,
     provider_instances: list[dict[str, object]] | None = None,
+    account_instance_ids: list[str] | None = None,
     accounts_usage_total: dict[str, object] | None = None,
 ) -> None:
-    chat_payload: dict[str, object] = {}
+    agent_payload: dict[str, object] = {
+        "instances": provider_instances or [],
+    }
+    accounts_payload: dict[str, object] = {}
+    if account_instance_ids is not None:
+        accounts_payload["instance_ids"] = account_instance_ids
     if accounts_usage_total is not None:
-        chat_payload["accounts_usage_total"] = accounts_usage_total
+        accounts_payload["usage_total"] = accounts_usage_total
+    if accounts_payload:
+        agent_payload["accounts"] = accounts_payload
     payload: dict[str, object] = {
         "class": "agentos.project.config",
         "schema_version": 1,
-        "agent": {
-            "instances": provider_instances or [],
-        },
+        "agent": agent_payload,
     }
-    if chat_payload:
-        payload["chat"] = chat_payload
     _write(
         path,
         json.dumps(payload),
@@ -296,7 +304,7 @@ def test_chat_accounts_stats_summarizes_configured_provider_instances(
         },
     )
 
-    assert main(["chat", "accounts", "stats"]) == 0
+    assert main(["agent", "accounts", "stats"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert sorted(observed_calls) == sorted(
@@ -306,7 +314,7 @@ def test_chat_accounts_stats_summarizes_configured_provider_instances(
         ]
     )
     assert payload["status"] == "ok"
-    assert payload["command"] == "chat accounts stats"
+    assert payload["command"] == "agent accounts stats"
     assert payload["recorded_at"] == "2026-03-25T12:00:00Z"
     assert payload["provider_count"] == 2
     assert payload["account_count"] == 2
@@ -457,7 +465,7 @@ def test_chat_accounts_stats_supports_explicit_project_target(
     assert (
         main(
             [
-                "chat",
+                "agent",
                 "accounts",
                 "stats",
                 "--project",
@@ -469,7 +477,7 @@ def test_chat_accounts_stats_supports_explicit_project_target(
     payload = json.loads(capsys.readouterr().out)
 
     assert observed_calls == [(["/opt/homebrew/bin/codex", "login", "status"], 9)]
-    assert payload["command"] == "chat accounts stats"
+    assert payload["command"] == "agent accounts stats"
     assert payload["provider_count"] == 1
     assert payload["account_count"] == 1
     codex_account = payload["providers"][0]["accounts"][0]
@@ -598,7 +606,7 @@ def test_chat_accounts_stats_summarizes_configured_copilot_account(
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
     monkeypatch.setattr(chat_accounts.urllib.request, "urlopen", fake_urlopen)
 
-    assert main(["chat", "accounts", "stats"]) == 0
+    assert main(["agent", "accounts", "stats"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["provider_count"] == 1
@@ -700,7 +708,7 @@ def test_chat_accounts_stats_degrades_when_copilot_github_token_fetch_fails(
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
 
-    assert main(["chat", "accounts", "stats"]) == 0
+    assert main(["agent", "accounts", "stats"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     copilot_account = payload["providers"][0]["accounts"][0]
@@ -810,7 +818,7 @@ def test_chat_accounts_stats_refresh_usage_enables_claude_live_usage(
 
     monkeypatch.setattr(chat_accounts, "_collect_claude_code_live_usage", fake_collect_live_usage)
 
-    assert main(["chat", "accounts", "stats", "--refresh-usage"]) == 0
+    assert main(["agent", "accounts", "stats", "--refresh-usage"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert observed_calls == [["claude", "auth", "status", "--json"]]
@@ -1404,7 +1412,7 @@ def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() ->
     frame = chat_commands._ChatAccountsStatsLoopFrame(
         interval_sec=60.0,
         body_text=(
-            "# Chat Accounts Usage\n"
+            "# Agent Accounts Usage\n"
             "\n"
             f"{first_usage}\n"
             f"{first_reset}\n"
@@ -1997,21 +2005,21 @@ def test_chat_accounts_stats_supports_full_output_and_markdown(
     monkeypatch.setattr(chat_accounts.subprocess, "run", fail_run)
     monkeypatch.setattr(chat_accounts, "_format_display_datetime_local", lambda value, tzinfo=None: "LOCAL_TIME")
 
-    assert main(["chat", "accounts", "stats"]) == 0
+    assert main(["agent", "accounts", "stats"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["provider_count"] == 0
     assert payload["account_count"] == 0
     assert payload["providers"] == []
 
-    assert main(["chat", "accounts", "stats", "--full-output"]) == 0
+    assert main(["agent", "accounts", "stats", "--full-output"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["provider_count"] == 3
     assert [provider["provider"] for provider in payload["providers"]] == ["codex", "claude-code", "copilot-cli"]
     assert all(provider["account_count"] == 0 for provider in payload["providers"])
 
-    assert main(["chat", "accounts", "stats", "--full-output", "--output", "markdown"]) == 0
+    assert main(["agent", "accounts", "stats", "--full-output", "--output", "markdown"]) == 0
     output = capsys.readouterr().out
-    assert "# Chat Accounts Stats" in output
+    assert "# Agent Accounts Stats" in output
     assert "- Recorded at: LOCAL_TIME" in output
     assert "- History: ok" in output
     assert "- History segment: " in output
@@ -2118,10 +2126,10 @@ def test_chat_accounts_stats_supports_compact_usage_output(
         },
     )
 
-    assert main(["chat", "accounts", "stats", "--output", "usage"]) == 0
+    assert main(["agent", "accounts", "stats", "--output", "usage"]) == 0
     output = capsys.readouterr().out
 
-    assert "# Chat Accounts Usage" in output
+    assert "# Agent Accounts Usage" in output
     assert "- Recorded at: 2026-03-25 08:00:00 CDT" in output
     assert "⬢ codex-tk (Codex tk):" in output
     assert "  usage/time | 64% /  0% = n/a | Burst" in output
@@ -2330,7 +2338,7 @@ def test_chat_accounts_stats_usage_output_styles_fetch_errors(
         ),
     )
 
-    assert main(["chat", "accounts", "stats", "--output", "usage"]) == 0
+    assert main(["agent", "accounts", "stats", "--output", "usage"]) == 0
     output = capsys.readouterr().out
 
     assert "codex-main (Codex main):" in output
@@ -2394,7 +2402,7 @@ def test_chat_accounts_stats_usage_compacts_codex_token_expired_errors(
         ),
     )
 
-    assert main(["chat", "accounts", "stats", "--output", "usage"]) == 0
+    assert main(["agent", "accounts", "stats", "--output", "usage"]) == 0
     output = capsys.readouterr().out
 
     assert "codex-main (Codex main):" in output
@@ -2498,7 +2506,7 @@ def test_chat_accounts_stats_usage_shows_top_level_selected_accounts_aggregate(
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
     monkeypatch.setattr(chat_accounts, "_read_codex_account_rate_limits", fake_codex_usage)
 
-    assert main(["chat", "accounts", "stats", "--output", "usage"]) == 0
+    assert main(["agent", "accounts", "stats", "--output", "usage"]) == 0
     output = capsys.readouterr().out
 
     assert "Selected accounts aggregate:" in output
@@ -2535,7 +2543,7 @@ def test_chat_accounts_stats_usage_total_rejects_unknown_instance_ids(
         },
     )
 
-    with pytest.raises(chat_accounts.CliError, match="chat.accounts_usage_total.instance_ids references unknown"):
+    with pytest.raises(chat_accounts.CliError, match="agent.accounts.usage_total.instance_ids references unknown"):
         chat_accounts.chat_account_stats()
 
 
@@ -2638,7 +2646,7 @@ def test_chat_accounts_stats_usage_compacts_claude_authentication_failures(
         ),
     )
 
-    assert main(["chat", "accounts", "stats", "--output", "usage", "--refresh-usage"]) == 0
+    assert main(["agent", "accounts", "stats", "--output", "usage", "--refresh-usage"]) == 0
     output = capsys.readouterr().out
 
     assert "claude-main (Claude main):" in output
@@ -2704,7 +2712,7 @@ def test_chat_accounts_stats_usage_formats_account_check_errors_nicely(
         },
     )
 
-    assert main(["chat", "accounts", "stats", "--output", "usage"]) == 0
+    assert main(["agent", "accounts", "stats", "--output", "usage"]) == 0
     output = capsys.readouterr().out
 
     assert "codex-main (Codex main):" in output
@@ -2766,9 +2774,9 @@ def test_chat_accounts_stats_history_accumulates_into_month_segment(
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fail_run)
 
-    assert main(["chat", "accounts", "stats", "--full-output"]) == 0
+    assert main(["agent", "accounts", "stats", "--full-output"]) == 0
     first_payload = json.loads(capsys.readouterr().out)
-    assert main(["chat", "accounts", "stats", "--full-output"]) == 0
+    assert main(["agent", "accounts", "stats", "--full-output"]) == 0
     second_payload = json.loads(capsys.readouterr().out)
 
     tape_root = agentos_home / "chat-account-stats" / "history"
@@ -3093,7 +3101,7 @@ def test_chat_accounts_stats_keeps_per_account_errors_in_payload(
         },
     )
 
-    assert main(["chat", "accounts", "stats"]) == 0
+    assert main(["agent", "accounts", "stats"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["ok_count"] == 1
@@ -3134,5 +3142,5 @@ def test_chat_accounts_stats_rejects_unknown_instance_ids(
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fail_run)
 
-    assert main(["chat", "accounts", "stats", "missing"]) == 1
+    assert main(["agent", "accounts", "stats", "missing"]) == 1
     assert "unknown account instance id: missing" in capsys.readouterr().err
