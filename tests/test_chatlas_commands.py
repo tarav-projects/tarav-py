@@ -233,6 +233,61 @@ def _write_pi_session(
     _set_iso_mtime(path, "2026-04-17T19:14:54.000Z")
 
 
+def _write_copilot_events(
+    path: Path,
+    *,
+    session_id: str,
+    user_text: str = "hello from copilot",
+    assistant_text: str = "copilot reply",
+) -> None:
+    records = [
+        {
+            "type": "session.start",
+            "timestamp": "2026-04-18T11:00:00.000Z",
+            "data": {
+                "sessionId": session_id,
+                "producer": "copilot-agent",
+            },
+        },
+        {
+            "type": "user.message",
+            "timestamp": "2026-04-18T11:00:01.000Z",
+            "data": {
+                "content": [{"type": "text", "text": user_text}],
+            },
+        },
+        {
+            "type": "assistant.message",
+            "timestamp": "2026-04-18T11:00:02.000Z",
+            "data": {
+                "content": [{"type": "text", "text": assistant_text}],
+                "reasoningText": "check repository state",
+                "toolRequests": [
+                    {"name": "shell", "arguments": {"cmd": "git status"}}
+                ],
+            },
+        },
+        {
+            "type": "tool.execution_start",
+            "timestamp": "2026-04-18T11:00:03.000Z",
+            "data": {
+                "toolName": "shell",
+                "command": "git status",
+            },
+        },
+        {
+            "type": "session.shutdown",
+            "timestamp": "2026-04-18T11:00:04.000Z",
+            "data": {
+                "totalPremiumRequests": 1,
+                "modelMetrics": {"inputTokens": 12, "outputTokens": 34},
+            },
+        },
+    ]
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(path, "2026-04-18T11:00:04.000Z")
+
+
 def _write_global_config(
     path: Path,
     *,
@@ -493,6 +548,166 @@ def test_chatlas_update_supports_configured_pi_provider(
     transcript_markdown = derived_md_path.read_text(encoding="utf-8")
     assert "mission prelude" in transcript_markdown
     assert "pi assistant" in transcript_markdown
+
+
+def test_chatlas_update_copilot_uses_raw_retention_whitelist(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    copilot_home = home / ".copilot"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot-cli",
+                "id": "copilot-main",
+                "home": str(copilot_home),
+            }
+        ],
+    )
+
+    session_id = "0005d4b6-a983-4801-8b2a-fa626db1cf50"
+    legacy_session_id = "11111111-1111-4111-8111-111111111111"
+    session_root = copilot_home / "session-state" / session_id
+    _write_copilot_events(
+        session_root / "events.jsonl",
+        session_id=session_id,
+        user_text="retain copilot user input",
+        assistant_text="retain copilot assistant output",
+    )
+    _write_copilot_events(
+        copilot_home / "session-state" / f"{legacy_session_id}.jsonl",
+        session_id=legacy_session_id,
+        user_text="retain legacy copilot user input",
+        assistant_text="retain legacy copilot assistant output",
+    )
+    _write(session_root / "files" / "user-attachment.txt", "session artifact\n")
+    _write(session_root / "plan.md", "# Plan\n- inspect retention\n")
+    _write(session_root / "checkpoints" / "001-implementation.md", "# Checkpoint\n")
+    _write(copilot_home / "copilot-instructions.md", "Prefer concise answers.\n")
+
+    _write(session_root / "workspace.yaml", "cwd: /tmp/project\n")
+    _write(session_root / "checkpoints" / "index.md", "# Index\n")
+    _write(session_root / "vscode.metadata.json", "{}\n")
+    _write(session_root / "session.db", "opaque\n")
+    _write(session_root / "rewind-snapshots" / "index.json", "{}\n")
+    _write(
+        session_root / "rewind-snapshots" / "backups" / "snapshot.txt",
+        "workspace copy\n",
+    )
+    _write(copilot_home / "session-state" / "inuse.99735.lock", "locked\n")
+    _write(
+        copilot_home / "command-history-state.json",
+        '{"commands":["private spillover"]}\n',
+    )
+    _write(copilot_home / "config.json", '{"account":"local"}\n')
+    _write(copilot_home / "logs" / "copilot.log", "noise\n")
+
+    assert main(_chatlas_update_argv("--provider", "copilot-cli")) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    chatlas_root = _default_chatlas_root(home)
+    destination_root = _chatlas_home_root(home, copilot_home)
+    instance_payload = payload["instances"][0]
+    expected_includes = [
+        "session-state/**/events.jsonl",
+        "session-state/*.jsonl",
+        "session-state/**/files/**",
+        "session-state/**/plan.md",
+        "session-state/**/checkpoints/*.md",
+        "copilot-instructions.md",
+    ]
+    expected_excludes = [
+        "pkg/",
+        "logs/",
+        "ide/",
+        "session-state/**/workspace.yaml",
+        "session-state/**/checkpoints/index.md",
+        "session-state/**/vscode.metadata.json",
+        "session-state/**/session.db",
+        "session-state/**/rewind-snapshots/**",
+        "session-state/**/*.lock",
+        "command-history-state.json",
+        "config.json",
+    ]
+
+    assert payload["command"] == "chatlas update"
+    assert payload["committed"] is True
+    assert payload["changes_detected"] is True
+    assert payload["synced_instance_count"] == 1
+    assert payload["normalized_session_count"] == 2
+    assert payload["derived_transcript_session_count"] == 2
+    assert instance_payload["instance"] == "copilot-main"
+    assert instance_payload["destination_root"] == str(destination_root)
+    assert instance_payload["includes"] == expected_includes
+    assert instance_payload["excludes"] == expected_excludes
+
+    assert (destination_root / "session-state" / session_id / "events.jsonl").is_file()
+    assert (destination_root / "session-state" / f"{legacy_session_id}.jsonl").is_file()
+    assert (
+        destination_root / "session-state" / session_id / "files" / "user-attachment.txt"
+    ).is_file()
+    assert (destination_root / "session-state" / session_id / "plan.md").is_file()
+    assert (
+        destination_root / "session-state" / session_id / "checkpoints" / "001-implementation.md"
+    ).is_file()
+    assert (destination_root / "copilot-instructions.md").is_file()
+    assert not (destination_root / "session-state" / session_id / "workspace.yaml").exists()
+    assert not (
+        destination_root / "session-state" / session_id / "checkpoints" / "index.md"
+    ).exists()
+    assert not (
+        destination_root / "session-state" / session_id / "vscode.metadata.json"
+    ).exists()
+    assert not (destination_root / "session-state" / session_id / "session.db").exists()
+    assert not (destination_root / "session-state" / session_id / "rewind-snapshots").exists()
+    assert not (destination_root / "session-state" / "inuse.99735.lock").exists()
+    assert not (destination_root / "command-history-state.json").exists()
+    assert not (destination_root / "config.json").exists()
+    assert not (destination_root / "logs" / "copilot.log").exists()
+
+    normalized_rows = [
+        json.loads(line)
+        for line in Path(payload["normalized_sessions_path"])
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    normalized_by_session_id = {row["session_id"]: row for row in normalized_rows}
+    assert sorted(normalized_by_session_id) == [session_id, legacy_session_id]
+    assert normalized_by_session_id[session_id]["provider"] == "copilot-cli"
+    assert normalized_by_session_id[session_id]["instance"] == "copilot-main"
+    assert normalized_by_session_id[legacy_session_id]["provider"] == "copilot-cli"
+    assert normalized_by_session_id[legacy_session_id]["instance"] == "copilot-main"
+
+    derived_md_path = (
+        chatlas_root
+        / "derived"
+        / "transcripts"
+        / "copilot-cli"
+        / normalized_by_session_id[session_id]["provider_instance_fingerprint"]
+        / f"{session_id}.md"
+    )
+    legacy_derived_md_path = (
+        chatlas_root
+        / "derived"
+        / "transcripts"
+        / "copilot-cli"
+        / normalized_by_session_id[legacy_session_id]["provider_instance_fingerprint"]
+        / f"{legacy_session_id}.md"
+    )
+    transcript_markdown = derived_md_path.read_text(encoding="utf-8")
+    legacy_transcript_markdown = legacy_derived_md_path.read_text(encoding="utf-8")
+    assert "retain copilot user input" in transcript_markdown
+    assert "retain copilot assistant output" in transcript_markdown
+    assert "retain legacy copilot user input" in legacy_transcript_markdown
+    assert "retain legacy copilot assistant output" in legacy_transcript_markdown
 
 
 def test_chatlas_update_second_run_skips_commit_when_unchanged(
