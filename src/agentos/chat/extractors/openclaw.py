@@ -11,6 +11,7 @@ from agentos.chat.extractors.common import (
     format_turns_jsonl,
     format_turns_markdown,
 )
+from agentos.chat.extractors.pi import has_pi_session_signature
 
 _OPENCLAW_REPLY_PREFIX = "[[reply_to_current]]"
 _OPENCLAW_SENDER_METADATA_RE = re.compile(
@@ -115,7 +116,11 @@ def load_openclaw_session_records(path: Path) -> list[dict[str, Any]]:
     except OSError as exc:
         raise CliError(f"unable to read OpenClaw session artifact {path}: {exc}") from exc
 
-    if not records or _extract_embedded_session_id(records) is None:
+    if (
+        not records
+        or _extract_embedded_session_id(records) is None
+        or has_pi_session_signature(records)
+    ):
         raise CliError(f"not an OpenClaw session artifact: {path}")
 
     return records

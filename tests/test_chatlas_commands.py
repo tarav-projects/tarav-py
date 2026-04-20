@@ -159,6 +159,80 @@ def _write_openclaw_session(
     return transcript_path
 
 
+def _write_pi_session(
+    path: Path,
+    *,
+    session_id: str,
+    cwd: str = "/Users/pereiro/Documents/workspaces/oba-workspace/agentos-iterante-dev",
+    user_text: str = "hello from pi",
+    assistant_text: str = "pi reply",
+    include_custom_message: bool = False,
+) -> None:
+    records = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": session_id,
+            "timestamp": "2026-04-17T19:14:52.021Z",
+            "cwd": cwd,
+        },
+        {
+            "type": "model_change",
+            "timestamp": "2026-04-17T19:14:52.022Z",
+            "provider": "openai-codex",
+            "modelId": "gpt-5.4-mini",
+        },
+        {
+            "type": "thinking_level_change",
+            "timestamp": "2026-04-17T19:14:52.023Z",
+            "thinkingLevel": "medium",
+        },
+    ]
+    if include_custom_message:
+        records.append(
+            {
+                "type": "custom_message",
+                "timestamp": "2026-04-17T19:14:52.024Z",
+                "customType": "iterante-start",
+                "display": True,
+                "content": "mission prelude",
+            }
+        )
+    records.extend(
+        [
+            {
+                "type": "message",
+                "id": "msg-user-1",
+                "timestamp": "2026-04-17T19:14:53.000Z",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": user_text}],
+                },
+            },
+            {
+                "type": "message",
+                "id": "msg-assistant-1",
+                "timestamp": "2026-04-17T19:14:54.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "internal plan"},
+                        {"type": "text", "text": assistant_text},
+                        {"type": "toolCall", "name": "ls", "toolCallId": "tool-1"},
+                    ],
+                    "metadata": {
+                        "provider": "openai-codex",
+                        "model": "gpt-5.4-mini",
+                        "responseId": "resp_1",
+                    },
+                },
+            },
+        ]
+    )
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(path, "2026-04-17T19:14:54.000Z")
+
+
 def _write_global_config(
     path: Path,
     *,
@@ -327,6 +401,98 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
 
     log_subject = _git_output(chatlas_root, "log", "-1", "--pretty=%s")
     assert log_subject.startswith("chatlas update: ")
+
+
+def test_chatlas_update_supports_configured_pi_provider(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    pi_home = home / ".pi" / "profiles" / "codex-mm"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "pi",
+                "id": "pi-mm",
+                "home": str(pi_home),
+            }
+        ],
+    )
+
+    session_id = "019d9cde-0ff5-75a6-b36d-c11a19c2e1b4"
+    transcript_path = (
+        pi_home
+        / "sessions"
+        / "--Users-pereiro-Documents-workspaces-oba-workspace-agentos-iterante-dev--"
+        / f"2026-04-17T19-14-52-021Z_{session_id}.jsonl"
+    )
+    _write_pi_session(
+        transcript_path,
+        session_id=session_id,
+        include_custom_message=True,
+        assistant_text="pi assistant",
+    )
+    _write(pi_home / "settings.json", json.dumps({"defaultProvider": "openai-codex"}) + "\n")
+    _write(pi_home / "auth.json", '{"token":"secret"}\n')
+    _write(pi_home / "bin" / "pi-helper", "#!/bin/sh\n")
+    _write(pi_home / "notes.md", "do not archive this\n")
+
+    assert main(_chatlas_update_argv("--provider", "pi")) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    chatlas_root = _default_chatlas_root(home)
+    destination_root = _chatlas_home_root(home, pi_home)
+
+    assert payload["command"] == "chatlas update"
+    assert payload["committed"] is True
+    assert payload["changes_detected"] is True
+    assert payload["synced_instance_count"] == 1
+    assert payload["normalized_session_count"] == 1
+    assert payload["derived_transcript_session_count"] == 1
+    assert payload["instances"][0]["instance"] == "pi-mm"
+    assert payload["instances"][0]["destination_root"] == str(destination_root)
+    assert sorted(payload["instances"][0]["includes"]) == ["sessions/**", "settings.json"]
+    assert transcript_path.relative_to(pi_home).is_relative_to(Path("sessions"))
+    assert (destination_root / transcript_path.relative_to(pi_home)).is_file()
+    assert (destination_root / "settings.json").is_file()
+    assert not (destination_root / "auth.json").exists()
+    assert not (destination_root / "bin" / "pi-helper").exists()
+    assert not (destination_root / "notes.md").exists()
+
+    normalized_rows = [
+        json.loads(line)
+        for line in Path(payload["normalized_sessions_path"]).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(normalized_rows) == 1
+    assert normalized_rows[0]["provider"] == "pi"
+    assert normalized_rows[0]["instance"] == "pi-mm"
+    assert normalized_rows[0]["session_id"] == session_id
+    assert normalized_rows[0]["native"] == {
+        "cwd": "/Users/pereiro/Documents/workspaces/oba-workspace/agentos-iterante-dev",
+        "model_provider": "openai-codex",
+        "model_id": "gpt-5.4-mini",
+        "thinking_level": "medium",
+    }
+
+    derived_md_path = (
+        chatlas_root
+        / "derived"
+        / "transcripts"
+        / "pi"
+        / normalized_rows[0]["provider_instance_fingerprint"]
+        / f"{session_id}.md"
+    )
+    assert derived_md_path.is_file()
+    transcript_markdown = derived_md_path.read_text(encoding="utf-8")
+    assert "mission prelude" in transcript_markdown
+    assert "pi assistant" in transcript_markdown
 
 
 def test_chatlas_update_second_run_skips_commit_when_unchanged(

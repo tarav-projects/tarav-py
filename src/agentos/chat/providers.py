@@ -97,6 +97,7 @@ _CANONICAL_PROVIDER_FAMILIES = tuple(
         "copilot-cli",
         "gemini-cli",
         "opencode",
+        "pi",
         "openclaw",
     )
 )
@@ -257,6 +258,25 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
                 direct_anchor_roles=("session_diff_root",),
                 sqlite_db_anchor_roles=("sqlite_db",),
             ),
+        ),
+    ),
+    ChatProviderSpec(
+        provider_family=require_canonical_provider_family("pi"),
+        home_slots=(
+            ProviderHomeSlot(
+                key="home",
+                default_home="~/.pi/agent",
+                direct_relpaths=("sessions",),
+                direct_anchor_roles=("sessions_root",),
+            ),
+        ),
+        chatlas_default_includes=(
+            "sessions/**",
+            "settings.json",
+        ),
+        chatlas_default_excludes=(
+            "auth.json",
+            "bin/",
         ),
     ),
     ChatProviderSpec(
@@ -765,6 +785,8 @@ def _provider_family_default_cli_command(family_name: str) -> tuple[str, ...]:
         return ("codex",)
     if family_name == "copilot-cli":
         return ("copilot",)
+    if family_name == "pi":
+        return ("pi",)
     return ()
 
 
@@ -791,11 +813,15 @@ def _provider_family_default_model_flag(family_name: str) -> str | None:
         return "--model"
     if family_name == "opencode":
         return "--model"
+    if family_name == "pi":
+        return "--model"
     return None
 
 
 def _provider_family_default_prompt_flag(family_name: str) -> str | None:
     if family_name == "copilot-cli":
+        return "-p"
+    if family_name == "pi":
         return "-p"
     return None
 

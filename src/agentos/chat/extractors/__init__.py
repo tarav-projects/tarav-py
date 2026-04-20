@@ -29,6 +29,11 @@ from agentos.chat.extractors.opencode import (
     infer_opencode_session_id_from_path,
     is_opencode_session_path,
 )
+from agentos.chat.extractors.pi import (
+    extract_pi_chat_session_from_path,
+    infer_pi_session_id_from_path,
+    is_pi_session_path,
+)
 from agentos.chat.extractors.openclaw import (
     extract_openclaw_chat_session_from_path,
     infer_openclaw_session_id_from_path,
@@ -86,6 +91,12 @@ _CHAT_SESSION_EXTRACTORS: dict[str, ChatSessionExtractorSpec] = {
         probe_artifact_path=is_opencode_session_path,
         extract_from_path=extract_opencode_chat_session_from_path,
         infer_session_id_from_path=infer_opencode_session_id_from_path,
+    ),
+    "pi": ChatSessionExtractorSpec(
+        provider="pi",
+        probe_artifact_path=is_pi_session_path,
+        extract_from_path=extract_pi_chat_session_from_path,
+        infer_session_id_from_path=infer_pi_session_id_from_path,
     ),
     "openclaw": ChatSessionExtractorSpec(
         provider="openclaw",

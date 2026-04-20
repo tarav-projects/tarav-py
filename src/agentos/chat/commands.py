@@ -44,6 +44,11 @@ from agentos.chat.extractors.opencode import (
     extract_dialog_from_opencode_session,
     resolve_opencode_db_path,
 )
+from agentos.chat.extractors.pi import (
+    extract_dialog_from_pi_session,
+    infer_pi_session_id_from_path,
+    load_pi_session_records,
+)
 from agentos.chat.extractors.openclaw import (
     extract_dialog_from_openclaw_session,
     infer_openclaw_session_id_from_path,
@@ -1230,6 +1235,14 @@ def _load_session_turns(
         return extract_dialog_from_gemini_cli_session(
             session_data=session_data,
             session_id=str(session_data.get("sessionId") or session_id),
+            raw=False,
+        )
+
+    if provider == "pi":
+        records = load_pi_session_records(path)
+        return extract_dialog_from_pi_session(
+            records=records,
+            session_id=infer_pi_session_id_from_path(path) or session_id,
             raw=False,
         )
 

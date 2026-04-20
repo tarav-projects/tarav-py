@@ -76,6 +76,78 @@ def _write_codex_rollout(
     _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
 
 
+def _write_pi_session(
+    path: Path,
+    *,
+    session_id: str,
+    include_custom_message: bool = False,
+    user_text: str = "hello from pi",
+    assistant_text: str = "pi reply",
+) -> None:
+    records = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": session_id,
+            "timestamp": "2026-04-17T19:14:52.021Z",
+            "cwd": "/Users/pereiro/workspaces/pi-agent",
+        },
+        {
+            "type": "model_change",
+            "timestamp": "2026-04-17T19:14:52.022Z",
+            "provider": "openai-codex",
+            "modelId": "gpt-5.4-mini",
+        },
+        {
+            "type": "thinking_level_change",
+            "timestamp": "2026-04-17T19:14:52.023Z",
+            "thinkingLevel": "medium",
+        },
+    ]
+    if include_custom_message:
+        records.append(
+            {
+                "type": "custom_message",
+                "timestamp": "2026-04-17T19:14:52.024Z",
+                "customType": "iterante-start",
+                "display": True,
+                "content": "mission prelude",
+            }
+        )
+    records.extend(
+        [
+            {
+                "type": "message",
+                "id": "msg-user-1",
+                "timestamp": "2026-04-17T19:14:53.000Z",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": user_text}],
+                },
+            },
+            {
+                "type": "message",
+                "id": "msg-assistant-1",
+                "timestamp": "2026-04-17T19:14:54.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "internal plan"},
+                        {"type": "text", "text": assistant_text},
+                        {"type": "toolCall", "name": "ls", "toolCallId": "tool-1"},
+                    ],
+                    "metadata": {
+                        "provider": "openai-codex",
+                        "model": "gpt-5.4-mini",
+                        "responseId": "resp_1",
+                    },
+                },
+            },
+        ]
+    )
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+
+
 def _write_project_marker(project_root: Path) -> None:
     _write(
         project_root / ".agentos" / "project.json",
@@ -166,6 +238,31 @@ def test_chat_debug_extract_raw_includes_developer_content(
     payload = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
 
     assert [turn["role"] for turn in payload[:3]] == ["developer", "user", "assistant"]
+
+
+def test_chat_debug_extract_supports_pi_file_mode_without_openclaw_ambiguity(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session_id = "019d9cde-0ff5-75a6-b36d-c11a19c2e1b4"
+    pi_path = tmp_path / f"2026-04-17T19-14-52-021Z_{session_id}.jsonl"
+    _write_pi_session(
+        pi_path,
+        session_id=session_id,
+        include_custom_message=True,
+        user_text="pi user",
+        assistant_text="pi assistant",
+    )
+
+    assert main(["chat", "debug", "extract", "--file", str(pi_path)]) == 0
+    payload = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+
+    assert [turn["role"] for turn in payload] == ["user", "user", "assistant"]
+    assert [turn["text"] for turn in payload] == [
+        "mission prelude",
+        "pi user",
+        "pi assistant",
+    ]
 
 
 def test_chat_debug_extract_supports_explicit_project_target(

@@ -57,6 +57,13 @@ def _coalesce_timestamp(*values: float | None) -> float | None:
     return max(timestamps)
 
 
+def _earliest_timestamp(*values: float | None) -> float | None:
+    timestamps = [value for value in values if value is not None]
+    if not timestamps:
+        return None
+    return min(timestamps)
+
+
 def _unique_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
     unique_paths: list[Path] = []
     seen_paths: set[Path] = set()
@@ -583,6 +590,97 @@ class GeminiCliSessionSource(SessionSource):
 
 
 @dataclass(frozen=True)
+class PiSessionSource(SessionSource):
+    artifact_paths: tuple[Path, ...]
+    cwd: str | None = None
+    model_provider: str | None = None
+    model_id: str | None = None
+    thinking_level: str | None = None
+    started_at: float | None = None
+    updated_at: float | None = None
+
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        return tuple(
+            BackingArtifact(
+                role="transcript",
+                path=path,
+            )
+            for path in self.artifact_paths
+        )
+
+    def canonical_findings(self) -> tuple[dict[str, Any], ...]:
+        return tuple(
+            _build_path_finding(provider=self.provider_family, path=path) for path in self.artifact_paths
+        )
+
+    def primary_artifact_path(self) -> Path | None:
+        if not self.artifact_paths:
+            return None
+        return self.artifact_paths[0]
+
+    def created_timestamp(self) -> float | None:
+        return self.started_at
+
+    def sort_timestamp(self) -> float | None:
+        return _coalesce_timestamp(
+            self.updated_at,
+            self.started_at,
+            *(safe_path_mtime(path) for path in self.artifact_paths),
+        )
+
+    def merge(self, other: SessionSource) -> SessionSource:
+        if not _merge_requires_same_identity(self, other):
+            return super().merge(other)
+        assert isinstance(other, PiSessionSource)
+
+        cwd = self.cwd if self.cwd == other.cwd else self.cwd or other.cwd
+        model_provider = (
+            self.model_provider
+            if self.model_provider == other.model_provider
+            else self.model_provider or other.model_provider
+        )
+        model_id = self.model_id if self.model_id == other.model_id else self.model_id or other.model_id
+        thinking_level = (
+            self.thinking_level
+            if self.thinking_level == other.thinking_level
+            else self.thinking_level or other.thinking_level
+        )
+        return PiSessionSource(
+            provider_instance=self.provider_instance,
+            native_session_id=self.native_session_id,
+            artifact_paths=_unique_paths(self.artifact_paths + other.artifact_paths),
+            cwd=cwd,
+            model_provider=model_provider,
+            model_id=model_id,
+            thinking_level=thinking_level,
+            started_at=_earliest_timestamp(self.started_at, other.started_at),
+            updated_at=_coalesce_timestamp(self.updated_at, other.updated_at),
+        )
+
+    def native_fields(self) -> dict[str, Any]:
+        payload = super().native_fields()
+        if self.cwd is not None:
+            payload["cwd"] = self.cwd
+        if self.model_provider is not None:
+            payload["model_provider"] = self.model_provider
+        if self.model_id is not None:
+            payload["model_id"] = self.model_id
+        if self.thinking_level is not None:
+            payload["thinking_level"] = self.thinking_level
+        return payload
+
+    def query_fields(self) -> tuple[tuple[str, str], ...]:
+        fields = list(super().query_fields())
+        if self.cwd is not None:
+            fields.append(("cwd", self.cwd))
+        if self.model_id is not None:
+            fields.append(("model_id", self.model_id))
+        if self.model_provider is not None:
+            fields.append(("model_provider", self.model_provider))
+        return tuple(fields)
+
+
+@dataclass(frozen=True)
 class OpenclawSessionSource(SessionSource):
     transcript_path: Path | None = None
     sessions_index_path: Path | None = None
@@ -741,6 +839,7 @@ __all__ = [
     "CodexSessionSource",
     "CopilotCliSessionSource",
     "GeminiCliSessionSource",
+    "PiSessionSource",
     "OpenclawSessionSource",
     "OpencodeSessionSource",
     "ProviderInstance",

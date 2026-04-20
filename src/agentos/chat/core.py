@@ -27,6 +27,7 @@ from agentos.chat.sessions import (
     GeminiCliSessionSource,
     OpenclawSessionSource,
     OpencodeSessionSource,
+    PiSessionSource,
     ProviderInstance,
     SessionSource,
     coerce_timestamp,
@@ -217,6 +218,17 @@ def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
             build_source_stats=_make_typed_session_stats_builder(
                 OpenclawSessionSource,
                 _build_openclaw_session_stats,
+            ),
+        ),
+        "pi": dict(
+            discover_sources=_make_direct_session_discovery(_list_pi_sessions),
+            find_sources=_make_direct_session_finder(
+                _find_pi_sessions,
+                query_arg="session_id",
+            ),
+            build_source_stats=_make_typed_session_stats_builder(
+                PiSessionSource,
+                _build_pi_session_stats,
             ),
         ),
     }
@@ -933,6 +945,10 @@ def _backing_artifact_is_extractable(
             from agentos.chat.extractors.gemini_cli import is_gemini_cli_session_path
 
             return is_gemini_cli_session_path(path)
+        if session.provider == "pi":
+            from agentos.chat.extractors.pi import is_pi_session_path
+
+            return is_pi_session_path(path)
         if session.provider == "openclaw":
             from agentos.chat.extractors.openclaw import is_openclaw_session_path
 
@@ -1319,6 +1335,38 @@ def _find_gemini_sessions(
             sessions.append(session)
 
     return _dedupe_session_sources(sessions)
+
+
+def _list_pi_sessions(
+    *,
+    provider_instance: ProviderInstance,
+    targets: tuple[Path, ...],
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
+
+    for target in targets:
+        for path in _glob_paths(target, "**/*.jsonl"):
+            session = _read_pi_session(path, provider_instance=provider_instance)
+            if session is not None:
+                _merge_session_source(sessions_by_id, session)
+
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+
+
+def _find_pi_sessions(
+    *,
+    provider_instance: ProviderInstance,
+    targets: tuple[Path, ...],
+    session_id: str,
+) -> list[SessionSource]:
+    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
+    all_sessions = _list_pi_sessions(provider_instance=provider_instance, targets=targets)
+
+    for session in all_sessions:
+        if session.matches_query(session_id):
+            _merge_session_source(sessions_by_id, session)
+
+    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
 
 
 def _list_opencode_sessions(
@@ -2003,6 +2051,94 @@ def _build_gemini_cli_session_stats(session: GeminiCliSessionSource) -> dict[str
     return payload
 
 
+def _build_pi_session_stats(session: PiSessionSource) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "artifact_count": len(session.artifact_paths),
+    }
+    if session.cwd is not None:
+        payload["cwd"] = session.cwd
+    if session.model_provider is not None:
+        payload["model_provider"] = session.model_provider
+    if session.model_id is not None:
+        payload["model_id"] = session.model_id
+    if session.thinking_level is not None:
+        payload["thinking_level"] = session.thinking_level
+
+    artifact_path = session.primary_artifact_path()
+    if artifact_path is None or not artifact_path.is_file():
+        return payload
+
+    from agentos.chat.extractors.pi import (
+        extract_dialog_from_pi_session,
+        load_pi_session_records,
+    )
+
+    records = _try_provider_stats_call(lambda: load_pi_session_records(artifact_path))
+    if not isinstance(records, list):
+        return payload
+
+    message_record_count = 0
+    user_message_count = 0
+    assistant_message_count = 0
+    tool_result_message_count = 0
+    custom_message_count = 0
+    model_change_count = 0
+    thinking_level_change_count = 0
+    first_record_at: float | None = None
+    last_record_at: float | None = None
+
+    for record in records:
+        record_type = record.get("type")
+        first_record_at, last_record_at = _update_time_bounds(
+            first_record_at,
+            last_record_at,
+            record.get("timestamp"),
+        )
+        if record_type == "message":
+            message_record_count += 1
+            message = record.get("message")
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            if role == "user":
+                user_message_count += 1
+            elif role == "assistant":
+                assistant_message_count += 1
+            elif role == "toolResult":
+                tool_result_message_count += 1
+        elif record_type == "custom_message":
+            custom_message_count += 1
+        elif record_type == "model_change":
+            model_change_count += 1
+        elif record_type == "thinking_level_change":
+            thinking_level_change_count += 1
+
+    payload.update(
+        {
+            "record_count": len(records),
+            "message_record_count": message_record_count,
+            "user_message_count": user_message_count,
+            "assistant_message_count": assistant_message_count,
+            "tool_result_message_count": tool_result_message_count,
+            "custom_message_count": custom_message_count,
+            "model_change_count": model_change_count,
+            "thinking_level_change_count": thinking_level_change_count,
+            "first_record_at": _format_stats_timestamp(first_record_at),
+            "last_record_at": _format_stats_timestamp(last_record_at),
+        }
+    )
+    payload.update(
+        _try_build_dialog_turn_stats(
+            lambda: extract_dialog_from_pi_session(
+                records=records,
+                session_id=session.session_id,
+                raw=False,
+            )
+        )
+    )
+    return payload
+
+
 def _build_openclaw_session_stats(session: OpenclawSessionSource) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "has_transcript": session.transcript_path is not None and session.transcript_path.is_file(),
@@ -2658,6 +2794,73 @@ def _read_gemini_session(
     )
 
 
+def _read_pi_session(
+    path: Path,
+    *,
+    provider_instance: ProviderInstance,
+) -> PiSessionSource | None:
+    first_obj = _read_first_jsonl_object(path)
+    if first_obj is None or first_obj.get("type") != "session":
+        return None
+
+    session_id = first_obj.get("id")
+    if not isinstance(session_id, str) or not session_id:
+        return None
+
+    if not _has_pi_session_signature(path):
+        return None
+
+    cwd = first_obj.get("cwd") if isinstance(first_obj.get("cwd"), str) and first_obj.get("cwd") else None
+    started_at = coerce_timestamp(first_obj.get("timestamp"))
+    updated_at = safe_path_mtime(path) or started_at
+    model_provider: str | None = None
+    model_id: str | None = None
+    thinking_level: str | None = None
+
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+
+                record_type = obj.get("type")
+                if record_type == "model_change" and (model_provider is None or model_id is None):
+                    provider = obj.get("provider")
+                    candidate_model_id = obj.get("modelId")
+                    if model_provider is None and isinstance(provider, str) and provider:
+                        model_provider = provider
+                    if model_id is None and isinstance(candidate_model_id, str) and candidate_model_id:
+                        model_id = candidate_model_id
+                    continue
+
+                if record_type == "thinking_level_change" and thinking_level is None:
+                    candidate_thinking_level = obj.get("thinkingLevel")
+                    if isinstance(candidate_thinking_level, str) and candidate_thinking_level:
+                        thinking_level = candidate_thinking_level
+                    continue
+    except OSError:
+        return None
+
+    return PiSessionSource(
+        provider_instance=provider_instance,
+        native_session_id=session_id,
+        artifact_paths=(path,),
+        cwd=cwd,
+        model_provider=model_provider,
+        model_id=model_id,
+        thinking_level=thinking_level,
+        started_at=started_at,
+        updated_at=updated_at,
+    )
+
+
 def _gemini_session_matches(
     requested_session_id: str,
     session: GeminiCliSessionSource,
@@ -2666,6 +2869,62 @@ def _gemini_session_matches(
     if requested_session_id == session.session_id:
         return True
     return requested_session_id in path.name
+
+
+def _has_pi_session_signature(path: Path) -> bool:
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+
+                record_type = obj.get("type")
+                if record_type == "model_change":
+                    provider = obj.get("provider")
+                    model_id = obj.get("modelId")
+                    if isinstance(provider, str) and provider and isinstance(model_id, str) and model_id:
+                        return True
+                    continue
+
+                if record_type == "thinking_level_change":
+                    thinking_level = obj.get("thinkingLevel")
+                    if isinstance(thinking_level, str) and thinking_level:
+                        return True
+                    continue
+
+                if record_type == "custom_message":
+                    return True
+
+                if record_type != "message":
+                    continue
+
+                message = obj.get("message")
+                if not isinstance(message, dict):
+                    continue
+                if message.get("role") == "toolResult":
+                    return True
+                metadata = message.get("metadata")
+                if isinstance(metadata, dict) and metadata:
+                    return True
+                content = message.get("content")
+                if not isinstance(content, list):
+                    continue
+                for item in content:
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("type") in {"thinking", "toolCall"}:
+                        return True
+    except OSError:
+        return False
+
+    return False
 
 
 def _query_opencode_sessions(

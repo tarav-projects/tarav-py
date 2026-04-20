@@ -142,6 +142,21 @@ def _build_agent_command(
     return command
 
 
+def _format_agent_run_command(
+    command: list[str],
+    *,
+    env_overrides: dict[str, str],
+) -> str:
+    if not env_overrides:
+        return shlex.join(command)
+
+    env_prefix = " ".join(
+        f"{key}={shlex.quote(value)}"
+        for key, value in sorted(env_overrides.items())
+    )
+    return f"{env_prefix} {shlex.join(command)}"
+
+
 def _cmd_agent_run(args: argparse.Namespace) -> int:
     config_start_path = _config_start_path(args)
     cwd = Path(args.cwd).expanduser().resolve() if args.cwd else Path.cwd().resolve()
@@ -161,7 +176,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
     env.update(dict(instance.env))
 
     if args.dry_run:
-        print(shlex.join(command))
+        print(_format_agent_run_command(command, env_overrides=dict(instance.env)))
         return 0
 
     try:

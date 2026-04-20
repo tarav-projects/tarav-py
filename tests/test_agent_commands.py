@@ -276,6 +276,129 @@ def test_agent_run_uses_copilot_cli_provider_instance(
     assert observed["cwd"] == str(Path.cwd().resolve())
 
 
+def test_agent_run_uses_pi_provider_defaults(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    pi_home = tmp_path / ".pi" / "profiles" / "codex-mm"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "pi",
+                "id": "pi-mm",
+                "home": str(pi_home),
+                "default_model": "gpt-5.4-mini",
+                "env": {
+                    "PI_CODING_AGENT_DIR": str(pi_home),
+                },
+            }
+        ],
+    )
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        cwd: str,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        observed["command"] = command
+        observed["cwd"] = cwd
+        observed["agent_dir"] = env["PI_CODING_AGENT_DIR"]
+        observed["check"] = check
+        return subprocess.CompletedProcess(command, 0)
+
+    import agentos.agent.commands as agent_commands
+
+    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "pi",
+                "--instance",
+                "pi-mm",
+                "--",
+                "hello from agentos",
+            ]
+        )
+        == 0
+    )
+
+    assert observed["command"] == [
+        "pi",
+        "--model",
+        "gpt-5.4-mini",
+        "-p",
+        "hello from agentos",
+    ]
+    assert observed["agent_dir"] == str(pi_home)
+    assert observed["check"] is False
+    assert observed["cwd"] == str(Path.cwd().resolve())
+
+
+def test_agent_run_dry_run_prints_instance_env_prefix(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    pi_home = tmp_path / ".pi" / "profiles" / "codex-mm"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "pi",
+                "id": "pi-mm",
+                "home": str(pi_home),
+                "default_model": "gpt-5.4-mini",
+                "env": {
+                    "PI_CODING_AGENT_DIR": str(pi_home),
+                },
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "pi",
+                "--instance",
+                "pi-mm",
+                "--dry-run",
+                "--",
+                "hello from agentos",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        capsys.readouterr().out.strip()
+        == f"PI_CODING_AGENT_DIR={pi_home} pi --model gpt-5.4-mini -p 'hello from agentos'"
+    )
+
+
 def test_agent_list_prints_configured_instances(
     tmp_path: Path,
     monkeypatch,
