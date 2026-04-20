@@ -300,8 +300,8 @@ def _write_global_config(
             {
                 "class": "agentos.global.config",
                 "schema_version": 1,
-                "chat": {
-                    "provider_instances": [
+                "agent": {
+                    "instances": [
                         {
                             "provider": "codex",
                             "id": "codex-main",

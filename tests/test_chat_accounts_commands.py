@@ -136,20 +136,21 @@ def _write_global_config(
     provider_instances: list[dict[str, object]] | None = None,
     accounts_usage_total: dict[str, object] | None = None,
 ) -> None:
-    chat_payload: dict[str, object] = {
-        "provider_instances": provider_instances or [],
-    }
+    chat_payload: dict[str, object] = {}
     if accounts_usage_total is not None:
         chat_payload["accounts_usage_total"] = accounts_usage_total
+    payload: dict[str, object] = {
+        "class": "agentos.global.config",
+        "schema_version": 1,
+        "agent": {
+            "instances": provider_instances or [],
+        },
+    }
+    if chat_payload:
+        payload["chat"] = chat_payload
     _write(
         path,
-        json.dumps(
-            {
-                "class": "agentos.global.config",
-                "schema_version": 1,
-                "chat": chat_payload,
-            }
-        ),
+        json.dumps(payload),
     )
 
 
@@ -172,20 +173,21 @@ def _write_project_config(
     provider_instances: list[dict[str, object]] | None = None,
     accounts_usage_total: dict[str, object] | None = None,
 ) -> None:
-    chat_payload: dict[str, object] = {
-        "provider_instances": provider_instances or [],
-    }
+    chat_payload: dict[str, object] = {}
     if accounts_usage_total is not None:
         chat_payload["accounts_usage_total"] = accounts_usage_total
+    payload: dict[str, object] = {
+        "class": "agentos.project.config",
+        "schema_version": 1,
+        "agent": {
+            "instances": provider_instances or [],
+        },
+    }
+    if chat_payload:
+        payload["chat"] = chat_payload
     _write(
         path,
-        json.dumps(
-            {
-                "class": "agentos.project.config",
-                "schema_version": 1,
-                "chat": chat_payload,
-            }
-        ),
+        json.dumps(payload),
     )
 
 

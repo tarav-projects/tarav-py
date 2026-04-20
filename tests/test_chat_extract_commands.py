@@ -173,8 +173,8 @@ def _write_project_config(
             {
                 "class": "agentos.project.config",
                 "schema_version": 1,
-                "chat": {
-                    "provider_instances": provider_instances or [],
+                "agent": {
+                    "instances": provider_instances or [],
                 },
             }
         )

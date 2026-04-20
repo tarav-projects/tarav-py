@@ -343,9 +343,9 @@ class ProviderInstanceConfigSource:
     field_prefix: str
 
 
-CHAT_PROVIDER_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
-    object_path=("chat", "provider_instances"),
-    field_prefix="chat.provider_instances",
+AGENT_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
+    object_path=("agent", "instances"),
+    field_prefix="agent.instances",
 )
 
 
@@ -445,7 +445,7 @@ def _config_value_at_object_path(config: dict[str, object], *, object_path: tupl
 def load_configured_provider_instances(*, start_path: Path | str = ".") -> tuple["ProviderInstance", ...]:
     entries = load_provider_instance_config_entries(
         start_path=start_path,
-        sources=(CHAT_PROVIDER_INSTANCE_CONFIG_SOURCE,),
+        sources=(AGENT_INSTANCE_CONFIG_SOURCE,),
     )
     provider_instances = tuple(provider_instance_from_config_entry(entry) for entry in entries)
     _validate_unique_provider_instance_ids(provider_instances)
@@ -742,13 +742,13 @@ def _validate_unique_provider_instance_ids(provider_instances: tuple["ProviderIn
     seen_instances: dict[str, ProviderInstance] = {}
     for provider_instance in provider_instances:
         if provider_instance.instance_id is None:
-            raise CliError("chat.provider_instances ids must not be empty")
+            raise CliError("agent.instances ids must not be empty")
         existing = seen_instances.get(provider_instance.instance_id)
         if existing is None:
             seen_instances[provider_instance.instance_id] = provider_instance
             continue
         raise CliError(
-            "chat.provider_instances ids must be unique; "
+            "agent.instances ids must be unique; "
             f"duplicate id {provider_instance.instance_id} for providers "
             f"{existing.family} and {provider_instance.family}"
         )
@@ -1080,7 +1080,7 @@ __all__ = [
     "canonical_provider_families",
     "canonical_provider_family_for_name",
     "ChatProviderSpec",
-    "CHAT_PROVIDER_INSTANCE_CONFIG_SOURCE",
+    "AGENT_INSTANCE_CONFIG_SOURCE",
     "default_provider_instances",
     "load_chat_config_documents",
     "load_configured_provider_instances",

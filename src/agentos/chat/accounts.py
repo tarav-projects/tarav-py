@@ -181,7 +181,7 @@ def configured_account_provider_instances(
     for provider_instance in provider_instances:
         if _account_provider_requires_cli_command(provider_instance.family) and not provider_instance.cli_command:
             raise CliError(
-                f"chat.provider_instances entry {provider_instance.instance_id!r} for provider "
+                f"agent.instances entry {provider_instance.instance_id!r} for provider "
                 f"{provider_instance.family} must define cli_command"
             )
     _validate_unique_account_instance_ids(tuple(provider_instances))
@@ -1572,13 +1572,13 @@ def _validate_unique_account_instance_ids(
     seen_instances: dict[str, ProviderInstance] = {}
     for provider_instance in provider_instances:
         if provider_instance.instance_id is None:
-            raise CliError("chat.provider_instances ids must not be empty")
+            raise CliError("agent.instances ids must not be empty")
         existing = seen_instances.get(provider_instance.instance_id)
         if existing is None:
             seen_instances[provider_instance.instance_id] = provider_instance
             continue
         raise CliError(
-            "chat.provider_instances ids must be unique; "
+            "agent.instances ids must be unique; "
             f"duplicate id {provider_instance.instance_id} for providers "
             f"{existing.family} and {provider_instance.family}"
         )
