@@ -16,7 +16,7 @@ import urllib.request
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from agentos._core.errors import CliError
 from agentos._core.project import agentos_home_dir
@@ -61,6 +61,8 @@ COPILOT_GITHUB_API_VERSION = "2025-04-01"
 CHAT_USAGE_BURST_LABEL = "Burst"
 CHAT_USAGE_WEEKLY_LABEL = "Weekly"
 CHAT_ACCOUNT_USAGE_ERROR_DETAIL_WIDTH = 78
+CHAT_ACCOUNT_USAGE_SPEED_WINDOW_MINUTES = 30
+CHAT_ACCOUNT_USAGE_SPEED_MIN_INTERVALS = 2
 ACCOUNT_STATS_COMMAND_NAME = "agent accounts stats"
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -138,6 +140,41 @@ class AccountLimit:
     limit_label: str | None
     usage_over_time: UsageOverTimeLimitData | None = None
     provider_limit: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AccountUsageSpeedKey:
+    provider: str | None
+    account_id: str
+    limit_class: str
+    limit_name: str
+
+
+@dataclass(frozen=True)
+class AccountUsageSpeedPoint:
+    recorded_at: datetime.datetime
+    used_percent: int
+    period_started_at: str | None
+    period_ends_at: str | None
+    resets_at: str | None
+    period_duration_mins: int | None
+
+    @property
+    def period_signature(self) -> tuple[str | None, str | None, str | None, int | None]:
+        return (
+            self.period_started_at,
+            self.period_ends_at,
+            self.resets_at,
+            self.period_duration_mins,
+        )
+
+
+@dataclass(frozen=True)
+class AccountUsageSpeedStats:
+    average_percent_per_minute: float
+    max_percent_per_minute: float
+    interval_count: int
+    window_minutes: int
 
 
 class AccountCommandError(Exception):
@@ -653,6 +690,10 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
     if recorded_at_display is not None:
         lines.append(f"- Recorded at: {recorded_at_display}")
     recorded_at_dt = _parse_iso_datetime_or_none(recorded_at)
+    usage_speed_stats = _chat_account_usage_speed_stats_by_key(
+        payload,
+        recorded_at=recorded_at_dt,
+    )
 
     usage_total_payload = payload.get("accounts_usage_total")
     if isinstance(usage_total_payload, dict):
@@ -678,7 +719,10 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
 
     if accounts:
         accounts.sort(
-            key=lambda account: _chat_account_usage_sort_ratio(account, recorded_at=recorded_at_dt),
+            key=lambda account: (
+                _chat_account_usage_sort_speed(account, usage_speed_stats=usage_speed_stats),
+                _chat_account_usage_sort_ratio(account, recorded_at=recorded_at_dt),
+            ),
             reverse=True,
         )
 
@@ -686,7 +730,14 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
         lines.append("- No account instances matched.")
         return "\n".join(lines)
 
-    account_blocks = [_format_chat_account_usage_block(account, recorded_at=recorded_at_dt) for account in accounts]
+    account_blocks = [
+        _format_chat_account_usage_block(
+            account,
+            recorded_at=recorded_at_dt,
+            usage_speed_stats=usage_speed_stats,
+        )
+        for account in accounts
+    ]
     if isinstance(usage_total_payload, dict):
         lines.append("")
         lines.append("--------------------------")
@@ -986,6 +1037,7 @@ def _format_chat_account_usage_block(
     account: dict[str, Any],
     *,
     recorded_at: datetime.datetime | None,
+    usage_speed_stats: dict[AccountUsageSpeedKey, AccountUsageSpeedStats],
 ) -> list[str]:
     instance_id = _string_or_none(account.get("id")) or "unknown"
     label = _string_or_none(account.get("label"))
@@ -1015,6 +1067,9 @@ def _format_chat_account_usage_block(
                 _format_usage_limit_detailed_lines(
                     limit_payload,
                     recorded_at=recorded_at,
+                    speed_stats=usage_speed_stats.get(
+                        _chat_account_usage_speed_key(account, limit_payload)
+                    ),
                     highlight_peak_ratio=index in highlighted_indexes,
                     show_progression_marker=index in progression_indexes,
                 )
@@ -1067,6 +1122,32 @@ def _chat_account_usage_sort_ratio(
     if not ratios:
         return float("-inf")
     return max(ratios)
+
+
+def _chat_account_usage_sort_speed(
+    account: dict[str, Any],
+    *,
+    usage_speed_stats: dict[AccountUsageSpeedKey, AccountUsageSpeedStats],
+) -> float:
+    usage = account.get("usage")
+    if not isinstance(usage, dict):
+        return float("-inf")
+
+    raw_limits = usage.get("limits")
+    if not isinstance(raw_limits, list):
+        return float("-inf")
+
+    speeds: list[float] = []
+    for limit_payload in raw_limits:
+        if not isinstance(limit_payload, dict):
+            continue
+        stats = usage_speed_stats.get(_chat_account_usage_speed_key(account, limit_payload))
+        if stats is None or not _usage_speed_stats_is_non_zero(stats):
+            continue
+        speeds.append(stats.average_percent_per_minute)
+    if not speeds:
+        return float("-inf")
+    return max(speeds)
 
 
 def _chat_account_highlighted_limit_indexes(
@@ -1291,6 +1372,7 @@ def _format_usage_limit_detailed_lines(
     limit_payload: dict[str, Any],
     *,
     recorded_at: datetime.datetime | None,
+    speed_stats: AccountUsageSpeedStats | None = None,
     highlight_peak_ratio: bool = False,
     show_progression_marker: bool = False,
 ) -> list[str] | None:
@@ -1319,6 +1401,9 @@ def _format_usage_limit_detailed_lines(
     time_meta = _format_usage_limit_time_meta_line(limit_payload, recorded_at=recorded_at)
     if time_meta is not None:
         lines.append(time_meta)
+        speed_line = _format_usage_limit_speed_line(speed_stats)
+        if speed_line is not None:
+            lines.append(speed_line)
     return lines
 
 
@@ -1418,6 +1503,334 @@ def _format_usage_limit_time_meta_line(
     if remaining is None:
         return f"    resets | {reset_at}"
     return f"    resets | {reset_at} | {remaining}"
+
+
+def _format_usage_limit_speed_line(speed_stats: AccountUsageSpeedStats | None) -> str | None:
+    if speed_stats is None or speed_stats.interval_count < CHAT_ACCOUNT_USAGE_SPEED_MIN_INTERVALS:
+        return None
+    if not _usage_speed_stats_is_non_zero(speed_stats):
+        return None
+
+    return (
+        "     speed"
+        f" | {speed_stats.window_minutes}m, n={speed_stats.interval_count}"
+        f" | {_format_usage_speed_rate(speed_stats.average_percent_per_minute)}"
+        f"[{_format_usage_speed_rate(speed_stats.max_percent_per_minute)}] %/min"
+    )
+
+
+def _format_usage_speed_rate(value: float) -> str:
+    return f"{max(0.0, value):.2f}"
+
+
+def _usage_speed_stats_is_non_zero(speed_stats: AccountUsageSpeedStats) -> bool:
+    return (
+        speed_stats.average_percent_per_minute > 0
+        or speed_stats.max_percent_per_minute > 0
+    )
+
+
+def _chat_account_usage_speed_stats_by_key(
+    payload: dict[str, object],
+    *,
+    recorded_at: datetime.datetime | None,
+    window_minutes: int = CHAT_ACCOUNT_USAGE_SPEED_WINDOW_MINUTES,
+) -> dict[AccountUsageSpeedKey, AccountUsageSpeedStats]:
+    if recorded_at is None:
+        return {}
+
+    normalized_recorded_at = _normalize_usage_speed_datetime(recorded_at)
+    window_start = normalized_recorded_at - datetime.timedelta(minutes=window_minutes)
+    records = _chat_account_usage_speed_window_records(
+        payload,
+        recorded_at=normalized_recorded_at,
+        window_start=window_start,
+    )
+    current_period_signatures = _chat_account_usage_current_period_signatures(
+        payload,
+        recorded_at=normalized_recorded_at,
+    )
+
+    points_by_key: dict[AccountUsageSpeedKey, list[AccountUsageSpeedPoint]] = {}
+    for record in records:
+        record_recorded_at = _normalize_usage_speed_datetime_or_none(
+            _parse_iso_datetime_or_none(_string_or_none(record.get("recorded_at")))
+        )
+        if record_recorded_at is None:
+            continue
+        if record_recorded_at < window_start or record_recorded_at > normalized_recorded_at:
+            continue
+
+        for account in _iter_chat_account_usage_accounts(record):
+            usage = account.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            raw_limits = usage.get("limits")
+            if not isinstance(raw_limits, list):
+                continue
+            for raw_limit in raw_limits:
+                if not isinstance(raw_limit, dict):
+                    continue
+                point_payload = _chat_account_usage_speed_point(account, raw_limit, recorded_at=record_recorded_at)
+                if point_payload is None:
+                    continue
+                key, point = point_payload
+                points_by_key.setdefault(key, []).append(point)
+
+    stats_by_key: dict[AccountUsageSpeedKey, AccountUsageSpeedStats] = {}
+    for key, points in points_by_key.items():
+        current_period_signature = current_period_signatures.get(key)
+        if current_period_signature is None:
+            continue
+        compatible_points = [
+            point for point in points if point.period_signature == current_period_signature
+        ]
+        stats = _chat_account_usage_speed_stats(compatible_points, window_minutes=window_minutes)
+        if stats is not None:
+            stats_by_key[key] = stats
+    return stats_by_key
+
+
+def _chat_account_usage_speed_window_records(
+    payload: dict[str, object],
+    *,
+    recorded_at: datetime.datetime,
+    window_start: datetime.datetime,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    history = payload.get("history")
+    if isinstance(history, dict) and _string_or_none(history.get("status")) == "ok":
+        tape_root = _string_or_none(history.get("tape_root"))
+        if tape_root is not None:
+            for record in _iter_chat_account_usage_speed_recent_history_records(
+                tape_root=tape_root,
+                recorded_at=recorded_at,
+                window_start=window_start,
+            ):
+                records.append(record)
+
+    records.append(payload)
+    return records
+
+
+def _iter_chat_account_usage_speed_recent_history_records(
+    *,
+    tape_root: str,
+    recorded_at: datetime.datetime,
+    window_start: datetime.datetime,
+) -> Iterator[dict[str, object]]:
+    for segment_name in reversed(_chat_account_stats_segment_names_between(window_start, recorded_at)):
+        segment_path = Path(tape_root).expanduser().resolve() / "segments" / segment_name
+        try:
+            segment_records = _iter_chat_account_stats_segment_records_reversed(segment_path)
+            for record in segment_records:
+                record_recorded_at = _normalize_usage_speed_datetime_or_none(
+                    _parse_iso_datetime_or_none(_string_or_none(record.get("recorded_at")))
+                )
+                if record_recorded_at is None:
+                    continue
+                if record_recorded_at > recorded_at:
+                    continue
+                if record_recorded_at < window_start:
+                    return
+                yield record
+        except OSError:
+            continue
+
+
+def _iter_chat_account_stats_segment_records_reversed(segment_path: Path) -> Iterator[dict[str, object]]:
+    if not segment_path.is_file():
+        return
+
+    for line in _iter_text_file_lines_reversed(segment_path):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict):
+            yield record
+
+
+def _iter_text_file_lines_reversed(
+    path: Path,
+    *,
+    block_size: int = 64 * 1024,
+) -> Iterator[str]:
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        position = handle.tell()
+        buffer = b""
+
+        while position > 0:
+            read_size = min(block_size, position)
+            position -= read_size
+            handle.seek(position)
+            chunk = handle.read(read_size)
+            lines = (chunk + buffer).split(b"\n")
+            buffer = lines[0]
+            for raw_line in reversed(lines[1:]):
+                if raw_line:
+                    yield raw_line.decode("utf-8")
+
+        if buffer:
+            yield buffer.decode("utf-8")
+
+
+def _chat_account_usage_current_period_signatures(
+    payload: dict[str, object],
+    *,
+    recorded_at: datetime.datetime,
+) -> dict[AccountUsageSpeedKey, tuple[str | None, str | None, str | None, int | None]]:
+    signatures: dict[AccountUsageSpeedKey, tuple[str | None, str | None, str | None, int | None]] = {}
+    for account in _iter_chat_account_usage_accounts(payload):
+        usage = account.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        raw_limits = usage.get("limits")
+        if not isinstance(raw_limits, list):
+            continue
+        for raw_limit in raw_limits:
+            if not isinstance(raw_limit, dict):
+                continue
+            point_payload = _chat_account_usage_speed_point(account, raw_limit, recorded_at=recorded_at)
+            if point_payload is None:
+                continue
+            key, point = point_payload
+            signatures[key] = point.period_signature
+    return signatures
+
+
+def _chat_account_stats_segment_names_between(
+    start: datetime.datetime,
+    end: datetime.datetime,
+) -> list[str]:
+    current_year = start.year
+    current_month = start.month
+    end_key = (end.year, end.month)
+    segment_names: list[str] = []
+    while (current_year, current_month) <= end_key:
+        segment_names.append(f"{current_year:04d}{current_month:02d}.jsonl")
+        if current_month == 12:
+            current_year += 1
+            current_month = 1
+        else:
+            current_month += 1
+    return segment_names
+
+
+def _iter_chat_account_usage_accounts(payload: dict[str, object]) -> list[dict[str, Any]]:
+    raw_providers = payload.get("providers")
+    if not isinstance(raw_providers, list):
+        return []
+
+    accounts: list[dict[str, Any]] = []
+    for provider_payload in raw_providers:
+        if not isinstance(provider_payload, dict):
+            continue
+        raw_accounts = provider_payload.get("accounts")
+        if not isinstance(raw_accounts, list):
+            continue
+        accounts.extend(account for account in raw_accounts if isinstance(account, dict))
+    return accounts
+
+
+def _chat_account_usage_speed_point(
+    account: dict[str, Any],
+    limit_payload: dict[str, Any],
+    *,
+    recorded_at: datetime.datetime,
+) -> tuple[AccountUsageSpeedKey, AccountUsageSpeedPoint] | None:
+    key = _chat_account_usage_speed_key(account, limit_payload)
+    if key is None:
+        return None
+
+    try:
+        usage_over_time = _usage_limit_usage_over_time_data(limit_payload)
+    except CliError:
+        return None
+    if usage_over_time is None or not isinstance(usage_over_time.used_percent, int):
+        return None
+
+    return (
+        key,
+        AccountUsageSpeedPoint(
+            recorded_at=recorded_at,
+            used_percent=usage_over_time.used_percent,
+            period_started_at=usage_over_time.period_started_at,
+            period_ends_at=usage_over_time.period_ends_at,
+            resets_at=usage_over_time.resets_at,
+            period_duration_mins=usage_over_time.period_duration_mins,
+        ),
+    )
+
+
+def _chat_account_usage_speed_key(
+    account: dict[str, Any],
+    limit_payload: dict[str, Any],
+) -> AccountUsageSpeedKey | None:
+    account_id = _string_or_none(account.get("id"))
+    limit_class = _usage_limit_class(limit_payload)
+    limit_name = _usage_limit_name(limit_payload)
+    if account_id is None or limit_class is None or limit_name is None:
+        return None
+
+    return AccountUsageSpeedKey(
+        provider=_string_or_none(account.get("provider")),
+        account_id=account_id,
+        limit_class=limit_class,
+        limit_name=limit_name,
+    )
+
+
+def _chat_account_usage_speed_stats(
+    points: list[AccountUsageSpeedPoint],
+    *,
+    window_minutes: int,
+) -> AccountUsageSpeedStats | None:
+    if len(points) < 2:
+        return None
+
+    speed_values: list[float] = []
+    previous_point: AccountUsageSpeedPoint | None = None
+    for point in sorted(points, key=lambda item: item.recorded_at):
+        if previous_point is None:
+            previous_point = point
+            continue
+
+        delta_minutes = (point.recorded_at - previous_point.recorded_at).total_seconds() / 60.0
+        delta_used_percent = point.used_percent - previous_point.used_percent
+        if (
+            delta_minutes > 0
+            and delta_used_percent >= 0
+            and point.period_signature == previous_point.period_signature
+        ):
+            speed_values.append(delta_used_percent / delta_minutes)
+        previous_point = point
+
+    if len(speed_values) < CHAT_ACCOUNT_USAGE_SPEED_MIN_INTERVALS:
+        return None
+
+    average = sum(speed_values) / len(speed_values)
+    return AccountUsageSpeedStats(
+        average_percent_per_minute=average,
+        max_percent_per_minute=max(speed_values),
+        interval_count=len(speed_values),
+        window_minutes=window_minutes,
+    )
+
+
+def _normalize_usage_speed_datetime_or_none(
+    value: datetime.datetime | None,
+) -> datetime.datetime | None:
+    if value is None:
+        return None
+    return _normalize_usage_speed_datetime(value)
+
+
+def _normalize_usage_speed_datetime(value: datetime.datetime) -> datetime.datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.timezone.utc)
+    return value.astimezone(datetime.timezone.utc)
 
 
 def _format_usage_limit_reset_at(limit_payload: dict[str, Any]) -> str | None:

@@ -130,6 +130,46 @@ def _usage_over_time_data(limit_payload: dict[str, object]) -> dict[str, object]
     return payload
 
 
+def _usage_stats_payload(
+    *,
+    recorded_at: str,
+    used_percent: int,
+    period_started_at: str = "2026-03-25T09:00:00Z",
+    period_ends_at: str = "2026-03-25T14:00:00Z",
+    resets_at: str = "2026-03-25T14:00:00Z",
+) -> dict[str, object]:
+    return {
+        "status": "ok",
+        "command": "agent accounts stats",
+        "recorded_at": recorded_at,
+        "providers": [
+            {
+                "provider": "codex",
+                "accounts": [
+                    {
+                        "id": "codex-tk",
+                        "label": "Codex tk",
+                        "provider": "codex",
+                        "usage": {
+                            "limits": [
+                                _usage_over_time_limit_payload(
+                                    limit_name="burst",
+                                    limit_label="Burst",
+                                    used_percent=used_percent,
+                                    period_started_at=period_started_at,
+                                    period_ends_at=period_ends_at,
+                                    period_duration_mins=300,
+                                    resets_at=resets_at,
+                                )
+                            ]
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+
 def _write_global_config(
     path: Path,
     *,
@@ -2139,6 +2179,241 @@ def test_chat_accounts_stats_supports_compact_usage_output(
     assert "✺ claude-main (Claude main):" in output
     assert "  usage | unavailable" in output
     assert "     | live usage refresh disabled; pass --refresh-usage or set live_usage_refresh=true" in output
+
+
+def test_format_chat_account_stats_usage_omits_speed_without_history() -> None:
+    output = chat_accounts.format_chat_account_stats_usage(
+        _usage_stats_payload(
+            recorded_at="2026-03-25T12:00:00Z",
+            used_percent=19,
+        )
+    )
+
+    assert "  usage/time | 19% / 60% = 0.3 | Burst" in output
+    assert "      resets |" in output
+    assert "       speed |" not in output
+
+
+def test_format_chat_account_stats_usage_shows_average_speed_from_history_window(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    current_payload: dict[str, object] | None = None
+    for recorded_at, used_percent in (
+        ("2026-03-25T11:20:00Z", 1),
+        ("2026-03-25T11:35:00Z", 10),
+        ("2026-03-25T11:45:00Z", 16),
+        ("2026-03-25T12:00:00Z", 19),
+    ):
+        payload = _usage_stats_payload(recorded_at=recorded_at, used_percent=used_percent)
+        payload["history"] = chat_accounts._persist_chat_account_stats_payload(payload)
+        current_payload = payload
+
+    assert current_payload is not None
+    output = chat_accounts.format_chat_account_stats_usage(current_payload)
+
+    assert "       speed | 30m, n=2 | 0.40[0.60] %/min" in output
+
+
+def test_format_chat_account_stats_usage_stops_history_scan_after_window(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    current_payload: dict[str, object] | None = None
+    old_timestamps = [
+        f"2026-03-25T{hour:02d}:{minute:02d}:00Z"
+        for hour in range(9, 12)
+        for minute in range(0, 60, 5)
+        if (hour, minute) <= (11, 20)
+    ]
+    for recorded_at in old_timestamps:
+        payload = _usage_stats_payload(recorded_at=recorded_at, used_percent=1)
+        payload["history"] = chat_accounts._persist_chat_account_stats_payload(payload)
+
+    for recorded_at, used_percent in (
+        ("2026-03-25T11:35:00Z", 10),
+        ("2026-03-25T11:45:00Z", 16),
+        ("2026-03-25T12:00:00Z", 19),
+    ):
+        current_payload = _usage_stats_payload(recorded_at=recorded_at, used_percent=used_percent)
+        current_payload["history"] = chat_accounts._persist_chat_account_stats_payload(current_payload)
+
+    assert current_payload is not None
+    parsed_line_count = 0
+    original_json_loads = chat_accounts.json.loads
+
+    def counting_json_loads(value: str, *args: object, **kwargs: object) -> object:
+        nonlocal parsed_line_count
+        parsed_line_count += 1
+        return original_json_loads(value, *args, **kwargs)
+
+    monkeypatch.setattr(chat_accounts.json, "loads", counting_json_loads)
+
+    output = chat_accounts.format_chat_account_stats_usage(current_payload)
+
+    assert "       speed | 30m, n=2 | 0.40[0.60] %/min" in output
+    assert parsed_line_count <= 4
+    assert parsed_line_count < len(old_timestamps)
+
+
+def test_format_chat_account_stats_usage_ignores_previous_period_speed_after_reset(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    current_payload: dict[str, object] | None = None
+    period_a = {
+        "period_started_at": "2026-03-25T06:30:00Z",
+        "period_ends_at": "2026-03-25T11:45:00Z",
+        "resets_at": "2026-03-25T11:45:00Z",
+    }
+    period_b = {
+        "period_started_at": "2026-03-25T11:45:00Z",
+        "period_ends_at": "2026-03-25T16:45:00Z",
+        "resets_at": "2026-03-25T16:45:00Z",
+    }
+    for recorded_at, used_percent, period in (
+        ("2026-03-25T11:30:00Z", 50, period_a),
+        ("2026-03-25T11:35:00Z", 55, period_a),
+        ("2026-03-25T11:40:00Z", 60, period_a),
+        ("2026-03-25T11:50:00Z", 1, period_b),
+        ("2026-03-25T12:00:00Z", 4, period_b),
+    ):
+        payload = _usage_stats_payload(
+            recorded_at=recorded_at,
+            used_percent=used_percent,
+            **period,
+        )
+        payload["history"] = chat_accounts._persist_chat_account_stats_payload(payload)
+        current_payload = payload
+
+    assert current_payload is not None
+    output = chat_accounts.format_chat_account_stats_usage(current_payload)
+
+    assert "       speed |" not in output
+
+
+def test_format_chat_account_stats_usage_suppresses_zero_speed_history(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    current_payload: dict[str, object] | None = None
+    for recorded_at in (
+        "2026-03-25T11:30:00Z",
+        "2026-03-25T11:45:00Z",
+        "2026-03-25T12:00:00Z",
+    ):
+        payload = _usage_stats_payload(recorded_at=recorded_at, used_percent=19)
+        payload["history"] = chat_accounts._persist_chat_account_stats_payload(payload)
+        current_payload = payload
+
+    assert current_payload is not None
+    output = chat_accounts.format_chat_account_stats_usage(current_payload)
+
+    assert "      resets |" in output
+    assert "       speed |" not in output
+
+
+def test_format_chat_account_stats_usage_sorts_accounts_by_highest_speed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    def payload(recorded_at: str, fast_used: int, slow_used: int) -> dict[str, object]:
+        return {
+            "status": "ok",
+            "command": "agent accounts stats",
+            "recorded_at": recorded_at,
+            "providers": [
+                {
+                    "provider": "codex",
+                    "accounts": [
+                        {
+                            "id": "slow-high-ratio",
+                            "label": "Slow high ratio",
+                            "provider": "codex",
+                            "usage": {
+                                "limits": [
+                                    _usage_over_time_limit_payload(
+                                        limit_name="burst",
+                                        limit_label="Burst",
+                                        used_percent=slow_used,
+                                        period_started_at="2026-03-25T09:00:00Z",
+                                        period_ends_at="2026-03-25T14:00:00Z",
+                                        period_duration_mins=300,
+                                        resets_at="2026-03-25T14:00:00Z",
+                                    )
+                                ]
+                            },
+                        },
+                        {
+                            "id": "fast-low-ratio",
+                            "label": "Fast low ratio",
+                            "provider": "copilot-cli",
+                            "usage": {
+                                "limits": [
+                                    _usage_over_time_limit_payload(
+                                        limit_name="burst",
+                                        limit_label="Burst",
+                                        used_percent=fast_used,
+                                        period_started_at="2026-03-25T09:00:00Z",
+                                        period_ends_at="2026-03-25T14:00:00Z",
+                                        period_duration_mins=300,
+                                        resets_at="2026-03-25T14:00:00Z",
+                                    )
+                                ]
+                            },
+                        },
+                    ],
+                }
+            ],
+        }
+
+    current_payload: dict[str, object] | None = None
+    for recorded_at, fast_used, slow_used in (
+        ("2026-03-25T11:40:00Z", 0, 76),
+        ("2026-03-25T11:50:00Z", 10, 78),
+        ("2026-03-25T12:00:00Z", 20, 80),
+    ):
+        current_payload = payload(recorded_at, fast_used, slow_used)
+        current_payload["history"] = chat_accounts._persist_chat_account_stats_payload(current_payload)
+
+    assert current_payload is not None
+    output = chat_accounts.format_chat_account_stats_usage(current_payload)
+
+    assert output.index("fast-low-ratio (Fast low ratio):") < output.index(
+        "slow-high-ratio (Slow high ratio):"
+    )
+    assert "       speed | 30m, n=2 | 1.00[1.00] %/min" in output
+    assert "       speed | 30m, n=2 | 0.20[0.20] %/min" in output
 
 
 def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> None:
