@@ -4,6 +4,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import shutil
+import stat
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +16,6 @@ from agentos._core.errors import CliError
 from agentos._core.git_ops import git_has_staged_changes, run_git
 from agentos._core.project import agentos_home_dir
 from agentos.chat.core import (
-    _backing_artifact_is_extractable,
     _build_common_session_stats,
     _build_provider_context,
     _build_provider_session_stats,
@@ -25,7 +25,6 @@ from agentos.chat.core import (
     _format_resolved_session_choices,
     _format_stats_timestamp,
     _provider_family_for_name,
-    _session_is_extractable,
     _sort_sessions,
 )
 from agentos.chat.extractors import extract_chat_session
@@ -103,6 +102,7 @@ class ChatlasArchiveResult:
 @dataclass(frozen=True)
 class ChatlasNormalizedSessionMaterialization:
     sessions: list[dict[str, Any]]
+    source_signatures: dict[str, dict[str, object]]
     normalized_session_cache: dict[str, dict[str, object]]
 
 
@@ -298,6 +298,7 @@ def chatlas_update(
         run=lambda: _materialize_derived_transcripts(
             chatlas_root=chatlas_root_path,
             normalized_sessions=normalized_sessions,
+            normalized_source_signatures=normalized_materialization.source_signatures,
             transcript_cache=update_caches.transcripts,
             transcript_cache_enabled=transcript_cache_enabled,
         ),
@@ -1202,10 +1203,12 @@ def _materialize_normalized_sessions(
         provider_instances=provider_instances,
     )
     normalized_sessions: list[dict[str, Any]] = []
+    source_signatures: dict[str, dict[str, object]] = {}
     next_normalized_session_cache: dict[str, dict[str, object]] = {}
     for session in discovered_sessions:
         cache_key = _normalized_session_cache_key(session)
         source_signature = _normalized_session_source_signature(session)
+        source_signatures[cache_key] = source_signature
         cached_entry = normalized_session_cache.get(cache_key)
         if (
             normalized_cache_enabled
@@ -1232,6 +1235,7 @@ def _materialize_normalized_sessions(
     write_text_if_changed(normalized_path, rendered)
     return ChatlasNormalizedSessionMaterialization(
         sessions=normalized_sessions,
+        source_signatures=source_signatures,
         normalized_session_cache=next_normalized_session_cache,
     )
 
@@ -1240,6 +1244,7 @@ def _materialize_derived_transcripts(
     *,
     chatlas_root: Path,
     normalized_sessions: list[dict[str, Any]],
+    normalized_source_signatures: dict[str, dict[str, object]],
     transcript_cache: dict[str, dict[str, object]],
     transcript_cache_enabled: bool,
 ) -> ChatlasDerivedTranscriptMaterialization:
@@ -1249,18 +1254,19 @@ def _materialize_derived_transcripts(
     next_transcript_cache: dict[str, dict[str, object]] = {}
 
     for session in normalized_sessions:
-        if not _session_has_exportable_transcript(session):
-            continue
-        artifact_path = _primary_backing_artifact_path(session)
-        if artifact_path is None:
-            continue
+        transcript_cache_key, jsonl_path, markdown_path = _derived_transcript_cache_key_and_paths(
+            chatlas_root,
+            session,
+        )
         try:
-            source_signature = _derived_transcript_source_signature(artifact_path)
+            source_signature = _derived_transcript_source_signature_for_session(
+                session,
+                normalized_source_signature=normalized_source_signatures.get(transcript_cache_key),
+            )
         except (FileNotFoundError, OSError):
             continue
-        transcript_cache_key = _derived_transcript_cache_key(session)
-        jsonl_path = _derived_transcript_path(chatlas_root, session, output_format="jsonl")
-        markdown_path = _derived_transcript_path(chatlas_root, session, output_format="markdown")
+        if source_signature is None:
+            continue
         if (
             transcript_cache_enabled
             and _derived_transcript_cache_entry_matches(
@@ -1282,15 +1288,26 @@ def _materialize_derived_transcripts(
         except (CliError, OSError, json.JSONDecodeError):
             continue
         transcript_session_count += 1
+        output_paths = {
+            "jsonl": jsonl_path,
+            "markdown": markdown_path,
+        }
         for output_format, rendered_output in rendered_outputs.items():
-            transcript_path = _derived_transcript_path(chatlas_root, session, output_format=output_format)
+            transcript_path = output_paths[output_format]
             transcript_path.parent.mkdir(parents=True, exist_ok=True)
             write_text_if_changed(transcript_path, rendered_output)
             expected_paths.add(transcript_path)
         next_transcript_cache[transcript_cache_key] = source_signature
 
-    _prune_stale_files(root=transcript_root, expected_paths=expected_paths)
-    _prune_empty_dirs(transcript_root, stop=transcript_root)
+    if transcript_cache_enabled and transcript_cache:
+        deleted_paths = _prune_stale_derived_transcripts(
+            chatlas_root=chatlas_root,
+            stale_cache_keys=set(transcript_cache) - set(next_transcript_cache),
+        )
+        _prune_empty_parent_dirs(deleted_paths, stop=transcript_root)
+    else:
+        _prune_stale_files(root=transcript_root, expected_paths=expected_paths)
+        _prune_empty_dirs(transcript_root, stop=transcript_root)
     return ChatlasDerivedTranscriptMaterialization(
         session_count=transcript_session_count,
         transcript_cache=next_transcript_cache,
@@ -1501,18 +1518,34 @@ def _derived_transcript_exists(chatlas_root: Path, session: dict[str, Any], *, o
 
 
 def _derived_transcript_cache_key(session: dict[str, Any]) -> str:
-    provider = _session_fs_component(_string_or_none(session.get("provider")) or "unknown")
-    fingerprint = _session_fs_component(_string_or_none(session.get("provider_instance_fingerprint")) or "unknown")
-    session_id = _session_fs_component(_string_or_none(session.get("session_id")) or "unknown")
+    provider, fingerprint, session_id = _derived_transcript_session_path_components(session)
     return f"{provider}/{fingerprint}/{session_id}"
 
 
 def _derived_transcript_path(chatlas_root: Path, session: dict[str, Any], *, output_format: str) -> Path:
     suffix = ".md" if output_format == "markdown" else ".jsonl"
+    provider, fingerprint, session_id = _derived_transcript_session_path_components(session)
+    return chatlas_root / _DERIVED_TRANSCRIPTS_RELATIVE_ROOT / provider / fingerprint / f"{session_id}{suffix}"
+
+
+def _derived_transcript_cache_key_and_paths(
+    chatlas_root: Path,
+    session: dict[str, Any],
+) -> tuple[str, Path, Path]:
+    provider, fingerprint, session_id = _derived_transcript_session_path_components(session)
+    base_dir = chatlas_root / _DERIVED_TRANSCRIPTS_RELATIVE_ROOT / provider / fingerprint
+    return (
+        f"{provider}/{fingerprint}/{session_id}",
+        base_dir / f"{session_id}.jsonl",
+        base_dir / f"{session_id}.md",
+    )
+
+
+def _derived_transcript_session_path_components(session: dict[str, Any]) -> tuple[str, str, str]:
     provider = _session_fs_component(_string_or_none(session.get("provider")) or "unknown")
     fingerprint = _session_fs_component(_string_or_none(session.get("provider_instance_fingerprint")) or "unknown")
     session_id = _session_fs_component(_string_or_none(session.get("session_id")) or "unknown")
-    return chatlas_root / _DERIVED_TRANSCRIPTS_RELATIVE_ROOT / provider / fingerprint / f"{session_id}{suffix}"
+    return provider, fingerprint, session_id
 
 
 def _normalized_session_cache_key(session: ChatSession) -> str:
@@ -1533,7 +1566,7 @@ def _normalized_session_source_signature(session: ChatSession) -> dict[str, obje
         "display_name": session.display_name(),
         "display_name_field": session.display_name_field(),
         "updated_at": _format_stats_timestamp(session.sort_timestamp()),
-        "extractable": _session_is_extractable(session),
+        "extractable": _chatlas_session_is_probably_extractable(session, backing_artifacts),
         "native": _normalized_session_native_payload(session),
         "primary_backing_artifact": (
             None
@@ -1544,6 +1577,7 @@ def _normalized_session_source_signature(session: ChatSession) -> dict[str, obje
             _normalized_session_backing_artifact_signature(session, artifact)
             for artifact in backing_artifacts
         ],
+        "signature_version": 2,
         "derivation_version": _NORMALIZED_SESSION_DERIVATION_VERSION,
     }
 
@@ -1558,11 +1592,83 @@ def _normalized_session_backing_artifact_signature(
     session: ChatSession,
     artifact,
 ) -> dict[str, object]:
-    signature = artifact.summary(
-        extractable=_backing_artifact_is_extractable(session, artifact),
-    )
-    signature["source_signature"] = _chatlas_cache_path_signature(artifact.path)
+    source_signature = _chatlas_cache_path_metadata_signature(artifact.path)
+    signature = {
+        "role": artifact.role,
+        "storage_kind": _normalized_backing_artifact_storage_kind(
+            artifact,
+            source_signature=source_signature,
+        ),
+        "path": str(artifact.path),
+        "locator": artifact.locator,
+        "extractable": _chatlas_backing_artifact_is_probably_extractable(
+            session,
+            artifact,
+            source_signature=source_signature,
+        ),
+    }
+    signature["source_signature"] = source_signature
     return signature
+
+
+def _normalized_backing_artifact_storage_kind(
+    artifact,
+    *,
+    source_signature: dict[str, object],
+) -> str:
+    if artifact.storage_kind is not None:
+        return str(artifact.storage_kind)
+    if isinstance(source_signature.get("size"), int):
+        return "file"
+    storage_kind = source_signature.get("storage_kind")
+    if isinstance(storage_kind, str) and storage_kind:
+        return storage_kind
+    return "other"
+
+
+def _chatlas_backing_artifact_is_probably_extractable(
+    session: ChatSession,
+    artifact,
+    *,
+    source_signature: dict[str, object],
+) -> bool:
+    if not bool(source_signature.get("exists")):
+        return False
+    if not isinstance(source_signature.get("size"), int):
+        return False
+
+    path = artifact.path
+    if session.provider == "claude-code":
+        return artifact.role == "transcript" and path.suffix in {".json", ".jsonl"}
+    if session.provider == "codex":
+        return artifact.role == "transcript" and path.suffix == ".jsonl" and path.name.startswith("rollout-")
+    if session.provider == "copilot-cli":
+        return artifact.role == "transcript" and path.suffix == ".jsonl"
+    if session.provider == "gemini-cli":
+        return artifact.role == "transcript" and path.suffix == ".json"
+    if session.provider == "pi":
+        return artifact.role == "transcript" and path.suffix == ".jsonl"
+    if session.provider == "openclaw":
+        return artifact.role == "transcript" and path.suffix == ".jsonl"
+    if session.provider == "opencode":
+        return artifact.role in {"session_diff", "sqlite_session_row"} and (
+            path.suffix == ".json" or path.name == "opencode.db"
+        )
+    return False
+
+
+def _chatlas_session_is_probably_extractable(
+    session: ChatSession,
+    backing_artifacts: tuple[BackingArtifact, ...],
+) -> bool:
+    return any(
+        _chatlas_backing_artifact_is_probably_extractable(
+            session,
+            artifact,
+            source_signature=_chatlas_cache_path_metadata_signature(artifact.path),
+        )
+        for artifact in backing_artifacts
+    )
 
 
 def _session_fs_component(value: str) -> str:
@@ -2148,26 +2254,33 @@ def _load_derived_transcript_cache(chatlas_root: Path) -> dict[str, dict[str, ob
         size = raw_entry.get("size")
         mtime_ns = raw_entry.get("mtime_ns")
         tail_sha256 = raw_entry.get("tail_sha256")
+        signature_version = raw_entry.get("signature_version")
         derivation_version = raw_entry.get("derivation_version")
         if (
             not isinstance(source_path, str)
             or not source_path.strip()
             or not isinstance(size, int)
             or not isinstance(mtime_ns, int)
-            or not isinstance(tail_sha256, str)
-            or not tail_sha256
             or not isinstance(derivation_version, int)
         ):
             continue
         if size < 0 or mtime_ns < 0:
             continue
-        sessions[session_key] = {
+        if tail_sha256 is not None and (not isinstance(tail_sha256, str) or not tail_sha256):
+            continue
+        if signature_version is not None and not isinstance(signature_version, int):
+            continue
+        entry: dict[str, object] = {
             "source_path": source_path,
             "size": size,
             "mtime_ns": mtime_ns,
-            "tail_sha256": tail_sha256,
             "derivation_version": derivation_version,
         }
+        if tail_sha256 is not None:
+            entry["tail_sha256"] = tail_sha256
+        if signature_version is not None:
+            entry["signature_version"] = signature_version
+        sessions[session_key] = entry
     return sessions
 
 
@@ -2177,16 +2290,49 @@ def _write_derived_transcript_cache(chatlas_root: Path, transcript_cache: dict[s
         cache_class="agentos.chatlas.derived_transcript_cache",
         entries_key="sessions",
         entries={
-            session_key: {
-                "source_path": str(entry["source_path"]),
-                "size": int(entry["size"]),
-                "mtime_ns": int(entry["mtime_ns"]),
-                "tail_sha256": str(entry["tail_sha256"]),
-                "derivation_version": int(entry["derivation_version"]),
-            }
+            session_key: _serialize_derived_transcript_cache_entry(entry)
             for session_key, entry in sorted(transcript_cache.items())
         },
     )
+
+
+def _serialize_derived_transcript_cache_entry(entry: dict[str, object]) -> dict[str, object]:
+    payload = {
+        "source_path": str(entry["source_path"]),
+        "size": int(entry["size"]),
+        "mtime_ns": int(entry["mtime_ns"]),
+        "derivation_version": int(entry["derivation_version"]),
+    }
+    tail_sha256 = entry.get("tail_sha256")
+    if tail_sha256 is not None:
+        payload["tail_sha256"] = str(tail_sha256)
+    signature_version = entry.get("signature_version")
+    if signature_version is not None:
+        payload["signature_version"] = int(signature_version)
+    return payload
+
+
+def _chatlas_cache_path_metadata_signature(path: Path) -> dict[str, object]:
+    signature: dict[str, object] = {
+        "path": str(path),
+    }
+    try:
+        source_stat = path.stat()
+    except OSError:
+        signature["exists"] = False
+        return signature
+
+    signature["exists"] = True
+    signature["mtime_ns"] = int(source_stat.st_mtime_ns)
+    mode = source_stat.st_mode
+    if stat.S_ISREG(mode):
+        signature["size"] = int(source_stat.st_size)
+        return signature
+    if stat.S_ISDIR(mode):
+        signature["storage_kind"] = "directory"
+        return signature
+    signature["storage_kind"] = "other"
+    return signature
 
 
 def _chatlas_cache_path_signature(path: Path) -> dict[str, object]:
@@ -2232,15 +2378,154 @@ def _derived_transcript_source_signature(artifact_path: Path) -> dict[str, objec
     }
 
 
+def _derived_transcript_source_signature_for_session(
+    session: dict[str, Any],
+    *,
+    normalized_source_signature: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if not bool(session.get("extractable")):
+        return None
+
+    source_signature = _derived_transcript_source_signature_from_normalized_source(
+        normalized_source_signature,
+    )
+    if source_signature is not None:
+        return source_signature
+
+    artifact_path = _primary_backing_artifact_path(session)
+    if artifact_path is None:
+        return None
+    return _derived_transcript_source_signature(artifact_path)
+
+
+def _derived_transcript_source_signature_from_normalized_source(
+    normalized_source_signature: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if not isinstance(normalized_source_signature, dict):
+        return None
+
+    primary_artifact = normalized_source_signature.get("primary_backing_artifact")
+    if not isinstance(primary_artifact, dict):
+        return None
+
+    path_signature = primary_artifact.get("source_signature")
+    if not isinstance(path_signature, dict):
+        return None
+
+    source_path = path_signature.get("path")
+    size = path_signature.get("size")
+    mtime_ns = path_signature.get("mtime_ns")
+    if (
+        not isinstance(source_path, str)
+        or not source_path.strip()
+        or not bool(path_signature.get("exists"))
+        or not isinstance(size, int)
+        or not isinstance(mtime_ns, int)
+        or size < 0
+        or mtime_ns < 0
+    ):
+        return None
+
+    return {
+        "source_path": source_path,
+        "size": size,
+        "mtime_ns": mtime_ns,
+        "signature_version": 2,
+        "derivation_version": _DERIVED_TRANSCRIPT_DERIVATION_VERSION,
+    }
+
+
 def _normalized_session_cache_entry_matches(
     cached_entry: dict[str, object] | None,
     source_signature: dict[str, object],
 ) -> bool:
     if cached_entry is None:
         return False
+    cached_session = cached_entry.get("session")
+    if not isinstance(cached_session, dict):
+        return False
+    cached_source_signature = cached_entry.get("source_signature")
     return (
-        cached_entry.get("source_signature") == source_signature
-        and isinstance(cached_entry.get("session"), dict)
+        cached_source_signature == source_signature
+        or _legacy_normalized_session_cache_entry_matches(
+            cached_source_signature,
+            source_signature,
+        )
+    )
+
+
+def _legacy_normalized_session_cache_entry_matches(
+    cached_source_signature: object,
+    source_signature: dict[str, object],
+) -> bool:
+    if not isinstance(cached_source_signature, dict):
+        return False
+
+    comparable_fields = (
+        "provider",
+        "instance",
+        "provider_instance_fingerprint",
+        "session_id",
+        "display_name",
+        "display_name_field",
+        "updated_at",
+        "extractable",
+        "native",
+        "derivation_version",
+    )
+    for field_name in comparable_fields:
+        if cached_source_signature.get(field_name) != source_signature.get(field_name):
+            return False
+
+    if not _normalized_session_artifact_signature_matches(
+        cached_source_signature.get("primary_backing_artifact"),
+        source_signature.get("primary_backing_artifact"),
+    ):
+        return False
+
+    cached_artifacts = cached_source_signature.get("backing_artifacts")
+    source_artifacts = source_signature.get("backing_artifacts")
+    if not isinstance(cached_artifacts, list) or not isinstance(source_artifacts, list):
+        return cached_artifacts == source_artifacts
+    if len(cached_artifacts) != len(source_artifacts):
+        return False
+    return all(
+        _normalized_session_artifact_signature_matches(cached_artifact, source_artifact)
+        for cached_artifact, source_artifact in zip(cached_artifacts, source_artifacts)
+    )
+
+
+def _normalized_session_artifact_signature_matches(
+    cached_artifact: object,
+    source_artifact: object,
+) -> bool:
+    if cached_artifact is None or source_artifact is None:
+        return cached_artifact is None and source_artifact is None
+    if not isinstance(cached_artifact, dict) or not isinstance(source_artifact, dict):
+        return False
+
+    comparable_fields = ("role", "storage_kind", "path", "locator", "extractable")
+    for field_name in comparable_fields:
+        if cached_artifact.get(field_name) != source_artifact.get(field_name):
+            return False
+
+    return _normalized_session_path_signature_matches(
+        cached_artifact.get("source_signature"),
+        source_artifact.get("source_signature"),
+    )
+
+
+def _normalized_session_path_signature_matches(
+    cached_path_signature: object,
+    source_path_signature: object,
+) -> bool:
+    if not isinstance(cached_path_signature, dict) or not isinstance(source_path_signature, dict):
+        return cached_path_signature == source_path_signature
+
+    comparable_fields = ("path", "exists", "mtime_ns", "size", "storage_kind")
+    return all(
+        cached_path_signature.get(field_name) == source_path_signature.get(field_name)
+        for field_name in comparable_fields
     )
 
 
@@ -2250,13 +2535,53 @@ def _derived_transcript_cache_entry_matches(
 ) -> bool:
     if cached_entry is None:
         return False
-    return (
-        cached_entry.get("source_path") == source_signature["source_path"]
-        and cached_entry.get("size") == source_signature["size"]
-        and cached_entry.get("mtime_ns") == source_signature["mtime_ns"]
-        and cached_entry.get("tail_sha256") == source_signature["tail_sha256"]
-        and cached_entry.get("derivation_version") == source_signature["derivation_version"]
-    )
+    comparable_fields = ("source_path", "size", "mtime_ns", "derivation_version")
+    for field_name in comparable_fields:
+        if cached_entry.get(field_name) != source_signature.get(field_name):
+            return False
+
+    source_tail_sha256 = source_signature.get("tail_sha256")
+    if source_tail_sha256 is not None:
+        return cached_entry.get("tail_sha256") == source_tail_sha256
+    return True
+
+
+def _prune_stale_derived_transcripts(
+    *,
+    chatlas_root: Path,
+    stale_cache_keys: set[str],
+) -> tuple[Path, ...]:
+    deleted_paths: list[Path] = []
+    for cache_key in stale_cache_keys:
+        for path in _derived_transcript_paths_for_cache_key(chatlas_root, cache_key):
+            if not path.is_file():
+                continue
+            path.unlink()
+            deleted_paths.append(path)
+    return tuple(deleted_paths)
+
+
+def _derived_transcript_paths_for_cache_key(chatlas_root: Path, cache_key: str) -> tuple[Path, ...]:
+    parts = cache_key.split("/")
+    if len(parts) != 3 or any(not part for part in parts):
+        return ()
+
+    provider, fingerprint, session_id = parts
+    base_dir = chatlas_root / _DERIVED_TRANSCRIPTS_RELATIVE_ROOT / provider / fingerprint
+    return (base_dir / f"{session_id}.jsonl", base_dir / f"{session_id}.md")
+
+
+def _prune_empty_parent_dirs(paths: tuple[Path, ...], *, stop: Path) -> None:
+    for path in sorted(paths, key=lambda candidate: len(candidate.parts), reverse=True):
+        current = path.parent
+        while current != stop and stop in current.parents:
+            if not current.exists():
+                current = current.parent
+                continue
+            if any(current.iterdir()):
+                break
+            current.rmdir()
+            current = current.parent
 
 
 def _prune_stale_files(*, root: Path, expected_paths: set[Path]) -> None:

@@ -1416,9 +1416,13 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
     def fail_render(*args, **kwargs):
         raise AssertionError("expected transcript cache to bypass transcript rendering")
 
+    def fail_source_hash(*args, **kwargs):
+        raise AssertionError("expected transcript cache to reuse normalized source metadata")
+
     monkeypatch.setattr(chatlas_raw, "_chatlas_archive_files_match", fail_match)
     monkeypatch.setattr(chatlas_core, "_normalized_session_record", fail_normalized_record)
     monkeypatch.setattr(chatlas_core, "_render_transcript", fail_render)
+    monkeypatch.setattr(chatlas_core, "_chatlas_cache_path_signature", fail_source_hash)
 
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -1429,6 +1433,106 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
     assert _git_output(chatlas_root, "status", "--porcelain") == ""
+
+
+def test_chatlas_normalized_cache_matches_legacy_rich_artifact_signatures() -> None:
+    from agentos.chatlas import core as chatlas_core
+
+    artifact_signature = {
+        "role": "transcript",
+        "storage_kind": "file",
+        "path": "/tmp/chatlas/session/events.jsonl",
+        "locator": None,
+        "extractable": True,
+        "source_signature": {
+            "path": "/tmp/chatlas/session/events.jsonl",
+            "exists": True,
+            "mtime_ns": 42,
+            "size": 256,
+        },
+    }
+    source_signature = {
+        "provider": "copilot-cli",
+        "instance": "copilot-main",
+        "provider_instance_fingerprint": "fingerprint",
+        "session_id": "session-a",
+        "display_name": None,
+        "display_name_field": None,
+        "updated_at": "2026-04-21T13:00:00.000Z",
+        "extractable": True,
+        "native": {},
+        "primary_backing_artifact": artifact_signature,
+        "backing_artifacts": [artifact_signature],
+        "signature_version": 2,
+        "derivation_version": chatlas_core._NORMALIZED_SESSION_DERIVATION_VERSION,
+    }
+    legacy_artifact_signature = {
+        **artifact_signature,
+        "source_signature": {
+            **artifact_signature["source_signature"],
+            "tail_sha256": "legacy-rich-tail-hash",
+        },
+    }
+    legacy_source_signature = {
+        key: value
+        for key, value in source_signature.items()
+        if key != "signature_version"
+    }
+    legacy_source_signature["primary_backing_artifact"] = legacy_artifact_signature
+    legacy_source_signature["backing_artifacts"] = [legacy_artifact_signature]
+
+    assert chatlas_core._normalized_session_cache_entry_matches(
+        {
+            "source_signature": legacy_source_signature,
+            "session": {
+                "provider": "copilot-cli",
+                "session_id": "session-a",
+            },
+        },
+        source_signature,
+    )
+
+
+def test_chatlas_derived_transcript_cache_matches_legacy_rich_signatures() -> None:
+    from agentos.chatlas import core as chatlas_core
+
+    source_signature = {
+        "source_path": "/tmp/chatlas/session/events.jsonl",
+        "size": 256,
+        "mtime_ns": 42,
+        "signature_version": 2,
+        "derivation_version": chatlas_core._DERIVED_TRANSCRIPT_DERIVATION_VERSION,
+    }
+    legacy_cache_entry = {
+        "source_path": "/tmp/chatlas/session/events.jsonl",
+        "size": 256,
+        "mtime_ns": 42,
+        "tail_sha256": "legacy-rich-tail-hash",
+        "derivation_version": chatlas_core._DERIVED_TRANSCRIPT_DERIVATION_VERSION,
+    }
+
+    assert chatlas_core._derived_transcript_cache_entry_matches(
+        legacy_cache_entry,
+        source_signature,
+    )
+
+
+def test_chatlas_derived_transcript_cache_round_trips_metadata_signatures(tmp_path: Path) -> None:
+    from agentos.chatlas import core as chatlas_core
+
+    transcript_cache = {
+        "codex/fingerprint/session-a": {
+            "source_path": "/tmp/chatlas/session/events.jsonl",
+            "size": 256,
+            "mtime_ns": 42,
+            "signature_version": 2,
+            "derivation_version": chatlas_core._DERIVED_TRANSCRIPT_DERIVATION_VERSION,
+        }
+    }
+
+    chatlas_core._write_derived_transcript_cache(tmp_path, transcript_cache)
+
+    assert chatlas_core._load_derived_transcript_cache(tmp_path) == transcript_cache
 
 
 def test_chatlas_update_can_disable_scan_cache(
