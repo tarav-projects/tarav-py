@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import atexit
 import json
+import shutil
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +15,9 @@ from agentos.chat.extractors.common import (
     format_turns_markdown,
     format_unix_ms_timestamp,
 )
+
+_OPENCODE_SQLITE_READ_CACHE: dict[tuple[str, tuple[tuple[str, int, int], ...]], Path] = {}
+_OPENCODE_SQLITE_TEMP_DIRS: list[Path] = []
 
 
 def extract_opencode_chat_session_from_path(
@@ -134,7 +140,7 @@ def _resolve_opencode_db_path(path: Path) -> Path:
 
 def _looks_like_opencode_db(path: Path) -> bool:
     try:
-        connection = sqlite3.connect(str(path))
+        connection = connect_opencode_db(path)
     except sqlite3.Error:
         return False
 
@@ -155,7 +161,7 @@ def load_opencode_session_messages(
     session_id: str,
 ) -> list[dict[str, Any]]:
     try:
-        connection = sqlite3.connect(str(db_path))
+        connection = connect_opencode_db(db_path)
     except sqlite3.Error as exc:
         raise CliError(f"unable to read OpenCode database {db_path}: {exc}") from exc
 
@@ -225,6 +231,61 @@ def _load_opencode_messages(
     return load_opencode_session_messages(db_path=db_path, session_id=session_id)
 
 
+def connect_opencode_db(db_path: Path) -> sqlite3.Connection:
+    return sqlite3.connect(str(_opencode_sqlite_read_path(db_path)))
+
+
+def _opencode_sqlite_read_path(db_path: Path) -> Path:
+    wal_path = _sqlite_sidecar_path(db_path, "wal")
+    if not wal_path.exists():
+        return db_path
+
+    signature = _opencode_sqlite_signature(db_path)
+    cache_key = (str(db_path), signature)
+    cached_path = _OPENCODE_SQLITE_READ_CACHE.get(cache_key)
+    if cached_path is not None and cached_path.is_file():
+        return cached_path
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="agentos-opencode-db-"))
+    _OPENCODE_SQLITE_TEMP_DIRS.append(temp_dir)
+    temp_db_path = temp_dir / db_path.name
+    shutil.copy2(db_path, temp_db_path)
+    shutil.copy2(wal_path, _sqlite_sidecar_path(temp_db_path, "wal"))
+    source_shm_path = _sqlite_sidecar_path(db_path, "shm")
+    if source_shm_path.exists():
+        shutil.copy2(source_shm_path, _sqlite_sidecar_path(temp_db_path, "shm"))
+
+    connection = sqlite3.connect(str(temp_db_path))
+    try:
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        connection.close()
+
+    _OPENCODE_SQLITE_READ_CACHE[cache_key] = temp_db_path
+    return temp_db_path
+
+
+def _opencode_sqlite_signature(db_path: Path) -> tuple[tuple[str, int, int], ...]:
+    entries: list[tuple[str, int, int]] = []
+    for suffix in ("", "wal", "shm"):
+        path = db_path if not suffix else _sqlite_sidecar_path(db_path, suffix)
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        entries.append((suffix, stat.st_mtime_ns, stat.st_size))
+    return tuple(entries)
+
+
+def _sqlite_sidecar_path(db_path: Path, suffix: str) -> Path:
+    return db_path.with_name(f"{db_path.name}-{suffix}")
+
+
+def _cleanup_opencode_sqlite_temp_dirs() -> None:
+    for temp_dir in _OPENCODE_SQLITE_TEMP_DIRS:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def _extract_raw_turns(
     *,
     role: str,
@@ -271,3 +332,6 @@ def _parse_json_object(raw_text: str) -> dict[str, Any] | None:
     if not isinstance(obj, dict):
         return None
     return obj
+
+
+atexit.register(_cleanup_opencode_sqlite_temp_dirs)

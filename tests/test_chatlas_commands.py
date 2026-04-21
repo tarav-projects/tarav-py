@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -289,6 +290,72 @@ def _write_copilot_events(
     ]
     _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
     _set_iso_mtime(path, "2026-04-18T11:00:04.000Z")
+
+
+def _write_opencode_db(
+    path: Path,
+    *,
+    session_id: str,
+    user_text: str = "hello from opencode",
+    assistant_text: str = "opencode reply",
+    keep_wal: bool = False,
+) -> sqlite3.Connection:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(path))
+    if keep_wal:
+        connection.execute("PRAGMA journal_mode=WAL")
+    connection.executescript(
+        """
+        CREATE TABLE session (
+            id text PRIMARY KEY,
+            time_updated integer NOT NULL
+        );
+        CREATE TABLE message (
+            id text PRIMARY KEY,
+            session_id text NOT NULL,
+            time_created integer NOT NULL,
+            data text NOT NULL
+        );
+        CREATE TABLE part (
+            id text PRIMARY KEY,
+            message_id text NOT NULL,
+            session_id text NOT NULL,
+            time_created integer NOT NULL,
+            data text NOT NULL
+        );
+        """
+    )
+    connection.execute(
+        "INSERT INTO session (id, time_updated) VALUES (?, ?)",
+        (session_id, 1776302575996),
+    )
+    messages = [
+        (
+            "msg-user-1",
+            1776302575000,
+            {"role": "user"},
+            "part-user-1",
+            {"type": "text", "text": user_text},
+        ),
+        (
+            "msg-assistant-1",
+            1776302575996,
+            {"role": "assistant"},
+            "part-assistant-1",
+            {"type": "text", "text": assistant_text},
+        ),
+    ]
+    for message_id, timestamp, message_data, part_id, part_data in messages:
+        connection.execute(
+            "INSERT INTO message (id, session_id, time_created, data) VALUES (?, ?, ?, ?)",
+            (message_id, session_id, timestamp, json.dumps(message_data)),
+        )
+        connection.execute(
+            "INSERT INTO part (id, message_id, session_id, time_created, data) VALUES (?, ?, ?, ?, ?)",
+            (part_id, message_id, session_id, timestamp, json.dumps(part_data)),
+        )
+    connection.commit()
+    return connection
 
 
 def _write_global_config(
@@ -792,6 +859,145 @@ def test_chatlas_update_copilot_replaces_archived_instruction_symlink(
     assert archived_instructions.is_file()
     assert not archived_instructions.is_symlink()
     assert archived_instructions.read_text(encoding="utf-8") == "Prefer concise answers.\n"
+
+
+def test_chatlas_update_opencode_uses_raw_retention_policy(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    opencode_home = home / ".local" / "share" / "opencode"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "opencode",
+                "id": "opencode-main",
+                "home": str(opencode_home),
+            }
+        ],
+    )
+
+    session_id = "ses_3388ec792ffegkjQiBxLCMs3MX"
+    db_connection = _write_opencode_db(
+        opencode_home / "opencode.db",
+        session_id=session_id,
+        user_text="retain opencode user input",
+        assistant_text="retain opencode assistant output",
+        keep_wal=True,
+    )
+    _write(
+        opencode_home / "storage" / "session_diff" / f"{session_id}.json",
+        json.dumps(
+            [
+                {
+                    "file": "app.py",
+                    "before": "",
+                    "after": "print('hello')\n",
+                    "additions": 1,
+                    "deletions": 0,
+                    "status": "added",
+                }
+            ]
+        )
+        + "\n",
+    )
+    _write(opencode_home / "tool-output" / "tool_123", "tool result\n")
+
+    _write(
+        opencode_home / "auth.json",
+        json.dumps(
+            {
+                "github-copilot": {
+                    "access": "secret-access",
+                    "refresh": "secret-refresh",
+                }
+            }
+        )
+        + "\n",
+    )
+    _write(opencode_home / "log" / "2026-04-20T000000.log", "runtime token noise\n")
+    _write(opencode_home / "snapshot" / "global" / "objects" / "aa" / "bb", "workspace copy\n")
+    _write(opencode_home / "storage" / "migration", "1")
+    _write(opencode_home / "bin" / "opencode", "runtime binary\n")
+
+    try:
+        assert (opencode_home / "opencode.db-wal").is_file()
+        assert (opencode_home / "opencode.db-shm").is_file()
+        assert main(_chatlas_update_argv("--provider", "opencode")) == 0
+    finally:
+        db_connection.close()
+
+    payload = json.loads(capsys.readouterr().out)
+    chatlas_root = _default_chatlas_root(home)
+    destination_root = _chatlas_home_root(home, opencode_home)
+    instance_payload = payload["instances"][0]
+    expected_includes = [
+        "opencode.db",
+        "opencode.db-wal",
+        "storage/session_diff/*.json",
+        "tool-output/tool_*",
+    ]
+    expected_excludes = [
+        "auth.json",
+        "log/",
+        "snapshot/",
+        "opencode.db-shm",
+        "storage/migration",
+        "bin/",
+    ]
+
+    assert payload["command"] == "chatlas update"
+    assert payload["committed"] is True
+    assert payload["changes_detected"] is True
+    assert payload["synced_instance_count"] == 1
+    assert payload["normalized_session_count"] == 1
+    assert payload["derived_transcript_session_count"] == 1
+    assert instance_payload["instance"] == "opencode-main"
+    assert instance_payload["destination_root"] == str(destination_root)
+    assert instance_payload["includes"] == expected_includes
+    assert instance_payload["excludes"] == expected_excludes
+
+    assert (destination_root / "opencode.db").is_file()
+    assert (destination_root / "opencode.db-wal").is_file()
+    assert (destination_root / "storage" / "session_diff" / f"{session_id}.json").is_file()
+    assert (destination_root / "tool-output" / "tool_123").is_file()
+    assert not (destination_root / "auth.json").exists()
+    assert not (destination_root / "log").exists()
+    assert not (destination_root / "snapshot").exists()
+    assert not (destination_root / "opencode.db-shm").exists()
+    assert not (destination_root / "storage" / "migration").exists()
+    assert not (destination_root / "bin" / "opencode").exists()
+
+    normalized_rows = [
+        json.loads(line)
+        for line in Path(payload["normalized_sessions_path"])
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    assert len(normalized_rows) == 1
+    normalized_row = normalized_rows[0]
+    assert normalized_row["provider"] == "opencode"
+    assert normalized_row["instance"] == "opencode-main"
+    assert normalized_row["session_id"] == session_id
+
+    derived_md_path = (
+        chatlas_root
+        / "derived"
+        / "transcripts"
+        / "opencode"
+        / normalized_row["provider_instance_fingerprint"]
+        / f"{session_id}.md"
+    )
+    transcript_markdown = derived_md_path.read_text(encoding="utf-8")
+    assert "retain opencode user input" in transcript_markdown
+    assert "retain opencode assistant output" in transcript_markdown
 
 
 def test_chatlas_update_second_run_skips_commit_when_unchanged(

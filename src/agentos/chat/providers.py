@@ -275,6 +275,20 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
                 sqlite_db_anchor_roles=("sqlite_db",),
             ),
         ),
+        chatlas_default_includes=(
+            "opencode.db",
+            "opencode.db-wal",
+            "storage/session_diff/*.json",
+            "tool-output/tool_*",
+        ),
+        chatlas_default_excludes=(
+            "auth.json",
+            "log/",
+            "snapshot/",
+            "opencode.db-shm",
+            "storage/migration",
+            "bin/",
+        ),
     ),
     ChatProviderSpec(
         provider_family=require_canonical_provider_family("pi"),
