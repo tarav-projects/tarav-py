@@ -2044,6 +2044,7 @@ def test_chatlas_update_emits_progress_to_stderr(
     assert "[chatlas] normalized sessions: 1 (elapsed=" in captured.err
     assert "[chatlas] derived transcripts: 1 (elapsed=" in captured.err
     assert "[chatlas] derived summaries: brief=1 detailed=1 (elapsed=" in captured.err
+    assert "[chatlas] git finalization: committed (elapsed=" in captured.err
 
 
 def test_chatlas_update_can_disable_progress_output(

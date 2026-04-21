@@ -315,6 +315,7 @@ def chatlas_update(
             normalized_sessions=normalized_sessions,
         ),
     )
+    git_started_at = time.perf_counter()
     _emit_chatlas_progress(progress, "staging dataset changes")
     run_git(chatlas_root_path, "add", "-A")
     dataset_changes_detected = git_has_staged_changes(chatlas_root_path)
@@ -361,6 +362,11 @@ def chatlas_update(
         committed = True
     else:
         _emit_chatlas_progress(progress, "no git commit needed")
+    git_status = "committed" if committed else "no commit needed"
+    _emit_chatlas_progress(
+        progress,
+        f"git finalization: {git_status} (elapsed={_format_wall_clock_elapsed(time.perf_counter() - git_started_at)})",
+    )
 
     update_caches.normalized_sessions = normalized_materialization.normalized_session_cache
     update_caches.transcripts = transcript_materialization.transcript_cache
