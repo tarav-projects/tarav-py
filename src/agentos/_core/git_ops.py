@@ -20,6 +20,22 @@ def run_git(repo_dir: Path, *git_args: str) -> str:
     return result.stdout.strip()
 
 
+def git_has_staged_changes(repo_dir: Path) -> bool:
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet", "--exit-code"],
+        cwd=str(repo_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        return False
+    if result.returncode == 1:
+        return True
+    details = result.stderr.strip() or result.stdout.strip() or "git diff --cached failed"
+    raise CliError(details)
+
+
 def resolve_repo_root(repo_hint: str) -> Path:
     hint_path = Path(repo_hint).expanduser().resolve()
     if hint_path.is_file():

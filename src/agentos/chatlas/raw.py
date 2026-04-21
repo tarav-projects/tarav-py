@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+import fnmatch
 import os
 import shutil
 import tempfile
 import time
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos._core.scan import normalize_rel, should_exclude
+from agentos._core.scan import normalize_rel
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
     ProviderHomeSlot,
@@ -21,6 +24,10 @@ from agentos.chat.providers import (
 from agentos.chatlas._cache_io import load_chatlas_cache_section, write_chatlas_cache_section
 
 _CHATLAS_RAW_SCAN_CACHE_RELATIVE_PATH = Path("cache") / "raw-scan-v1.json"
+_CHATLAS_RAW_DETECTION_BATCH_SIZE = 512
+_CHATLAS_RAW_DETECTION_MIN_FILES = 1024
+_CHATLAS_RAW_DETECTION_MAX_WORKERS = 4
+_CHATLAS_RAW_DETECTION_IN_FLIGHT_MULTIPLIER = 2
 
 
 ChatlasRawScanCacheEntry = dict[str, int]
@@ -175,6 +182,30 @@ class ChatlasHomeMirrorResult:
     archive_stats: dict[str, object]
     scan_cache_entries: ChatlasRawScanCacheHome
     elapsed_seconds: float
+
+
+@dataclass(frozen=True)
+class ChatlasRawCopyCandidate:
+    rel_path_text: str
+    source_path: Path
+    destination_path: Path
+
+
+@dataclass(frozen=True)
+class ChatlasRawDetectionBatchResult:
+    actionable_files: tuple[ChatlasRawCopyCandidate, ...]
+    cache_updates: ChatlasRawScanCacheHome
+    processed_file_count: int
+    unchanged_file_count: int
+    skipped_file_count: int
+    skipped_file_examples: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ChatlasArchivePattern:
+    value: str
+    parts: tuple[str, ...]
+    has_slash: bool
 
 
 @dataclass(frozen=True)
@@ -352,36 +383,43 @@ def _mirror_chatlas_home(
     effective_excludes = (".git",) + excludes
     processed_file_count = 0
     next_scan_cache_entries: ChatlasRawScanCacheHome = {}
+    next_progress_report = 250
+    actionable_files: list[ChatlasRawCopyCandidate] = []
 
-    for source_file, rel_path in _iter_chatlas_archive_source_files(
-        source_path=source_path,
-        includes=includes,
-        excludes=effective_excludes,
+    for batch_result in _detect_chatlas_archive_candidates(
+        candidate_files=_iter_chatlas_archive_source_files(
+            source_path=source_path,
+            includes=includes,
+            excludes=effective_excludes,
+        ),
+        destination_path=destination_path,
+        scan_cache_entries=scan_cache_entries,
+        scan_cache_enabled=scan_cache_enabled,
     ):
-        destination_file = destination_path / rel_path
-        rel_path_text = rel_path.as_posix()
-        try:
-            source_signature = _chatlas_archive_source_signature(source_file)
-        except FileNotFoundError:
-            source_signature = None
-            copy_result = "skipped"
-        else:
-            cached_entry = None if scan_cache_entries is None else scan_cache_entries.get(rel_path_text)
-            if (
-                scan_cache_enabled
-                and cached_entry is not None
-                and _chatlas_raw_scan_cache_entry_matches(cached_entry, source_signature)
-                and _chatlas_archive_destination_matches_size(
-                    destination_file,
-                    expected_size=source_signature["size"],
-                )
-            ):
-                copy_result = "unchanged"
-            else:
-                copy_result = _copy_chatlas_archive_file(
-                    source_path=source_file,
-                    destination_path=destination_file,
-                )
+        actionable_files.extend(batch_result.actionable_files)
+        next_scan_cache_entries.update(batch_result.cache_updates)
+        archive_stats["unchanged_file_count"] += batch_result.unchanged_file_count
+        archive_stats["skipped_file_count"] += batch_result.skipped_file_count
+        _extend_skipped_examples(
+            archive_stats["skipped_file_examples"],
+            batch_result.skipped_file_examples,
+        )
+        processed_file_count += batch_result.processed_file_count
+        if progress is not None and processed_file_count >= next_progress_report:
+            _emit_raw_progress(
+                progress,
+                f"{progress_label or destination_path.name}: {processed_file_count} files scanned "
+                f"(added={archive_stats['added_file_count']} updated={archive_stats['updated_file_count']} "
+                f"unchanged={archive_stats['unchanged_file_count']} skipped={archive_stats['skipped_file_count']} "
+                f"elapsed={_format_wall_clock_elapsed(time.perf_counter() - started_at)})",
+            )
+            next_progress_report = ((processed_file_count // 250) + 1) * 250
+
+    for copy_candidate in sorted(actionable_files, key=lambda candidate: candidate.rel_path_text):
+        copy_result = _copy_chatlas_archive_file(
+            source_path=copy_candidate.source_path,
+            destination_path=copy_candidate.destination_path,
+        )
         if copy_result == "added":
             archive_stats["added_file_count"] += 1
         elif copy_result == "updated":
@@ -390,20 +428,17 @@ def _mirror_chatlas_home(
             archive_stats["unchanged_file_count"] += 1
         else:
             archive_stats["skipped_file_count"] += 1
-            skipped_examples = archive_stats["skipped_file_examples"]
-            if len(skipped_examples) < 20:
-                skipped_examples.append(rel_path.as_posix())
-        if source_signature is not None and copy_result != "skipped":
-            next_scan_cache_entries[rel_path_text] = source_signature
-        processed_file_count += 1
-        if progress is not None and processed_file_count % 250 == 0:
-            _emit_raw_progress(
-                progress,
-                f"{progress_label or destination_path.name}: {processed_file_count} files scanned "
-                f"(added={archive_stats['added_file_count']} updated={archive_stats['updated_file_count']} "
-                f"unchanged={archive_stats['unchanged_file_count']} skipped={archive_stats['skipped_file_count']} "
-                f"elapsed={_format_wall_clock_elapsed(time.perf_counter() - started_at)})",
+            _extend_skipped_examples(
+                archive_stats["skipped_file_examples"],
+                (copy_candidate.rel_path_text,),
             )
+        if copy_result == "skipped":
+            continue
+        try:
+            source_signature = _chatlas_archive_source_signature(copy_candidate.source_path)
+        except FileNotFoundError:
+            continue
+        next_scan_cache_entries[copy_candidate.rel_path_text] = source_signature
 
     elapsed_seconds = time.perf_counter() - started_at
     _emit_raw_progress(
@@ -421,6 +456,174 @@ def _mirror_chatlas_home(
     )
 
 
+def _detect_chatlas_archive_candidates(
+    *,
+    candidate_files: Iterable[tuple[Path, Path]],
+    destination_path: Path,
+    scan_cache_entries: ChatlasRawScanCacheHome | None,
+    scan_cache_enabled: bool,
+) -> Iterator[ChatlasRawDetectionBatchResult]:
+    batches = _iter_chatlas_archive_detection_batches(candidate_files)
+    worker_count = _chatlas_raw_detection_worker_count()
+
+    initial_batches: list[tuple[tuple[Path, Path], ...]] = []
+    initial_file_count = 0
+    while initial_file_count < _CHATLAS_RAW_DETECTION_MIN_FILES:
+        try:
+            batch = next(batches)
+        except StopIteration:
+            break
+        initial_batches.append(batch)
+        initial_file_count += len(batch)
+
+    if worker_count <= 1 or initial_file_count < _CHATLAS_RAW_DETECTION_MIN_FILES:
+        for batch in initial_batches:
+            yield _detect_chatlas_archive_batch(
+                batch=batch,
+                destination_path=destination_path,
+                scan_cache_entries=scan_cache_entries,
+                scan_cache_enabled=scan_cache_enabled,
+            )
+        for batch in batches:
+            yield _detect_chatlas_archive_batch(
+                batch=batch,
+                destination_path=destination_path,
+                scan_cache_entries=scan_cache_entries,
+                scan_cache_enabled=scan_cache_enabled,
+            )
+        return
+
+    max_in_flight = max(1, worker_count * _CHATLAS_RAW_DETECTION_IN_FLIGHT_MULTIPLIER)
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        future_lookup: dict[Future[ChatlasRawDetectionBatchResult], None] = {}
+        for batch in initial_batches:
+            future_lookup[
+                executor.submit(
+                    _detect_chatlas_archive_batch,
+                    batch=batch,
+                    destination_path=destination_path,
+                    scan_cache_entries=scan_cache_entries,
+                    scan_cache_enabled=scan_cache_enabled,
+                )
+            ] = None
+        yield from _drain_chatlas_archive_detection_futures(future_lookup, wait=False)
+
+        for batch in batches:
+            while len(future_lookup) >= max_in_flight:
+                yield from _drain_chatlas_archive_detection_futures(future_lookup, wait=True)
+            future_lookup[
+                executor.submit(
+                    _detect_chatlas_archive_batch,
+                    batch=batch,
+                    destination_path=destination_path,
+                    scan_cache_entries=scan_cache_entries,
+                    scan_cache_enabled=scan_cache_enabled,
+                )
+            ] = None
+            yield from _drain_chatlas_archive_detection_futures(future_lookup, wait=False)
+
+        while future_lookup:
+            yield from _drain_chatlas_archive_detection_futures(future_lookup, wait=True)
+
+
+def _iter_chatlas_archive_detection_batches(
+    candidate_files: Iterable[tuple[Path, Path]],
+) -> Iterator[tuple[tuple[Path, Path], ...]]:
+    batch: list[tuple[Path, Path]] = []
+    for candidate_file in candidate_files:
+        batch.append(candidate_file)
+        if len(batch) >= _CHATLAS_RAW_DETECTION_BATCH_SIZE:
+            yield tuple(batch)
+            batch = []
+    if batch:
+        yield tuple(batch)
+
+
+def _drain_chatlas_archive_detection_futures(
+    future_lookup: dict[Future[ChatlasRawDetectionBatchResult], None],
+    *,
+    wait: bool,
+) -> Iterator[ChatlasRawDetectionBatchResult]:
+    if not future_lookup:
+        return
+    if wait:
+        futures = (next(as_completed(tuple(future_lookup))),)
+    else:
+        futures = tuple(future for future in future_lookup if future.done())
+
+    for future in futures:
+        if future not in future_lookup:
+            continue
+        future_lookup.pop(future)
+        yield future.result()
+
+
+def _detect_chatlas_archive_batch(
+    *,
+    batch: tuple[tuple[Path, Path], ...],
+    destination_path: Path,
+    scan_cache_entries: ChatlasRawScanCacheHome | None,
+    scan_cache_enabled: bool,
+) -> ChatlasRawDetectionBatchResult:
+    actionable_files: list[ChatlasRawCopyCandidate] = []
+    cache_updates: ChatlasRawScanCacheHome = {}
+    unchanged_file_count = 0
+    skipped_file_count = 0
+    skipped_file_examples: list[str] = []
+
+    for source_file, rel_path in batch:
+        destination_file = destination_path / rel_path
+        rel_path_text = rel_path.as_posix()
+        try:
+            source_signature = _chatlas_archive_source_signature(source_file)
+        except FileNotFoundError:
+            skipped_file_count += 1
+            if len(skipped_file_examples) < 20:
+                skipped_file_examples.append(rel_path_text)
+            continue
+        cached_entry = None if scan_cache_entries is None else scan_cache_entries.get(rel_path_text)
+        if (
+            scan_cache_enabled
+            and cached_entry is not None
+            and _chatlas_raw_scan_cache_entry_matches(cached_entry, source_signature)
+            and _chatlas_archive_destination_matches_size(
+                destination_file,
+                expected_size=source_signature["size"],
+            )
+        ):
+            unchanged_file_count += 1
+            cache_updates[rel_path_text] = source_signature
+            continue
+        actionable_files.append(
+            ChatlasRawCopyCandidate(
+                rel_path_text=rel_path_text,
+                source_path=source_file,
+                destination_path=destination_file,
+            )
+        )
+
+    return ChatlasRawDetectionBatchResult(
+        actionable_files=tuple(actionable_files),
+        cache_updates=cache_updates,
+        processed_file_count=len(batch),
+        unchanged_file_count=unchanged_file_count,
+        skipped_file_count=skipped_file_count,
+        skipped_file_examples=tuple(skipped_file_examples),
+    )
+
+
+def _chatlas_raw_detection_worker_count() -> int:
+    cpu_count = os.cpu_count() or 1
+    return max(1, min(_CHATLAS_RAW_DETECTION_MAX_WORKERS, cpu_count))
+
+
+def _extend_skipped_examples(skipped_examples: list[str], new_examples: tuple[str, ...]) -> None:
+    for rel_path_text in new_examples:
+        if len(skipped_examples) >= 20:
+            break
+        skipped_examples.append(rel_path_text)
+
+
 def _emit_raw_progress(progress: Callable[[str], None] | None, message: str) -> None:
     if progress is None:
         return
@@ -436,33 +639,172 @@ def _iter_chatlas_archive_source_files(
     source_path: Path,
     includes: tuple[str, ...],
     excludes: tuple[str, ...],
-):
-    for dirpath, dirnames, filenames in os.walk(source_path):
-        current = Path(dirpath)
-        rel_current = PurePosixPath(
-            normalize_rel(PurePosixPath(current.relative_to(source_path).as_posix()))
-        )
-        if normalize_rel(rel_current) and should_exclude(rel_current, excludes):
-            dirnames[:] = []
+) -> Iterator[tuple[Path, Path]]:
+    include_patterns = _compile_chatlas_archive_patterns(includes)
+    exclude_patterns = _compile_chatlas_archive_patterns(excludes)
+    stack: list[tuple[Path, str]] = [(source_path, "")]
+    while stack:
+        current, rel_current = stack.pop()
+        try:
+            entries = list(os.scandir(current))
+        except OSError:
             continue
 
-        pruned_dirs: list[str] = []
-        for dirname in dirnames:
-            rel_dir = PurePosixPath(
-                normalize_rel(PurePosixPath((current / dirname).relative_to(source_path).as_posix()))
-            )
-            if not should_exclude(rel_dir, excludes):
-                pruned_dirs.append(dirname)
-        dirnames[:] = pruned_dirs
+        child_dirs: list[tuple[Path, str]] = []
+        for entry in entries:
+            rel_text = f"{rel_current}/{entry.name}" if rel_current else entry.name
+            rel_parts = _chatlas_archive_rel_parts(rel_text)
+            try:
+                is_dir = entry.is_dir(follow_symlinks=False)
+            except OSError:
+                is_dir = False
 
-        for filename in filenames:
-            file_path = current / filename
-            rel_file = PurePosixPath(file_path.relative_to(source_path).as_posix())
-            if should_exclude(rel_file, excludes):
+            if is_dir:
+                if _chatlas_archive_path_is_excluded(rel_text, rel_parts, exclude_patterns):
+                    continue
+                if include_patterns and not _chatlas_archive_dir_can_match_include_patterns(
+                    rel_parts,
+                    include_patterns,
+                ):
+                    continue
+                child_dirs.append((Path(entry.path), rel_text))
                 continue
-            if includes and not _chatlas_archive_path_matches_includes(rel_file, includes):
+
+            if not _chatlas_archive_entry_is_file_candidate(entry):
                 continue
-            yield file_path, Path(rel_file.as_posix())
+            if _chatlas_archive_path_is_excluded(rel_text, rel_parts, exclude_patterns):
+                continue
+            if include_patterns and not _chatlas_archive_path_matches_include_patterns(
+                rel_text,
+                rel_parts,
+                include_patterns,
+            ):
+                continue
+            yield Path(entry.path), Path(rel_text)
+
+        stack.extend(reversed(child_dirs))
+
+
+def _chatlas_archive_entry_is_file_candidate(entry: os.DirEntry[str]) -> bool:
+    try:
+        if entry.is_file(follow_symlinks=False):
+            return True
+        if not entry.is_symlink():
+            return False
+        return not entry.is_dir(follow_symlinks=True)
+    except OSError:
+        return False
+
+
+def _compile_chatlas_archive_patterns(patterns: tuple[str, ...]) -> tuple[ChatlasArchivePattern, ...]:
+    compiled_patterns: list[ChatlasArchivePattern] = []
+    for raw_pattern in patterns:
+        pattern = raw_pattern.strip().strip("/")
+        if not pattern:
+            continue
+        compiled_patterns.append(
+            ChatlasArchivePattern(
+                value=pattern,
+                parts=_chatlas_archive_rel_parts(pattern),
+                has_slash="/" in pattern,
+            )
+        )
+    return tuple(compiled_patterns)
+
+
+def _chatlas_archive_rel_parts(rel_text: str) -> tuple[str, ...]:
+    return tuple(part for part in rel_text.split("/") if part)
+
+
+def _chatlas_archive_path_is_excluded(
+    rel_text: str,
+    rel_parts: tuple[str, ...],
+    patterns: tuple[ChatlasArchivePattern, ...],
+) -> bool:
+    if not rel_text:
+        return False
+
+    for pattern in patterns:
+        if rel_text == pattern.value or rel_text.startswith(f"{pattern.value}/"):
+            return True
+        if not pattern.has_slash:
+            if pattern.value in rel_parts:
+                return True
+            if rel_parts and fnmatch.fnmatchcase(rel_parts[-1], pattern.value):
+                return True
+            continue
+        if _match_glob_parts(rel_parts, pattern.parts):
+            return True
+    return False
+
+
+def _chatlas_archive_path_matches_include_patterns(
+    rel_text: str,
+    rel_parts: tuple[str, ...],
+    patterns: tuple[ChatlasArchivePattern, ...],
+) -> bool:
+    if not rel_text:
+        return False
+
+    for pattern in patterns:
+        if rel_text == pattern.value:
+            return True
+        if pattern.value.endswith("/**"):
+            prefix = pattern.value[:-3].rstrip("/")
+            if prefix and (rel_text == prefix or rel_text.startswith(f"{prefix}/")):
+                return True
+        if not pattern.has_slash:
+            if rel_parts and fnmatch.fnmatchcase(rel_parts[-1], pattern.value):
+                return True
+            continue
+        if _match_glob_parts(rel_parts, pattern.parts):
+            return True
+    return False
+
+
+def _chatlas_archive_dir_can_match_include_patterns(
+    dir_parts: tuple[str, ...],
+    patterns: tuple[ChatlasArchivePattern, ...],
+) -> bool:
+    if not dir_parts:
+        return True
+
+    for pattern in patterns:
+        if _chatlas_archive_dir_can_match_glob(dir_parts, pattern.parts):
+            return True
+    return False
+
+
+def _chatlas_archive_dir_can_match_includes(rel_dir: PurePosixPath, includes: tuple[str, ...]) -> bool:
+    rel_value = normalize_rel(rel_dir)
+    if not rel_value:
+        return True
+    dir_parts = tuple(part for part in rel_value.split("/") if part)
+    if not dir_parts:
+        return True
+
+    return _chatlas_archive_dir_can_match_include_patterns(
+        dir_parts,
+        _compile_chatlas_archive_patterns(includes),
+    )
+
+
+def _chatlas_archive_dir_can_match_glob(dir_parts: tuple[str, ...], pattern_parts: tuple[str, ...]) -> bool:
+    if not dir_parts:
+        return True
+    if not pattern_parts:
+        return False
+
+    head = pattern_parts[0]
+    tail = pattern_parts[1:]
+    if head == "**":
+        return (
+            _chatlas_archive_dir_can_match_glob(dir_parts, tail)
+            or _chatlas_archive_dir_can_match_glob(dir_parts[1:], pattern_parts)
+        )
+    if not fnmatch.fnmatchcase(dir_parts[0], head):
+        return False
+    return _chatlas_archive_dir_can_match_glob(dir_parts[1:], tail)
 
 
 def _chatlas_archive_path_matches_includes(rel_path: PurePosixPath, includes: tuple[str, ...]) -> bool:
@@ -480,9 +822,35 @@ def _chatlas_archive_path_matches_includes(rel_path: PurePosixPath, includes: tu
             prefix = pattern[:-3].rstrip("/")
             if prefix and (rel_value == prefix or rel_value.startswith(f"{prefix}/")):
                 return True
-        if PurePosixPath(rel_value).match(pattern):
+        if _chatlas_archive_path_matches_glob(rel_value, pattern):
             return True
     return False
+
+
+def _chatlas_archive_path_matches_glob(rel_value: str, pattern: str) -> bool:
+    path_parts = tuple(part for part in rel_value.split("/") if part)
+    pattern_parts = tuple(part for part in pattern.split("/") if part)
+    if not pattern_parts:
+        return False
+    return _match_glob_parts(path_parts, pattern_parts)
+
+
+def _match_glob_parts(path_parts: tuple[str, ...], pattern_parts: tuple[str, ...]) -> bool:
+    if not pattern_parts:
+        return not path_parts
+    head = pattern_parts[0]
+    tail = pattern_parts[1:]
+    if head == "**":
+        if _match_glob_parts(path_parts, tail):
+            return True
+        if not path_parts:
+            return False
+        return _match_glob_parts(path_parts[1:], pattern_parts)
+    if not path_parts:
+        return False
+    if not fnmatch.fnmatchcase(path_parts[0], head):
+        return False
+    return _match_glob_parts(path_parts[1:], tail)
 
 
 def _copy_chatlas_archive_file(
@@ -741,10 +1109,7 @@ def _derived_chatlas_instance_excludes(
 ) -> tuple[str, ...]:
     if family != "codex":
         return ()
-    derived_name = _derive_chatlas_instance_name(family, homes)
-    if derived_name == "tk":
-        return ("_auth-tk.json",)
-    return ()
+    return ("_auth*.json",)
 
 
 __all__ = [

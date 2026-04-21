@@ -292,6 +292,50 @@ def _write_copilot_events(
     _set_iso_mtime(path, "2026-04-18T11:00:04.000Z")
 
 
+def _write_claude_session(
+    path: Path,
+    *,
+    session_id: str,
+    user_text: str = "hello from claude",
+    assistant_text: str = "claude reply",
+) -> None:
+    records = [
+        {
+            "parentUuid": None,
+            "isSidechain": False,
+            "userType": "external",
+            "cwd": "/tmp/project",
+            "sessionId": session_id,
+            "version": "2.1.69",
+            "message": {
+                "role": "user",
+                "content": user_text,
+            },
+            "uuid": "msg-user-1",
+            "timestamp": "2026-04-18T11:00:00.000Z",
+        },
+        {
+            "parentUuid": "msg-user-1",
+            "isSidechain": False,
+            "userType": "external",
+            "cwd": "/tmp/project",
+            "sessionId": session_id,
+            "version": "2.1.69",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": assistant_text},
+                    {"type": "text", "text": "tool summary"},
+                ],
+            },
+            "uuid": "msg-assistant-1",
+            "timestamp": "2026-04-18T11:00:01.000Z",
+        },
+    ]
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(path, "2026-04-18T11:00:01.000Z")
+
+
 def _write_opencode_db(
     path: Path,
     *,
@@ -477,9 +521,13 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
         session_id=session_id,
         thread_name=thread_name,
     )
+    _write(home / ".codex" / "history.jsonl", '{"session_id":"019ccafa","ts":1,"text":"hello"}\n')
+    _write(home / ".codex" / "AGENTS.md", "Say hello first.\n")
+    _write(home / ".codex" / "rules" / "default.rules", 'prefix_rule(pattern=["git","commit"], decision="allow")\n')
     _write(home / ".codex" / "notes.md", "# notes\n")
     _write(home / ".codex" / "log" / "skip.txt", "skip\n")
     _write(home / ".codex" / "auth.json", '{"token":"secret"}\n')
+    _write(home / ".codex" / "_auth-demo.json", '{"token":"secret"}\n')
 
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
 
@@ -499,6 +547,26 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
     assert payload["derived_summary_counts"] == {"brief": 1, "detailed": 1}
     assert payload["instances"][0]["instance"] == "codex-main"
     assert payload["instances"][0]["destination_root"] == str(destination_root)
+    assert payload["instances"][0]["includes"] == [
+        "sessions/**/*.jsonl",
+        "archived_sessions/**/*.jsonl",
+        "session_index.jsonl",
+        "history.jsonl",
+        "AGENTS.md",
+        "rules/*.rules",
+    ]
+    assert payload["instances"][0]["excludes"] == [
+        "log/",
+        "vendor_imports/",
+        "worktrees/",
+        "shell_snapshots/",
+        "models_cache.json",
+        "sqlite/",
+        "tmp/",
+        "auth.json",
+        "skills",
+        "_auth*.json",
+    ]
     assert payload["manifest_path"] is not None
     assert Path(payload["normalized_sessions_path"]).is_file()
     assert Path(payload["derived_summaries_path"]).is_file()
@@ -511,9 +579,14 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
         / "25"
         / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
     ).exists()
-    assert (destination_root / "notes.md").exists()
+    assert (destination_root / "session_index.jsonl").exists()
+    assert (destination_root / "history.jsonl").exists()
+    assert (destination_root / "AGENTS.md").exists()
+    assert (destination_root / "rules" / "default.rules").exists()
+    assert not (destination_root / "notes.md").exists()
     assert not (destination_root / "log" / "skip.txt").exists()
     assert not (destination_root / "auth.json").exists()
+    assert not (destination_root / "_auth-demo.json").exists()
     manifest_path = Path(payload["manifest_path"])
     assert manifest_path.is_file()
     normalized_rows = [
@@ -861,6 +934,261 @@ def test_chatlas_update_copilot_replaces_archived_instruction_symlink(
     assert archived_instructions.read_text(encoding="utf-8") == "Prefer concise answers.\n"
 
 
+def test_chatlas_update_claude_uses_raw_retention_whitelist(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    claude_cli_home = home / ".claude"
+    claude_desktop_home = home / "Library" / "Application Support" / "Claude"
+    project_dir = claude_cli_home / "projects" / "-tmp-project"
+    archive_dir = claude_cli_home / "archive" / "-"
+    desktop_session_dir = (
+        claude_desktop_home
+        / "claude-code-sessions"
+        / "workspace-a"
+        / "conversation-b"
+        / "session-c"
+    )
+    cli_session_id = "11111111-1111-4111-8111-111111111111"
+    desktop_session_id = "22222222-2222-4222-8222-222222222222"
+
+    _write_claude_session(
+        project_dir / f"{cli_session_id}.jsonl",
+        session_id=cli_session_id,
+        user_text="retain claude cli user input",
+        assistant_text="retain claude cli assistant output",
+    )
+    _write(project_dir / "sessions-index.json", '{"latest":"11111111"}\n')
+    _write_claude_session(
+        archive_dir / "archived-session.jsonl",
+        session_id="33333333-3333-4333-8333-333333333333",
+        user_text="retain claude archive user input",
+        assistant_text="retain claude archive assistant output",
+    )
+    _write_claude_session(
+        desktop_session_dir / "desktop-session.json",
+        session_id=desktop_session_id,
+        user_text="retain claude desktop user input",
+        assistant_text="retain claude desktop assistant output",
+    )
+    _write(
+        claude_cli_home / "usage-data" / "session-meta" / "meta-1.json",
+        '{"session_id":"11111111","toolCallCount":4}\n',
+    )
+    _write(
+        claude_cli_home / "usage-data" / "facets" / "facet-1.json",
+        '{"session_id":"11111111","outcome":"achieved"}\n',
+    )
+    _write(
+        claude_cli_home / "tasks" / "task-1" / "1.json",
+        '{"id":"1","subject":"retain task planning"}\n',
+    )
+    _write(
+        claude_cli_home / "todos" / "todo-1.json",
+        '[{"content":"retain todo context","status":"completed"}]\n',
+    )
+    _write(claude_cli_home / "settings.json", '{"model":"opus"}\n')
+    _write(claude_cli_home / "CLAUDE.md", "Local behavioral guidance\n")
+
+    _write(
+        claude_cli_home / "file-history" / "file-1" / "snapshot@v1",
+        "workspace copy\n",
+    )
+    _write(
+        claude_cli_home / "backups" / ".claude.json.backup.1",
+        '{"numStartups":1}\n',
+    )
+    _write(
+        claude_cli_home / "history.jsonl",
+        '{"display":"should be excluded","sessionId":"11111111"}\n',
+    )
+    _write(claude_cli_home / "sessions" / "123.json", '{"pid":123}\n')
+    _write(claude_cli_home / "debug" / "session.txt", "debug noise\n")
+    _write(claude_cli_home / "telemetry" / "event.json", '{"kind":"analytics"}\n')
+    _write(claude_cli_home / "tasks" / "task-1" / ".lock", "")
+    _write(claude_cli_home / "tasks" / "task-1" / ".highwatermark", "")
+    _write(claude_cli_home / "mcp-needs-auth-cache.json", '{"gmail":{"timestamp":1}}\n')
+    _write(claude_cli_home / "plugins" / "installed_plugins.json", "[]\n")
+    _write(claude_cli_home / "hooks" / "random-sound.sh", "#!/bin/sh\n")
+    _write(claude_cli_home / "statusline", "#!/bin/sh\n")
+    _write(claude_cli_home / "statusline.dump", "dump\n")
+    _write(claude_cli_home / ".example-claude-statusline.json", '{"demo":true}\n')
+    _write(claude_cli_home / "stats-cache.json", '{"dailyActivity":[]}\n')
+
+    _write(
+        claude_desktop_home / "config.json",
+        '{"oauth:tokenCache":"secret","locale":"en-US"}\n',
+    )
+    _write(claude_desktop_home / "claude_desktop_config.json", "{}\n")
+    _write(claude_desktop_home / "git-worktrees.json", "[]\n")
+    _write(claude_desktop_home / "extensions-blocklist.json", "[]\n")
+    _write(claude_desktop_home / "window-state.json", "{}\n")
+    _write(claude_desktop_home / "Cache" / "cache.bin", "noise\n")
+    _write(claude_desktop_home / "vm_bundles" / "vm" / "rootfs.img", "vm\n")
+
+    assert main(_chatlas_update_argv("--provider", "claude-code")) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    chatlas_root = _default_chatlas_root(home)
+    destination_cli_root = _chatlas_home_root(home, claude_cli_home)
+    destination_desktop_root = _chatlas_home_root(home, claude_desktop_home)
+    instance_payload = payload["instances"][0]
+    expected_includes = [
+        "projects/**/*.jsonl",
+        "projects/**/sessions-index.json",
+        "archive/**/*.jsonl",
+        "usage-data/session-meta/*.json",
+        "usage-data/facets/*.json",
+        "tasks/**/[0-9]*.json",
+        "todos/*.json",
+        "settings.json",
+        "CLAUDE.md",
+        "claude-code-sessions/**/*.json",
+    ]
+    expected_excludes = [
+        "debug/",
+        "telemetry/",
+        "cache/",
+        "Cache/",
+        "Code Cache/",
+        "Cookies",
+        "Cookies-journal",
+        "Crashpad/",
+        "DIPS",
+        "DawnGraphiteCache/",
+        "DawnWebGPUCache/",
+        "GPUCache/",
+        "Local Storage/",
+        "Network Persistent State",
+        "Preferences",
+        "Session Storage/",
+        "Shared Dictionary/",
+        "SharedStorage",
+        "TransportSecurity",
+        "Trust Tokens",
+        "Trust Tokens-journal",
+        "WebStorage/",
+        "ant-did",
+        "blob_storage/",
+        "claude-code/",
+        "claude-code-vm/",
+        "statsig/",
+        "sentry/",
+        "shell-snapshots/",
+        "paste-cache/",
+        "session-env/",
+        "downloads/",
+        "ide/",
+        "plugins/",
+        "skills",
+        "vm_bundles/",
+        "file-history/",
+        "backups/",
+        "history.jsonl",
+        "sessions/",
+        "tasks/**/*.lock",
+        "tasks/**/.highwatermark",
+        "mcp-needs-auth-cache.json",
+        "hooks/",
+        "statusline",
+        "statusline.dump",
+        ".example-claude-statusline.json",
+        "stats-cache.json",
+        "config.json",
+        "claude_desktop_config.json",
+        "git-worktrees.json",
+        "extensions-blocklist.json",
+        "window-state.json",
+    ]
+
+    assert payload["command"] == "chatlas update"
+    assert payload["committed"] is True
+    assert payload["changes_detected"] is True
+    assert payload["synced_instance_count"] == 1
+    assert payload["normalized_session_count"] == 1
+    assert payload["derived_transcript_session_count"] == 1
+    assert instance_payload["instance"] == "claude-main"
+    assert instance_payload["destination_root"] is None
+    assert instance_payload["destination_roots"] == {
+        "cli": str(destination_cli_root),
+        "desktop": str(destination_desktop_root),
+    }
+    assert instance_payload["includes"] == expected_includes
+    assert instance_payload["excludes"] == expected_excludes
+
+    assert (destination_cli_root / "projects" / "-tmp-project" / f"{cli_session_id}.jsonl").is_file()
+    assert (destination_cli_root / "projects" / "-tmp-project" / "sessions-index.json").is_file()
+    assert (destination_cli_root / "archive" / "-" / "archived-session.jsonl").is_file()
+    assert (destination_cli_root / "usage-data" / "session-meta" / "meta-1.json").is_file()
+    assert (destination_cli_root / "usage-data" / "facets" / "facet-1.json").is_file()
+    assert (destination_cli_root / "tasks" / "task-1" / "1.json").is_file()
+    assert (destination_cli_root / "todos" / "todo-1.json").is_file()
+    assert (destination_cli_root / "settings.json").is_file()
+    assert (destination_cli_root / "CLAUDE.md").is_file()
+    assert (
+        destination_desktop_root
+        / "claude-code-sessions"
+        / "workspace-a"
+        / "conversation-b"
+        / "session-c"
+        / "desktop-session.json"
+    ).is_file()
+
+    assert not (destination_cli_root / "file-history").exists()
+    assert not (destination_cli_root / "backups").exists()
+    assert not (destination_cli_root / "history.jsonl").exists()
+    assert not (destination_cli_root / "sessions").exists()
+    assert not (destination_cli_root / "debug").exists()
+    assert not (destination_cli_root / "telemetry").exists()
+    assert not (destination_cli_root / "tasks" / "task-1" / ".lock").exists()
+    assert not (destination_cli_root / "tasks" / "task-1" / ".highwatermark").exists()
+    assert not (destination_cli_root / "mcp-needs-auth-cache.json").exists()
+    assert not (destination_cli_root / "plugins").exists()
+    assert not (destination_cli_root / "hooks").exists()
+    assert not (destination_cli_root / "statusline").exists()
+    assert not (destination_cli_root / "statusline.dump").exists()
+    assert not (destination_cli_root / ".example-claude-statusline.json").exists()
+    assert not (destination_cli_root / "stats-cache.json").exists()
+    assert not (destination_desktop_root / "config.json").exists()
+    assert not (destination_desktop_root / "claude_desktop_config.json").exists()
+    assert not (destination_desktop_root / "git-worktrees.json").exists()
+    assert not (destination_desktop_root / "extensions-blocklist.json").exists()
+    assert not (destination_desktop_root / "window-state.json").exists()
+    assert not (destination_desktop_root / "Cache").exists()
+    assert not (destination_desktop_root / "vm_bundles").exists()
+
+    normalized_rows = [
+        json.loads(line)
+        for line in Path(payload["normalized_sessions_path"])
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    normalized_by_session_id = {row["session_id"]: row for row in normalized_rows}
+    assert sorted(normalized_by_session_id) == [cli_session_id]
+    assert normalized_by_session_id[cli_session_id]["provider"] == "claude-code"
+    assert normalized_by_session_id[cli_session_id]["instance"] == "claude-main"
+
+    cli_transcript_path = (
+        chatlas_root
+        / "derived"
+        / "transcripts"
+        / "claude-code"
+        / normalized_by_session_id[cli_session_id]["provider_instance_fingerprint"]
+        / f"{cli_session_id}.md"
+    )
+    assert "retain claude cli user input" in cli_transcript_path.read_text(encoding="utf-8")
+    assert "retain claude cli assistant output" in cli_transcript_path.read_text(encoding="utf-8")
+
+
 def test_chatlas_update_opencode_uses_raw_retention_policy(
     tmp_path: Path,
     monkeypatch,
@@ -1149,6 +1477,135 @@ def test_chatlas_update_can_disable_scan_cache(
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
     assert match_calls["count"] > 0
+
+
+def test_chatlas_raw_detection_batch_emits_only_actionable_files(
+    tmp_path: Path,
+) -> None:
+    from agentos.chatlas import raw as chatlas_raw
+
+    source_root = tmp_path / "source"
+    destination_root = tmp_path / "destination"
+    unchanged_source = source_root / "unchanged.txt"
+    actionable_source = source_root / "actionable.txt"
+    unchanged_destination = destination_root / "unchanged.txt"
+
+    _write(unchanged_source, "same payload\n")
+    _write(actionable_source, "needs copy\n")
+    _write(unchanged_destination, "same payload\n")
+
+    unchanged_signature = chatlas_raw._chatlas_archive_source_signature(unchanged_source)
+    result = chatlas_raw._detect_chatlas_archive_batch(
+        batch=(
+            (unchanged_source, Path("unchanged.txt")),
+            (actionable_source, Path("actionable.txt")),
+        ),
+        destination_path=destination_root,
+        scan_cache_entries={
+            "unchanged.txt": unchanged_signature,
+        },
+        scan_cache_enabled=True,
+    )
+
+    assert [candidate.rel_path_text for candidate in result.actionable_files] == ["actionable.txt"]
+    assert result.cache_updates == {"unchanged.txt": unchanged_signature}
+    assert result.processed_file_count == 2
+    assert result.unchanged_file_count == 1
+    assert result.skipped_file_count == 0
+    assert result.skipped_file_examples == ()
+
+
+def test_chatlas_raw_detection_candidates_parallelize_large_batches(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from concurrent.futures import Future
+
+    from agentos.chatlas import raw as chatlas_raw
+
+    source_root = tmp_path / "source"
+    destination_root = tmp_path / "destination"
+    candidate_files: tuple[tuple[Path, Path], ...] = tuple(
+        (source_root / f"file-{index}.txt", Path(f"file-{index}.txt"))
+        for index in range(3)
+    )
+    for source_file, _ in candidate_files:
+        _write(source_file, f"payload {source_file.name}\n")
+
+    consumed_candidates: list[str] = []
+
+    def iter_candidates():
+        for source_file, rel_path in candidate_files:
+            consumed_candidates.append(rel_path.as_posix())
+            yield source_file, rel_path
+
+    monkeypatch.setattr(chatlas_raw, "_CHATLAS_RAW_DETECTION_BATCH_SIZE", 2)
+    monkeypatch.setattr(chatlas_raw, "_CHATLAS_RAW_DETECTION_MIN_FILES", 2)
+    monkeypatch.setattr(chatlas_raw, "_CHATLAS_RAW_DETECTION_MAX_WORKERS", 2)
+
+    executor_calls = {"submit_count": 0, "max_workers": None}
+
+    class FakeExecutor:
+        def __init__(self, *, max_workers: int):
+            executor_calls["max_workers"] = max_workers
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn, *args, **kwargs):
+            executor_calls["submit_count"] += 1
+            future: Future = Future()
+            future.set_result(fn(*args, **kwargs))
+            return future
+
+    monkeypatch.setattr(chatlas_raw, "ThreadPoolExecutor", FakeExecutor)
+
+    result_iter = chatlas_raw._detect_chatlas_archive_candidates(
+        candidate_files=iter_candidates(),
+        destination_path=destination_root,
+        scan_cache_entries={},
+        scan_cache_enabled=True,
+    )
+    first_result = next(result_iter)
+    assert executor_calls["max_workers"] == 2
+    assert executor_calls["submit_count"] == 1
+    assert consumed_candidates == ["file-0.txt", "file-1.txt"]
+
+    results = (first_result,) + tuple(result_iter)
+
+    assert executor_calls["max_workers"] == 2
+    assert executor_calls["submit_count"] == 2
+    assert len(results) == 2
+    assert sum(result.processed_file_count for result in results) == 3
+
+
+def test_chatlas_archive_source_files_prunes_non_matching_include_dirs(
+    tmp_path: Path,
+) -> None:
+    from agentos.chatlas import raw as chatlas_raw
+
+    source_root = tmp_path / "source"
+    _write(source_root / "session-state" / "session-a" / "events.jsonl", "{}\n")
+    _write(source_root / "session-state" / "session-a" / "workspace.yaml", "skip\n")
+    _write(source_root / "pkg" / "session-state" / "session-b" / "events.jsonl", "{}\n")
+    _write(source_root / "copilot-instructions.md", "Prefer concise answers.\n")
+
+    rel_paths = sorted(
+        rel_path.as_posix()
+        for _, rel_path in chatlas_raw._iter_chatlas_archive_source_files(
+            source_path=source_root,
+            includes=("session-state/**/events.jsonl", "copilot-instructions.md"),
+            excludes=(),
+        )
+    )
+
+    assert rel_paths == [
+        "copilot-instructions.md",
+        "session-state/session-a/events.jsonl",
+    ]
 
 
 def test_chatlas_update_can_disable_transcript_cache(
@@ -1448,8 +1905,8 @@ def test_chatlas_update_skips_transient_missing_source_files(
 
     home_status = payload["instances"][0]["homes_status"][0]
     assert payload["normalized_session_count"] == 1
-    assert home_status["skipped_file_count"] == 1
-    assert home_status["skipped_file_examples"] == ["notes.md"]
+    assert home_status["skipped_file_count"] == 0
+    assert home_status["skipped_file_examples"] == []
 
 
 def test_chatlas_update_emits_progress_to_stderr(
@@ -1836,8 +2293,8 @@ def test_chatlas_update_uses_shared_claude_code_home_slots(
         "cli": str(claude_cli_home),
         "desktop": str(claude_desktop_home),
     }
-    assert (destination_cli_root / "README.md").is_file()
-    assert (destination_desktop_root / "desktop-state.json").is_file()
+    assert not (destination_cli_root / "README.md").exists()
+    assert not (destination_desktop_root / "desktop-state.json").exists()
     assert not (destination_desktop_root / "Cache").exists()
     assert not (destination_desktop_root / "vm_bundles").exists()
 

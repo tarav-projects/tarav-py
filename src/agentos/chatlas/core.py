@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
-from agentos._core.git_ops import run_git
+from agentos._core.git_ops import git_has_staged_changes, run_git
 from agentos._core.project import agentos_home_dir
 from agentos.chat.core import (
     _backing_artifact_is_extractable,
@@ -314,8 +314,9 @@ def chatlas_update(
             normalized_sessions=normalized_sessions,
         ),
     )
-    _emit_chatlas_progress(progress, "checking git status")
-    dataset_changes_detected = bool(run_git(chatlas_root_path, "status", "--porcelain"))
+    _emit_chatlas_progress(progress, "staging dataset changes")
+    run_git(chatlas_root_path, "add", "-A")
+    dataset_changes_detected = git_has_staged_changes(chatlas_root_path)
 
     recorded_at = utc_now_iso()
     manifest_path: Path | None = None
@@ -338,12 +339,12 @@ def chatlas_update(
                 instance_payloads=instance_payloads,
             ),
         )
-        run_git(chatlas_root_path, "add", "-A")
+        run_git(chatlas_root_path, "add", str(manifest_path.relative_to(chatlas_root_path)))
         _emit_chatlas_progress(progress, "staged dataset changes")
 
     committed = False
     commit_message: str | None = None
-    if dataset_changes_detected and run_git(chatlas_root_path, "status", "--porcelain").strip():
+    if dataset_changes_detected:
         commit_message = f"{settings.commit_prefix}: {recorded_at}"
         _emit_chatlas_progress(progress, f"creating commit: {commit_message}")
         run_git(
