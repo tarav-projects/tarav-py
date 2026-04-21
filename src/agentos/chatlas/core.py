@@ -192,6 +192,56 @@ def chatlas_update(
     raw_root = chatlas_root_path / "raw"
     normalized_root = chatlas_root_path / "normalized"
     derived_root = chatlas_root_path / "derived"
+    selected_instances = settings.provider_instances
+    if providers is not None:
+        selected_instances = tuple(
+            instance
+            for instance in selected_instances
+            if instance.family in providers
+        )
+    if not selected_instances:
+        normalized_sessions = _selected_normalized_sessions(chatlas_root_path, providers=providers)
+        derived_summary_counts = {
+            level: len(_load_derived_summaries_for_level(chatlas_root_path, level=level))
+            for level in _SUMMARY_LEVELS
+        }
+        derived_transcript_session_count = sum(
+            1
+            for session in normalized_sessions
+            if _derived_transcript_exists(chatlas_root_path, session, output_format="markdown")
+        )
+        return {
+            "status": "ok",
+            "command": "chatlas update",
+            "chatlas_root": str(chatlas_root_path),
+            "raw_root": str(raw_root),
+            "normalized_root": str(normalized_root),
+            "derived_root": str(derived_root),
+            "normalized_sessions_path": str(chatlas_root_path / _NORMALIZED_SESSIONS_RELATIVE_PATH),
+            "normalized_session_count": len(normalized_sessions),
+            "derived_transcript_session_count": derived_transcript_session_count,
+            "derived_summaries_path": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
+            "derived_summary_paths": {
+                "brief": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
+                "detailed": str(chatlas_root_path / _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH),
+            },
+            "derived_summary_count": derived_summary_counts["brief"],
+            "derived_summary_counts": derived_summary_counts,
+            "manifest_path": None,
+            "scan_cache_enabled": scan_cache_enabled,
+            "normalized_cache_enabled": normalized_cache_enabled,
+            "transcript_cache_enabled": transcript_cache_enabled,
+            "commit_prefix": settings.commit_prefix,
+            "provider_count": 0,
+            "instance_count": 0,
+            "synced_instance_count": 0,
+            "skipped_instance_count": 0,
+            "changes_detected": False,
+            "committed": False,
+            "commit_message": None,
+            "instances": [],
+        }
+    selected_contexts = tuple(_build_chatlas_provider_context(instance) for instance in selected_instances)
     _ensure_git_repo(chatlas_root_path)
     if scan_cache_enabled or normalized_cache_enabled or transcript_cache_enabled:
         _ensure_chatlas_cache_gitignore(chatlas_root_path)
@@ -201,15 +251,6 @@ def chatlas_update(
         normalized_cache_enabled=normalized_cache_enabled,
         transcript_cache_enabled=transcript_cache_enabled,
     )
-
-    selected_instances = settings.provider_instances
-    if providers is not None:
-        selected_instances = tuple(
-            instance
-            for instance in selected_instances
-            if instance.family in providers
-        )
-    selected_contexts = tuple(_build_chatlas_provider_context(instance) for instance in selected_instances)
     _emit_chatlas_progress(
         progress,
         f"update start: {len(selected_contexts)} instance(s) -> {chatlas_root_path}",

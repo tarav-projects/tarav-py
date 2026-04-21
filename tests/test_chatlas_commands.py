@@ -1689,6 +1689,41 @@ def test_chatlas_update_requires_explicit_chatlas_instance_selection(
     assert not _chatlas_home_root(home, home / ".codex").exists()
 
 
+def test_chatlas_update_without_selection_preserves_existing_dataset(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
+        session_id=session_id,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    first_payload = json.loads(capsys.readouterr().out)
+    assert first_payload["normalized_session_count"] == 1
+
+    _write_global_config(agentos_home / "config.json", chatlas_instance_ids=None)
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["instance_count"] == 0
+    assert payload["normalized_session_count"] == 1
+    assert payload["derived_transcript_session_count"] == 1
+    assert payload["changes_detected"] is False
+    assert payload["committed"] is False
+    assert _chatlas_home_root(home, home / ".codex").exists()
+
+
 def test_chatlas_update_rejects_unknown_chatlas_instance_ids(
     tmp_path: Path,
     monkeypatch,
