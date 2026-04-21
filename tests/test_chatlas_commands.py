@@ -726,6 +726,74 @@ def test_chatlas_update_copilot_uses_raw_retention_whitelist(
     assert "retain legacy copilot assistant output" in legacy_transcript_markdown
 
 
+def test_chatlas_update_copilot_replaces_archived_instruction_symlink(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    copilot_home = home / ".copilot"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot-cli",
+                "id": "copilot-main",
+                "home": str(copilot_home),
+            }
+        ],
+    )
+
+    session_id = "0005d4b6-a983-4801-8b2a-fa626db1cf50"
+    _write_copilot_events(
+        copilot_home / "session-state" / session_id / "events.jsonl",
+        session_id=session_id,
+    )
+    instruction_target = tmp_path / "shared" / "copilot-instructions.md"
+    _write(instruction_target, "Prefer concise answers.\n")
+    (copilot_home / "copilot-instructions.md").symlink_to(instruction_target)
+
+    assert main(_chatlas_update_argv("--provider", "copilot-cli")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    chatlas_root = _default_chatlas_root(home)
+    archived_instructions = _chatlas_home_root(home, copilot_home) / "copilot-instructions.md"
+    assert archived_instructions.is_file()
+    assert not archived_instructions.is_symlink()
+    assert archived_instructions.read_text(encoding="utf-8") == "Prefer concise answers.\n"
+
+    archived_instructions.unlink()
+    archived_instructions.symlink_to(instruction_target)
+    assert archived_instructions.is_symlink()
+    _git_output(chatlas_root, "add", "-A")
+    _git_output(
+        chatlas_root,
+        "-c",
+        "user.name=agentos",
+        "-c",
+        "user.email=agentos@local.invalid",
+        "commit",
+        "-m",
+        "simulate archived copilot instruction symlink",
+    )
+
+    assert main(_chatlas_update_argv("--provider", "copilot-cli")) == 0
+    payload = json.loads(capsys.readouterr().out)
+    home_status = payload["instances"][0]["homes_status"][0]
+
+    assert payload["scan_cache_enabled"] is True
+    assert payload["changes_detected"] is True
+    assert payload["committed"] is True
+    assert home_status["updated_file_count"] == 1
+    assert archived_instructions.is_file()
+    assert not archived_instructions.is_symlink()
+    assert archived_instructions.read_text(encoding="utf-8") == "Prefer concise answers.\n"
+
+
 def test_chatlas_update_second_run_skips_commit_when_unchanged(
     tmp_path: Path,
     monkeypatch,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -489,20 +490,50 @@ def _copy_chatlas_archive_file(
     source_path: Path,
     destination_path: Path,
 ) -> str:
+    temp_destination: Path | None = None
     try:
+        destination_is_symlink = destination_path.is_symlink()
         destination_exists = destination_path.exists()
-        if destination_exists and _chatlas_archive_files_match(source_path, destination_path):
+        destination_preexisting = destination_exists or destination_is_symlink
+        if (
+            destination_exists
+            and not destination_is_symlink
+            and _chatlas_archive_files_match(source_path, destination_path)
+        ):
             return "unchanged"
         destination_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, destination_path)
+        if destination_is_symlink:
+            with tempfile.NamedTemporaryFile(
+                prefix=f".{destination_path.name}.",
+                suffix=".tmp",
+                dir=destination_path.parent,
+                delete=False,
+            ) as handle:
+                temp_destination = Path(handle.name)
+            shutil.copy2(source_path, temp_destination)
+            os.replace(temp_destination, destination_path)
+            temp_destination = None
+        else:
+            shutil.copy2(source_path, destination_path)
     except FileNotFoundError:
         return "skipped"
     except OSError as exc:
         raise CliError(f"failed to archive {source_path}: {exc}") from exc
-    return "updated" if destination_exists else "added"
+    finally:
+        if temp_destination is not None:
+            try:
+                temp_destination.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+    return "updated" if destination_preexisting else "added"
 
 
 def _chatlas_archive_files_match(source_path: Path, destination_path: Path) -> bool:
+    if destination_path.is_symlink():
+        return False
+
     try:
         source_stat = source_path.stat()
         destination_stat = destination_path.stat()
@@ -543,6 +574,9 @@ def _chatlas_archive_source_signature(source_path: Path) -> ChatlasRawScanCacheE
 
 
 def _chatlas_archive_destination_matches_size(destination_path: Path, *, expected_size: int) -> bool:
+    if destination_path.is_symlink():
+        return False
+
     try:
         return destination_path.stat().st_size == expected_size
     except FileNotFoundError:
