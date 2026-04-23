@@ -412,9 +412,11 @@ def _experimental_normalize_copilot_cli_raw_events(
         events=events,
     )
     model_runs = _dict_list(model_run_result["model_runs"])
-    usage: list[dict[str, object]] = []
+    usage_result = _copilot_usage_from_raw_events(raw_events)
+    usage = _dict_list(usage_result["usage"])
     residual_unsupported_concepts = _copilot_residual_unsupported_concepts(
         raw_counts=raw_counts,
+        usage=usage,
     )
 
     warnings = [
@@ -444,10 +446,22 @@ def _experimental_normalize_copilot_cli_raw_events(
             "copilot raw events model runs normalized from turn events: "
             f"{len(model_runs)} runs"
         )
+    if usage:
+        warnings.append(
+            "copilot raw events usage normalized from session.shutdown.modelMetrics: "
+            f"{len(usage)} records"
+        )
     warnings.extend(_string_list(message_result["warnings"]))
     warnings.extend(_string_list(tool_result["warnings"]))
     warnings.extend(_string_list(event_result["warnings"]))
     warnings.extend(_string_list(model_run_result["warnings"]))
+    warnings.extend(_string_list(usage_result["warnings"]))
+    warnings.extend(
+        _copilot_reasoning_attachment_warnings(
+            raw_counts=raw_counts,
+            model_runs=model_runs,
+        )
+    )
 
     return _ExperimentalNormalizationResult(
         messages=messages,
@@ -1631,14 +1645,39 @@ def _copilot_model_run_reasoning_trace(
     for raw_event in raw_events.events[start_index - 1 : end_index]:
         if raw_event.event_type != "assistant.message":
             continue
-        reasoning_text = _string_or_none(raw_event.data.get("reasoningText"))
-        if reasoning_text is None:
+        reasoning_trace.extend(
+            _copilot_reasoning_entries_from_event(
+                raw_event,
+                model_run_index=model_run_index,
+                offset=len(reasoning_trace),
+            )
+        )
+    return reasoning_trace
+
+
+def _copilot_reasoning_entries_from_event(
+    raw_event: _CopilotRawEvent,
+    *,
+    model_run_index: int,
+    offset: int,
+) -> list[dict[str, object]]:
+    reasoning_trace: list[dict[str, object]] = []
+    for source_key, visibility, target_key in (
+        ("reasoningText", "visible", "text"),
+        ("reasoningOpaque", "opaque", "opaque_content"),
+        ("encryptedContent", "encrypted", "encrypted_content"),
+    ):
+        value = _string_or_none(raw_event.data.get(source_key))
+        if value is None:
             continue
         reasoning: dict[str, object] = {
-            "reasoning_id": f"reasoning-{model_run_index}-{len(reasoning_trace) + 1}",
-            "visibility": "visible",
-            "text": reasoning_text,
-            "native": _copilot_reasoning_native(raw_event),
+            "reasoning_id": f"reasoning-{model_run_index}-{offset + len(reasoning_trace) + 1}",
+            "visibility": visibility,
+            target_key: value,
+            "native": _copilot_reasoning_native(
+                raw_event,
+                reasoning_key=source_key,
+            ),
         }
         if raw_event.timestamp is not None:
             reasoning["timestamp"] = raw_event.timestamp
@@ -1648,8 +1687,13 @@ def _copilot_model_run_reasoning_trace(
     return reasoning_trace
 
 
-def _copilot_reasoning_native(raw_event: _CopilotRawEvent) -> dict[str, object]:
+def _copilot_reasoning_native(
+    raw_event: _CopilotRawEvent,
+    *,
+    reasoning_key: str,
+) -> dict[str, object]:
     native = _copilot_event_native(raw_event)
+    native["reasoning_key"] = reasoning_key
     for source_key, native_key in (
         ("messageId", "message_id"),
         ("requestId", "request_id"),
@@ -1660,6 +1704,212 @@ def _copilot_reasoning_native(raw_event: _CopilotRawEvent) -> dict[str, object]:
         value = raw_event.data.get(source_key)
         if value is not None:
             native[native_key] = value
+    return native
+
+
+def _copilot_reasoning_attachment_warnings(
+    *,
+    raw_counts: dict[str, object],
+    model_runs: list[dict[str, object]],
+) -> list[str]:
+    raw_reasoning_count = _int_or_zero(raw_counts.get("reasoning_evidence_count"))
+    normalized_reasoning_count = _model_run_reasoning_count(model_runs)
+    if raw_reasoning_count <= normalized_reasoning_count:
+        return []
+    return [
+        "copilot reasoning evidence outside normalized turn spans is preserved in messages/events only: "
+        f"raw={raw_reasoning_count} normalized={normalized_reasoning_count}"
+    ]
+
+
+def _copilot_usage_from_raw_events(
+    raw_events: _CopilotRawEvents,
+) -> dict[str, object]:
+    warnings: list[str] = []
+    shutdown_events = [
+        raw_event
+        for raw_event in raw_events.events
+        if raw_event.event_type == "session.shutdown"
+    ]
+    if not shutdown_events:
+        return {
+            "usage": [],
+            "warnings": warnings,
+        }
+    if len(shutdown_events) > 1:
+        warnings.append(
+            f"copilot raw events has {len(shutdown_events)} session.shutdown events; using last"
+        )
+
+    shutdown_event = shutdown_events[-1]
+    model_metrics = shutdown_event.data.get("modelMetrics")
+    if not isinstance(model_metrics, dict):
+        return {
+            "usage": [],
+            "warnings": warnings,
+        }
+
+    entry_result = _copilot_model_metric_entries(model_metrics)
+    entries = entry_result["entries"]
+    warnings.extend(_string_list(entry_result["warnings"]))
+
+    usage: list[dict[str, object]] = []
+    for model_name, entry in entries:
+        usage.append(
+            _copilot_usage_record_from_model_metrics(
+                shutdown_event=shutdown_event,
+                model_name=model_name,
+                entry=entry,
+                index=len(usage) + 1,
+            )
+        )
+
+    return {
+        "usage": usage,
+        "warnings": warnings,
+    }
+
+
+def _copilot_model_metric_entries(
+    model_metrics: dict[str, Any],
+) -> dict[str, object]:
+    warnings: list[str] = []
+    entries: list[tuple[str, dict[str, Any]]] = []
+    flat_usage_keys = {
+        "inputTokens",
+        "outputTokens",
+        "cacheReadTokens",
+        "cacheWriteTokens",
+        "reasoningTokens",
+    }
+
+    if any(key in flat_usage_keys for key in model_metrics):
+        warnings.append(
+            "copilot session.shutdown modelMetrics has flat shape; usage projection requires per-model entries"
+        )
+        return {
+            "entries": entries,
+            "warnings": warnings,
+        }
+
+    for model_name, value in sorted(model_metrics.items()):
+        if not isinstance(model_name, str):
+            warnings.append(
+                "copilot session.shutdown modelMetrics has non-string model key"
+            )
+            continue
+        if not isinstance(value, dict):
+            warnings.append(
+                f"copilot session.shutdown modelMetrics entry {model_name} is not an object"
+            )
+            continue
+        if not isinstance(value.get("usage"), dict) and not isinstance(
+            value.get("requests"),
+            dict,
+        ):
+            warnings.append(
+                f"copilot session.shutdown modelMetrics entry {model_name} has unsupported shape"
+            )
+            continue
+        entries.append((model_name, value))
+
+    return {
+        "entries": entries,
+        "warnings": warnings,
+    }
+
+
+def _copilot_usage_record_from_model_metrics(
+    *,
+    shutdown_event: _CopilotRawEvent,
+    model_name: str,
+    entry: dict[str, Any],
+    index: int,
+) -> dict[str, object]:
+    requests = entry.get("requests")
+    if not isinstance(requests, dict):
+        requests = {}
+    usage_metrics = entry.get("usage")
+    if not isinstance(usage_metrics, dict):
+        usage_metrics = {}
+
+    usage: dict[str, object] = {
+        "usage_id": f"usage-{index}",
+        "scope": "session",
+        "provider": "copilot-cli",
+        "model": model_name,
+        "native": _copilot_usage_native(
+            shutdown_event=shutdown_event,
+            model_name=model_name,
+            entry=entry,
+        ),
+    }
+    for source_key, target_key in (
+        ("inputTokens", "input_tokens"),
+        ("outputTokens", "output_tokens"),
+        ("cacheReadTokens", "cache_read_tokens"),
+        ("cacheWriteTokens", "cache_write_tokens"),
+        ("reasoningTokens", "reasoning_tokens"),
+    ):
+        value = _int_or_none(usage_metrics.get(source_key))
+        if value is not None:
+            usage[target_key] = value
+
+    request_count = _int_or_none(requests.get("count"))
+    if request_count is not None:
+        usage["request_count"] = request_count
+
+    billing_cost = _int_or_none(requests.get("cost"))
+    if billing_cost is not None:
+        usage["provider_billing_units"] = {
+            "kind": "copilot_premium_request_cost",
+            "value": billing_cost,
+        }
+
+    if shutdown_event.source_refs:
+        usage["source_refs"] = shutdown_event.source_refs
+
+    return usage
+
+
+def _copilot_usage_native(
+    *,
+    shutdown_event: _CopilotRawEvent,
+    model_name: str,
+    entry: dict[str, Any],
+) -> dict[str, object]:
+    native = _copilot_event_native(shutdown_event)
+    native["model_metrics_key"] = model_name
+    native["model_metrics_entry"] = entry
+
+    for source_key, native_key in (
+        ("shutdownType", "shutdown_type"),
+        ("totalPremiumRequests", "total_premium_requests"),
+        ("totalApiDurationMs", "total_api_duration_ms"),
+        ("sessionStartTime", "session_start_time"),
+        ("currentModel", "current_model"),
+    ):
+        value = shutdown_event.data.get(source_key)
+        if value is not None:
+            native[native_key] = value
+
+    session_token_counters: dict[str, object] = {}
+    for source_key, native_key in (
+        ("currentTokens", "current_tokens"),
+        ("systemTokens", "system_tokens"),
+        ("conversationTokens", "conversation_tokens"),
+        ("toolDefinitionsTokens", "tool_definitions_tokens"),
+    ):
+        value = _int_or_none(shutdown_event.data.get(source_key))
+        if value is not None:
+            session_token_counters[native_key] = value
+    if session_token_counters:
+        native["session_token_counters"] = session_token_counters
+
+    code_changes = shutdown_event.data.get("codeChanges")
+    if isinstance(code_changes, dict) and code_changes:
+        native["code_changes"] = code_changes
+
     return native
 
 
@@ -1746,8 +1996,7 @@ def _copilot_raw_event_counts(raw_events: _CopilotRawEvents) -> dict[str, object
     for event in raw_events.events:
         if event.event_type is not None:
             event_types[event.event_type] = event_types.get(event.event_type, 0) + 1
-        if _copilot_event_has_reasoning_evidence(event):
-            reasoning_evidence_count += 1
+        reasoning_evidence_count += _copilot_event_reasoning_evidence_count(event)
         if _copilot_event_has_usage_evidence(event):
             usage_evidence_count += 1
         if _copilot_event_has_cost_like_evidence(event):
@@ -1766,12 +2015,17 @@ def _copilot_raw_event_counts(raw_events: _CopilotRawEvents) -> dict[str, object
 
 
 def _copilot_event_has_reasoning_evidence(event: _CopilotRawEvent) -> bool:
+    return _copilot_event_reasoning_evidence_count(event) > 0
+
+
+def _copilot_event_reasoning_evidence_count(event: _CopilotRawEvent) -> int:
     if event.event_type != "assistant.message":
-        return False
-    return any(
-        key in event.data
-        for key in ("reasoningText", "reasoningOpaque", "encryptedContent")
-    )
+        return 0
+    count = 0
+    for key in ("reasoningText", "reasoningOpaque", "encryptedContent"):
+        if _string_or_none(event.data.get(key)) is not None:
+            count += 1
+    return count
 
 
 def _copilot_event_has_usage_evidence(event: _CopilotRawEvent) -> bool:
@@ -1950,6 +2204,7 @@ def _copilot_normalization_coverage(
     cost_evidence_count = _int_or_zero(raw_counts.get("cost_evidence_count"))
     tool_request_count = _int_or_zero(raw_counts.get("tool_request_count"))
     reasoning_count = _model_run_reasoning_count(model_runs)
+    cost_normalized_count = _copilot_usage_billing_count(usage)
     return {
         "messages": {
             "status": _coverage_status(len(messages)),
@@ -1995,9 +2250,13 @@ def _copilot_normalization_coverage(
             "normalized_count": len(usage),
         },
         "cost": {
-            "status": "event_only" if cost_evidence_count else "no_raw_evidence",
+            "status": (
+                "normalized"
+                if cost_normalized_count
+                else "event_only" if cost_evidence_count else "no_raw_evidence"
+            ),
             "raw_evidence_count": cost_evidence_count,
-            "normalized_count": 0,
+            "normalized_count": cost_normalized_count,
         },
     }
 
@@ -2019,11 +2278,15 @@ def _codex_residual_unsupported_concepts(
 def _copilot_residual_unsupported_concepts(
     *,
     raw_counts: dict[str, object],
+    usage: list[dict[str, object]],
 ) -> list[str]:
     unsupported: list[str] = []
-    if _int_or_zero(raw_counts.get("usage_evidence_count")):
+    if _int_or_zero(raw_counts.get("usage_evidence_count")) and not usage:
         unsupported.append("usage")
-    if _int_or_zero(raw_counts.get("cost_evidence_count")):
+    if (
+        _int_or_zero(raw_counts.get("cost_evidence_count"))
+        and not _copilot_usage_billing_count(usage)
+    ):
         unsupported.append("cost")
     return unsupported
 
@@ -3552,6 +3815,15 @@ def _model_run_reasoning_count(model_runs: list[dict[str, object]]) -> int:
         reasoning_trace = model_run.get("reasoning_trace")
         if isinstance(reasoning_trace, list):
             count += len(reasoning_trace)
+    return count
+
+
+def _copilot_usage_billing_count(usage: list[dict[str, object]]) -> int:
+    count = 0
+    for item in usage:
+        provider_billing_units = item.get("provider_billing_units")
+        if isinstance(provider_billing_units, dict):
+            count += 1
     return count
 
 

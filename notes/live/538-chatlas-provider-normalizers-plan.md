@@ -50,6 +50,19 @@ provider raw artifacts
 - `chat.tool_invocations[]` now emits canonical tool name, status, timestamps, input arguments, output content, model, interaction id, event refs, and source refs.
 - Copilot tool execution events now link back to `tool_invocation_ref` in `chat.events`.
 - Real-session smoke for `d1d3f48b-4b29-4dfc-b551-5536b9677225` now yields 2 normalized tool invocations and 18 normalized events.
+- Copilot Phase 5 model runs are implemented.
+- Copilot now builds one `chat.model_runs[]` record per `assistant.turn_start` / `assistant.turn_end` span, keyed by `turnId`.
+- Model runs attach message refs, tool invocation refs, event refs, output tokens, and the current model chosen from structured session model-change evidence.
+- Real-session smoke for `d1d3f48b-4b29-4dfc-b551-5536b9677225` now yields 3 normalized model runs.
+- Copilot Phase 6 reasoning is implemented.
+- `assistant.message.reasoningText`, `reasoningOpaque`, and `encryptedContent` now normalize into `model_runs[].reasoning_trace` as separate entries with truthful `visibility` values: `visible`, `opaque`, and `encrypted`.
+- Reasoning evidence that cannot be attached to a normalized turn now emits a warning and remains preserved in `messages/events/native`.
+- Real-session smoke for `d1d3f48b-4b29-4dfc-b551-5536b9677225` now yields 5 normalized reasoning-trace entries across 3 model runs.
+- Copilot Phase 7 usage is implemented.
+- `session.shutdown.data.modelMetrics` now normalizes into `chat.usage[]` with one session-scoped record per model key.
+- Copilot request cost now lands in `usage.provider_billing_units` as bounded provider-specific billing evidence instead of remaining a deferred standalone cost surface.
+- Session-level shutdown token counters remain preserved under `usage[].native.session_token_counters`.
+- Real-session smoke for `d1d3f48b-4b29-4dfc-b551-5536b9677225` now yields 1 normalized usage record and no remaining unsupported Copilot MVP surfaces.
 
 ## Design Commitments
 - Normalizers preserve raw evidence with source refs.

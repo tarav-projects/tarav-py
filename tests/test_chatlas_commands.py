@@ -630,6 +630,8 @@ def _write_copilot_events(
             "data": {
                 "content": [{"type": "text", "text": assistant_text}],
                 "reasoningText": "check repository state",
+                "reasoningOpaque": "opaque-reasoning",
+                "encryptedContent": "encrypted-reasoning",
                 "messageId": "assistant-message-1",
                 "requestId": "assistant-request-1",
                 "outputTokens": 17,
@@ -687,8 +689,23 @@ def _write_copilot_events(
             "timestamp": "2026-04-18T11:00:04.000Z",
             "data": {
                 "totalPremiumRequests": 1,
+                "currentTokens": 12,
+                "systemTokens": 4,
+                "conversationTokens": 5,
+                "toolDefinitionsTokens": 3,
                 "currentModel": "gpt-4.1",
-                "modelMetrics": {"inputTokens": 12, "outputTokens": 34},
+                "modelMetrics": {
+                    "gpt-4.1": {
+                        "requests": {"count": 1, "cost": 1},
+                        "usage": {
+                            "inputTokens": 12,
+                            "outputTokens": 34,
+                            "cacheReadTokens": 0,
+                            "cacheWriteTokens": 0,
+                            "reasoningTokens": 5,
+                        },
+                    }
+                },
             },
         },
     ]
@@ -3401,19 +3418,15 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
     assert payload["session"]["provider"] == "copilot-cli"
     assert payload["normalization"]["normalizer"] == "copilot-cli.raw_events.experimental.v1"
     assert payload["normalization"]["source_mode"] == "copilot_cli_raw_events"
-    assert payload["chat"]["usage"] == []
-    assert payload["normalization"]["unsupported_concepts"] == [
-        "usage",
-        "cost",
-    ]
-    assert payload["normalization"]["deferred_concepts"] == ["usage", "cost"]
+    assert payload["normalization"]["unsupported_concepts"] == []
+    assert payload["normalization"]["deferred_concepts"] == []
     assert payload["normalization"]["counts"] == {
         "messages": 3,
         "model_runs": 1,
         "tool_invocations": 1,
         "events": 10,
-        "usage": 0,
-        "reasoning_traces": 1,
+        "usage": 1,
+        "reasoning_traces": 3,
     }
     assert payload["normalization"]["raw_counts"] == {
         "records": 10,
@@ -3430,7 +3443,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
             "user.message": 1,
         },
         "parse_warning_count": 0,
-        "reasoning_evidence_count": 1,
+        "reasoning_evidence_count": 3,
         "usage_evidence_count": 2,
         "cost_evidence_count": 1,
         "tool_request_count": 1,
@@ -3460,13 +3473,18 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
     }
     assert payload["normalization"]["coverage"]["reasoning"] == {
         "status": "normalized",
-        "raw_evidence_count": 1,
-        "normalized_count": 1,
+        "raw_evidence_count": 3,
+        "normalized_count": 3,
     }
     assert payload["normalization"]["coverage"]["usage"] == {
-        "status": "missing",
+        "status": "normalized",
         "raw_evidence_count": 2,
-        "normalized_count": 0,
+        "normalized_count": 1,
+    }
+    assert payload["normalization"]["coverage"]["cost"] == {
+        "status": "normalized",
+        "raw_evidence_count": 1,
+        "normalized_count": 1,
     }
     events = payload["chat"]["events"]
     assert [event["type"] for event in events] == [
@@ -3544,6 +3562,8 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         {"type": "text", "text": "copilot experimental assistant"}
     ]
     assert messages[2]["native"]["reasoning_text"] == "check repository state"
+    assert messages[2]["native"]["reasoning_opaque"] == "opaque-reasoning"
+    assert messages[2]["native"]["encrypted_content"] == "encrypted-reasoning"
     assert messages[2]["native"]["output_tokens"] == 17
     assert messages[2]["native"]["tool_requests"] == [
         {
@@ -3607,6 +3627,53 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
             "event_refs": ["event-7", "event-8"],
         }
     ]
+    assert payload["chat"]["usage"] == [
+        {
+            "usage_id": "usage-1",
+            "scope": "session",
+            "provider": "copilot-cli",
+            "model": "gpt-4.1",
+            "native": {
+                "event_type": "session.shutdown",
+                "event_index": 10,
+                "line": 10,
+                "event_id": "event-shutdown",
+                "parent_id": "event-turn-end-1",
+                "model_metrics_key": "gpt-4.1",
+                "model_metrics_entry": {
+                    "requests": {"count": 1, "cost": 1},
+                    "usage": {
+                        "inputTokens": 12,
+                        "outputTokens": 34,
+                        "cacheReadTokens": 0,
+                        "cacheWriteTokens": 0,
+                        "reasoningTokens": 5,
+                    },
+                },
+                "total_premium_requests": 1,
+                "current_model": "gpt-4.1",
+                "session_token_counters": {
+                    "current_tokens": 12,
+                    "system_tokens": 4,
+                    "conversation_tokens": 5,
+                    "tool_definitions_tokens": 3,
+                },
+            },
+            "input_tokens": 12,
+            "output_tokens": 34,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "reasoning_tokens": 5,
+            "request_count": 1,
+            "provider_billing_units": {
+                "kind": "copilot_premium_request_cost",
+                "value": 1,
+            },
+            "source_refs": [
+                {"source_ref_id": "source-1", "event_index": 10, "line": 10}
+            ],
+        }
+    ]
     assert payload["chat"]["model_runs"] == [
         {
             "model_run_id": "model-run-1",
@@ -3652,6 +3719,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                         "line": 6,
                         "event_id": "event-assistant-1",
                         "parent_id": "event-turn-start-1",
+                        "reasoning_key": "reasoningText",
                         "message_id": "assistant-message-1",
                         "request_id": "assistant-request-1",
                         "interaction_id": "copilot-interaction-1",
@@ -3661,7 +3729,49 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                     "source_refs": [
                         {"source_ref_id": "source-1", "event_index": 6, "line": 6}
                     ],
-                }
+                },
+                {
+                    "reasoning_id": "reasoning-1-2",
+                    "visibility": "opaque",
+                    "opaque_content": "opaque-reasoning",
+                    "native": {
+                        "event_type": "assistant.message",
+                        "event_index": 6,
+                        "line": 6,
+                        "event_id": "event-assistant-1",
+                        "parent_id": "event-turn-start-1",
+                        "reasoning_key": "reasoningOpaque",
+                        "message_id": "assistant-message-1",
+                        "request_id": "assistant-request-1",
+                        "interaction_id": "copilot-interaction-1",
+                        "output_tokens": 17,
+                    },
+                    "timestamp": "2026-04-18T11:00:02.000Z",
+                    "source_refs": [
+                        {"source_ref_id": "source-1", "event_index": 6, "line": 6}
+                    ],
+                },
+                {
+                    "reasoning_id": "reasoning-1-3",
+                    "visibility": "encrypted",
+                    "encrypted_content": "encrypted-reasoning",
+                    "native": {
+                        "event_type": "assistant.message",
+                        "event_index": 6,
+                        "line": 6,
+                        "event_id": "event-assistant-1",
+                        "parent_id": "event-turn-start-1",
+                        "reasoning_key": "encryptedContent",
+                        "message_id": "assistant-message-1",
+                        "request_id": "assistant-request-1",
+                        "interaction_id": "copilot-interaction-1",
+                        "output_tokens": 17,
+                    },
+                    "timestamp": "2026-04-18T11:00:02.000Z",
+                    "source_refs": [
+                        {"source_ref_id": "source-1", "event_index": 6, "line": 6}
+                    ],
+                },
             ],
         }
     ]
@@ -3683,6 +3793,10 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
     )
     assert (
         "copilot raw events model runs normalized from turn events: 1 runs"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "copilot raw events usage normalized from session.shutdown.modelMetrics: 1 records"
         in payload["normalization"]["warnings"]
     )
 
