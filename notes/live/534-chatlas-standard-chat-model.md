@@ -27,6 +27,15 @@ provider raw artifacts
 - Derived artifacts are projections from the standard model where possible.
 - Repeated raw-provider reads from normal services are a signal that the standard model probably lacks a concept.
 
+## Canonical Surface Principle
+- Canonical standard-model surfaces should be truthful and provider-neutral.
+- Provider-specific expansions, prompt rewrites, and odd tool-result details should be preserved, but bounded, until the standard model has an explicit provider-neutral place for them.
+- Do not promote provider-specific convenience fields into canonical fields unless they describe the same concept across providers.
+- Prefer a conservative canonical field plus `native` evidence over a canonical field that implies fake precision.
+- User-authored text and provider-expanded model input are different concepts: keep user-authored content canonical, and preserve provider-expanded prompt/input context as bounded provider evidence unless a future `model_input` or `prompt_context` surface is defined.
+- Structured usage should be promoted when the provider exposes it as structured usage evidence, but aggregation boundaries must remain honest. Do not allocate session-level usage to model runs unless the raw data supports that allocation.
+- Tool execution status and outputs should use structured provider fields first. Avoid parsing semi-structured terminal text into canonical fields until the provider evidence is reliable enough.
+
 ## Boundary
 
 ### Before The Boundary

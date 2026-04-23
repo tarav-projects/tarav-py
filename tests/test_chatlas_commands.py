@@ -575,6 +575,7 @@ def _write_copilot_events(
     records = [
         {
             "type": "session.start",
+            "id": "event-start",
             "timestamp": "2026-04-18T11:00:00.000Z",
             "data": {
                 "sessionId": session_id,
@@ -582,36 +583,111 @@ def _write_copilot_events(
             },
         },
         {
+            "type": "session.model_change",
+            "id": "event-model-change",
+            "parentId": "event-start",
+            "timestamp": "2026-04-18T11:00:00.250Z",
+            "data": {
+                "newModel": "gpt-4.1",
+            },
+        },
+        {
+            "type": "system.message",
+            "id": "event-system",
+            "parentId": "event-model-change",
+            "timestamp": "2026-04-18T11:00:00.500Z",
+            "data": {
+                "role": "system",
+                "content": "copilot system prompt",
+            },
+        },
+        {
             "type": "user.message",
+            "id": "event-user",
+            "parentId": "event-system",
             "timestamp": "2026-04-18T11:00:01.000Z",
             "data": {
                 "content": [{"type": "text", "text": user_text}],
+                "transformedContent": f"<context>\n{user_text}\n</context>",
+                "interactionId": "copilot-interaction-1",
+            },
+        },
+        {
+            "type": "assistant.turn_start",
+            "id": "event-turn-start-1",
+            "parentId": "event-user",
+            "timestamp": "2026-04-18T11:00:01.500Z",
+            "data": {
+                "turnId": "0",
+                "interactionId": "copilot-interaction-1",
             },
         },
         {
             "type": "assistant.message",
+            "id": "event-assistant-1",
+            "parentId": "event-turn-start-1",
             "timestamp": "2026-04-18T11:00:02.000Z",
             "data": {
                 "content": [{"type": "text", "text": assistant_text}],
                 "reasoningText": "check repository state",
+                "messageId": "assistant-message-1",
+                "requestId": "assistant-request-1",
+                "outputTokens": 17,
+                "interactionId": "copilot-interaction-1",
                 "toolRequests": [
-                    {"name": "shell", "arguments": {"cmd": "git status"}}
+                    {
+                        "toolCallId": "tool-call-1",
+                        "name": "shell",
+                        "arguments": {"cmd": "git status"},
+                    }
                 ],
             },
         },
         {
             "type": "tool.execution_start",
+            "id": "event-tool-start-1",
+            "parentId": "event-assistant-1",
             "timestamp": "2026-04-18T11:00:03.000Z",
             "data": {
+                "toolCallId": "tool-call-1",
                 "toolName": "shell",
-                "command": "git status",
+                "arguments": {"cmd": "git status"},
+                "interactionId": "copilot-interaction-1",
+            },
+        },
+        {
+            "type": "tool.execution_complete",
+            "id": "event-tool-complete-1",
+            "parentId": "event-tool-start-1",
+            "timestamp": "2026-04-18T11:00:03.500Z",
+            "data": {
+                "toolCallId": "tool-call-1",
+                "success": True,
+                "model": "gpt-4.1",
+                "interactionId": "copilot-interaction-1",
+                "result": {
+                    "content": "On branch main",
+                    "detailedContent": "On branch main\nnothing to commit, working tree clean",
+                },
+            },
+        },
+        {
+            "type": "assistant.turn_end",
+            "id": "event-turn-end-1",
+            "parentId": "event-tool-complete-1",
+            "timestamp": "2026-04-18T11:00:03.700Z",
+            "data": {
+                "turnId": "0",
             },
         },
         {
             "type": "session.shutdown",
+            "id": "event-shutdown",
+            "parentId": "event-turn-end-1",
             "timestamp": "2026-04-18T11:00:04.000Z",
             "data": {
                 "totalPremiumRequests": 1,
+                "currentModel": "gpt-4.1",
                 "modelMetrics": {"inputTokens": 12, "outputTokens": 34},
             },
         },
@@ -3241,6 +3317,7 @@ def test_chatlas_experimental_export_emits_session_model_json(
     assert payload["chat"]["model_runs"] == []
     assert payload["chat"]["tool_invocations"] == []
     assert payload["chat"]["events"] == []
+    assert payload["chat"]["usage"] == []
     assert [message["role"] for message in payload["chat"]["messages"]] == ["user", "assistant"]
     assert payload["chat"]["messages"][0]["content"] == [
         {
@@ -3272,6 +3349,386 @@ def test_chatlas_experimental_export_emits_session_model_json(
     )
     assert "messages" not in payload["normalization"]["unsupported_concepts"]
     assert "model_runs" in payload["normalization"]["unsupported_concepts"]
+
+
+def test_chatlas_experimental_export_loads_copilot_raw_events(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot-cli",
+                "id": "copilot-main",
+                "home": str(home / ".copilot"),
+            }
+        ],
+    )
+
+    session_id = "d1d3f48b-4b29-4dfc-b551-5536b9677225"
+    _write_copilot_events(
+        home / ".copilot" / "session-state" / session_id / "events.jsonl",
+        session_id=session_id,
+        user_text="copilot experimental user",
+        assistant_text="copilot experimental assistant",
+    )
+
+    assert main(_chatlas_update_argv("--provider", "copilot-cli")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "experimental",
+                "export",
+                session_id,
+                "--provider",
+                "copilot-cli",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "copilot-cli"
+    assert payload["normalization"]["normalizer"] == "copilot-cli.raw_events.experimental.v1"
+    assert payload["normalization"]["source_mode"] == "copilot_cli_raw_events"
+    assert payload["chat"]["usage"] == []
+    assert payload["normalization"]["unsupported_concepts"] == [
+        "usage",
+        "cost",
+    ]
+    assert payload["normalization"]["deferred_concepts"] == ["usage", "cost"]
+    assert payload["normalization"]["counts"] == {
+        "messages": 3,
+        "model_runs": 1,
+        "tool_invocations": 1,
+        "events": 10,
+        "usage": 0,
+        "reasoning_traces": 1,
+    }
+    assert payload["normalization"]["raw_counts"] == {
+        "records": 10,
+        "event_types": {
+            "assistant.message": 1,
+            "assistant.turn_end": 1,
+            "assistant.turn_start": 1,
+            "session.model_change": 1,
+            "session.shutdown": 1,
+            "session.start": 1,
+            "system.message": 1,
+            "tool.execution_complete": 1,
+            "tool.execution_start": 1,
+            "user.message": 1,
+        },
+        "parse_warning_count": 0,
+        "reasoning_evidence_count": 1,
+        "usage_evidence_count": 2,
+        "cost_evidence_count": 1,
+        "tool_request_count": 1,
+    }
+    assert payload["normalization"]["coverage"]["messages"] == {
+        "status": "normalized",
+        "raw_message_event_count": 3,
+        "normalized_count": 3,
+    }
+    assert payload["normalization"]["coverage"]["model_runs"] == {
+        "status": "normalized",
+        "raw_turn_start_count": 1,
+        "raw_turn_end_count": 1,
+        "normalized_count": 1,
+    }
+    assert payload["normalization"]["coverage"]["tool_invocations"] == {
+        "status": "normalized",
+        "raw_tool_request_count": 1,
+        "raw_tool_execution_start_count": 1,
+        "raw_tool_execution_complete_count": 1,
+        "normalized_count": 1,
+    }
+    assert payload["normalization"]["coverage"]["events"] == {
+        "status": "normalized",
+        "raw_count": 10,
+        "normalized_count": 10,
+    }
+    assert payload["normalization"]["coverage"]["reasoning"] == {
+        "status": "normalized",
+        "raw_evidence_count": 1,
+        "normalized_count": 1,
+    }
+    assert payload["normalization"]["coverage"]["usage"] == {
+        "status": "missing",
+        "raw_evidence_count": 2,
+        "normalized_count": 0,
+    }
+    events = payload["chat"]["events"]
+    assert [event["type"] for event in events] == [
+        "copilot-cli.session.start",
+        "copilot-cli.session.model_change",
+        "copilot-cli.system.message",
+        "copilot-cli.user.message",
+        "copilot-cli.assistant.turn_start",
+        "copilot-cli.assistant.message",
+        "copilot-cli.tool.execution_start",
+        "copilot-cli.tool.execution_complete",
+        "copilot-cli.assistant.turn_end",
+        "copilot-cli.session.shutdown",
+    ]
+    assert events[0] == {
+        "event_id": "event-1",
+        "type": "copilot-cli.session.start",
+        "timestamp": "2026-04-18T11:00:00.000Z",
+        "data": {
+            "sessionId": session_id,
+            "producer": "copilot-agent",
+        },
+        "native": {
+            "event_type": "session.start",
+            "event_index": 1,
+            "line": 1,
+            "event_id": "event-start",
+        },
+        "source_refs": [
+            {"source_ref_id": "source-1", "event_index": 1, "line": 1}
+        ],
+    }
+    assert events[4]["turn_id"] == "0"
+    assert events[5]["data"]["reasoningText"] == "check repository state"
+    assert events[6]["data"] == {
+        "toolCallId": "tool-call-1",
+        "toolName": "shell",
+        "arguments": {"cmd": "git status"},
+        "interactionId": "copilot-interaction-1",
+    }
+    assert events[6]["call_id"] == "tool-call-1"
+    assert events[6]["tool_invocation_ref"] == "tool-invocation-1"
+    assert events[7]["data"] == {
+        "toolCallId": "tool-call-1",
+        "success": True,
+        "model": "gpt-4.1",
+        "interactionId": "copilot-interaction-1",
+        "result": {
+            "content": "On branch main",
+            "detailedContent": "On branch main\nnothing to commit, working tree clean",
+        },
+    }
+    assert events[7]["call_id"] == "tool-call-1"
+    assert events[7]["tool_invocation_ref"] == "tool-invocation-1"
+    messages = payload["chat"]["messages"]
+    assert [message["role"] for message in messages] == ["system", "user", "assistant"]
+    assert [message["visibility"] for message in messages] == [
+        "context",
+        "conversation",
+        "conversation",
+    ]
+    assert messages[0]["content"] == [{"type": "text", "text": "copilot system prompt"}]
+    assert messages[0]["native"]["content_types"] == ["string"]
+    assert messages[1]["content"] == [
+        {"type": "text", "text": "copilot experimental user"}
+    ]
+    assert (
+        messages[1]["native"]["transformed_content"]
+        == "<context>\ncopilot experimental user\n</context>"
+    )
+    assert messages[1]["source_refs"] == [
+        {"source_ref_id": "source-1", "event_index": 4, "line": 4}
+    ]
+    assert messages[2]["content"] == [
+        {"type": "text", "text": "copilot experimental assistant"}
+    ]
+    assert messages[2]["native"]["reasoning_text"] == "check repository state"
+    assert messages[2]["native"]["output_tokens"] == 17
+    assert messages[2]["native"]["tool_requests"] == [
+        {
+            "toolCallId": "tool-call-1",
+            "name": "shell",
+            "arguments": {"cmd": "git status"},
+        }
+    ]
+    tool_invocations = payload["chat"]["tool_invocations"]
+    assert tool_invocations == [
+        {
+            "tool_invocation_id": "tool-invocation-1",
+            "call_id": "tool-call-1",
+            "tool_name": "shell",
+            "status": "completed",
+            "native": {
+                "request_present": True,
+                "execution_start_present": True,
+                "execution_complete_present": True,
+                "event_indices": {
+                    "tool_request": [{"event_index": 6, "request_index": 1}],
+                    "tool.execution_start": [7],
+                    "tool.execution_complete": [8],
+                },
+                "request": {
+                    "toolCallId": "tool-call-1",
+                    "name": "shell",
+                    "arguments": {"cmd": "git status"},
+                },
+                "execution_start": {
+                    "toolCallId": "tool-call-1",
+                    "toolName": "shell",
+                    "arguments": {"cmd": "git status"},
+                    "interactionId": "copilot-interaction-1",
+                },
+                "execution_complete": {
+                    "toolCallId": "tool-call-1",
+                    "success": True,
+                    "model": "gpt-4.1",
+                    "interactionId": "copilot-interaction-1",
+                    "result": {
+                        "content": "On branch main",
+                        "detailedContent": "On branch main\nnothing to commit, working tree clean",
+                    },
+                },
+            },
+            "started_at": "2026-04-18T11:00:03.000Z",
+            "ended_at": "2026-04-18T11:00:03.500Z",
+            "input": {"arguments": {"cmd": "git status"}},
+            "output": {
+                "content": "On branch main",
+                "detailed_content": "On branch main\nnothing to commit, working tree clean",
+            },
+            "model": "gpt-4.1",
+            "interaction_id": "copilot-interaction-1",
+            "source_refs": [
+                {"source_ref_id": "source-1", "event_index": 6, "line": 6},
+                {"source_ref_id": "source-1", "event_index": 7, "line": 7},
+                {"source_ref_id": "source-1", "event_index": 8, "line": 8},
+            ],
+            "event_refs": ["event-7", "event-8"],
+        }
+    ]
+    assert payload["chat"]["model_runs"] == [
+        {
+            "model_run_id": "model-run-1",
+            "provider": "copilot-cli",
+            "status": "completed",
+            "native": {
+                "turn_start_present": True,
+                "turn_end_present": True,
+                "turn_start_event_index": 5,
+                "span_end_event_index": 9,
+                "model_source": "session.model_change.newModel",
+                "turn_start_event_id": "event-turn-start-1",
+                "turn_end_event_index": 9,
+                "turn_end_event_id": "event-turn-end-1",
+            },
+            "turn_id": "0",
+            "started_at": "2026-04-18T11:00:01.500Z",
+            "ended_at": "2026-04-18T11:00:03.700Z",
+            "model": "gpt-4.1",
+            "interaction_id": "copilot-interaction-1",
+            "output_tokens": 17,
+            "source_refs": [
+                {"source_ref_id": "source-1", "event_index": 5, "line": 5},
+                {"source_ref_id": "source-1", "event_index": 9, "line": 9},
+            ],
+            "message_refs": ["message-2", "message-3"],
+            "tool_invocation_refs": ["tool-invocation-1"],
+            "event_refs": [
+                "event-5",
+                "event-6",
+                "event-7",
+                "event-8",
+                "event-9",
+            ],
+            "reasoning_trace": [
+                {
+                    "reasoning_id": "reasoning-1-1",
+                    "visibility": "visible",
+                    "text": "check repository state",
+                    "native": {
+                        "event_type": "assistant.message",
+                        "event_index": 6,
+                        "line": 6,
+                        "event_id": "event-assistant-1",
+                        "parent_id": "event-turn-start-1",
+                        "message_id": "assistant-message-1",
+                        "request_id": "assistant-request-1",
+                        "interaction_id": "copilot-interaction-1",
+                        "output_tokens": 17,
+                    },
+                    "timestamp": "2026-04-18T11:00:02.000Z",
+                    "source_refs": [
+                        {"source_ref_id": "source-1", "event_index": 6, "line": 6}
+                    ],
+                }
+            ],
+        }
+    ]
+    assert (
+        "copilot raw events parsed for future normalization: 10 events"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "copilot raw events normalized from events.jsonl: 10 events"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "copilot raw events messages normalized from message events: 3 messages"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "copilot raw events tool invocations normalized by toolCallId: 1 invocations"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "copilot raw events model runs normalized from turn events: 1 runs"
+        in payload["normalization"]["warnings"]
+    )
+
+
+def test_chatlas_experimental_export_errors_for_missing_provider_normalizer(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    pi_home = home / ".pi" / "profiles" / "codex-mm"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "pi",
+                "id": "pi-mm",
+                "home": str(pi_home),
+            }
+        ],
+    )
+
+    session_id = "019d9cde-0ff5-75a6-b36d-c11a19c2e1b4"
+    _write_pi_session(
+        pi_home
+        / "sessions"
+        / "--Users-pereiro-Documents-workspaces-oba-workspace-agentos-iterante-dev--"
+        / f"2026-04-17T19-14-52-021Z_{session_id}.jsonl",
+        session_id=session_id,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "pi")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(["chatlas", "experimental", "export", session_id, "--provider", "pi"]) == 1
+    captured = capsys.readouterr()
+
+    assert captured.out == ""
+    assert (
+        "experimental session model export has no provider-specific raw normalizer "
+        "for provider pi"
+    ) in captured.err
 
 
 def test_chatlas_experimental_export_reports_invalid_codex_raw_lines(
@@ -3405,6 +3862,7 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
         "model_runs": 1,
         "tool_invocations": 2,
         "events": 3,
+        "usage": 0,
         "reasoning_traces": 0,
     }
     assert payload["normalization"]["raw_counts"] == {
@@ -3582,6 +4040,7 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
         "model_runs": 1,
         "tool_invocations": 1,
         "events": 3,
+        "usage": 0,
         "reasoning_traces": 1,
     }
     assert payload["normalization"]["raw_counts"] == {
