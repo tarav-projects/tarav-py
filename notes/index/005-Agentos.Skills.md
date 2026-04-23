@@ -34,7 +34,19 @@ Selection and import model for project-local skills in `agentos`.
 - Registry sources are defined once in global config under `skills.routing.sources`.
 - A source is either:
   - a direct `{ "path": "..." }` entry
+  - an Agentos.Project-backed `{ "project": "..." }` entry
   - a `{ "package": [...] }` entry that expands other sources left to right
+- Project-backed sources use `<project>/skills` as their default skill root.
+- Project-backed sources may publish export packages from
+  `<project>/.agentos/config.json` under `skills.exports.packages`.
+- A source-qualified reference such as `{ "name": "source:package" }` resolves
+  `package` from the project-backed global source `source`.
+- Any source entry may add exact `include` and `exclude` arrays.
+  - `include` narrows that entry's direct or expanded skills.
+  - `exclude` removes matching skills and wins over `include`.
+  - Filter names may match the final imported skill name or the source-local skill
+    directory name.
+  - Unknown filter names are config errors.
 - Relative registry source paths resolve from `AGENTOS_HOME`.
 - Relative inline profile source paths resolve from the selected project root.
 

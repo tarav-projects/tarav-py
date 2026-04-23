@@ -171,8 +171,12 @@ Current import-selection model:
 - global `~/.agents` is not used to discover skills for this flow
 - profile selection uses local project config override first, then global `default_profile`, then hardcoded `default`
 - sources are declared once in `sources`
-- a source is either a direct `{ "path": "..." }` leaf or a `{ "package": [...] }` composite
+- a source is a direct `{ "path": "..." }` leaf, an Agentos.Project `{ "project": "..." }` leaf, or a `{ "package": [...] }` composite
 - package lists expand left to right and can mix registry references with inline direct sources
+- project sources default to `<project>/skills` and can publish source-owned export packages from `<project>/.agentos/config.json`
+- `{ "name": "source:package" }` resolves package `package` exported by global project source `source`
+- source entries may add exact `include` and `exclude` arrays anywhere they appear; `include` narrows the expanded skills, `exclude` removes skills, and `exclude` wins when both match
+- filter names may match either the final imported skill name or the source-local skill directory name; unknown filter names are config errors
 - profiles choose ordered `sources` and one or more relative `depots`
 - relative registry source paths resolve from `AGENTOS_HOME`; inline profile source paths resolve from the selected project root
 - when `depots` is omitted, the default depots are `.agents/skills` and `.claude/skills`
@@ -194,9 +198,13 @@ Global config shape:
         "agentos": {
           "path": "/Users/pereiro/projects/agentos/skills"
         },
+        "iterante": {
+          "project": "/Users/pereiro/Documents/workspaces/oba-workspace/agentos-iterante-dev"
+        },
         "core": {
           "package": [
-            { "name": "agentos" }
+            { "name": "agentos" },
+            { "name": "iterante:runtime" }
           ]
         }
       },
@@ -209,7 +217,7 @@ Global config shape:
           ],
           "sources": [
             { "name": "core" },
-            { "name": "scratch", "path": "skills" }
+            { "name": "scratch", "path": "skills", "exclude": ["scratch-draft-skill"] }
           ]
         }
       }
@@ -234,6 +242,9 @@ Output notes:
 - `{ "name": "agentos" }` resolves through `sources`
 - `{ "name": "scratch", "path": "skills" }` is an inline direct source definition
 - `{ "name": "core" }` can resolve to a package source which expands into direct sources
+- `{ "name": "iterante:runtime" }` resolves a package exported by the project-backed `iterante` source
+- `{ "name": "agentos", "include": ["agentos-session-status"] }` imports only matching skills from that source or expanded package
+- `{ "name": "agentos", "exclude": ["agentos-team"] }` imports the source or expanded package except matching skills
 
 ## Tape CLI (folder-backed default)
 

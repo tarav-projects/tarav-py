@@ -11,6 +11,7 @@ from agentos.chatlas.core import (
     chatlas_update,
     format_chatlas_stats_markdown,
 )
+from agentos.chatlas.experimental import chatlas_experimental_export_session_model
 from agentos.chatlas.raw import supported_chatlas_provider_families
 
 _CHATLAS_PROVIDER_CHOICES = tuple(
@@ -93,6 +94,16 @@ def _cmd_chatlas_export(args: argparse.Namespace) -> int:
             output_format=args.output_format,
         )
     )
+    return 0
+
+
+def _cmd_chatlas_experimental_export(args: argparse.Namespace) -> int:
+    payload = chatlas_experimental_export_session_model(
+        query=args.query,
+        providers=optional_string_tuple(args.providers),
+        output_format=args.output_format,
+    )
+    print(format_json_output(payload))
     return 0
 
 
@@ -308,3 +319,36 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Output format. Transcript supports markdown/jsonl; summary supports markdown/json.",
     )
     export_parser.set_defaults(handler=_cmd_chatlas_export)
+
+    experimental_parser = chatlas_subparsers.add_parser(
+        "experimental",
+        help="Experimental Chatlas surfaces with unstable schemas.",
+    )
+    experimental_subparsers = experimental_parser.add_subparsers(
+        dest="chatlas_experimental_command",
+        required=True,
+    )
+
+    experimental_export_parser = experimental_subparsers.add_parser(
+        "export",
+        help="Export one normalized Chatlas session as an experimental standard model JSON object.",
+    )
+    experimental_export_parser.add_argument(
+        "query",
+        help="Exact query value matched against URI, session id, display name, fingerprint, and native fields.",
+    )
+    experimental_export_parser.add_argument(
+        "--provider",
+        choices=_CHATLAS_PROVIDER_CHOICES,
+        action="append",
+        dest="providers",
+        help="Restrict export to a provider family. Repeat to include multiple providers.",
+    )
+    experimental_export_parser.add_argument(
+        "--format",
+        choices=("json",),
+        default="json",
+        dest="output_format",
+        help="Output format. Experimental session model export supports json only.",
+    )
+    experimental_export_parser.set_defaults(handler=_cmd_chatlas_experimental_export)

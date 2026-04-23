@@ -93,6 +93,334 @@ def _write_codex_dialog_rollout(
     _set_iso_mtime(path, records[-1]["timestamp"])
 
 
+def _write_codex_dialog_rollout_with_invalid_line(
+    path: Path,
+    *,
+    session_id: str,
+    user_text: str = "hello from codex",
+    assistant_text: str = "codex reply",
+) -> None:
+    records = [
+        {
+            "timestamp": "2026-03-08T01:08:59.089Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "originator": "codex_cli_rs",
+                "source": "cli",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.093Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": user_text}],
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.094Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": assistant_text}],
+            },
+        },
+    ]
+    lines = [
+        json.dumps(records[0]),
+        "{not-json",
+        json.dumps(records[1]),
+        json.dumps(records[2]),
+    ]
+    _write(path, "\n".join(lines) + "\n")
+    _set_iso_mtime(path, records[-1]["timestamp"])
+
+
+def _write_codex_context_rollout(
+    path: Path,
+    *,
+    session_id: str,
+) -> None:
+    records = [
+        {
+            "timestamp": "2026-03-08T01:08:59.089Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "originator": "codex_cli_rs",
+                "source": "cli",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.090Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "developer",
+                "content": [{"type": "input_text", "text": "developer instruction"}],
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.091Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "<environment_context>\nctx"}],
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.092Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "custom_payload", "value": {"status": "ok"}}],
+            },
+        },
+    ]
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(path, records[-1]["timestamp"])
+
+
+def _write_codex_tool_rollout(
+    path: Path,
+    *,
+    session_id: str,
+) -> None:
+    records = [
+        {
+            "timestamp": "2026-03-08T01:08:59.089Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "originator": "codex_cli_rs",
+                "source": "cli",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.090Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "task_started",
+                "turn_id": "turn-1",
+                "started_at": 1772946539,
+                "model_context_window": 258400,
+                "collaboration_mode_kind": "default",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.095Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 2,
+                        "total_tokens": 12,
+                    }
+                },
+                "rate_limits": {
+                    "limit_id": "codex",
+                    "primary": {
+                        "used_percent": 58.0,
+                    },
+                },
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.100Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "run pwd"}],
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:00.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "call_id": "call-complete",
+                "arguments": json.dumps(
+                    {
+                        "cmd": "pwd",
+                        "workdir": "/tmp",
+                    }
+                ),
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:01.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call-complete",
+                "output": "Chunk ID: abc\nOutput:\n/tmp\n",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:01.100Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "exec_command_end",
+                "call_id": "call-complete",
+                "command": ["/bin/zsh", "-lc", "pwd"],
+                "cwd": "/tmp",
+                "status": "completed",
+                "exit_code": 0,
+                "duration": {
+                    "secs": 1,
+                    "nanos": 250_000_000,
+                },
+                "stdout": "",
+                "stderr": "",
+                "aggregated_output": "/tmp\n",
+                "turn_id": "turn-1",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:02.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "call_id": "call-incomplete",
+                "arguments": "{bad-json",
+            },
+        },
+    ]
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(path, records[-1]["timestamp"])
+
+
+def _write_codex_model_run_rollout(
+    path: Path,
+    *,
+    session_id: str,
+) -> None:
+    records = [
+        {
+            "timestamp": "2026-03-08T01:08:58.000Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "originator": "codex_cli_rs",
+                "source": "cli",
+                "model_provider": "openai",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.000Z",
+            "type": "turn_context",
+            "payload": {
+                "turn_id": "turn-1",
+                "model": "gpt-5.4-mini",
+                "effort": "high",
+                "cwd": "/tmp/project",
+                "approval_policy": "never",
+                "sandbox_policy": {"type": "workspace-write"},
+                "collaboration_mode": {
+                    "mode": "default",
+                    "settings": {
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "high",
+                        "developer_instructions": "do not expose this",
+                    },
+                },
+                "current_date": "2026-03-08",
+                "timezone": "UTC",
+                "truncation_policy": {"mode": "tokens", "limit": 10000},
+                "realtime_active": False,
+                "summary": "prior summary should stay raw-only",
+                "user_instructions": "do not expose this either",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:00.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "task_started",
+                "turn_id": "turn-1",
+                "started_at": 1772946540,
+                "model_context_window": 258400,
+                "collaboration_mode_kind": "default",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:01.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "explain model run"}],
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:02.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "reasoning",
+                "summary": [{"type": "summary_text", "text": "check context"}],
+                "content": None,
+                "encrypted_content": "encrypted-reasoning",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:03.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "call_id": "call-run",
+                "arguments": json.dumps({"cmd": "pwd", "workdir": "/tmp/project"}),
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:04.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call-run",
+                "output": "Output:\n/tmp/project\n",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:04.100Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "exec_command_end",
+                "call_id": "call-run",
+                "turn_id": "turn-1",
+                "command": ["/bin/zsh", "-lc", "pwd"],
+                "cwd": "/tmp/project",
+                "status": "completed",
+                "exit_code": 0,
+                "duration": {"secs": 0, "nanos": 500_000_000},
+                "aggregated_output": "/tmp/project\n",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:05.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "task_complete",
+                "turn_id": "turn-1",
+                "completed_at": 1772946545,
+                "duration_ms": 5000,
+            },
+        },
+    ]
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(path, records[-1]["timestamp"])
+
+
 def _write_codex_session_index(
     path: Path,
     *,
@@ -2863,6 +3191,496 @@ def test_chatlas_export_supports_jsonl_transcript_output(
     assert [line["role"] for line in payload_lines] == ["user", "assistant"]
     assert payload_lines[0]["text"] == "jsonl export user"
     assert payload_lines[1]["text"] == "jsonl export assistant"
+
+
+def test_chatlas_experimental_export_emits_session_model_json(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    thread_name = "experimental-export-thread"
+    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    _write_codex_dialog_rollout(
+        rollout_path,
+        session_id=session_id,
+        user_text="experimental export user",
+        assistant_text="experimental export assistant",
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["class"] == "agentos.chatlas.experimental.session_model"
+    assert payload["schema_version"] == 1
+    assert payload["experimental"] is True
+    assert payload["session"]["provider"] == "codex"
+    assert payload["session"]["session_id"] == session_id
+    assert payload["session"]["display_name"] == thread_name
+    assert payload["agent_instance"]["provider_family"] == "codex"
+    assert (
+        payload["agent_instance"]["provider_instance_fingerprint"]
+        == payload["session"]["provider_instance_fingerprint"]
+    )
+    assert any(source["role"] == "transcript" for source in payload["sources"])
+    assert payload["chat"]["model_runs"] == []
+    assert payload["chat"]["tool_invocations"] == []
+    assert payload["chat"]["events"] == []
+    assert [message["role"] for message in payload["chat"]["messages"]] == ["user", "assistant"]
+    assert payload["chat"]["messages"][0]["content"] == [
+        {
+            "type": "text",
+            "text": "experimental export user<system-reminder>\nmetadata tail",
+        }
+    ]
+    assert payload["chat"]["messages"][1]["content"] == [
+        {
+            "type": "text",
+            "text": "experimental export assistant",
+        }
+    ]
+    assert payload["chat"]["messages"][0]["visibility"] == "conversation"
+    assert payload["chat"]["messages"][0]["native"]["content_types"] == ["input_text"]
+    assert payload["chat"]["messages"][1]["native"]["content_types"] == ["output_text"]
+    assert payload["chat"]["messages"][0]["source_refs"] == [
+        {"source_ref_id": "source-1", "record_index": 2, "line": 2}
+    ]
+    assert payload["normalization"]["normalizer"] == "codex.raw_rollout.experimental.v1"
+    assert payload["normalization"]["source_mode"] == "codex_raw_rollout"
+    assert (
+        "codex raw rollout parsed for future normalization: 3 records"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "codex raw rollout messages normalized from response_item.message: 2 messages"
+        in payload["normalization"]["warnings"]
+    )
+    assert "messages" not in payload["normalization"]["unsupported_concepts"]
+    assert "model_runs" in payload["normalization"]["unsupported_concepts"]
+
+
+def test_chatlas_experimental_export_reports_invalid_codex_raw_lines(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd6"
+    thread_name = "experimental-invalid-raw-thread"
+    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    _write_codex_dialog_rollout_with_invalid_line(
+        rollout_path,
+        session_id=session_id,
+        user_text="invalid raw user",
+        assistant_text="invalid raw assistant",
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["normalization"]["normalizer"] == "codex.raw_rollout.experimental.v1"
+    assert payload["normalization"]["source_mode"] == "codex_raw_rollout"
+    assert [message["role"] for message in payload["chat"]["messages"]] == ["user", "assistant"]
+    assert any(
+        warning.startswith("codex raw rollout line 2 is invalid json:")
+        for warning in payload["normalization"]["warnings"]
+    )
+    assert (
+        "codex raw rollout parsed for future normalization: 3 records"
+        in payload["normalization"]["warnings"]
+    )
+
+
+def test_chatlas_experimental_export_preserves_codex_context_messages(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd7"
+    thread_name = "experimental-context-raw-thread"
+    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    _write_codex_context_rollout(rollout_path, session_id=session_id)
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    messages = payload["chat"]["messages"]
+    assert [message["role"] for message in messages] == ["developer", "user", "assistant"]
+    assert [message["visibility"] for message in messages] == [
+        "context",
+        "context",
+        "conversation",
+    ]
+    assert messages[0]["content"] == [{"type": "text", "text": "developer instruction"}]
+    assert messages[1]["content"] == [{"type": "text", "text": "<environment_context>\nctx"}]
+    assert messages[2]["content"] == [
+        {
+            "type": "unknown",
+            "native": {"type": "custom_payload", "value": {"status": "ok"}},
+        }
+    ]
+    assert any(
+        "content item 1 has unsupported type custom_payload" in warning
+        for warning in payload["normalization"]["warnings"]
+    )
+
+
+def test_chatlas_experimental_export_joins_codex_tool_invocations(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd8"
+    thread_name = "experimental-tool-raw-thread"
+    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    _write_codex_tool_rollout(rollout_path, session_id=session_id)
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["normalization"]["source_mode"] == "codex_raw_rollout"
+    assert payload["normalization"]["unsupported_concepts"] == ["usage"]
+    assert payload["normalization"]["deferred_concepts"] == ["usage"]
+    assert payload["normalization"]["counts"] == {
+        "messages": 1,
+        "model_runs": 1,
+        "tool_invocations": 2,
+        "events": 3,
+        "reasoning_traces": 0,
+    }
+    assert payload["normalization"]["raw_counts"] == {
+        "records": 8,
+        "record_types": {
+            "event_msg": 3,
+            "response_item": 4,
+            "session_meta": 1,
+        },
+        "response_item_types": {
+            "function_call": 2,
+            "function_call_output": 1,
+            "message": 1,
+        },
+        "event_msg_types": {
+            "exec_command_end": 1,
+            "task_started": 1,
+            "token_count": 1,
+        },
+        "parse_warning_count": 0,
+    }
+    assert payload["normalization"]["coverage"]["usage"] == {
+        "status": "event_only",
+        "raw_token_count_event_count": 1,
+        "normalized_count": 0,
+    }
+    assert (
+        "codex raw rollout tool invocations normalized by call_id: 2 invocations"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "codex raw rollout events normalized from event_msg: 3 events"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "codex token_count events preserved as events only; stable usage projection is deferred: 1 events"
+        in payload["normalization"]["warnings"]
+    )
+
+    complete, incomplete = payload["chat"]["tool_invocations"]
+    assert complete["tool_invocation_id"] == "tool-invocation-1"
+    assert complete["call_id"] == "call-complete"
+    assert complete["tool_name"] == "exec_command"
+    assert complete["status"] == "completed"
+    assert complete["started_at"] == "2026-03-08T01:09:00.000Z"
+    assert complete["ended_at"] == "2026-03-08T01:09:01.100Z"
+    assert complete["turn_id"] == "turn-1"
+    assert complete["event_refs"] == ["event-3"]
+    assert complete["input"] == {
+        "arguments": {
+            "cmd": "pwd",
+            "workdir": "/tmp",
+        }
+    }
+    assert complete["output"] == {"content": "Chunk ID: abc\nOutput:\n/tmp\n"}
+    assert complete["execution"] == {
+        "command": ["/bin/zsh", "-lc", "pwd"],
+        "cwd": "/tmp",
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "aggregated_output": "/tmp\n",
+        "duration": 1.25,
+    }
+    assert complete["source_refs"] == [
+        {"source_ref_id": "source-1", "record_index": 5, "line": 5},
+        {"source_ref_id": "source-1", "record_index": 6, "line": 6},
+        {"source_ref_id": "source-1", "record_index": 7, "line": 7},
+    ]
+    assert complete["native"] == {
+        "response_call_present": True,
+        "response_output_present": True,
+        "exec_end_present": True,
+        "record_indices": {
+            "function_call": [5],
+            "function_call_output": [6],
+            "exec_command_end": [7],
+        },
+    }
+
+    assert incomplete["tool_invocation_id"] == "tool-invocation-2"
+    assert incomplete["call_id"] == "call-incomplete"
+    assert incomplete["status"] == "requested"
+    assert incomplete["input"] == {
+        "arguments": "{bad-json",
+        "arguments_format": "raw_string",
+    }
+    assert any(
+        warning == "codex tool call_id call-incomplete missing function_call_output record"
+        for warning in payload["normalization"]["warnings"]
+    )
+    assert any(
+        warning == "codex tool call_id call-incomplete missing exec_command_end record"
+        for warning in payload["normalization"]["warnings"]
+    )
+    assert any(
+        warning == "codex tool call_id call-incomplete has invalid json arguments"
+        for warning in payload["normalization"]["warnings"]
+    )
+
+    events = payload["chat"]["events"]
+    assert [event["type"] for event in events] == [
+        "codex.task_started",
+        "codex.token_count",
+        "codex.exec_command_end",
+    ]
+    assert events[0] == {
+        "event_id": "event-1",
+        "type": "codex.task_started",
+        "timestamp": "2026-03-08T01:08:59.090Z",
+        "turn_id": "turn-1",
+        "data": {
+            "turn_id": "turn-1",
+            "started_at": 1772946539,
+            "model_context_window": 258400,
+            "collaboration_mode_kind": "default",
+        },
+        "native": {
+            "record_type": "event_msg",
+            "payload_type": "task_started",
+            "record_index": 2,
+        },
+        "source_refs": [
+            {"source_ref_id": "source-1", "record_index": 2, "line": 2}
+        ],
+    }
+    assert events[1]["event_id"] == "event-2"
+    assert events[1]["type"] == "codex.token_count"
+    assert events[1]["data"]["info"]["total_token_usage"]["total_tokens"] == 12
+    assert events[2]["event_id"] == "event-3"
+    assert events[2]["type"] == "codex.exec_command_end"
+    assert events[2]["call_id"] == "call-complete"
+    assert events[2]["turn_id"] == "turn-1"
+    assert events[2]["tool_invocation_ref"] == "tool-invocation-1"
+    assert events[2]["data"]["duration"] == 1.25
+    assert events[2]["data"]["aggregated_output"] == "/tmp\n"
+    assert events[2]["source_refs"] == [
+        {"source_ref_id": "source-1", "record_index": 7, "line": 7}
+    ]
+
+
+def test_chatlas_experimental_export_normalizes_codex_model_runs(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd9"
+    thread_name = "experimental-model-run-thread"
+    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    _write_codex_model_run_rollout(rollout_path, session_id=session_id)
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["normalization"]["source_mode"] == "codex_raw_rollout"
+    assert payload["normalization"]["unsupported_concepts"] == []
+    assert payload["normalization"]["deferred_concepts"] == []
+    assert payload["normalization"]["counts"] == {
+        "messages": 1,
+        "model_runs": 1,
+        "tool_invocations": 1,
+        "events": 3,
+        "reasoning_traces": 1,
+    }
+    assert payload["normalization"]["raw_counts"] == {
+        "records": 9,
+        "record_types": {
+            "event_msg": 3,
+            "response_item": 4,
+            "session_meta": 1,
+            "turn_context": 1,
+        },
+        "response_item_types": {
+            "function_call": 1,
+            "function_call_output": 1,
+            "message": 1,
+            "reasoning": 1,
+        },
+        "event_msg_types": {
+            "exec_command_end": 1,
+            "task_complete": 1,
+            "task_started": 1,
+        },
+        "parse_warning_count": 0,
+    }
+    assert payload["normalization"]["coverage"]["model_runs"] == {
+        "status": "normalized",
+        "raw_turn_context_count": 1,
+        "normalized_count": 1,
+    }
+    assert payload["normalization"]["coverage"]["reasoning"] == {
+        "status": "normalized",
+        "raw_count": 1,
+        "normalized_count": 1,
+    }
+    assert payload["normalization"]["coverage"]["usage"] == {
+        "status": "no_raw_evidence",
+        "raw_token_count_event_count": 0,
+        "normalized_count": 0,
+    }
+    assert (
+        "codex raw rollout model runs normalized: 1 runs"
+        in payload["normalization"]["warnings"]
+    )
+
+    model_runs = payload["chat"]["model_runs"]
+    assert len(model_runs) == 1
+    model_run = model_runs[0]
+    assert model_run["model_run_id"] == "model-run-1"
+    assert model_run["provider"] == "codex"
+    assert model_run["model_provider"] == "openai"
+    assert model_run["model"] == "gpt-5.4-mini"
+    assert model_run["reasoning_effort"] == "high"
+    assert model_run["turn_id"] == "turn-1"
+    assert model_run["status"] == "completed"
+    assert model_run["started_at"] == "2026-03-08T01:09:00.000Z"
+    assert model_run["ended_at"] == "2026-03-08T01:09:05.000Z"
+    assert model_run["duration_ms"] == 5000
+    assert model_run["model_context_window"] == 258400
+    assert model_run["cwd"] == "/tmp/project"
+    assert model_run["approval_policy"] == "never"
+    assert model_run["sandbox_policy"] == {"type": "workspace-write"}
+    assert model_run["collaboration_mode"] == {
+        "mode": "default",
+        "settings": {
+            "model": "gpt-5.4-mini",
+            "reasoning_effort": "high",
+        },
+    }
+    assert "developer_instructions" not in json.dumps(model_run["collaboration_mode"])
+    assert "user_instructions" not in model_run
+    assert "summary" not in model_run
+    assert model_run["message_refs"] == ["message-1"]
+    assert model_run["tool_invocation_refs"] == ["tool-invocation-1"]
+    assert model_run["event_refs"] == ["event-1", "event-2", "event-3"]
+    assert model_run["native"] == {
+        "turn_context_present": True,
+        "turn_context_record_index": 2,
+    }
+    assert model_run["source_refs"] == [
+        {"source_ref_id": "source-1", "record_index": 2, "line": 2}
+    ]
+
+    reasoning_trace = model_run["reasoning_trace"]
+    assert reasoning_trace == [
+        {
+            "reasoning_id": "reasoning-1",
+            "visibility": "encrypted",
+            "native": {
+                "record_type": "response_item",
+                "payload_type": "reasoning",
+                "record_index": 5,
+            },
+            "timestamp": "2026-03-08T01:09:02.000Z",
+            "encrypted_content": "encrypted-reasoning",
+            "summary": [{"type": "summary_text", "text": "check context"}],
+            "source_refs": [
+                {"source_ref_id": "source-1", "record_index": 5, "line": 5}
+            ],
+        }
+    ]
 
 
 def test_chatlas_export_supports_detailed_summary_json_output(

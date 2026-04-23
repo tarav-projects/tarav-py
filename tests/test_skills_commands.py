@@ -80,19 +80,27 @@ def _write_project_marker(project_root: Path) -> None:
     marker_path.write_text(json.dumps(marker_payload, indent=2) + "\n", encoding="utf-8")
 
 
-def _write_project_config(project_root: Path, *, profile: str | None = None) -> None:
+def _write_project_config(
+    project_root: Path,
+    *,
+    profile: str | None = None,
+    export_packages: dict[str, list[dict[str, object]]] | None = None,
+) -> None:
     config_path = project_root / ".agentos" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, object] = {
         "class": "agentos.project.config",
         "schema_version": 1,
     }
+    skills_payload: dict[str, object] = {}
     if profile is not None:
-        payload["skills"] = {
-            "routing": {
-                "profile": profile,
-            }
+        skills_payload["routing"] = {"profile": profile}
+    if export_packages is not None:
+        skills_payload["exports"] = {
+            "packages": export_packages,
         }
+    if skills_payload:
+        payload["skills"] = skills_payload
     config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
@@ -594,6 +602,493 @@ def test_registry_package_inline_sources_resolve_from_agentos_home(
             "paths": _resolved_skill_paths(workspace, "bundled-alpha-skill"),
         }
     ]
+
+
+def test_project_source_imports_default_project_skills_root(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_project = tmp_path / "source-project"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    _write_project_marker(source_project)
+    _create_skill(source_project / "skills" / "alpha-skill", description="Project alpha skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "project": {"project": str(source_project)},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {"name": "project"},
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+
+    assert listed == [
+        {
+            "name": "project-alpha-skill",
+            "description": "Project alpha skill",
+            "source": "project",
+            "paths": _resolved_skill_paths(workspace, "project-alpha-skill"),
+        }
+    ]
+
+
+def test_project_source_export_package_supports_implicit_local_entries(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_project = tmp_path / "source-project"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    _write_project_marker(source_project)
+    _write_project_config(
+        source_project,
+        export_packages={
+            "runtime": [
+                {"include": ["project-alpha-skill"]},
+            ],
+        },
+    )
+    _create_skill(source_project / "skills" / "alpha-skill", description="Project alpha skill")
+    _create_skill(source_project / "skills" / "beta-skill", description="Project beta skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "project": {"project": str(source_project)},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {"name": "project:runtime"},
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+
+    assert listed == [
+        {
+            "name": "project-alpha-skill",
+            "description": "Project alpha skill",
+            "source": "project",
+            "paths": _resolved_skill_paths(workspace, "project-alpha-skill"),
+        }
+    ]
+
+
+def test_project_source_export_package_supports_explicit_local_entries_and_consumer_filters(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_project = tmp_path / "source-project"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    _write_project_marker(source_project)
+    _write_project_config(
+        source_project,
+        export_packages={
+            "runtime": [
+                {
+                    "name": "project",
+                    "include": ["project-alpha-skill", "project-beta-skill"],
+                },
+            ],
+        },
+    )
+    _create_skill(source_project / "skills" / "alpha-skill", description="Project alpha skill")
+    _create_skill(source_project / "skills" / "beta-skill", description="Project beta skill")
+    _create_skill(source_project / "skills" / "gamma-skill", description="Project gamma skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "project": {"project": str(source_project)},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {
+                        "name": "project:runtime",
+                        "exclude": ["project-beta-skill"],
+                    },
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+
+    assert listed == [
+        {
+            "name": "project-alpha-skill",
+            "description": "Project alpha skill",
+            "source": "project",
+            "paths": _resolved_skill_paths(workspace, "project-alpha-skill"),
+        }
+    ]
+
+
+def test_project_source_export_package_rejects_missing_package(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_project = tmp_path / "source-project"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    _write_project_marker(source_project)
+    _write_project_config(source_project, export_packages={})
+    _create_skill(source_project / "skills" / "alpha-skill", description="Project alpha skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "project": {"project": str(source_project)},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {"name": "project:missing"},
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list"]) == 1
+    assert capsys.readouterr().err.strip() == (
+        "error: routing source export package not found: project:missing"
+    )
+
+
+def test_source_export_package_requires_project_backed_source(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_root = tmp_path / "source"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    _create_skill(source_root / "alpha-skill", description="Alpha skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "base": {"path": str(source_root)},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {"name": "base:runtime"},
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list"]) == 1
+    assert capsys.readouterr().err.strip() == (
+        "error: routing source export package requires project-backed source: base:runtime"
+    )
+
+
+def test_project_source_requires_project_marker(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_project = tmp_path / "source-project"
+    workspace = tmp_path / "workspace"
+    source_project.mkdir(parents=True, exist_ok=True)
+    _create_local_agents_context(workspace)
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "project": {"project": str(source_project)},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {"name": "project"},
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list"]) == 1
+    stderr = capsys.readouterr().err.strip()
+    assert stderr.startswith("error: global config field skills.routing.sources.project")
+    assert "is not an agentos project" in stderr
+    assert ".agentos/project.json" in stderr
+
+
+def test_project_source_export_packages_detect_cycles(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_project = tmp_path / "source-project"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    _write_project_marker(source_project)
+    _write_project_config(
+        source_project,
+        export_packages={
+            "runtime": [
+                {"name": "project:missions"},
+            ],
+            "missions": [
+                {"name": "project:runtime"},
+            ],
+        },
+    )
+    _create_skill(source_project / "skills" / "alpha-skill", description="Project alpha skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "project": {"project": str(source_project)},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {"name": "project:runtime"},
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list"]) == 1
+    assert capsys.readouterr().err.strip() == (
+        "error: routing source cycle detected: project:runtime -> project:missions -> project:runtime"
+    )
+
+
+def test_skills_source_entry_include_exclude_filters_and_exclude_wins(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_root = tmp_path / "source"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+
+    _create_skill(source_root / "alpha-skill", description="Alpha skill")
+    _create_skill(source_root / "beta-skill", description="Beta skill")
+    _create_skill(source_root / "gamma-skill", description="Gamma skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "base": {"path": str(source_root)},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {
+                        "name": "base",
+                        "include": ["base-alpha-skill", "base-beta-skill", "gamma-skill"],
+                        "exclude": ["base-beta-skill", "gamma-skill"],
+                    },
+                ],
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+
+    assert listed == [
+        {
+            "name": "base-alpha-skill",
+            "description": "Alpha skill",
+            "source": "base",
+            "paths": _resolved_skill_paths(workspace, "base-alpha-skill"),
+        }
+    ]
+
+
+def test_skills_package_entry_filters_apply_to_expanded_sources(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    registry_root = tmp_path / "registry-source"
+    docs_root = tmp_path / "docs-source"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+
+    _create_skill(registry_root / "alpha-skill", description="Registry alpha skill")
+    _create_skill(registry_root / "beta-skill", description="Registry beta skill")
+    _create_skill(docs_root / "guide-skill", description="Docs guide skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "registry": {"path": str(registry_root)},
+            "docs": {"path": str(docs_root)},
+            "core": {
+                "package": [
+                    {"name": "registry"},
+                    {"name": "docs"},
+                ]
+            },
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {
+                        "name": "core",
+                        "include": ["registry-alpha-skill", "docs-guide-skill"],
+                        "exclude": ["docs-guide-skill"],
+                    },
+                ],
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+
+    assert listed == [
+        {
+            "name": "registry-alpha-skill",
+            "description": "Registry alpha skill",
+            "source": "registry",
+            "paths": _resolved_skill_paths(workspace, "registry-alpha-skill"),
+        }
+    ]
+
+
+def test_skills_filters_compose_through_registry_and_inline_packages(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    registry_root = tmp_path / "registry-source"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+
+    _create_skill(registry_root / "alpha-skill", description="Registry alpha skill")
+    _create_skill(registry_root / "beta-skill", description="Registry beta skill")
+    _create_skill(registry_root / "gamma-skill", description="Registry gamma skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "registry": {
+                "path": str(registry_root),
+                "exclude": ["registry-gamma-skill"],
+            },
+            "core": {
+                "package": [
+                    {
+                        "name": "registry",
+                        "include": [
+                            "registry-alpha-skill",
+                            "registry-beta-skill",
+                            "registry-gamma-skill",
+                        ],
+                    },
+                ],
+                "exclude": ["registry-beta-skill"],
+            },
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {
+                        "package": [
+                            {"name": "core"},
+                        ],
+                        "include": ["registry-alpha-skill", "registry-beta-skill"],
+                    },
+                ],
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+
+    assert listed == [
+        {
+            "name": "registry-alpha-skill",
+            "description": "Registry alpha skill",
+            "source": "registry",
+            "paths": _resolved_skill_paths(workspace, "registry-alpha-skill"),
+        }
+    ]
+
+
+def test_skills_filter_rejects_unknown_skill_names(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_root = tmp_path / "source"
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    _create_skill(source_root / "alpha-skill", description="Alpha skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "base": {"path": str(source_root)},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {
+                        "name": "base",
+                        "include": ["missing-skill"],
+                    },
+                ],
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "list"]) == 1
+    assert capsys.readouterr().err.strip() == (
+        "error: global config field skills.routing.profiles.default.sources[0].include "
+        "references unknown skill: missing-skill"
+    )
 
 
 def test_skills_profile_import_ref_errors_on_unknown_registry_entry(

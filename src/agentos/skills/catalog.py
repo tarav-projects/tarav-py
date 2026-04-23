@@ -10,10 +10,18 @@ _FRONTMATTER_DELIMITER = "---"
 
 
 @dataclass(frozen=True)
+class SkillsImportFilter:
+    include: tuple[str, ...] | None
+    exclude: tuple[str, ...]
+    field_label: str
+
+
+@dataclass(frozen=True)
 class SkillsImport:
     name: str
     root: Path
     configured_path: str
+    filters: tuple[SkillsImportFilter, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -29,6 +37,13 @@ class SkillsSyncResult:
     updated_links: list[Path]
     removed_links: list[Path]
     matching_links: list[Path]
+
+
+@dataclass(frozen=True)
+class _DiscoveredSkillCandidate:
+    skill: DiscoveredSkill
+    match_names: frozenset[str]
+    filters: tuple[SkillsImportFilter, ...]
 
 
 def discover_skill_dirs(root: Path) -> list[Path]:
@@ -76,7 +91,64 @@ def discover_skill_dirs(root: Path) -> list[Path]:
     return discovered
 
 
+def _validate_skill_filter_references(candidates: list[_DiscoveredSkillCandidate]) -> None:
+    filter_candidates: dict[SkillsImportFilter, list[_DiscoveredSkillCandidate]] = {}
+    filter_order: list[SkillsImportFilter] = []
+    for candidate in candidates:
+        for skill_filter in candidate.filters:
+            if skill_filter not in filter_candidates:
+                filter_order.append(skill_filter)
+                filter_candidates[skill_filter] = []
+            filter_candidates[skill_filter].append(candidate)
+
+    for skill_filter in filter_order:
+        known_names = {
+            name
+            for candidate in filter_candidates[skill_filter]
+            for name in candidate.match_names
+        }
+        filter_fields = (
+            ("include", skill_filter.include),
+            ("exclude", skill_filter.exclude),
+        )
+        for field_name, configured_names in filter_fields:
+            if configured_names is None:
+                continue
+            unknown_names = sorted(
+                name for name in configured_names if name not in known_names
+            )
+            if not unknown_names:
+                continue
+            formatted_names = ", ".join(unknown_names)
+            plural = "s" if len(unknown_names) != 1 else ""
+            raise CliError(
+                f"{skill_filter.field_label}.{field_name} references unknown skill{plural}: "
+                f"{formatted_names}"
+            )
+
+
+def _candidate_matches_filter(
+    candidate: _DiscoveredSkillCandidate,
+    skill_filter: SkillsImportFilter,
+) -> bool:
+    if skill_filter.include is not None and not any(
+        name in skill_filter.include for name in candidate.match_names
+    ):
+        return False
+    if any(name in skill_filter.exclude for name in candidate.match_names):
+        return False
+    return True
+
+
+def _candidate_is_selected(candidate: _DiscoveredSkillCandidate) -> bool:
+    return all(
+        _candidate_matches_filter(candidate, skill_filter)
+        for skill_filter in candidate.filters
+    )
+
+
 def discover_imported_skills(imports: list[SkillsImport]) -> list[DiscoveredSkill]:
+    candidates: list[_DiscoveredSkillCandidate] = []
     discovered: list[DiscoveredSkill] = []
     by_name: dict[str, list[DiscoveredSkill]] = {}
 
@@ -90,8 +162,22 @@ def discover_imported_skills(imports: list[SkillsImport]) -> list[DiscoveredSkil
                 source_path=skill_dir.resolve(),
                 import_name=item.name,
             )
-            discovered.append(skill)
-            by_name.setdefault(skill.name, []).append(skill)
+            candidates.append(
+                _DiscoveredSkillCandidate(
+                    skill=skill,
+                    match_names=frozenset({skill_dir.name, mapped_name}),
+                    filters=item.filters,
+                )
+            )
+
+    _validate_skill_filter_references(candidates)
+
+    for candidate in candidates:
+        if not _candidate_is_selected(candidate):
+            continue
+        skill = candidate.skill
+        discovered.append(skill)
+        by_name.setdefault(skill.name, []).append(skill)
 
     duplicate_names = {name: entries for name, entries in by_name.items() if len(entries) > 1}
     if duplicate_names:
