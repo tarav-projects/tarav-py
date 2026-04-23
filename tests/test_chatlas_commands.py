@@ -495,7 +495,7 @@ def _write_pi_session(
     path: Path,
     *,
     session_id: str,
-    cwd: str = "/Users/pereiro/Documents/workspaces/oba-workspace/agentos-iterante-dev",
+    cwd: str = "/Users/pereiro/projects/agentos-project/agentos-iterante-dev",
     user_text: str = "hello from pi",
     assistant_text: str = "pi reply",
     include_custom_message: bool = False,
@@ -1061,7 +1061,7 @@ def test_chatlas_update_supports_configured_pi_provider(
     transcript_path = (
         pi_home
         / "sessions"
-        / "--Users-pereiro-Documents-workspaces-oba-workspace-agentos-iterante-dev--"
+        / "--Users-pereiro-projects-agentos-project-agentos-iterante-dev--"
         / f"2026-04-17T19-14-52-021Z_{session_id}.jsonl"
     )
     _write_pi_session(
@@ -1107,7 +1107,7 @@ def test_chatlas_update_supports_configured_pi_provider(
     assert normalized_rows[0]["instance"] == "pi-mm"
     assert normalized_rows[0]["session_id"] == session_id
     assert normalized_rows[0]["native"] == {
-        "cwd": "/Users/pereiro/Documents/workspaces/oba-workspace/agentos-iterante-dev",
+        "cwd": "/Users/pereiro/projects/agentos-project/agentos-iterante-dev",
         "model_provider": "openai-codex",
         "model_id": "gpt-5.4-mini",
         "thinking_level": "medium",
@@ -3368,6 +3368,234 @@ def test_chatlas_experimental_export_emits_session_model_json(
     assert "model_runs" in payload["normalization"]["unsupported_concepts"]
 
 
+def test_chatlas_experimental_export_loads_claude_raw_session(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "5dbf4437-633e-4039-a627-0459d85e9ecc"
+    _write_claude_session(
+        home / ".claude" / "projects" / "-tmp-project" / f"{session_id}.jsonl",
+        session_id=session_id,
+        user_text="claude experimental user",
+        assistant_text="claude experimental assistant",
+    )
+
+    assert main(_chatlas_update_argv("--provider", "claude-code")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "experimental",
+                "export",
+                session_id,
+                "--provider",
+                "claude-code",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["session"]["provider"] == "claude-code"
+    assert payload["normalization"]["normalizer"] == "claude-code.raw_session.experimental.v1"
+    assert payload["normalization"]["source_mode"] == "claude_code_raw_session"
+    assert payload["chat"]["messages"] == [
+        {
+            "message_id": "message-1",
+            "role": "user",
+            "visibility": "conversation",
+            "content": [{"type": "text", "text": "claude experimental user"}],
+            "native": {
+                "record_index": 1,
+                "line": 1,
+                "record_type": "message",
+                "uuid": "msg-user-1",
+                "message_role": "user",
+                "role": "user",
+                "content_types": ["string"],
+            },
+            "timestamp": "2026-04-18T11:00:00.000Z",
+            "source_refs": [{"source_ref_id": "source-1", "record_index": 1, "line": 1}],
+        },
+        {
+            "message_id": "message-2",
+            "role": "assistant",
+            "visibility": "conversation",
+            "content": [
+                {"type": "text", "text": "claude experimental assistant"},
+                {"type": "text", "text": "tool summary"},
+            ],
+            "native": {
+                "record_index": 2,
+                "line": 2,
+                "record_type": "message",
+                "uuid": "msg-assistant-1",
+                "parent_uuid": "msg-user-1",
+                "message_role": "assistant",
+                "role": "assistant",
+                "content_types": ["text", "text"],
+            },
+            "timestamp": "2026-04-18T11:00:01.000Z",
+            "source_refs": [{"source_ref_id": "source-1", "record_index": 2, "line": 2}],
+        },
+    ]
+    assert payload["chat"]["model_runs"] == []
+    assert payload["chat"]["tool_invocations"] == []
+    assert payload["chat"]["events"] == [
+        {
+            "event_id": "event-1",
+            "type": "claude-code.user.message",
+            "data": {
+                "message": {
+                    "role": "user",
+                    "content": "claude experimental user",
+                },
+                "session_id": session_id,
+                "cwd": "/tmp/project",
+                "version": "2.1.69",
+                "is_sidechain": False,
+                "user_type": "external",
+            },
+            "native": {
+                "record_index": 1,
+                "line": 1,
+                "record_type": "message",
+                "uuid": "msg-user-1",
+                "message_role": "user",
+            },
+            "timestamp": "2026-04-18T11:00:00.000Z",
+            "source_refs": [{"source_ref_id": "source-1", "record_index": 1, "line": 1}],
+        },
+        {
+            "event_id": "event-2",
+            "type": "claude-code.assistant.message",
+            "data": {
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "claude experimental assistant"},
+                        {"type": "text", "text": "tool summary"},
+                    ],
+                },
+                "session_id": session_id,
+                "cwd": "/tmp/project",
+                "version": "2.1.69",
+                "is_sidechain": False,
+                "user_type": "external",
+            },
+            "native": {
+                "record_index": 2,
+                "line": 2,
+                "record_type": "message",
+                "uuid": "msg-assistant-1",
+                "parent_uuid": "msg-user-1",
+                "message_role": "assistant",
+            },
+            "timestamp": "2026-04-18T11:00:01.000Z",
+            "source_refs": [{"source_ref_id": "source-1", "record_index": 2, "line": 2}],
+            "parent_uuid": "msg-user-1",
+        },
+    ]
+    assert payload["chat"]["usage"] == []
+    assert set(payload["normalization"]["unsupported_concepts"]) == {
+        "model_runs",
+        "tool_invocations",
+        "reasoning",
+        "usage",
+    }
+    assert payload["normalization"]["deferred_concepts"] == [
+        "tool_invocations",
+        "model_runs",
+        "reasoning",
+        "usage",
+    ]
+    assert payload["normalization"]["counts"] == {
+        "messages": 2,
+        "model_runs": 0,
+        "tool_invocations": 0,
+        "events": 2,
+        "usage": 0,
+        "reasoning_traces": 0,
+    }
+    assert payload["normalization"]["raw_counts"] == {
+        "records": 2,
+        "record_types": {
+            "assistant": 1,
+            "user": 1,
+        },
+        "parse_warning_count": 0,
+        "visible_message_record_count": 2,
+        "tool_use_count": 0,
+        "tool_result_count": 0,
+        "progress_count": 0,
+        "reasoning_evidence_count": 0,
+        "usage_evidence_count": 0,
+        "distinct_request_count": 0,
+    }
+    assert payload["normalization"]["coverage"] == {
+        "messages": {
+            "status": "normalized",
+            "raw_visible_message_record_count": 2,
+            "normalized_count": 2,
+        },
+        "model_runs": {
+            "status": "missing",
+            "raw_request_count": 0,
+            "normalized_count": 0,
+        },
+        "tool_invocations": {
+            "status": "missing",
+            "raw_tool_use_count": 0,
+            "raw_tool_result_count": 0,
+            "normalized_count": 0,
+        },
+        "events": {
+            "status": "normalized",
+            "raw_record_count": 2,
+            "raw_canonical_candidate_count": 2,
+            "raw_progress_count": 0,
+            "normalized_count": 2,
+        },
+        "reasoning": {
+            "status": "missing",
+            "raw_evidence_count": 0,
+            "normalized_count": 0,
+        },
+        "usage": {
+            "status": "missing",
+            "raw_evidence_count": 0,
+            "normalized_count": 0,
+        },
+    }
+    assert (
+        "claude raw session parsed for future normalization: 2 records"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "claude raw session messages normalized from visible message records: 2 messages"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "claude raw session events normalized from raw records: 2 events"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "claude raw session messages and events phase is active; tool invocations, "
+        "model runs, reasoning, and usage remain deferred"
+        in payload["normalization"]["warnings"]
+    )
+
+
 def test_chatlas_experimental_export_loads_copilot_raw_events(
     tmp_path: Path,
     monkeypatch,
@@ -3827,7 +4055,7 @@ def test_chatlas_experimental_export_errors_for_missing_provider_normalizer(
     _write_pi_session(
         pi_home
         / "sessions"
-        / "--Users-pereiro-Documents-workspaces-oba-workspace-agentos-iterante-dev--"
+        / "--Users-pereiro-projects-agentos-project-agentos-iterante-dev--"
         / f"2026-04-17T19-14-52-021Z_{session_id}.jsonl",
         session_id=session_id,
     )

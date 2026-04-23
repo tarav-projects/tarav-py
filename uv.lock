@@ -23,7 +23,7 @@ requires-dist = [
     { name = "jmespath", specifier = ">=1.0.1" },
     { name = "jsonschema", specifier = ">=4.25.1" },
     { name = "rich", specifier = ">=13.7,<16" },
-    { name = "tara-stdlib-py", editable = "../../Documents/workspaces/oba-workspace/taraproject-py/packages/tara-stdlib-py" },
+    { name = "tara-stdlib-py", editable = "../../tara-project/tara-project-py/packages/tara-stdlib-py" },
 ]
 
 [package.metadata.requires-dev]
@@ -322,7 +322,7 @@ wheels = [
 [[package]]
 name = "tara-stdlib-py"
 version = "0.0.1"
-source = { editable = "../../Documents/workspaces/oba-workspace/taraproject-py/packages/tara-stdlib-py" }
+source = { editable = "../../tara-project/tara-project-py/packages/tara-stdlib-py" }
 
 [package.metadata]
 

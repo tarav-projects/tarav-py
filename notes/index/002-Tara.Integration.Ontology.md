@@ -24,3 +24,7 @@ Tara concepts implemented by agentos. See tara-proj-specs `002-tara-ontology.md`
 ## Archiving
 
 - **`Archive`** — archive operations (`117`)
+
+## Session Data
+
+- **`Session.Model`** — standard provider-neutral data model for agent session interchange (`006`)

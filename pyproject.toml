@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-tara-stdlib-py = { path = "/Users/pereiro/Documents/workspaces/oba-workspace/taraproject-py/packages/tara-stdlib-py", editable = true }
+tara-stdlib-py = { path = "../../tara-project/tara-project-py/packages/tara-stdlib-py", editable = true }
 
 [project.scripts]
 agentos = "agentos.cli:main"

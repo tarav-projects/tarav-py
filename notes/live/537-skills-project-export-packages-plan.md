@@ -84,7 +84,7 @@ New behavior:
     "routing": {
       "sources": {
         "iterante": {
-          "project": "/Users/pereiro/Documents/workspaces/oba-workspace/agentos-iterante-dev"
+          "project": "/Users/pereiro/projects/agentos-project/agentos-iterante-dev"
         }
       }
     }

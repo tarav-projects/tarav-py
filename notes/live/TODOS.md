@@ -1,3 +1,8 @@
+## Agentos.Session.Model
+- I like the `source_refs` on each field
+    - very stong provedence
+- but on exportm I would like to make it optional
+
 ## Aux agents homes
 - for each agents, we should be able to build many auxiliary homes
 - for instance, for pinging or getting stats
