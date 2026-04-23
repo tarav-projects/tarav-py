@@ -23,6 +23,34 @@ _CODEX_CONTEXT_MESSAGE_PREFIXES = (
     "<system-reminder>",
 )
 
+_COPILOT_MESSAGE_NATIVE_FIELDS = (
+    ("messageId", "message_id"),
+    ("requestId", "request_id"),
+    ("phase", "phase"),
+    ("outputTokens", "output_tokens"),
+    ("toolRequests", "tool_requests"),
+    ("reasoningText", "reasoning_text"),
+    ("reasoningOpaque", "reasoning_opaque"),
+    ("encryptedContent", "encrypted_content"),
+    ("interactionId", "interaction_id"),
+)
+
+_COPILOT_REASONING_NATIVE_FIELDS = (
+    ("messageId", "message_id"),
+    ("requestId", "request_id"),
+    ("phase", "phase"),
+    ("interactionId", "interaction_id"),
+    ("outputTokens", "output_tokens"),
+)
+
+_COPILOT_USAGE_NATIVE_FIELDS = (
+    ("shutdownType", "shutdown_type"),
+    ("totalPremiumRequests", "total_premium_requests"),
+    ("totalApiDurationMs", "total_api_duration_ms"),
+    ("sessionStartTime", "session_start_time"),
+    ("currentModel", "current_model"),
+)
+
 
 @dataclass(frozen=True)
 class _ExperimentalNormalizationResult:
@@ -514,10 +542,7 @@ def _copilot_events_from_raw_events(
             "data": dict(raw_event.data),
             "native": _copilot_event_native(raw_event),
         }
-        if raw_event.timestamp is not None:
-            event["timestamp"] = raw_event.timestamp
-        if raw_event.source_refs:
-            event["source_refs"] = raw_event.source_refs
+        _copilot_attach_event_provenance(event, raw_event)
 
         turn_id = _copilot_event_turn_id(raw_event)
         if turn_id is not None:
@@ -572,6 +597,27 @@ def _copilot_event_call_id(raw_event: _CopilotRawEvent) -> str | None:
     return _string_or_none(raw_event.data.get("toolCallId"))
 
 
+def _copilot_attach_event_provenance(
+    payload: dict[str, object],
+    raw_event: _CopilotRawEvent,
+) -> None:
+    if raw_event.timestamp is not None:
+        payload["timestamp"] = raw_event.timestamp
+    if raw_event.source_refs:
+        payload["source_refs"] = raw_event.source_refs
+
+
+def _copilot_record_event_index(record: dict[str, object]) -> int | None:
+    event_index = _record_native_int_field(record, "event_index")
+    if event_index is not None:
+        return event_index
+    return _source_ref_first_event_index(record.get("source_refs"))
+
+
+def _copilot_record_event_id(record: dict[str, object]) -> str | None:
+    return _record_native_string_field(record, "event_id")
+
+
 def _copilot_messages_from_raw_events(
     raw_events: _CopilotRawEvents,
 ) -> dict[str, object]:
@@ -610,10 +656,7 @@ def _copilot_messages_from_raw_events(
                 content_types=content_types,
             ),
         }
-        if raw_event.timestamp is not None:
-            message["timestamp"] = raw_event.timestamp
-        if raw_event.source_refs:
-            message["source_refs"] = raw_event.source_refs
+        _copilot_attach_event_provenance(message, raw_event)
 
         messages.append(message)
 
@@ -727,20 +770,11 @@ def _copilot_message_native(
     if transformed_content is not None:
         native["transformed_content"] = transformed_content
 
-    for source_key, native_key in (
-        ("messageId", "message_id"),
-        ("requestId", "request_id"),
-        ("phase", "phase"),
-        ("outputTokens", "output_tokens"),
-        ("toolRequests", "tool_requests"),
-        ("reasoningText", "reasoning_text"),
-        ("reasoningOpaque", "reasoning_opaque"),
-        ("encryptedContent", "encrypted_content"),
-        ("interactionId", "interaction_id"),
-    ):
-        value = raw_event.data.get(source_key)
-        if value is not None:
-            native[native_key] = value
+    _copy_present_fields(
+        native,
+        raw_event.data,
+        _COPILOT_MESSAGE_NATIVE_FIELDS,
+    )
 
     attachments = raw_event.data.get("attachments")
     if isinstance(attachments, list) and attachments:
@@ -1315,6 +1349,21 @@ def _copilot_model_run_from_turn(
         raw_events,
         turn_start_event=start_event,
     )
+    native: dict[str, object] = {
+        "turn_start_present": True,
+        "turn_end_present": end_event is not None,
+        "turn_start_event_index": start_event.event_index,
+        "span_end_event_index": span_end_index,
+    }
+    if model_source is not None:
+        native["model_source"] = model_source
+    if start_event.event_id is not None:
+        native["turn_start_event_id"] = start_event.event_id
+    if end_event is not None:
+        native["turn_end_event_index"] = end_event.event_index
+        if end_event.event_id is not None:
+            native["turn_end_event_id"] = end_event.event_id
+
     model_run: dict[str, object] = {
         "model_run_id": f"model-run-{index}",
         "provider": "copilot-cli",
@@ -1324,12 +1373,7 @@ def _copilot_model_run_from_turn(
             next_start_event=next_start_event,
             shutdown_event=shutdown_event,
         ),
-        "native": {
-            "turn_start_present": True,
-            "turn_end_present": end_event is not None,
-            "turn_start_event_index": start_event.event_index,
-            "span_end_event_index": span_end_index,
-        },
+        "native": native,
     }
     turn_id = _copilot_event_turn_id(start_event)
     if turn_id is not None:
@@ -1340,9 +1384,6 @@ def _copilot_model_run_from_turn(
         model_run["ended_at"] = end_event.timestamp
     if model is not None:
         model_run["model"] = model
-        native = model_run.get("native")
-        if isinstance(native, dict) and model_source is not None:
-            native["model_source"] = model_source
 
     interaction_id = _copilot_model_run_interaction_id(
         raw_events,
@@ -1360,17 +1401,6 @@ def _copilot_model_run_from_turn(
     )
     if output_tokens:
         model_run["output_tokens"] = output_tokens
-
-    if start_event.event_id is not None:
-        native = model_run.get("native")
-        if isinstance(native, dict):
-            native["turn_start_event_id"] = start_event.event_id
-    if end_event is not None:
-        native = model_run.get("native")
-        if isinstance(native, dict):
-            native["turn_end_event_index"] = end_event.event_index
-            if end_event.event_id is not None:
-                native["turn_end_event_id"] = end_event.event_id
 
     source_refs = _copilot_model_run_source_refs(
         start_event=start_event,
@@ -1541,7 +1571,7 @@ def _copilot_model_run_message_refs(
         message_id = _string_or_none(message.get("message_id"))
         if message_id is None:
             continue
-        event_index = _copilot_message_event_index(message)
+        event_index = _copilot_record_event_index(message)
         if event_index is None:
             continue
         if start_event.event_index <= event_index <= span_end_index and message_id not in refs:
@@ -1567,26 +1597,10 @@ def _copilot_direct_parent_message_ref(
         return None
     for message in messages:
         message_id = _string_or_none(message.get("message_id"))
-        raw_event_id = _copilot_message_raw_event_id(message)
+        raw_event_id = _copilot_record_event_id(message)
         if message_id is not None and raw_event_id == parent_id:
             return message_id
     return None
-
-
-def _copilot_message_event_index(message: dict[str, object]) -> int | None:
-    native = message.get("native")
-    if isinstance(native, dict):
-        event_index = _int_or_none(native.get("event_index"))
-        if event_index is not None:
-            return event_index
-    return _source_ref_first_event_index(message.get("source_refs"))
-
-
-def _copilot_message_raw_event_id(message: dict[str, object]) -> str | None:
-    native = message.get("native")
-    if not isinstance(native, dict):
-        return None
-    return _string_or_none(native.get("event_id"))
 
 
 def _copilot_model_run_tool_refs(
@@ -1617,21 +1631,12 @@ def _copilot_model_run_event_refs(
         event_id = _string_or_none(event.get("event_id"))
         if event_id is None:
             continue
-        event_index = _copilot_normalized_event_index(event)
+        event_index = _copilot_record_event_index(event)
         if event_index is None:
             continue
         if start_index <= event_index <= end_index:
             refs.append(event_id)
     return refs
-
-
-def _copilot_normalized_event_index(event: dict[str, object]) -> int | None:
-    native = event.get("native")
-    if isinstance(native, dict):
-        event_index = _int_or_none(native.get("event_index"))
-        if event_index is not None:
-            return event_index
-    return _source_ref_first_event_index(event.get("source_refs"))
 
 
 def _copilot_model_run_reasoning_trace(
@@ -1679,10 +1684,7 @@ def _copilot_reasoning_entries_from_event(
                 reasoning_key=source_key,
             ),
         }
-        if raw_event.timestamp is not None:
-            reasoning["timestamp"] = raw_event.timestamp
-        if raw_event.source_refs:
-            reasoning["source_refs"] = raw_event.source_refs
+        _copilot_attach_event_provenance(reasoning, raw_event)
         reasoning_trace.append(reasoning)
     return reasoning_trace
 
@@ -1694,16 +1696,11 @@ def _copilot_reasoning_native(
 ) -> dict[str, object]:
     native = _copilot_event_native(raw_event)
     native["reasoning_key"] = reasoning_key
-    for source_key, native_key in (
-        ("messageId", "message_id"),
-        ("requestId", "request_id"),
-        ("phase", "phase"),
-        ("interactionId", "interaction_id"),
-        ("outputTokens", "output_tokens"),
-    ):
-        value = raw_event.data.get(source_key)
-        if value is not None:
-            native[native_key] = value
+    _copy_present_fields(
+        native,
+        raw_event.data,
+        _COPILOT_REASONING_NATIVE_FIELDS,
+    )
     return native
 
 
@@ -1881,17 +1878,11 @@ def _copilot_usage_native(
     native = _copilot_event_native(shutdown_event)
     native["model_metrics_key"] = model_name
     native["model_metrics_entry"] = entry
-
-    for source_key, native_key in (
-        ("shutdownType", "shutdown_type"),
-        ("totalPremiumRequests", "total_premium_requests"),
-        ("totalApiDurationMs", "total_api_duration_ms"),
-        ("sessionStartTime", "session_start_time"),
-        ("currentModel", "current_model"),
-    ):
-        value = shutdown_event.data.get(source_key)
-        if value is not None:
-            native[native_key] = value
+    _copy_present_fields(
+        native,
+        shutdown_event.data,
+        _COPILOT_USAGE_NATIVE_FIELDS,
+    )
 
     session_token_counters: dict[str, object] = {}
     for source_key, native_key in (
@@ -3845,6 +3836,17 @@ def _sorted_count_dict(counts: dict[str, int]) -> dict[str, int]:
     return {key: counts[key] for key in sorted(counts)}
 
 
+def _copy_present_fields(
+    target: dict[str, object],
+    source: dict[str, Any],
+    field_map: tuple[tuple[str, str], ...],
+) -> None:
+    for source_key, target_key in field_map:
+        value = source.get(source_key)
+        if value is not None:
+            target[target_key] = value
+
+
 def _int_or_none(value: object) -> int | None:
     if isinstance(value, bool):
         return None
@@ -3878,6 +3880,27 @@ def _source_ref_event_indices(source_refs: object) -> list[int]:
         if event_index is not None:
             event_indices.append(event_index)
     return event_indices
+
+
+def _record_native_dict(record: dict[str, object]) -> dict[str, object]:
+    native = record.get("native")
+    if isinstance(native, dict):
+        return native
+    return {}
+
+
+def _record_native_int_field(
+    record: dict[str, object],
+    key: str,
+) -> int | None:
+    return _int_or_none(_record_native_dict(record).get(key))
+
+
+def _record_native_string_field(
+    record: dict[str, object],
+    key: str,
+) -> str | None:
+    return _string_or_none(_record_native_dict(record).get(key))
 
 
 def _dict_list(value: object) -> list[dict[str, object]]:
