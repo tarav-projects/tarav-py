@@ -143,6 +143,10 @@ class SkillsStatusResult:
     depot_statuses: tuple[SkillsDepotStatusResult, ...]
 
 
+def _registry_source_field_label(source_name: str) -> str:
+    return f"global config field skills.routing.sources.{source_name}"
+
+
 def _parse_enabled_flag(payload: dict[str, object], *, field_label: str) -> bool:
     enabled = payload.get("enabled", True)
     if not isinstance(enabled, bool):
@@ -173,13 +177,6 @@ def _source_target_kind(
     if not target_fields:
         return None
     return target_fields[0]
-
-
-def _require_source_name(payload: dict[str, object], *, field_label: str) -> str:
-    return validate_string_for_path(
-        payload.get("name", ""),
-        field_name=f"{field_label}.name",
-    )
 
 
 def _validate_routing_ref_part(value: str, *, field_name: str) -> str:
@@ -263,6 +260,25 @@ def _require_local_export_source_reference(
     if default_source_name is not None and source_ref.source_name != default_source_name:
         raise CliError(
             f"{field_label}.name must reference local export source: {default_source_name}"
+        )
+    return source_ref
+
+
+def _require_local_source_ref_without_export_package(
+    payload: dict[str, object],
+    *,
+    field_label: str,
+    default_source_name: str | None,
+    source_kind: str,
+) -> SkillsSourceReference:
+    source_ref = _require_local_export_source_reference(
+        payload,
+        field_label=field_label,
+        default_source_name=default_source_name,
+    )
+    if source_ref.export_package_name is not None:
+        raise CliError(
+            f"{field_label}.name must not include an export package for {source_kind} sources"
         )
     return source_ref
 
@@ -383,9 +399,9 @@ def _parse_routing_sources_registry(payload: object) -> dict[str, SkillsRoutingS
             raise CliError("global config field skills.routing.sources keys must be non-empty strings")
         name = _validate_routing_ref_part(raw_name, field_name="routing source name")
         if not isinstance(raw_entry, dict):
-            raise CliError(f"global config field skills.routing.sources.{name} must be an object")
+            raise CliError(f"{_registry_source_field_label(name)} must be an object")
 
-        item_label = f"global config field skills.routing.sources.{name}"
+        item_label = _registry_source_field_label(name)
         enabled = _parse_enabled_flag(raw_entry, field_label=item_label)
         filter_context = _parse_source_filter(raw_entry, field_label=item_label)
         target_kind = _source_target_kind(
@@ -527,12 +543,11 @@ def _project_skills_root(project_root: Path, *, field_name: str) -> Path:
     return skills_root
 
 
-def _append_direct_source(
+def _append_resolved_source(
     name: str,
-    path_text: str,
     *,
-    base_root: Path,
-    field_name: str,
+    root: Path,
+    configured_path: str,
     seen_names: set[str],
     resolved_sources: list[SkillsImport],
     filters: tuple[SkillsImportFilter, ...],
@@ -543,16 +558,32 @@ def _append_direct_source(
     resolved_sources.append(
         SkillsImport(
             name=name,
-            root=_resolve_source_root(
-                path_text,
-                base_root=base_root,
-                field_name=field_name,
-            ),
-            configured_path=path_text,
+            root=root,
+            configured_path=configured_path,
             filters=filters,
         )
     )
     seen_names.add(name)
+
+
+def _append_direct_source(
+    name: str,
+    path_text: str,
+    *,
+    base_root: Path,
+    field_name: str,
+    seen_names: set[str],
+    resolved_sources: list[SkillsImport],
+    filters: tuple[SkillsImportFilter, ...],
+) -> None:
+    _append_resolved_source(
+        name,
+        root=_resolve_source_root(path_text, base_root=base_root, field_name=field_name),
+        configured_path=path_text,
+        seen_names=seen_names,
+        resolved_sources=resolved_sources,
+        filters=filters,
+    )
 
 
 def _append_project_source(
@@ -565,23 +596,19 @@ def _append_project_source(
     resolved_sources: list[SkillsImport],
     filters: tuple[SkillsImportFilter, ...],
 ) -> None:
-    if name in seen_names:
-        raise CliError(f"duplicate enabled routing source name: {name}")
-
     project_root = _resolve_project_root(
         project_path_text,
         base_root=base_root,
         field_name=field_name,
     )
-    resolved_sources.append(
-        SkillsImport(
-            name=name,
-            root=_project_skills_root(project_root, field_name=field_name),
-            configured_path=project_path_text,
-            filters=filters,
-        )
+    _append_resolved_source(
+        name,
+        root=_project_skills_root(project_root, field_name=field_name),
+        configured_path=project_path_text,
+        seen_names=seen_names,
+        resolved_sources=resolved_sources,
+        filters=filters,
     )
-    seen_names.add(name)
 
 
 def _load_project_export_packages(project_root: Path, *, field_label: str) -> dict[str, object]:
@@ -657,7 +684,7 @@ def _append_project_export_package(
         raise CliError(f"routing source cycle detected: {cycle}")
 
     assert registry_entry.project_path_text is not None
-    field_name = f"global config field skills.routing.sources.{registry_entry.name}"
+    field_name = _registry_source_field_label(registry_entry.name)
     project_root = _resolve_project_root(
         registry_entry.project_path_text,
         base_root=agentos_home_dir(),
@@ -718,7 +745,7 @@ def _append_sources_from_registry_reference(
             registry_entry.name,
             registry_entry.path_text,
             base_root=agentos_home_dir(),
-            field_name=f"global config field skills.routing.sources.{registry_entry.name}",
+            field_name=_registry_source_field_label(registry_entry.name),
             seen_names=seen_names,
             resolved_sources=resolved_sources,
             filters=source_filters,
@@ -731,7 +758,7 @@ def _append_sources_from_registry_reference(
             registry_entry.name,
             registry_entry.project_path_text,
             base_root=agentos_home_dir(),
-            field_name=f"global config field skills.routing.sources.{registry_entry.name}",
+            field_name=_registry_source_field_label(registry_entry.name),
             seen_names=seen_names,
             resolved_sources=resolved_sources,
             filters=source_filters,
@@ -740,7 +767,7 @@ def _append_sources_from_registry_reference(
 
     _append_sources_from_payload(
         registry_entry.package_payload,
-        payload_label=f"global config field skills.routing.sources.{registry_entry.name}.package",
+        payload_label=f"{_registry_source_field_label(registry_entry.name)}.package",
         inline_base_root=agentos_home_dir(),
         sources_registry=sources_registry,
         seen_names=seen_names,
@@ -785,13 +812,12 @@ def _append_sources_from_payload(
         )
 
         if target_kind == SKILLS_SOURCE_KIND_PATH:
-            source_ref = _require_local_export_source_reference(
+            source_ref = _require_local_source_ref_without_export_package(
                 item,
                 field_label=item_label,
                 default_source_name=default_source_name,
+                source_kind=SKILLS_SOURCE_KIND_PATH,
             )
-            if source_ref.export_package_name is not None:
-                raise CliError(f"{item_label}.name must not include an export package for path sources")
             path_text = _require_source_path_text(item, field_label=item_label)
             _append_direct_source(
                 source_ref.source_name,
@@ -805,13 +831,12 @@ def _append_sources_from_payload(
             continue
 
         if target_kind == SKILLS_SOURCE_KIND_PROJECT:
-            source_ref = _require_local_export_source_reference(
+            source_ref = _require_local_source_ref_without_export_package(
                 item,
                 field_label=item_label,
                 default_source_name=default_source_name,
+                source_kind=SKILLS_SOURCE_KIND_PROJECT,
             )
-            if source_ref.export_package_name is not None:
-                raise CliError(f"{item_label}.name must not include an export package for project sources")
             _append_project_source(
                 source_ref.source_name,
                 _require_source_project_path_text(item, field_label=item_label),
