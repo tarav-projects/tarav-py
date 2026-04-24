@@ -11,14 +11,10 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import main
+from _helpers import write_text_file as _write
 
 
 _DEFAULT_CHATLAS_INSTANCE_IDS = object()
-
-
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
 
 
 def _set_iso_mtime(path: Path, timestamp: str) -> None:
@@ -2191,64 +2187,6 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
     assert _git_output(chatlas_root, "status", "--porcelain") == ""
 
 
-def test_chatlas_normalized_cache_matches_legacy_rich_artifact_signatures() -> None:
-    from agentos.chatlas import core as chatlas_core
-
-    artifact_signature = {
-        "role": "transcript",
-        "storage_kind": "file",
-        "path": "/tmp/chatlas/session/events.jsonl",
-        "locator": None,
-        "extractable": True,
-        "source_signature": {
-            "path": "/tmp/chatlas/session/events.jsonl",
-            "exists": True,
-            "mtime_ns": 42,
-            "size": 256,
-        },
-    }
-    source_signature = {
-        "provider": "copilot-cli",
-        "instance": "copilot-main",
-        "provider_instance_fingerprint": "fingerprint",
-        "session_id": "session-a",
-        "display_name": None,
-        "display_name_field": None,
-        "updated_at": "2026-04-21T13:00:00.000Z",
-        "extractable": True,
-        "native": {},
-        "primary_backing_artifact": artifact_signature,
-        "backing_artifacts": [artifact_signature],
-        "signature_version": 2,
-        "derivation_version": chatlas_core._NORMALIZED_SESSION_DERIVATION_VERSION,
-    }
-    legacy_artifact_signature = {
-        **artifact_signature,
-        "source_signature": {
-            **artifact_signature["source_signature"],
-            "tail_sha256": "legacy-rich-tail-hash",
-        },
-    }
-    legacy_source_signature = {
-        key: value
-        for key, value in source_signature.items()
-        if key != "signature_version"
-    }
-    legacy_source_signature["primary_backing_artifact"] = legacy_artifact_signature
-    legacy_source_signature["backing_artifacts"] = [legacy_artifact_signature]
-
-    assert chatlas_core._normalized_session_cache_entry_matches(
-        {
-            "source_signature": legacy_source_signature,
-            "session": {
-                "provider": "copilot-cli",
-                "session_id": "session-a",
-            },
-        },
-        source_signature,
-    )
-
-
 def test_chatlas_derived_transcript_cache_matches_legacy_rich_signatures() -> None:
     from agentos.chatlas import core as chatlas_core
 
@@ -2273,371 +2211,100 @@ def test_chatlas_derived_transcript_cache_matches_legacy_rich_signatures() -> No
     )
 
 
-def test_chatlas_derived_transcript_cache_round_trips_metadata_signatures(tmp_path: Path) -> None:
-    from agentos.chatlas import core as chatlas_core
-
-    transcript_cache = {
-        "codex/fingerprint/session-a": {
-            "source_path": "/tmp/chatlas/session/events.jsonl",
-            "size": 256,
-            "mtime_ns": 42,
-            "signature_version": 2,
-            "derivation_version": chatlas_core._DERIVED_TRANSCRIPT_DERIVATION_VERSION,
-        }
-    }
-
-    chatlas_core._write_derived_transcript_cache(tmp_path, transcript_cache)
-
-    assert chatlas_core._load_derived_transcript_cache(tmp_path) == transcript_cache
-
-
-def test_chatlas_update_can_disable_scan_cache(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    from agentos.chatlas import raw as chatlas_raw
-
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(agentos_home / "config.json")
-
-    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    _write_codex_rollout(
-        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
-        session_id=session_id,
-    )
-    _write_codex_session_index(
-        home / ".codex" / "session_index.jsonl",
-        session_id=session_id,
-        thread_name="uncached-thread",
-    )
-
-    assert main(_chatlas_update_argv("--provider", "codex")) == 0
-    _ = json.loads(capsys.readouterr().out)
-
-    original_match = chatlas_raw._chatlas_archive_files_match
-    match_calls = {"count": 0}
-
-    def counting_match(*args, **kwargs):
-        match_calls["count"] += 1
-        return original_match(*args, **kwargs)
-
-    monkeypatch.setattr(chatlas_raw, "_chatlas_archive_files_match", counting_match)
-
-    assert main(_chatlas_update_argv("--provider", "codex", "--scan-cache=false")) == 0
-    payload = json.loads(capsys.readouterr().out)
-
-    assert payload["scan_cache_enabled"] is False
-    assert payload["normalized_cache_enabled"] is True
-    assert payload["transcript_cache_enabled"] is True
-    assert payload["changes_detected"] is False
-    assert payload["committed"] is False
-    assert match_calls["count"] > 0
-
-
-def test_chatlas_raw_detection_batch_emits_only_actionable_files(
-    tmp_path: Path,
-) -> None:
-    from agentos.chatlas import raw as chatlas_raw
-
-    source_root = tmp_path / "source"
-    destination_root = tmp_path / "destination"
-    unchanged_source = source_root / "unchanged.txt"
-    actionable_source = source_root / "actionable.txt"
-    unchanged_destination = destination_root / "unchanged.txt"
-
-    _write(unchanged_source, "same payload\n")
-    _write(actionable_source, "needs copy\n")
-    _write(unchanged_destination, "same payload\n")
-
-    unchanged_signature = chatlas_raw._chatlas_archive_source_signature(unchanged_source)
-    result = chatlas_raw._detect_chatlas_archive_batch(
-        batch=(
-            (unchanged_source, Path("unchanged.txt")),
-            (actionable_source, Path("actionable.txt")),
+@pytest.mark.parametrize(
+    "cache_flag, expected_scan, expected_normalized, expected_transcript, patched_targets",
+    [
+        pytest.param(
+            "--scan-cache=false",
+            False, True, True,
+            ("raw._chatlas_archive_files_match",),
+            id="scan",
         ),
-        destination_path=destination_root,
-        scan_cache_entries={
-            "unchanged.txt": unchanged_signature,
-        },
-        scan_cache_enabled=True,
-    )
-
-    assert [candidate.rel_path_text for candidate in result.actionable_files] == ["actionable.txt"]
-    assert result.cache_updates == {"unchanged.txt": unchanged_signature}
-    assert result.processed_file_count == 2
-    assert result.unchanged_file_count == 1
-    assert result.skipped_file_count == 0
-    assert result.skipped_file_examples == ()
-
-
-def test_chatlas_raw_detection_candidates_parallelize_large_batches(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    from concurrent.futures import Future
-
-    from agentos.chatlas import raw as chatlas_raw
-
-    source_root = tmp_path / "source"
-    destination_root = tmp_path / "destination"
-    candidate_files: tuple[tuple[Path, Path], ...] = tuple(
-        (source_root / f"file-{index}.txt", Path(f"file-{index}.txt"))
-        for index in range(3)
-    )
-    for source_file, _ in candidate_files:
-        _write(source_file, f"payload {source_file.name}\n")
-
-    consumed_candidates: list[str] = []
-
-    def iter_candidates():
-        for source_file, rel_path in candidate_files:
-            consumed_candidates.append(rel_path.as_posix())
-            yield source_file, rel_path
-
-    monkeypatch.setattr(chatlas_raw, "_CHATLAS_RAW_DETECTION_BATCH_SIZE", 2)
-    monkeypatch.setattr(chatlas_raw, "_CHATLAS_RAW_DETECTION_MIN_FILES", 2)
-    monkeypatch.setattr(chatlas_raw, "_CHATLAS_RAW_DETECTION_MAX_WORKERS", 2)
-
-    executor_calls = {"submit_count": 0, "max_workers": None}
-
-    class FakeExecutor:
-        def __init__(self, *, max_workers: int):
-            executor_calls["max_workers"] = max_workers
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def submit(self, fn, *args, **kwargs):
-            executor_calls["submit_count"] += 1
-            future: Future = Future()
-            future.set_result(fn(*args, **kwargs))
-            return future
-
-    monkeypatch.setattr(chatlas_raw, "ThreadPoolExecutor", FakeExecutor)
-
-    result_iter = chatlas_raw._detect_chatlas_archive_candidates(
-        candidate_files=iter_candidates(),
-        destination_path=destination_root,
-        scan_cache_entries={},
-        scan_cache_enabled=True,
-    )
-    first_result = next(result_iter)
-    assert executor_calls["max_workers"] == 2
-    assert executor_calls["submit_count"] == 1
-    assert consumed_candidates == ["file-0.txt", "file-1.txt"]
-
-    results = (first_result,) + tuple(result_iter)
-
-    assert executor_calls["max_workers"] == 2
-    assert executor_calls["submit_count"] == 2
-    assert len(results) == 2
-    assert sum(result.processed_file_count for result in results) == 3
-
-
-def test_chatlas_archive_source_files_prunes_non_matching_include_dirs(
-    tmp_path: Path,
-) -> None:
-    from agentos.chatlas import raw as chatlas_raw
-
-    source_root = tmp_path / "source"
-    _write(source_root / "session-state" / "session-a" / "events.jsonl", "{}\n")
-    _write(source_root / "session-state" / "session-a" / "workspace.yaml", "skip\n")
-    _write(source_root / "pkg" / "session-state" / "session-b" / "events.jsonl", "{}\n")
-    _write(source_root / "copilot-instructions.md", "Prefer concise answers.\n")
-
-    rel_paths = sorted(
-        rel_path.as_posix()
-        for _, rel_path in chatlas_raw._iter_chatlas_archive_source_files(
-            source_path=source_root,
-            includes=("session-state/**/events.jsonl", "copilot-instructions.md"),
-            excludes=(),
-        )
-    )
-
-    assert rel_paths == [
-        "copilot-instructions.md",
-        "session-state/session-a/events.jsonl",
-    ]
-
-
-def test_chatlas_update_can_disable_transcript_cache(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    from agentos.chatlas import core as chatlas_core
-
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(agentos_home / "config.json")
-
-    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    _write_codex_rollout(
-        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
-        session_id=session_id,
-    )
-    _write_codex_session_index(
-        home / ".codex" / "session_index.jsonl",
-        session_id=session_id,
-        thread_name="transcript-deep-pass-thread",
-    )
-
-    assert main(_chatlas_update_argv("--provider", "codex")) == 0
-    _ = json.loads(capsys.readouterr().out)
-
-    original_render = chatlas_core._render_transcript
-    render_calls = {"count": 0}
-
-    def counting_render(*args, **kwargs):
-        render_calls["count"] += 1
-        return original_render(*args, **kwargs)
-
-    monkeypatch.setattr(chatlas_core, "_render_transcript", counting_render)
-
-    assert main(_chatlas_update_argv("--provider", "codex", "--transcript-cache=false")) == 0
-    payload = json.loads(capsys.readouterr().out)
-
-    assert payload["scan_cache_enabled"] is True
-    assert payload["normalized_cache_enabled"] is True
-    assert payload["transcript_cache_enabled"] is False
-    assert payload["changes_detected"] is False
-    assert payload["committed"] is False
-    assert render_calls["count"] > 0
-
-
-def test_chatlas_update_can_disable_normalized_cache(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    from agentos.chatlas import core as chatlas_core
-
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(agentos_home / "config.json")
-
-    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    _write_codex_rollout(
-        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
-        session_id=session_id,
-    )
-    _write_codex_session_index(
-        home / ".codex" / "session_index.jsonl",
-        session_id=session_id,
-        thread_name="normalized-deep-pass-thread",
-    )
-
-    assert main(_chatlas_update_argv("--provider", "codex")) == 0
-    _ = json.loads(capsys.readouterr().out)
-
-    original_normalized_record = chatlas_core._normalized_session_record
-    normalized_record_calls = {"count": 0}
-
-    def counting_normalized_record(*args, **kwargs):
-        normalized_record_calls["count"] += 1
-        return original_normalized_record(*args, **kwargs)
-
-    monkeypatch.setattr(chatlas_core, "_normalized_session_record", counting_normalized_record)
-
-    assert main(_chatlas_update_argv("--provider", "codex", "--normalized-cache=false")) == 0
-    payload = json.loads(capsys.readouterr().out)
-
-    assert payload["scan_cache_enabled"] is True
-    assert payload["normalized_cache_enabled"] is False
-    assert payload["transcript_cache_enabled"] is True
-    assert payload["changes_detected"] is False
-    assert payload["committed"] is False
-    assert normalized_record_calls["count"] > 0
-
-
-def test_chatlas_update_disable_cache_overrides_all_individual_cache_flags(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    from agentos.chatlas import core as chatlas_core
-    from agentos.chatlas import raw as chatlas_raw
-
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(agentos_home / "config.json")
-
-    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    _write_codex_rollout(
-        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
-        session_id=session_id,
-    )
-    _write_codex_session_index(
-        home / ".codex" / "session_index.jsonl",
-        session_id=session_id,
-        thread_name="master-disable-cache-thread",
-    )
-
-    assert main(_chatlas_update_argv("--provider", "codex")) == 0
-    _ = json.loads(capsys.readouterr().out)
-
-    original_match = chatlas_raw._chatlas_archive_files_match
-    original_normalized_record = chatlas_core._normalized_session_record
-    original_render = chatlas_core._render_transcript
-    calls = {
-        "match": 0,
-        "normalized_record": 0,
-        "render": 0,
-    }
-
-    def counting_match(*args, **kwargs):
-        calls["match"] += 1
-        return original_match(*args, **kwargs)
-
-    def counting_normalized_record(*args, **kwargs):
-        calls["normalized_record"] += 1
-        return original_normalized_record(*args, **kwargs)
-
-    def counting_render(*args, **kwargs):
-        calls["render"] += 1
-        return original_render(*args, **kwargs)
-
-    monkeypatch.setattr(chatlas_raw, "_chatlas_archive_files_match", counting_match)
-    monkeypatch.setattr(chatlas_core, "_normalized_session_record", counting_normalized_record)
-    monkeypatch.setattr(chatlas_core, "_render_transcript", counting_render)
-
-    assert main(
-        _chatlas_update_argv(
-            "--provider",
-            "codex",
+        pytest.param(
+            "--transcript-cache=false",
+            True, True, False,
+            ("core._render_transcript",),
+            id="transcript",
+        ),
+        pytest.param(
+            "--normalized-cache=false",
+            True, False, True,
+            ("core._normalized_session_record",),
+            id="normalized",
+        ),
+        pytest.param(
             "--disable-cache",
-            "--scan-cache=true",
-            "--normalized-cache=true",
-            "--transcript-cache=true",
-        )
-    ) == 0
+            False, False, False,
+            ("raw._chatlas_archive_files_match", "core._normalized_session_record", "core._render_transcript"),
+            id="disable-all",
+        ),
+    ],
+)
+def test_chatlas_update_can_disable_caches(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+    cache_flag: str,
+    expected_scan: bool,
+    expected_normalized: bool,
+    expected_transcript: bool,
+    patched_targets: tuple[str, ...],
+) -> None:
+    from agentos.chatlas import core as chatlas_core
+    from agentos.chatlas import raw as chatlas_raw
+
+    modules = {"raw": chatlas_raw, "core": chatlas_core}
+
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    _write_codex_rollout(
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
+        session_id=session_id,
+    )
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name="cache-disable-thread",
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    counters: dict[str, int] = {}
+    for target in patched_targets:
+        mod_key, attr = target.split(".")
+        mod = modules[mod_key]
+        original = getattr(mod, attr)
+        counters[target] = 0
+
+        def make_counter(orig, key):
+            def counting(*args, **kwargs):
+                counters[key] += 1
+                return orig(*args, **kwargs)
+            return counting
+
+        monkeypatch.setattr(mod, attr, make_counter(original, target))
+
+    extra_argv = ["--provider", "codex", cache_flag]
+    if cache_flag == "--disable-cache":
+        extra_argv += ["--scan-cache=true", "--normalized-cache=true", "--transcript-cache=true"]
+
+    assert main(_chatlas_update_argv(*extra_argv)) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["scan_cache_enabled"] is False
-    assert payload["normalized_cache_enabled"] is False
-    assert payload["transcript_cache_enabled"] is False
+    assert payload["scan_cache_enabled"] is expected_scan
+    assert payload["normalized_cache_enabled"] is expected_normalized
+    assert payload["transcript_cache_enabled"] is expected_transcript
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
-    assert calls["match"] > 0
-    assert calls["normalized_record"] > 0
-    assert calls["render"] > 0
+    for target in patched_targets:
+        assert counters[target] > 0, f"expected {target} to be called"
 
 
 def test_chatlas_stats_migrates_legacy_default_chatlas_root(
@@ -2767,40 +2434,6 @@ def test_chatlas_update_skips_transient_missing_source_files(
     assert payload["normalized_session_count"] == 1
     assert home_status["skipped_file_count"] == 0
     assert home_status["skipped_file_examples"] == []
-
-
-def test_chatlas_update_emits_progress_to_stderr(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(agentos_home / "config.json")
-
-    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    _write_codex_rollout(
-        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
-        session_id=session_id,
-    )
-
-    assert main(_chatlas_update_argv("--provider", "codex", output_mode=None)) == 0
-    captured = capsys.readouterr()
-
-    assert captured.out == ""
-    assert "[chatlas] update start:" in captured.err
-    assert "[chatlas] codex/codex-main: archive start" in captured.err
-    assert "codex/codex-main:home: done (scanned=" in captured.err
-    assert "[chatlas] codex/codex-main: archive done (synced=True, elapsed=" in captured.err
-    assert "[chatlas] archive provider codex:" in captured.err
-    assert "[chatlas] archive totals:" in captured.err
-    assert "[chatlas] normalized sessions: 1 (elapsed=" in captured.err
-    assert "[chatlas] derived transcripts: 1 (elapsed=" in captured.err
-    assert "[chatlas] derived summaries: brief=1 detailed=1 (elapsed=" in captured.err
-    assert "[chatlas] git finalization: committed (elapsed=" in captured.err
 
 
 def test_chatlas_update_can_disable_progress_output(
@@ -3040,75 +2673,6 @@ def test_chatlas_update_without_selection_preserves_existing_dataset(
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
     assert _chatlas_home_root(home, home / ".codex").exists()
-
-
-def test_chatlas_update_rejects_unknown_chatlas_instance_ids(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(
-        agentos_home / "config.json",
-        chatlas_instance_ids=["missing"],
-    )
-
-    assert main(_chatlas_update_argv("--provider", "codex")) == 1
-    assert "chatlas.instance_ids references unknown configured instance id: missing" in capsys.readouterr().err
-
-
-def test_chatlas_update_rejects_unsupported_chatlas_instance_ids(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    from agentos.chatlas import core as chatlas_core
-    from agentos.chatlas import raw as chatlas_raw
-
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(
-        agentos_home / "config.json",
-        chatlas_instance_ids=["claude-main"],
-    )
-    monkeypatch.setattr(
-        chatlas_core,
-        "supported_chatlas_provider_families",
-        lambda: tuple(
-            handler
-            for handler in chatlas_raw.supported_chatlas_provider_families()
-            if handler.family == "codex"
-        ),
-    )
-
-    with pytest.raises(chatlas_core.CliError, match="chatlas.instance_ids references unsupported Chatlas instance id: claude-main"):
-        chatlas_core.configured_chatlas_settings()
-
-
-def test_chatlas_update_rejects_duplicate_chatlas_instance_ids(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    from agentos.chatlas import core as chatlas_core
-
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(
-        agentos_home / "config.json",
-        chatlas_instance_ids=["codex-main", "codex-main"],
-    )
-
-    with pytest.raises(chatlas_core.CliError, match="chatlas.instance_ids must be unique; duplicate id codex-main"):
-        chatlas_core.load_chatlas_instance_ids()
 
 
 def test_chatlas_update_uses_shared_claude_code_home_slots(

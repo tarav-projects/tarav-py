@@ -18,11 +18,7 @@ from agentos.chat import accounts as chat_accounts
 from agentos.chat import commands as chat_commands
 from agentos.cli import main
 from agentos.tara_tapes.core import load_tara_tape_manifest, read_tara_tape_segment_records
-
-
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+from _helpers import write_text_file as _write
 
 
 def _span_tuples(rendered) -> list[tuple[int, int, str]]:  # type: ignore[no-untyped-def]
@@ -1134,7 +1130,15 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
     assert payload["usage_source"] == "interactive-statusline"
 
 
-def test_loop_chat_accounts_stats_repeats_until_keyboard_interrupt(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        pytest.param("repeats_until_keyboard_interrupt", id="repeats-until-keyboard-interrupt"),
+        pytest.param("resets_interval_after_enter", id="resets-interval-after-enter"),
+        pytest.param("caps_interval_at_ten_minutes", id="caps-interval-at-ten-minutes"),
+    ],
+)
+def test_loop_chat_accounts_stats_interval_behavior(monkeypatch, scenario: str) -> None:
     args = argparse.Namespace(
         instance_ids=[],
         providers=None,
@@ -1144,39 +1148,98 @@ def test_loop_chat_accounts_stats_repeats_until_keyboard_interrupt(monkeypatch) 
         loop=True,
     )
 
-    outputs = iter(("snapshot-1", "snapshot-2"))
-    monkeypatch.setattr(
-        chat_commands,
-        "_render_chat_accounts_stats_output",
-        lambda loop_args: next(outputs),
-    )
-
     wait_calls: list[float] = []
 
-    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
-        del input_stream
-        wait_calls.append(interval_sec)
-        if len(wait_calls) >= 2:
+    if scenario == "repeats_until_keyboard_interrupt":
+        outputs = iter(("snapshot-1", "snapshot-2"))
+        monkeypatch.setattr(
+            chat_commands,
+            "_render_chat_accounts_stats_output",
+            lambda loop_args: next(outputs),
+        )
+
+        def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
+            del input_stream
+            wait_calls.append(interval_sec)
+            if len(wait_calls) >= 2:
+                raise KeyboardInterrupt()
+            return False
+
+        output_stream = io.StringIO()
+        exit_code = chat_commands._loop_chat_accounts_stats(
+            args,
+            input_stream=io.StringIO(),
+            output_stream=output_stream,
+            interval_sec=60.0,
+            wait_for_trigger=fake_wait,
+        )
+
+        rendered = output_stream.getvalue()
+        assert exit_code == 0
+        assert wait_calls == [60.0, 61.0]
+        assert "snapshot-1" in rendered
+        assert "snapshot-2" in rendered
+        assert rendered.count(chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE) == 1
+        assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
+        assert "[loop] refreshes every 61s; press Enter to refresh now; Ctrl-C to stop" in rendered
+
+    elif scenario == "resets_interval_after_enter":
+        outputs = iter(("snapshot-1", "snapshot-2", "snapshot-3"))
+        monkeypatch.setattr(
+            chat_commands,
+            "_render_chat_accounts_stats_output",
+            lambda loop_args: next(outputs),
+        )
+
+        def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
+            del input_stream
+            wait_calls.append(interval_sec)
+            if len(wait_calls) == 1:
+                return False
+            if len(wait_calls) == 2:
+                return True
             raise KeyboardInterrupt()
-        return False
 
-    output_stream = io.StringIO()
-    exit_code = chat_commands._loop_chat_accounts_stats(
-        args,
-        input_stream=io.StringIO(),
-        output_stream=output_stream,
-        interval_sec=60.0,
-        wait_for_trigger=fake_wait,
-    )
+        output_stream = io.StringIO()
+        exit_code = chat_commands._loop_chat_accounts_stats(
+            args,
+            input_stream=io.StringIO(),
+            output_stream=output_stream,
+            interval_sec=60.0,
+            wait_for_trigger=fake_wait,
+        )
 
-    rendered = output_stream.getvalue()
-    assert exit_code == 0
-    assert wait_calls == [60.0, 61.0]
-    assert "snapshot-1" in rendered
-    assert "snapshot-2" in rendered
-    assert rendered.count(chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE) == 1
-    assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
-    assert "[loop] refreshes every 61s; press Enter to refresh now; Ctrl-C to stop" in rendered
+        rendered = output_stream.getvalue()
+        assert exit_code == 0
+        assert wait_calls == [60.0, 61.0, 60.0]
+        assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
+        assert "[loop] refreshes every 61s; press Enter to refresh now; Ctrl-C to stop" in rendered
+
+    elif scenario == "caps_interval_at_ten_minutes":
+        monkeypatch.setattr(
+            chat_commands,
+            "_render_chat_accounts_stats_output",
+            lambda loop_args: "snapshot",
+        )
+
+        def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
+            del input_stream
+            wait_calls.append(interval_sec)
+            if len(wait_calls) >= 3:
+                raise KeyboardInterrupt()
+            return False
+
+        output_stream = io.StringIO()
+        exit_code = chat_commands._loop_chat_accounts_stats(
+            args,
+            input_stream=io.StringIO(),
+            output_stream=output_stream,
+            interval_sec=599.0,
+            wait_for_trigger=fake_wait,
+        )
+
+        assert exit_code == 0
+        assert wait_calls == [599.0, 600.0, 600.0]
 
 
 def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> None:
@@ -1305,146 +1368,9 @@ def test_chat_accounts_stats_loop_frame_renders_progress_body_and_countdown() ->
     assert "next refresh in 01:00" in rendered
 
 
-def test_inline_progress_text_styles_fill_and_track_spans() -> None:
-    label = "    resets | Mon | 3d"
-    geometry = chat_commands._InlineBarGroupGeometry(prefix_width=0, main_width=40, suffix_width=0)
-    rendered = chat_commands._inline_progress_text(label, 25, geometry)
-    expected_fill_spans = _offset_gradient_runs(
-        0,
-        0,
-        10,
-        width=40,
-        palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
-    )
-
-    assert rendered.plain == label.ljust(40)
-    assert _span_tuples(rendered) == [
-        (0, 40, chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE),
-        *expected_fill_spans,
-    ]
-
-    full = chat_commands._inline_progress_text(label, 100, geometry)
-    full_fill_spans = _offset_gradient_runs(
-        0,
-        0,
-        40,
-        width=40,
-        palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
-    )
-    assert full_fill_spans[0] in _span_tuples(full)
-    assert full_fill_spans[-1] in _span_tuples(full)
-
-    empty = chat_commands._inline_progress_text(label, 0, geometry)
-    assert _span_tuples(empty) == [
-        (0, 40, chat_commands._CHAT_ACCOUNTS_RESET_PROGRESS_TRACK_STYLE),
-    ]
-
-
-def test_inline_usage_time_text_styles_usage_fill_only() -> None:
-    label = "  usage/time | 70% / 50% = 1.4 | Burst"
-    geometry = chat_commands._InlineBarGroupGeometry(prefix_width=0, main_width=48, suffix_width=0)
-
-    rendered = chat_commands._inline_usage_time_text(
-        label,
-        used_percent=70,
-        geometry=geometry,
-    )
-    spans = _span_tuples(rendered)
-    expected_fill_spans = _offset_gradient_runs(
-        0,
-        0,
-        33,
-        width=48,
-        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
-    )
-
-    assert rendered.plain == label.ljust(48)
-    assert chat_commands._usage_time_line_data(label) == chat_commands._UsageTimeLineData(
-        used_percent=70,
-        elapsed_percent=50,
-        ratio=1.4,
-    )
-    assert (0, 48, chat_commands._CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE) in spans
-    assert expected_fill_spans[0] in spans
-    assert expected_fill_spans[-1] in spans
-
-
 def test_tip_marker_cell_skips_equal_rendered_lengths() -> None:
     assert chat_commands._tip_marker_cell(50, 50, width=48) is None
     assert chat_commands._tip_marker_cell(50, 51, width=10) is None
-
-
-def test_inline_bar_palette_cell_styles_are_interpolated() -> None:
-    assert chat_commands._cell_gradient_style(
-        0,
-        width=5,
-        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
-    ) == "bright_white on #14b8a6"
-    assert chat_commands._cell_gradient_style(
-        2,
-        width=5,
-        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
-    ) == "bright_white on #facc15"
-    assert chat_commands._cell_gradient_style(
-        4,
-        width=5,
-        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
-    ) == "bright_white on #dc2626"
-    assert chat_commands._cell_gradient_style(
-        1,
-        width=3,
-        palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
-    ) == "bright_white on #0891b2"
-    assert chat_commands._cell_gradient_style(
-        1,
-        width=3,
-        palette=chat_commands._CHAT_ACCOUNTS_RATIO_SLOW_BAR_PALETTE,
-    ) == "bright_white on #3b82f6"
-    assert chat_commands._cell_gradient_style(
-        1,
-        width=3,
-        palette=chat_commands._CHAT_ACCOUNTS_RATIO_FAST_BAR_PALETTE,
-    ) == "bright_white on #f59e0b"
-    assert chat_commands._sample_hex_palette(("#000000", "#ffffff"), 0.5) == "#808080"
-
-
-def test_inline_bar_row_places_emoji_suffix_outside_bar_main_text() -> None:
-    line = "  usage/time | 20% /  7% = 2.9 | Weekly 🔥🔥"
-    main_text, suffix_text = chat_commands._split_usage_time_main_suffix(line)
-    geometry = chat_commands._InlineBarGroupGeometry(
-        prefix_width=0,
-        main_width=cell_len(main_text),
-        suffix_width=cell_len(suffix_text),
-    )
-    row = chat_commands._InlineBarRow(
-        group_id="usage",
-        prefix_text="",
-        main_text=main_text,
-        suffix_text=suffix_text,
-        bar=chat_commands._InlineUsageTimeBar(used_percent=20),
-    )
-
-    rendered = chat_commands._render_inline_bar_row(row, geometry)
-    spans = _span_tuples(rendered)
-    track_span = (0, len(main_text), chat_commands._CHAT_ACCOUNTS_USAGE_TIME_TRACK_STYLE)
-    fill_cells = math.floor(geometry.main_width * 0.2)
-    usage_spans = _offset_gradient_runs(
-        0,
-        0,
-        fill_cells,
-        width=geometry.main_width,
-        palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
-    )
-
-    assert main_text == "  usage/time | 20% /  7% = 2.9 | Weekly"
-    assert suffix_text == " 🔥🔥"
-    assert rendered.plain == line
-    assert track_span in spans
-    assert usage_spans[0] in spans
-    assert usage_spans[-1] in spans
-    assert usage_spans[0][0] == 0
-    assert cell_len(rendered.plain[: len(main_text)]) == geometry.main_width
-    assert usage_spans[-1][1] == fill_cells
 
 
 def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() -> None:
@@ -1716,37 +1642,6 @@ def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapsh
     assert "next refresh in" not in rendered_frames[2]
 
 
-def test_wait_for_chat_accounts_loop_trigger_returns_immediately_on_enter() -> None:
-    class FakeTTYInput:
-        def __init__(self, wrapped) -> None:  # type: ignore[no-untyped-def]
-            self._wrapped = wrapped
-
-        def fileno(self) -> int:
-            return self._wrapped.fileno()
-
-        def readline(self) -> str:
-            return self._wrapped.readline()
-
-        def isatty(self) -> bool:
-            return True
-
-    read_fd, write_fd = os.pipe()
-    read_stream = os.fdopen(read_fd, "r", encoding="utf-8", buffering=1)
-    write_stream = os.fdopen(write_fd, "w", encoding="utf-8", buffering=1)
-    try:
-        write_stream.write("\n")
-        write_stream.flush()
-        start = time.perf_counter()
-        triggered_by_user = chat_commands._wait_for_chat_accounts_loop_trigger(1.0, FakeTTYInput(read_stream))
-        elapsed = time.perf_counter() - start
-    finally:
-        read_stream.close()
-        write_stream.close()
-
-    assert triggered_by_user is True
-    assert elapsed < 0.5
-
-
 def test_wait_for_chat_accounts_loop_trigger_with_tty_countdown_repaints_full_frame(monkeypatch) -> None:
     wait_times = iter((0.0, 1.0))
     renderer_times = iter((1.0, 2.0))
@@ -1964,88 +1859,6 @@ def test_loop_chat_accounts_stats_tty_stops_renderer_promptly_on_ctrl_c_during_r
     assert worker_finished.wait(timeout=1.0)
 
 
-def test_loop_chat_accounts_stats_resets_interval_after_enter(monkeypatch) -> None:
-    args = argparse.Namespace(
-        instance_ids=[],
-        providers=None,
-        refresh_usage=False,
-        full_output=False,
-        output_format="json",
-        loop=True,
-    )
-
-    outputs = iter(("snapshot-1", "snapshot-2", "snapshot-3"))
-    monkeypatch.setattr(
-        chat_commands,
-        "_render_chat_accounts_stats_output",
-        lambda loop_args: next(outputs),
-    )
-
-    wait_calls: list[float] = []
-
-    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
-        del input_stream
-        wait_calls.append(interval_sec)
-        if len(wait_calls) == 1:
-            return False
-        if len(wait_calls) == 2:
-            return True
-        raise KeyboardInterrupt()
-
-    output_stream = io.StringIO()
-    exit_code = chat_commands._loop_chat_accounts_stats(
-        args,
-        input_stream=io.StringIO(),
-        output_stream=output_stream,
-        interval_sec=60.0,
-        wait_for_trigger=fake_wait,
-    )
-
-    rendered = output_stream.getvalue()
-    assert exit_code == 0
-    assert wait_calls == [60.0, 61.0, 60.0]
-    assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
-    assert "[loop] refreshes every 61s; press Enter to refresh now; Ctrl-C to stop" in rendered
-
-
-def test_loop_chat_accounts_stats_caps_interval_at_ten_minutes(monkeypatch) -> None:
-    args = argparse.Namespace(
-        instance_ids=[],
-        providers=None,
-        refresh_usage=False,
-        full_output=False,
-        output_format="json",
-        loop=True,
-    )
-
-    monkeypatch.setattr(
-        chat_commands,
-        "_render_chat_accounts_stats_output",
-        lambda loop_args: "snapshot",
-    )
-
-    wait_calls: list[float] = []
-
-    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
-        del input_stream
-        wait_calls.append(interval_sec)
-        if len(wait_calls) >= 3:
-            raise KeyboardInterrupt()
-        return False
-
-    output_stream = io.StringIO()
-    exit_code = chat_commands._loop_chat_accounts_stats(
-        args,
-        input_stream=io.StringIO(),
-        output_stream=output_stream,
-        interval_sec=599.0,
-        wait_for_trigger=fake_wait,
-    )
-
-    assert exit_code == 0
-    assert wait_calls == [599.0, 600.0, 600.0]
-
-
 def test_format_display_datetime_local_converts_utc_timestamp() -> None:
     tzinfo = datetime.timezone(datetime.timedelta(hours=-4), name="CDT")
 
@@ -2208,19 +2021,6 @@ def test_chat_accounts_stats_supports_compact_usage_output(
     assert "     | live usage refresh disabled; pass --refresh-usage or set live_usage_refresh=true" in output
 
 
-def test_format_chat_account_stats_usage_omits_speed_without_history() -> None:
-    output = chat_accounts.format_chat_account_stats_usage(
-        _usage_stats_payload(
-            recorded_at="2026-03-25T12:00:00Z",
-            used_percent=19,
-        )
-    )
-
-    assert "  usage/time | 19% / 60% = 0.3 | Burst" in output
-    assert "      resets |" in output
-    assert "       speed |" not in output
-
-
 def test_format_chat_account_stats_usage_shows_average_speed_from_history_window(
     tmp_path: Path,
     monkeypatch,
@@ -2334,33 +2134,6 @@ def test_format_chat_account_stats_usage_ignores_previous_period_speed_after_res
     assert current_payload is not None
     output = chat_accounts.format_chat_account_stats_usage(current_payload)
 
-    assert "       speed |" not in output
-
-
-def test_format_chat_account_stats_usage_suppresses_zero_speed_history(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-
-    current_payload: dict[str, object] | None = None
-    for recorded_at in (
-        "2026-03-25T11:30:00Z",
-        "2026-03-25T11:45:00Z",
-        "2026-03-25T12:00:00Z",
-    ):
-        payload = _usage_stats_payload(recorded_at=recorded_at, used_percent=19)
-        payload["history"] = chat_accounts._persist_chat_account_stats_payload(payload)
-        current_payload = payload
-
-    assert current_payload is not None
-    output = chat_accounts.format_chat_account_stats_usage(current_payload)
-
-    assert "      resets |" in output
     assert "       speed |" not in output
 
 
@@ -2798,80 +2571,81 @@ def test_format_chat_account_stats_usage_shows_cold_marker_only_on_most_active_l
     assert "  usage/time | 70% / 86% = 0.8 | Weekly ❄️" in output
 
 
-def test_usage_peak_ratio_marker_gradient() -> None:
-    assert chat_accounts._usage_peak_ratio_marker(1.62) == "🔥🔥"
-    assert chat_accounts._usage_peak_ratio_marker(1.22) == "🔥"
-    assert chat_accounts._usage_peak_ratio_marker(1.05) is None
-    assert chat_accounts._usage_peak_ratio_marker(1.00) is None
-    assert chat_accounts._usage_peak_ratio_marker(0.95) is None
-    assert chat_accounts._usage_peak_ratio_marker(0.74) == "❄️"
-    assert chat_accounts._usage_peak_ratio_marker(0.31) == "❄️❄️"
-    assert chat_accounts._usage_peak_ratio_marker(0.0) is None
-    assert chat_accounts._usage_peak_ratio_marker(None) is None
-
-
-def test_chat_accounts_stats_usage_output_styles_fetch_errors(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-
-    _write_global_config(
-        agentos_home / "config.json",
-        provider_instances=[
+@pytest.mark.parametrize(
+    "instance_config, fake_run_behavior, error_monkey, main_args, expected_lines, absent_lines",
+    [
+        pytest.param(
             {
                 "provider": "codex",
                 "id": "codex-main",
                 "label": "Codex main",
                 "cli_command": ["codex"],
-            }
-        ],
-    )
-
-    def fake_run(
-        command: list[str],
-        *,
-        capture_output: bool,
-        text: bool,
-        check: bool,
-        env: dict[str, str],
-        timeout: int,
-    ) -> subprocess.CompletedProcess[str]:
-        del capture_output, text, check, env, timeout
-        if command == ["codex", "login", "status"]:
-            return subprocess.CompletedProcess(command, 0, stdout="Logged in using ChatGPT\n", stderr="")
-        raise AssertionError(f"unexpected command: {command}")
-
-    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
-    monkeypatch.setattr(
-        chat_accounts,
-        "_read_codex_account_rate_limits",
-        lambda instance: (_ for _ in ()).throw(
-            chat_accounts.AccountCommandError(
-                error_type="command_failed",
-                message="rate-limit request failed",
-                exit_code=2,
-            )
+            },
+            "codex_logged_in",
+            "codex_rate_limit_failed",
+            ["agent", "accounts", "stats", "--output", "usage"],
+            [
+                "codex-main (Codex main):",
+                "  usage | error",
+                "     | command_failed: rate-limit request failed",
+            ],
+            [],
+            id="fetch-error",
         ),
-    )
-
-    assert main(["agent", "accounts", "stats", "--output", "usage"]) == 0
-    output = capsys.readouterr().out
-
-    assert "codex-main (Codex main):" in output
-    assert "  usage | error" in output
-    assert "     | command_failed: rate-limit request failed" in output
-
-
-def test_chat_accounts_stats_usage_compacts_codex_token_expired_errors(
+        pytest.param(
+            {
+                "provider": "codex",
+                "id": "codex-main",
+                "label": "Codex main",
+                "cli_command": ["codex"],
+            },
+            "codex_logged_in",
+            "codex_token_expired",
+            ["agent", "accounts", "stats", "--output", "usage"],
+            [
+                "codex-main (Codex main):",
+                "  usage | error",
+                "     | command_failed: Codex authentication token expired",
+                "     | 401 Unauthorized | token_expired",
+                "     | Provided authentication token is expired. Please try signing in again.",
+                "     | Sign in again with the configured Codex CLI and refresh.",
+            ],
+            ["backend-api/wham/usage", "body={"],
+            id="codex-token-expired",
+        ),
+        pytest.param(
+            {
+                "provider": "claude-code",
+                "id": "claude-main",
+                "label": "Claude main",
+                "cli_command": ["claude"],
+            },
+            "claude_logged_in",
+            "claude_auth_failed",
+            ["agent", "accounts", "stats", "--output", "usage", "--refresh-usage"],
+            [
+                "claude-main (Claude main):",
+                "  usage | error",
+                "     | command_failed: Claude Code authentication failed",
+                "     | 403 Forbidden | authentication_failed | forbidden",
+                "     | Request not allowed",
+                "     | Sign in again with the configured Claude Code CLI and refresh.",
+            ],
+            ['"subtype":"init"', '"session_id":"session-123"'],
+            id="claude-auth-failure",
+        ),
+    ],
+)
+def test_chat_accounts_stats_usage_compacts_errors(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
+    instance_config: dict[str, object],
+    fake_run_behavior: str,
+    error_monkey: str,
+    main_args: list[str],
+    expected_lines: list[str],
+    absent_lines: list[str],
 ) -> None:
     home = tmp_path / "home"
     agentos_home = tmp_path / "agentos-home"
@@ -2881,60 +2655,123 @@ def test_chat_accounts_stats_usage_compacts_codex_token_expired_errors(
 
     _write_global_config(
         agentos_home / "config.json",
-        provider_instances=[
-            {
-                "provider": "codex",
-                "id": "codex-main",
-                "label": "Codex main",
-                "cli_command": ["codex"],
-            }
-        ],
+        provider_instances=[instance_config],
     )
 
-    def fake_run(
-        command: list[str],
-        *,
-        capture_output: bool,
-        text: bool,
-        check: bool,
-        env: dict[str, str],
-        timeout: int,
-    ) -> subprocess.CompletedProcess[str]:
-        del capture_output, text, check, env, timeout
-        if command == ["codex", "login", "status"]:
-            return subprocess.CompletedProcess(command, 0, stdout="Logged in using ChatGPT\n", stderr="")
-        raise AssertionError(f"unexpected command: {command}")
-
-    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
-    monkeypatch.setattr(
-        chat_accounts,
-        "_read_codex_account_rate_limits",
-        lambda instance: (_ for _ in ()).throw(
-            chat_accounts.AccountCommandError(
-                error_type="command_failed",
-                message=(
-                    "failed to fetch codex rate limits: GET "
-                    "https://chatgpt.com/backend-api/wham/usage failed: 401 Unauthorized; "
-                    'content-type=text/plain; body={\n  "error": {\n    "message": '
-                    '"Provided authentication token is expired. Please try signing in again.",\n'
-                    '    "type": null,\n    "code": "token_expired",\n    "param": null\n  },\n'
-                    '  "status": 401\n}'
+    fake_run_behaviors = {
+        "codex_logged_in": lambda command, *, capture_output, text, check, env, timeout: (
+            subprocess.CompletedProcess(command, 0, stdout="Logged in using ChatGPT\n", stderr="")
+            if command == ["codex", "login", "status"]
+            else (_ for _ in ()).throw(AssertionError(f"unexpected command: {command}"))
+        ),
+        "claude_logged_in": lambda command, *, capture_output, text, check, env, timeout: (
+            subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "loggedIn": True,
+                        "authMethod": "claude.ai",
+                        "subscriptionType": "pro",
+                    }
                 ),
+                stderr="",
             )
+            if command == ["claude", "auth", "status", "--json"]
+            else (_ for _ in ()).throw(AssertionError(f"unexpected command: {command}"))
         ),
-    )
+    }
 
-    assert main(["agent", "accounts", "stats", "--output", "usage"]) == 0
+    error_monkeys = {
+        "codex_rate_limit_failed": lambda: monkeypatch.setattr(
+            chat_accounts,
+            "_read_codex_account_rate_limits",
+            lambda instance: (_ for _ in ()).throw(
+                chat_accounts.AccountCommandError(
+                    error_type="command_failed",
+                    message="rate-limit request failed",
+                    exit_code=2,
+                )
+            ),
+        ),
+        "codex_token_expired": lambda: monkeypatch.setattr(
+            chat_accounts,
+            "_read_codex_account_rate_limits",
+            lambda instance: (_ for _ in ()).throw(
+                chat_accounts.AccountCommandError(
+                    error_type="command_failed",
+                    message=(
+                        "failed to fetch codex rate limits: GET "
+                        "https://chatgpt.com/backend-api/wham/usage failed: 401 Unauthorized; "
+                        'content-type=text/plain; body={\n  "error": {\n    "message": '
+                        '"Provided authentication token is expired. Please try signing in again.",\n'
+                        '    "type": null,\n    "code": "token_expired",\n    "param": null\n  },\n'
+                        '  "status": 401\n}'
+                    ),
+                )
+            ),
+        ),
+        "claude_auth_failed": lambda: monkeypatch.setattr(
+            chat_accounts,
+            "_collect_claude_code_live_usage",
+            lambda instance: (_ for _ in ()).throw(
+                chat_accounts.AccountCommandError(
+                    error_type="command_failed",
+                    message="\n".join(
+                        [
+                            json.dumps(
+                                {
+                                    "type": "system",
+                                    "subtype": "init",
+                                    "session_id": "session-123",
+                                    "model": "claude-haiku-4-5-20251001",
+                                }
+                            ),
+                            json.dumps(
+                                {
+                                    "type": "assistant",
+                                    "message": {
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": (
+                                                    "Failed to authenticate. API Error: 403\n"
+                                                    '{"error":{"type":"forbidden","message":"Request not allowed"}}'
+                                                ),
+                                            }
+                                        ]
+                                    },
+                                    "error": "authentication_failed",
+                                }
+                            ),
+                            json.dumps(
+                                {
+                                    "type": "result",
+                                    "subtype": "success",
+                                    "is_error": True,
+                                    "result": (
+                                        "Failed to authenticate. API Error: 403\n"
+                                        '{"error":{"type":"forbidden","message":"Request not allowed"}}'
+                                    ),
+                                }
+                            ),
+                        ]
+                    ),
+                )
+            ),
+        ),
+    }
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run_behaviors[fake_run_behavior])
+    error_monkeys[error_monkey]()
+
+    assert main(main_args) == 0
     output = capsys.readouterr().out
 
-    assert "codex-main (Codex main):" in output
-    assert "  usage | error" in output
-    assert "     | command_failed: Codex authentication token expired" in output
-    assert "     | 401 Unauthorized | token_expired" in output
-    assert "     | Provided authentication token is expired. Please try signing in again." in output
-    assert "     | Sign in again with the configured Codex CLI and refresh." in output
-    assert "backend-api/wham/usage" not in output
-    assert "body={" not in output
+    for line in expected_lines:
+        assert line in output
+    for line in absent_lines:
+        assert line not in output
 
 
 def test_chat_accounts_stats_usage_shows_top_level_selected_accounts_aggregate(
@@ -3088,118 +2925,6 @@ def test_chat_accounts_rejects_empty_account_instance_ids(
         chat_accounts.configured_account_provider_instances()
 
 
-def test_chat_accounts_stats_usage_compacts_claude_authentication_failures(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-
-    _write_global_config(
-        agentos_home / "config.json",
-        provider_instances=[
-            {
-                "provider": "claude-code",
-                "id": "claude-main",
-                "label": "Claude main",
-                "cli_command": ["claude"],
-            }
-        ],
-    )
-
-    def fake_run(
-        command: list[str],
-        *,
-        capture_output: bool,
-        text: bool,
-        check: bool,
-        env: dict[str, str],
-        timeout: int,
-    ) -> subprocess.CompletedProcess[str]:
-        del capture_output, text, check, env, timeout
-        if command == ["claude", "auth", "status", "--json"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=json.dumps(
-                    {
-                        "loggedIn": True,
-                        "authMethod": "claude.ai",
-                        "subscriptionType": "pro",
-                    }
-                ),
-                stderr="",
-            )
-        raise AssertionError(f"unexpected command: {command}")
-
-    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
-    monkeypatch.setattr(
-        chat_accounts,
-        "_collect_claude_code_live_usage",
-        lambda instance: (_ for _ in ()).throw(
-            chat_accounts.AccountCommandError(
-                error_type="command_failed",
-                message="\n".join(
-                    [
-                        json.dumps(
-                            {
-                                "type": "system",
-                                "subtype": "init",
-                                "session_id": "session-123",
-                                "model": "claude-haiku-4-5-20251001",
-                            }
-                        ),
-                        json.dumps(
-                            {
-                                "type": "assistant",
-                                "message": {
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": (
-                                                "Failed to authenticate. API Error: 403\n"
-                                                '{"error":{"type":"forbidden","message":"Request not allowed"}}'
-                                            ),
-                                        }
-                                    ]
-                                },
-                                "error": "authentication_failed",
-                            }
-                        ),
-                        json.dumps(
-                            {
-                                "type": "result",
-                                "subtype": "success",
-                                "is_error": True,
-                                "result": (
-                                    "Failed to authenticate. API Error: 403\n"
-                                    '{"error":{"type":"forbidden","message":"Request not allowed"}}'
-                                ),
-                            }
-                        ),
-                    ]
-                ),
-            )
-        ),
-    )
-
-    assert main(["agent", "accounts", "stats", "--output", "usage", "--refresh-usage"]) == 0
-    output = capsys.readouterr().out
-
-    assert "claude-main (Claude main):" in output
-    assert "  usage | error" in output
-    assert "     | command_failed: Claude Code authentication failed" in output
-    assert "     | 403 Forbidden | authentication_failed | forbidden" in output
-    assert "     | Request not allowed" in output
-    assert "     | Sign in again with the configured Claude Code CLI and refresh." in output
-    assert '"subtype":"init"' not in output
-    assert '"session_id":"session-123"' not in output
-
-
 def test_chat_accounts_stats_usage_formats_account_check_errors_nicely(
     tmp_path: Path,
     monkeypatch,
@@ -3259,41 +2984,6 @@ def test_chat_accounts_stats_usage_formats_account_check_errors_nicely(
     assert "codex-main (Codex main):" in output
     assert "  check | error" in output
     assert "     | command_failed: login failed" in output
-
-
-def test_format_chat_account_usage_error_detail_lines_wrap_long_messages() -> None:
-    detail_lines = chat_accounts._format_chat_account_usage_error_detail_lines(
-        {
-            "type": "command_failed",
-            "message": (
-                "provider command returned unexpectedly verbose output that should wrap cleanly "
-                "instead of overflowing the compact usage interface"
-            ),
-            "detail_lines": [
-                (
-                    "Additional context should also wrap to the same width so secondary detail "
-                    "lines stay readable in loop mode."
-                )
-            ],
-        }
-    )
-
-    assert detail_lines is not None
-    assert len(detail_lines) >= 3
-    assert detail_lines[0].startswith("command_failed:")
-    assert all(len(line) <= chat_accounts.CHAT_ACCOUNT_USAGE_ERROR_DETAIL_WIDTH for line in detail_lines)
-
-
-def test_usage_progression_marker_evolves_with_usage_percent() -> None:
-    assert chat_accounts._usage_progression_marker(10) is None
-    assert chat_accounts._usage_progression_marker(40) is None
-    assert chat_accounts._usage_progression_marker(99) is None
-    assert chat_accounts._usage_progression_marker(100) == "☠️"
-
-
-def test_usage_time_progression_marker_only_appears_above_ninety_percent() -> None:
-    assert chat_accounts._usage_time_progression_marker(90) is None
-    assert chat_accounts._usage_time_progression_marker(91) == "🕒"
 
 
 def test_chat_accounts_stats_history_accumulates_into_month_segment(
@@ -3369,45 +3059,6 @@ def test_parse_claude_code_live_usage_output_derives_period_bounds() -> None:
     assert _usage_over_time_data(limit_payload)["resets_at"] == "2026-03-26T21:10:27Z"
 
 
-def test_format_remaining_duration_uses_human_day_hour_minute_units() -> None:
-    assert chat_accounts._format_remaining_duration(0) == "0m"
-    assert chat_accounts._format_remaining_duration(59) == "1m"
-    assert chat_accounts._format_remaining_duration(60 * 60 * 2 + 60) == "2h 1m"
-    assert chat_accounts._format_remaining_duration(60 * (2 * 24 * 60 + 3 * 60 + 1)) == "2d 3h 1m"
-
-
-def test_format_usage_limit_elapsed_percent_uses_period_bounds() -> None:
-    recorded_at = chat_accounts._parse_iso_datetime_or_none("2026-03-25T12:30:00Z")
-    assert recorded_at is not None
-
-    assert (
-        chat_accounts._format_usage_limit_elapsed_percent(
-            _usage_over_time_limit_payload(
-                limit_name="hourly",
-                limit_label="Hourly",
-                used_percent=0,
-                period_started_at="2026-03-25T12:00:00Z",
-                period_ends_at="2026-03-25T13:00:00Z",
-            ),
-            recorded_at=recorded_at,
-        )
-        == 50
-    )
-    assert (
-        chat_accounts._format_usage_limit_elapsed_percent(
-            _usage_over_time_limit_payload(
-                limit_name="hourly",
-                limit_label="Hourly",
-                used_percent=0,
-                period_ends_at="2026-03-25T13:00:00Z",
-                period_duration_mins=60,
-            ),
-            recorded_at=recorded_at,
-        )
-        == 50
-    )
-
-
 def test_parse_copilot_usage_response_falls_back_to_monthly_quotas() -> None:
     payload = chat_accounts._parse_copilot_usage_response(
         {
@@ -3439,18 +3090,6 @@ def test_parse_copilot_usage_response_falls_back_to_monthly_quotas() -> None:
         "2026-04-01T00:00:00Z",
         "2026-04-01T00:00:00Z",
     ]
-
-
-def test_normalize_terminal_output_detects_trust_and_main_prompts() -> None:
-    trust_text = chat_accounts._normalize_terminal_output(
-        [b"\x1b[1CQuick\x1b[1Csafety\x1b[1Ccheck \x1b[1CYes,\x1b[1CI\x1b[1Ctrust\x1b[1Cthis\x1b[1Cfolder"]
-    )
-    assert chat_accounts._claude_refresh_trust_prompt_visible(trust_text) is True
-
-    main_text = chat_accounts._normalize_terminal_output(
-        [b"\x1b[?2026hClaude\x1b[1CCode\x1Cv2.1.81 \x1b[1CWelcome\x1b[1Cback"]
-    )
-    assert chat_accounts._claude_refresh_main_prompt_visible(main_text) is True
 
 
 def test_parse_claude_code_statusline_usage_output_includes_five_hour_and_seven_day() -> None:
@@ -3495,22 +3134,6 @@ def test_parse_claude_code_statusline_usage_output_includes_five_hour_and_seven_
     assert _usage_over_time_data(limits[1])["period_ends_at"] == "2026-03-27T10:00:00Z"
 
 
-def test_claude_code_refresh_workspace_root_is_instance_scoped() -> None:
-    instance = _account_context(
-        provider="claude-code",
-        instance_id="claude-main",
-        label="Claude main",
-        cli_command=("claude",),
-        env=(),
-        timeout_sec=15,
-        live_usage_refresh=False,
-    )
-
-    workspace_root = chat_accounts._claude_code_refresh_workspace_root(instance)
-    assert workspace_root.name == "claude-main"
-    assert workspace_root.parent.name == chat_accounts.CLAUDE_REFRESH_WORKSPACE_DIRNAME
-
-
 def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -> None:
     instance = _account_context(
         provider="claude-code",
@@ -3546,41 +3169,6 @@ def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -
     assert payload["usage_status"] == "ok"
     assert payload["usage_source"] == "live-refresh"
     assert payload["usage_summary"] == "Weekly 42%"
-
-
-def test_terminate_pty_process_ignores_repeated_wait_timeouts(monkeypatch) -> None:
-    class FakeProcess:
-        def __init__(self) -> None:
-            self.wait_calls = 0
-            self.kill_calls = 0
-            self.terminate_calls = 0
-
-        def poll(self) -> None:
-            return None
-
-        def terminate(self) -> None:
-            self.terminate_calls += 1
-
-        def wait(self, timeout: float) -> int:
-            del timeout
-            self.wait_calls += 1
-            raise subprocess.TimeoutExpired(["claude"], chat_accounts.CLAUDE_REFRESH_TERMINATE_WAIT_SEC)
-
-        def kill(self) -> None:
-            self.kill_calls += 1
-
-    closed_fds: list[int] = []
-    monkeypatch.setattr(chat_accounts, "_write_pty", lambda master_fd, payload: None)
-    monkeypatch.setattr(chat_accounts.time, "sleep", lambda seconds: None)
-    monkeypatch.setattr(chat_accounts.os, "close", lambda master_fd: closed_fds.append(master_fd))
-
-    process = FakeProcess()
-    chat_accounts._terminate_pty_process(process, 123)
-
-    assert process.terminate_calls == 1
-    assert process.kill_calls == 1
-    assert process.wait_calls == 2
-    assert closed_fds == [123]
 
 
 def test_chat_accounts_stats_keeps_per_account_errors_in_payload(

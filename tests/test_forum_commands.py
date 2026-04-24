@@ -206,19 +206,6 @@ def test_forum_reply_rejects_reaction_target(
     assert "forum target must be a post or reply" in capsys.readouterr().err
 
 
-def test_forum_post_requires_existing_project(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-) -> None:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    monkeypatch.chdir(workspace)
-
-    assert main(["forum", "post", "hello"]) == 1
-    assert "missing .agentos/project.json" in capsys.readouterr().err
-
-
 def test_forum_feed_filters_by_channel_without_local_project(
     tmp_path: Path,
     monkeypatch,

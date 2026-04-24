@@ -8,11 +8,7 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import main
-
-
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+from _helpers import write_text_file as _write
 
 
 def _write_global_config(path: Path, payload: dict[str, object]) -> None:
@@ -382,23 +378,40 @@ def test_codex_command_home_flag_overrides_default_instance_home(
     assert _readlink(explicit_home / "auth.json") == managed_auth
 
 
-def test_codex_command_rejects_unknown_default_instance_id(
+@pytest.mark.parametrize(
+    "config_extra, expected_error",
+    [
+        pytest.param(
+            {
+                "codex": {"mux": {"default_instance_id": "missing"}},
+            },
+            "codex.mux.default_instance_id references unknown agent instance id: missing",
+            id="unknown-instance",
+        ),
+        pytest.param(
+            {
+                "agent": {
+                    "instances": [
+                        {"provider": "pi", "id": "pi-main", "home": "/tmp/pi-home"},
+                    ]
+                },
+                "codex": {"mux": {"default_instance_id": "pi-main"}},
+            },
+            "codex.mux.default_instance_id must reference an agent.instances codex entry; got pi-main (pi)",
+            id="non-codex-instance",
+        ),
+    ],
+)
+def test_codex_command_rejects_invalid_default_instance_id(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
+    config_extra: dict,
+    expected_error: str,
 ) -> None:
     home = tmp_path / "home"
     agentos_home = tmp_path / "agentos-home"
-    _write_global_config(
-        agentos_home / "config.json",
-        {
-            "codex": {
-                "mux": {
-                    "default_instance_id": "missing",
-                }
-            },
-        },
-    )
+    _write_global_config(agentos_home / "config.json", config_extra)
 
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
@@ -406,46 +419,7 @@ def test_codex_command_rejects_unknown_default_instance_id(
     assert main(["codex", "--dry-run"]) == 1
 
     captured = capsys.readouterr()
-    assert "codex.mux.default_instance_id references unknown agent instance id: missing" in captured.err
-
-
-def test_codex_command_rejects_non_codex_default_instance_id(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    _write_global_config(
-        agentos_home / "config.json",
-        {
-            "agent": {
-                "instances": [
-                    {
-                        "provider": "pi",
-                        "id": "pi-main",
-                        "home": str(tmp_path / "pi-home"),
-                    }
-                ]
-            },
-            "codex": {
-                "mux": {
-                    "default_instance_id": "pi-main",
-                }
-            },
-        },
-    )
-
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-
-    assert main(["codex", "--dry-run"]) == 1
-
-    captured = capsys.readouterr()
-    assert (
-        "codex.mux.default_instance_id must reference an agent.instances codex entry; "
-        "got pi-main (pi)"
-    ) in captured.err
+    assert expected_error in captured.err
 
 
 def test_codex_command_just_link_switches_auth_without_launching_codex(

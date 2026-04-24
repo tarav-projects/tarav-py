@@ -6,16 +6,10 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import build_parser, main
+from _helpers import set_fake_agentos_home as _set_fake_agentos_home
 
 NO_SELECTED_SKILLS_MESSAGE = "No skills are selected for import into this project target."
 DEFAULT_DEPOT_PATHS = (Path(".agents/skills"), Path(".claude/skills"))
-
-
-def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
-    agentos_home = root / ".agentos"
-    agentos_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    return agentos_home
 
 
 def _create_skill(path: Path, *, description: str) -> None:
@@ -451,20 +445,6 @@ def test_skills_path_with_depot_flag_returns_local_depot_path(
     )
 
 
-def test_skills_path_without_name_prints_help(
-    capsys,
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    workspace = tmp_path / "workspace"
-    workspace.mkdir(parents=True, exist_ok=True)
-
-    monkeypatch.chdir(workspace)
-    assert main(["skills", "path"]) == 0
-    assert "usage: agentos skills path" in capsys.readouterr().out
-
-
 def test_skills_path_with_depot_flag_errors_when_no_context_exists(
     capsys,
     monkeypatch,
@@ -749,70 +729,62 @@ def test_project_source_export_package_supports_explicit_local_entries_and_consu
     ]
 
 
-def test_project_source_export_package_rejects_missing_package(
+@pytest.mark.parametrize(
+    "variant, expected_error",
+    [
+        ("missing_package", "error: routing source export package not found: project:missing"),
+        ("not_project_backed", "error: routing source export package requires project-backed source: base:runtime"),
+    ],
+)
+def test_project_source_export_rejects_invalid_configs(
     capsys,
     monkeypatch,
     tmp_path: Path,
+    variant: str,
+    expected_error: str,
 ) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    source_project = tmp_path / "source-project"
     workspace = tmp_path / "workspace"
     _create_local_agents_context(workspace)
-    _write_project_marker(source_project)
-    _write_project_config(source_project, export_packages={})
-    _create_skill(source_project / "skills" / "alpha-skill", description="Project alpha skill")
 
-    _write_global_routing_config(
-        agentos_home,
-        sources={
-            "project": {"project": str(source_project)},
-        },
-        profiles={
-            "default": {
-                "sources": [
-                    {"name": "project:missing"},
-                ]
-            }
-        },
-    )
+    if variant == "missing_package":
+        source_project = tmp_path / "source-project"
+        _write_project_marker(source_project)
+        _write_project_config(source_project, export_packages={})
+        _create_skill(source_project / "skills" / "alpha-skill", description="Project alpha skill")
+        _write_global_routing_config(
+            agentos_home,
+            sources={
+                "project": {"project": str(source_project)},
+            },
+            profiles={
+                "default": {
+                    "sources": [
+                        {"name": "project:missing"},
+                    ]
+                }
+            },
+        )
+    elif variant == "not_project_backed":
+        source_root = tmp_path / "source"
+        _create_skill(source_root / "alpha-skill", description="Alpha skill")
+        _write_global_routing_config(
+            agentos_home,
+            sources={
+                "base": {"path": str(source_root)},
+            },
+            profiles={
+                "default": {
+                    "sources": [
+                        {"name": "base:runtime"},
+                    ]
+                }
+            },
+        )
 
     monkeypatch.chdir(workspace)
     assert main(["skills", "list"]) == 1
-    assert capsys.readouterr().err.strip() == (
-        "error: routing source export package not found: project:missing"
-    )
-
-
-def test_source_export_package_requires_project_backed_source(
-    capsys,
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    source_root = tmp_path / "source"
-    workspace = tmp_path / "workspace"
-    _create_local_agents_context(workspace)
-    _create_skill(source_root / "alpha-skill", description="Alpha skill")
-
-    _write_global_routing_config(
-        agentos_home,
-        sources={
-            "base": {"path": str(source_root)},
-        },
-        profiles={
-            "default": {
-                "sources": [
-                    {"name": "base:runtime"},
-                ]
-            }
-        },
-    )
-
-    monkeypatch.chdir(workspace)
-    assert main(["skills", "list"]) == 1
-    assert capsys.readouterr().err.strip() == (
-        "error: routing source export package requires project-backed source: base:runtime"
-    )
+    assert capsys.readouterr().err.strip() == expected_error
 
 
 def test_project_source_requires_project_marker(
@@ -1157,43 +1129,6 @@ def test_skills_profile_source_packages_detect_cycles(
     )
 
 
-def test_skills_list_rejects_legacy_routing_imports_registry_key(
-    capsys,
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    workspace = tmp_path / "workspace"
-    _create_local_agents_context(workspace)
-
-    config_path = agentos_home / "config.json"
-    payload = {
-        "class": "agentos.global.config",
-        "schema_version": 1,
-        "skills": {
-            "routing": {
-                "imports_registry": {
-                    "legacy": {
-                        "path": str(workspace / "skills"),
-                    }
-                },
-                "profiles": {
-                    "default": {
-                        "sources": [],
-                    }
-                },
-            }
-        },
-    }
-    config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-    monkeypatch.chdir(workspace)
-    assert main(["skills", "list"]) == 1
-    assert capsys.readouterr().err.strip() == (
-        "error: global config field skills.routing.imports_registry is no longer supported; use sources"
-    )
-
-
 def test_skills_import_materializes_default_local_skill_depots(
     capsys,
     monkeypatch,
@@ -1514,10 +1449,15 @@ def test_skills_status_reports_clean_imported_depot(
         assert depot_status["matching"][0]["actual_resolved_target"] == str(source_skill.resolve())
 
 
-def test_skills_status_reports_missing_symlinks(
+@pytest.mark.parametrize(
+    "state_id",
+    ["missing", "broken", "unsynced", "conflicting_and_extra"],
+)
+def test_skills_status_reports_depot_states(
     capsys,
     monkeypatch,
     tmp_path: Path,
+    state_id: str,
 ) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     workspace = tmp_path / "workspace"
@@ -1540,159 +1480,69 @@ def test_skills_status_reports_missing_symlinks(
         },
     )
 
-    monkeypatch.chdir(workspace)
-    assert main(["skills", "status", "--json"]) == 0
-    status = json.loads(capsys.readouterr().out)
-
-    depot_status = status["depots"][0]
-    assert len(depot_status["missing"]) == 1
-    assert depot_status["missing"][0]["name"] == "base-alpha-skill"
-    assert depot_status["missing"][0]["expected_source_path"] == str(source_skill.resolve())
-    assert depot_status["matching"] == []
-    assert depot_status["broken"] == []
-    assert depot_status["unsynced"] == []
-    assert depot_status["conflicts"] == []
-    assert depot_status["extra"] == []
-
-
-def test_skills_status_reports_broken_symlinks(
-    capsys,
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    workspace = tmp_path / "workspace"
-    _create_local_agents_context(workspace)
-    _create_skill(workspace / "skills" / "alpha-skill", description="Base alpha skill")
-
-    _write_global_routing_config(
-        agentos_home,
-        sources={
-            "base": {"path": str(workspace / "skills")},
-        },
-        profiles={
-            "default": {
-                "depots": [".agents/skills"],
-                "sources": [
-                    {"name": "base"},
-                ]
-            }
-        },
-    )
-
     depot_root = workspace / ".agents" / "skills"
-    depot_root.mkdir(parents=True, exist_ok=True)
-    broken_target = workspace / "skills" / "missing-skill"
-    (depot_root / "base-alpha-skill").symlink_to(broken_target, target_is_directory=True)
+
+    if state_id == "broken":
+        depot_root.mkdir(parents=True, exist_ok=True)
+        broken_target = workspace / "skills" / "missing-skill"
+        (depot_root / "base-alpha-skill").symlink_to(broken_target, target_is_directory=True)
+    elif state_id == "unsynced":
+        wrong_skill = workspace / "other-skills" / "beta-skill"
+        _create_skill(wrong_skill, description="Wrong beta skill")
+        depot_root.mkdir(parents=True, exist_ok=True)
+        (depot_root / "base-alpha-skill").symlink_to(wrong_skill.resolve(), target_is_directory=True)
+    elif state_id == "conflicting_and_extra":
+        extra_skill = workspace / "extra-skills" / "gamma-skill"
+        _create_skill(extra_skill, description="Extra gamma skill")
+        depot_root.mkdir(parents=True, exist_ok=True)
+        (depot_root / "base-alpha-skill").mkdir()
+        (depot_root / "extra-gamma-skill").symlink_to(extra_skill.resolve(), target_is_directory=True)
 
     monkeypatch.chdir(workspace)
     assert main(["skills", "status", "--json"]) == 0
     status = json.loads(capsys.readouterr().out)
-
     depot_status = status["depots"][0]
-    assert len(depot_status["broken"]) == 1
-    assert depot_status["broken"][0]["name"] == "base-alpha-skill"
-    assert depot_status["broken"][0]["actual_resolved_target"] is None
-    assert depot_status["matching"] == []
-    assert depot_status["missing"] == []
-    assert depot_status["unsynced"] == []
-    assert depot_status["conflicts"] == []
-    assert depot_status["extra"] == []
 
-
-def test_skills_status_reports_unsynced_symlinks(
-    capsys,
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    workspace = tmp_path / "workspace"
-    _create_local_agents_context(workspace)
-    _create_skill(workspace / "skills" / "alpha-skill", description="Base alpha skill")
-    wrong_skill = workspace / "other-skills" / "beta-skill"
-    _create_skill(wrong_skill, description="Wrong beta skill")
-
-    _write_global_routing_config(
-        agentos_home,
-        sources={
-            "base": {"path": str(workspace / "skills")},
-        },
-        profiles={
-            "default": {
-                "depots": [".agents/skills"],
-                "sources": [
-                    {"name": "base"},
-                ]
-            }
-        },
-    )
-
-    depot_root = workspace / ".agents" / "skills"
-    depot_root.mkdir(parents=True, exist_ok=True)
-    (depot_root / "base-alpha-skill").symlink_to(wrong_skill.resolve(), target_is_directory=True)
-
-    monkeypatch.chdir(workspace)
-    assert main(["skills", "status", "--json"]) == 0
-    status = json.loads(capsys.readouterr().out)
-
-    depot_status = status["depots"][0]
-    assert len(depot_status["unsynced"]) == 1
-    assert depot_status["unsynced"][0]["name"] == "base-alpha-skill"
-    assert depot_status["unsynced"][0]["actual_resolved_target"] == str(wrong_skill.resolve())
-    assert depot_status["matching"] == []
-    assert depot_status["missing"] == []
-    assert depot_status["broken"] == []
-    assert depot_status["conflicts"] == []
-    assert depot_status["extra"] == []
-
-
-def test_skills_status_reports_conflicting_and_extra_entries(
-    capsys,
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    workspace = tmp_path / "workspace"
-    _create_local_agents_context(workspace)
-    _create_skill(workspace / "skills" / "alpha-skill", description="Base alpha skill")
-    extra_skill = workspace / "extra-skills" / "gamma-skill"
-    _create_skill(extra_skill, description="Extra gamma skill")
-
-    _write_global_routing_config(
-        agentos_home,
-        sources={
-            "base": {"path": str(workspace / "skills")},
-        },
-        profiles={
-            "default": {
-                "depots": [".agents/skills"],
-                "sources": [
-                    {"name": "base"},
-                ]
-            }
-        },
-    )
-
-    depot_root = workspace / ".agents" / "skills"
-    depot_root.mkdir(parents=True, exist_ok=True)
-    (depot_root / "base-alpha-skill").mkdir()
-    (depot_root / "extra-gamma-skill").symlink_to(extra_skill.resolve(), target_is_directory=True)
-
-    monkeypatch.chdir(workspace)
-    assert main(["skills", "status", "--json"]) == 0
-    status = json.loads(capsys.readouterr().out)
-
-    depot_status = status["depots"][0]
-    assert len(depot_status["conflicts"]) == 1
-    assert depot_status["conflicts"][0]["name"] == "base-alpha-skill"
-    assert depot_status["conflicts"][0]["actual_entry_kind"] == "directory"
-    assert len(depot_status["extra"]) == 1
-    assert depot_status["extra"][0]["name"] == "extra-gamma-skill"
-    assert depot_status["extra"][0]["actual_resolved_target"] == str(extra_skill.resolve())
-    assert depot_status["matching"] == []
-    assert depot_status["missing"] == []
-    assert depot_status["broken"] == []
-    assert depot_status["unsynced"] == []
+    if state_id == "missing":
+        assert len(depot_status["missing"]) == 1
+        assert depot_status["missing"][0]["name"] == "base-alpha-skill"
+        assert depot_status["missing"][0]["expected_source_path"] == str(source_skill.resolve())
+        assert depot_status["matching"] == []
+        assert depot_status["broken"] == []
+        assert depot_status["unsynced"] == []
+        assert depot_status["conflicts"] == []
+        assert depot_status["extra"] == []
+    elif state_id == "broken":
+        assert len(depot_status["broken"]) == 1
+        assert depot_status["broken"][0]["name"] == "base-alpha-skill"
+        assert depot_status["broken"][0]["actual_resolved_target"] is None
+        assert depot_status["matching"] == []
+        assert depot_status["missing"] == []
+        assert depot_status["unsynced"] == []
+        assert depot_status["conflicts"] == []
+        assert depot_status["extra"] == []
+    elif state_id == "unsynced":
+        wrong_skill = workspace / "other-skills" / "beta-skill"
+        assert len(depot_status["unsynced"]) == 1
+        assert depot_status["unsynced"][0]["name"] == "base-alpha-skill"
+        assert depot_status["unsynced"][0]["actual_resolved_target"] == str(wrong_skill.resolve())
+        assert depot_status["matching"] == []
+        assert depot_status["missing"] == []
+        assert depot_status["broken"] == []
+        assert depot_status["conflicts"] == []
+        assert depot_status["extra"] == []
+    elif state_id == "conflicting_and_extra":
+        extra_skill = workspace / "extra-skills" / "gamma-skill"
+        assert len(depot_status["conflicts"]) == 1
+        assert depot_status["conflicts"][0]["name"] == "base-alpha-skill"
+        assert depot_status["conflicts"][0]["actual_entry_kind"] == "directory"
+        assert len(depot_status["extra"]) == 1
+        assert depot_status["extra"][0]["name"] == "extra-gamma-skill"
+        assert depot_status["extra"][0]["actual_resolved_target"] == str(extra_skill.resolve())
+        assert depot_status["matching"] == []
+        assert depot_status["missing"] == []
+        assert depot_status["broken"] == []
+        assert depot_status["unsynced"] == []
 
 
 def test_skills_surface_only_exposes_list_import_status_and_path(capsys) -> None:

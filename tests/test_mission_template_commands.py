@@ -4,18 +4,7 @@ import json
 from pathlib import Path
 
 from agentos.cli import main
-
-
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
-def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
-    agentos_home = root / ".agentos"
-    agentos_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    return agentos_home
+from _helpers import set_fake_agentos_home as _set_fake_agentos_home, write_text_file as _write
 
 
 def _write_project_marker(project_root: Path) -> None:
