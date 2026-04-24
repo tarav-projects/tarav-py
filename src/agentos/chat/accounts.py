@@ -171,6 +171,7 @@ class AccountUsageSpeedPoint:
 
 @dataclass(frozen=True)
 class AccountUsageSpeedStats:
+    last_percent_per_minute: float
     average_percent_per_minute: float
     max_percent_per_minute: float
     interval_count: int
@@ -719,11 +720,11 @@ def format_chat_account_stats_usage(payload: dict[str, object]) -> str:
 
     if accounts:
         accounts.sort(
-            key=lambda account: (
-                _chat_account_usage_sort_speed(account, usage_speed_stats=usage_speed_stats),
-                _chat_account_usage_sort_ratio(account, recorded_at=recorded_at_dt),
+            key=lambda account: _chat_account_usage_sort_key(
+                account,
+                recorded_at=recorded_at_dt,
+                usage_speed_stats=usage_speed_stats,
             ),
-            reverse=True,
         )
 
     if not accounts:
@@ -1124,30 +1125,82 @@ def _chat_account_usage_sort_ratio(
     return max(ratios)
 
 
-def _chat_account_usage_sort_speed(
+def _chat_account_usage_sort_key(
+    account: dict[str, Any],
+    *,
+    recorded_at: datetime.datetime | None,
+    usage_speed_stats: dict[AccountUsageSpeedKey, AccountUsageSpeedStats],
+) -> tuple[bool, float, float, float]:
+    return (
+        _chat_account_usage_is_dead(account),
+        -_chat_account_usage_sort_last_speed(account, usage_speed_stats=usage_speed_stats),
+        -_chat_account_usage_sort_average_speed(account, usage_speed_stats=usage_speed_stats),
+        -_chat_account_usage_sort_ratio(account, recorded_at=recorded_at),
+    )
+
+
+def _chat_account_usage_is_dead(account: dict[str, Any]) -> bool:
+    usage = account.get("usage")
+    if not isinstance(usage, dict):
+        return False
+
+    raw_limits = usage.get("limits")
+    if not isinstance(raw_limits, list):
+        return False
+
+    for limit_payload in raw_limits:
+        if not isinstance(limit_payload, dict):
+            continue
+        used_percent = _usage_limit_used_percent(limit_payload)
+        if isinstance(used_percent, int) and used_percent >= 100:
+            return True
+    return False
+
+
+def _chat_account_usage_sort_last_speed(
     account: dict[str, Any],
     *,
     usage_speed_stats: dict[AccountUsageSpeedKey, AccountUsageSpeedStats],
 ) -> float:
+    stats_by_limit = _chat_account_usage_limit_speed_stats(account, usage_speed_stats=usage_speed_stats)
+    if not stats_by_limit:
+        return float("-inf")
+    return max(stats.last_percent_per_minute for stats in stats_by_limit)
+
+
+def _chat_account_usage_sort_average_speed(
+    account: dict[str, Any],
+    *,
+    usage_speed_stats: dict[AccountUsageSpeedKey, AccountUsageSpeedStats],
+) -> float:
+    stats_by_limit = _chat_account_usage_limit_speed_stats(account, usage_speed_stats=usage_speed_stats)
+    if not stats_by_limit:
+        return float("-inf")
+    return max(stats.average_percent_per_minute for stats in stats_by_limit)
+
+
+def _chat_account_usage_limit_speed_stats(
+    account: dict[str, Any],
+    *,
+    usage_speed_stats: dict[AccountUsageSpeedKey, AccountUsageSpeedStats],
+) -> list[AccountUsageSpeedStats]:
     usage = account.get("usage")
     if not isinstance(usage, dict):
-        return float("-inf")
+        return []
 
     raw_limits = usage.get("limits")
     if not isinstance(raw_limits, list):
-        return float("-inf")
+        return []
 
-    speeds: list[float] = []
+    stats_by_limit: list[AccountUsageSpeedStats] = []
     for limit_payload in raw_limits:
         if not isinstance(limit_payload, dict):
             continue
         stats = usage_speed_stats.get(_chat_account_usage_speed_key(account, limit_payload))
         if stats is None or not _usage_speed_stats_is_non_zero(stats):
             continue
-        speeds.append(stats.average_percent_per_minute)
-    if not speeds:
-        return float("-inf")
-    return max(speeds)
+        stats_by_limit.append(stats)
+    return stats_by_limit
 
 
 def _chat_account_highlighted_limit_indexes(
@@ -1807,11 +1860,12 @@ def _chat_account_usage_speed_stats(
             speed_values.append(delta_used_percent / delta_minutes)
         previous_point = point
 
-    if len(speed_values) < CHAT_ACCOUNT_USAGE_SPEED_MIN_INTERVALS:
+    if not speed_values:
         return None
 
     average = sum(speed_values) / len(speed_values)
     return AccountUsageSpeedStats(
+        last_percent_per_minute=speed_values[-1],
         average_percent_per_minute=average,
         max_percent_per_minute=max(speed_values),
         interval_count=len(speed_values),

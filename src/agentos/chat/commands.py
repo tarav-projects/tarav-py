@@ -82,6 +82,8 @@ class _InlineBarGroupGeometry:
 @dataclass(frozen=True)
 class _InlineProgressBar:
     percent: int | float
+    marker_percent: int | float | None = None
+    marker_palette: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,8 @@ class _InlineUsageTimeBar:
     used_percent: int | float
     ratio: float | None = None
     show_ratio_bar: bool = False
+    marker_percent: int | float | None = None
+    marker_palette: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -301,6 +305,7 @@ def _render_chat_accounts_stats_loop_rich_text(
 def _inline_bar_rows(lines: list[str]) -> list[_InlineTextRow | _InlineBarRow]:
     rows: list[_InlineTextRow | _InlineBarRow] = []
     current_group_id: str | None = None
+    current_used_percent: int | None = None
     current_elapsed_percent: int | None = None
     next_usage_time_is_aggregate = False
 
@@ -323,30 +328,62 @@ def _inline_bar_rows(lines: list[str]) -> list[_InlineTextRow | _InlineBarRow]:
                         used_percent=usage_time_data.used_percent,
                         ratio=usage_time_data.ratio,
                         show_ratio_bar=next_usage_time_is_aggregate,
+                        marker_percent=(
+                            usage_time_data.elapsed_percent
+                            if not next_usage_time_is_aggregate
+                            and usage_time_data.elapsed_percent > usage_time_data.used_percent
+                            else None
+                        ),
+                        marker_palette=(
+                            _CHAT_ACCOUNTS_RESET_BAR_PALETTE
+                            if not next_usage_time_is_aggregate
+                            and usage_time_data.elapsed_percent > usage_time_data.used_percent
+                            else None
+                        ),
                     ),
                 )
             )
             next_usage_time_is_aggregate = False
             current_group_id = _CHAT_ACCOUNTS_INLINE_BAR_GROUP_ID
+            current_used_percent = usage_time_data.used_percent
             current_elapsed_percent = usage_time_data.elapsed_percent
             continue
 
-        if _is_reset_line(line) and current_group_id is not None and current_elapsed_percent is not None:
+        if (
+            _is_reset_line(line)
+            and current_group_id is not None
+            and current_used_percent is not None
+            and current_elapsed_percent is not None
+        ):
             rows.append(
                 _InlineBarRow(
                     group_id=current_group_id,
                     prefix_text="",
                     main_text=line,
                     suffix_text="",
-                    bar=_InlineProgressBar(current_elapsed_percent),
+                    bar=_InlineProgressBar(
+                        current_elapsed_percent,
+                        marker_percent=(
+                            current_used_percent
+                            if current_used_percent > current_elapsed_percent
+                            else None
+                        ),
+                        marker_palette=(
+                            _CHAT_ACCOUNTS_USAGE_BAR_PALETTE
+                            if current_used_percent > current_elapsed_percent
+                            else None
+                        ),
+                    ),
                 )
             )
             current_group_id = None
+            current_used_percent = None
             current_elapsed_percent = None
             continue
 
         if not line.strip():
             current_group_id = None
+            current_used_percent = None
             current_elapsed_percent = None
             next_usage_time_is_aggregate = False
         rows.append(_InlineTextRow(line))
@@ -380,13 +417,21 @@ def _render_inline_bar_row(row: _InlineBarRow, geometry: _InlineBarGroupGeometry
     from rich.cells import set_cell_size
 
     if isinstance(row.bar, _InlineProgressBar):
-        rendered = _inline_progress_text(row.main_text, row.bar.percent, geometry)
+        rendered = _inline_progress_text(
+            row.main_text,
+            row.bar.percent,
+            geometry,
+            marker_percent=row.bar.marker_percent,
+            marker_palette=row.bar.marker_palette,
+        )
     else:
         rendered = _inline_usage_time_text(
             row.main_text,
             used_percent=row.bar.used_percent,
             ratio=row.bar.ratio,
             show_ratio_bar=row.bar.show_ratio_bar,
+            marker_percent=row.bar.marker_percent,
+            marker_palette=row.bar.marker_palette,
             geometry=geometry,
         )
 
@@ -399,7 +444,14 @@ def _render_inline_bar_row(row: _InlineBarRow, geometry: _InlineBarGroupGeometry
     return rendered
 
 
-def _inline_progress_text(label: str, percent: int | float, geometry: _InlineBarGroupGeometry) -> Any:
+def _inline_progress_text(
+    label: str,
+    percent: int | float,
+    geometry: _InlineBarGroupGeometry,
+    *,
+    marker_percent: int | float | None = None,
+    marker_palette: tuple[str, ...] | None = None,
+) -> Any:
     from rich.text import Text
 
     normalized_percent = min(100.0, max(0.0, float(percent)))
@@ -420,6 +472,14 @@ def _inline_progress_text(label: str, percent: int | float, geometry: _InlineBar
         width=geometry.main_width,
         palette=_CHAT_ACCOUNTS_RESET_BAR_PALETTE,
     )
+    _stylize_tip_marker(
+        text,
+        row,
+        current_percent=percent,
+        marker_percent=marker_percent,
+        width=geometry.main_width,
+        marker_palette=marker_palette,
+    )
     return text
 
 
@@ -430,6 +490,8 @@ def _inline_usage_time_text(
     geometry: _InlineBarGroupGeometry,
     ratio: float | None = None,
     show_ratio_bar: bool = False,
+    marker_percent: int | float | None = None,
+    marker_palette: tuple[str, ...] | None = None,
 ) -> Any:
     from rich.text import Text
 
@@ -457,6 +519,14 @@ def _inline_usage_time_text(
             *usage_range,
             width=geometry.main_width,
             palette=_CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+        )
+        _stylize_tip_marker(
+            text,
+            row,
+            current_percent=used_percent,
+            marker_percent=marker_percent,
+            width=geometry.main_width,
+            marker_palette=marker_palette,
         )
     return text
 
@@ -543,6 +613,27 @@ def _stylize_cell_gradient(
         _stylize_cell_range(text, row, run_start, run_end, style)
 
 
+def _stylize_tip_marker(
+    text: Any,
+    row: str,
+    *,
+    current_percent: int | float,
+    marker_percent: int | float | None,
+    width: int,
+    marker_palette: tuple[str, ...] | None,
+) -> None:
+    marker_cell = _tip_marker_cell(current_percent, marker_percent, width=width)
+    if marker_cell is None or marker_palette is None:
+        return
+    _stylize_cell_range(
+        text,
+        row,
+        marker_cell,
+        marker_cell + 1,
+        _cell_gradient_style(marker_cell, width=width, palette=marker_palette),
+    )
+
+
 def _cell_gradient_runs(
     start_cell: int,
     end_cell: int,
@@ -579,6 +670,21 @@ def _cell_gradient_style(cell: int, *, width: int, palette: tuple[str, ...]) -> 
     else:
         position = _clamp(cell / (width - 1), 0.0, 1.0)
     return _background_palette_style(palette, position)
+
+
+def _tip_marker_cell(
+    current_percent: int | float,
+    marker_percent: int | float | None,
+    *,
+    width: int,
+) -> int | None:
+    if marker_percent is None or width <= 0:
+        return None
+    current_end = _percent_cell_range(current_percent, width)[1]
+    marker_end = _percent_cell_range(marker_percent, width)[1]
+    if marker_end <= 0 or marker_end <= current_end:
+        return None
+    return marker_end - 1
 
 
 def _background_palette_style(palette: tuple[str, ...], position: float) -> str:

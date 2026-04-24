@@ -1369,6 +1369,11 @@ def test_inline_usage_time_text_styles_usage_fill_only() -> None:
     assert expected_fill_spans[-1] in spans
 
 
+def test_tip_marker_cell_skips_equal_rendered_lengths() -> None:
+    assert chat_commands._tip_marker_cell(50, 50, width=48) is None
+    assert chat_commands._tip_marker_cell(50, 51, width=10) is None
+
+
 def test_inline_bar_palette_cell_styles_are_interpolated() -> None:
     assert chat_commands._cell_gradient_style(
         0,
@@ -1508,6 +1513,26 @@ def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() ->
         width=shared_width,
         palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
     )
+    first_reset_marker_cell = math.floor(shared_width * 0.75) - 1
+    second_usage_marker_cell = math.floor(shared_width * 0.5) - 1
+    first_reset_marker_span = (
+        first_reset_start + first_reset_marker_cell,
+        first_reset_start + first_reset_marker_cell + 1,
+        chat_commands._cell_gradient_style(
+            first_reset_marker_cell,
+            width=shared_width,
+            palette=chat_commands._CHAT_ACCOUNTS_USAGE_BAR_PALETTE,
+        ),
+    )
+    second_usage_marker_span = (
+        second_usage_start + second_usage_marker_cell,
+        second_usage_start + second_usage_marker_cell + 1,
+        chat_commands._cell_gradient_style(
+            second_usage_marker_cell,
+            width=shared_width,
+            palette=chat_commands._CHAT_ACCOUNTS_RESET_BAR_PALETTE,
+        ),
+    )
 
     assert first_usage_main in rendered.plain
     assert (
@@ -1533,6 +1558,8 @@ def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() ->
     ) in spans
     assert second_reset_spans[0] in spans
     assert second_reset_spans[-1] in spans
+    assert first_reset_marker_span in spans
+    assert second_usage_marker_span in spans
     assert first_suffix_start == first_usage_start + shared_width + 1
     assert second_suffix_start == second_usage_start + shared_width + 1
 
@@ -2416,7 +2443,227 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_speed(
     assert "       speed | 30m, n=2 | 0.20[0.20] %/min" in output
 
 
+def test_format_chat_account_stats_usage_sorts_accounts_by_last_speed_before_average_speed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    def payload(recorded_at: str, high_avg_used: int, fast_now_used: int) -> dict[str, object]:
+        return {
+            "status": "ok",
+            "command": "agent accounts stats",
+            "recorded_at": recorded_at,
+            "providers": [
+                {
+                    "provider": "codex",
+                    "accounts": [
+                        {
+                            "id": "high-avg-slow-last",
+                            "label": "High avg slow last",
+                            "provider": "codex",
+                            "usage": {
+                                "limits": [
+                                    _usage_over_time_limit_payload(
+                                        limit_name="burst",
+                                        limit_label="Burst",
+                                        used_percent=high_avg_used,
+                                        period_started_at="2026-03-25T09:00:00Z",
+                                        period_ends_at="2026-03-25T14:00:00Z",
+                                        period_duration_mins=300,
+                                        resets_at="2026-03-25T14:00:00Z",
+                                    )
+                                ]
+                            },
+                        },
+                        {
+                            "id": "fast-now-low-avg",
+                            "label": "Fast now low avg",
+                            "provider": "copilot-cli",
+                            "usage": {
+                                "limits": [
+                                    _usage_over_time_limit_payload(
+                                        limit_name="burst",
+                                        limit_label="Burst",
+                                        used_percent=fast_now_used,
+                                        period_started_at="2026-03-25T09:00:00Z",
+                                        period_ends_at="2026-03-25T14:00:00Z",
+                                        period_duration_mins=300,
+                                        resets_at="2026-03-25T14:00:00Z",
+                                    )
+                                ]
+                            },
+                        },
+                    ],
+                }
+            ],
+        }
+
+    current_payload: dict[str, object] | None = None
+    for recorded_at, high_avg_used, fast_now_used in (
+        ("2026-03-25T11:30:00Z", 0, 0),
+        ("2026-03-25T11:40:00Z", 20, 5),
+        ("2026-03-25T11:50:00Z", 21, 10),
+        ("2026-03-25T12:00:00Z", 22, 15),
+    ):
+        current_payload = payload(recorded_at, high_avg_used, fast_now_used)
+        current_payload["history"] = chat_accounts._persist_chat_account_stats_payload(current_payload)
+
+    assert current_payload is not None
+    output = chat_accounts.format_chat_account_stats_usage(current_payload)
+
+    assert output.index("fast-now-low-avg (Fast now low avg):") < output.index(
+        "high-avg-slow-last (High avg slow last):"
+    )
+    assert "       speed | 30m, n=3 | 0.73[2.00] %/min" in output
+    assert "       speed | 30m, n=3 | 0.50[0.50] %/min" in output
+
+
+def test_format_chat_account_stats_usage_uses_last_two_records_for_sorting_even_without_speed_line(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    def payload(recorded_at: str, fast_used: int, slow_used: int) -> dict[str, object]:
+        return {
+            "status": "ok",
+            "command": "agent accounts stats",
+            "recorded_at": recorded_at,
+            "providers": [
+                {
+                    "provider": "codex",
+                    "accounts": [
+                        {
+                            "id": "slow-last",
+                            "label": "Slow last",
+                            "provider": "codex",
+                            "usage": {
+                                "limits": [
+                                    _usage_over_time_limit_payload(
+                                        limit_name="burst",
+                                        limit_label="Burst",
+                                        used_percent=slow_used,
+                                        period_started_at="2026-03-25T09:00:00Z",
+                                        period_ends_at="2026-03-25T14:00:00Z",
+                                        period_duration_mins=300,
+                                        resets_at="2026-03-25T14:00:00Z",
+                                    )
+                                ]
+                            },
+                        },
+                        {
+                            "id": "fast-last",
+                            "label": "Fast last",
+                            "provider": "copilot-cli",
+                            "usage": {
+                                "limits": [
+                                    _usage_over_time_limit_payload(
+                                        limit_name="burst",
+                                        limit_label="Burst",
+                                        used_percent=fast_used,
+                                        period_started_at="2026-03-25T09:00:00Z",
+                                        period_ends_at="2026-03-25T14:00:00Z",
+                                        period_duration_mins=300,
+                                        resets_at="2026-03-25T14:00:00Z",
+                                    )
+                                ]
+                            },
+                        },
+                    ],
+                }
+            ],
+        }
+
+    current_payload: dict[str, object] | None = None
+    for recorded_at, fast_used, slow_used in (
+        ("2026-03-25T11:50:00Z", 0, 0),
+        ("2026-03-25T12:00:00Z", 10, 2),
+    ):
+        current_payload = payload(recorded_at, fast_used, slow_used)
+        current_payload["history"] = chat_accounts._persist_chat_account_stats_payload(current_payload)
+
+    assert current_payload is not None
+    output = chat_accounts.format_chat_account_stats_usage(current_payload)
+
+    assert output.index("fast-last (Fast last):") < output.index("slow-last (Slow last):")
+    assert "       speed |" not in output
+
+
 def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> None:
+    output = chat_accounts.format_chat_account_stats_usage(
+        {
+            "recorded_at": "2026-03-25T12:00:00Z",
+            "providers": [
+                {
+                    "accounts": [
+                        {
+                            "id": "steady-low",
+                            "label": "Steady low",
+                            "provider": "codex",
+                            "usage": {
+                                "limits": [
+                                    {
+                                        **_usage_over_time_limit_payload(
+                                            limit_name="burst",
+                                            limit_label="Burst",
+                                            used_percent=70,
+                                            period_started_at="2026-03-25T04:30:00Z",
+                                            period_ends_at="2026-03-25T14:30:00Z",
+                                        ),
+                                    }
+                                ]
+                            },
+                        },
+                        {
+                            "id": "burst-high",
+                            "label": "Burst high",
+                            "provider": "copilot-cli",
+                            "usage": {
+                                "limits": [
+                                    {
+                                        **_usage_over_time_limit_payload(
+                                            limit_name="burst",
+                                            limit_label="Burst",
+                                            used_percent=20,
+                                            period_started_at="2026-03-25T09:30:00Z",
+                                            period_ends_at="2026-03-25T14:30:00Z",
+                                        ),
+                                    },
+                                    {
+                                        **_usage_over_time_limit_payload(
+                                            limit_name="weekly",
+                                            limit_label="Weekly",
+                                            used_percent=95,
+                                            period_started_at="2026-03-19T12:00:00Z",
+                                            period_ends_at="2026-03-26T12:00:00Z",
+                                        ),
+                                    },
+                                ]
+                            },
+                        },
+                    ]
+                }
+            ],
+        }
+    )
+
+    assert "🤖 burst-high (Burst high):" in output
+    assert "⬢ steady-low (Steady low):" in output
+    assert output.index("burst-high (Burst high):") < output.index("steady-low (Steady low):")
+    assert "  usage/time | 95% / 86% = 1.1 | Weekly 🔥" in output
+    assert "  usage/time | 70% / 75% = 0.9 | Burst ❄️" in output
+
+
+def test_format_chat_account_stats_usage_keeps_dead_accounts_at_bottom() -> None:
     output = chat_accounts.format_chat_account_stats_usage(
         {
             "recorded_at": "2026-03-25T12:00:00Z",
@@ -2476,7 +2723,7 @@ def test_format_chat_account_stats_usage_sorts_accounts_by_highest_ratio() -> No
 
     assert "🤖 burst-high (Burst high):" in output
     assert "⬢ steady-low (Steady low):" in output
-    assert output.index("burst-high (Burst high):") < output.index("steady-low (Steady low):")
+    assert output.index("steady-low (Steady low):") < output.index("burst-high (Burst high):")
     assert "  usage/time | 100% / 86% = 1.2 | Weekly 🔥 ☠️" in output
     assert "  usage/time | 70% / 75% = 0.9 | Burst ❄️" in output
 
