@@ -564,26 +564,30 @@ def _claude_tool_invocation_from_group(
         if isinstance(item, _ClaudeRawRecord)
     ]
 
-    _claude_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_CLAUDE_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="assistant tool_use",
         records=requests,
     )
-    _claude_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_CLAUDE_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="user tool_result",
         records=results,
     )
-    _claude_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_CLAUDE_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="PreToolUse progress",
         records=pre_progress,
     )
-    _claude_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_CLAUDE_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="PostToolUse progress",
         records=post_progress,
@@ -662,19 +666,7 @@ def _claude_tool_invocation_from_group(
 
     return invocation, warnings
 
-def _claude_warn_about_tool_group_records(
-    *,
-    warnings: list[str],
-    call_id: str,
-    kind: str,
-    records: list[object],
-) -> None:
-    if not records:
-        warnings.append(f"claude tool_use id {call_id} missing {kind} record")
-    elif len(records) > 1:
-        warnings.append(
-            f"claude tool_use id {call_id} has {len(records)} {kind} records; using first"
-        )
+_CLAUDE_TOOL_GROUP_LABEL = "claude tool_use id"
 
 def _claude_tool_name(
     request: _ClaudeToolRequestRecord | None,

@@ -1088,20 +1088,23 @@ def _codex_tool_invocation_from_group(
     first_output = outputs[0] if outputs else None
     first_exec_end = exec_ends[0] if exec_ends else None
 
-    _codex_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_CODEX_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="function_call",
         records=calls,
     )
-    _codex_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_CODEX_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="function_call_output",
         records=outputs,
     )
-    _codex_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_CODEX_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="exec_command_end",
         records=exec_ends,
@@ -1159,19 +1162,7 @@ def _codex_tool_invocation_from_group(
 
     return invocation, warnings
 
-def _codex_warn_about_tool_group_records(
-    *,
-    warnings: list[str],
-    call_id: str,
-    kind: str,
-    records: list[_CodexRawRecord],
-) -> None:
-    if not records:
-        warnings.append(f"codex tool call_id {call_id} missing {kind} record")
-    elif len(records) > 1:
-        warnings.append(
-            f"codex tool call_id {call_id} has {len(records)} {kind} records; using first"
-        )
+_CODEX_TOOL_GROUP_LABEL = "codex tool call_id"
 
 def _codex_tool_name(record: _CodexRawRecord | None) -> str:
     if record is None:

@@ -701,20 +701,23 @@ def _copilot_tool_invocation_from_group(
         if isinstance(item, _CopilotRawEvent)
     ]
 
-    _copilot_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_COPILOT_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="assistant toolRequest",
         records=requests,
     )
-    _copilot_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_COPILOT_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="tool.execution_start",
         records=starts,
     )
-    _copilot_warn_about_tool_group_records(
+    _warn_about_tool_group_records(
         warnings=warnings,
+        provider_label=_COPILOT_TOOL_GROUP_LABEL,
         call_id=call_id,
         kind="tool.execution_complete",
         records=completes,
@@ -773,19 +776,7 @@ def _copilot_tool_invocation_from_group(
 
     return invocation, warnings
 
-def _copilot_warn_about_tool_group_records(
-    *,
-    warnings: list[str],
-    call_id: str,
-    kind: str,
-    records: list[object],
-) -> None:
-    if not records:
-        warnings.append(f"copilot toolCallId {call_id} missing {kind} record")
-    elif len(records) > 1:
-        warnings.append(
-            f"copilot toolCallId {call_id} has {len(records)} {kind} records; using first"
-        )
+_COPILOT_TOOL_GROUP_LABEL = "copilot toolCallId"
 
 def _copilot_tool_name(
     request: _CopilotToolRequestRecord | None,
@@ -1820,6 +1811,14 @@ def _copilot_residual_unsupported_concepts(
     ):
         unsupported.append("cost")
     return unsupported
+
+def _copilot_usage_billing_count(usage: list[dict[str, object]]) -> int:
+    count = 0
+    for item in usage:
+        provider_billing_units = item.get("provider_billing_units")
+        if isinstance(provider_billing_units, dict):
+            count += 1
+    return count
 
 def _load_copilot_raw_events(
     path: Path,

@@ -55,6 +55,21 @@ def _event_data(event: dict[str, object] | None) -> dict[str, object]:
         return data
     return {}
 
+def _warn_about_tool_group_records(
+    *,
+    warnings: list[str],
+    provider_label: str,
+    call_id: str,
+    kind: str,
+    records: list[object],
+) -> None:
+    if not records:
+        warnings.append(f"{provider_label} {call_id} missing {kind} record")
+    elif len(records) > 1:
+        warnings.append(
+            f"{provider_label} {call_id} has {len(records)} {kind} records; using first"
+        )
+
 def _tool_invocation_refs_by_call_id(
     tool_invocations: list[dict[str, object]],
 ) -> dict[str, str]:
@@ -225,14 +240,6 @@ def _model_run_reasoning_count(model_runs: list[dict[str, object]]) -> int:
             count += len(reasoning_trace)
     return count
 
-def _copilot_usage_billing_count(usage: list[dict[str, object]]) -> int:
-    count = 0
-    for item in usage:
-        provider_billing_units = item.get("provider_billing_units")
-        if isinstance(provider_billing_units, dict):
-            count += 1
-    return count
-
 def _coverage_status(count: int) -> str:
     return "normalized" if count else "missing"
 
@@ -362,6 +369,7 @@ __all__ = [
     "_event_turn_id",
     "_event_timestamp",
     "_event_data",
+    "_warn_about_tool_group_records",
     "_tool_invocation_refs_by_call_id",
     "_attach_event_refs_to_tool_invocations",
     "_primary_backing_artifact",
@@ -371,7 +379,6 @@ __all__ = [
     "_experimental_normalized_counts",
     "_experimental_normalization_coverage",
     "_model_run_reasoning_count",
-    "_copilot_usage_billing_count",
     "_coverage_status",
     "_count_payload",
     "_sorted_count_dict",
