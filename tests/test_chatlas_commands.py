@@ -719,6 +719,9 @@ def _write_claude_session(
     session_id: str,
     user_text: str = "hello from claude",
     assistant_text: str = "claude reply",
+    include_tool_roundtrip: bool = False,
+    include_followup_reply: bool = False,
+    include_reasoning_usage: bool = False,
 ) -> None:
     records = [
         {
@@ -753,8 +756,209 @@ def _write_claude_session(
             "timestamp": "2026-04-18T11:00:01.000Z",
         },
     ]
+    if include_followup_reply:
+        assert include_tool_roundtrip
+        records[1]["type"] = "assistant"
+        records[1]["message"] = {
+            "model": "claude-opus-4-6",
+            "id": "msg-tool-assistant-1",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": assistant_text},
+                {"type": "text", "text": "tool summary"},
+            ],
+            "stop_reason": None,
+            "stop_sequence": None,
+            "stop_details": None,
+        }
+        records[1]["requestId"] = "req-claude-1"
+        if include_reasoning_usage:
+            records[1]["message"]["content"] = [
+                {
+                    "type": "thinking",
+                    "thinking": "inspect repository layout before replying",
+                    "signature": "claude-thinking-signature-1",
+                },
+                {"type": "text", "text": assistant_text},
+                {"type": "text", "text": "tool summary"},
+            ]
+    if include_tool_roundtrip:
+        records.extend(
+            [
+                {
+                    "parentUuid": "msg-assistant-1",
+                    "isSidechain": False,
+                    "userType": "external",
+                    "cwd": "/tmp/project",
+                    "sessionId": session_id,
+                    "version": "2.1.69",
+                    "type": "assistant",
+                    "message": {
+                        "model": "claude-opus-4-6",
+                        "id": "msg-tool-assistant-1",
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "toolu-claude-1",
+                                "name": "Bash",
+                                "input": {
+                                    "command": "ls /tmp/project",
+                                    "description": "List project",
+                                },
+                                "caller": {"type": "direct"},
+                            }
+                        ],
+                        "stop_reason": "tool_use",
+                        "stop_sequence": None,
+                        "stop_details": None,
+                    },
+                    "requestId": "req-claude-1",
+                    "uuid": "msg-assistant-tool-1",
+                    "timestamp": "2026-04-18T11:00:02.000Z",
+                },
+                {
+                    "parentUuid": "msg-assistant-tool-1",
+                    "isSidechain": False,
+                    "userType": "external",
+                    "cwd": "/tmp/project",
+                    "sessionId": session_id,
+                    "version": "2.1.69",
+                    "type": "progress",
+                    "data": {
+                        "type": "hook_progress",
+                        "hookEvent": "PreToolUse",
+                        "hookName": "PreToolUse:Bash",
+                        "command": "bash -x ~/.claude/hooks/random-sound.sh&",
+                    },
+                    "toolUseID": "toolu-claude-1",
+                    "parentToolUseID": "toolu-claude-1",
+                    "uuid": "progress-pre-1",
+                    "timestamp": "2026-04-18T11:00:02.050Z",
+                },
+                {
+                    "parentUuid": "msg-assistant-tool-1",
+                    "isSidechain": False,
+                    "userType": "external",
+                    "cwd": "/tmp/project",
+                    "sessionId": session_id,
+                    "version": "2.1.69",
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "tool_use_id": "toolu-claude-1",
+                                "type": "tool_result",
+                                "content": "AGENTS.md\nsrc\ntests",
+                                "is_error": False,
+                            }
+                        ],
+                    },
+                    "toolUseResult": {
+                        "stdout": "AGENTS.md\nsrc\ntests",
+                        "stderr": "",
+                        "interrupted": False,
+                        "isImage": False,
+                        "noOutputExpected": False,
+                    },
+                    "sourceToolAssistantUUID": "msg-assistant-tool-1",
+                    "uuid": "msg-user-tool-result-1",
+                    "timestamp": "2026-04-18T11:00:02.450Z",
+                },
+                {
+                    "parentUuid": "msg-user-tool-result-1",
+                    "isSidechain": False,
+                    "userType": "external",
+                    "cwd": "/tmp/project",
+                    "sessionId": session_id,
+                    "version": "2.1.69",
+                    "type": "progress",
+                    "data": {
+                        "type": "hook_progress",
+                        "hookEvent": "PostToolUse",
+                        "hookName": "PostToolUse:Bash",
+                        "command": "bash -x ~/.claude/hooks/random-sound.sh&",
+                    },
+                    "toolUseID": "toolu-claude-1",
+                    "parentToolUseID": "toolu-claude-1",
+                    "uuid": "progress-post-1",
+                    "timestamp": "2026-04-18T11:00:02.500Z",
+                },
+            ]
+        )
+        if include_reasoning_usage:
+            records[2]["message"]["usage"] = {
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "cache_creation_input_tokens": 5,
+                "cache_read_input_tokens": 7,
+                "cache_creation": {
+                    "ephemeral_1h_input_tokens": 5,
+                    "ephemeral_5m_input_tokens": 0,
+                },
+                "service_tier": "standard",
+                "inference_geo": "not_available",
+            }
+        if include_followup_reply:
+            records.append(
+                {
+                    "parentUuid": "msg-user-tool-result-1",
+                    "isSidechain": False,
+                    "userType": "external",
+                    "cwd": "/tmp/project",
+                    "sessionId": session_id,
+                    "version": "2.1.69",
+                    "type": "assistant",
+                    "message": {
+                        "model": "claude-opus-4-6",
+                        "id": "msg-assistant-final-1",
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": "final claude answer"},
+                        ],
+                        "stop_reason": "end_turn",
+                        "stop_sequence": None,
+                        "stop_details": None,
+                    },
+                    "requestId": "req-claude-2",
+                    "uuid": "msg-assistant-final-1",
+                    "timestamp": "2026-04-18T11:00:02.800Z",
+                }
+            )
+            if include_reasoning_usage:
+                records[-1]["message"]["usage"] = {
+                    "input_tokens": 14,
+                    "output_tokens": 7,
+                    "cache_creation_input_tokens": 2,
+                    "cache_read_input_tokens": 11,
+                    "cache_creation": {
+                        "ephemeral_1h_input_tokens": 2,
+                        "ephemeral_5m_input_tokens": 0,
+                    },
+                    "service_tier": "standard",
+                    "inference_geo": "not_available",
+                    "speed": "standard",
+                    "iterations": [],
+                    "server_tool_use": {
+                        "web_search_requests": 0,
+                        "web_fetch_requests": 0,
+                    },
+                }
     _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
-    _set_iso_mtime(path, "2026-04-18T11:00:01.000Z")
+    _set_iso_mtime(
+        path,
+        (
+            "2026-04-18T11:00:02.800Z"
+            if include_followup_reply
+            else "2026-04-18T11:00:02.500Z"
+            if include_tool_roundtrip
+            else "2026-04-18T11:00:01.000Z"
+        ),
+    )
 
 
 def _write_opencode_db(
@@ -3507,18 +3711,8 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
         },
     ]
     assert payload["chat"]["usage"] == []
-    assert set(payload["normalization"]["unsupported_concepts"]) == {
-        "model_runs",
-        "tool_invocations",
-        "reasoning",
-        "usage",
-    }
-    assert payload["normalization"]["deferred_concepts"] == [
-        "tool_invocations",
-        "model_runs",
-        "reasoning",
-        "usage",
-    ]
+    assert payload["normalization"]["unsupported_concepts"] == []
+    assert payload["normalization"]["deferred_concepts"] == []
     assert payload["normalization"]["counts"] == {
         "messages": 2,
         "model_runs": 0,
@@ -3590,8 +3784,619 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
         in payload["normalization"]["warnings"]
     )
     assert (
-        "claude raw session messages and events phase is active; tool invocations, "
-        "model runs, reasoning, and usage remain deferred"
+        "claude raw session normalization covers messages, events, tool invocations, model runs, reasoning, and usage"
+        in payload["normalization"]["warnings"]
+    )
+
+
+def test_chatlas_experimental_export_normalizes_claude_tool_invocations(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "5dbf4437-633e-4039-a627-0459d85e9ecc"
+    _write_claude_session(
+        home / ".claude" / "projects" / "-tmp-project" / f"{session_id}.jsonl",
+        session_id=session_id,
+        user_text="claude experimental user",
+        assistant_text="claude experimental assistant",
+        include_tool_roundtrip=True,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "claude-code")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "experimental",
+                "export",
+                session_id,
+                "--provider",
+                "claude-code",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert len(payload["chat"]["messages"]) == 2
+    assert payload["chat"]["model_runs"] == [
+        {
+            "model_run_id": "model-run-1",
+            "provider": "claude-code",
+            "status": "completed",
+            "native": {
+                "request_record_count": 1,
+                "assistant_record_indices": [3],
+                "first_request_record_index": 3,
+                "last_request_record_index": 3,
+                "span_start_record_index": 1,
+                "span_end_record_index": 6,
+                "assistant_message_ids": ["msg-tool-assistant-1"],
+                "stop_reason": "tool_use",
+            },
+            "request_id": "req-claude-1",
+            "model": "claude-opus-4-6",
+            "started_at": "2026-04-18T11:00:02.000Z",
+            "ended_at": "2026-04-18T11:00:02.500Z",
+            "source_refs": [
+                {"source_ref_id": "source-1", "record_index": 3, "line": 3},
+                {"source_ref_id": "source-1", "record_index": 6, "line": 6},
+            ],
+            "message_refs": ["message-1", "message-2"],
+            "tool_invocation_refs": ["tool-invocation-1"],
+            "event_refs": [
+                "event-1",
+                "event-2",
+                "event-3",
+                "event-4",
+                "event-5",
+                "event-6",
+            ],
+        }
+    ]
+    assert payload["chat"]["tool_invocations"] == [
+        {
+            "tool_invocation_id": "tool-invocation-1",
+            "call_id": "toolu-claude-1",
+            "tool_name": "Bash",
+            "status": "completed",
+            "native": {
+                "request_present": True,
+                "result_present": True,
+                "pre_progress_present": True,
+                "post_progress_present": True,
+                "record_indices": {
+                    "tool_use": [{"record_index": 3, "content_index": 1}],
+                    "tool_result": [{"record_index": 5, "content_index": 1}],
+                    "progress.pre": [4],
+                    "progress.post": [6],
+                },
+                "tool_use": {
+                    "type": "tool_use",
+                    "id": "toolu-claude-1",
+                    "name": "Bash",
+                    "input": {
+                        "command": "ls /tmp/project",
+                        "description": "List project",
+                    },
+                    "caller": {"type": "direct"},
+                },
+                "tool_result": {
+                    "tool_use_id": "toolu-claude-1",
+                    "type": "tool_result",
+                    "content": "AGENTS.md\nsrc\ntests",
+                    "is_error": False,
+                },
+                "tool_use_result": {
+                    "stdout": "AGENTS.md\nsrc\ntests",
+                    "stderr": "",
+                    "interrupted": False,
+                    "isImage": False,
+                    "noOutputExpected": False,
+                },
+                "source_tool_assistant_uuid": "msg-assistant-tool-1",
+                "progress_pre": {
+                    "type": "hook_progress",
+                    "hookEvent": "PreToolUse",
+                    "hookName": "PreToolUse:Bash",
+                    "command": "bash -x ~/.claude/hooks/random-sound.sh&",
+                },
+                "progress_post": {
+                    "type": "hook_progress",
+                    "hookEvent": "PostToolUse",
+                    "hookName": "PostToolUse:Bash",
+                    "command": "bash -x ~/.claude/hooks/random-sound.sh&",
+                },
+            },
+            "started_at": "2026-04-18T11:00:02.000Z",
+            "ended_at": "2026-04-18T11:00:02.500Z",
+            "input": {
+                "arguments": {
+                    "command": "ls /tmp/project",
+                    "description": "List project",
+                }
+            },
+            "output": {"content": "AGENTS.md\nsrc\ntests"},
+            "execution": {
+                "stdout": "AGENTS.md\nsrc\ntests",
+                "stderr": "",
+                "interrupted": False,
+                "is_image": False,
+                "no_output_expected": False,
+            },
+            "model": "claude-opus-4-6",
+            "request_id": "req-claude-1",
+            "message_id": "msg-tool-assistant-1",
+            "source_refs": [
+                {"source_ref_id": "source-1", "record_index": 3, "line": 3, "content_index": 1},
+                {"source_ref_id": "source-1", "record_index": 4, "line": 4},
+                {"source_ref_id": "source-1", "record_index": 5, "line": 5, "content_index": 1},
+                {"source_ref_id": "source-1", "record_index": 6, "line": 6},
+            ],
+            "event_refs": ["event-3", "event-4", "event-5", "event-6"],
+        }
+    ]
+    assert [event.get("tool_invocation_ref") for event in payload["chat"]["events"]] == [
+        None,
+        None,
+        "tool-invocation-1",
+        "tool-invocation-1",
+        "tool-invocation-1",
+        "tool-invocation-1",
+    ]
+    assert [event.get("model_run_ref") for event in payload["chat"]["events"]] == [
+        "model-run-1",
+        "model-run-1",
+        "model-run-1",
+        "model-run-1",
+        "model-run-1",
+        "model-run-1",
+    ]
+    assert payload["normalization"]["unsupported_concepts"] == []
+    assert payload["normalization"]["deferred_concepts"] == []
+    assert payload["normalization"]["counts"] == {
+        "messages": 2,
+        "model_runs": 1,
+        "tool_invocations": 1,
+        "events": 6,
+        "usage": 0,
+        "reasoning_traces": 0,
+    }
+    assert payload["normalization"]["raw_counts"] == {
+        "records": 6,
+        "record_types": {
+            "assistant": 2,
+            "progress": 2,
+            "user": 2,
+        },
+        "parse_warning_count": 0,
+        "visible_message_record_count": 2,
+        "tool_use_count": 1,
+        "tool_result_count": 1,
+        "progress_count": 2,
+        "reasoning_evidence_count": 0,
+        "usage_evidence_count": 0,
+        "distinct_request_count": 1,
+    }
+    assert payload["normalization"]["coverage"] == {
+        "messages": {
+            "status": "normalized",
+            "raw_visible_message_record_count": 2,
+            "normalized_count": 2,
+        },
+        "model_runs": {
+            "status": "normalized",
+            "raw_request_count": 1,
+            "normalized_count": 1,
+        },
+        "tool_invocations": {
+            "status": "normalized",
+            "raw_tool_use_count": 1,
+            "raw_tool_result_count": 1,
+            "normalized_count": 1,
+        },
+        "events": {
+            "status": "normalized",
+            "raw_record_count": 6,
+            "raw_canonical_candidate_count": 6,
+            "raw_progress_count": 2,
+            "normalized_count": 6,
+        },
+        "reasoning": {
+            "status": "missing",
+            "raw_evidence_count": 0,
+            "normalized_count": 0,
+        },
+        "usage": {
+            "status": "missing",
+            "raw_evidence_count": 0,
+            "normalized_count": 0,
+        },
+    }
+    assert (
+        "claude raw session tool invocations normalized by tool_use.id: 1 invocations"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "claude raw session model runs normalized by requestId: 1 runs"
+        in payload["normalization"]["warnings"]
+    )
+    assert not any(
+        "missing assistant tool_use record" in warning
+        or "missing user tool_result record" in warning
+        or "missing PreToolUse progress record" in warning
+        or "missing PostToolUse progress record" in warning
+        for warning in payload["normalization"]["warnings"]
+    )
+
+
+def test_chatlas_experimental_export_normalizes_claude_model_runs(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "5dbf4437-633e-4039-a627-0459d85e9ecc"
+    _write_claude_session(
+        home / ".claude" / "projects" / "-tmp-project" / f"{session_id}.jsonl",
+        session_id=session_id,
+        user_text="claude experimental user",
+        assistant_text="claude experimental assistant",
+        include_tool_roundtrip=True,
+        include_followup_reply=True,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "claude-code")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "experimental",
+                "export",
+                session_id,
+                "--provider",
+                "claude-code",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["normalization"]["counts"] == {
+        "messages": 3,
+        "model_runs": 2,
+        "tool_invocations": 1,
+        "events": 7,
+        "usage": 0,
+        "reasoning_traces": 0,
+    }
+    assert payload["normalization"]["raw_counts"]["distinct_request_count"] == 2
+    assert payload["normalization"]["coverage"]["model_runs"] == {
+        "status": "normalized",
+        "raw_request_count": 2,
+        "normalized_count": 2,
+    }
+    assert payload["normalization"]["unsupported_concepts"] == []
+    assert payload["normalization"]["deferred_concepts"] == []
+
+    assert payload["chat"]["model_runs"] == [
+        {
+            "model_run_id": "model-run-1",
+            "provider": "claude-code",
+            "status": "completed",
+            "native": {
+                "request_record_count": 2,
+                "assistant_record_indices": [2, 3],
+                "first_request_record_index": 2,
+                "last_request_record_index": 3,
+                "span_start_record_index": 1,
+                "span_end_record_index": 6,
+                "assistant_message_ids": ["msg-tool-assistant-1"],
+                "stop_reason": "tool_use",
+            },
+            "request_id": "req-claude-1",
+            "model": "claude-opus-4-6",
+            "started_at": "2026-04-18T11:00:01.000Z",
+            "ended_at": "2026-04-18T11:00:02.500Z",
+            "source_refs": [
+                {"source_ref_id": "source-1", "record_index": 2, "line": 2},
+                {"source_ref_id": "source-1", "record_index": 6, "line": 6},
+            ],
+            "message_refs": ["message-1", "message-2"],
+            "tool_invocation_refs": ["tool-invocation-1"],
+            "event_refs": [
+                "event-1",
+                "event-2",
+                "event-3",
+                "event-4",
+                "event-5",
+                "event-6",
+            ],
+        },
+        {
+            "model_run_id": "model-run-2",
+            "provider": "claude-code",
+            "status": "completed",
+            "native": {
+                "request_record_count": 1,
+                "assistant_record_indices": [7],
+                "first_request_record_index": 7,
+                "last_request_record_index": 7,
+                "span_start_record_index": 7,
+                "span_end_record_index": 7,
+                "assistant_message_ids": ["msg-assistant-final-1"],
+                "stop_reason": "end_turn",
+            },
+            "request_id": "req-claude-2",
+            "model": "claude-opus-4-6",
+            "started_at": "2026-04-18T11:00:02.800Z",
+            "ended_at": "2026-04-18T11:00:02.800Z",
+            "source_refs": [
+                {"source_ref_id": "source-1", "record_index": 7, "line": 7}
+            ],
+            "message_refs": ["message-3"],
+            "event_refs": ["event-7"],
+        },
+    ]
+    assert [event.get("model_run_ref") for event in payload["chat"]["events"]] == [
+        "model-run-1",
+        "model-run-1",
+        "model-run-1",
+        "model-run-1",
+        "model-run-1",
+        "model-run-1",
+        "model-run-2",
+    ]
+    assert (
+        "claude raw session model runs normalized by requestId: 2 runs"
+        in payload["normalization"]["warnings"]
+    )
+
+
+def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "5dbf4437-633e-4039-a627-0459d85e9ecc"
+    _write_claude_session(
+        home / ".claude" / "projects" / "-tmp-project" / f"{session_id}.jsonl",
+        session_id=session_id,
+        user_text="claude experimental user",
+        assistant_text="claude experimental assistant",
+        include_tool_roundtrip=True,
+        include_followup_reply=True,
+        include_reasoning_usage=True,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "claude-code")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "experimental",
+                "export",
+                session_id,
+                "--provider",
+                "claude-code",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["normalization"]["unsupported_concepts"] == []
+    assert payload["normalization"]["deferred_concepts"] == []
+    assert payload["normalization"]["counts"] == {
+        "messages": 3,
+        "model_runs": 2,
+        "tool_invocations": 1,
+        "events": 7,
+        "usage": 2,
+        "reasoning_traces": 1,
+    }
+    assert payload["normalization"]["raw_counts"] == {
+        "records": 7,
+        "record_types": {
+            "assistant": 3,
+            "progress": 2,
+            "user": 2,
+        },
+        "parse_warning_count": 0,
+        "visible_message_record_count": 3,
+        "tool_use_count": 1,
+        "tool_result_count": 1,
+        "progress_count": 2,
+        "reasoning_evidence_count": 1,
+        "usage_evidence_count": 2,
+        "distinct_request_count": 2,
+    }
+    assert payload["normalization"]["coverage"] == {
+        "messages": {
+            "status": "normalized",
+            "raw_visible_message_record_count": 3,
+            "normalized_count": 3,
+        },
+        "model_runs": {
+            "status": "normalized",
+            "raw_request_count": 2,
+            "normalized_count": 2,
+        },
+        "tool_invocations": {
+            "status": "normalized",
+            "raw_tool_use_count": 1,
+            "raw_tool_result_count": 1,
+            "normalized_count": 1,
+        },
+        "events": {
+            "status": "normalized",
+            "raw_record_count": 7,
+            "raw_canonical_candidate_count": 7,
+            "raw_progress_count": 2,
+            "normalized_count": 7,
+        },
+        "reasoning": {
+            "status": "normalized",
+            "raw_evidence_count": 1,
+            "normalized_count": 1,
+        },
+        "usage": {
+            "status": "normalized",
+            "raw_evidence_count": 2,
+            "normalized_count": 2,
+        },
+    }
+
+    model_runs = payload["chat"]["model_runs"]
+    assert model_runs[0]["reasoning_trace"] == [
+        {
+            "reasoning_id": "reasoning-1-1",
+            "visibility": "visible",
+            "text": "inspect repository layout before replying",
+                "native": {
+                    "record_index": 2,
+                    "line": 2,
+                    "record_type": "assistant",
+                    "uuid": "msg-assistant-1",
+                    "parent_uuid": "msg-user-1",
+                    "message_role": "assistant",
+                    "reasoning_key": "thinking",
+                    "content_index": 1,
+                    "message_id": "msg-tool-assistant-1",
+                    "request_id": "req-claude-1",
+                "model": "claude-opus-4-6",
+                "signature": "claude-thinking-signature-1",
+            },
+            "timestamp": "2026-04-18T11:00:01.000Z",
+            "source_refs": [
+                {
+                    "source_ref_id": "source-1",
+                    "record_index": 2,
+                    "line": 2,
+                    "content_index": 1,
+                }
+            ],
+        }
+    ]
+    assert payload["chat"]["usage"] == [
+        {
+            "usage_id": "usage-1",
+            "scope": "model_run",
+            "provider": "claude-code",
+            "native": {
+                "record_index": 3,
+                "line": 3,
+                "record_type": "assistant",
+                "uuid": "msg-assistant-tool-1",
+                "parent_uuid": "msg-assistant-1",
+                "message_role": "assistant",
+                "request_id": "req-claude-1",
+                "message_id": "msg-tool-assistant-1",
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 20,
+                    "cache_creation_input_tokens": 5,
+                    "cache_read_input_tokens": 7,
+                    "cache_creation": {
+                        "ephemeral_1h_input_tokens": 5,
+                        "ephemeral_5m_input_tokens": 0,
+                    },
+                    "service_tier": "standard",
+                    "inference_geo": "not_available",
+                },
+            },
+            "model": "claude-opus-4-6",
+            "model_run_ref": "model-run-1",
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "cache_read_tokens": 7,
+            "cache_write_tokens": 5,
+            "request_count": 1,
+            "source_refs": [
+                {"source_ref_id": "source-1", "record_index": 3, "line": 3}
+            ],
+        },
+        {
+            "usage_id": "usage-2",
+            "scope": "model_run",
+            "provider": "claude-code",
+            "native": {
+                "record_index": 7,
+                "line": 7,
+                "record_type": "assistant",
+                "uuid": "msg-assistant-final-1",
+                "parent_uuid": "msg-user-tool-result-1",
+                "message_role": "assistant",
+                "request_id": "req-claude-2",
+                "message_id": "msg-assistant-final-1",
+                "usage": {
+                    "input_tokens": 14,
+                    "output_tokens": 7,
+                    "cache_creation_input_tokens": 2,
+                    "cache_read_input_tokens": 11,
+                    "cache_creation": {
+                        "ephemeral_1h_input_tokens": 2,
+                        "ephemeral_5m_input_tokens": 0,
+                    },
+                    "service_tier": "standard",
+                    "inference_geo": "not_available",
+                    "speed": "standard",
+                    "iterations": [],
+                    "server_tool_use": {
+                        "web_search_requests": 0,
+                        "web_fetch_requests": 0,
+                    },
+                },
+            },
+            "model": "claude-opus-4-6",
+            "model_run_ref": "model-run-2",
+            "input_tokens": 14,
+            "output_tokens": 7,
+            "cache_read_tokens": 11,
+            "cache_write_tokens": 2,
+            "request_count": 1,
+            "source_refs": [
+                {"source_ref_id": "source-1", "record_index": 7, "line": 7}
+            ],
+        },
+    ]
+    assert (
+        "claude raw session reasoning normalized from thinking blocks: 1 entries"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "claude raw session usage normalized from message.usage: 2 records"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "claude raw session normalization covers messages, events, tool invocations, model runs, reasoning, and usage"
         in payload["normalization"]["warnings"]
     )
 

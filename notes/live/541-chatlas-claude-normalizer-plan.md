@@ -43,12 +43,21 @@ Observed raw shape in the example session:
 - Phase 1 is implemented.
 - Phase 3 is implemented.
 - Phase 4 is implemented.
+- Phase 5 is implemented.
+- Phase 6 is implemented.
+- Phase 7 is implemented.
 - `agentos chatlas experimental export <claude-session>` now dispatches `claude-code` to `claude-code.raw_session.experimental.v1`.
 - Claude currently loads the raw session artifact, preserves raw record structure in-memory, reports raw counts and coverage, and returns explicit deferred concepts.
 - Claude now normalizes visible `chat.messages[]` from user string content and assistant text blocks.
 - Claude now normalizes `chat.events[]` from the raw record stream.
+- Claude now normalizes `chat.tool_invocations[]` from `tool_use`, `tool_result`, and `PreToolUse` / `PostToolUse` progress records.
+- Claude now normalizes `chat.model_runs[]` from grouped assistant `requestId` spans and attaches message refs, tool refs, and event refs.
+- Claude now normalizes `model_runs[].reasoning_trace[]` from assistant `thinking` blocks.
+- Claude now normalizes run-scoped `chat.usage[]` from the last structured `message.usage` snapshot in each `requestId` group.
+- Claude tool events now link back to normalized tool invocations through `tool_invocation_ref`, and tool invocations collect `event_refs`.
+- Claude events now also link back to normalized model runs through `model_run_ref`.
 - `last-prompt` artifact residue is intentionally excluded from canonical events and remains visible through raw counts/warnings.
-- Normalized Claude tool invocations, model runs, reasoning, and usage remain intentionally deferred to later phases.
+- Claude Phase 1-7 MVP surfaces are now implemented for the reference session.
 
 ## Design Commitments
 - Keep canonical surfaces truthful and provider-neutral.

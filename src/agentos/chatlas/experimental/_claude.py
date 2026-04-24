@@ -30,6 +30,23 @@ class _ClaudeRawSession:
     records: list[_ClaudeRawRecord]
     warnings: list[str]
 
+@dataclass(frozen=True)
+class _ClaudeToolRequestRecord:
+    raw_record: _ClaudeRawRecord
+    content_index: int
+    call_id: str
+    payload: dict[str, Any]
+    source_refs: list[dict[str, object]]
+
+@dataclass(frozen=True)
+class _ClaudeToolResultRecord:
+    raw_record: _ClaudeRawRecord
+    content_index: int
+    call_id: str
+    payload: dict[str, Any]
+    tool_use_result: dict[str, Any]
+    source_refs: list[dict[str, object]]
+
 def _experimental_normalize_claude_code_raw_session(
     session: dict[str, Any],
     *,
@@ -61,14 +78,39 @@ def _experimental_normalize_claude_code_raw_session(
     raw_counts = _claude_raw_record_counts(raw_session)
     message_result = _claude_messages_from_raw_session(raw_session)
     messages = _dict_list(message_result["messages"])
-    event_result = _claude_events_from_raw_session(raw_session)
-    events = _dict_list(event_result["events"])
-    deferred_concepts = [
-        "tool_invocations",
-        "model_runs",
-        "reasoning",
-        "usage",
-    ]
+    tool_result = _claude_tool_invocations_from_raw_session(raw_session)
+    tool_invocations = _dict_list(tool_result["tool_invocations"])
+    tool_invocation_refs_by_call_id = _tool_invocation_refs_by_call_id(
+        tool_invocations,
+    )
+    event_result = _claude_events_from_raw_session(
+        raw_session,
+        tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id,
+    )
+    events = _dict_list(
+        event_result["events"]
+    )
+    _attach_event_refs_to_tool_invocations(
+        tool_invocations,
+        events=events,
+    )
+    model_run_result = _claude_model_runs_from_raw_session(
+        raw_session,
+        messages=messages,
+        tool_invocations=tool_invocations,
+        events=events,
+    )
+    model_runs = _dict_list(model_run_result["model_runs"])
+    _claude_attach_model_run_refs_to_events(
+        model_runs,
+        events=events,
+    )
+    usage_result = _claude_usage_from_raw_session(
+        raw_session,
+        model_runs=model_runs,
+    )
+    usage = _dict_list(usage_result["usage"])
+    deferred_concepts: list[str] = []
 
     warnings = [
         *raw_session.warnings,
@@ -88,44 +130,77 @@ def _experimental_normalize_claude_code_raw_session(
             "claude raw session messages normalized from visible message records: "
             f"{len(messages)} messages"
         )
+    if tool_invocations:
+        warnings.append(
+            "claude raw session tool invocations normalized by tool_use.id: "
+            f"{len(tool_invocations)} invocations"
+        )
+    if model_runs:
+        warnings.append(
+            "claude raw session model runs normalized by requestId: "
+            f"{len(model_runs)} runs"
+        )
+    reasoning_count = _model_run_reasoning_count(model_runs)
+    if reasoning_count:
+        warnings.append(
+            "claude raw session reasoning normalized from thinking blocks: "
+            f"{reasoning_count} entries"
+        )
+    if usage:
+        warnings.append(
+            "claude raw session usage normalized from message.usage: "
+            f"{len(usage)} records"
+        )
     if events:
         warnings.append(
             "claude raw session events normalized from raw records: "
             f"{len(events)} events"
         )
     warnings.extend(_string_list(message_result["warnings"]))
+    warnings.extend(_string_list(tool_result["warnings"]))
     warnings.extend(_string_list(event_result["warnings"]))
+    warnings.extend(_string_list(model_run_result["warnings"]))
+    warnings.extend(_string_list(usage_result["warnings"]))
+    warnings.extend(
+        _claude_reasoning_attachment_warnings(
+            raw_counts=raw_counts,
+            model_runs=model_runs,
+        )
+    )
+    warnings.extend(
+        _claude_usage_attachment_warnings(
+            raw_counts=raw_counts,
+            usage=usage,
+        )
+    )
     warnings.append(
-        "claude raw session messages and events phase is active; tool invocations, model runs, "
-        "reasoning, and usage remain deferred"
+        "claude raw session normalization covers messages, events, tool invocations, model runs, reasoning, and usage"
     )
 
     return _ExperimentalNormalizationResult(
         messages=messages,
-        model_runs=[],
-        tool_invocations=[],
+        model_runs=model_runs,
+        tool_invocations=tool_invocations,
         events=events,
-        usage=[],
+        usage=usage,
         normalizer="claude-code.raw_session.experimental.v1",
         source_mode="claude_code_raw_session",
         warnings=warnings,
-        unsupported_concepts=[
-            *_experimental_unsupported_concepts(
-                messages=messages,
-                model_runs=[],
-                tool_invocations=[],
-                events=events,
-            ),
-            "reasoning",
-            "usage",
-        ],
+        unsupported_concepts=_claude_unsupported_concepts(
+            raw_counts=raw_counts,
+            messages=messages,
+            model_runs=model_runs,
+            tool_invocations=tool_invocations,
+            events=events,
+            usage=usage,
+        ),
         metadata=_claude_normalization_metadata(
             raw_counts=raw_counts,
             messages=messages,
-            model_runs=[],
-            tool_invocations=[],
+            model_runs=model_runs,
+            tool_invocations=tool_invocations,
             events=events,
-            usage=[],
+            usage=usage,
             deferred_concepts=deferred_concepts,
         ),
     )
@@ -177,6 +252,8 @@ def _claude_raw_record_counts(raw_session: _ClaudeRawSession) -> dict[str, objec
 
 def _claude_events_from_raw_session(
     raw_session: _ClaudeRawSession,
+    *,
+    tool_invocation_refs_by_call_id: dict[str, str] | None = None,
 ) -> dict[str, object]:
     events: list[dict[str, object]] = []
     warnings: list[str] = []
@@ -208,6 +285,14 @@ def _claude_events_from_raw_session(
         call_id = _claude_record_call_id(record)
         if call_id is not None:
             event["call_id"] = call_id
+            tool_invocation_ref = (tool_invocation_refs_by_call_id or {}).get(call_id)
+            if tool_invocation_ref is not None:
+                event["tool_invocation_ref"] = tool_invocation_ref
+            elif _claude_record_has_tool_evidence(record):
+                warnings.append(
+                    "claude tool-related event "
+                    f"{record.record_index} has no matching tool invocation for tool_use id {call_id}"
+                )
 
         events.append(event)
 
@@ -249,6 +334,1135 @@ def _claude_messages_from_raw_session(
         "messages": messages,
         "warnings": warnings,
     }
+
+def _claude_tool_invocations_from_raw_session(
+    raw_session: _ClaudeRawSession,
+) -> dict[str, object]:
+    warnings: list[str] = []
+    groups: dict[
+        str,
+        dict[str, list[_ClaudeToolRequestRecord | _ClaudeToolResultRecord | _ClaudeRawRecord]],
+    ] = {}
+
+    for record in raw_session.records:
+        for request in _claude_tool_request_records(
+            record,
+            warnings=warnings,
+        ):
+            group = groups.setdefault(
+                request.call_id,
+                {
+                    "tool_use": [],
+                    "tool_result": [],
+                    "progress_pre": [],
+                    "progress_post": [],
+                },
+            )
+            group["tool_use"].append(request)
+
+        for result in _claude_tool_result_records(
+            record,
+            warnings=warnings,
+        ):
+            group = groups.setdefault(
+                result.call_id,
+                {
+                    "tool_use": [],
+                    "tool_result": [],
+                    "progress_pre": [],
+                    "progress_post": [],
+                },
+            )
+            group["tool_result"].append(result)
+
+        progress_kind = _claude_tool_progress_group_kind(record)
+        if progress_kind is None:
+            continue
+        call_id = _claude_record_call_id(record)
+        if call_id is None:
+            warnings.append(
+                f"claude progress record {record.record_index} has no toolUseID"
+            )
+            continue
+        group = groups.setdefault(
+            call_id,
+            {
+                "tool_use": [],
+                "tool_result": [],
+                "progress_pre": [],
+                "progress_post": [],
+            },
+        )
+        group[progress_kind].append(record)
+
+    tool_invocations: list[dict[str, object]] = []
+    for call_id, group in sorted(groups.items(), key=_claude_tool_group_order):
+        invocation, group_warnings = _claude_tool_invocation_from_group(
+            call_id=call_id,
+            group=group,
+            index=len(tool_invocations) + 1,
+        )
+        tool_invocations.append(invocation)
+        warnings.extend(group_warnings)
+
+    return {
+        "tool_invocations": tool_invocations,
+        "warnings": warnings,
+    }
+
+def _claude_tool_request_records(
+    record: _ClaudeRawRecord,
+    *,
+    warnings: list[str],
+) -> list[_ClaudeToolRequestRecord]:
+    if _claude_message_role(record) != "assistant":
+        return []
+    content = record.message.get("content")
+    if not isinstance(content, list):
+        return []
+
+    requests: list[_ClaudeToolRequestRecord] = []
+    for content_index, item in enumerate(content, start=1):
+        if not isinstance(item, dict):
+            warnings.append(
+                f"claude assistant tool-use record {record.record_index} content item {content_index} is not an object"
+            )
+            continue
+        if _string_or_none(item.get("type")) != "tool_use":
+            continue
+        call_id = _string_or_none(item.get("id"))
+        if call_id is None:
+            warnings.append(
+                f"claude assistant tool-use record {record.record_index} content item {content_index} has no id"
+            )
+            continue
+        requests.append(
+            _ClaudeToolRequestRecord(
+                raw_record=record,
+                content_index=content_index,
+                call_id=call_id,
+                payload=item,
+                source_refs=_claude_item_source_refs(
+                    record,
+                    content_index=content_index,
+                ),
+            )
+        )
+    return requests
+
+def _claude_tool_result_records(
+    record: _ClaudeRawRecord,
+    *,
+    warnings: list[str],
+) -> list[_ClaudeToolResultRecord]:
+    if _claude_message_role(record) != "user":
+        return []
+    content = record.message.get("content")
+    if not isinstance(content, list):
+        return []
+
+    results: list[_ClaudeToolResultRecord] = []
+    for content_index, item in enumerate(content, start=1):
+        if not isinstance(item, dict):
+            warnings.append(
+                f"claude user tool-result record {record.record_index} content item {content_index} is not an object"
+            )
+            continue
+        if _string_or_none(item.get("type")) != "tool_result":
+            continue
+        call_id = _string_or_none(item.get("tool_use_id"))
+        if call_id is None:
+            warnings.append(
+                f"claude user tool-result record {record.record_index} content item {content_index} has no tool_use_id"
+            )
+            continue
+        results.append(
+            _ClaudeToolResultRecord(
+                raw_record=record,
+                content_index=content_index,
+                call_id=call_id,
+                payload=item,
+                tool_use_result=dict(record.tool_use_result),
+                source_refs=_claude_item_source_refs(
+                    record,
+                    content_index=content_index,
+                ),
+            )
+        )
+    return results
+
+def _claude_item_source_refs(
+    record: _ClaudeRawRecord,
+    *,
+    content_index: int,
+) -> list[dict[str, object]]:
+    refs: list[dict[str, object]] = []
+    for source_ref in record.source_refs:
+        ref = dict(source_ref)
+        ref["content_index"] = content_index
+        refs.append(ref)
+    return refs
+
+def _claude_tool_progress_group_kind(record: _ClaudeRawRecord) -> str | None:
+    if record.record_type != "progress":
+        return None
+    hook_event = _string_or_none(record.data.get("hookEvent"))
+    if hook_event == "PreToolUse":
+        return "progress_pre"
+    if hook_event == "PostToolUse":
+        return "progress_post"
+    return None
+
+def _claude_tool_group_order(
+    item: tuple[
+        str,
+        dict[str, list[_ClaudeToolRequestRecord | _ClaudeToolResultRecord | _ClaudeRawRecord]],
+    ],
+) -> tuple[int, int]:
+    _call_id, group = item
+    positions = [
+        _claude_tool_evidence_position(evidence)
+        for records in group.values()
+        for evidence in records
+    ]
+    return min(positions) if positions else (0, 0)
+
+def _claude_tool_evidence_position(
+    evidence: _ClaudeToolRequestRecord | _ClaudeToolResultRecord | _ClaudeRawRecord,
+) -> tuple[int, int]:
+    if isinstance(evidence, (_ClaudeToolRequestRecord, _ClaudeToolResultRecord)):
+        return (evidence.raw_record.record_index, evidence.content_index)
+    return (evidence.record_index, 0)
+
+def _claude_tool_invocation_from_group(
+    *,
+    call_id: str,
+    group: dict[str, list[_ClaudeToolRequestRecord | _ClaudeToolResultRecord | _ClaudeRawRecord]],
+    index: int,
+) -> tuple[dict[str, object], list[str]]:
+    warnings: list[str] = []
+    requests = [
+        item
+        for item in group["tool_use"]
+        if isinstance(item, _ClaudeToolRequestRecord)
+    ]
+    results = [
+        item
+        for item in group["tool_result"]
+        if isinstance(item, _ClaudeToolResultRecord)
+    ]
+    pre_progress = [
+        item
+        for item in group["progress_pre"]
+        if isinstance(item, _ClaudeRawRecord)
+    ]
+    post_progress = [
+        item
+        for item in group["progress_post"]
+        if isinstance(item, _ClaudeRawRecord)
+    ]
+
+    _claude_warn_about_tool_group_records(
+        warnings=warnings,
+        call_id=call_id,
+        kind="assistant tool_use",
+        records=requests,
+    )
+    _claude_warn_about_tool_group_records(
+        warnings=warnings,
+        call_id=call_id,
+        kind="user tool_result",
+        records=results,
+    )
+    _claude_warn_about_tool_group_records(
+        warnings=warnings,
+        call_id=call_id,
+        kind="PreToolUse progress",
+        records=pre_progress,
+    )
+    _claude_warn_about_tool_group_records(
+        warnings=warnings,
+        call_id=call_id,
+        kind="PostToolUse progress",
+        records=post_progress,
+    )
+
+    first_request = requests[0] if requests else None
+    first_result = results[0] if results else None
+    first_pre_progress = pre_progress[0] if pre_progress else None
+    first_post_progress = post_progress[0] if post_progress else None
+
+    invocation: dict[str, object] = {
+        "tool_invocation_id": f"tool-invocation-{index}",
+        "call_id": call_id,
+        "tool_name": _claude_tool_name(
+            first_request,
+            first_pre_progress,
+            first_post_progress,
+        ),
+        "status": _claude_tool_status(
+            first_result,
+            first_post_progress,
+        ),
+        "native": _claude_tool_native(
+            requests=requests,
+            results=results,
+            pre_progress=pre_progress,
+            post_progress=post_progress,
+        ),
+    }
+
+    started_at = _claude_tool_started_at(
+        first_request,
+        first_pre_progress,
+        first_result,
+        first_post_progress,
+    )
+    if started_at is not None:
+        invocation["started_at"] = started_at
+    ended_at = _claude_tool_ended_at(
+        first_request,
+        first_pre_progress,
+        first_result,
+        first_post_progress,
+    )
+    if ended_at is not None:
+        invocation["ended_at"] = ended_at
+
+    tool_input = _claude_tool_input(first_request)
+    if tool_input:
+        invocation["input"] = tool_input
+    output = _claude_tool_output(first_result)
+    if output:
+        invocation["output"] = output
+    execution = _claude_tool_execution(first_result)
+    if execution:
+        invocation["execution"] = execution
+
+    model = _claude_tool_model(first_request, first_result)
+    if model is not None:
+        invocation["model"] = model
+    request_id = _claude_tool_request_id(first_request, first_result)
+    if request_id is not None:
+        invocation["request_id"] = request_id
+    message_id = _claude_tool_message_id(first_request, first_result)
+    if message_id is not None:
+        invocation["message_id"] = message_id
+
+    source_refs = _claude_tool_source_refs(
+        requests,
+        results,
+        pre_progress,
+        post_progress,
+    )
+    if source_refs:
+        invocation["source_refs"] = source_refs
+
+    return invocation, warnings
+
+def _claude_warn_about_tool_group_records(
+    *,
+    warnings: list[str],
+    call_id: str,
+    kind: str,
+    records: list[object],
+) -> None:
+    if not records:
+        warnings.append(f"claude tool_use id {call_id} missing {kind} record")
+    elif len(records) > 1:
+        warnings.append(
+            f"claude tool_use id {call_id} has {len(records)} {kind} records; using first"
+        )
+
+def _claude_tool_name(
+    request: _ClaudeToolRequestRecord | None,
+    pre_progress: _ClaudeRawRecord | None,
+    post_progress: _ClaudeRawRecord | None,
+) -> str:
+    for value in (
+        request.payload.get("name") if request is not None else None,
+        _claude_progress_tool_name(pre_progress),
+        _claude_progress_tool_name(post_progress),
+    ):
+        name = _string_or_none(value)
+        if name is not None:
+            return name
+    return "unknown"
+
+def _claude_progress_tool_name(record: _ClaudeRawRecord | None) -> str | None:
+    if record is None:
+        return None
+    hook_name = _string_or_none(record.data.get("hookName"))
+    if hook_name is None or ":" not in hook_name:
+        return None
+    return hook_name.split(":")[-1].strip() or None
+
+def _claude_tool_status(
+    result: _ClaudeToolResultRecord | None,
+    post_progress: _ClaudeRawRecord | None,
+) -> str:
+    if result is not None:
+        if result.payload.get("is_error") is True:
+            return "failed"
+        if result.tool_use_result.get("interrupted") is True:
+            return "failed"
+        return "completed"
+    if post_progress is not None:
+        return "completed"
+    return "requested"
+
+def _claude_tool_started_at(
+    request: _ClaudeToolRequestRecord | None,
+    pre_progress: _ClaudeRawRecord | None,
+    result: _ClaudeToolResultRecord | None,
+    post_progress: _ClaudeRawRecord | None,
+) -> str | None:
+    return _claude_timestamp_min(
+        request.raw_record.timestamp if request is not None else None,
+        pre_progress.timestamp if pre_progress is not None else None,
+        result.raw_record.timestamp if result is not None else None,
+        post_progress.timestamp if post_progress is not None else None,
+    )
+
+def _claude_tool_ended_at(
+    request: _ClaudeToolRequestRecord | None,
+    pre_progress: _ClaudeRawRecord | None,
+    result: _ClaudeToolResultRecord | None,
+    post_progress: _ClaudeRawRecord | None,
+) -> str | None:
+    return _claude_timestamp_max(
+        request.raw_record.timestamp if request is not None else None,
+        pre_progress.timestamp if pre_progress is not None else None,
+        result.raw_record.timestamp if result is not None else None,
+        post_progress.timestamp if post_progress is not None else None,
+    )
+
+def _claude_timestamp_min(*values: object) -> str | None:
+    timestamps = [
+        timestamp
+        for timestamp in (_string_or_none(value) for value in values)
+        if timestamp is not None
+    ]
+    return min(timestamps) if timestamps else None
+
+def _claude_timestamp_max(*values: object) -> str | None:
+    timestamps = [
+        timestamp
+        for timestamp in (_string_or_none(value) for value in values)
+        if timestamp is not None
+    ]
+    return max(timestamps) if timestamps else None
+
+def _claude_tool_input(
+    request: _ClaudeToolRequestRecord | None,
+) -> dict[str, object]:
+    if request is None:
+        return {}
+    tool_input = request.payload.get("input")
+    if tool_input is None:
+        return {}
+    return {"arguments": tool_input}
+
+def _claude_tool_output(
+    result: _ClaudeToolResultRecord | None,
+) -> dict[str, object]:
+    if result is None:
+        return {}
+    output: dict[str, object] = {}
+    for value in (
+        result.payload.get("content"),
+        result.tool_use_result.get("stdout"),
+        result.tool_use_result.get("stderr"),
+    ):
+        text = _string_or_none(value)
+        if text is not None:
+            output["content"] = text
+            break
+    return output
+
+def _claude_tool_execution(
+    result: _ClaudeToolResultRecord | None,
+) -> dict[str, object]:
+    if result is None:
+        return {}
+    execution: dict[str, object] = {}
+    _copy_present_fields(
+        execution,
+        result.tool_use_result,
+        (
+            ("stdout", "stdout"),
+            ("stderr", "stderr"),
+            ("interrupted", "interrupted"),
+            ("isImage", "is_image"),
+            ("noOutputExpected", "no_output_expected"),
+        ),
+    )
+    return execution
+
+def _claude_tool_model(
+    request: _ClaudeToolRequestRecord | None,
+    result: _ClaudeToolResultRecord | None,
+) -> str | None:
+    for value in (
+        request.raw_record.message.get("model") if request is not None else None,
+        result.raw_record.message.get("model") if result is not None else None,
+    ):
+        model = _string_or_none(value)
+        if model is not None:
+            return model
+    return None
+
+def _claude_tool_request_id(
+    request: _ClaudeToolRequestRecord | None,
+    result: _ClaudeToolResultRecord | None,
+) -> str | None:
+    for value in (
+        _claude_record_request_id(request.raw_record) if request is not None else None,
+        _claude_record_request_id(result.raw_record) if result is not None else None,
+    ):
+        request_id = _string_or_none(value)
+        if request_id is not None:
+            return request_id
+    return None
+
+def _claude_tool_message_id(
+    request: _ClaudeToolRequestRecord | None,
+    result: _ClaudeToolResultRecord | None,
+) -> str | None:
+    for value in (
+        request.raw_record.message.get("id") if request is not None else None,
+        result.raw_record.message.get("id") if result is not None else None,
+    ):
+        message_id = _string_or_none(value)
+        if message_id is not None:
+            return message_id
+    return None
+
+def _claude_tool_source_refs(
+    requests: list[_ClaudeToolRequestRecord],
+    results: list[_ClaudeToolResultRecord],
+    pre_progress: list[_ClaudeRawRecord],
+    post_progress: list[_ClaudeRawRecord],
+) -> list[dict[str, object]]:
+    source_refs: list[dict[str, object]] = []
+    for request in requests:
+        source_refs.extend(request.source_refs)
+    for record in pre_progress:
+        source_refs.extend(record.source_refs)
+    for result in results:
+        source_refs.extend(result.source_refs)
+    for record in post_progress:
+        source_refs.extend(record.source_refs)
+    return sorted(
+        _dedupe_dicts(source_refs),
+        key=lambda source_ref: (
+            _int_or_zero(source_ref.get("record_index")),
+            _int_or_zero(source_ref.get("content_index")),
+            _int_or_zero(source_ref.get("line")),
+        ),
+    )
+
+def _claude_tool_native(
+    *,
+    requests: list[_ClaudeToolRequestRecord],
+    results: list[_ClaudeToolResultRecord],
+    pre_progress: list[_ClaudeRawRecord],
+    post_progress: list[_ClaudeRawRecord],
+) -> dict[str, object]:
+    native: dict[str, object] = {
+        "request_present": bool(requests),
+        "result_present": bool(results),
+        "pre_progress_present": bool(pre_progress),
+        "post_progress_present": bool(post_progress),
+        "record_indices": {
+            "tool_use": [
+                {
+                    "record_index": request.raw_record.record_index,
+                    "content_index": request.content_index,
+                }
+                for request in requests
+            ],
+            "tool_result": [
+                {
+                    "record_index": result.raw_record.record_index,
+                    "content_index": result.content_index,
+                }
+                for result in results
+            ],
+            "progress.pre": [record.record_index for record in pre_progress],
+            "progress.post": [record.record_index for record in post_progress],
+        },
+    }
+    if requests:
+        native["tool_use"] = requests[0].payload
+    if results:
+        native["tool_result"] = results[0].payload
+        if results[0].tool_use_result:
+            native["tool_use_result"] = results[0].tool_use_result
+        source_tool_assistant_uuid = _string_or_none(
+            results[0].raw_record.payload.get("sourceToolAssistantUUID")
+        )
+        if source_tool_assistant_uuid is not None:
+            native["source_tool_assistant_uuid"] = source_tool_assistant_uuid
+    if pre_progress:
+        native["progress_pre"] = pre_progress[0].data
+    if post_progress:
+        native["progress_post"] = post_progress[0].data
+    return native
+
+def _claude_record_has_tool_evidence(record: _ClaudeRawRecord) -> bool:
+    return bool(
+        _claude_tool_request_records(record, warnings=[])
+        or _claude_tool_result_records(record, warnings=[])
+        or _claude_tool_progress_group_kind(record) is not None
+    )
+
+def _claude_model_runs_from_raw_session(
+    raw_session: _ClaudeRawSession,
+    *,
+    messages: list[dict[str, object]],
+    tool_invocations: list[dict[str, object]],
+    events: list[dict[str, object]],
+) -> dict[str, object]:
+    warnings: list[str] = []
+    request_groups: dict[str, list[_ClaudeRawRecord]] = {}
+
+    for record in raw_session.records:
+        if _claude_message_role(record) != "assistant":
+            continue
+        request_id = _claude_record_request_id(record)
+        if request_id is None:
+            continue
+        request_groups.setdefault(request_id, []).append(record)
+
+    ordered_groups = sorted(
+        request_groups.items(),
+        key=lambda item: item[1][0].record_index if item[1] else 0,
+    )
+    canonical_end_index = _claude_last_canonical_record_index(raw_session)
+
+    model_runs: list[dict[str, object]] = []
+    previous_span_end_index = 0
+    for group_index, (request_id, records) in enumerate(ordered_groups):
+        if not records:
+            continue
+        next_start_record = (
+            ordered_groups[group_index + 1][1][0]
+            if group_index + 1 < len(ordered_groups) and ordered_groups[group_index + 1][1]
+            else None
+        )
+        span_start_index = previous_span_end_index + 1 if previous_span_end_index else 1
+        span_end_index = (
+            next_start_record.record_index - 1
+            if next_start_record is not None
+            else canonical_end_index
+        )
+        if span_end_index < records[-1].record_index:
+            span_end_index = records[-1].record_index
+        model_run = _claude_model_run_from_request_group(
+            request_id=request_id,
+            records=records,
+            raw_session=raw_session,
+            span_start_index=span_start_index,
+            span_end_index=span_end_index,
+            next_start_record=next_start_record,
+            messages=messages,
+            tool_invocations=tool_invocations,
+            events=events,
+            index=len(model_runs) + 1,
+        )
+        model_runs.append(model_run)
+        previous_span_end_index = span_end_index
+
+    return {
+        "model_runs": model_runs,
+        "warnings": warnings,
+    }
+
+def _claude_model_run_from_request_group(
+    *,
+    request_id: str,
+    records: list[_ClaudeRawRecord],
+    raw_session: _ClaudeRawSession,
+    span_start_index: int,
+    span_end_index: int,
+    next_start_record: _ClaudeRawRecord | None,
+    messages: list[dict[str, object]],
+    tool_invocations: list[dict[str, object]],
+    events: list[dict[str, object]],
+    index: int,
+) -> dict[str, object]:
+    first_record = records[0]
+    last_request_record = records[-1]
+    span_end_record = _claude_record_at_index(
+        raw_session,
+        span_end_index,
+    )
+
+    assistant_message_ids = _claude_model_run_message_ids(records)
+    native: dict[str, object] = {
+        "request_record_count": len(records),
+        "assistant_record_indices": [record.record_index for record in records],
+        "first_request_record_index": first_record.record_index,
+        "last_request_record_index": last_request_record.record_index,
+        "span_start_record_index": span_start_index,
+        "span_end_record_index": span_end_index,
+    }
+    if assistant_message_ids:
+        native["assistant_message_ids"] = assistant_message_ids
+    stop_reason = _claude_model_run_stop_reason(records)
+    if stop_reason is not None:
+        native["stop_reason"] = stop_reason
+
+    model_run: dict[str, object] = {
+        "model_run_id": f"model-run-{index}",
+        "provider": "claude-code",
+        "status": _claude_model_run_status(
+            records=records,
+            next_start_record=next_start_record,
+            span_end_index=span_end_index,
+        ),
+        "native": native,
+        "request_id": request_id,
+    }
+
+    model = _claude_model_run_model(records)
+    if model is not None:
+        model_run["model"] = model
+    started_at = _claude_model_run_started_at(records)
+    if started_at is not None:
+        model_run["started_at"] = started_at
+    ended_at = _claude_model_run_ended_at(
+        raw_session,
+        span_start_index=span_start_index,
+        span_end_index=span_end_index,
+    )
+    if ended_at is not None:
+        model_run["ended_at"] = ended_at
+
+    source_refs = _claude_model_run_source_refs(
+        first_record=first_record,
+        span_end_record=span_end_record,
+    )
+    if source_refs:
+        model_run["source_refs"] = source_refs
+
+    message_refs = _claude_model_run_message_refs(
+        messages,
+        span_start_index=span_start_index,
+        span_end_index=span_end_index,
+    )
+    if message_refs:
+        model_run["message_refs"] = message_refs
+
+    tool_refs = _claude_model_run_tool_refs(
+        tool_invocations,
+        request_id=request_id,
+        span_start_index=span_start_index,
+        span_end_index=span_end_index,
+    )
+    if tool_refs:
+        model_run["tool_invocation_refs"] = tool_refs
+
+    event_refs = _claude_model_run_event_refs(
+        events,
+        span_start_index=span_start_index,
+        span_end_index=span_end_index,
+    )
+    if event_refs:
+        model_run["event_refs"] = event_refs
+
+    reasoning_trace = _claude_model_run_reasoning_trace(
+        records,
+        model_run_index=index,
+    )
+    if reasoning_trace:
+        model_run["reasoning_trace"] = reasoning_trace
+
+    return model_run
+
+def _claude_last_canonical_record_index(
+    raw_session: _ClaudeRawSession,
+) -> int:
+    for record in reversed(raw_session.records):
+        if _claude_record_kind(record) == "last-prompt":
+            continue
+        return record.record_index
+    return 0
+
+def _claude_record_at_index(
+    raw_session: _ClaudeRawSession,
+    record_index: int,
+) -> _ClaudeRawRecord | None:
+    if record_index <= 0:
+        return None
+    index = record_index - 1
+    if index < 0 or index >= len(raw_session.records):
+        return None
+    return raw_session.records[index]
+
+def _claude_model_run_message_ids(
+    records: list[_ClaudeRawRecord],
+) -> list[str]:
+    seen: set[str] = set()
+    message_ids: list[str] = []
+    for record in records:
+        message_id = _string_or_none(record.message.get("id"))
+        if message_id is None or message_id in seen:
+            continue
+        seen.add(message_id)
+        message_ids.append(message_id)
+    return message_ids
+
+def _claude_model_run_stop_reason(
+    records: list[_ClaudeRawRecord],
+) -> str | None:
+    for record in reversed(records):
+        stop_reason = _string_or_none(record.message.get("stop_reason"))
+        if stop_reason is not None:
+            return stop_reason
+    return None
+
+def _claude_model_run_status(
+    *,
+    records: list[_ClaudeRawRecord],
+    next_start_record: _ClaudeRawRecord | None,
+    span_end_index: int,
+) -> str:
+    stop_reason = _claude_model_run_stop_reason(records)
+    if stop_reason is not None:
+        return "completed"
+    if next_start_record is not None:
+        return "unknown"
+    if span_end_index > records[-1].record_index:
+        return "unknown"
+    return "running"
+
+def _claude_model_run_model(
+    records: list[_ClaudeRawRecord],
+) -> str | None:
+    for record in records:
+        model = _string_or_none(record.message.get("model"))
+        if model is not None:
+            return model
+    return None
+
+def _claude_model_run_started_at(
+    records: list[_ClaudeRawRecord],
+) -> str | None:
+    return _claude_timestamp_min(
+        *(record.timestamp for record in records)
+    )
+
+def _claude_model_run_ended_at(
+    raw_session: _ClaudeRawSession,
+    *,
+    span_start_index: int,
+    span_end_index: int,
+) -> str | None:
+    return _claude_timestamp_max(
+        *(
+            record.timestamp
+            for record in raw_session.records
+            if span_start_index <= record.record_index <= span_end_index
+            and _claude_record_kind(record) != "last-prompt"
+        )
+    )
+
+def _claude_model_run_source_refs(
+    *,
+    first_record: _ClaudeRawRecord,
+    span_end_record: _ClaudeRawRecord | None,
+) -> list[dict[str, object]]:
+    source_refs = list(first_record.source_refs)
+    if span_end_record is not None:
+        source_refs.extend(span_end_record.source_refs)
+    return sorted(
+        _dedupe_dicts(source_refs),
+        key=lambda source_ref: (
+            _int_or_zero(source_ref.get("record_index")),
+            _int_or_zero(source_ref.get("line")),
+        ),
+    )
+
+def _claude_model_run_message_refs(
+    messages: list[dict[str, object]],
+    *,
+    span_start_index: int,
+    span_end_index: int,
+) -> list[str]:
+    refs: list[str] = []
+    for message in messages:
+        message_id = _string_or_none(message.get("message_id"))
+        record_index = _record_native_int_field(message, "record_index")
+        if message_id is None or record_index is None:
+            continue
+        if span_start_index <= record_index <= span_end_index:
+            refs.append(message_id)
+    return refs
+
+def _claude_model_run_tool_refs(
+    tool_invocations: list[dict[str, object]],
+    *,
+    request_id: str,
+    span_start_index: int,
+    span_end_index: int,
+) -> list[str]:
+    refs: list[str] = []
+    for invocation in tool_invocations:
+        invocation_id = _string_or_none(invocation.get("tool_invocation_id"))
+        if invocation_id is None:
+            continue
+        if _string_or_none(invocation.get("request_id")) == request_id:
+            refs.append(invocation_id)
+            continue
+        source_refs = _dict_list(invocation.get("source_refs"))
+        if any(
+            span_start_index <= _int_or_zero(source_ref.get("record_index")) <= span_end_index
+            for source_ref in source_refs
+        ):
+            refs.append(invocation_id)
+    return refs
+
+def _claude_model_run_event_refs(
+    events: list[dict[str, object]],
+    *,
+    span_start_index: int,
+    span_end_index: int,
+) -> list[str]:
+    refs: list[str] = []
+    for event in events:
+        event_id = _string_or_none(event.get("event_id"))
+        record_index = _record_native_int_field(event, "record_index")
+        if event_id is None or record_index is None:
+            continue
+        if span_start_index <= record_index <= span_end_index:
+            refs.append(event_id)
+    return refs
+
+def _claude_model_run_reasoning_trace(
+    records: list[_ClaudeRawRecord],
+    *,
+    model_run_index: int,
+) -> list[dict[str, object]]:
+    reasoning_trace: list[dict[str, object]] = []
+    for record in records:
+        reasoning_trace.extend(
+            _claude_reasoning_entries_from_record(
+                record,
+                model_run_index=model_run_index,
+                offset=len(reasoning_trace),
+            )
+        )
+    return reasoning_trace
+
+def _claude_attach_model_run_refs_to_events(
+    model_runs: list[dict[str, object]],
+    *,
+    events: list[dict[str, object]],
+) -> None:
+    model_run_ref_by_event_id: dict[str, str] = {}
+    for model_run in model_runs:
+        model_run_id = _string_or_none(model_run.get("model_run_id"))
+        if model_run_id is None:
+            continue
+        for event_ref in _string_list(model_run.get("event_refs")):
+            model_run_ref_by_event_id[event_ref] = model_run_id
+
+    for event in events:
+        event_id = _string_or_none(event.get("event_id"))
+        if event_id is None:
+            continue
+        model_run_ref = model_run_ref_by_event_id.get(event_id)
+        if model_run_ref is not None:
+            event["model_run_ref"] = model_run_ref
+
+def _claude_reasoning_entries_from_record(
+    record: _ClaudeRawRecord,
+    *,
+    model_run_index: int,
+    offset: int,
+) -> list[dict[str, object]]:
+    content = record.message.get("content")
+    if not isinstance(content, list):
+        return []
+
+    reasoning_trace: list[dict[str, object]] = []
+    for content_index, item in enumerate(content, start=1):
+        if not isinstance(item, dict):
+            continue
+        if _string_or_none(item.get("type")) != "thinking":
+            continue
+        text = _string_or_none(item.get("thinking"))
+        if text is None:
+            continue
+        reasoning: dict[str, object] = {
+            "reasoning_id": f"reasoning-{model_run_index}-{offset + len(reasoning_trace) + 1}",
+            "visibility": "visible",
+            "text": text,
+            "native": _claude_reasoning_native(
+                record,
+                content_index=content_index,
+                item=item,
+            ),
+        }
+        if record.timestamp is not None:
+            reasoning["timestamp"] = record.timestamp
+        source_refs = _claude_item_source_refs(
+            record,
+            content_index=content_index,
+        )
+        if source_refs:
+            reasoning["source_refs"] = source_refs
+        reasoning_trace.append(reasoning)
+    return reasoning_trace
+
+def _claude_reasoning_native(
+    record: _ClaudeRawRecord,
+    *,
+    content_index: int,
+    item: dict[str, Any],
+) -> dict[str, object]:
+    native = _claude_event_native(record)
+    native["reasoning_key"] = "thinking"
+    native["content_index"] = content_index
+    message_id = _string_or_none(record.message.get("id"))
+    if message_id is not None:
+        native["message_id"] = message_id
+    request_id = _claude_record_request_id(record)
+    if request_id is not None:
+        native["request_id"] = request_id
+    model = _string_or_none(record.message.get("model"))
+    if model is not None:
+        native["model"] = model
+    signature = _string_or_none(item.get("signature"))
+    if signature is not None:
+        native["signature"] = signature
+    return native
+
+def _claude_usage_from_raw_session(
+    raw_session: _ClaudeRawSession,
+    *,
+    model_runs: list[dict[str, object]],
+) -> dict[str, object]:
+    warnings: list[str] = []
+    model_run_ref_by_request_id = {
+        request_id: model_run_id
+        for model_run in model_runs
+        if (request_id := _string_or_none(model_run.get("request_id"))) is not None
+        and (model_run_id := _string_or_none(model_run.get("model_run_id"))) is not None
+    }
+    grouped_records: dict[str, list[_ClaudeRawRecord]] = {}
+    for record in raw_session.records:
+        if _claude_message_role(record) != "assistant":
+            continue
+        request_id = _claude_record_request_id(record)
+        if request_id is None:
+            continue
+        if not _claude_record_has_usage_payload(record):
+            continue
+        grouped_records.setdefault(request_id, []).append(record)
+
+    usage: list[dict[str, object]] = []
+    for request_id, records in sorted(
+        grouped_records.items(),
+        key=lambda item: item[1][0].record_index if item[1] else 0,
+    ):
+        selected_record = records[-1]
+        usage.append(
+            _claude_usage_record_from_record(
+                record=selected_record,
+                request_id=request_id,
+                model_run_ref=model_run_ref_by_request_id.get(request_id),
+                index=len(usage) + 1,
+            )
+        )
+
+    return {
+        "usage": usage,
+        "warnings": warnings,
+    }
+
+def _claude_usage_record_from_record(
+    *,
+    record: _ClaudeRawRecord,
+    request_id: str,
+    model_run_ref: str | None,
+    index: int,
+) -> dict[str, object]:
+    usage_payload = record.message.get("usage")
+    if not isinstance(usage_payload, dict):
+        usage_payload = {}
+
+    usage: dict[str, object] = {
+        "usage_id": f"usage-{index}",
+        "scope": "model_run",
+        "provider": "claude-code",
+        "native": _claude_usage_native(
+            record,
+            request_id=request_id,
+            usage_payload=usage_payload,
+        ),
+    }
+    model = _string_or_none(record.message.get("model"))
+    if model is not None:
+        usage["model"] = model
+    if model_run_ref is not None:
+        usage["model_run_ref"] = model_run_ref
+    for source_key, target_key in (
+        ("input_tokens", "input_tokens"),
+        ("output_tokens", "output_tokens"),
+        ("cache_read_input_tokens", "cache_read_tokens"),
+        ("cache_creation_input_tokens", "cache_write_tokens"),
+    ):
+        value = _int_or_none(usage_payload.get(source_key))
+        if value is not None:
+            usage[target_key] = value
+    usage["request_count"] = 1
+    if record.source_refs:
+        usage["source_refs"] = record.source_refs
+    return usage
+
+def _claude_usage_native(
+    record: _ClaudeRawRecord,
+    *,
+    request_id: str,
+    usage_payload: dict[str, Any],
+) -> dict[str, object]:
+    native = _claude_event_native(record)
+    native["request_id"] = request_id
+    message_id = _string_or_none(record.message.get("id"))
+    if message_id is not None:
+        native["message_id"] = message_id
+    native["usage"] = usage_payload
+    return native
+
+def _claude_reasoning_attachment_warnings(
+    *,
+    raw_counts: dict[str, object],
+    model_runs: list[dict[str, object]],
+) -> list[str]:
+    raw_reasoning_count = _int_or_zero(raw_counts.get("reasoning_evidence_count"))
+    normalized_reasoning_count = _model_run_reasoning_count(model_runs)
+    if raw_reasoning_count <= normalized_reasoning_count:
+        return []
+    return [
+        "claude thinking evidence outside normalized request groups is preserved in events/messages only: "
+        f"raw={raw_reasoning_count} normalized={normalized_reasoning_count}"
+    ]
+
+def _claude_usage_attachment_warnings(
+    *,
+    raw_counts: dict[str, object],
+    usage: list[dict[str, object]],
+) -> list[str]:
+    raw_usage_count = _int_or_zero(raw_counts.get("usage_evidence_count"))
+    if raw_usage_count <= len(usage):
+        return []
+    return [
+        "claude usage evidence outside normalized request groups is preserved in events/messages only: "
+        f"raw={raw_usage_count} normalized={len(usage)}"
+    ]
 
 def _claude_record_kind(record: _ClaudeRawRecord) -> str:
     if record.record_type is not None:
@@ -517,6 +1731,32 @@ def _claude_canonical_event_candidate_count(raw_counts: dict[str, object]) -> in
         _int_or_zero(raw_counts.get("records")) - _claude_last_prompt_record_count(raw_counts),
     )
 
+def _claude_unsupported_concepts(
+    *,
+    raw_counts: dict[str, object],
+    messages: list[dict[str, object]],
+    model_runs: list[dict[str, object]],
+    tool_invocations: list[dict[str, object]],
+    events: list[dict[str, object]],
+    usage: list[dict[str, object]],
+) -> list[str]:
+    unsupported: list[str] = []
+    if _int_or_zero(raw_counts.get("visible_message_record_count")) and not messages:
+        unsupported.append("messages")
+    if _int_or_zero(raw_counts.get("distinct_request_count")) and not model_runs:
+        unsupported.append("model_runs")
+    if _int_or_zero(raw_counts.get("tool_use_count")) and not tool_invocations:
+        unsupported.append("tool_invocations")
+    if _claude_canonical_event_candidate_count(raw_counts) and not events:
+        unsupported.append("events")
+    raw_reasoning_count = _int_or_zero(raw_counts.get("reasoning_evidence_count"))
+    if raw_reasoning_count and _model_run_reasoning_count(model_runs) < raw_reasoning_count:
+        unsupported.append("reasoning")
+    raw_usage_count = _int_or_zero(raw_counts.get("usage_evidence_count"))
+    if raw_usage_count and len(usage) < raw_usage_count:
+        unsupported.append("usage")
+    return unsupported
+
 def _claude_normalization_metadata(
     *,
     raw_counts: dict[str, object],
@@ -569,6 +1809,30 @@ def _claude_normalization_coverage(
         message_status = "normalized"
     elif raw_visible_message_count and len(messages):
         message_status = "partial"
+    raw_request_count = _int_or_zero(raw_counts.get("distinct_request_count"))
+    model_run_status = _coverage_status(len(model_runs))
+    if raw_request_count and len(model_runs) == raw_request_count:
+        model_run_status = "normalized"
+    elif raw_request_count and len(model_runs):
+        model_run_status = "partial"
+    raw_tool_use_count = _int_or_zero(raw_counts.get("tool_use_count"))
+    tool_status = _coverage_status(len(tool_invocations))
+    if raw_tool_use_count and len(tool_invocations) == raw_tool_use_count:
+        tool_status = "normalized"
+    elif raw_tool_use_count and len(tool_invocations):
+        tool_status = "partial"
+    raw_reasoning_count = _int_or_zero(raw_counts.get("reasoning_evidence_count"))
+    reasoning_status = _coverage_status(reasoning_count)
+    if raw_reasoning_count and reasoning_count == raw_reasoning_count:
+        reasoning_status = "normalized"
+    elif raw_reasoning_count and reasoning_count:
+        reasoning_status = "partial"
+    raw_usage_count = _int_or_zero(raw_counts.get("usage_evidence_count"))
+    usage_status = _coverage_status(len(usage))
+    if raw_usage_count and len(usage) == raw_usage_count:
+        usage_status = "normalized"
+    elif raw_usage_count and len(usage):
+        usage_status = "partial"
     return {
         "messages": {
             "status": message_status,
@@ -576,13 +1840,13 @@ def _claude_normalization_coverage(
             "normalized_count": len(messages),
         },
         "model_runs": {
-            "status": _coverage_status(len(model_runs)),
-            "raw_request_count": _int_or_zero(raw_counts.get("distinct_request_count")),
+            "status": model_run_status,
+            "raw_request_count": raw_request_count,
             "normalized_count": len(model_runs),
         },
         "tool_invocations": {
-            "status": _coverage_status(len(tool_invocations)),
-            "raw_tool_use_count": _int_or_zero(raw_counts.get("tool_use_count")),
+            "status": tool_status,
+            "raw_tool_use_count": raw_tool_use_count,
             "raw_tool_result_count": _int_or_zero(raw_counts.get("tool_result_count")),
             "normalized_count": len(tool_invocations),
         },
@@ -594,13 +1858,13 @@ def _claude_normalization_coverage(
             "normalized_count": len(events),
         },
         "reasoning": {
-            "status": _coverage_status(reasoning_count),
-            "raw_evidence_count": _int_or_zero(raw_counts.get("reasoning_evidence_count")),
+            "status": reasoning_status,
+            "raw_evidence_count": raw_reasoning_count,
             "normalized_count": reasoning_count,
         },
         "usage": {
-            "status": _coverage_status(len(usage)),
-            "raw_evidence_count": _int_or_zero(raw_counts.get("usage_evidence_count")),
+            "status": usage_status,
+            "raw_evidence_count": raw_usage_count,
             "normalized_count": len(usage),
         },
     }
