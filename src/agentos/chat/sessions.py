@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from agentos._core.sequences import _unique_paths, _unique_strings
 from agentos.chat.providers import ProviderInstance, ProviderInstanceAnchor
 
 
@@ -63,31 +64,6 @@ def _earliest_timestamp(*values: float | None) -> float | None:
         return None
     return min(timestamps)
 
-
-def _unique_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
-    unique_paths: list[Path] = []
-    seen_paths: set[Path] = set()
-
-    for path in paths:
-        if path in seen_paths:
-            continue
-        seen_paths.add(path)
-        unique_paths.append(path)
-
-    return tuple(unique_paths)
-
-
-def _unique_strings(values: tuple[str, ...]) -> tuple[str, ...]:
-    unique_values: list[str] = []
-    seen_values: set[str] = set()
-
-    for value in values:
-        if value in seen_values:
-            continue
-        seen_values.add(value)
-        unique_values.append(value)
-
-    return tuple(unique_values)
 
 
 def _build_path_finding(

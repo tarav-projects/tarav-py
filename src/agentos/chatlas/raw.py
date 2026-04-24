@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from agentos._core.errors import CliError
+from agentos._core.sequences import _unique_strings
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.scan import normalize_rel
 from agentos.chat.providers import (
@@ -1060,16 +1061,6 @@ def _validate_unique_chatlas_destinations(provider_instances: tuple[ProviderInst
             )
         seen_destinations[key] = provider_instance
 
-
-def _unique_strings(values: tuple[str, ...]) -> tuple[str, ...]:
-    items: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        items.append(value)
-    return tuple(items)
 
 
 def _derive_chatlas_instance_name(

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import glob
 import json
 import os
 import sqlite3
@@ -11,6 +10,7 @@ from typing import Any, Callable
 from urllib.parse import unquote
 
 from agentos._core.errors import CliError
+from agentos._core.sequences import _unique_paths, _unique_strings
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
@@ -2338,31 +2338,6 @@ def _glob_paths(target: Path, pattern: str) -> list[Path]:
 
     return paths
 
-
-def _unique_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
-    unique_paths: list[Path] = []
-    seen_paths: set[Path] = set()
-
-    for path in paths:
-        if path in seen_paths:
-            continue
-        seen_paths.add(path)
-        unique_paths.append(path)
-
-    return tuple(unique_paths)
-
-
-def _unique_strings(values: tuple[str, ...]) -> tuple[str, ...]:
-    unique_values: list[str] = []
-    seen_values: set[str] = set()
-
-    for value in values:
-        if value in seen_values:
-            continue
-        seen_values.add(value)
-        unique_values.append(value)
-
-    return tuple(unique_values)
 
 
 def _sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:

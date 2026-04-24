@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import quote
 
 from agentos._core.errors import CliError
+from agentos._core.sequences import _unique_paths
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import (
     agentos_home_dir,
@@ -1063,16 +1064,6 @@ def _build_explicit_provider_instance_anchors(
     )
     return tuple(anchors)
 
-
-def _unique_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
-    unique_paths: list[Path] = []
-    seen_paths: set[Path] = set()
-    for path in paths:
-        if path in seen_paths:
-            continue
-        seen_paths.add(path)
-        unique_paths.append(path)
-    return tuple(unique_paths)
 
 
 @dataclass(frozen=True)

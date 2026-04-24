@@ -5,6 +5,7 @@ import sys
 
 from agentos.chat._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
 from agentos.chatlas.core import (
+    _SUMMARY_LEVELS,
     chatlas_export,
     chatlas_query,
     chatlas_stats,
@@ -265,7 +266,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     query_parser.add_argument(
         "--summary-level",
-        choices=("brief", "detailed"),
+        choices=_SUMMARY_LEVELS,
         action="append",
         dest="summary_levels",
         help="Include one derived summary level in summary_levels. Repeat for multiple levels.",
@@ -306,7 +307,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     export_parser.add_argument(
         "--summary-level",
-        choices=("brief", "detailed"),
+        choices=_SUMMARY_LEVELS,
         default="brief",
         dest="summary_level",
         help="Summary level used when --kind summary is selected (default: brief).",

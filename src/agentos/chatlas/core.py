@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
+from agentos._core.sequences import _unique_strings
 from agentos._core.git_ops import git_has_staged_changes, run_git
 from agentos._core.project import agentos_home_dir
 from agentos.chat.core import (
@@ -1172,16 +1173,6 @@ def _validate_chatlas_limit(limit: int | None) -> None:
     if limit < 1:
         raise CliError("chatlas query limit must be greater than 0")
 
-
-def _unique_strings(values: tuple[str, ...]) -> tuple[str, ...]:
-    items: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        items.append(value)
-    return tuple(items)
 
 
 def _normalize_summary_levels(levels: tuple[str, ...]) -> tuple[str, ...]:
