@@ -240,10 +240,6 @@ def _copilot_events_from_raw_events(
                     f"copilot tool event {raw_event.event_index} has no matching tool invocation for toolCallId {call_id}"
                 )
 
-        interaction_id = _string_or_none(raw_event.data.get("interactionId"))
-        if interaction_id is not None:
-            event["interaction_id"] = interaction_id
-
         events.append(event)
 
     return {
@@ -261,6 +257,9 @@ def _copilot_event_native(raw_event: _CopilotRawEvent) -> dict[str, object]:
         native["event_id"] = raw_event.event_id
     if raw_event.parent_id is not None:
         native["parent_id"] = raw_event.parent_id
+    interaction_id = _string_or_none(raw_event.data.get("interactionId"))
+    if interaction_id is not None:
+        native["interaction_id"] = interaction_id
     return native
 
 def _copilot_event_turn_id(raw_event: _CopilotRawEvent) -> str | None:
@@ -353,10 +352,30 @@ def _copilot_message_visibility(raw_event: _CopilotRawEvent) -> str:
 def _copilot_message_content_blocks(
     raw_event: _CopilotRawEvent,
 ) -> tuple[list[dict[str, object]], list[str], list[str]]:
-    value = raw_event.data.get("content")
-    return _copilot_text_content_blocks(
-        value,
-        context=f"copilot message event {raw_event.event_index} content",
+    content_value = raw_event.data.get("content")
+    if content_value is None:
+        blocks, content_types, warnings = [], [], []
+    else:
+        blocks, content_types, warnings = _copilot_text_content_blocks(
+            content_value,
+            context=f"copilot message event {raw_event.event_index} content",
+        )
+    tool_request_blocks, tool_request_types, tool_request_warnings = (
+        _copilot_tool_request_content_blocks(
+            raw_event.data.get("toolRequests"),
+            context=f"copilot message event {raw_event.event_index} toolRequests",
+        )
+    )
+    attachment_blocks, attachment_types, attachment_warnings = (
+        _copilot_attachment_content_blocks(
+            raw_event.data.get("attachments"),
+            context=f"copilot message event {raw_event.event_index} attachments",
+        )
+    )
+    return (
+        [*blocks, *tool_request_blocks, *attachment_blocks],
+        [*content_types, *tool_request_types, *attachment_types],
+        [*warnings, *tool_request_warnings, *attachment_warnings],
     )
 
 def _copilot_text_content_blocks(
@@ -398,6 +417,15 @@ def _copilot_text_content_blocks(
         if item_type is not None:
             content_types.append(item_type)
 
+        if item_type == "image":
+            blocks.append(
+                {
+                    "type": "image",
+                    "native": item,
+                }
+            )
+            continue
+
         text = _string_or_none(item.get("text"))
         if text is None:
             blocks.append(
@@ -412,6 +440,74 @@ def _copilot_text_content_blocks(
         blocks.append({"type": "text", "text": text})
 
     return blocks, content_types, warnings
+
+def _copilot_tool_request_content_blocks(
+    value: object,
+    *,
+    context: str,
+) -> tuple[list[dict[str, object]], list[str], list[str]]:
+    if not isinstance(value, list):
+        return [], [], []
+    blocks: list[dict[str, object]] = []
+    warnings: list[str] = []
+    for item_index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            warnings.append(f"{context} item {item_index} is not an object")
+            continue
+        block: dict[str, object] = {
+            "type": "tool_call",
+            "native": item,
+        }
+        call_id = _string_or_none(item.get("toolCallId"))
+        if call_id is not None:
+            block["call_id"] = call_id
+        tool_name = _string_or_none(item.get("name")) or _string_or_none(
+            item.get("toolName")
+        )
+        if tool_name is not None:
+            block["tool_name"] = tool_name
+        arguments = item.get("arguments")
+        if arguments is not None:
+            block["arguments"] = arguments
+        blocks.append(block)
+    return blocks, ["tool_request"] * len(blocks), warnings
+
+def _copilot_attachment_content_blocks(
+    value: object,
+    *,
+    context: str,
+) -> tuple[list[dict[str, object]], list[str], list[str]]:
+    if not isinstance(value, list):
+        return [], [], []
+    blocks: list[dict[str, object]] = []
+    warnings: list[str] = []
+    for item_index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            blocks.append(
+                {
+                    "type": "unknown",
+                    "native": {"value": item},
+                }
+            )
+            warnings.append(f"{context} item {item_index} is not an object")
+            continue
+        mime_type = _copilot_attachment_mime_type(item)
+        blocks.append(
+            {
+                "type": "image"
+                if mime_type is not None and mime_type.startswith("image/")
+                else "unknown",
+                "native": item,
+            }
+        )
+    return blocks, ["attachment"] * len(blocks), warnings
+
+def _copilot_attachment_mime_type(attachment: dict[str, Any]) -> str | None:
+    for key in ("mimeType", "mime_type", "contentType", "content_type"):
+        mime_type = _string_or_none(attachment.get(key))
+        if mime_type is not None:
+            return mime_type
+    return None
 
 def _copilot_is_tool_request_only_message(raw_event: _CopilotRawEvent) -> bool:
     if raw_event.event_type != "assistant.message":
@@ -666,7 +762,7 @@ def _copilot_tool_invocation_from_group(
         first_complete,
     )
     if interaction_id is not None:
-        invocation["interaction_id"] = interaction_id
+        invocation["native"]["interaction_id"] = interaction_id
     turn_id = _copilot_tool_turn_id(first_request, first_start, first_complete)
     if turn_id is not None:
         invocation["turn_id"] = turn_id
@@ -1034,7 +1130,7 @@ def _copilot_model_run_from_turn(
         span_end_index=span_end_index,
     )
     if interaction_id is not None:
-        model_run["interaction_id"] = interaction_id
+        native["interaction_id"] = interaction_id
 
     output_tokens = _copilot_model_run_output_tokens(
         raw_events,
@@ -1297,10 +1393,10 @@ def _copilot_reasoning_entries_from_event(
     offset: int,
 ) -> list[dict[str, object]]:
     reasoning_trace: list[dict[str, object]] = []
-    for source_key, visibility, target_key in (
-        ("reasoningText", "visible", "text"),
-        ("reasoningOpaque", "opaque", "opaque_content"),
-        ("encryptedContent", "encrypted", "encrypted_content"),
+    for source_key, visibility in (
+        ("reasoningText", "visible"),
+        ("reasoningOpaque", "opaque"),
+        ("encryptedContent", "encrypted"),
     ):
         value = _string_or_none(raw_event.data.get(source_key))
         if value is None:
@@ -1308,7 +1404,7 @@ def _copilot_reasoning_entries_from_event(
         reasoning: dict[str, object] = {
             "reasoning_id": f"reasoning-{model_run_index}-{offset + len(reasoning_trace) + 1}",
             "visibility": visibility,
-            target_key: value,
+            "content": value,
             "native": _copilot_reasoning_native(
                 raw_event,
                 reasoning_key=source_key,

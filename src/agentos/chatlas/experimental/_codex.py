@@ -231,6 +231,8 @@ def _codex_messages_from_raw_rollout(
                 "record_type": record.record_type,
                 "payload_type": payload_type,
                 "role": role,
+                "record_index": record.record_index,
+                "line": record.line,
             },
         }
         if record.timestamp is not None:
@@ -501,7 +503,13 @@ def _codex_model_runs_from_raw_rollout(
 
     model_runs: list[dict[str, object]] = []
     if turn_context_records:
-        for record in turn_context_records:
+        last_record_index = rollout.records[-1].record_index if rollout.records else 0
+        for index, record in enumerate(turn_context_records):
+            next_record = (
+                turn_context_records[index + 1]
+                if index + 1 < len(turn_context_records)
+                else None
+            )
             model_runs.append(
                 _codex_model_run_from_turn_context(
                     record=record,
@@ -512,6 +520,12 @@ def _codex_model_runs_from_raw_rollout(
                     events=events,
                     reasoning_trace=reasoning_trace,
                     single_model_run=len(turn_context_records) == 1,
+                    span_start_record_index=record.record_index,
+                    span_end_record_index=(
+                        next_record.record_index - 1
+                        if next_record is not None
+                        else last_record_index
+                    ),
                 )
             )
     else:
@@ -539,9 +553,14 @@ def _codex_model_runs_from_raw_rollout(
                 "codex model run inferred without turn_context record"
             )
 
-    if len(model_runs) != 1 and reasoning_trace:
+    attached_reasoning_count = sum(
+        len(_dict_list(model_run.get("reasoning_trace")))
+        for model_run in model_runs
+    )
+    if attached_reasoning_count < len(reasoning_trace):
         warnings.append(
-            "codex reasoning records do not expose turn_id; reasoning_trace was not attached to multiple model runs"
+            "codex reasoning records could not be attached to a model run: "
+            f"{len(reasoning_trace) - attached_reasoning_count} records"
         )
 
     return {
@@ -559,6 +578,8 @@ def _codex_model_run_from_turn_context(
     events: list[dict[str, object]],
     reasoning_trace: list[dict[str, object]],
     single_model_run: bool,
+    span_start_record_index: int,
+    span_end_record_index: int,
 ) -> dict[str, object]:
     turn_id = _string_or_none(record.payload.get("turn_id"))
     model_run = _codex_base_model_run(
@@ -568,10 +589,16 @@ def _codex_model_run_from_turn_context(
         events=events,
         turn_context=record.payload,
     )
-    model_run["native"] = {
-        "turn_context_present": True,
-        "turn_context_record_index": record.record_index,
-    }
+    native = _record_native_dict(model_run)
+    native.update(
+        {
+            "turn_context_present": True,
+            "turn_context_record_index": record.record_index,
+            "span_start_record_index": span_start_record_index,
+            "span_end_record_index": span_end_record_index,
+        }
+    )
+    model_run["native"] = native
     if record.source_refs:
         model_run["source_refs"] = record.source_refs
     _codex_attach_model_run_refs(
@@ -582,6 +609,8 @@ def _codex_model_run_from_turn_context(
         events=events,
         reasoning_trace=reasoning_trace,
         single_model_run=single_model_run,
+        span_start_record_index=span_start_record_index,
+        span_end_record_index=span_end_record_index,
     )
     return model_run
 
@@ -603,9 +632,9 @@ def _codex_inferred_model_run(
         events=events,
         turn_context=None,
     )
-    model_run["native"] = {
-        "turn_context_present": False,
-    }
+    native = _record_native_dict(model_run)
+    native["turn_context_present"] = False
+    model_run["native"] = native
     _codex_attach_model_run_refs(
         model_run,
         turn_id=turn_id,
@@ -614,6 +643,8 @@ def _codex_inferred_model_run(
         events=events,
         reasoning_trace=reasoning_trace,
         single_model_run=single_model_run,
+        span_start_record_index=None,
+        span_end_record_index=None,
     )
     return model_run
 
@@ -639,7 +670,9 @@ def _codex_base_model_run(
         "model_run_id": f"model-run-{index}",
         "provider": "codex",
         "status": _codex_model_run_status(task_started, task_complete),
+        "native": {},
     }
+    native = _record_native_dict(model_run)
     if turn_id is not None:
         model_run["turn_id"] = turn_id
 
@@ -647,10 +680,10 @@ def _codex_base_model_run(
         session_meta.get("model_provider") if session_meta is not None else None
     )
     if model_provider is not None:
-        model_run["model_provider"] = model_provider
+        native["model_provider"] = model_provider
 
     if turn_context is not None:
-        _codex_apply_turn_context_fields(model_run, turn_context)
+        _codex_apply_turn_context_fields(model_run, native, turn_context)
 
     started_at = _event_timestamp(task_started) or _string_or_none(
         turn_context.get("timestamp") if turn_context is not None else None
@@ -664,17 +697,18 @@ def _codex_base_model_run(
     task_started_data = _event_data(task_started)
     model_context_window = task_started_data.get("model_context_window")
     if model_context_window is not None:
-        model_run["model_context_window"] = model_context_window
+        native["model_context_window"] = model_context_window
 
     task_complete_data = _event_data(task_complete)
     duration_ms = task_complete_data.get("duration_ms")
     if duration_ms is not None:
-        model_run["duration_ms"] = duration_ms
+        native["duration_ms"] = duration_ms
 
     return model_run
 
 def _codex_apply_turn_context_fields(
     model_run: dict[str, object],
+    native: dict[str, object],
     turn_context: dict[str, Any],
 ) -> None:
     model = _string_or_none(turn_context.get("model"))
@@ -682,7 +716,7 @@ def _codex_apply_turn_context_fields(
         model_run["model"] = model
     effort = _string_or_none(turn_context.get("effort"))
     if effort is not None:
-        model_run["reasoning_effort"] = effort
+        native["reasoning_effort"] = effort
     for key in (
         "cwd",
         "approval_policy",
@@ -694,10 +728,10 @@ def _codex_apply_turn_context_fields(
     ):
         value = turn_context.get(key)
         if value is not None:
-            model_run[key] = value
+            native[key] = value
     collaboration_mode = _codex_collaboration_mode(turn_context.get("collaboration_mode"))
     if collaboration_mode is not None:
-        model_run["collaboration_mode"] = collaboration_mode
+        native["collaboration_mode"] = collaboration_mode
 
 def _codex_collaboration_mode(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
@@ -726,64 +760,155 @@ def _codex_attach_model_run_refs(
     events: list[dict[str, object]],
     reasoning_trace: list[dict[str, object]],
     single_model_run: bool,
+    span_start_record_index: int | None,
+    span_end_record_index: int | None,
 ) -> None:
-    message_refs = _codex_model_run_message_refs(messages, single_model_run)
+    message_refs = _codex_model_run_message_refs(
+        messages,
+        single_model_run=single_model_run,
+        span_start_record_index=span_start_record_index,
+        span_end_record_index=span_end_record_index,
+    )
     if message_refs:
         model_run["message_refs"] = message_refs
-    tool_refs = _codex_model_run_tool_refs(tool_invocations, turn_id, single_model_run)
+    tool_refs = _codex_model_run_tool_refs(
+        tool_invocations,
+        turn_id=turn_id,
+        single_model_run=single_model_run,
+        span_start_record_index=span_start_record_index,
+        span_end_record_index=span_end_record_index,
+    )
     if tool_refs:
         model_run["tool_invocation_refs"] = tool_refs
-    event_refs = _codex_model_run_event_refs(events, turn_id, single_model_run)
+    event_refs = _codex_model_run_event_refs(
+        events,
+        turn_id=turn_id,
+        single_model_run=single_model_run,
+        span_start_record_index=span_start_record_index,
+        span_end_record_index=span_end_record_index,
+    )
     if event_refs:
         model_run["event_refs"] = event_refs
-    if reasoning_trace and single_model_run:
-        model_run["reasoning_trace"] = reasoning_trace
+    attached_reasoning = _codex_model_run_reasoning_trace(
+        reasoning_trace,
+        single_model_run=single_model_run,
+        span_start_record_index=span_start_record_index,
+        span_end_record_index=span_end_record_index,
+    )
+    if attached_reasoning:
+        model_run["reasoning_trace"] = attached_reasoning
 
 def _codex_model_run_message_refs(
     messages: list[dict[str, object]],
+    *,
     single_model_run: bool,
+    span_start_record_index: int | None,
+    span_end_record_index: int | None,
 ) -> list[str]:
-    if not single_model_run:
+    refs: list[str] = []
+    has_span = (
+        span_start_record_index is not None and span_end_record_index is not None
+    )
+    if not has_span and not single_model_run:
+        return refs
+    for message in messages:
+        message_id = _string_or_none(message.get("message_id"))
+        if message_id is None:
+            continue
+        record_index = _record_native_int_field(message, "record_index")
+        if record_index is None:
+            record_index = _source_ref_first_record_index(message.get("source_refs"))
+        if has_span:
+            if (
+                record_index is not None
+                and span_start_record_index <= record_index <= span_end_record_index
+            ):
+                refs.append(message_id)
+            continue
+        refs.append(message_id)
+    return refs
+
+def _codex_model_run_reasoning_trace(
+    reasoning_trace: list[dict[str, object]],
+    *,
+    single_model_run: bool,
+    span_start_record_index: int | None,
+    span_end_record_index: int | None,
+) -> list[dict[str, object]]:
+    has_span = (
+        span_start_record_index is not None and span_end_record_index is not None
+    )
+    if not has_span and not single_model_run:
         return []
-    return [
-        message_id
-        for message in messages
-        if (message_id := _string_or_none(message.get("message_id"))) is not None
-    ]
+    attached: list[dict[str, object]] = []
+    for reasoning in reasoning_trace:
+        record_index = _record_native_int_field(reasoning, "record_index")
+        if has_span:
+            if (
+                record_index is not None
+                and span_start_record_index <= record_index <= span_end_record_index
+            ):
+                attached.append(reasoning)
+            continue
+        attached.append(reasoning)
+    return attached
 
 def _codex_model_run_tool_refs(
     tool_invocations: list[dict[str, object]],
+    *,
     turn_id: str | None,
     single_model_run: bool,
+    span_start_record_index: int | None,
+    span_end_record_index: int | None,
 ) -> list[str]:
     refs: list[str] = []
+    has_span = (
+        span_start_record_index is not None and span_end_record_index is not None
+    )
     for invocation in tool_invocations:
         invocation_id = _string_or_none(invocation.get("tool_invocation_id"))
         if invocation_id is None:
             continue
-        if single_model_run:
-            refs.append(invocation_id)
-            continue
         invocation_turn_id = _string_or_none(invocation.get("turn_id"))
         if turn_id is not None and invocation_turn_id == turn_id:
+            refs.append(invocation_id)
+            continue
+        if has_span and any(
+            span_start_record_index <= record_index <= span_end_record_index
+            for record_index in _source_ref_record_indices(invocation.get("source_refs"))
+        ):
+            refs.append(invocation_id)
+            continue
+        if single_model_run and not has_span:
             refs.append(invocation_id)
     return refs
 
 def _codex_model_run_event_refs(
     events: list[dict[str, object]],
+    *,
     turn_id: str | None,
     single_model_run: bool,
+    span_start_record_index: int | None,
+    span_end_record_index: int | None,
 ) -> list[str]:
     refs: list[str] = []
+    has_span = (
+        span_start_record_index is not None and span_end_record_index is not None
+    )
     for event in events:
         event_id = _string_or_none(event.get("event_id"))
         if event_id is None:
             continue
-        if single_model_run:
-            refs.append(event_id)
-            continue
         event_turn_id = _event_turn_id(event)
         if turn_id is not None and event_turn_id == turn_id:
+            refs.append(event_id)
+            continue
+        record_index = _record_native_int_field(event, "record_index")
+        if has_span and record_index is not None:
+            if span_start_record_index <= record_index <= span_end_record_index:
+                refs.append(event_id)
+            continue
+        if single_model_run and not has_span:
             refs.append(event_id)
     return refs
 
@@ -796,24 +921,22 @@ def _codex_reasoning_trace_from_raw_rollout(
             continue
         if _string_or_none(record.payload.get("type")) != "reasoning":
             continue
+        native: dict[str, object] = {
+            "record_type": record.record_type,
+            "payload_type": "reasoning",
+            "record_index": record.record_index,
+        }
+        summary = record.payload.get("summary")
+        if summary is not None:
+            native["summary"] = summary
         reasoning: dict[str, object] = {
             "reasoning_id": f"reasoning-{len(reasoning_trace) + 1}",
             "visibility": _codex_reasoning_visibility(record.payload),
-            "native": {
-                "record_type": record.record_type,
-                "payload_type": "reasoning",
-                "record_index": record.record_index,
-            },
+            "native": native,
         }
         if record.timestamp is not None:
             reasoning["timestamp"] = record.timestamp
-        encrypted_content = _string_or_none(record.payload.get("encrypted_content"))
-        if encrypted_content is not None:
-            reasoning["encrypted_content"] = encrypted_content
-        summary = record.payload.get("summary")
-        if summary is not None:
-            reasoning["summary"] = summary
-        content = record.payload.get("content")
+        content = _codex_reasoning_content(record.payload)
         if content is not None:
             reasoning["content"] = content
         if record.source_refs:
@@ -821,10 +944,21 @@ def _codex_reasoning_trace_from_raw_rollout(
         reasoning_trace.append(reasoning)
     return reasoning_trace
 
+def _codex_reasoning_content(payload: dict[str, Any]) -> object | None:
+    content = payload.get("content")
+    if content is not None:
+        return content
+    encrypted_content = _string_or_none(payload.get("encrypted_content"))
+    if encrypted_content is not None:
+        return encrypted_content
+    return payload.get("summary")
+
 def _codex_reasoning_visibility(payload: dict[str, Any]) -> str:
+    if payload.get("content") is not None:
+        return "visible"
     if _string_or_none(payload.get("encrypted_content")) is not None:
         return "encrypted"
-    if payload.get("content") is not None or payload.get("summary") is not None:
+    if payload.get("summary") is not None:
         return "visible"
     return "unknown"
 
@@ -860,7 +994,7 @@ def _codex_model_run_status(
     if task_complete is not None:
         return "completed"
     if task_started is not None:
-        return "started"
+        return "running"
     return "unknown"
 
 def _codex_event_data(payload: dict[str, Any]) -> dict[str, object]:
@@ -993,6 +1127,11 @@ def _codex_tool_invocation_from_group(
             },
         },
     }
+    raw_status = _string_or_none(
+        first_exec_end.payload.get("status") if first_exec_end is not None else None
+    )
+    if raw_status is not None:
+        invocation["native"]["raw_status"] = raw_status
 
     started_at = _codex_tool_started_at(first_call, first_output, first_exec_end)
     if started_at is not None:
@@ -1044,12 +1183,38 @@ def _codex_tool_status(
     exec_end_record: _CodexRawRecord | None,
 ) -> str:
     if exec_end_record is not None:
-        status = _string_or_none(exec_end_record.payload.get("status"))
+        status = _codex_canonical_tool_status(exec_end_record)
         if status is not None:
             return status
     if output_record is not None:
         return "completed"
+    if exec_end_record is not None:
+        return "unknown"
     return "requested"
+
+def _codex_canonical_tool_status(record: _CodexRawRecord) -> str | None:
+    raw_status = _string_or_none(record.payload.get("status"))
+    if raw_status is not None:
+        normalized_status = raw_status.strip().lower()
+        if normalized_status in {"completed", "complete", "ok", "success", "succeeded"}:
+            return "completed"
+        if normalized_status in {
+            "failed",
+            "error",
+            "errored",
+            "cancelled",
+            "canceled",
+            "interrupted",
+            "timeout",
+            "timed_out",
+        }:
+            return "failed"
+        if normalized_status == "requested":
+            return "requested"
+    exit_code = _int_or_none(record.payload.get("exit_code"))
+    if exit_code is not None:
+        return "completed" if exit_code == 0 else "failed"
+    return None
 
 def _codex_tool_started_at(
     call_record: _CodexRawRecord | None,
@@ -1185,12 +1350,32 @@ def _codex_message_content_blocks(
                     f"codex message record {record.record_index} content item {item_index} has no text"
                 )
                 continue
+            block: dict[str, object] = {
+                "type": "text",
+                "text": text,
+            }
+            if item_type == "input_text":
+                block["origin"] = "input"
+            elif item_type == "output_text":
+                block["origin"] = "output"
+            blocks.append(block)
+            continue
+
+        if item_type == "image":
             blocks.append(
                 {
-                    "type": "text",
-                    "text": text,
+                    "type": "image",
+                    "native": item,
                 }
             )
+            continue
+
+        if item_type in {"function_call", "tool_call", "tool_use"}:
+            blocks.append(_codex_tool_call_content_block(item))
+            continue
+
+        if item_type in {"function_call_output", "tool_result"}:
+            blocks.append(_codex_tool_result_content_block(item))
             continue
 
         blocks.append(
@@ -1204,6 +1389,44 @@ def _codex_message_content_blocks(
         )
 
     return blocks, content_types, warnings
+
+def _codex_tool_call_content_block(item: dict[str, Any]) -> dict[str, object]:
+    block: dict[str, object] = {
+        "type": "tool_call",
+        "native": item,
+    }
+    call_id = _string_or_none(item.get("id")) or _string_or_none(item.get("call_id"))
+    if call_id is not None:
+        block["call_id"] = call_id
+    tool_name = _string_or_none(item.get("name"))
+    if tool_name is not None:
+        block["tool_name"] = tool_name
+    arguments = item.get("input")
+    if arguments is None:
+        arguments = item.get("arguments")
+    if arguments is not None:
+        block["arguments"] = arguments
+    return block
+
+def _codex_tool_result_content_block(item: dict[str, Any]) -> dict[str, object]:
+    block: dict[str, object] = {
+        "type": "tool_result",
+        "native": item,
+    }
+    call_id = _string_or_none(item.get("tool_use_id")) or _string_or_none(
+        item.get("call_id")
+    )
+    if call_id is not None:
+        block["call_id"] = call_id
+    content = item.get("content")
+    if content is None:
+        content = item.get("output")
+    if content is not None:
+        block["content"] = content
+    is_error = item.get("is_error")
+    if isinstance(is_error, bool):
+        block["is_error"] = is_error
+    return block
 
 def _codex_message_visibility(
     role: str,

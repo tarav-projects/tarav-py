@@ -277,6 +277,11 @@ def _source_ref_first_event_index(source_refs: object) -> int | None:
         return event_index
     return None
 
+def _source_ref_first_record_index(source_refs: object) -> int | None:
+    for record_index in _source_ref_record_indices(source_refs):
+        return record_index
+    return None
+
 def _source_ref_event_indices(source_refs: object) -> list[int]:
     if not isinstance(source_refs, list):
         return []
@@ -288,6 +293,18 @@ def _source_ref_event_indices(source_refs: object) -> list[int]:
         if event_index is not None:
             event_indices.append(event_index)
     return event_indices
+
+def _source_ref_record_indices(source_refs: object) -> list[int]:
+    if not isinstance(source_refs, list):
+        return []
+    record_indices: list[int] = []
+    for source_ref in source_refs:
+        if not isinstance(source_ref, dict):
+            continue
+        record_index = _int_or_none(source_ref.get("record_index"))
+        if record_index is not None:
+            record_indices.append(record_index)
+    return record_indices
 
 def _record_native_dict(record: dict[str, object]) -> dict[str, object]:
     native = record.get("native")
@@ -362,7 +379,9 @@ __all__ = [
     "_int_or_none",
     "_int_or_zero",
     "_source_ref_first_event_index",
+    "_source_ref_first_record_index",
     "_source_ref_event_indices",
+    "_source_ref_record_indices",
     "_record_native_dict",
     "_record_native_int_field",
     "_record_native_string_field",

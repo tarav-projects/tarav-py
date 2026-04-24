@@ -421,6 +421,137 @@ def _write_codex_model_run_rollout(
     _set_iso_mtime(path, records[-1]["timestamp"])
 
 
+def _write_codex_multi_turn_model_run_rollout(
+    path: Path,
+    *,
+    session_id: str,
+) -> None:
+    records = [
+        {
+            "timestamp": "2026-03-08T01:08:58.000Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "originator": "codex_cli_rs",
+                "source": "cli",
+                "model_provider": "openai",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:08:59.000Z",
+            "type": "turn_context",
+            "payload": {
+                "turn_id": "turn-1",
+                "model": "gpt-5.4-mini",
+                "effort": "high",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:00.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "task_started",
+                "turn_id": "turn-1",
+                "started_at": 1772946540,
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:01.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "first turn question"}],
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:02.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "reasoning",
+                "content": None,
+                "encrypted_content": "first turn reasoning",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:03.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "first turn answer"}],
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:04.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "task_complete",
+                "turn_id": "turn-1",
+                "completed_at": 1772946544,
+                "duration_ms": 4000,
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:05.000Z",
+            "type": "turn_context",
+            "payload": {
+                "turn_id": "turn-2",
+                "model": "gpt-5.4-mini",
+                "effort": "medium",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:06.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "task_started",
+                "turn_id": "turn-2",
+                "started_at": 1772946546,
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:07.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "second turn question"}],
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:08.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "reasoning",
+                "content": None,
+                "encrypted_content": "second turn reasoning",
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:09.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "second turn answer"}],
+            },
+        },
+        {
+            "timestamp": "2026-03-08T01:09:10.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "task_complete",
+                "turn_id": "turn-2",
+                "completed_at": 1772946550,
+                "duration_ms": 4000,
+            },
+        },
+    ]
+    _write(path, "\n".join(json.dumps(record) for record in records) + "\n")
+    _set_iso_mtime(path, records[-1]["timestamp"])
+
+
 def _write_codex_session_index(
     path: Path,
     *,
@@ -3544,12 +3675,14 @@ def test_chatlas_experimental_export_emits_session_model_json(
         {
             "type": "text",
             "text": "experimental export user<system-reminder>\nmetadata tail",
+            "origin": "input",
         }
     ]
     assert payload["chat"]["messages"][1]["content"] == [
         {
             "type": "text",
             "text": "experimental export assistant",
+            "origin": "output",
         }
     ]
     assert payload["chat"]["messages"][0]["visibility"] == "conversation"
@@ -4279,18 +4412,18 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
         {
             "reasoning_id": "reasoning-1-1",
             "visibility": "visible",
-            "text": "inspect repository layout before replying",
-                "native": {
-                    "record_index": 2,
-                    "line": 2,
-                    "record_type": "assistant",
-                    "uuid": "msg-assistant-1",
-                    "parent_uuid": "msg-user-1",
-                    "message_role": "assistant",
-                    "reasoning_key": "thinking",
-                    "content_index": 1,
-                    "message_id": "msg-tool-assistant-1",
-                    "request_id": "req-claude-1",
+            "content": "inspect repository layout before replying",
+            "native": {
+                "record_index": 2,
+                "line": 2,
+                "record_type": "assistant",
+                "uuid": "msg-assistant-1",
+                "parent_uuid": "msg-user-1",
+                "message_role": "assistant",
+                "reasoning_key": "thinking",
+                "content_index": 1,
+                "message_id": "msg-tool-assistant-1",
+                "request_id": "req-claude-1",
                 "model": "claude-opus-4-6",
                 "signature": "claude-thinking-signature-1",
             },
@@ -4592,8 +4725,20 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         {"source_ref_id": "source-1", "event_index": 4, "line": 4}
     ]
     assert messages[2]["content"] == [
-        {"type": "text", "text": "copilot experimental assistant"}
+        {"type": "text", "text": "copilot experimental assistant"},
+        {
+            "type": "tool_call",
+            "native": {
+                "toolCallId": "tool-call-1",
+                "name": "shell",
+                "arguments": {"cmd": "git status"},
+            },
+            "call_id": "tool-call-1",
+            "tool_name": "shell",
+            "arguments": {"cmd": "git status"},
+        },
     ]
+    assert messages[2]["native"]["content_types"] == ["text", "tool_request"]
     assert messages[2]["native"]["reasoning_text"] == "check repository state"
     assert messages[2]["native"]["reasoning_opaque"] == "opaque-reasoning"
     assert messages[2]["native"]["encrypted_content"] == "encrypted-reasoning"
@@ -4606,6 +4751,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         }
     ]
     tool_invocations = payload["chat"]["tool_invocations"]
+    assert "interaction_id" not in tool_invocations[0]
     assert tool_invocations == [
         {
             "tool_invocation_id": "tool-invocation-1",
@@ -4642,6 +4788,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                         "detailedContent": "On branch main\nnothing to commit, working tree clean",
                     },
                 },
+                "interaction_id": "copilot-interaction-1",
             },
             "started_at": "2026-04-18T11:00:03.000Z",
             "ended_at": "2026-04-18T11:00:03.500Z",
@@ -4651,7 +4798,6 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 "detailed_content": "On branch main\nnothing to commit, working tree clean",
             },
             "model": "gpt-4.1",
-            "interaction_id": "copilot-interaction-1",
             "source_refs": [
                 {"source_ref_id": "source-1", "event_index": 6, "line": 6},
                 {"source_ref_id": "source-1", "event_index": 7, "line": 7},
@@ -4707,6 +4853,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
             ],
         }
     ]
+    assert "interaction_id" not in payload["chat"]["model_runs"][0]
     assert payload["chat"]["model_runs"] == [
         {
             "model_run_id": "model-run-1",
@@ -4721,12 +4868,12 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 "turn_start_event_id": "event-turn-start-1",
                 "turn_end_event_index": 9,
                 "turn_end_event_id": "event-turn-end-1",
+                "interaction_id": "copilot-interaction-1",
             },
             "turn_id": "0",
             "started_at": "2026-04-18T11:00:01.500Z",
             "ended_at": "2026-04-18T11:00:03.700Z",
             "model": "gpt-4.1",
-            "interaction_id": "copilot-interaction-1",
             "output_tokens": 17,
             "source_refs": [
                 {"source_ref_id": "source-1", "event_index": 5, "line": 5},
@@ -4745,7 +4892,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 {
                     "reasoning_id": "reasoning-1-1",
                     "visibility": "visible",
-                    "text": "check repository state",
+                    "content": "check repository state",
                     "native": {
                         "event_type": "assistant.message",
                         "event_index": 6,
@@ -4766,7 +4913,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 {
                     "reasoning_id": "reasoning-1-2",
                     "visibility": "opaque",
-                    "opaque_content": "opaque-reasoning",
+                    "content": "opaque-reasoning",
                     "native": {
                         "event_type": "assistant.message",
                         "event_index": 6,
@@ -4787,7 +4934,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 {
                     "reasoning_id": "reasoning-1-3",
                     "visibility": "encrypted",
-                    "encrypted_content": "encrypted-reasoning",
+                    "content": "encrypted-reasoning",
                     "native": {
                         "event_type": "assistant.message",
                         "event_index": 6,
@@ -4959,8 +5106,16 @@ def test_chatlas_experimental_export_preserves_codex_context_messages(
         "context",
         "conversation",
     ]
-    assert messages[0]["content"] == [{"type": "text", "text": "developer instruction"}]
-    assert messages[1]["content"] == [{"type": "text", "text": "<environment_context>\nctx"}]
+    assert messages[0]["content"] == [
+        {"type": "text", "text": "developer instruction", "origin": "input"}
+    ]
+    assert messages[1]["content"] == [
+        {
+            "type": "text",
+            "text": "<environment_context>\nctx",
+            "origin": "input",
+        }
+    ]
     assert messages[2]["content"] == [
         {
             "type": "unknown",
@@ -5088,6 +5243,7 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
             "function_call_output": [6],
             "exec_command_end": [7],
         },
+        "raw_status": "completed",
     }
 
     assert incomplete["tool_invocation_id"] == "tool-invocation-2"
@@ -5236,35 +5392,49 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
     model_run = model_runs[0]
     assert model_run["model_run_id"] == "model-run-1"
     assert model_run["provider"] == "codex"
-    assert model_run["model_provider"] == "openai"
     assert model_run["model"] == "gpt-5.4-mini"
-    assert model_run["reasoning_effort"] == "high"
     assert model_run["turn_id"] == "turn-1"
     assert model_run["status"] == "completed"
     assert model_run["started_at"] == "2026-03-08T01:09:00.000Z"
     assert model_run["ended_at"] == "2026-03-08T01:09:05.000Z"
-    assert model_run["duration_ms"] == 5000
-    assert model_run["model_context_window"] == 258400
-    assert model_run["cwd"] == "/tmp/project"
-    assert model_run["approval_policy"] == "never"
-    assert model_run["sandbox_policy"] == {"type": "workspace-write"}
-    assert model_run["collaboration_mode"] == {
-        "mode": "default",
-        "settings": {
-            "model": "gpt-5.4-mini",
-            "reasoning_effort": "high",
-        },
-    }
-    assert "developer_instructions" not in json.dumps(model_run["collaboration_mode"])
+    assert "model_provider" not in model_run
+    assert "reasoning_effort" not in model_run
+    assert "duration_ms" not in model_run
+    assert "model_context_window" not in model_run
+    assert "cwd" not in model_run
+    assert "approval_policy" not in model_run
+    assert "sandbox_policy" not in model_run
+    assert "collaboration_mode" not in model_run
     assert "user_instructions" not in model_run
     assert "summary" not in model_run
     assert model_run["message_refs"] == ["message-1"]
     assert model_run["tool_invocation_refs"] == ["tool-invocation-1"]
     assert model_run["event_refs"] == ["event-1", "event-2", "event-3"]
     assert model_run["native"] == {
+        "model_provider": "openai",
+        "reasoning_effort": "high",
+        "cwd": "/tmp/project",
+        "approval_policy": "never",
+        "sandbox_policy": {"type": "workspace-write"},
+        "current_date": "2026-03-08",
+        "timezone": "UTC",
+        "truncation_policy": {"mode": "tokens", "limit": 10000},
+        "realtime_active": False,
+        "collaboration_mode": {
+            "mode": "default",
+            "settings": {
+                "model": "gpt-5.4-mini",
+                "reasoning_effort": "high",
+            },
+        },
+        "model_context_window": 258400,
+        "duration_ms": 5000,
         "turn_context_present": True,
         "turn_context_record_index": 2,
+        "span_start_record_index": 2,
+        "span_end_record_index": 9,
     }
+    assert "developer_instructions" not in json.dumps(model_run["native"]["collaboration_mode"])
     assert model_run["source_refs"] == [
         {"source_ref_id": "source-1", "record_index": 2, "line": 2}
     ]
@@ -5278,15 +5448,87 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
                 "record_type": "response_item",
                 "payload_type": "reasoning",
                 "record_index": 5,
+                "summary": [{"type": "summary_text", "text": "check context"}],
             },
             "timestamp": "2026-03-08T01:09:02.000Z",
-            "encrypted_content": "encrypted-reasoning",
-            "summary": [{"type": "summary_text", "text": "check context"}],
+            "content": "encrypted-reasoning",
             "source_refs": [
                 {"source_ref_id": "source-1", "record_index": 5, "line": 5}
             ],
         }
     ]
+
+
+def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(agentos_home / "config.json")
+
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fda"
+    thread_name = "experimental-multi-turn-model-run-thread"
+    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    _write_codex_multi_turn_model_run_rollout(rollout_path, session_id=session_id)
+    _write_codex_session_index(
+        home / ".codex" / "session_index.jsonl",
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "codex")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["normalization"]["counts"] == {
+        "messages": 4,
+        "model_runs": 2,
+        "tool_invocations": 0,
+        "events": 4,
+        "usage": 0,
+        "reasoning_traces": 2,
+    }
+    assert payload["normalization"]["coverage"]["model_runs"] == {
+        "status": "normalized",
+        "raw_turn_context_count": 2,
+        "normalized_count": 2,
+    }
+    assert payload["normalization"]["coverage"]["reasoning"] == {
+        "status": "normalized",
+        "raw_count": 2,
+        "normalized_count": 2,
+    }
+
+    first_run, second_run = payload["chat"]["model_runs"]
+    assert first_run["turn_id"] == "turn-1"
+    assert first_run["message_refs"] == ["message-1", "message-2"]
+    assert first_run["event_refs"] == ["event-1", "event-2"]
+    assert [entry["content"] for entry in first_run["reasoning_trace"]] == [
+        "first turn reasoning"
+    ]
+    assert first_run["native"]["span_start_record_index"] == 2
+    assert first_run["native"]["span_end_record_index"] == 7
+
+    assert second_run["turn_id"] == "turn-2"
+    assert second_run["message_refs"] == ["message-3", "message-4"]
+    assert second_run["event_refs"] == ["event-3", "event-4"]
+    assert [entry["content"] for entry in second_run["reasoning_trace"]] == [
+        "second turn reasoning"
+    ]
+    assert second_run["native"]["span_start_record_index"] == 8
+    assert second_run["native"]["span_end_record_index"] == 13
+
+    assert not any(
+        warning.startswith("codex reasoning records could not be attached to a model run:")
+        for warning in payload["normalization"]["warnings"]
+    )
 
 
 def test_chatlas_export_supports_detailed_summary_json_output(

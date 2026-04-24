@@ -312,9 +312,11 @@ def _claude_messages_from_raw_session(
         if role not in {"user", "assistant"}:
             continue
 
-        content, content_types, content_warnings = _claude_message_content_blocks(record)
+        content, content_types, content_warnings, include_message = (
+            _claude_message_content_blocks(record)
+        )
         warnings.extend(content_warnings)
-        if not content:
+        if not content or not include_message:
             continue
 
         message: dict[str, object] = {
@@ -1299,7 +1301,7 @@ def _claude_reasoning_entries_from_record(
         reasoning: dict[str, object] = {
             "reasoning_id": f"reasoning-{model_run_index}-{offset + len(reasoning_trace) + 1}",
             "visibility": "visible",
-            "text": text,
+            "content": text,
             "native": _claude_reasoning_native(
                 record,
                 content_index=content_index,
@@ -1567,7 +1569,7 @@ def _claude_record_content_item_count(
 
 def _claude_message_content_blocks(
     record: _ClaudeRawRecord,
-) -> tuple[list[dict[str, object]], list[str], list[str]]:
+) -> tuple[list[dict[str, object]], list[str], list[str], bool]:
     role = _claude_message_role(record)
     content = record.message.get("content")
 
@@ -1575,16 +1577,24 @@ def _claude_message_content_blocks(
         if isinstance(content, str):
             text = _string_or_none(content)
             if text is None:
-                return [], ["string"], []
-            return [{"type": "text", "text": text}], ["string"], []
+                return [], ["string"], [], False
+            return [{"type": "text", "text": text}], ["string"], [], True
         if not isinstance(content, list):
-            return [], [], []
+            return [], [], [], False
 
         blocks: list[dict[str, object]] = []
         content_types: list[str] = []
         warnings: list[str] = []
+        include_message = False
         for item_index, item in enumerate(content, start=1):
             if not isinstance(item, dict):
+                blocks.append(
+                    {
+                        "type": "unknown",
+                        "native": {"value": item},
+                    }
+                )
+                include_message = True
                 warnings.append(
                     f"claude user message record {record.record_index} content item {item_index} is not an object"
                 )
@@ -1592,27 +1602,45 @@ def _claude_message_content_blocks(
             item_type = _string_or_none(item.get("type"))
             if item_type is not None:
                 content_types.append(item_type)
-            if item_type != "text":
+            if item_type == "text":
+                text = _string_or_none(item.get("text"))
+                if text is None:
+                    warnings.append(
+                        f"claude user message record {record.record_index} content item {item_index} has no text"
+                    )
+                    continue
+                blocks.append({"type": "text", "text": text})
+                include_message = True
                 continue
-            text = _string_or_none(item.get("text"))
-            if text is None:
-                warnings.append(
-                    f"claude user message record {record.record_index} content item {item_index} has no text"
-                )
+            if item_type == "image":
+                blocks.append({"type": "image", "native": item})
+                include_message = True
                 continue
-            blocks.append({"type": "text", "text": text})
-        return blocks, content_types, warnings
+            if item_type == "tool_result":
+                blocks.append(_claude_tool_result_content_block(item))
+                continue
+            blocks.append({"type": "unknown", "native": item})
+            include_message = True
+        return blocks, content_types, warnings, include_message
 
     if role != "assistant":
-        return [], [], []
+        return [], [], [], False
     if not isinstance(content, list):
-        return [], [], []
+        return [], [], [], False
 
     blocks: list[dict[str, object]] = []
     content_types: list[str] = []
     warnings = []
+    include_message = False
     for item_index, item in enumerate(content, start=1):
         if not isinstance(item, dict):
+            blocks.append(
+                {
+                    "type": "unknown",
+                    "native": {"value": item},
+                }
+            )
+            include_message = True
             warnings.append(
                 f"claude assistant message record {record.record_index} content item {item_index} is not an object"
             )
@@ -1620,16 +1648,58 @@ def _claude_message_content_blocks(
         item_type = _string_or_none(item.get("type"))
         if item_type is not None:
             content_types.append(item_type)
-        if item_type != "text":
+        if item_type == "text":
+            text = _string_or_none(item.get("text"))
+            if text is None:
+                warnings.append(
+                    f"claude assistant message record {record.record_index} content item {item_index} has no text"
+                )
+                continue
+            blocks.append({"type": "text", "text": text})
+            include_message = True
             continue
-        text = _string_or_none(item.get("text"))
-        if text is None:
-            warnings.append(
-                f"claude assistant message record {record.record_index} content item {item_index} has no text"
-            )
+        if item_type == "image":
+            blocks.append({"type": "image", "native": item})
+            include_message = True
             continue
-        blocks.append({"type": "text", "text": text})
-    return blocks, content_types, warnings
+        if item_type == "tool_use":
+            blocks.append(_claude_tool_call_content_block(item))
+            continue
+        blocks.append({"type": "unknown", "native": item})
+        include_message = True
+    return blocks, content_types, warnings, include_message
+
+def _claude_tool_call_content_block(item: dict[str, Any]) -> dict[str, object]:
+    block: dict[str, object] = {
+        "type": "tool_call",
+        "native": item,
+    }
+    call_id = _string_or_none(item.get("id"))
+    if call_id is not None:
+        block["call_id"] = call_id
+    tool_name = _string_or_none(item.get("name"))
+    if tool_name is not None:
+        block["tool_name"] = tool_name
+    arguments = item.get("input")
+    if arguments is not None:
+        block["arguments"] = arguments
+    return block
+
+def _claude_tool_result_content_block(item: dict[str, Any]) -> dict[str, object]:
+    block: dict[str, object] = {
+        "type": "tool_result",
+        "native": item,
+    }
+    call_id = _string_or_none(item.get("tool_use_id"))
+    if call_id is not None:
+        block["call_id"] = call_id
+    content = item.get("content")
+    if content is not None:
+        block["content"] = content
+    is_error = item.get("is_error")
+    if isinstance(is_error, bool):
+        block["is_error"] = is_error
+    return block
 
 def _claude_message_native(
     record: _ClaudeRawRecord,
