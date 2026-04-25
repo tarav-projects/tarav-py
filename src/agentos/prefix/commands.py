@@ -6,7 +6,9 @@ from pathlib import Path
 
 from agentos._core.scan import resolve_relative_paths_under_root, resolve_root_dir
 
-from .core import DEFAULT_EXCLUDES, PrefixScanConfig, collect_prefixes, format_prefix, next_prefix_value
+from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
+
+from .core import PrefixScanConfig, collect_prefixes, format_prefix, next_prefix_value
 
 
 def _cmd_prefix_next(args: argparse.Namespace) -> int:
@@ -25,7 +27,7 @@ def _cmd_prefix_next(args: argparse.Namespace) -> int:
     if args.no_default_excludes:
         excludes = tuple(args.exclude)
     else:
-        excludes = tuple(DEFAULT_EXCLUDES) + tuple(args.exclude)
+        excludes = tuple(DEFAULT_SCAN_EXCLUDES) + tuple(args.exclude)
 
     config = PrefixScanConfig(
         root=root,

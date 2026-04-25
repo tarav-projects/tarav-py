@@ -7,9 +7,6 @@ from pathlib import Path
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES, iter_target_files
 
 
-DEFAULT_EXCLUDES = DEFAULT_SCAN_EXCLUDES
-
-
 @dataclass(frozen=True)
 class PrefixScanConfig:
     root: Path

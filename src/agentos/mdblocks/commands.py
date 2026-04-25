@@ -7,9 +7,10 @@ from pathlib import Path
 
 from agentos._core.scan import resolve_root_dir, resolve_targets_under_root
 
+from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
+
 from .core import (
     BLOCK_SEPARATOR,
-    DEFAULT_MARKDOWN_EXCLUDES,
     DEFAULT_MAX_HEADING_LEVEL,
     DEFAULT_MIN_HEADING_LEVEL,
     HARD_MAX_BLOCK_LINES,
@@ -36,7 +37,7 @@ def _build_markdown_scan_config(args: argparse.Namespace) -> MarkdownScanConfig:
     if args.no_default_excludes:
         excludes = tuple(args.exclude)
     else:
-        excludes = tuple(DEFAULT_MARKDOWN_EXCLUDES) + tuple(args.exclude)
+        excludes = tuple(DEFAULT_SCAN_EXCLUDES) + tuple(args.exclude)
 
     return MarkdownScanConfig(
         root=root,

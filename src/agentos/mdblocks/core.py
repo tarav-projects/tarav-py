@@ -8,8 +8,6 @@ from typing import Any
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES, iter_target_files
 
 
-DEFAULT_MARKDOWN_EXCLUDES = DEFAULT_SCAN_EXCLUDES
-
 BLOCK_SEPARATOR = "****"
 DEFAULT_MIN_HEADING_LEVEL = 2
 DEFAULT_MAX_HEADING_LEVEL = 6

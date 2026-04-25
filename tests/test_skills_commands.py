@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import build_parser, main
-from _helpers import set_fake_agentos_home as _set_fake_agentos_home, write_project_marker as _write_project_marker
+from _helpers import set_fake_agentos_home as _set_fake_agentos_home, write_global_routing_config as _write_global_routing_config, write_project_marker as _write_project_marker
 
 NO_SELECTED_SKILLS_MESSAGE = "No skills are selected for import into this project target."
 DEFAULT_DEPOT_PATHS = (Path(".agents/skills"), Path(".claude/skills"))
@@ -36,31 +36,6 @@ def _resolved_default_depots(root: Path) -> list[Path]:
 
 def _resolved_skill_paths(root: Path, skill_name: str) -> list[str]:
     return [str(depot_root / skill_name) for depot_root in _resolved_default_depots(root)]
-
-
-def _write_global_routing_config(
-    agentos_home: Path,
-    *,
-    sources: dict[str, dict[str, object]] | None = None,
-    profiles: dict[str, dict[str, object]] | None = None,
-    default_profile: str | None = None,
-) -> None:
-    routing_payload: dict[str, object] = {
-        "sources": {} if sources is None else sources,
-        "profiles": {} if profiles is None else profiles,
-    }
-    if default_profile is not None:
-        routing_payload["default_profile"] = default_profile
-
-    config_path = agentos_home / "config.json"
-    payload = {
-        "class": "agentos.global.config",
-        "schema_version": 1,
-        "skills": {
-            "routing": routing_payload,
-        },
-    }
-    config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _write_project_config(

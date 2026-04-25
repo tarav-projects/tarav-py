@@ -23,6 +23,34 @@ def write_project_marker(project_root: Path) -> None:
     )
 
 
+def write_global_routing_config(
+    agentos_home: Path,
+    *,
+    sources: dict[str, dict[str, object]] | None = None,
+    profiles: dict[str, dict[str, object]] | None = None,
+    default_profile: str | None = None,
+) -> None:
+    routing_payload: dict[str, object] = {
+        "sources": {} if sources is None else sources,
+        "profiles": {} if profiles is None else profiles,
+    }
+    if default_profile is not None:
+        routing_payload["default_profile"] = default_profile
+
+    write_text_file(
+        agentos_home / "config.json",
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "schema_version": 1,
+                "skills": {"routing": routing_payload},
+            },
+            indent=2,
+        )
+        + "\n",
+    )
+
+
 def set_fake_agentos_home(monkeypatch: object, root: Path) -> Path:
     agentos_home = root / ".agentos"
     agentos_home.mkdir(parents=True, exist_ok=True)
