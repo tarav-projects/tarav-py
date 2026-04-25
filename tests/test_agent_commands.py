@@ -7,57 +7,7 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import main
-from _helpers import write_project_marker as _write_project_marker, write_text_file as _write
-
-
-def _write_global_config(
-    path: Path,
-    *,
-    provider_instances: list[dict[str, object]] | None = None,
-    account_instance_ids: list[str] | None = None,
-) -> None:
-    agent_payload: dict[str, object] = {
-        "instances": provider_instances or [],
-    }
-    if account_instance_ids is not None:
-        agent_payload["accounts"] = {
-            "instance_ids": account_instance_ids,
-        }
-    _write(
-        path,
-        json.dumps(
-            {
-                "class": "agentos.global.config",
-                "schema_version": 1,
-                "agent": agent_payload,
-            }
-        ),
-    )
-
-
-def _write_project_config(
-    path: Path,
-    *,
-    provider_instances: list[dict[str, object]] | None = None,
-    account_instance_ids: list[str] | None = None,
-) -> None:
-    agent_payload: dict[str, object] = {
-        "instances": provider_instances or [],
-    }
-    if account_instance_ids is not None:
-        agent_payload["accounts"] = {
-            "instance_ids": account_instance_ids,
-        }
-    _write(
-        path,
-        json.dumps(
-            {
-                "class": "agentos.project.config",
-                "schema_version": 1,
-                "agent": agent_payload,
-            }
-        ),
-    )
+from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
 
 
 def test_agent_run_uses_configured_provider_instance(

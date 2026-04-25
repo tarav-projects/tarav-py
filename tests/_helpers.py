@@ -51,6 +51,71 @@ def write_global_routing_config(
     )
 
 
+def _build_agent_payload(
+    *,
+    provider_instances: list[dict[str, object]] | None = None,
+    account_instance_ids: list[str] | None = None,
+    accounts_usage_total: dict[str, object] | None = None,
+) -> dict[str, object]:
+    agent_payload: dict[str, object] = {
+        "instances": provider_instances or [],
+    }
+    accounts_payload: dict[str, object] = {}
+    if account_instance_ids is not None:
+        accounts_payload["instance_ids"] = account_instance_ids
+    if accounts_usage_total is not None:
+        accounts_payload["usage_total"] = accounts_usage_total
+    if accounts_payload:
+        agent_payload["accounts"] = accounts_payload
+    return agent_payload
+
+
+def write_global_config(
+    path: Path,
+    *,
+    provider_instances: list[dict[str, object]] | None = None,
+    account_instance_ids: list[str] | None = None,
+    accounts_usage_total: dict[str, object] | None = None,
+) -> None:
+    write_text_file(
+        path,
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "schema_version": 1,
+                "agent": _build_agent_payload(
+                    provider_instances=provider_instances,
+                    account_instance_ids=account_instance_ids,
+                    accounts_usage_total=accounts_usage_total,
+                ),
+            }
+        ),
+    )
+
+
+def write_project_config(
+    path: Path,
+    *,
+    provider_instances: list[dict[str, object]] | None = None,
+    account_instance_ids: list[str] | None = None,
+    accounts_usage_total: dict[str, object] | None = None,
+) -> None:
+    write_text_file(
+        path,
+        json.dumps(
+            {
+                "class": "agentos.project.config",
+                "schema_version": 1,
+                "agent": _build_agent_payload(
+                    provider_instances=provider_instances,
+                    account_instance_ids=account_instance_ids,
+                    accounts_usage_total=accounts_usage_total,
+                ),
+            }
+        ),
+    )
+
+
 def set_fake_agentos_home(monkeypatch: object, root: Path) -> Path:
     agentos_home = root / ".agentos"
     agentos_home.mkdir(parents=True, exist_ok=True)

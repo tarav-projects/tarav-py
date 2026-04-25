@@ -17,7 +17,7 @@ from agentos.chat import accounts as chat_accounts
 from agentos.chat import commands as chat_commands
 from agentos.cli import main
 from agentos.tara_tapes.core import load_tara_tape_manifest, read_tara_tape_segment_records
-from _helpers import write_project_marker as _write_project_marker, write_text_file as _write
+from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
 
 
 def _span_tuples(rendered) -> list[tuple[int, int, str]]:  # type: ignore[no-untyped-def]
@@ -163,62 +163,6 @@ def _usage_stats_payload(
             }
         ],
     }
-
-
-def _write_global_config(
-    path: Path,
-    *,
-    provider_instances: list[dict[str, object]] | None = None,
-    account_instance_ids: list[str] | None = None,
-    accounts_usage_total: dict[str, object] | None = None,
-) -> None:
-    agent_payload: dict[str, object] = {
-        "instances": provider_instances or [],
-    }
-    accounts_payload: dict[str, object] = {}
-    if account_instance_ids is not None:
-        accounts_payload["instance_ids"] = account_instance_ids
-    if accounts_usage_total is not None:
-        accounts_payload["usage_total"] = accounts_usage_total
-    if accounts_payload:
-        agent_payload["accounts"] = accounts_payload
-    payload: dict[str, object] = {
-        "class": "agentos.global.config",
-        "schema_version": 1,
-        "agent": agent_payload,
-    }
-    _write(
-        path,
-        json.dumps(payload),
-    )
-
-
-def _write_project_config(
-    path: Path,
-    *,
-    provider_instances: list[dict[str, object]] | None = None,
-    account_instance_ids: list[str] | None = None,
-    accounts_usage_total: dict[str, object] | None = None,
-) -> None:
-    agent_payload: dict[str, object] = {
-        "instances": provider_instances or [],
-    }
-    accounts_payload: dict[str, object] = {}
-    if account_instance_ids is not None:
-        accounts_payload["instance_ids"] = account_instance_ids
-    if accounts_usage_total is not None:
-        accounts_payload["usage_total"] = accounts_usage_total
-    if accounts_payload:
-        agent_payload["accounts"] = accounts_payload
-    payload: dict[str, object] = {
-        "class": "agentos.project.config",
-        "schema_version": 1,
-        "agent": agent_payload,
-    }
-    _write(
-        path,
-        json.dumps(payload),
-    )
 
 
 def test_chat_accounts_stats_summarizes_configured_provider_instances(

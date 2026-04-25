@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Account usage plots</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        background:
+          radial-gradient(circle at top left, rgba(245, 158, 11, 0.15), transparent 28%),
+          radial-gradient(circle at top right, rgba(37, 99, 235, 0.14), transparent 30%),
+          linear-gradient(180deg, #fbf7ef 0%, #f4efe3 100%);
+        color: #231f1a;
+        font-family: "Avenir Next", "Helvetica Neue", "Trebuchet MS", sans-serif;
+      }
+      main {
+        max-width: 1320px;
+        margin: 0 auto;
+      }
+      h1 {
+        margin: 0 0 10px 0;
+        font-size: 42px;
+        line-height: 1.05;
+      }
+      .lede {
+        margin: 0 0 26px 0;
+        color: #6e665e;
+        max-width: 900px;
+        font-size: 16px;
+      }
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 14px;
+        margin: 0 0 28px 0;
+      }
+      .card {
+        background: white;
+        border: 1px solid #e7dece;
+        border-radius: 18px;
+        padding: 16px 18px;
+        box-shadow: 0 16px 38px rgba(35, 31, 26, 0.08);
+      }
+      .kicker {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #6e665e;
+        margin-bottom: 6px;
+      }
+      .value {
+        font-size: 30px;
+        font-weight: 700;
+      }
+      .note {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #6e665e;
+      }
+      .plot-link {
+        margin: 0 0 22px 0;
+      }
+      .plot-link h2 {
+        margin: 0 0 8px 0;
+        font-size: 20px;
+      }
+      .plot-link iframe {
+        width: 100%;
+        height: 520px;
+        border: 0;
+        border-radius: 24px;
+        box-shadow: 0 18px 40px rgba(35, 31, 26, 0.08);
+        background: white;
+      }
+      .table-panel {
+        background: white;
+        border: 1px solid #e7dece;
+        border-radius: 24px;
+        padding: 18px 20px;
+        box-shadow: 0 16px 38px rgba(35, 31, 26, 0.08);
+        margin: 0 0 22px 0;
+      }
+      .table-panel h2 {
+        margin: 0 0 4px 0;
+        font-size: 20px;
+      }
+      .table-panel p {
+        margin: 0 0 14px 0;
+        color: #6e665e;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th, td {
+        text-align: left;
+        padding: 9px 10px;
+        border-bottom: 1px solid #efe7d8;
+        vertical-align: top;
+      }
+      th {
+        font-size: 11px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: #6e665e;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Account usage plots</h1>
+      <p class="lede">
+        These plots come straight from the periodic `agentos` account-stats tape at
+        <code>/Users/pereiro/.agentos/chat-account-stats/history</code>. The pipeline normalizes older provider-native
+        snapshots and newer unified usage snapshots into one plotting view.
+      </p>
+      <section class="card-grid"><div class='card'><div class='kicker'>Snapshots</div><div class='value'>15,695</div><div class='note'>31 days of capture history</div></div><div class='card'><div class='kicker'>Accounts Seen</div><div class='value'>7</div><div class='note'>Claude Code, Codex, Copilot, Copilot CLI</div></div><div class='card'><div class='kicker'>Limit Series</div><div class='value'>17</div><div class='note'>normalized across schema changes</div></div><div class='card'><div class='kicker'>Latest Snapshot</div><div class='value'>2026-04-25 07:11</div><div class='note'>most recent tape record</div></div></section>
+      <section class='plot-link'><h2>Snapshot cadence</h2><iframe src='snapshot_cadence.html' loading='lazy'></iframe></section><section class='plot-link'><h2>Selected-accounts aggregate</h2><iframe src='aggregate_usage.html' loading='lazy'></iframe></section><section class='plot-link'><h2>Usage trajectories</h2><iframe src='usage_trajectories.html' loading='lazy'></iframe></section><section class='plot-link'><h2>Lead or lag versus cycle progress</h2><iframe src='usage_gap.html' loading='lazy'></iframe></section><section class='plot-link'><h2>Daily error counts</h2><iframe src='error_counts.html' loading='lazy'></iframe></section>
+      <section class="table-panel">
+        <h2>Latest account snapshot</h2>
+        <p>The most recent known status row for each account instance seen in the tape.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th>Account</th>
+              <th>Check</th>
+              <th>Usage</th>
+              <th>Recorded</th>
+            </tr>
+          </thead>
+          <tbody><tr><td>Claude Code</td><td>Claude main</td><td>ok</td><td>ok</td><td>2026-04-25 07:11</td></tr><tr><td>Codex</td><td>Codex Main</td><td>ok</td><td>ok</td><td>2026-04-20 17:25</td></tr><tr><td>Codex</td><td>Codex jp</td><td>ok</td><td>ok</td><td>2026-04-25 07:11</td></tr><tr><td>Codex</td><td>Codex mm</td><td>ok</td><td>ok</td><td>2026-04-25 07:11</td></tr><tr><td>Codex</td><td>Codex tk</td><td>ok</td><td>ok</td><td>2026-04-25 07:11</td></tr><tr><td>Copilot CLI</td><td>Copilot main</td><td>ok</td><td>ok</td><td>2026-04-25 07:11</td></tr><tr><td>Copilot</td><td>Copilot main</td><td>ok</td><td>ok</td><td>2026-04-14 23:48</td></tr></tbody>
+        </table>
+      </section>
+      <section class="table-panel">
+        <h2>Fastest burn-rate intervals</h2>
+        <p>Only consecutive points inside the same reset window are compared.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Series</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Delta</th>
+              <th>Minutes</th>
+              <th>%/hour</th>
+            </tr>
+          </thead>
+          <tbody><tr><td>Codex / Codex jp / Burst</td><td>2026-04-25 07:09</td><td>2026-04-25 07:11</td><td>2%</td><td>1.8</td><td>67.92</td></tr><tr><td>Codex / Codex jp / Weekly</td><td>2026-04-25 07:09</td><td>2026-04-25 07:11</td><td>1%</td><td>1.8</td><td>33.96</td></tr><tr><td>Codex / Codex tk / Weekly</td><td>2026-04-25 07:09</td><td>2026-04-25 07:11</td><td>0%</td><td>1.8</td><td>0.00</td></tr><tr><td>Claude Code / Claude main / Weekly</td><td>2026-04-25 07:09</td><td>2026-04-25 07:11</td><td>0%</td><td>1.8</td><td>0.00</td></tr><tr><td>Claude Code / Claude main / Burst</td><td>2026-04-25 07:09</td><td>2026-04-25 07:11</td><td>0%</td><td>1.8</td><td>0.00</td></tr><tr><td>Codex / Codex mm / Burst</td><td>2026-04-25 07:09</td><td>2026-04-25 07:11</td><td>0%</td><td>1.8</td><td>0.00</td></tr><tr><td>Codex / Codex mm / Weekly</td><td>2026-04-25 07:09</td><td>2026-04-25 07:11</td><td>0%</td><td>1.8</td><td>0.00</td></tr><tr><td>Copilot CLI / Copilot main / Chat</td><td>2026-04-25 07:09</td><td>2026-04-25 07:11</td><td>0%</td><td>1.8</td><td>0.00</td></tr><tr><td>Copilot CLI / Copilot main / Premium</td><td>2026-04-25 07:09</td><td>2026-04-25 07:11</td><td>0%</td><td>1.8</td><td>0.00</td></tr><tr><td>Codex / Codex jp / Burst</td><td>2026-04-25 07:08</td><td>2026-04-25 07:09</td><td>0%</td><td>1.7</td><td>0.00</td></tr><tr><td>Codex / Codex jp / Weekly</td><td>2026-04-25 07:08</td><td>2026-04-25 07:09</td><td>0%</td><td>1.7</td><td>0.00</td></tr><tr><td>Codex / Codex tk / Weekly</td><td>2026-04-25 07:08</td><td>2026-04-25 07:09</td><td>0%</td><td>1.7</td><td>0.00</td></tr></tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>
