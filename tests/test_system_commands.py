@@ -4,21 +4,7 @@ import json
 from pathlib import Path
 
 from agentos.cli import main
-from _helpers import write_text_file as _write
-
-
-def _write_project_marker(project_root: Path) -> None:
-    _write(
-        project_root / ".agentos" / "project.json",
-        json.dumps(
-            {
-                "class": "agentos.project",
-                "schema_version": 1,
-                "project_id": "00000000-0000-4000-8000-000000000001",
-            }
-        )
-        + "\n",
-    )
+from _helpers import write_project_marker as _write_project_marker, write_text_file as _write
 
 
 def test_doctor_supports_explicit_project_target(

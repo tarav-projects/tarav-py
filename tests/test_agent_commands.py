@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import main
-from _helpers import write_text_file as _write
+from _helpers import write_project_marker as _write_project_marker, write_text_file as _write
 
 
 def _write_global_config(
@@ -30,19 +30,6 @@ def _write_global_config(
                 "class": "agentos.global.config",
                 "schema_version": 1,
                 "agent": agent_payload,
-            }
-        ),
-    )
-
-
-def _write_project_marker(project_root: Path) -> None:
-    _write(
-        project_root / ".agentos" / "project.json",
-        json.dumps(
-            {
-                "class": "agentos.project",
-                "schema_version": 1,
-                "project_id": "00000000-0000-4000-8000-000000000001",
             }
         ),
     )

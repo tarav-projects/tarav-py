@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import build_parser, main
-from _helpers import set_fake_agentos_home as _set_fake_agentos_home
+from _helpers import set_fake_agentos_home as _set_fake_agentos_home, write_project_marker as _write_project_marker
 
 NO_SELECTED_SKILLS_MESSAGE = "No skills are selected for import into this project target."
 DEFAULT_DEPOT_PATHS = (Path(".agents/skills"), Path(".claude/skills"))
@@ -61,17 +61,6 @@ def _write_global_routing_config(
         },
     }
     config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
-def _write_project_marker(project_root: Path) -> None:
-    marker_path = project_root / ".agentos" / "project.json"
-    marker_path.parent.mkdir(parents=True, exist_ok=True)
-    marker_payload = {
-        "class": "agentos.project",
-        "schema_version": 1,
-        "project_id": "00000000-0000-4000-8000-000000000001",
-    }
-    marker_path.write_text(json.dumps(marker_payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _write_project_config(

@@ -5,7 +5,6 @@ import datetime
 import io
 import json
 import math
-import os
 import subprocess
 import threading
 import time
@@ -18,7 +17,7 @@ from agentos.chat import accounts as chat_accounts
 from agentos.chat import commands as chat_commands
 from agentos.cli import main
 from agentos.tara_tapes.core import load_tara_tape_manifest, read_tara_tape_segment_records
-from _helpers import write_text_file as _write
+from _helpers import write_project_marker as _write_project_marker, write_text_file as _write
 
 
 def _span_tuples(rendered) -> list[tuple[int, int, str]]:  # type: ignore[no-untyped-def]
@@ -191,19 +190,6 @@ def _write_global_config(
     _write(
         path,
         json.dumps(payload),
-    )
-
-
-def _write_project_marker(project_root: Path) -> None:
-    _write(
-        project_root / ".agentos" / "project.json",
-        json.dumps(
-            {
-                "class": "agentos.project",
-                "schema_version": 1,
-                "project_id": "00000000-0000-4000-8000-000000000001",
-            }
-        ),
     )
 
 
