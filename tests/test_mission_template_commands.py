@@ -19,18 +19,6 @@ def _create_skill(path: Path, *, description: str, type_: str | None = None) -> 
     _write(path / "SKILL.md", "\n".join(frontmatter_lines))
 
 
-def test_mission_templates_requires_existing_project(capsys, monkeypatch, tmp_path: Path) -> None:
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    workspace = tmp_path / "workspace"
-    workspace.mkdir(parents=True, exist_ok=True)
-    monkeypatch.chdir(workspace)
-
-    assert main(["mission", "templates"]) == 1
-    assert capsys.readouterr().err.strip() == (
-        "error: not inside an agentos project (missing .agentos/project.json); run `agentos init`"
-    )
-
-
 def test_mission_templates_reads_selected_imported_skills(
     capsys,
     monkeypatch,

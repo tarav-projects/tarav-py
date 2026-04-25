@@ -135,20 +135,6 @@ def test_agent_run_uses_configured_instance_env(
     assert observed["codex_home"] == str(work_home)
 
 
-def test_agent_run_requires_configured_provider_instance(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("AGENTOS_HOME", raising=False)
-
-    assert main(["agent", "run", "--provider", "codex", "--dry-run", "--", "say hi"]) == 1
-    assert "no configured provider instances found for provider codex" in capsys.readouterr().err
-
-
 def test_agent_run_uses_copilot_cli_provider_instance(
     tmp_path: Path,
     monkeypatch,

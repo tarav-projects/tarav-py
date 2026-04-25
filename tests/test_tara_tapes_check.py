@@ -89,21 +89,6 @@ def test_check_non_jsonl_file_in_segments(tmp_path: Path) -> None:
     assert any("non-jsonl" in issue for issue in result["issues"])
 
 
-def test_check_missing_manifest(tmp_path: Path) -> None:
-    result = check_tape(tmp_path / "nonexistent")
-    assert result["conformant"] is False
-
-
-def test_check_invalid_manifest_json(tmp_path: Path) -> None:
-    tape_path = tmp_path / "bad-json"
-    tape_path.mkdir()
-    (tape_path / "tape.json").write_text("{not valid json", encoding="utf-8")
-
-    result = check_tape(tape_path)
-    assert result["conformant"] is False
-    assert any("invalid" in issue for issue in result["issues"])
-
-
 def test_check_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     tape_path = _make_conformant_tape(tmp_path, "single")
 

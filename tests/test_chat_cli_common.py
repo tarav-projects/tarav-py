@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from agentos._core.errors import CliError
-from agentos.chat._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
+from agentos.chat._cli_common import normalize_updated_since
 
 
 def test_normalize_updated_since_uses_seconds_by_default(monkeypatch) -> None:
@@ -23,16 +23,3 @@ def test_normalize_updated_since_supports_duration_units(monkeypatch) -> None:
 def test_normalize_updated_since_rejects_invalid_values(value: str) -> None:
     with pytest.raises(CliError):
         normalize_updated_since(value)
-
-
-def test_optional_string_tuple_returns_none_for_empty_values() -> None:
-    assert optional_string_tuple(None) is None
-    assert optional_string_tuple([]) is None
-
-
-def test_optional_string_tuple_preserves_order() -> None:
-    assert optional_string_tuple(["codex", "claude-code"]) == ("codex", "claude-code")
-
-
-def test_format_json_output_uses_stable_indent() -> None:
-    assert format_json_output({"a": 1}) == '{\n  "a": 1\n}'

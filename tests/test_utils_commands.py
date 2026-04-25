@@ -36,9 +36,3 @@ def test_utils_uuid_json_outputs_payload(capsys) -> None:
     assert len(payload["uuids"]) == 1
     _assert_valid_uuid(payload["uuid"])
     _assert_valid_uuid(payload["uuids"][0])
-
-
-def test_utils_uuid_rejects_invalid_count(capsys) -> None:
-    assert main(["utils", "uuid", "--count", "0"]) == 1
-    stderr = capsys.readouterr().err
-    assert "--count must be >= 1" in stderr

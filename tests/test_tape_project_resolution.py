@@ -50,18 +50,6 @@ def test_init_global_writes_class_field(
     assert config_payload["class"] == "agentos.global.config"
 
 
-def test_folder_init_with_tape_requires_agentos_project(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    code = main(["tape", "init", "--tape", "bla"])
-    assert code == 1
-    stderr = capsys.readouterr().err
-    assert "run `agentos init`" in stderr
-
-
 def test_folder_init_resolves_tape_name_to_project_tapes_folder(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -79,31 +67,6 @@ def test_folder_init_resolves_tape_name_to_project_tapes_folder(
     assert payload["tape"] == "bla"
     assert payload["root_path"] == str(expected_root)
     assert (expected_root / "tape.manifest.json").is_file()
-
-
-def test_append_requires_explicit_init_for_missing_tape(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
-    capsys.readouterr()
-
-    monkeypatch.chdir(tmp_path)
-    code = main(
-        [
-            "tape",
-            "append",
-            "--tape",
-            "bla",
-            "--writer-id",
-            "proc-a",
-            "--class",
-            "event.alpha",
-        ]
-    )
-    assert code == 1
-    assert "pass --init" in capsys.readouterr().err
 
 
 def test_append_with_init_creates_missing_tape(

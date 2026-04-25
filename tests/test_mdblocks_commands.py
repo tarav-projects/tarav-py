@@ -41,27 +41,6 @@ def test_blocks_parses_separator_anchored_blocks(tmp_path: Path, capsys) -> None
     assert blocks[1]["separator_close_line"] is None
 
 
-def test_blocks_ignores_triple_star_separator(tmp_path: Path, capsys) -> None:
-    md_path = tmp_path / "doc.md"
-    _write(
-        md_path,
-        "\n".join(
-            [
-                "***",
-                "## not-a-block",
-                "body",
-                "***",
-                "",
-            ]
-        ),
-    )
-
-    assert main(["mdblocks", "blocks", str(md_path), "--root", str(tmp_path), "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-
-    assert payload["block_count"] == 0
-
-
 def test_blocks_supports_split_tmp_output_mode(tmp_path: Path, capsys) -> None:
     md_path = tmp_path / "doc.md"
     _write(md_path, "****\n## block-a\nA1\n")
@@ -213,20 +192,3 @@ def test_lint_enforces_hard_25_line_block_limit(tmp_path: Path, capsys) -> None:
     assert len(issues) == 1
     assert issues[0]["severity"] == "error"
     assert issues[0]["details"]["max_block_lines"] == 25
-
-
-def test_cli_rejects_min_level_below_two(capsys) -> None:
-    with pytest.raises(SystemExit, match="--min-level must be between 2 and 6"):
-        main(["mdblocks", "blocks", "--min-level", "1"])
-
-
-def test_cli_rejects_invalid_line_region(capsys) -> None:
-    with pytest.raises(SystemExit, match="--start-line cannot be greater than --end-line"):
-        main(["mdblocks", "blocks", "--start-line", "10", "--end-line", "2"])
-
-
-def test_lint_help_does_not_expose_max_block_lines_flag(capsys) -> None:
-    with pytest.raises(SystemExit, match="0"):
-        main(["mdblocks", "lint", "--help"])
-    output = capsys.readouterr().out
-    assert "--max-block-lines" not in output

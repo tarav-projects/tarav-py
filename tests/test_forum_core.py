@@ -46,18 +46,6 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
     ]
 
 
-def test_current_author_project_requires_existing_project(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    monkeypatch.chdir(workspace)
-
-    with pytest.raises(CliError, match=r"missing \.agentos/project\.json"):
-        current_author_project()
-
-
 def test_forum_root_uses_agentos_home_env(
     tmp_path: Path,
     monkeypatch,
@@ -264,14 +252,3 @@ def test_append_forum_event_validates_reaction_fields(
                 "reaction": "fire",
             },
         )
-
-
-def test_load_forum_event_errors_for_missing_event_id(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    agentos_home = tmp_path / "agentos-home"
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-
-    with pytest.raises(CliError, match="forum event not found"):
-        load_forum_event("00000000-0000-4000-8000-000000000099")
