@@ -23,8 +23,9 @@ def _first_event_for_turn(
     turn_id: str | None,
     event_type: str,
 ) -> dict[str, object] | None:
+    expected_kind = _legacy_event_type_kind(event_type)
     for event in events:
-        if event.get("type") != event_type:
+        if event.get("type") != event_type and event.get("kind") != expected_kind:
             continue
         if turn_id is not None and _event_turn_id(event) != turn_id:
             continue
@@ -32,6 +33,13 @@ def _first_event_for_turn(
             continue
         return event
     return None
+
+def _legacy_event_type_kind(event_type: str) -> str:
+    if event_type.endswith(".task_started"):
+        return "run.start"
+    if event_type.endswith(".task_complete"):
+        return "run.end"
+    return event_type
 
 def _event_turn_id(event: dict[str, object]) -> str | None:
     turn_id = _string_or_none(event.get("turn_id"))
@@ -143,13 +151,8 @@ class _SemanticEventBuilder:
         if tool_invocation_ref is not None:
             event["tool_invocation_ref"] = tool_invocation_ref
 
-        # Transitional fields stay until semantic events fully replace provider-shaped rows.
-        if legacy_type is not None:
-            event["type"] = legacy_type
-        if legacy_data is not None:
-            event["data"] = dict(legacy_data)
-        if legacy_native is not None:
-            event["native"] = dict(legacy_native)
+        # Legacy arguments are accepted while provider normalizers are cleaned up,
+        # but canonical events no longer expose provider-shaped type/data/native rows.
         if extra:
             for key, value in extra.items():
                 if value is not None:
@@ -473,6 +476,17 @@ def _source_ref_first_record_index(source_refs: object) -> int | None:
         return record_index
     return None
 
+def _source_ref_first_line(source_refs: object) -> int | None:
+    if not isinstance(source_refs, list):
+        return None
+    for source_ref in source_refs:
+        if not isinstance(source_ref, dict):
+            continue
+        line = _int_or_none(source_ref.get("line"))
+        if line is not None:
+            return line
+    return None
+
 def _source_ref_event_indices(source_refs: object) -> list[int]:
     if not isinstance(source_refs, list):
         return []
@@ -501,13 +515,36 @@ def _record_native_dict(record: dict[str, object]) -> dict[str, object]:
     native = record.get("native")
     if isinstance(native, dict):
         return native
-    return {}
+    derived: dict[str, object] = {}
+    record_index = _source_ref_first_record_index(record.get("source_refs"))
+    if record_index is not None:
+        derived["record_index"] = record_index
+    event_index = _source_ref_first_event_index(record.get("source_refs"))
+    if event_index is not None:
+        derived["event_index"] = event_index
+    line = _source_ref_first_line(record.get("source_refs"))
+    if line is not None:
+        derived["line"] = line
+    for key in ("content_index", "request_index"):
+        value = _int_or_none(record.get(key))
+        if value is not None:
+            derived[key] = value
+    return derived
 
 def _record_native_int_field(
     record: dict[str, object],
     key: str,
 ) -> int | None:
-    return _int_or_none(_record_native_dict(record).get(key))
+    value = _int_or_none(_record_native_dict(record).get(key))
+    if value is not None:
+        return value
+    if key == "record_index":
+        return _source_ref_first_record_index(record.get("source_refs"))
+    if key == "event_index":
+        return _source_ref_first_event_index(record.get("source_refs"))
+    if key == "line":
+        return _source_ref_first_line(record.get("source_refs"))
+    return None
 
 def _record_native_string_field(
     record: dict[str, object],

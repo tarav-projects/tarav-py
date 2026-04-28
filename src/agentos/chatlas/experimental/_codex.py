@@ -410,7 +410,7 @@ def _codex_count_oriented_warnings(
 
 def _codex_has_cost_like_events(events: list[dict[str, object]]) -> bool:
     for event in events:
-        if event.get("type") != "codex.token_count":
+        if event.get("kind") != "metric":
             continue
         payload = _codex_event_payload(event)
         if not payload:

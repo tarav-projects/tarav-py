@@ -1030,16 +1030,14 @@ def _copilot_message_from_event(
     event: dict[str, object],
     index: int,
 ) -> tuple[dict[str, object] | None, list[str]]:
-    event_type = _copilot_projected_event_type(event)
-    if event_type not in {
-        "system.message",
-        "user.message",
-        "assistant.message",
-    }:
+    event_kind = _string_or_none(event.get("kind"))
+    if event_kind not in {"context", "message"}:
         return None, []
 
     payload = _copilot_event_payload(event)
-    role = _copilot_message_role_from_event_type(event_type, payload)
+    role = _string_or_none(payload.get("role"))
+    if role is None:
+        role = "system" if event_kind == "context" else "unknown"
     content, content_types, warnings = _copilot_message_content_blocks_from_event(
         event,
     )
@@ -1055,7 +1053,10 @@ def _copilot_message_from_event(
     message: dict[str, object] = {
         "message_id": f"message-{index}",
         "role": role,
-        "visibility": _copilot_message_visibility_from_event_type(event_type),
+        "visibility": (
+            _string_or_none(payload.get("visibility"))
+            or ("context" if event_kind == "context" else "conversation")
+        ),
         "content": content,
         "native": _copilot_message_native_from_event(
             event,
@@ -1071,7 +1072,46 @@ def _copilot_projected_event_type(event: dict[str, object]) -> str:
     prefix = "copilot-cli."
     if event_type.startswith(prefix):
         return event_type[len(prefix):]
-    return event_type or "unknown"
+    if event_type:
+        return event_type
+
+    kind = _string_or_none(event.get("kind"))
+    payload = _copilot_event_payload(event)
+    if kind == "session.start":
+        return "session.start"
+    if kind == "session.update":
+        update_type = _string_or_none(payload.get("update_type"))
+        if update_type == "model_change":
+            return "session.model_change"
+        return _string_or_none(payload.get("event_type")) or "session.update"
+    if kind == "session.end":
+        return "session.shutdown"
+    if kind == "context":
+        return "system.message"
+    if kind == "message":
+        role = _string_or_none(payload.get("role"))
+        if role == "user":
+            return "user.message"
+        if role == "assistant":
+            return "assistant.message"
+        if role == "system":
+            return "system.message"
+        return "message"
+    if kind == "run.start":
+        return "assistant.turn_start"
+    if kind == "run.end":
+        return "assistant.turn_end"
+    if kind == "tool.progress":
+        return "tool.execution_start"
+    if kind == "tool.result":
+        return "tool.execution_complete"
+    if kind == "tool.call":
+        return "assistant.tool_call"
+    if kind == "reasoning":
+        return "reasoning"
+    if kind == "usage":
+        return "usage"
+    return "unknown"
 
 def _copilot_event_payload(event: dict[str, object]) -> dict[str, Any]:
     payload = event.get("payload")
@@ -1086,25 +1126,6 @@ def _copilot_projected_event_index(event: dict[str, object]) -> int:
         or _int_or_none(event.get("sequence"))
         or 0
     )
-
-def _copilot_message_role_from_event_type(
-    event_type: str,
-    payload: dict[str, Any],
-) -> str:
-    if event_type == "system.message":
-        return _string_or_none(payload.get("role")) or "system"
-    if event_type == "user.message":
-        return "user"
-    if event_type == "assistant.message":
-        return "assistant"
-    return "unknown"
-
-def _copilot_message_visibility_from_event_type(event_type: str) -> str:
-    if event_type == "system.message":
-        return "context"
-    if event_type in {"user.message", "assistant.message"}:
-        return "conversation"
-    return "unknown"
 
 def _copilot_message_content_blocks_from_event(
     event: dict[str, object],
@@ -1138,9 +1159,13 @@ def _copilot_message_content_blocks_from_event(
     )
 
 def _copilot_is_tool_request_only_event(event: dict[str, object]) -> bool:
-    if _copilot_projected_event_type(event) != "assistant.message":
+    payload = _copilot_event_payload(event)
+    if (
+        event.get("kind") != "message"
+        or _string_or_none(payload.get("role")) != "assistant"
+    ):
         return False
-    tool_requests = _copilot_event_payload(event).get("toolRequests")
+    tool_requests = payload.get("toolRequests")
     return isinstance(tool_requests, list) and bool(tool_requests)
 
 def _copilot_message_native_from_event(
@@ -2243,6 +2268,12 @@ def _copilot_model_run_message_refs_from_events(
         refs.append(direct_parent_id)
 
     start_index = _copilot_projected_event_index(start_event)
+    previous_message_ref = _copilot_previous_message_ref_before_index(
+        messages,
+        start_index=start_index,
+    )
+    if previous_message_ref is not None and previous_message_ref not in refs:
+        refs.append(previous_message_ref)
     for message in messages:
         message_id = _string_or_none(message.get("message_id"))
         if message_id is None:
@@ -2253,6 +2284,23 @@ def _copilot_model_run_message_refs_from_events(
         if start_index <= event_index <= span_end_index and message_id not in refs:
             refs.append(message_id)
     return refs
+
+def _copilot_previous_message_ref_before_index(
+    messages: list[dict[str, object]],
+    *,
+    start_index: int,
+) -> str | None:
+    previous: tuple[int, str] | None = None
+    for message in messages:
+        message_id = _string_or_none(message.get("message_id"))
+        event_index = _copilot_record_event_index(message)
+        if message_id is None or event_index is None or event_index >= start_index:
+            continue
+        if previous is None or event_index > previous[0]:
+            previous = (event_index, message_id)
+    if previous is None:
+        return None
+    return previous[1]
 
 def _copilot_direct_parent_message_ref_from_events(
     messages: list[dict[str, object]],

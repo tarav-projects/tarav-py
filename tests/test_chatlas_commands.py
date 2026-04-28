@@ -3255,8 +3255,8 @@ def test_chatlas_experimental_export_emits_session_model_json(
         }
     ]
     assert payload["chat"]["messages"][0]["visibility"] == "conversation"
-    assert payload["chat"]["messages"][0]["native"]["content_types"] == ["input_text"]
-    assert payload["chat"]["messages"][1]["native"]["content_types"] == ["output_text"]
+    assert payload["chat"]["messages"][0]["native"] == {"record_index": 2, "line": 2}
+    assert payload["chat"]["messages"][1]["native"] == {"record_index": 3, "line": 3}
     assert payload["chat"]["messages"][0]["source_refs"] == [
         {"source_ref_id": "source-1", "record_index": 2, "line": 2}
     ]
@@ -3328,11 +3328,6 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
             "native": {
                 "record_index": 1,
                 "line": 1,
-                "record_type": "message",
-                "uuid": "msg-user-1",
-                "message_role": "user",
-                "role": "user",
-                "content_types": ["string"],
             },
             "timestamp": "2026-04-18T11:00:00.000Z",
             "source_refs": [{"source_ref_id": "source-1", "record_index": 1, "line": 1}],
@@ -3348,12 +3343,6 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
             "native": {
                 "record_index": 2,
                 "line": 2,
-                "record_type": "message",
-                "uuid": "msg-assistant-1",
-                "parent_uuid": "msg-user-1",
-                "message_role": "assistant",
-                "role": "assistant",
-                "content_types": ["text", "text"],
             },
             "timestamp": "2026-04-18T11:00:01.000Z",
             "source_refs": [{"source_ref_id": "source-1", "record_index": 2, "line": 2}],
@@ -3364,10 +3353,8 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
     events = payload["chat"]["events"]
     assert [event["event_id"] for event in events] == ["event-1", "event-2"]
     assert [event["sequence"] for event in events] == [1, 2]
-    assert [event["type"] for event in events] == [
-        "claude-code.user.message",
-        "claude-code.assistant.message",
-    ]
+    assert all("type" not in event for event in events)
+    assert all("native" not in event for event in events)
     assert [event["kind"] for event in events] == ["message", "message"]
     assert [event["producer"] for event in events] == [
         {"type": "user"},
@@ -3960,16 +3947,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
             "native": {
                 "record_index": 2,
                 "line": 2,
-                "record_type": "assistant",
-                "uuid": "msg-assistant-1",
-                "parent_uuid": "msg-user-1",
-                "message_role": "assistant",
-                "reasoning_key": "thinking",
                 "content_index": 1,
-                "message_id": "msg-tool-assistant-1",
-                "request_id": "req-claude-1",
-                "model": "claude-opus-4-6",
-                "signature": "claude-thinking-signature-1",
             },
             "timestamp": "2026-04-18T11:00:01.000Z",
             "source_refs": [
@@ -3987,28 +3965,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
             "usage_id": "usage-1",
             "scope": "model_run",
             "provider": "claude-code",
-            "native": {
-                "record_index": 3,
-                "line": 3,
-                "record_type": "assistant",
-                "uuid": "msg-assistant-tool-1",
-                "parent_uuid": "msg-assistant-1",
-                "message_role": "assistant",
-                "request_id": "req-claude-1",
-                "message_id": "msg-tool-assistant-1",
-                "usage": {
-                    "input_tokens": 10,
-                    "output_tokens": 20,
-                    "cache_creation_input_tokens": 5,
-                    "cache_read_input_tokens": 7,
-                    "cache_creation": {
-                        "ephemeral_1h_input_tokens": 5,
-                        "ephemeral_5m_input_tokens": 0,
-                    },
-                    "service_tier": "standard",
-                    "inference_geo": "not_available",
-                },
-            },
+            "native": {"record_index": 3, "line": 3},
             "model": "claude-opus-4-6",
             "model_run_ref": "model-run-1",
             "input_tokens": 10,
@@ -4025,34 +3982,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
             "usage_id": "usage-2",
             "scope": "model_run",
             "provider": "claude-code",
-            "native": {
-                "record_index": 7,
-                "line": 7,
-                "record_type": "assistant",
-                "uuid": "msg-assistant-final-1",
-                "parent_uuid": "msg-user-tool-result-1",
-                "message_role": "assistant",
-                "request_id": "req-claude-2",
-                "message_id": "msg-assistant-final-1",
-                "usage": {
-                    "input_tokens": 14,
-                    "output_tokens": 7,
-                    "cache_creation_input_tokens": 2,
-                    "cache_read_input_tokens": 11,
-                    "cache_creation": {
-                        "ephemeral_1h_input_tokens": 2,
-                        "ephemeral_5m_input_tokens": 0,
-                    },
-                    "service_tier": "standard",
-                    "inference_geo": "not_available",
-                    "speed": "standard",
-                    "iterations": [],
-                    "server_tool_use": {
-                        "web_search_requests": 0,
-                        "web_fetch_requests": 0,
-                    },
-                },
-            },
+            "native": {"record_index": 7, "line": 7},
             "model": "claude-opus-4-6",
             "model_run_ref": "model-run-2",
             "input_tokens": 14,
@@ -4202,23 +4132,8 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "normalized_count": 1,
     }
     events = payload["chat"]["events"]
-    assert [event["type"] for event in events] == [
-        "copilot-cli.session.start",
-        "copilot-cli.session.model_change",
-        "copilot-cli.system.message",
-        "copilot-cli.user.message",
-        "copilot-cli.assistant.turn_start",
-        "copilot-cli.assistant.message",
-        "copilot-cli.reasoning",
-        "copilot-cli.reasoning",
-        "copilot-cli.reasoning",
-        "copilot-cli.assistant.tool_call",
-        "copilot-cli.tool.execution_start",
-        "copilot-cli.tool.execution_complete",
-        "copilot-cli.assistant.turn_end",
-        "copilot-cli.session.shutdown",
-        "copilot-cli.usage",
-    ]
+    assert all("type" not in event for event in events)
+    assert all("native" not in event for event in events)
     assert [event["sequence"] for event in events] == list(range(1, 16))
     assert [event["kind"] for event in events] == [
         "session.start",
@@ -4292,32 +4207,33 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "conversation",
     ]
     assert messages[0]["content"] == [{"type": "text", "text": "copilot system prompt"}]
-    assert messages[0]["native"]["content_types"] == ["text"]
+    assert messages[0]["native"] == {
+        "event_index": 3,
+        "line": 3,
+        "role": "system",
+        "content_types": ["text"],
+    }
     assert messages[1]["content"] == [
         {"type": "text", "text": "copilot experimental user"}
     ]
-    assert (
-        messages[1]["native"]["transformed_content"]
-        == "<context>\ncopilot experimental user\n</context>"
-    )
+    assert messages[1]["native"] == {
+        "event_index": 4,
+        "line": 4,
+        "role": "user",
+        "content_types": ["text"],
+    }
     assert messages[1]["source_refs"] == [
         {"source_ref_id": "source-1", "event_index": 4, "line": 4}
     ]
     assert messages[2]["content"] == [
         {"type": "text", "text": "copilot experimental assistant"}
     ]
-    assert messages[2]["native"]["content_types"] == ["text"]
-    assert messages[2]["native"]["reasoning_text"] == "check repository state"
-    assert messages[2]["native"]["reasoning_opaque"] == "opaque-reasoning"
-    assert messages[2]["native"]["encrypted_content"] == "encrypted-reasoning"
-    assert messages[2]["native"]["output_tokens"] == 17
-    assert messages[2]["native"]["tool_requests"] == [
-        {
-            "toolCallId": "tool-call-1",
-            "name": "shell",
-            "arguments": {"cmd": "git status"},
-        }
-    ]
+    assert messages[2]["native"] == {
+        "event_index": 6,
+        "line": 6,
+        "role": "assistant",
+        "content_types": ["text"],
+    }
     tool_invocations = payload["chat"]["tool_invocations"]
     assert "interaction_id" not in tool_invocations[0]
     assert tool_invocations == [
@@ -4387,24 +4303,8 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
             "provider": "copilot-cli",
             "model": "gpt-4.1",
             "native": {
-                "event_type": "session.shutdown",
                 "event_index": 10,
                 "line": 10,
-                "event_id": "event-shutdown",
-                "parent_id": "event-turn-end-1",
-                "source_event_type": "session.shutdown",
-                "model_metrics": {
-                    "gpt-4.1": {
-                        "requests": {"count": 1, "cost": 1},
-                        "usage": {
-                            "inputTokens": 12,
-                            "outputTokens": 34,
-                            "cacheReadTokens": 0,
-                            "cacheWriteTokens": 0,
-                            "reasoningTokens": 5,
-                        },
-                    }
-                },
                 "model_metrics_key": "gpt-4.1",
                 "model_metrics_entry": {
                     "requests": {"count": 1, "cost": 1},
@@ -4452,9 +4352,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 "turn_start_event_index": 5,
                 "span_end_event_index": 9,
                 "model_source": "session.model_change.newModel",
-                "turn_start_event_id": "event-turn-start-1",
                 "turn_end_event_index": 9,
-                "turn_end_event_id": "event-turn-end-1",
                 "interaction_id": "copilot-interaction-1",
             },
             "turn_id": "0",
@@ -4485,16 +4383,8 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                     "visibility": "visible",
                     "content": "check repository state",
                     "native": {
-                        "event_type": "assistant.message",
                         "event_index": 6,
                         "line": 6,
-                        "event_id": "event-assistant-1",
-                        "parent_id": "event-turn-start-1",
-                        "reasoning_key": "reasoningText",
-                        "message_id": "assistant-message-1",
-                        "request_id": "assistant-request-1",
-                        "interaction_id": "copilot-interaction-1",
-                        "output_tokens": 17,
                     },
                     "timestamp": "2026-04-18T11:00:02.000Z",
                     "source_refs": [
@@ -4506,16 +4396,8 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                     "visibility": "opaque",
                     "content": "opaque-reasoning",
                     "native": {
-                        "event_type": "assistant.message",
                         "event_index": 6,
                         "line": 6,
-                        "event_id": "event-assistant-1",
-                        "parent_id": "event-turn-start-1",
-                        "reasoning_key": "reasoningOpaque",
-                        "message_id": "assistant-message-1",
-                        "request_id": "assistant-request-1",
-                        "interaction_id": "copilot-interaction-1",
-                        "output_tokens": 17,
                     },
                     "timestamp": "2026-04-18T11:00:02.000Z",
                     "source_refs": [
@@ -4527,16 +4409,8 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                     "visibility": "encrypted",
                     "content": "encrypted-reasoning",
                     "native": {
-                        "event_type": "assistant.message",
                         "event_index": 6,
                         "line": 6,
-                        "event_id": "event-assistant-1",
-                        "parent_id": "event-turn-start-1",
-                        "reasoning_key": "encryptedContent",
-                        "message_id": "assistant-message-1",
-                        "request_id": "assistant-request-1",
-                        "interaction_id": "copilot-interaction-1",
-                        "output_tokens": 17,
                     },
                     "timestamp": "2026-04-18T11:00:02.000Z",
                     "source_refs": [
@@ -4866,16 +4740,8 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
 
     events = payload["chat"]["events"]
     assert not any("data" in event for event in events)
-    assert [event["type"] for event in events] == [
-        "codex.session_meta",
-        "codex.task_started",
-        "codex.token_count",
-        "codex.response_item.message",
-        "codex.response_item.function_call",
-        "codex.response_item.function_call_output",
-        "codex.exec_command_end",
-        "codex.response_item.function_call",
-    ]
+    assert not any("type" in event for event in events)
+    assert not any("native" in event for event in events)
     assert [event["sequence"] for event in events] == list(range(1, 9))
     assert [event["kind"] for event in events] == [
         "session.start",
@@ -4907,7 +4773,6 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
         "collaboration_mode_kind": "default",
     }
     assert events[2]["event_id"] == "event-3"
-    assert events[2]["type"] == "codex.token_count"
     assert events[2]["payload"]["info"]["total_token_usage"]["total_tokens"] == 12
     assert events[4]["event_id"] == "event-5"
     assert events[4]["kind"] == "tool.call"
@@ -4928,7 +4793,6 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
         "content": "Chunk ID: abc\nOutput:\n/tmp\n",
     }
     assert events[6]["event_id"] == "event-7"
-    assert events[6]["type"] == "codex.exec_command_end"
     assert events[6]["kind"] == "tool.progress"
     assert events[6]["outcome"] == "ok"
     assert events[6]["call_id"] == "call-complete"
@@ -5107,14 +4971,13 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
     reasoning_trace = model_run["reasoning_trace"]
     assert reasoning_trace == [
         {
-            "reasoning_id": "reasoning-1",
-            "visibility": "encrypted",
-            "native": {
-                "record_type": "response_item",
-                "payload_type": "reasoning",
-                "record_index": 5,
-                "summary": [{"type": "summary_text", "text": "check context"}],
-            },
+                "reasoning_id": "reasoning-1",
+                "visibility": "encrypted",
+                "native": {
+                    "record_index": 5,
+                    "line": 5,
+                    "summary": [{"type": "summary_text", "text": "check context"}],
+                },
             "timestamp": "2026-03-08T01:09:02.000Z",
             "content": "encrypted-reasoning",
             "source_refs": [

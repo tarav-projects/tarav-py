@@ -209,6 +209,8 @@ Implementation notes:
   - `unsupported_concepts=["usage"]`
 
 ### Phase 6: Remove Transitional Event Fields
+Status: done.
+
 - Once all three providers emit semantic events and projections are event-derived, remove transitional fields from `chat.events`:
   - `type`
   - `data`
@@ -220,6 +222,13 @@ Acceptance:
 - Canonical events match the contract in `544`.
 - Normal export consumers no longer need provider event-row branches.
 - Debug/raw export paths can still reach original raw artifacts.
+
+Implementation notes:
+- `_SemanticEventBuilder` still accepts legacy arguments while provider call sites are cleaned up, but it no longer writes `type`, `data`, or `native` to canonical events.
+- Provider projections now use semantic `kind`, `payload`, top-level refs, and `source_refs` instead of event-native/provider-type fields.
+- Shared native helpers can derive minimal projection provenance from `source_refs`, so derived views can still preserve record/event indexes without copying provider-native event payloads.
+- Copilot model run message attachment now includes the nearest preceding visible message before a turn start, preserving the user prompt link without depending on raw `parentId`.
+- Tests now assert that canonical `chat.events` omit `type`, `data`, and `native` while retaining stable sequence, kind, payload, surface, producer, and ref behavior.
 
 ### Phase 7: Regression Harness And Quality Report
 - Add focused tests for each reference provider session.
@@ -259,4 +268,4 @@ Rationale:
 - How much unsupported evidence should be represented as `metric`, `session.update`, or normalization warnings.
 
 ## Immediate Next Step
-- Start Phase 6 by removing transitional provider-shaped `type` and `native` fields from semantic events after confirming projection/span code no longer depends on them.
+- Start Phase 7 by adding focused reference-session checks and a short quality report for Claude Code, Copilot CLI, and Codex.
