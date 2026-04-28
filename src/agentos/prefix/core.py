@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentos._core.scan import DEFAULT_SCAN_EXCLUDES, iter_target_files
+from agentos._core.scan import iter_target_files
 
 
 @dataclass(frozen=True)

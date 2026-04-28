@@ -441,6 +441,8 @@ def _codex_events_from_raw_rollout(
 ) -> dict[str, object]:
     events: list[dict[str, object]] = []
     warnings: list[str] = []
+    interaction_refs_by_turn_id: dict[str, str] = {}
+    current_interaction_ref: str | None = None
     for record in rollout.records:
         if record.record_type != "event_msg":
             continue
@@ -451,16 +453,35 @@ def _codex_events_from_raw_rollout(
                 f"codex event record {record.record_index} has no payload type"
             )
 
+        data = _codex_event_data(record.payload)
+        turn_id = _string_or_none(record.payload.get("turn_id"))
+        interaction_ref = _codex_event_interaction_ref(
+            payload_type=payload_type,
+            turn_id=turn_id,
+            interaction_refs_by_turn_id=interaction_refs_by_turn_id,
+            current_interaction_ref=current_interaction_ref,
+        )
+        if interaction_ref != "session":
+            current_interaction_ref = interaction_ref
         event: dict[str, object] = {
             "event_id": f"event-{len(events) + 1}",
+            "sequence": len(events) + 1,
+            "kind": _codex_event_kind(payload_type),
+            "producer": _codex_event_producer(record),
+            "surfaces": _codex_event_surfaces(payload_type),
+            "interaction_ref": interaction_ref,
             "type": f"codex.{payload_type}",
-            "data": _codex_event_data(record.payload),
+            "data": data,
+            "payload": data,
             "native": {
                 "record_type": record.record_type,
                 "payload_type": payload_type,
                 "record_index": record.record_index,
             },
         }
+        outcome = _codex_event_outcome(record)
+        if outcome is not None:
+            event["outcome"] = outcome
         if record.timestamp is not None:
             event["timestamp"] = record.timestamp
         if record.source_refs:
@@ -477,7 +498,6 @@ def _codex_events_from_raw_rollout(
                     f"codex exec_command_end event record {record.record_index} has no matching tool invocation for call_id {call_id}"
                 )
 
-        turn_id = _string_or_none(record.payload.get("turn_id"))
         if turn_id is not None:
             event["turn_id"] = turn_id
         events.append(event)
@@ -486,6 +506,84 @@ def _codex_events_from_raw_rollout(
         "events": events,
         "warnings": warnings,
     }
+
+def _codex_event_interaction_ref(
+    *,
+    payload_type: str,
+    turn_id: str | None,
+    interaction_refs_by_turn_id: dict[str, str],
+    current_interaction_ref: str | None,
+) -> str:
+    if payload_type.startswith("session."):
+        return "session"
+    if turn_id is not None:
+        interaction_ref = interaction_refs_by_turn_id.get(turn_id)
+        if interaction_ref is None:
+            interaction_ref = f"interaction-{len(interaction_refs_by_turn_id) + 1}"
+            interaction_refs_by_turn_id[turn_id] = interaction_ref
+        return interaction_ref
+    if current_interaction_ref is not None:
+        return current_interaction_ref
+    return "interaction-1"
+
+def _codex_event_kind(payload_type: str) -> str:
+    if payload_type == "task_started":
+        return "run.start"
+    if payload_type == "task_complete":
+        return "run.end"
+    if payload_type in {"user_message", "agent_message"}:
+        return "message"
+    if payload_type == "exec_command_end":
+        return "tool.result"
+    if payload_type == "token_count":
+        return "metric"
+    if payload_type.startswith("session."):
+        return payload_type
+    return "session.update"
+
+def _codex_event_producer(record: _CodexRawRecord) -> dict[str, object]:
+    payload_type = _string_or_none(record.payload.get("type")) or "unknown"
+    if payload_type == "user_message":
+        return _semantic_event_producer("user")
+    if payload_type == "agent_message":
+        return _semantic_event_producer("assistant")
+    if payload_type == "exec_command_end":
+        tool_name = _string_or_none(record.payload.get("name")) or _string_or_none(
+            record.payload.get("source")
+        )
+        return _semantic_event_producer("tool", name=tool_name)
+    if payload_type == "token_count":
+        return _semantic_event_producer("provider")
+    return _semantic_event_producer("provider")
+
+def _codex_event_surfaces(payload_type: str) -> dict[str, object]:
+    if payload_type in {"user_message", "agent_message"}:
+        return _semantic_event_surfaces(
+            transcript="visible",
+            model_input="visible",
+        )
+    if payload_type == "exec_command_end":
+        return _semantic_event_surfaces(
+            transcript="hidden",
+            model_input="visible",
+        )
+    return _semantic_event_surfaces(transcript="hidden")
+
+def _codex_event_outcome(record: _CodexRawRecord) -> str | None:
+    payload_type = _string_or_none(record.payload.get("type"))
+    if payload_type == "task_complete":
+        return "ok"
+    if payload_type != "exec_command_end":
+        return None
+    status_outcome = _semantic_event_outcome_from_status(
+        _codex_canonical_tool_status(record)
+    )
+    if status_outcome is not None:
+        return status_outcome
+    exit_code = _int_or_none(record.payload.get("exit_code"))
+    if exit_code is not None:
+        return "ok" if exit_code == 0 else "error"
+    return None
 
 def _codex_model_runs_from_raw_rollout(
     rollout: _CodexRawRollout,

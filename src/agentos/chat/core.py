@@ -10,7 +10,7 @@ from typing import Any, Callable
 from urllib.parse import unquote
 
 from agentos._core.errors import CliError
-from agentos._core.sequences import _unique_paths, _unique_strings
+from agentos._core.sequences import _unique_paths
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.chat.providers import (
     canonical_chat_provider_specs,

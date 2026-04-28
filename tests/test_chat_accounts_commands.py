@@ -975,6 +975,129 @@ def test_iter_chat_account_stats_refresh_payloads_yields_partial_updates_as_acco
         next(payloads)
 
 
+def test_iter_chat_account_stats_refresh_payloads_converts_collector_failure_to_account_error(
+    monkeypatch,
+) -> None:
+    instances = (
+        _account_instance(
+            provider="alpha",
+            instance_id="alpha-1",
+            label="Alpha 1",
+            cli_command=("alpha",),
+            env=(),
+            timeout_sec=15,
+            live_usage_refresh=False,
+        ),
+        _account_instance(
+            provider="beta",
+            instance_id="beta-1",
+            label="Beta 1",
+            cli_command=("beta",),
+            env=(),
+            timeout_sec=15,
+            live_usage_refresh=False,
+        ),
+    )
+
+    def collect(instance: chat_accounts.AccountProviderContext, refresh_usage: bool) -> dict[str, object]:
+        assert refresh_usage is False
+        if instance.instance_id == "alpha-1":
+            raise RuntimeError("connection lost")
+        return {
+            "id": instance.instance_id,
+            "label": instance.label,
+            "provider": instance.provider,
+            "check_status": "ok",
+            "summary": f"{instance.instance_id} ready",
+        }
+
+    monkeypatch.setattr(
+        chat_accounts,
+        "supported_account_provider_families",
+        lambda: (
+            chat_accounts.AccountProviderHandler(
+                provider_family=chat_accounts.ProviderFamily(family="alpha"),
+                collect_stats=collect,
+            ),
+            chat_accounts.AccountProviderHandler(
+                provider_family=chat_accounts.ProviderFamily(family="beta"),
+                collect_stats=collect,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        chat_accounts,
+        "configured_account_provider_instances",
+        lambda start_path=".": instances,
+    )
+    monkeypatch.setattr(chat_accounts, "load_chat_accounts_usage_total_config", lambda start_path=".": None)
+    monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
+
+    final_payload = list(chat_accounts.iter_chat_account_stats_refresh_payloads())[-1]
+    providers = final_payload["providers"]
+    assert isinstance(providers, list)
+    alpha_account = providers[0]["accounts"][0]
+    beta_account = providers[1]["accounts"][0]
+
+    assert final_payload["status"] == "ok"
+    assert final_payload["ok_count"] == 1
+    assert final_payload["error_count"] == 1
+    assert alpha_account["check_status"] == "error"
+    assert alpha_account["error"]["type"] == "collector_failed"
+    assert alpha_account["error"]["message"] == "connection lost"
+    assert beta_account["check_status"] == "ok"
+    assert "pending_count" not in final_payload
+
+
+def test_iter_chat_account_stats_refresh_payloads_converts_single_collector_failure_to_account_error(
+    monkeypatch,
+) -> None:
+    instance = _account_instance(
+        provider="alpha",
+        instance_id="alpha-1",
+        label="Alpha 1",
+        cli_command=("alpha",),
+        env=(),
+        timeout_sec=15,
+        live_usage_refresh=False,
+    )
+
+    def collect(instance: chat_accounts.AccountProviderContext, refresh_usage: bool) -> dict[str, object]:
+        del instance, refresh_usage
+        raise RuntimeError("connection lost")
+
+    monkeypatch.setattr(
+        chat_accounts,
+        "supported_account_provider_families",
+        lambda: (
+            chat_accounts.AccountProviderHandler(
+                provider_family=chat_accounts.ProviderFamily(family="alpha"),
+                collect_stats=collect,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        chat_accounts,
+        "configured_account_provider_instances",
+        lambda start_path=".": (instance,),
+    )
+    monkeypatch.setattr(chat_accounts, "load_chat_accounts_usage_total_config", lambda start_path=".": None)
+    monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
+
+    final_payload = list(chat_accounts.iter_chat_account_stats_refresh_payloads())[-1]
+    providers = final_payload["providers"]
+    assert isinstance(providers, list)
+    account = providers[0]["accounts"][0]
+
+    assert final_payload["status"] == "ok"
+    assert final_payload["ok_count"] == 0
+    assert final_payload["error_count"] == 1
+    assert account["check_status"] == "error"
+    assert account["error"]["type"] == "collector_failed"
+    assert account["error"]["message"] == "connection lost"
+    assert "pending_count" not in final_payload
+
+
 def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypatch) -> None:
     instance = _account_context(
         provider="claude-code",
@@ -1172,6 +1295,54 @@ def test_loop_chat_accounts_stats_interval_behavior(monkeypatch, scenario: str) 
         assert wait_calls == [599.0, 600.0, 600.0]
 
 
+def test_loop_chat_accounts_stats_continues_after_non_tty_refresh_error(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="usage",
+        loop=True,
+    )
+
+    outputs = iter((RuntimeError("connection lost"), "snapshot-2"))
+
+    def fake_render(loop_args: argparse.Namespace) -> str:
+        assert loop_args is args
+        output = next(outputs)
+        if isinstance(output, Exception):
+            raise output
+        return output
+
+    wait_calls = 0
+
+    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
+        nonlocal wait_calls
+        del interval_sec, input_stream
+        wait_calls += 1
+        if wait_calls >= 2:
+            raise KeyboardInterrupt()
+        return False
+
+    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_output", fake_render)
+    output_stream = io.StringIO()
+
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=output_stream,
+        interval_sec=60.0,
+        wait_for_trigger=fake_wait,
+    )
+
+    rendered = output_stream.getvalue()
+    assert exit_code == 0
+    assert "refresh | error" in rendered
+    assert "connection lost" in rendered
+    assert "snapshot-2" in rendered
+    assert wait_calls == 2
+
+
 def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> None:
     args = argparse.Namespace(
         instance_ids=[],
@@ -1220,6 +1391,78 @@ def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> No
 
     assert exit_code == 0
     assert events == ["render"]
+
+
+def test_loop_chat_accounts_stats_direct_tty_path_continues_after_refresh_error(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="usage",
+        loop=True,
+    )
+
+    events: list[str] = []
+    render_calls = 0
+    wait_calls = 0
+
+    def fake_render_progressive(
+        loop_args: argparse.Namespace,
+        *,
+        frame,
+        renderer,
+        interval_sec: float,
+    ) -> None:  # type: ignore[no-untyped-def]
+        nonlocal render_calls
+        del frame, renderer, interval_sec
+        assert loop_args is args
+        render_calls += 1
+        if render_calls == 1:
+            raise RuntimeError("connection lost")
+
+    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
+        nonlocal wait_calls
+        del interval_sec, input_stream
+        wait_calls += 1
+        if wait_calls >= 2:
+            raise KeyboardInterrupt()
+        return False
+
+    class FakeTTYRenderer:
+        def __init__(self, *, output_stream) -> None:  # type: ignore[no-untyped-def]
+            del output_stream
+
+        def start(self) -> None:
+            events.append("renderer:start")
+
+        def stop(self) -> None:
+            events.append("renderer:stop")
+
+        def paint(self, frame) -> None:  # type: ignore[no-untyped-def]
+            events.append(frame.render_text(now_monotonic=0.0))
+
+    class FakeTTYOutput(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_progressive_tty", fake_render_progressive)
+    monkeypatch.setattr(chat_commands, "_ChatAccountsStatsLoopTTYRenderer", FakeTTYRenderer)
+
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=FakeTTYOutput(),
+        interval_sec=60.0,
+        wait_for_trigger=fake_wait,
+    )
+
+    rendered = "\n".join(events)
+    assert exit_code == 0
+    assert "[refresh] error: connection lost" in rendered
+    assert render_calls == 2
+    assert wait_calls == 2
+    assert events[-1] == "renderer:stop"
 
 
 def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetch(monkeypatch) -> None:
@@ -1718,6 +1961,81 @@ def test_loop_chat_accounts_stats_tty_polls_input_while_refresh_runs(monkeypatch
     assert exit_code == 0
     assert "input:enter-during-refresh" in events
     assert "snapshot-final" in "\n".join(events)
+    assert events[-1] == "renderer:stop"
+
+
+def test_loop_chat_accounts_stats_tty_continues_after_refresh_worker_error(monkeypatch) -> None:
+    args = argparse.Namespace(
+        instance_ids=[],
+        providers=None,
+        refresh_usage=False,
+        full_output=False,
+        output_format="usage",
+        loop=True,
+    )
+
+    events: list[str] = []
+    worker_finished = threading.Event()
+
+    def fake_iter_refresh_payloads(**kwargs):  # type: ignore[no-untyped-def]
+        del kwargs
+        try:
+            yield {"account_count": 1, "pending_count": 1, "completed_count": 0, "providers": []}
+            raise RuntimeError("connection lost")
+        finally:
+            worker_finished.set()
+
+    def fake_format(loop_args: argparse.Namespace, payload: dict[str, object]) -> str:
+        assert loop_args is args
+        if "pending_count" in payload:
+            return "snapshot-pending"
+        return "snapshot-final"
+
+    class FakeTTYRenderer:
+        def __init__(self, *, output_stream) -> None:  # type: ignore[no-untyped-def]
+            del output_stream
+
+        def start(self) -> None:
+            events.append("renderer:start")
+
+        def stop(self) -> None:
+            events.append("renderer:stop")
+
+        def paint(self, frame) -> None:  # type: ignore[no-untyped-def]
+            events.append(frame.render_text(now_monotonic=0.0))
+
+    input_calls = 0
+
+    def fake_input_triggered(input_stream, timeout_sec: float) -> bool:  # type: ignore[no-untyped-def]
+        nonlocal input_calls
+        del input_stream, timeout_sec
+        input_calls += 1
+        assert worker_finished.wait(timeout=1.0)
+        if input_calls == 1:
+            return False
+        raise KeyboardInterrupt()
+
+    class FakeTTYOutput(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(chat_commands, "iter_chat_account_stats_refresh_payloads", fake_iter_refresh_payloads)
+    monkeypatch.setattr(chat_commands, "_format_chat_accounts_stats_payload_output", fake_format)
+    monkeypatch.setattr(chat_commands, "_ChatAccountsStatsLoopTTYRenderer", FakeTTYRenderer)
+    monkeypatch.setattr(chat_commands, "_chat_accounts_loop_input_triggered", fake_input_triggered)
+
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=FakeTTYOutput(),
+        interval_sec=60.0,
+    )
+
+    rendered = "\n".join(events)
+    assert exit_code == 0
+    assert "[refresh] error: connection lost" in rendered
+    assert "snapshot-pending" in rendered
+    assert input_calls == 2
     assert events[-1] == "renderer:stop"
 
 

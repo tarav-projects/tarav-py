@@ -204,6 +204,8 @@ def _copilot_events_from_raw_events(
 ) -> dict[str, object]:
     events: list[dict[str, object]] = []
     warnings: list[str] = []
+    interaction_refs_by_raw_id: dict[str, str] = {}
+    current_interaction_ref: str | None = None
 
     for raw_event in raw_events.events:
         event_type = raw_event.event_type or "unknown"
@@ -212,12 +214,28 @@ def _copilot_events_from_raw_events(
                 f"copilot event record {raw_event.event_index} has no event type"
             )
 
+        interaction_ref = _copilot_event_interaction_ref(
+            raw_event,
+            interaction_refs_by_raw_id=interaction_refs_by_raw_id,
+            current_interaction_ref=current_interaction_ref,
+        )
+        if interaction_ref != "session":
+            current_interaction_ref = interaction_ref
         event: dict[str, object] = {
             "event_id": f"event-{len(events) + 1}",
+            "sequence": len(events) + 1,
+            "kind": _copilot_event_kind(raw_event),
+            "producer": _copilot_event_producer(raw_event),
+            "surfaces": _copilot_event_surfaces(raw_event),
+            "interaction_ref": interaction_ref,
             "type": f"copilot-cli.{event_type}",
             "data": dict(raw_event.data),
+            "payload": dict(raw_event.data),
             "native": _copilot_event_native(raw_event),
         }
+        outcome = _copilot_event_outcome(raw_event)
+        if outcome is not None:
+            event["outcome"] = outcome
         _copilot_attach_event_provenance(event, raw_event)
 
         turn_id = _copilot_event_turn_id(raw_event)
@@ -246,6 +264,148 @@ def _copilot_events_from_raw_events(
         "events": events,
         "warnings": warnings,
     }
+
+def _copilot_event_interaction_ref(
+    raw_event: _CopilotRawEvent,
+    *,
+    interaction_refs_by_raw_id: dict[str, str],
+    current_interaction_ref: str | None,
+) -> str:
+    event_type = raw_event.event_type
+    if event_type in {"session.start", "session.model_change", "session.shutdown"}:
+        return "session"
+    raw_interaction_id = _string_or_none(raw_event.data.get("interactionId"))
+    if raw_interaction_id is not None:
+        interaction_ref = interaction_refs_by_raw_id.get(raw_interaction_id)
+        if interaction_ref is None:
+            interaction_ref = current_interaction_ref or (
+                f"interaction-{len(interaction_refs_by_raw_id) + 1}"
+            )
+            interaction_refs_by_raw_id[raw_interaction_id] = interaction_ref
+        return interaction_ref
+    if event_type == "user.message":
+        if current_interaction_ref is None:
+            return "interaction-1"
+        next_index = _copilot_interaction_ref_index(current_interaction_ref) + 1
+        return f"interaction-{next_index}"
+    if event_type == "system.message" and current_interaction_ref is None:
+        return "session"
+    if current_interaction_ref is not None:
+        return current_interaction_ref
+    return "interaction-1"
+
+def _copilot_interaction_ref_index(interaction_ref: str) -> int:
+    prefix = "interaction-"
+    if not interaction_ref.startswith(prefix):
+        return 1
+    return _int_or_none(interaction_ref[len(prefix):]) or 1
+
+def _copilot_event_kind(raw_event: _CopilotRawEvent) -> str:
+    event_type = raw_event.event_type
+    if event_type == "session.start":
+        return "session.start"
+    if event_type == "session.shutdown":
+        return "session.end"
+    if event_type == "session.model_change":
+        return "session.update"
+    if event_type == "system.message":
+        return "context"
+    if event_type in {"user.message", "assistant.message"}:
+        if (
+            event_type == "assistant.message"
+            and _copilot_is_tool_request_only_message(raw_event)
+            and not _copilot_event_has_readable_content(raw_event)
+        ):
+            return "tool.call"
+        return "message"
+    if event_type == "assistant.turn_start":
+        return "run.start"
+    if event_type == "assistant.turn_end":
+        return "run.end"
+    if event_type == "tool.execution_start":
+        return "tool.progress"
+    if event_type == "tool.execution_complete":
+        return "tool.result"
+    return "session.update"
+
+def _copilot_event_producer(raw_event: _CopilotRawEvent) -> dict[str, object]:
+    event_type = raw_event.event_type
+    if event_type == "user.message":
+        return _semantic_event_producer("user")
+    if event_type in {
+        "assistant.message",
+        "assistant.turn_start",
+        "assistant.turn_end",
+    }:
+        return _semantic_event_producer("assistant")
+    if event_type in {"tool.execution_start", "tool.execution_complete"}:
+        return _semantic_event_producer(
+            "tool",
+            name=_string_or_none(raw_event.data.get("toolName")),
+        )
+    if event_type == "system.message":
+        return _semantic_event_producer("system")
+    return _semantic_event_producer("provider")
+
+def _copilot_event_surfaces(raw_event: _CopilotRawEvent) -> dict[str, object]:
+    event_type = raw_event.event_type
+    if event_type == "system.message":
+        return _semantic_event_surfaces(
+            transcript="hidden",
+            model_input="visible",
+        )
+    if event_type in {"user.message", "assistant.message"}:
+        if (
+            event_type == "assistant.message"
+            and _copilot_is_tool_request_only_message(raw_event)
+            and not _copilot_event_has_readable_content(raw_event)
+        ):
+            return _semantic_event_surfaces(
+                transcript="hidden",
+                model_input="visible",
+            )
+        return _semantic_event_surfaces(
+            transcript="visible",
+            model_input="visible",
+        )
+    if event_type == "tool.execution_complete":
+        return _semantic_event_surfaces(
+            transcript="hidden",
+            model_input="visible",
+        )
+    if event_type == "tool.execution_start":
+        return _semantic_event_surfaces(transcript="hidden")
+    return _semantic_event_surfaces(transcript="hidden")
+
+def _copilot_event_outcome(raw_event: _CopilotRawEvent) -> str | None:
+    event_type = raw_event.event_type
+    if event_type == "assistant.turn_end":
+        return "ok"
+    if event_type == "session.shutdown":
+        return "ok"
+    if event_type != "tool.execution_complete":
+        return None
+    success = raw_event.data.get("success")
+    if success is True:
+        return "ok"
+    if success is False:
+        return "error"
+    return None
+
+def _copilot_event_has_readable_content(raw_event: _CopilotRawEvent) -> bool:
+    content = raw_event.data.get("content")
+    if _string_or_none(content) is not None:
+        return True
+    if isinstance(content, list):
+        for item in content:
+            if _string_or_none(item) is not None:
+                return True
+            if (
+                isinstance(item, dict)
+                and _string_or_none(item.get("text")) is not None
+            ):
+                return True
+    return False
 
 def _copilot_event_native(raw_event: _CopilotRawEvent) -> dict[str, object]:
     native: dict[str, object] = {

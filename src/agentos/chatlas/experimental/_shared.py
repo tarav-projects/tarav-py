@@ -55,6 +55,47 @@ def _event_data(event: dict[str, object] | None) -> dict[str, object]:
         return data
     return {}
 
+def _semantic_event_producer(
+    producer_type: str,
+    *,
+    name: str | None = None,
+) -> dict[str, object]:
+    producer: dict[str, object] = {
+        "type": producer_type,
+    }
+    if name is not None:
+        producer["name"] = name
+    return producer
+
+def _semantic_event_surfaces(
+    *,
+    transcript: str,
+    replay: str = "visible",
+    debug: str = "visible",
+    model_input: str = "hidden",
+) -> dict[str, object]:
+    return {
+        "transcript": transcript,
+        "replay": replay,
+        "debug": debug,
+        "model_input": model_input,
+    }
+
+def _semantic_event_outcome_from_status(status: str | None) -> str | None:
+    normalized = _string_or_none(status)
+    if normalized is None:
+        return None
+    normalized = normalized.lower()
+    if normalized in {"completed", "complete", "ok", "success", "succeeded"}:
+        return "ok"
+    if normalized in {"interrupted", "timeout", "timed_out"}:
+        return "interrupted"
+    if normalized in {"cancelled", "canceled"}:
+        return "cancelled"
+    if normalized in {"failed", "failure", "error", "errored"}:
+        return "error"
+    return None
+
 def _warn_about_tool_group_records(
     *,
     warnings: list[str],
@@ -369,6 +410,9 @@ __all__ = [
     "_event_turn_id",
     "_event_timestamp",
     "_event_data",
+    "_semantic_event_producer",
+    "_semantic_event_surfaces",
+    "_semantic_event_outcome_from_status",
     "_warn_about_tool_group_records",
     "_tool_invocation_refs_by_call_id",
     "_attach_event_refs_to_tool_invocations",

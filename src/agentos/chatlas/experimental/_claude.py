@@ -257,17 +257,33 @@ def _claude_events_from_raw_session(
 ) -> dict[str, object]:
     events: list[dict[str, object]] = []
     warnings: list[str] = []
+    current_interaction_ref: str | None = None
+    interaction_count = 0
 
     for record in raw_session.records:
         if _claude_record_kind(record) == "last-prompt":
             continue
 
+        if _claude_record_starts_interaction(record):
+            interaction_count += 1
+            current_interaction_ref = f"interaction-{interaction_count}"
+        interaction_ref = current_interaction_ref or "session"
+        data = _claude_event_data(record)
         event: dict[str, object] = {
             "event_id": f"event-{len(events) + 1}",
+            "sequence": len(events) + 1,
+            "kind": _claude_event_kind(record),
+            "producer": _claude_event_producer(record),
+            "surfaces": _claude_event_surfaces(record),
+            "interaction_ref": interaction_ref,
             "type": _claude_event_type(record),
-            "data": _claude_event_data(record),
+            "data": data,
+            "payload": data,
             "native": _claude_event_native(record),
         }
+        outcome = _claude_event_outcome(record)
+        if outcome is not None:
+            event["outcome"] = outcome
         _claude_attach_event_provenance(event, record)
 
         parent_uuid = record.parent_uuid
@@ -300,6 +316,99 @@ def _claude_events_from_raw_session(
         "events": events,
         "warnings": warnings,
     }
+
+def _claude_record_starts_interaction(record: _ClaudeRawRecord) -> bool:
+    if _claude_message_role(record) != "user":
+        return False
+    if _claude_record_has_tool_evidence(record):
+        return False
+    return _claude_record_has_visible_message(record)
+
+def _claude_event_kind(record: _ClaudeRawRecord) -> str:
+    if record.record_type == "progress":
+        return "tool.progress"
+    if record.record_type == "system":
+        subtype = _string_or_none(record.payload.get("subtype"))
+        if subtype == "turn_duration":
+            return "metric"
+        return "session.update"
+
+    role = _claude_message_role(record)
+    if role == "user":
+        if _claude_record_content_item_count(record, item_type="tool_result") > 0:
+            return "tool.result"
+        return "message"
+    if role == "assistant":
+        if _claude_record_content_item_count(record, item_type="text") > 0:
+            return "message"
+        if _claude_record_content_item_count(record, item_type="tool_use") > 0:
+            return "tool.call"
+        if _claude_record_content_item_count(record, item_type="thinking") > 0:
+            return "reasoning"
+        return "message"
+    return "session.update"
+
+def _claude_event_producer(record: _ClaudeRawRecord) -> dict[str, object]:
+    if record.record_type == "progress":
+        return _semantic_event_producer(
+            "system",
+            name=_string_or_none(record.data.get("hookName")),
+        )
+    role = _claude_message_role(record)
+    if role == "user":
+        if _claude_record_content_item_count(record, item_type="tool_result") > 0:
+            return _semantic_event_producer(
+                "tool",
+                name=_claude_record_tool_name(record),
+            )
+        return _semantic_event_producer("user")
+    if role == "assistant":
+        return _semantic_event_producer("assistant")
+    if record.record_type == "system":
+        return _semantic_event_producer("provider")
+    return _semantic_event_producer("provider")
+
+def _claude_record_tool_name(record: _ClaudeRawRecord) -> str | None:
+    hook_name = _string_or_none(record.data.get("hookName"))
+    if hook_name is not None and ":" in hook_name:
+        return hook_name.split(":")[-1].strip() or None
+    return None
+
+def _claude_event_surfaces(record: _ClaudeRawRecord) -> dict[str, object]:
+    kind = _claude_event_kind(record)
+    if kind == "message":
+        return _semantic_event_surfaces(
+            transcript="visible",
+            model_input="visible",
+        )
+    if kind == "context":
+        return _semantic_event_surfaces(
+            transcript="hidden",
+            model_input="visible",
+        )
+    if kind in {"tool.call", "tool.result"}:
+        return _semantic_event_surfaces(
+            transcript="hidden",
+            model_input="visible",
+        )
+    return _semantic_event_surfaces(transcript="hidden")
+
+def _claude_event_outcome(record: _ClaudeRawRecord) -> str | None:
+    kind = _claude_event_kind(record)
+    if kind != "tool.result":
+        return None
+    content = record.message.get("content")
+    if isinstance(content, list):
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            if _string_or_none(item.get("type")) != "tool_result":
+                continue
+            if item.get("is_error") is True:
+                return "error"
+    if record.tool_use_result.get("interrupted") is True:
+        return "interrupted"
+    return "ok"
 
 def _claude_messages_from_raw_session(
     raw_session: _ClaudeRawSession,

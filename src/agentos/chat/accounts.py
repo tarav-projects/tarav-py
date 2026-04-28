@@ -509,34 +509,78 @@ def _iter_account_collection_results(
     if len(configured_contexts) == 1:
         context = configured_contexts[0]
         provider_handler = provider_handlers_by_name[context.provider]
-        account_payload = provider_handler.collect_stats(context, refresh_usage)
-        if not isinstance(account_payload, dict):
-            raise CliError("account provider collector must return a JSON object payload")
-        yield AccountCollectionResult(
+        yield _collect_account_result(
             index=0,
-            provider_name=context.provider,
-            account_payload=account_payload,
+            context=context,
+            provider_handler=provider_handler,
+            refresh_usage=refresh_usage,
         )
         return
 
     max_workers = min(MAX_ACCOUNT_COLLECTION_WORKERS, len(configured_contexts))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_lookup: dict[Future[dict[str, Any]], tuple[int, str]] = {}
+        future_lookup: dict[Future[dict[str, Any]], tuple[int, AccountProviderContext]] = {}
         for index, context in enumerate(configured_contexts):
             provider_handler = provider_handlers_by_name[context.provider]
             future = executor.submit(provider_handler.collect_stats, context, refresh_usage)
-            future_lookup[future] = (index, context.provider)
+            future_lookup[future] = (index, context)
 
         for future in as_completed(future_lookup):
-            index, provider_name = future_lookup[future]
-            account_payload = future.result()
-            if not isinstance(account_payload, dict):
-                raise CliError("account provider collector must return a JSON object payload")
+            index, context = future_lookup[future]
+            try:
+                account_payload = future.result()
+                if not isinstance(account_payload, dict):
+                    raise CliError("account provider collector must return a JSON object payload")
+            except Exception as exc:
+                account_payload = _account_collection_error_payload(context, exc)
             yield AccountCollectionResult(
                 index=index,
-                provider_name=provider_name,
+                provider_name=context.provider,
                 account_payload=account_payload,
             )
+
+
+def _collect_account_result(
+    *,
+    index: int,
+    context: AccountProviderContext,
+    provider_handler: AccountProviderHandler,
+    refresh_usage: bool,
+) -> AccountCollectionResult:
+    try:
+        account_payload = provider_handler.collect_stats(context, refresh_usage)
+        if not isinstance(account_payload, dict):
+            raise CliError("account provider collector must return a JSON object payload")
+    except Exception as exc:
+        account_payload = _account_collection_error_payload(context, exc)
+    return AccountCollectionResult(
+        index=index,
+        provider_name=context.provider,
+        account_payload=account_payload,
+    )
+
+
+def _account_collection_error_payload(
+    context: AccountProviderContext,
+    error: Exception,
+) -> dict[str, Any]:
+    if isinstance(error, AccountCommandError):
+        return _error_account_result(
+            context,
+            error_type=error.error_type,
+            message=error.message,
+            exit_code=error.exit_code,
+        )
+    if isinstance(error, CliError):
+        error_type = "invalid_output"
+    else:
+        error_type = "collector_failed"
+    message = str(error).strip() or error.__class__.__name__
+    return _error_account_result(
+        context,
+        error_type=error_type,
+        message=message,
+    )
 
 
 def format_chat_account_stats_markdown(payload: dict[str, object]) -> str:

@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from agentos.cli import main
 from _helpers import write_text_file as _write
 

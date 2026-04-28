@@ -3352,61 +3352,39 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
     ]
     assert payload["chat"]["model_runs"] == []
     assert payload["chat"]["tool_invocations"] == []
-    assert payload["chat"]["events"] == [
-        {
-            "event_id": "event-1",
-            "type": "claude-code.user.message",
-            "data": {
-                "message": {
-                    "role": "user",
-                    "content": "claude experimental user",
-                },
-                "session_id": session_id,
-                "cwd": "/tmp/project",
-                "version": "2.1.69",
-                "is_sidechain": False,
-                "user_type": "external",
-            },
-            "native": {
-                "record_index": 1,
-                "line": 1,
-                "record_type": "message",
-                "uuid": "msg-user-1",
-                "message_role": "user",
-            },
-            "timestamp": "2026-04-18T11:00:00.000Z",
-            "source_refs": [{"source_ref_id": "source-1", "record_index": 1, "line": 1}],
-        },
-        {
-            "event_id": "event-2",
-            "type": "claude-code.assistant.message",
-            "data": {
-                "message": {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": "claude experimental assistant"},
-                        {"type": "text", "text": "tool summary"},
-                    ],
-                },
-                "session_id": session_id,
-                "cwd": "/tmp/project",
-                "version": "2.1.69",
-                "is_sidechain": False,
-                "user_type": "external",
-            },
-            "native": {
-                "record_index": 2,
-                "line": 2,
-                "record_type": "message",
-                "uuid": "msg-assistant-1",
-                "parent_uuid": "msg-user-1",
-                "message_role": "assistant",
-            },
-            "timestamp": "2026-04-18T11:00:01.000Z",
-            "source_refs": [{"source_ref_id": "source-1", "record_index": 2, "line": 2}],
-            "parent_uuid": "msg-user-1",
-        },
+    events = payload["chat"]["events"]
+    assert [event["event_id"] for event in events] == ["event-1", "event-2"]
+    assert [event["sequence"] for event in events] == [1, 2]
+    assert [event["type"] for event in events] == [
+        "claude-code.user.message",
+        "claude-code.assistant.message",
     ]
+    assert [event["kind"] for event in events] == ["message", "message"]
+    assert [event["producer"] for event in events] == [
+        {"type": "user"},
+        {"type": "assistant"},
+    ]
+    assert [event["interaction_ref"] for event in events] == [
+        "interaction-1",
+        "interaction-1",
+    ]
+    assert [event["surfaces"]["transcript"] for event in events] == [
+        "visible",
+        "visible",
+    ]
+    assert events[0]["payload"] == events[0]["data"]
+    assert events[0]["data"] == {
+        "message": {
+            "role": "user",
+            "content": "claude experimental user",
+        },
+        "session_id": session_id,
+        "cwd": "/tmp/project",
+        "version": "2.1.69",
+        "is_sidechain": False,
+        "user_type": "external",
+    }
+    assert events[1]["parent_uuid"] == "msg-user-1"
     assert payload["chat"]["usage"] == []
     assert payload["normalization"]["unsupported_concepts"] == []
     assert payload["normalization"]["deferred_concepts"] == []
@@ -4229,24 +4207,37 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "copilot-cli.assistant.turn_end",
         "copilot-cli.session.shutdown",
     ]
-    assert events[0] == {
-        "event_id": "event-1",
-        "type": "copilot-cli.session.start",
-        "timestamp": "2026-04-18T11:00:00.000Z",
-        "data": {
-            "sessionId": session_id,
-            "producer": "copilot-agent",
-        },
-        "native": {
-            "event_type": "session.start",
-            "event_index": 1,
-            "line": 1,
-            "event_id": "event-start",
-        },
-        "source_refs": [
-            {"source_ref_id": "source-1", "event_index": 1, "line": 1}
-        ],
-    }
+    assert [event["sequence"] for event in events] == list(range(1, 11))
+    assert [event["kind"] for event in events] == [
+        "session.start",
+        "session.update",
+        "context",
+        "message",
+        "run.start",
+        "message",
+        "tool.progress",
+        "tool.result",
+        "run.end",
+        "session.end",
+    ]
+    assert [event["interaction_ref"] for event in events] == [
+        "session",
+        "session",
+        "session",
+        "interaction-1",
+        "interaction-1",
+        "interaction-1",
+        "interaction-1",
+        "interaction-1",
+        "interaction-1",
+        "session",
+    ]
+    assert events[0]["producer"] == {"type": "provider"}
+    assert events[0]["payload"] == events[0]["data"]
+    assert events[0]["timestamp"] == "2026-04-18T11:00:00.000Z"
+    assert events[7]["outcome"] == "ok"
+    assert events[8]["outcome"] == "ok"
+    assert events[9]["outcome"] == "ok"
     assert events[4]["turn_id"] == "0"
     assert events[5]["data"]["reasoningText"] == "check repository state"
     assert events[6]["data"] == {
@@ -4836,31 +4827,38 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
         "codex.token_count",
         "codex.exec_command_end",
     ]
-    assert events[0] == {
-        "event_id": "event-1",
-        "type": "codex.task_started",
-        "timestamp": "2026-03-08T01:08:59.090Z",
+    assert [event["sequence"] for event in events] == [1, 2, 3]
+    assert [event["kind"] for event in events] == [
+        "run.start",
+        "metric",
+        "tool.result",
+    ]
+    assert [event["producer"] for event in events] == [
+        {"type": "provider"},
+        {"type": "provider"},
+        {"type": "tool"},
+    ]
+    assert [event["interaction_ref"] for event in events] == [
+        "interaction-1",
+        "interaction-1",
+        "interaction-1",
+    ]
+    assert "outcome" not in events[0]
+    assert events[0]["timestamp"] == "2026-03-08T01:08:59.090Z"
+    assert events[0]["turn_id"] == "turn-1"
+    assert events[0]["payload"] == events[0]["data"]
+    assert events[0]["data"] == {
         "turn_id": "turn-1",
-        "data": {
-            "turn_id": "turn-1",
-            "started_at": 1772946539,
-            "model_context_window": 258400,
-            "collaboration_mode_kind": "default",
-        },
-        "native": {
-            "record_type": "event_msg",
-            "payload_type": "task_started",
-            "record_index": 2,
-        },
-        "source_refs": [
-            {"source_ref_id": "source-1", "record_index": 2, "line": 2}
-        ],
+        "started_at": 1772946539,
+        "model_context_window": 258400,
+        "collaboration_mode_kind": "default",
     }
     assert events[1]["event_id"] == "event-2"
     assert events[1]["type"] == "codex.token_count"
     assert events[1]["data"]["info"]["total_token_usage"]["total_tokens"] == 12
     assert events[2]["event_id"] == "event-3"
     assert events[2]["type"] == "codex.exec_command_end"
+    assert events[2]["outcome"] == "ok"
     assert events[2]["call_id"] == "call-complete"
     assert events[2]["turn_id"] == "turn-1"
     assert events[2]["tool_invocation_ref"] == "tool-invocation-1"

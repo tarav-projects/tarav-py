@@ -121,6 +121,7 @@ class _ChatAccountsStatsLoopFrame:
     interval_sec: float
     body_text: str = ""
     refresh_progress_text: str | None = None
+    refresh_error_text: str | None = None
     next_refresh_at_monotonic: float | None = None
     refreshing: bool = False
 
@@ -129,12 +130,20 @@ class _ChatAccountsStatsLoopFrame:
         self.refreshing = True
         self.next_refresh_at_monotonic = None
         self.refresh_progress_text = None
+        self.refresh_error_text = None
         if not self.body_text:
             self.body_text = _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE
 
     def apply_payload(self, *, rendered_body_text: str, refresh_progress_text: str | None) -> None:
         self.body_text = rendered_body_text
         self.refresh_progress_text = refresh_progress_text
+        self.refresh_error_text = None
+
+    def apply_error(self, error: Exception) -> None:
+        self.refresh_progress_text = None
+        self.refresh_error_text = _format_chat_accounts_loop_error_status(error)
+        if not self.body_text or self.body_text == _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE:
+            self.body_text = _format_chat_accounts_loop_error_body(error)
 
     def finish_refresh(self, *, next_refresh_at_monotonic: float) -> None:
         self.refreshing = False
@@ -151,6 +160,8 @@ class _ChatAccountsStatsLoopFrame:
         sections.append(self.footer_text(now_monotonic=now_monotonic))
         if self.refresh_progress_text is not None:
             sections.append(self.refresh_progress_text)
+        if self.refresh_error_text is not None:
+            sections.append(self.refresh_error_text)
         sections.append(self.body_text or _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE)
         return "\n\n".join(sections)
 
@@ -848,18 +859,25 @@ def _loop_chat_accounts_stats(
     try:
         while True:
             if tty_output:
-                _render_chat_accounts_stats_progressive_tty(
-                    args,
-                    frame=tty_frame,
-                    renderer=tty_renderer,
-                    interval_sec=current_interval_sec,
-                )
                 assert tty_frame is not None
                 assert tty_renderer is not None
+                try:
+                    _render_chat_accounts_stats_progressive_tty(
+                        args,
+                        frame=tty_frame,
+                        renderer=tty_renderer,
+                        interval_sec=current_interval_sec,
+                    )
+                except Exception as exc:
+                    tty_frame.apply_error(exc)
+                    tty_renderer.paint(tty_frame)
                 tty_frame.finish_refresh(next_refresh_at_monotonic=time.monotonic() + current_interval_sec)
                 tty_renderer.paint(tty_frame)
             else:
-                rendered_output = _render_chat_accounts_stats_output(args)
+                try:
+                    rendered_output = _render_chat_accounts_stats_output(args)
+                except Exception as exc:
+                    rendered_output = _format_chat_accounts_loop_error_body(exc)
                 if not first_iteration:
                     output_stream.write("\n")
                 output_stream.write(rendered_output)
@@ -1004,9 +1022,34 @@ def _drain_chat_accounts_tty_refresh_events(
             renderer.paint(frame)
             continue
         if isinstance(event, _ChatAccountsStatsRefreshErrorEvent):
-            raise event.error
+            frame.apply_error(event.error)
+            renderer.paint(frame)
+            refresh_done = True
+            continue
         refresh_done = True
     return refresh_done
+
+
+def _format_chat_accounts_loop_error_status(error: Exception) -> str:
+    return f"[refresh] error: {_format_chat_accounts_loop_error_message(error)}"
+
+
+def _format_chat_accounts_loop_error_body(error: Exception) -> str:
+    return "\n".join(
+        [
+            "# Agent Accounts Usage",
+            "",
+            "refresh | error",
+            f"   | {_format_chat_accounts_loop_error_message(error)}",
+        ]
+    )
+
+
+def _format_chat_accounts_loop_error_message(error: Exception) -> str:
+    message = str(error).strip()
+    if message:
+        return message
+    return error.__class__.__name__
 
 
 def _render_chat_accounts_stats_progressive_tty(

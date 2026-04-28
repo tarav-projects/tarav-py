@@ -1,10 +1,64 @@
 # Session.Model Design Issues — Deep Scan
 
-Exhaustive scan of `src/agentos/chatlas/experimental.py` for design-level
-issues in the Session.Model canonical/native boundary, field consistency,
+Original deep scan of the experimental Session.Model export surface for
+design-level issues in the canonical/native boundary, field consistency,
 status vocabularies, and cross-provider uniformity.
 
 Date: 2026-04-23
+Refresh: 2026-04-25
+
+Current implementation files:
+- `src/agentos/chatlas/experimental/_codex.py`
+- `src/agentos/chatlas/experimental/_copilot.py`
+- `src/agentos/chatlas/experimental/_claude.py`
+- `src/agentos/chatlas/experimental/_shared.py`
+- `src/agentos/chatlas/experimental/_transcript.py`
+
+Note: the original scan referenced the old monolithic path
+`src/agentos/chatlas/experimental.py`. The detailed issue bodies below are
+preserved as historical analysis, but their path/line references are stale.
+
+## Refresh Summary (2026-04-25)
+
+### Fixed in the current working tree
+- A1, A2, A5, A6, A7: provider-specific model_run, event, and tool metadata
+  moved under `native`.
+- B1, B2: status vocabularies normalized (`running` for in-progress model runs;
+  Codex tool status mapped to a closed canonical set).
+- C3: reasoning trace entries now use canonical `content`.
+- D1: Codex text blocks now preserve input/output origin.
+- D2, D3, D4: canonical content blocks now cover tool calls/results and images;
+  Copilot attachments no longer live only in `native`.
+- E1, E2: Codex model-run message and reasoning attachment now works for
+  multi-turn sessions by record span instead of single-run all-or-nothing
+  heuristics.
+
+### Corrected or narrowed claims
+- A3 is narrower than originally written. `execution` is not Codex-only; Claude
+  also emits it. The remaining concern is cross-provider `execution` shape
+  divergence, not object existence.
+- The original file path reference is stale because the implementation is now
+  split by provider module.
+
+### Still open after this fix pass
+- A4: Copilot `model` remains canonical on tool_invocations while other
+  providers do not emit it.
+- B4: `source_refs` still use `record_index` for some providers and
+  `event_index` for others.
+- B5/C5: `provider` remains repeated on nested records such as model_runs and
+  usage.
+- C1/C2: turn-level and token-level field availability still differs across
+  providers.
+- E3: `tool_invocation_ref` vs `tool_invocation_refs` plurality is still mixed.
+- H1, H2, H3: export-local IDs, failure detail placement, and
+  `arguments_format: "raw_string"` were not addressed in this pass.
+
+### Not re-audited in this refresh
+- B3, B6, C4, F1, F2, F3, G1, G2, G3.
+
+### Verification
+- `uv run --group dev python -m pytest tests/test_chatlas_commands.py`
+- Result: `54 passed`
 
 ---
 
@@ -215,31 +269,30 @@ but no explicit duration field.
 
 ---
 
-## Summary by Severity
+## Current Status Snapshot
 
-### High (affects model contract)
-- B1: model_run status vocabulary divergence (`started` vs `running`)
-- B2: tool_invocation status is open-ended for Codex
-- B4: source_refs position field name differs (`record_index` vs `event_index`)
-- C3: reasoning trace content field names differ (`text` vs `content`)
-- C4: clean transcript fallback missing `visibility`
-- G3: reasoning visibility values inconsistent
+### Fixed
+- A1, A2, A5, A6, A7
+- B1, B2
+- C3
+- D1, D2, D3, D4
+- E1, E2
 
-### Medium (canonical/native boundary)
-- A1: Codex session config fields promoted to canonical model_run
-- A3: Codex `execution` sub-object only exists for one provider
-- A5: Copilot `interaction_id` promoted to canonical
-- E1: Codex message_refs all-or-nothing heuristic
-- E2: Codex reasoning_trace all-or-nothing attachment
-- H2: tool failure detail in different canonical locations
+### Open
+- A4
+- B4, B5/C5
+- C1, C2
+- E3
+- H1, H2, H3
 
-### Low (documentation/naming)
-- B5/C5: redundant `provider` on model_run and usage
-- B6: event type prefix convention undocumented
-- E3: plural vs singular ref field names
-- F1: timestamp format not normalized
-- G1/G2: status/visibility values not documented as enums
-- H1: IDs not stable across re-exports
+### Narrowed
+- A3
+
+### Not re-audited in this refresh
+- B3, B6
+- C4
+- F1, F2, F3
+- G1, G2, G3
 
 ---
 
