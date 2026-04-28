@@ -4127,7 +4127,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "messages": 3,
         "model_runs": 1,
         "tool_invocations": 1,
-        "events": 10,
+        "events": 15,
         "usage": 1,
         "reasoning_traces": 3,
     }
@@ -4150,6 +4150,8 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "usage_evidence_count": 2,
         "cost_evidence_count": 1,
         "tool_request_count": 1,
+        "shutdown_usage_event_count": 1,
+        "semantic_event_candidate_count": 15,
     }
     assert payload["normalization"]["coverage"]["messages"] == {
         "status": "normalized",
@@ -4172,7 +4174,8 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
     assert payload["normalization"]["coverage"]["events"] == {
         "status": "normalized",
         "raw_count": 10,
-        "normalized_count": 10,
+        "raw_semantic_candidate_count": 15,
+        "normalized_count": 15,
     }
     assert payload["normalization"]["coverage"]["reasoning"] == {
         "status": "normalized",
@@ -4197,12 +4200,17 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "copilot-cli.user.message",
         "copilot-cli.assistant.turn_start",
         "copilot-cli.assistant.message",
+        "copilot-cli.reasoning",
+        "copilot-cli.reasoning",
+        "copilot-cli.reasoning",
+        "copilot-cli.assistant.tool_call",
         "copilot-cli.tool.execution_start",
         "copilot-cli.tool.execution_complete",
         "copilot-cli.assistant.turn_end",
         "copilot-cli.session.shutdown",
+        "copilot-cli.usage",
     ]
-    assert [event["sequence"] for event in events] == list(range(1, 11))
+    assert [event["sequence"] for event in events] == list(range(1, 16))
     assert [event["kind"] for event in events] == [
         "session.start",
         "session.update",
@@ -4210,10 +4218,15 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "message",
         "run.start",
         "message",
+        "reasoning",
+        "reasoning",
+        "reasoning",
+        "tool.call",
         "tool.progress",
         "tool.result",
         "run.end",
         "session.end",
+        "usage",
     ]
     assert [event["interaction_ref"] for event in events] == [
         "session",
@@ -4225,36 +4238,43 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "interaction-1",
         "interaction-1",
         "interaction-1",
+        "interaction-1",
+        "interaction-1",
+        "interaction-1",
+        "interaction-1",
+        "session",
         "session",
     ]
     assert events[0]["producer"] == {"type": "provider"}
-    assert events[0]["payload"] == events[0]["data"]
+    assert all("data" not in event for event in events)
     assert events[0]["timestamp"] == "2026-04-18T11:00:00.000Z"
-    assert events[7]["outcome"] == "ok"
-    assert events[8]["outcome"] == "ok"
-    assert events[9]["outcome"] == "ok"
+    assert events[11]["outcome"] == "ok"
+    assert events[12]["outcome"] == "ok"
+    assert events[13]["outcome"] == "ok"
     assert events[4]["turn_id"] == "0"
-    assert events[5]["data"]["reasoningText"] == "check repository state"
-    assert events[6]["data"] == {
-        "toolCallId": "tool-call-1",
-        "toolName": "shell",
-        "arguments": {"cmd": "git status"},
-        "interactionId": "copilot-interaction-1",
+    assert events[6]["payload"] == {
+        "visibility": "visible",
+        "content": "check repository state",
     }
-    assert events[6]["call_id"] == "tool-call-1"
-    assert events[6]["tool_invocation_ref"] == "tool-invocation-1"
-    assert events[7]["data"] == {
-        "toolCallId": "tool-call-1",
+    assert events[9]["payload"] == {
+        "call_id": "tool-call-1",
+        "tool_name": "shell",
+        "input": {"arguments": {"cmd": "git status"}},
+    }
+    assert events[9]["call_id"] == "tool-call-1"
+    assert events[9]["tool_invocation_ref"] == "tool-invocation-1"
+    assert events[11]["payload"] == {
+        "call_id": "tool-call-1",
         "success": True,
         "model": "gpt-4.1",
-        "interactionId": "copilot-interaction-1",
-        "result": {
+        "interaction_id": "copilot-interaction-1",
+        "output": {
             "content": "On branch main",
-            "detailedContent": "On branch main\nnothing to commit, working tree clean",
+            "detailed_content": "On branch main\nnothing to commit, working tree clean",
         },
     }
-    assert events[7]["call_id"] == "tool-call-1"
-    assert events[7]["tool_invocation_ref"] == "tool-invocation-1"
+    assert events[11]["call_id"] == "tool-call-1"
+    assert events[11]["tool_invocation_ref"] == "tool-invocation-1"
     messages = payload["chat"]["messages"]
     assert [message["role"] for message in messages] == ["system", "user", "assistant"]
     assert [message["visibility"] for message in messages] == [
@@ -4263,7 +4283,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "conversation",
     ]
     assert messages[0]["content"] == [{"type": "text", "text": "copilot system prompt"}]
-    assert messages[0]["native"]["content_types"] == ["string"]
+    assert messages[0]["native"]["content_types"] == ["text"]
     assert messages[1]["content"] == [
         {"type": "text", "text": "copilot experimental user"}
     ]
@@ -4275,20 +4295,9 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         {"source_ref_id": "source-1", "event_index": 4, "line": 4}
     ]
     assert messages[2]["content"] == [
-        {"type": "text", "text": "copilot experimental assistant"},
-        {
-            "type": "tool_call",
-            "native": {
-                "toolCallId": "tool-call-1",
-                "name": "shell",
-                "arguments": {"cmd": "git status"},
-            },
-            "call_id": "tool-call-1",
-            "tool_name": "shell",
-            "arguments": {"cmd": "git status"},
-        },
+        {"type": "text", "text": "copilot experimental assistant"}
     ]
-    assert messages[2]["native"]["content_types"] == ["text", "tool_request"]
+    assert messages[2]["native"]["content_types"] == ["text"]
     assert messages[2]["native"]["reasoning_text"] == "check repository state"
     assert messages[2]["native"]["reasoning_opaque"] == "opaque-reasoning"
     assert messages[2]["native"]["encrypted_content"] == "encrypted-reasoning"
@@ -4318,25 +4327,26 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                     "tool.execution_complete": [8],
                 },
                 "request": {
-                    "toolCallId": "tool-call-1",
-                    "name": "shell",
-                    "arguments": {"cmd": "git status"},
+                    "call_id": "tool-call-1",
+                    "tool_name": "shell",
+                    "input": {"arguments": {"cmd": "git status"}},
                 },
                 "execution_start": {
-                    "toolCallId": "tool-call-1",
-                    "toolName": "shell",
-                    "arguments": {"cmd": "git status"},
-                    "interactionId": "copilot-interaction-1",
+                    "phase": "start",
+                    "tool_name": "shell",
+                    "input": {"arguments": {"cmd": "git status"}},
+                    "interaction_id": "copilot-interaction-1",
+                    "call_id": "tool-call-1",
                 },
                 "execution_complete": {
-                    "toolCallId": "tool-call-1",
                     "success": True,
                     "model": "gpt-4.1",
-                    "interactionId": "copilot-interaction-1",
-                    "result": {
+                    "interaction_id": "copilot-interaction-1",
+                    "output": {
                         "content": "On branch main",
-                        "detailedContent": "On branch main\nnothing to commit, working tree clean",
+                        "detailed_content": "On branch main\nnothing to commit, working tree clean",
                     },
+                    "call_id": "tool-call-1",
                 },
                 "interaction_id": "copilot-interaction-1",
             },
@@ -4349,11 +4359,16 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
             },
             "model": "gpt-4.1",
             "source_refs": [
-                {"source_ref_id": "source-1", "event_index": 6, "line": 6},
+                {
+                    "source_ref_id": "source-1",
+                    "event_index": 6,
+                    "line": 6,
+                    "request_index": 1,
+                },
                 {"source_ref_id": "source-1", "event_index": 7, "line": 7},
                 {"source_ref_id": "source-1", "event_index": 8, "line": 8},
             ],
-            "event_refs": ["event-7", "event-8"],
+            "event_refs": ["event-10", "event-11", "event-12"],
         }
     ]
     assert payload["chat"]["usage"] == [
@@ -4368,6 +4383,19 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 "line": 10,
                 "event_id": "event-shutdown",
                 "parent_id": "event-turn-end-1",
+                "source_event_type": "session.shutdown",
+                "model_metrics": {
+                    "gpt-4.1": {
+                        "requests": {"count": 1, "cost": 1},
+                        "usage": {
+                            "inputTokens": 12,
+                            "outputTokens": 34,
+                            "cacheReadTokens": 0,
+                            "cacheWriteTokens": 0,
+                            "reasoningTokens": 5,
+                        },
+                    }
+                },
                 "model_metrics_key": "gpt-4.1",
                 "model_metrics_entry": {
                     "requests": {"count": 1, "cost": 1},
@@ -4437,6 +4465,10 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 "event-7",
                 "event-8",
                 "event-9",
+                "event-10",
+                "event-11",
+                "event-12",
+                "event-13",
             ],
             "reasoning_trace": [
                 {
@@ -4510,7 +4542,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         in payload["normalization"]["warnings"]
     )
     assert (
-        "copilot raw events normalized from events.jsonl: 10 events"
+        "copilot raw events semantic events normalized from events.jsonl: 15 events"
         in payload["normalization"]["warnings"]
     )
     assert (
@@ -4526,7 +4558,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         in payload["normalization"]["warnings"]
     )
     assert (
-        "copilot raw events usage projected from canonical session.shutdown events: 1 records"
+        "copilot raw events usage projected from canonical usage events: 1 records"
         in payload["normalization"]["warnings"]
     )
 

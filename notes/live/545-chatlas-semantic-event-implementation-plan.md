@@ -152,6 +152,20 @@ Acceptance:
 - Tool calls and tool results link through stable `tool_invocation_ref`.
 - Session-level usage keeps honest scope.
 
+Implementation notes:
+- Copilot now splits raw `events.jsonl` rows into semantic events:
+  - `system.message` -> `context`
+  - `user.message` and visible assistant content -> `message`
+  - assistant `reasoningText`, `reasoningOpaque`, and `encryptedContent` -> `reasoning`
+  - assistant `toolRequests[]` -> `tool.call`
+  - `tool.execution_start` -> `tool.progress`
+  - `tool.execution_complete` -> `tool.result`
+  - `assistant.turn_start` / `assistant.turn_end` -> `run.start` / `run.end`
+  - `session.shutdown` -> `session.end` plus `usage` when metrics exist
+- Copilot `messages`, `tool_invocations`, `model_runs`, reasoning traces, and usage are all projected from semantic events.
+- A single raw event may now produce multiple semantic events; coverage reports `raw_semantic_candidate_count` separately from raw row count.
+- Transitional `type` and `native` remain for span reconstruction and legacy event labels; provider-shaped `data` is no longer emitted for Copilot semantic events.
+
 ### Phase 5: Codex Semantic Events
 - Lift Codex evidence beyond current `event_msg` rows.
 - Normalize:
