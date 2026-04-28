@@ -255,7 +255,7 @@ def _claude_events_from_raw_session(
     *,
     tool_invocation_refs_by_call_id: dict[str, str] | None = None,
 ) -> dict[str, object]:
-    events: list[dict[str, object]] = []
+    event_builder = _SemanticEventBuilder()
     warnings: list[str] = []
     current_interaction_ref: str | None = None
     interaction_count = 0
@@ -269,34 +269,24 @@ def _claude_events_from_raw_session(
             current_interaction_ref = f"interaction-{interaction_count}"
         interaction_ref = current_interaction_ref or "session"
         data = _claude_event_data(record)
-        event: dict[str, object] = {
-            "event_id": f"event-{len(events) + 1}",
-            "sequence": len(events) + 1,
-            "kind": _claude_event_kind(record),
-            "producer": _claude_event_producer(record),
-            "surfaces": _claude_event_surfaces(record),
-            "interaction_ref": interaction_ref,
-            "type": _claude_event_type(record),
-            "data": data,
-            "payload": data,
-            "native": _claude_event_native(record),
-        }
-        outcome = _claude_event_outcome(record)
-        if outcome is not None:
-            event["outcome"] = outcome
-        _claude_attach_event_provenance(event, record)
-
-        parent_uuid = record.parent_uuid
-        if parent_uuid is not None:
-            event["parent_uuid"] = parent_uuid
-
-        request_id = _claude_record_request_id(record)
-        if request_id is not None:
-            event["request_id"] = request_id
-
-        message_id = _string_or_none(record.message.get("id"))
-        if message_id is not None:
-            event["message_id"] = message_id
+        event = event_builder.append(
+            kind=_claude_event_kind(record),
+            producer=_claude_event_producer(record),
+            surfaces=_claude_event_surfaces(record),
+            interaction_ref=interaction_ref,
+            payload=data,
+            timestamp=record.timestamp,
+            source_refs=record.source_refs,
+            outcome=_claude_event_outcome(record),
+            legacy_type=_claude_event_type(record),
+            legacy_data=data,
+            legacy_native=_claude_event_native(record),
+            extra={
+                "parent_uuid": record.parent_uuid,
+                "request_id": _claude_record_request_id(record),
+                "message_id": _string_or_none(record.message.get("id")),
+            },
+        )
 
         call_id = _claude_record_call_id(record)
         if call_id is not None:
@@ -310,10 +300,8 @@ def _claude_events_from_raw_session(
                     f"{record.record_index} has no matching tool invocation for tool_use id {call_id}"
                 )
 
-        events.append(event)
-
     return {
-        "events": events,
+        "events": event_builder.events,
         "warnings": warnings,
     }
 

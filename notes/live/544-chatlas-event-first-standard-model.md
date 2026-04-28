@@ -421,3 +421,6 @@ In practice:
 2. Evolve the experimental schema so normalized events carry canonical `kind`, `producer`, `surfaces`, and `interaction_ref`.
 3. Redesign provider exports so raw records split or merge into semantic events where needed.
 4. Rebuild `messages`, `interactions`, `model_runs`, `tool_invocations`, `reasoning_traces`, and `usage` as projections over semantic events.
+
+Implementation plan:
+- `notes/live/545-chatlas-semantic-event-implementation-plan.md`

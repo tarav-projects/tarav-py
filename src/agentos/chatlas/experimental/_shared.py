@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from typing import Any
 
@@ -95,6 +95,63 @@ def _semantic_event_outcome_from_status(status: str | None) -> str | None:
     if normalized in {"failed", "failure", "error", "errored"}:
         return "error"
     return None
+
+@dataclass
+class _SemanticEventBuilder:
+    events: list[dict[str, object]] = field(default_factory=list)
+
+    def append(
+        self,
+        *,
+        kind: str,
+        producer: dict[str, object],
+        surfaces: dict[str, object],
+        interaction_ref: str,
+        payload: dict[str, object] | None = None,
+        timestamp: str | None = None,
+        source_refs: list[dict[str, object]] | None = None,
+        outcome: str | None = None,
+        model_run_ref: str | None = None,
+        tool_invocation_ref: str | None = None,
+        legacy_type: str | None = None,
+        legacy_data: dict[str, object] | None = None,
+        legacy_native: dict[str, object] | None = None,
+        extra: dict[str, object | None] | None = None,
+    ) -> dict[str, object]:
+        sequence = len(self.events) + 1
+        event: dict[str, object] = {
+            "event_id": f"event-{sequence}",
+            "sequence": sequence,
+            "kind": kind,
+            "producer": dict(producer),
+            "surfaces": dict(surfaces),
+            "interaction_ref": interaction_ref,
+            "payload": dict(payload or {}),
+            "source_refs": [dict(source_ref) for source_ref in source_refs or []],
+        }
+        if timestamp is not None:
+            event["timestamp"] = timestamp
+        if outcome is not None:
+            event["outcome"] = outcome
+        if model_run_ref is not None:
+            event["model_run_ref"] = model_run_ref
+        if tool_invocation_ref is not None:
+            event["tool_invocation_ref"] = tool_invocation_ref
+
+        # Transitional fields stay until semantic events fully replace provider-shaped rows.
+        if legacy_type is not None:
+            event["type"] = legacy_type
+        if legacy_data is not None:
+            event["data"] = dict(legacy_data)
+        if legacy_native is not None:
+            event["native"] = dict(legacy_native)
+        if extra:
+            for key, value in extra.items():
+                if value is not None:
+                    event[key] = value
+
+        self.events.append(event)
+        return event
 
 def _warn_about_tool_group_records(
     *,
@@ -413,6 +470,7 @@ __all__ = [
     "_semantic_event_producer",
     "_semantic_event_surfaces",
     "_semantic_event_outcome_from_status",
+    "_SemanticEventBuilder",
     "_warn_about_tool_group_records",
     "_tool_invocation_refs_by_call_id",
     "_attach_event_refs_to_tool_invocations",

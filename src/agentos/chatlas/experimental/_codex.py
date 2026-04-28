@@ -439,7 +439,7 @@ def _codex_events_from_raw_rollout(
     *,
     tool_invocation_refs_by_call_id: dict[str, str],
 ) -> dict[str, object]:
-    events: list[dict[str, object]] = []
+    event_builder = _SemanticEventBuilder()
     warnings: list[str] = []
     interaction_refs_by_turn_id: dict[str, str] = {}
     current_interaction_ref: str | None = None
@@ -463,29 +463,23 @@ def _codex_events_from_raw_rollout(
         )
         if interaction_ref != "session":
             current_interaction_ref = interaction_ref
-        event: dict[str, object] = {
-            "event_id": f"event-{len(events) + 1}",
-            "sequence": len(events) + 1,
-            "kind": _codex_event_kind(payload_type),
-            "producer": _codex_event_producer(record),
-            "surfaces": _codex_event_surfaces(payload_type),
-            "interaction_ref": interaction_ref,
-            "type": f"codex.{payload_type}",
-            "data": data,
-            "payload": data,
-            "native": {
+        event = event_builder.append(
+            kind=_codex_event_kind(payload_type),
+            producer=_codex_event_producer(record),
+            surfaces=_codex_event_surfaces(payload_type),
+            interaction_ref=interaction_ref,
+            payload=data,
+            timestamp=record.timestamp,
+            source_refs=record.source_refs,
+            outcome=_codex_event_outcome(record),
+            legacy_type=f"codex.{payload_type}",
+            legacy_data=data,
+            legacy_native={
                 "record_type": record.record_type,
                 "payload_type": payload_type,
                 "record_index": record.record_index,
             },
-        }
-        outcome = _codex_event_outcome(record)
-        if outcome is not None:
-            event["outcome"] = outcome
-        if record.timestamp is not None:
-            event["timestamp"] = record.timestamp
-        if record.source_refs:
-            event["source_refs"] = record.source_refs
+        )
 
         call_id = _string_or_none(record.payload.get("call_id"))
         if call_id is not None:
@@ -500,10 +494,9 @@ def _codex_events_from_raw_rollout(
 
         if turn_id is not None:
             event["turn_id"] = turn_id
-        events.append(event)
 
     return {
-        "events": events,
+        "events": event_builder.events,
         "warnings": warnings,
     }
 

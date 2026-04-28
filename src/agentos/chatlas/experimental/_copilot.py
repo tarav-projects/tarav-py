@@ -202,7 +202,7 @@ def _copilot_events_from_raw_events(
     *,
     tool_invocation_refs_by_call_id: dict[str, str] | None = None,
 ) -> dict[str, object]:
-    events: list[dict[str, object]] = []
+    event_builder = _SemanticEventBuilder()
     warnings: list[str] = []
     interaction_refs_by_raw_id: dict[str, str] = {}
     current_interaction_ref: str | None = None
@@ -221,22 +221,19 @@ def _copilot_events_from_raw_events(
         )
         if interaction_ref != "session":
             current_interaction_ref = interaction_ref
-        event: dict[str, object] = {
-            "event_id": f"event-{len(events) + 1}",
-            "sequence": len(events) + 1,
-            "kind": _copilot_event_kind(raw_event),
-            "producer": _copilot_event_producer(raw_event),
-            "surfaces": _copilot_event_surfaces(raw_event),
-            "interaction_ref": interaction_ref,
-            "type": f"copilot-cli.{event_type}",
-            "data": dict(raw_event.data),
-            "payload": dict(raw_event.data),
-            "native": _copilot_event_native(raw_event),
-        }
-        outcome = _copilot_event_outcome(raw_event)
-        if outcome is not None:
-            event["outcome"] = outcome
-        _copilot_attach_event_provenance(event, raw_event)
+        event = event_builder.append(
+            kind=_copilot_event_kind(raw_event),
+            producer=_copilot_event_producer(raw_event),
+            surfaces=_copilot_event_surfaces(raw_event),
+            interaction_ref=interaction_ref,
+            payload=dict(raw_event.data),
+            timestamp=raw_event.timestamp,
+            source_refs=raw_event.source_refs,
+            outcome=_copilot_event_outcome(raw_event),
+            legacy_type=f"copilot-cli.{event_type}",
+            legacy_data=dict(raw_event.data),
+            legacy_native=_copilot_event_native(raw_event),
+        )
 
         turn_id = _copilot_event_turn_id(raw_event)
         if turn_id is not None:
@@ -258,10 +255,8 @@ def _copilot_events_from_raw_events(
                     f"copilot tool event {raw_event.event_index} has no matching tool invocation for toolCallId {call_id}"
                 )
 
-        events.append(event)
-
     return {
-        "events": events,
+        "events": event_builder.events,
         "warnings": warnings,
     }
 
