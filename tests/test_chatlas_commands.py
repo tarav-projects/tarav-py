@@ -3232,8 +3232,13 @@ def test_chatlas_experimental_export_emits_session_model_json(
     assert any(source["role"] == "transcript" for source in payload["sources"])
     assert payload["chat"]["model_runs"] == []
     assert payload["chat"]["tool_invocations"] == []
-    assert payload["chat"]["events"] == []
     assert payload["chat"]["usage"] == []
+    assert [event["kind"] for event in payload["chat"]["events"]] == [
+        "session.start",
+        "message",
+        "message",
+    ]
+    assert not any("data" in event for event in payload["chat"]["events"])
     assert [message["role"] for message in payload["chat"]["messages"]] == ["user", "assistant"]
     assert payload["chat"]["messages"][0]["content"] == [
         {
@@ -3262,7 +3267,11 @@ def test_chatlas_experimental_export_emits_session_model_json(
         in payload["normalization"]["warnings"]
     )
     assert (
-        "codex raw rollout messages normalized from response_item.message: 2 messages"
+        "codex raw rollout messages projected from semantic events: 2 messages"
+        in payload["normalization"]["warnings"]
+    )
+    assert (
+        "codex raw rollout semantic events normalized: 3 events"
         in payload["normalization"]["warnings"]
     )
     assert "messages" not in payload["normalization"]["unsupported_concepts"]
@@ -4745,7 +4754,7 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
         "messages": 1,
         "model_runs": 1,
         "tool_invocations": 2,
-        "events": 3,
+        "events": 8,
         "usage": 0,
         "reasoning_traces": 0,
     }
@@ -4766,7 +4775,13 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
             "task_started": 1,
             "token_count": 1,
         },
+        "raw_semantic_candidate_count": 8,
         "parse_warning_count": 0,
+    }
+    assert payload["normalization"]["coverage"]["events"] == {
+        "status": "normalized",
+        "raw_count": 8,
+        "normalized_count": 8,
     }
     assert payload["normalization"]["coverage"]["usage"] == {
         "status": "event_only",
@@ -4778,7 +4793,7 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
         in payload["normalization"]["warnings"]
     )
     assert (
-        "codex raw rollout events normalized from event_msg: 3 events"
+        "codex raw rollout semantic events normalized: 8 events"
         in payload["normalization"]["warnings"]
     )
     assert (
@@ -4794,7 +4809,7 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
     assert complete["started_at"] == "2026-03-08T01:09:00.000Z"
     assert complete["ended_at"] == "2026-03-08T01:09:01.100Z"
     assert complete["turn_id"] == "turn-1"
-    assert complete["event_refs"] == ["event-3"]
+    assert complete["event_refs"] == ["event-5", "event-6", "event-7"]
     assert complete["input"] == {
         "arguments": {
             "cmd": "pwd",
@@ -4831,6 +4846,7 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
     assert incomplete["tool_invocation_id"] == "tool-invocation-2"
     assert incomplete["call_id"] == "call-incomplete"
     assert incomplete["status"] == "requested"
+    assert incomplete["event_refs"] == ["event-8"]
     assert incomplete["input"] == {
         "arguments": "{bad-json",
         "arguments_format": "raw_string",
@@ -4849,49 +4865,79 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
     )
 
     events = payload["chat"]["events"]
+    assert not any("data" in event for event in events)
     assert [event["type"] for event in events] == [
+        "codex.session_meta",
         "codex.task_started",
         "codex.token_count",
+        "codex.response_item.message",
+        "codex.response_item.function_call",
+        "codex.response_item.function_call_output",
         "codex.exec_command_end",
+        "codex.response_item.function_call",
     ]
-    assert [event["sequence"] for event in events] == [1, 2, 3]
+    assert [event["sequence"] for event in events] == list(range(1, 9))
     assert [event["kind"] for event in events] == [
+        "session.start",
         "run.start",
         "metric",
+        "message",
+        "tool.call",
         "tool.result",
-    ]
-    assert [event["producer"] for event in events] == [
-        {"type": "provider"},
-        {"type": "provider"},
-        {"type": "tool"},
+        "tool.progress",
+        "tool.call",
     ]
     assert [event["interaction_ref"] for event in events] == [
+        "session",
+        "interaction-1",
+        "interaction-1",
+        "interaction-1",
+        "interaction-1",
         "interaction-1",
         "interaction-1",
         "interaction-1",
     ]
-    assert "outcome" not in events[0]
-    assert events[0]["timestamp"] == "2026-03-08T01:08:59.090Z"
-    assert events[0]["turn_id"] == "turn-1"
-    assert events[0]["payload"] == events[0]["data"]
-    assert events[0]["data"] == {
+    assert "outcome" not in events[1]
+    assert events[1]["timestamp"] == "2026-03-08T01:08:59.090Z"
+    assert events[1]["turn_id"] == "turn-1"
+    assert events[1]["payload"] == {
         "turn_id": "turn-1",
         "started_at": 1772946539,
         "model_context_window": 258400,
         "collaboration_mode_kind": "default",
     }
-    assert events[1]["event_id"] == "event-2"
-    assert events[1]["type"] == "codex.token_count"
-    assert events[1]["data"]["info"]["total_token_usage"]["total_tokens"] == 12
     assert events[2]["event_id"] == "event-3"
-    assert events[2]["type"] == "codex.exec_command_end"
-    assert events[2]["outcome"] == "ok"
-    assert events[2]["call_id"] == "call-complete"
-    assert events[2]["turn_id"] == "turn-1"
-    assert events[2]["tool_invocation_ref"] == "tool-invocation-1"
-    assert events[2]["data"]["duration"] == 1.25
-    assert events[2]["data"]["aggregated_output"] == "/tmp\n"
-    assert events[2]["source_refs"] == [
+    assert events[2]["type"] == "codex.token_count"
+    assert events[2]["payload"]["info"]["total_token_usage"]["total_tokens"] == 12
+    assert events[4]["event_id"] == "event-5"
+    assert events[4]["kind"] == "tool.call"
+    assert events[4]["call_id"] == "call-complete"
+    assert events[4]["tool_invocation_ref"] == "tool-invocation-1"
+    assert events[4]["payload"]["input"] == {
+        "arguments": {
+            "cmd": "pwd",
+            "workdir": "/tmp",
+        }
+    }
+    assert events[5]["event_id"] == "event-6"
+    assert events[5]["kind"] == "tool.result"
+    assert events[5]["outcome"] == "ok"
+    assert events[5]["payload"] == {
+        "result_source": "model_input",
+        "call_id": "call-complete",
+        "content": "Chunk ID: abc\nOutput:\n/tmp\n",
+    }
+    assert events[6]["event_id"] == "event-7"
+    assert events[6]["type"] == "codex.exec_command_end"
+    assert events[6]["kind"] == "tool.progress"
+    assert events[6]["outcome"] == "ok"
+    assert events[6]["call_id"] == "call-complete"
+    assert events[6]["turn_id"] == "turn-1"
+    assert events[6]["tool_invocation_ref"] == "tool-invocation-1"
+    assert events[6]["surfaces"]["model_input"] == "hidden"
+    assert events[6]["payload"]["duration"] == 1.25
+    assert events[6]["payload"]["aggregated_output"] == "/tmp\n"
+    assert events[6]["source_refs"] == [
         {"source_ref_id": "source-1", "record_index": 7, "line": 7}
     ]
 
@@ -4931,7 +4977,7 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
         "messages": 1,
         "model_runs": 1,
         "tool_invocations": 1,
-        "events": 3,
+        "events": 9,
         "usage": 0,
         "reasoning_traces": 1,
     }
@@ -4954,7 +5000,13 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
             "task_complete": 1,
             "task_started": 1,
         },
+        "raw_semantic_candidate_count": 9,
         "parse_warning_count": 0,
+    }
+    assert payload["normalization"]["coverage"]["events"] == {
+        "status": "normalized",
+        "raw_count": 9,
+        "normalized_count": 9,
     }
     assert payload["normalization"]["coverage"]["model_runs"] == {
         "status": "normalized",
@@ -4975,6 +5027,21 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
         "codex raw rollout model runs normalized: 1 runs"
         in payload["normalization"]["warnings"]
     )
+    assert not any("data" in event for event in payload["chat"]["events"])
+    assert [event["kind"] for event in payload["chat"]["events"]] == [
+        "session.start",
+        "context",
+        "run.start",
+        "message",
+        "reasoning",
+        "tool.call",
+        "tool.result",
+        "tool.progress",
+        "run.end",
+    ]
+    assert payload["chat"]["events"][1]["payload"]["context_type"] == "turn_context"
+    assert "user_instructions" not in json.dumps(payload["chat"]["events"][1]["payload"])
+    assert "summary" not in json.dumps(payload["chat"]["events"][1]["payload"])
 
     model_runs = payload["chat"]["model_runs"]
     assert len(model_runs) == 1
@@ -4998,7 +5065,16 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
     assert "summary" not in model_run
     assert model_run["message_refs"] == ["message-1"]
     assert model_run["tool_invocation_refs"] == ["tool-invocation-1"]
-    assert model_run["event_refs"] == ["event-1", "event-2", "event-3"]
+    assert model_run["event_refs"] == [
+        "event-2",
+        "event-3",
+        "event-4",
+        "event-5",
+        "event-6",
+        "event-7",
+        "event-8",
+        "event-9",
+    ]
     assert model_run["native"] == {
         "model_provider": "openai",
         "reasoning_effort": "high",
@@ -5080,7 +5156,7 @@ def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
         "messages": 4,
         "model_runs": 2,
         "tool_invocations": 0,
-        "events": 4,
+        "events": 13,
         "usage": 0,
         "reasoning_traces": 2,
     }
@@ -5094,11 +5170,24 @@ def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
         "raw_count": 2,
         "normalized_count": 2,
     }
+    assert payload["normalization"]["coverage"]["events"] == {
+        "status": "normalized",
+        "raw_count": 13,
+        "normalized_count": 13,
+    }
+    assert not any("data" in event for event in payload["chat"]["events"])
 
     first_run, second_run = payload["chat"]["model_runs"]
     assert first_run["turn_id"] == "turn-1"
     assert first_run["message_refs"] == ["message-1", "message-2"]
-    assert first_run["event_refs"] == ["event-1", "event-2"]
+    assert first_run["event_refs"] == [
+        "event-2",
+        "event-3",
+        "event-4",
+        "event-5",
+        "event-6",
+        "event-7",
+    ]
     assert [entry["content"] for entry in first_run["reasoning_trace"]] == [
         "first turn reasoning"
     ]
@@ -5107,7 +5196,14 @@ def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
 
     assert second_run["turn_id"] == "turn-2"
     assert second_run["message_refs"] == ["message-3", "message-4"]
-    assert second_run["event_refs"] == ["event-3", "event-4"]
+    assert second_run["event_refs"] == [
+        "event-8",
+        "event-9",
+        "event-10",
+        "event-11",
+        "event-12",
+        "event-13",
+    ]
     assert [entry["content"] for entry in second_run["reasoning_trace"]] == [
         "second turn reasoning"
     ]

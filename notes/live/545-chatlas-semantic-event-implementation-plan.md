@@ -167,6 +167,8 @@ Implementation notes:
 - Transitional `type` and `native` remain for span reconstruction and legacy event labels; provider-shaped `data` is no longer emitted for Copilot semantic events.
 
 ### Phase 5: Codex Semantic Events
+Status: done.
+
 - Lift Codex evidence beyond current `event_msg` rows.
 - Normalize:
   - developer/system/environment input -> `context`
@@ -183,6 +185,28 @@ Acceptance:
 - Codex export represents response items that are currently missing from canonical events.
 - Tool calls and outputs are linked, not just listed as terminal execution rows.
 - Provider-expanded context is modeled as context, not user-authored transcript text.
+
+Implementation notes:
+- Codex now emits semantic events from `session_meta`, `turn_context`, `event_msg`, and `response_item` records.
+- Response-item messages, reasoning, function calls, and function-call outputs are now first-class events:
+  - provider-expanded developer/system/environment input -> `context`
+  - user and assistant conversation text -> `message`
+  - response reasoning items -> `reasoning`
+  - function calls -> `tool.call`
+  - function-call outputs -> `tool.result`
+- `exec_command_end` rows become `tool.progress` when a matching function-call output exists, avoiding a second canonical `tool.result` for the same tool result. If no function-call output exists, the execution row can still stand as the best available `tool.result` evidence.
+- Token-count rows are preserved as `metric` events and `usage` remains deferred until scope allocation is reliable.
+- Codex `messages` and reasoning traces are projected from semantic events. Tool invocations and model runs still use raw-backed grouping/span logic for correlation, then link back to event ids.
+- Duplicate Codex `event_msg` user/agent message echoes are skipped when the same role/text exists as a response-item message, so the event tape represents semantic units instead of duplicated provider rows.
+- Transitional provider-shaped `data` is no longer emitted for Codex events; `type` and `native` remain for compatibility/span reconstruction until Phase 6.
+- Real Codex reference export `019db5fd-7a73-7ae1-b5eb-901e62258dcb` now reports:
+  - `messages=7`
+  - `model_runs=1`
+  - `tool_invocations=45`
+  - `events=163`
+  - `reasoning_traces=7`
+  - `data_fields=0`
+  - `unsupported_concepts=["usage"]`
 
 ### Phase 6: Remove Transitional Event Fields
 - Once all three providers emit semantic events and projections are event-derived, remove transitional fields from `chat.events`:
@@ -235,4 +259,4 @@ Rationale:
 - How much unsupported evidence should be represented as `metric`, `session.update`, or normalization warnings.
 
 ## Immediate Next Step
-- Start Phase 3 by splitting Claude raw records into true semantic events.
+- Start Phase 6 by removing transitional provider-shaped `type` and `native` fields from semantic events after confirming projection/span code no longer depends on them.

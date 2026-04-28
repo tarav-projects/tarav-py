@@ -39,7 +39,12 @@ def _event_turn_id(event: dict[str, object]) -> str | None:
         return turn_id
     data = event.get("data")
     if isinstance(data, dict):
-        return _string_or_none(data.get("turn_id"))
+        turn_id = _string_or_none(data.get("turn_id"))
+        if turn_id is not None:
+            return turn_id
+    payload = event.get("payload")
+    if isinstance(payload, dict):
+        return _string_or_none(payload.get("turn_id"))
     return None
 
 def _event_timestamp(event: dict[str, object] | None) -> str | None:
