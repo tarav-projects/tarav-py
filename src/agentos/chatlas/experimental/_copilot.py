@@ -57,8 +57,8 @@ class _CopilotRawEvents:
     warnings: list[str]
 
 @dataclass(frozen=True)
-class _CopilotToolRequestRecord:
-    raw_event: _CopilotRawEvent
+class _CopilotToolRequestEvent:
+    event: dict[str, object]
     request_index: int
     call_id: str
     payload: dict[str, Any]
@@ -94,30 +94,30 @@ def _experimental_normalize_copilot_cli_raw_events(
     )
     raw_counts = _copilot_raw_event_counts(raw_events)
 
-    message_result = _copilot_messages_from_raw_events(raw_events)
-    messages = _dict_list(message_result["messages"])
-    tool_result = _copilot_tool_invocations_from_raw_events(raw_events)
-    tool_invocations = _dict_list(tool_result["tool_invocations"])
-    tool_invocation_refs_by_call_id = _tool_invocation_refs_by_call_id(
-        tool_invocations,
-    )
     event_result = _copilot_events_from_raw_events(
         raw_events,
-        tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id,
+        tool_invocation_refs_by_call_id=None,
     )
     events = _dict_list(event_result["events"])
+    message_result = _copilot_messages_from_events(events)
+    messages = _dict_list(message_result["messages"])
+    tool_result = _copilot_tool_invocations_from_events(events)
+    tool_invocations = _dict_list(tool_result["tool_invocations"])
+    _attach_tool_invocation_refs_to_events(
+        events,
+        tool_invocations=tool_invocations,
+    )
     _attach_event_refs_to_tool_invocations(
         tool_invocations,
         events=events,
     )
-    model_run_result = _copilot_model_runs_from_raw_events(
-        raw_events,
+    model_run_result = _copilot_model_runs_from_events(
+        events,
         messages=messages,
         tool_invocations=tool_invocations,
-        events=events,
     )
     model_runs = _dict_list(model_run_result["model_runs"])
-    usage_result = _copilot_usage_from_raw_events(raw_events)
+    usage_result = _copilot_usage_from_events(events)
     usage = _dict_list(usage_result["usage"])
     residual_unsupported_concepts = _copilot_residual_unsupported_concepts(
         raw_counts=raw_counts,
@@ -138,22 +138,22 @@ def _experimental_normalize_copilot_cli_raw_events(
         )
     if messages:
         warnings.append(
-            "copilot raw events messages normalized from message events: "
+            "copilot raw events messages projected from canonical events: "
             f"{len(messages)} messages"
         )
     if tool_invocations:
         warnings.append(
-            "copilot raw events tool invocations normalized by toolCallId: "
+            "copilot raw events tool invocations projected from canonical events by toolCallId: "
             f"{len(tool_invocations)} invocations"
         )
     if model_runs:
         warnings.append(
-            "copilot raw events model runs normalized from turn events: "
+            "copilot raw events model runs projected from canonical events: "
             f"{len(model_runs)} runs"
         )
     if usage:
         warnings.append(
-            "copilot raw events usage normalized from session.shutdown.modelMetrics: "
+            "copilot raw events usage projected from canonical session.shutdown events: "
             f"{len(usage)} records"
         )
     warnings.extend(_string_list(message_result["warnings"]))
@@ -247,7 +247,7 @@ def _copilot_events_from_raw_events(
             ).get(call_id)
             if tool_invocation_ref is not None:
                 event["tool_invocation_ref"] = tool_invocation_ref
-            elif raw_event.event_type in {
+            elif tool_invocation_refs_by_call_id is not None and raw_event.event_type in {
                 "tool.execution_start",
                 "tool.execution_complete",
             }:
@@ -387,6 +387,12 @@ def _copilot_event_outcome(raw_event: _CopilotRawEvent) -> str | None:
         return "error"
     return None
 
+def _copilot_is_tool_request_only_message(raw_event: _CopilotRawEvent) -> bool:
+    if raw_event.event_type != "assistant.message":
+        return False
+    tool_requests = raw_event.data.get("toolRequests")
+    return isinstance(tool_requests, list) and bool(tool_requests)
+
 def _copilot_event_has_readable_content(raw_event: _CopilotRawEvent) -> bool:
     content = raw_event.data.get("content")
     if _string_or_none(content) is not None:
@@ -423,15 +429,6 @@ def _copilot_event_turn_id(raw_event: _CopilotRawEvent) -> str | None:
 def _copilot_event_call_id(raw_event: _CopilotRawEvent) -> str | None:
     return _string_or_none(raw_event.data.get("toolCallId"))
 
-def _copilot_attach_event_provenance(
-    payload: dict[str, object],
-    raw_event: _CopilotRawEvent,
-) -> None:
-    if raw_event.timestamp is not None:
-        payload["timestamp"] = raw_event.timestamp
-    if raw_event.source_refs:
-        payload["source_refs"] = raw_event.source_refs
-
 def _copilot_record_event_index(record: dict[str, object]) -> int | None:
     event_index = _record_native_int_field(record, "event_index")
     if event_index is not None:
@@ -441,90 +438,117 @@ def _copilot_record_event_index(record: dict[str, object]) -> int | None:
 def _copilot_record_event_id(record: dict[str, object]) -> str | None:
     return _record_native_string_field(record, "event_id")
 
-def _copilot_messages_from_raw_events(
-    raw_events: _CopilotRawEvents,
+def _copilot_messages_from_events(
+    events: list[dict[str, object]],
 ) -> dict[str, object]:
-    messages: list[dict[str, object]] = []
-    warnings: list[str] = []
+    return _project_messages_from_events(
+        events,
+        project_event=_copilot_message_from_event,
+    )
 
-    for raw_event in raw_events.events:
-        if raw_event.event_type not in {
-            "system.message",
-            "user.message",
-            "assistant.message",
-        }:
-            continue
+def _copilot_message_from_event(
+    event: dict[str, object],
+    index: int,
+) -> tuple[dict[str, object] | None, list[str]]:
+    event_type = _copilot_projected_event_type(event)
+    if event_type not in {
+        "system.message",
+        "user.message",
+        "assistant.message",
+    }:
+        return None, []
 
-        role = _copilot_message_role(raw_event)
-        content, content_types, content_warnings = _copilot_message_content_blocks(
-            raw_event,
+    payload = _copilot_event_payload(event)
+    role = _copilot_message_role_from_event_type(event_type, payload)
+    content, content_types, warnings = _copilot_message_content_blocks_from_event(
+        event,
+    )
+
+    if not content:
+        if _copilot_is_tool_request_only_event(event):
+            return None, warnings
+        warnings.append(
+            f"copilot message event {_copilot_projected_event_index(event)} has no readable content"
         )
-        warnings.extend(content_warnings)
+        return None, warnings
 
-        if not content:
-            if _copilot_is_tool_request_only_message(raw_event):
-                continue
-            warnings.append(
-                f"copilot message event {raw_event.event_index} has no readable content"
-            )
-            continue
-
-        message: dict[str, object] = {
-            "message_id": f"message-{len(messages) + 1}",
-            "role": role,
-            "visibility": _copilot_message_visibility(raw_event),
-            "content": content,
-            "native": _copilot_message_native(
-                raw_event,
-                content_types=content_types,
-            ),
-        }
-        _copilot_attach_event_provenance(message, raw_event)
-
-        messages.append(message)
-
-    return {
-        "messages": messages,
-        "warnings": warnings,
+    message: dict[str, object] = {
+        "message_id": f"message-{index}",
+        "role": role,
+        "visibility": _copilot_message_visibility_from_event_type(event_type),
+        "content": content,
+        "native": _copilot_message_native_from_event(
+            event,
+            role=role,
+            content_types=content_types,
+        ),
     }
+    _copy_event_provenance(message, event)
+    return message, warnings
 
-def _copilot_message_role(raw_event: _CopilotRawEvent) -> str:
-    if raw_event.event_type == "system.message":
-        return _string_or_none(raw_event.data.get("role")) or "system"
-    if raw_event.event_type == "user.message":
+def _copilot_projected_event_type(event: dict[str, object]) -> str:
+    event_type = _string_or_none(event.get("type")) or ""
+    prefix = "copilot-cli."
+    if event_type.startswith(prefix):
+        return event_type[len(prefix):]
+    return event_type or "unknown"
+
+def _copilot_event_payload(event: dict[str, object]) -> dict[str, Any]:
+    payload = event.get("payload")
+    if isinstance(payload, dict):
+        return dict(payload)
+    return {}
+
+def _copilot_projected_event_index(event: dict[str, object]) -> int:
+    return (
+        _record_native_int_field(event, "event_index")
+        or _source_ref_first_event_index(event.get("source_refs"))
+        or _int_or_none(event.get("sequence"))
+        or 0
+    )
+
+def _copilot_message_role_from_event_type(
+    event_type: str,
+    payload: dict[str, Any],
+) -> str:
+    if event_type == "system.message":
+        return _string_or_none(payload.get("role")) or "system"
+    if event_type == "user.message":
         return "user"
-    if raw_event.event_type == "assistant.message":
+    if event_type == "assistant.message":
         return "assistant"
     return "unknown"
 
-def _copilot_message_visibility(raw_event: _CopilotRawEvent) -> str:
-    if raw_event.event_type == "system.message":
+def _copilot_message_visibility_from_event_type(event_type: str) -> str:
+    if event_type == "system.message":
         return "context"
-    if raw_event.event_type in {"user.message", "assistant.message"}:
+    if event_type in {"user.message", "assistant.message"}:
         return "conversation"
     return "unknown"
 
-def _copilot_message_content_blocks(
-    raw_event: _CopilotRawEvent,
+def _copilot_message_content_blocks_from_event(
+    event: dict[str, object],
 ) -> tuple[list[dict[str, object]], list[str], list[str]]:
-    content_value = raw_event.data.get("content")
+    payload = _copilot_event_payload(event)
+    event_index = _copilot_projected_event_index(event)
+    content_value = payload.get("content")
     if content_value is None:
         blocks, content_types, warnings = [], [], []
     else:
         blocks, content_types, warnings = _copilot_text_content_blocks(
             content_value,
-            context=f"copilot message event {raw_event.event_index} content",
+            context=f"copilot message event {event_index} content",
         )
     tool_request_blocks, tool_request_types, tool_request_warnings = (
         _copilot_tool_request_content_blocks(
-            raw_event.data.get("toolRequests"),
-            context=f"copilot message event {raw_event.event_index} toolRequests",
+            payload.get("toolRequests"),
+            context=f"copilot message event {event_index} toolRequests",
         )
     )
     attachment_blocks, attachment_types, attachment_warnings = (
         _copilot_attachment_content_blocks(
-            raw_event.data.get("attachments"),
-            context=f"copilot message event {raw_event.event_index} attachments",
+            payload.get("attachments"),
+            context=f"copilot message event {event_index} attachments",
         )
     )
     return (
@@ -532,6 +556,55 @@ def _copilot_message_content_blocks(
         [*content_types, *tool_request_types, *attachment_types],
         [*warnings, *tool_request_warnings, *attachment_warnings],
     )
+
+def _copilot_is_tool_request_only_event(event: dict[str, object]) -> bool:
+    if _copilot_projected_event_type(event) != "assistant.message":
+        return False
+    tool_requests = _copilot_event_payload(event).get("toolRequests")
+    return isinstance(tool_requests, list) and bool(tool_requests)
+
+def _copilot_message_native_from_event(
+    event: dict[str, object],
+    *,
+    role: str,
+    content_types: list[str],
+) -> dict[str, object]:
+    payload = _copilot_event_payload(event)
+    native = dict(_record_native_dict(event))
+    native["role"] = role
+    if content_types:
+        native["content_types"] = content_types
+
+    transformed_content = _string_or_none(payload.get("transformedContent"))
+    if transformed_content is not None:
+        native["transformed_content"] = transformed_content
+
+    _copy_present_fields(
+        native,
+        payload,
+        _COPILOT_MESSAGE_NATIVE_FIELDS,
+    )
+
+    attachments = payload.get("attachments")
+    if isinstance(attachments, list) and attachments:
+        native["attachments"] = attachments
+
+    supported_mime_types = payload.get("supportedNativeDocumentMimeTypes")
+    if isinstance(supported_mime_types, list) and supported_mime_types:
+        native["supported_native_document_mime_types"] = supported_mime_types
+
+    return native
+
+def _copy_event_provenance(
+    payload: dict[str, object],
+    event: dict[str, object],
+) -> None:
+    timestamp = _string_or_none(event.get("timestamp"))
+    if timestamp is not None:
+        payload["timestamp"] = timestamp
+    source_refs = _dict_list(event.get("source_refs"))
+    if source_refs:
+        payload["source_refs"] = source_refs
 
 def _copilot_text_content_blocks(
     value: object,
@@ -664,55 +737,22 @@ def _copilot_attachment_mime_type(attachment: dict[str, Any]) -> str | None:
             return mime_type
     return None
 
-def _copilot_is_tool_request_only_message(raw_event: _CopilotRawEvent) -> bool:
-    if raw_event.event_type != "assistant.message":
-        return False
-    tool_requests = raw_event.data.get("toolRequests")
-    return isinstance(tool_requests, list) and bool(tool_requests)
+_COPILOT_TOOL_GROUP_LABEL = "copilot toolCallId"
 
-def _copilot_message_native(
-    raw_event: _CopilotRawEvent,
-    *,
-    content_types: list[str],
-) -> dict[str, object]:
-    native = _copilot_event_native(raw_event)
-    native["role"] = _copilot_message_role(raw_event)
-    if content_types:
-        native["content_types"] = content_types
-
-    transformed_content = _string_or_none(raw_event.data.get("transformedContent"))
-    if transformed_content is not None:
-        native["transformed_content"] = transformed_content
-
-    _copy_present_fields(
-        native,
-        raw_event.data,
-        _COPILOT_MESSAGE_NATIVE_FIELDS,
-    )
-
-    attachments = raw_event.data.get("attachments")
-    if isinstance(attachments, list) and attachments:
-        native["attachments"] = attachments
-
-    supported_mime_types = raw_event.data.get("supportedNativeDocumentMimeTypes")
-    if isinstance(supported_mime_types, list) and supported_mime_types:
-        native["supported_native_document_mime_types"] = supported_mime_types
-
-    return native
-
-def _copilot_tool_invocations_from_raw_events(
-    raw_events: _CopilotRawEvents,
+def _copilot_tool_invocations_from_events(
+    events: list[dict[str, object]],
 ) -> dict[str, object]:
     warnings: list[str] = []
     groups: dict[
         str,
-        dict[str, list[_CopilotToolRequestRecord | _CopilotRawEvent]],
+        dict[str, list[_CopilotToolRequestEvent | dict[str, object]]],
     ] = {}
 
-    for raw_event in raw_events.events:
-        if raw_event.event_type == "assistant.message":
-            for request in _copilot_tool_request_records(
-                raw_event,
+    for event in events:
+        event_type = _copilot_projected_event_type(event)
+        if event_type == "assistant.message":
+            for request in _copilot_tool_request_events(
+                event,
                 warnings=warnings,
             ):
                 group = groups.setdefault(
@@ -726,16 +766,18 @@ def _copilot_tool_invocations_from_raw_events(
                 group["tool_request"].append(request)
             continue
 
-        if raw_event.event_type not in {
+        if event_type not in {
             "tool.execution_start",
             "tool.execution_complete",
         }:
             continue
 
-        call_id = _copilot_event_call_id(raw_event)
+        call_id = _string_or_none(event.get("call_id")) or _string_or_none(
+            _copilot_event_payload(event).get("toolCallId")
+        )
         if call_id is None:
             warnings.append(
-                f"copilot tool event {raw_event.event_index} has no toolCallId"
+                f"copilot tool event {_copilot_projected_event_index(event)} has no toolCallId"
             )
             continue
 
@@ -747,14 +789,14 @@ def _copilot_tool_invocations_from_raw_events(
                 "execution_complete": [],
             },
         )
-        if raw_event.event_type == "tool.execution_start":
-            group["execution_start"].append(raw_event)
+        if event_type == "tool.execution_start":
+            group["execution_start"].append(event)
         else:
-            group["execution_complete"].append(raw_event)
+            group["execution_complete"].append(event)
 
     tool_invocations: list[dict[str, object]] = []
-    for call_id, group in sorted(groups.items(), key=_copilot_tool_group_order):
-        invocation, group_warnings = _copilot_tool_invocation_from_group(
+    for call_id, group in sorted(groups.items(), key=_copilot_tool_event_group_order):
+        invocation, group_warnings = _copilot_tool_invocation_from_event_group(
             call_id=call_id,
             group=group,
             index=len(tool_invocations) + 1,
@@ -767,93 +809,88 @@ def _copilot_tool_invocations_from_raw_events(
         "warnings": warnings,
     }
 
-def _copilot_tool_request_records(
-    raw_event: _CopilotRawEvent,
+def _copilot_tool_request_events(
+    event: dict[str, object],
     *,
     warnings: list[str],
-) -> list[_CopilotToolRequestRecord]:
-    tool_requests = raw_event.data.get("toolRequests")
+) -> list[_CopilotToolRequestEvent]:
+    payload = _copilot_event_payload(event)
+    tool_requests = payload.get("toolRequests")
     if tool_requests is None:
         return []
+    event_index = _copilot_projected_event_index(event)
     if not isinstance(tool_requests, list):
         warnings.append(
-            f"copilot assistant message event {raw_event.event_index} has non-list toolRequests"
+            f"copilot assistant message event {event_index} has non-list toolRequests"
         )
         return []
 
-    records: list[_CopilotToolRequestRecord] = []
+    records: list[_CopilotToolRequestEvent] = []
     for request_index, item in enumerate(tool_requests, start=1):
         if not isinstance(item, dict):
             warnings.append(
-                f"copilot assistant message event {raw_event.event_index} toolRequest {request_index} is not an object"
+                f"copilot assistant message event {event_index} toolRequest {request_index} is not an object"
             )
             continue
         call_id = _copilot_tool_request_call_id(item)
         if call_id is None:
             warnings.append(
-                f"copilot assistant message event {raw_event.event_index} toolRequest {request_index} has no toolCallId"
+                f"copilot assistant message event {event_index} toolRequest {request_index} has no toolCallId"
             )
             continue
         records.append(
-            _CopilotToolRequestRecord(
-                raw_event=raw_event,
+            _CopilotToolRequestEvent(
+                event=event,
                 request_index=request_index,
                 call_id=call_id,
                 payload=item,
-                source_refs=raw_event.source_refs,
+                source_refs=_dict_list(event.get("source_refs")),
             )
         )
     return records
 
-def _copilot_tool_request_call_id(payload: dict[str, Any]) -> str | None:
-    for key in ("toolCallId", "callId", "id"):
-        call_id = _string_or_none(payload.get(key))
-        if call_id is not None:
-            return call_id
-    return None
-
-def _copilot_tool_group_order(
+def _copilot_tool_event_group_order(
     item: tuple[
         str,
-        dict[str, list[_CopilotToolRequestRecord | _CopilotRawEvent]],
+        dict[str, list[_CopilotToolRequestEvent | dict[str, object]]],
     ],
 ) -> tuple[int, int]:
     _call_id, group = item
     positions = [
-        _copilot_tool_evidence_position(evidence)
+        _copilot_tool_event_evidence_position(evidence)
         for records in group.values()
         for evidence in records
     ]
     return min(positions) if positions else (0, 0)
 
-def _copilot_tool_evidence_position(
-    evidence: _CopilotToolRequestRecord | _CopilotRawEvent,
+def _copilot_tool_event_evidence_position(
+    evidence: _CopilotToolRequestEvent | dict[str, object],
 ) -> tuple[int, int]:
-    if isinstance(evidence, _CopilotToolRequestRecord):
-        return (evidence.raw_event.event_index, evidence.request_index)
-    return (evidence.event_index, 0)
+    if isinstance(evidence, _CopilotToolRequestEvent):
+        return (_copilot_projected_event_index(evidence.event), evidence.request_index)
+    return (_copilot_projected_event_index(evidence), 0)
 
-def _copilot_tool_invocation_from_group(
+def _copilot_tool_invocation_from_event_group(
     *,
     call_id: str,
-    group: dict[str, list[_CopilotToolRequestRecord | _CopilotRawEvent]],
+    group: dict[str, list[_CopilotToolRequestEvent | dict[str, object]]],
     index: int,
 ) -> tuple[dict[str, object], list[str]]:
     warnings: list[str] = []
     requests = [
         item
         for item in group["tool_request"]
-        if isinstance(item, _CopilotToolRequestRecord)
+        if isinstance(item, _CopilotToolRequestEvent)
     ]
     starts = [
         item
         for item in group["execution_start"]
-        if isinstance(item, _CopilotRawEvent)
+        if isinstance(item, dict)
     ]
     completes = [
         item
         for item in group["execution_complete"]
-        if isinstance(item, _CopilotRawEvent)
+        if isinstance(item, dict)
     ]
 
     _warn_about_tool_group_records(
@@ -885,86 +922,98 @@ def _copilot_tool_invocation_from_group(
     invocation: dict[str, object] = {
         "tool_invocation_id": f"tool-invocation-{index}",
         "call_id": call_id,
-        "tool_name": _copilot_tool_name(first_request, first_start, first_complete),
-        "status": _copilot_tool_status(first_start, first_complete),
-        "native": _copilot_tool_native(
+        "tool_name": _copilot_tool_name_from_events(
+            first_request,
+            first_start,
+            first_complete,
+        ),
+        "status": _copilot_tool_status_from_events(first_start, first_complete),
+        "native": _copilot_tool_native_from_events(
             requests=requests,
             starts=starts,
             completes=completes,
         ),
     }
 
-    started_at = _copilot_tool_started_at(first_request, first_start, first_complete)
+    started_at = _copilot_tool_started_at_from_events(
+        first_request,
+        first_start,
+        first_complete,
+    )
     if started_at is not None:
         invocation["started_at"] = started_at
     ended_at = _string_or_none(
-        first_complete.timestamp if first_complete is not None else None
+        first_complete.get("timestamp") if first_complete is not None else None
     )
     if ended_at is not None:
         invocation["ended_at"] = ended_at
 
-    tool_input = _copilot_tool_input(first_request, first_start)
+    tool_input = _copilot_tool_input_from_events(first_request, first_start)
     if tool_input:
         invocation["input"] = tool_input
     if first_complete is not None:
-        output = _copilot_tool_output(first_complete)
+        output = _copilot_tool_output_from_event(first_complete)
         if output:
             invocation["output"] = output
 
-    model = _copilot_tool_model(first_request, first_start, first_complete)
+    model = _copilot_tool_model_from_events(
+        first_request,
+        first_start,
+        first_complete,
+    )
     if model is not None:
         invocation["model"] = model
-    interaction_id = _copilot_tool_interaction_id(
+    interaction_id = _copilot_tool_interaction_id_from_events(
         first_request,
         first_start,
         first_complete,
     )
     if interaction_id is not None:
         invocation["native"]["interaction_id"] = interaction_id
-    turn_id = _copilot_tool_turn_id(first_request, first_start, first_complete)
+    turn_id = _copilot_tool_turn_id_from_events(first_request, first_start, first_complete)
     if turn_id is not None:
         invocation["turn_id"] = turn_id
 
-    source_refs = _copilot_tool_source_refs(requests, starts, completes)
+    source_refs = _copilot_tool_source_refs_from_events(requests, starts, completes)
     if source_refs:
         invocation["source_refs"] = source_refs
 
     return invocation, warnings
 
-_COPILOT_TOOL_GROUP_LABEL = "copilot toolCallId"
-
-def _copilot_tool_name(
-    request: _CopilotToolRequestRecord | None,
-    start: _CopilotRawEvent | None,
-    complete: _CopilotRawEvent | None,
+def _copilot_tool_name_from_events(
+    request: _CopilotToolRequestEvent | None,
+    start: dict[str, object] | None,
+    complete: dict[str, object] | None,
 ) -> str:
+    start_payload = _copilot_event_payload(start or {})
+    complete_payload = _copilot_event_payload(complete or {})
     for value in (
         request.payload.get("name") if request is not None else None,
         request.payload.get("toolName") if request is not None else None,
-        start.data.get("toolName") if start is not None else None,
-        complete.data.get("toolName") if complete is not None else None,
+        start_payload.get("toolName"),
+        complete_payload.get("toolName"),
     ):
         name = _string_or_none(value)
         if name is not None:
             return name
     return "unknown"
 
-def _copilot_tool_status(
-    start: _CopilotRawEvent | None,
-    complete: _CopilotRawEvent | None,
+def _copilot_tool_status_from_events(
+    start: dict[str, object] | None,
+    complete: dict[str, object] | None,
 ) -> str:
     if complete is None:
         return "requested"
-    success = complete.data.get("success")
+    success = _copilot_event_payload(complete).get("success")
     if success is False:
         return "failed"
     return "completed"
 
-def _copilot_tool_native(
+def _copilot_tool_native_from_events(
     *,
-    requests: list[_CopilotToolRequestRecord],
-    starts: list[_CopilotRawEvent],
-    completes: list[_CopilotRawEvent],
+    requests: list[_CopilotToolRequestEvent],
+    starts: list[dict[str, object]],
+    completes: list[dict[str, object]],
 ) -> dict[str, object]:
     native: dict[str, object] = {
         "request_present": bool(requests),
@@ -973,61 +1022,65 @@ def _copilot_tool_native(
         "event_indices": {
             "tool_request": [
                 {
-                    "event_index": request.raw_event.event_index,
+                    "event_index": _copilot_projected_event_index(request.event),
                     "request_index": request.request_index,
                 }
                 for request in requests
             ],
-            "tool.execution_start": [event.event_index for event in starts],
-            "tool.execution_complete": [event.event_index for event in completes],
+            "tool.execution_start": [
+                _copilot_projected_event_index(event) for event in starts
+            ],
+            "tool.execution_complete": [
+                _copilot_projected_event_index(event) for event in completes
+            ],
         },
     }
     if requests:
         native["request"] = requests[0].payload
     if starts:
-        native["execution_start"] = starts[0].data
+        native["execution_start"] = _copilot_event_payload(starts[0])
     if completes:
-        native["execution_complete"] = completes[0].data
+        native["execution_complete"] = _copilot_event_payload(completes[0])
     return native
 
-def _copilot_tool_started_at(
-    request: _CopilotToolRequestRecord | None,
-    start: _CopilotRawEvent | None,
-    complete: _CopilotRawEvent | None,
+def _copilot_tool_started_at_from_events(
+    request: _CopilotToolRequestEvent | None,
+    start: dict[str, object] | None,
+    complete: dict[str, object] | None,
 ) -> str | None:
     for value in (
-        start.timestamp if start is not None else None,
-        request.raw_event.timestamp if request is not None else None,
-        complete.timestamp if complete is not None else None,
+        start.get("timestamp") if start is not None else None,
+        request.event.get("timestamp") if request is not None else None,
+        complete.get("timestamp") if complete is not None else None,
     ):
         timestamp = _string_or_none(value)
         if timestamp is not None:
             return timestamp
     return None
 
-def _copilot_tool_input(
-    request: _CopilotToolRequestRecord | None,
-    start: _CopilotRawEvent | None,
+def _copilot_tool_input_from_events(
+    request: _CopilotToolRequestEvent | None,
+    start: dict[str, object] | None,
 ) -> dict[str, object]:
     tool_input: dict[str, object] = {}
-    arguments = (
-        request.payload.get("arguments") if request is not None else None
-    )
-    if arguments is None and start is not None:
-        arguments = start.data.get("arguments")
-    if arguments is None and start is not None:
-        command = _string_or_none(start.data.get("command"))
+    start_payload = _copilot_event_payload(start or {})
+    arguments = request.payload.get("arguments") if request is not None else None
+    if arguments is None:
+        arguments = start_payload.get("arguments")
+    if arguments is None:
+        command = _string_or_none(start_payload.get("command"))
         if command is not None:
             arguments = {"command": command}
     if arguments is not None:
         tool_input["arguments"] = arguments
     return tool_input
 
-def _copilot_tool_output(event: _CopilotRawEvent) -> dict[str, object]:
+def _copilot_tool_output_from_event(event: dict[str, object]) -> dict[str, object]:
     output: dict[str, object] = {}
-    result = event.data.get("result")
+    payload = _copilot_event_payload(event)
+    result = payload.get("result")
     if result is None:
-        result = event.data.get("output")
+        result = payload.get("output")
     if isinstance(result, dict):
         content = result.get("content")
         if content is None:
@@ -1048,14 +1101,16 @@ def _copilot_tool_output(event: _CopilotRawEvent) -> dict[str, object]:
         output["content"] = result
     return output
 
-def _copilot_tool_model(
-    request: _CopilotToolRequestRecord | None,
-    start: _CopilotRawEvent | None,
-    complete: _CopilotRawEvent | None,
+def _copilot_tool_model_from_events(
+    request: _CopilotToolRequestEvent | None,
+    start: dict[str, object] | None,
+    complete: dict[str, object] | None,
 ) -> str | None:
+    start_payload = _copilot_event_payload(start or {})
+    complete_payload = _copilot_event_payload(complete or {})
     for value in (
-        complete.data.get("model") if complete is not None else None,
-        start.data.get("model") if start is not None else None,
+        complete_payload.get("model"),
+        start_payload.get("model"),
         request.payload.get("model") if request is not None else None,
     ):
         model = _string_or_none(value)
@@ -1063,15 +1118,18 @@ def _copilot_tool_model(
             return model
     return None
 
-def _copilot_tool_interaction_id(
-    request: _CopilotToolRequestRecord | None,
-    start: _CopilotRawEvent | None,
-    complete: _CopilotRawEvent | None,
+def _copilot_tool_interaction_id_from_events(
+    request: _CopilotToolRequestEvent | None,
+    start: dict[str, object] | None,
+    complete: dict[str, object] | None,
 ) -> str | None:
+    start_payload = _copilot_event_payload(start or {})
+    complete_payload = _copilot_event_payload(complete or {})
+    request_payload = _copilot_event_payload(request.event) if request is not None else {}
     for value in (
-        complete.data.get("interactionId") if complete is not None else None,
-        start.data.get("interactionId") if start is not None else None,
-        request.raw_event.data.get("interactionId") if request is not None else None,
+        complete_payload.get("interactionId"),
+        start_payload.get("interactionId"),
+        request_payload.get("interactionId"),
         request.payload.get("interactionId") if request is not None else None,
     ):
         interaction_id = _string_or_none(value)
@@ -1079,71 +1137,81 @@ def _copilot_tool_interaction_id(
             return interaction_id
     return None
 
-def _copilot_tool_turn_id(
-    request: _CopilotToolRequestRecord | None,
-    start: _CopilotRawEvent | None,
-    complete: _CopilotRawEvent | None,
+def _copilot_tool_turn_id_from_events(
+    request: _CopilotToolRequestEvent | None,
+    start: dict[str, object] | None,
+    complete: dict[str, object] | None,
 ) -> str | None:
     for event in (
         start,
         complete,
-        request.raw_event if request is not None else None,
+        request.event if request is not None else None,
     ):
         if event is None:
             continue
-        turn_id = _copilot_event_turn_id(event)
+        turn_id = _string_or_none(event.get("turn_id")) or _string_or_none(
+            _copilot_event_payload(event).get("turnId")
+        )
         if turn_id is not None:
             return turn_id
     return None
 
-def _copilot_tool_source_refs(
-    requests: list[_CopilotToolRequestRecord],
-    starts: list[_CopilotRawEvent],
-    completes: list[_CopilotRawEvent],
+def _copilot_tool_source_refs_from_events(
+    requests: list[_CopilotToolRequestEvent],
+    starts: list[dict[str, object]],
+    completes: list[dict[str, object]],
 ) -> list[dict[str, object]]:
     refs: list[dict[str, object]] = []
     for request in requests:
         refs.extend(request.source_refs)
     for event in [*starts, *completes]:
-        refs.extend(event.source_refs)
+        refs.extend(_dict_list(event.get("source_refs")))
     return _dedupe_dicts(refs)
 
-def _copilot_model_runs_from_raw_events(
-    raw_events: _CopilotRawEvents,
+def _copilot_tool_request_call_id(payload: dict[str, Any]) -> str | None:
+    for key in ("toolCallId", "callId", "id"):
+        call_id = _string_or_none(payload.get(key))
+        if call_id is not None:
+            return call_id
+    return None
+def _copilot_model_runs_from_events(
+    events: list[dict[str, object]],
     *,
     messages: list[dict[str, object]],
     tool_invocations: list[dict[str, object]],
-    events: list[dict[str, object]],
 ) -> dict[str, object]:
     warnings: list[str] = []
-    start_groups: dict[str, list[_CopilotRawEvent]] = {}
-    end_groups: dict[str, list[_CopilotRawEvent]] = {}
-    event_by_id = {
-        event.event_id: event
-        for event in raw_events.events
-        if event.event_id is not None
+    start_groups: dict[str, list[dict[str, object]]] = {}
+    end_groups: dict[str, list[dict[str, object]]] = {}
+    event_by_native_id = {
+        native_event_id: event
+        for event in events
+        if (native_event_id := _copilot_record_event_id(event)) is not None
     }
 
-    for raw_event in raw_events.events:
-        if raw_event.event_type not in {
+    for event in events:
+        event_type = _copilot_projected_event_type(event)
+        if event_type not in {
             "assistant.turn_start",
             "assistant.turn_end",
         }:
             continue
-        if _copilot_event_turn_id(raw_event) is None:
+        if _copilot_event_turn_id_from_event(event) is None:
             warnings.append(
-                f"copilot {raw_event.event_type} event {raw_event.event_index} has no turnId"
+                f"copilot {event_type} event {_copilot_projected_event_index(event)} has no turnId"
             )
-        group_key = _copilot_turn_group_key(raw_event)
-        if raw_event.event_type == "assistant.turn_start":
-            start_groups.setdefault(group_key, []).append(raw_event)
+        group_key = _copilot_turn_group_key_from_event(event)
+        if event_type == "assistant.turn_start":
+            start_groups.setdefault(group_key, []).append(event)
         else:
-            end_groups.setdefault(group_key, []).append(raw_event)
+            end_groups.setdefault(group_key, []).append(event)
 
-    shutdown_event = _copilot_shutdown_event(raw_events)
+    shutdown_event = _copilot_shutdown_event_from_events(events)
     ordered_starts = sorted(
         start_groups.items(),
-        key=lambda item: item[1][0].event_index if item[1] else 0,
+        key=lambda item: _copilot_projected_event_index(item[1][0])
+        if item[1]
+        else 0,
     )
 
     model_runs: list[dict[str, object]] = []
@@ -1155,10 +1223,11 @@ def _copilot_model_runs_from_raw_events(
                 f"copilot turn group {group_key} has {len(starts)} assistant.turn_start events; using first"
             )
         start_event = starts[0]
+        start_index = _copilot_projected_event_index(start_event)
         end_events = [
             event
             for event in end_groups.get(group_key, [])
-            if event.event_index >= start_event.event_index
+            if _copilot_projected_event_index(event) >= start_index
         ]
         if len(end_events) > 1:
             warnings.append(
@@ -1170,23 +1239,24 @@ def _copilot_model_runs_from_raw_events(
             if group_index < len(ordered_starts)
             else None
         )
-        model_run = _copilot_model_run_from_turn(
-            raw_events=raw_events,
+        model_run = _copilot_model_run_from_event_turn(
+            events=events,
             start_event=start_event,
             end_event=end_event,
             next_start_event=next_start_event,
             shutdown_event=shutdown_event,
             messages=messages,
             tool_invocations=tool_invocations,
-            events=events,
-            event_by_id=event_by_id,
+            event_by_native_id=event_by_native_id,
             index=len(model_runs) + 1,
         )
         model_runs.append(model_run)
 
     for group_key, ends in sorted(
         end_groups.items(),
-        key=lambda item: item[1][0].event_index if item[1] else 0,
+        key=lambda item: _copilot_projected_event_index(item[1][0])
+        if item[1]
+        else 0,
     ):
         if group_key not in start_groups and ends:
             warnings.append(
@@ -1198,60 +1268,69 @@ def _copilot_model_runs_from_raw_events(
         "warnings": warnings,
     }
 
-def _copilot_turn_group_key(raw_event: _CopilotRawEvent) -> str:
-    return _copilot_event_turn_id(raw_event) or f"event-index-{raw_event.event_index}"
+def _copilot_turn_group_key_from_event(event: dict[str, object]) -> str:
+    return _copilot_event_turn_id_from_event(event) or (
+        f"event-index-{_copilot_projected_event_index(event)}"
+    )
 
-def _copilot_shutdown_event(
-    raw_events: _CopilotRawEvents,
-) -> _CopilotRawEvent | None:
-    for raw_event in reversed(raw_events.events):
-        if raw_event.event_type == "session.shutdown":
-            return raw_event
+def _copilot_event_turn_id_from_event(event: dict[str, object]) -> str | None:
+    return _string_or_none(event.get("turn_id")) or _string_or_none(
+        _copilot_event_payload(event).get("turnId")
+    )
+
+def _copilot_shutdown_event_from_events(
+    events: list[dict[str, object]],
+) -> dict[str, object] | None:
+    for event in reversed(events):
+        if _copilot_projected_event_type(event) == "session.shutdown":
+            return event
     return None
 
-def _copilot_model_run_from_turn(
+def _copilot_model_run_from_event_turn(
     *,
-    raw_events: _CopilotRawEvents,
-    start_event: _CopilotRawEvent,
-    end_event: _CopilotRawEvent | None,
-    next_start_event: _CopilotRawEvent | None,
-    shutdown_event: _CopilotRawEvent | None,
+    events: list[dict[str, object]],
+    start_event: dict[str, object],
+    end_event: dict[str, object] | None,
+    next_start_event: dict[str, object] | None,
+    shutdown_event: dict[str, object] | None,
     messages: list[dict[str, object]],
     tool_invocations: list[dict[str, object]],
-    events: list[dict[str, object]],
-    event_by_id: dict[str, _CopilotRawEvent],
+    event_by_native_id: dict[str, dict[str, object]],
     index: int,
 ) -> dict[str, object]:
-    span_end_index = _copilot_turn_span_end_index(
+    span_end_index = _copilot_turn_span_end_index_from_events(
+        events=events,
         start_event=start_event,
         end_event=end_event,
         next_start_event=next_start_event,
-        total_events=len(raw_events.events),
     )
-    span_end_event = raw_events.events[span_end_index - 1]
-    model, model_source = _copilot_model_for_turn(
-        raw_events,
+    span_end_event = _copilot_event_at_or_before_index(events, span_end_index) or start_event
+    model, model_source = _copilot_model_for_event_turn(
+        events,
         turn_start_event=start_event,
     )
+    start_index = _copilot_projected_event_index(start_event)
     native: dict[str, object] = {
         "turn_start_present": True,
         "turn_end_present": end_event is not None,
-        "turn_start_event_index": start_event.event_index,
+        "turn_start_event_index": start_index,
         "span_end_event_index": span_end_index,
     }
     if model_source is not None:
         native["model_source"] = model_source
-    if start_event.event_id is not None:
-        native["turn_start_event_id"] = start_event.event_id
+    start_native_event_id = _copilot_record_event_id(start_event)
+    if start_native_event_id is not None:
+        native["turn_start_event_id"] = start_native_event_id
     if end_event is not None:
-        native["turn_end_event_index"] = end_event.event_index
-        if end_event.event_id is not None:
-            native["turn_end_event_id"] = end_event.event_id
+        native["turn_end_event_index"] = _copilot_projected_event_index(end_event)
+        end_native_event_id = _copilot_record_event_id(end_event)
+        if end_native_event_id is not None:
+            native["turn_end_event_id"] = end_native_event_id
 
     model_run: dict[str, object] = {
         "model_run_id": f"model-run-{index}",
         "provider": "copilot-cli",
-        "status": _copilot_model_run_status(
+        "status": _copilot_model_run_status_from_events(
             start_event=start_event,
             end_event=end_event,
             next_start_event=next_start_event,
@@ -1259,18 +1338,22 @@ def _copilot_model_run_from_turn(
         ),
         "native": native,
     }
-    turn_id = _copilot_event_turn_id(start_event)
+    turn_id = _copilot_event_turn_id_from_event(start_event)
     if turn_id is not None:
         model_run["turn_id"] = turn_id
-    if start_event.timestamp is not None:
-        model_run["started_at"] = start_event.timestamp
-    if end_event is not None and end_event.timestamp is not None:
-        model_run["ended_at"] = end_event.timestamp
+    start_timestamp = _string_or_none(start_event.get("timestamp"))
+    if start_timestamp is not None:
+        model_run["started_at"] = start_timestamp
+    end_timestamp = _string_or_none(
+        end_event.get("timestamp") if end_event is not None else None
+    )
+    if end_timestamp is not None:
+        model_run["ended_at"] = end_timestamp
     if model is not None:
         model_run["model"] = model
 
-    interaction_id = _copilot_model_run_interaction_id(
-        raw_events,
+    interaction_id = _copilot_model_run_interaction_id_from_events(
+        events,
         start_event=start_event,
         end_event=end_event,
         span_end_index=span_end_index,
@@ -1278,15 +1361,15 @@ def _copilot_model_run_from_turn(
     if interaction_id is not None:
         native["interaction_id"] = interaction_id
 
-    output_tokens = _copilot_model_run_output_tokens(
-        raw_events,
-        start_index=start_event.event_index,
+    output_tokens = _copilot_model_run_output_tokens_from_events(
+        events,
+        start_index=start_index,
         end_index=span_end_index,
     )
     if output_tokens:
         model_run["output_tokens"] = output_tokens
 
-    source_refs = _copilot_model_run_source_refs(
+    source_refs = _copilot_model_run_source_refs_from_events(
         start_event=start_event,
         end_event=end_event,
         span_end_event=span_end_event,
@@ -1294,18 +1377,18 @@ def _copilot_model_run_from_turn(
     if source_refs:
         model_run["source_refs"] = source_refs
 
-    message_refs = _copilot_model_run_message_refs(
+    message_refs = _copilot_model_run_message_refs_from_events(
         messages,
         start_event=start_event,
         span_end_index=span_end_index,
-        event_by_id=event_by_id,
+        event_by_native_id=event_by_native_id,
     )
     if message_refs:
         model_run["message_refs"] = message_refs
 
     tool_refs = _copilot_model_run_tool_refs(
         tool_invocations,
-        start_index=start_event.event_index,
+        start_index=start_index,
         end_index=span_end_index,
     )
     if tool_refs:
@@ -1313,15 +1396,15 @@ def _copilot_model_run_from_turn(
 
     event_refs = _copilot_model_run_event_refs(
         events,
-        start_index=start_event.event_index,
+        start_index=start_index,
         end_index=span_end_index,
     )
     if event_refs:
         model_run["event_refs"] = event_refs
 
-    reasoning_trace = _copilot_model_run_reasoning_trace(
-        raw_events,
-        start_index=start_event.event_index,
+    reasoning_trace = _copilot_model_run_reasoning_trace_from_events(
+        events,
+        start_index=start_index,
         end_index=span_end_index,
         model_run_index=index,
     )
@@ -1330,120 +1413,159 @@ def _copilot_model_run_from_turn(
 
     return model_run
 
-def _copilot_turn_span_end_index(
+def _copilot_turn_span_end_index_from_events(
     *,
-    start_event: _CopilotRawEvent,
-    end_event: _CopilotRawEvent | None,
-    next_start_event: _CopilotRawEvent | None,
-    total_events: int,
+    events: list[dict[str, object]],
+    start_event: dict[str, object],
+    end_event: dict[str, object] | None,
+    next_start_event: dict[str, object] | None,
 ) -> int:
+    start_index = _copilot_projected_event_index(start_event)
     if end_event is not None:
-        return end_event.event_index
+        return _copilot_projected_event_index(end_event)
     if next_start_event is not None:
-        return max(start_event.event_index, next_start_event.event_index - 1)
-    return max(start_event.event_index, total_events)
+        return max(start_index, _copilot_projected_event_index(next_start_event) - 1)
+    return max(
+        start_index,
+        max(
+            (_copilot_projected_event_index(event) for event in events),
+            default=start_index,
+        ),
+    )
 
-def _copilot_model_run_status(
+def _copilot_event_at_or_before_index(
+    events: list[dict[str, object]],
+    event_index: int,
+) -> dict[str, object] | None:
+    candidates = [
+        event
+        for event in events
+        if _copilot_projected_event_index(event) <= event_index
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=_copilot_projected_event_index)
+
+def _copilot_model_run_status_from_events(
     *,
-    start_event: _CopilotRawEvent,
-    end_event: _CopilotRawEvent | None,
-    next_start_event: _CopilotRawEvent | None,
-    shutdown_event: _CopilotRawEvent | None,
+    start_event: dict[str, object],
+    end_event: dict[str, object] | None,
+    next_start_event: dict[str, object] | None,
+    shutdown_event: dict[str, object] | None,
 ) -> str:
     if end_event is not None:
         return "completed"
+    start_index = _copilot_projected_event_index(start_event)
     if next_start_event is not None:
         return "unknown"
     if (
         shutdown_event is not None
-        and shutdown_event.event_index > start_event.event_index
+        and _copilot_projected_event_index(shutdown_event) > start_index
     ):
         return "unknown"
     return "running"
 
-def _copilot_model_for_turn(
-    raw_events: _CopilotRawEvents,
+def _copilot_model_for_event_turn(
+    events: list[dict[str, object]],
     *,
-    turn_start_event: _CopilotRawEvent,
+    turn_start_event: dict[str, object],
 ) -> tuple[str | None, str | None]:
-    for raw_event in reversed(raw_events.events[: turn_start_event.event_index]):
-        if raw_event.event_type != "session.model_change":
+    turn_start_index = _copilot_projected_event_index(turn_start_event)
+    previous_events = [
+        event
+        for event in events
+        if _copilot_projected_event_index(event) < turn_start_index
+    ]
+    for event in reversed(previous_events):
+        if _copilot_projected_event_type(event) != "session.model_change":
             continue
-        model = _string_or_none(raw_event.data.get("newModel"))
+        model = _string_or_none(_copilot_event_payload(event).get("newModel"))
         if model is not None:
             return model, "session.model_change.newModel"
 
-    shutdown_event = _copilot_shutdown_event(raw_events)
+    shutdown_event = _copilot_shutdown_event_from_events(events)
     if shutdown_event is None:
         return None, None
-    model = _string_or_none(shutdown_event.data.get("currentModel"))
+    model = _string_or_none(_copilot_event_payload(shutdown_event).get("currentModel"))
     if model is not None:
         return model, "session.shutdown.currentModel"
     return None, None
 
-def _copilot_model_run_interaction_id(
-    raw_events: _CopilotRawEvents,
+def _copilot_model_run_interaction_id_from_events(
+    events: list[dict[str, object]],
     *,
-    start_event: _CopilotRawEvent,
-    end_event: _CopilotRawEvent | None,
+    start_event: dict[str, object],
+    end_event: dict[str, object] | None,
     span_end_index: int,
 ) -> str | None:
+    start_payload = _copilot_event_payload(start_event)
+    end_payload = _copilot_event_payload(end_event or {})
     for value in (
-        start_event.data.get("interactionId"),
-        end_event.data.get("interactionId") if end_event is not None else None,
+        start_payload.get("interactionId"),
+        end_payload.get("interactionId"),
     ):
         interaction_id = _string_or_none(value)
         if interaction_id is not None:
             return interaction_id
 
-    for raw_event in raw_events.events[start_event.event_index - 1 : span_end_index]:
-        interaction_id = _string_or_none(raw_event.data.get("interactionId"))
+    start_index = _copilot_projected_event_index(start_event)
+    for event in events:
+        event_index = _copilot_projected_event_index(event)
+        if not start_index <= event_index <= span_end_index:
+            continue
+        interaction_id = _string_or_none(
+            _copilot_event_payload(event).get("interactionId")
+        )
         if interaction_id is not None:
             return interaction_id
     return None
 
-def _copilot_model_run_output_tokens(
-    raw_events: _CopilotRawEvents,
+def _copilot_model_run_output_tokens_from_events(
+    events: list[dict[str, object]],
     *,
     start_index: int,
     end_index: int,
 ) -> int:
     output_tokens = 0
-    for raw_event in raw_events.events[start_index - 1 : end_index]:
-        if raw_event.event_type != "assistant.message":
+    for event in events:
+        event_index = _copilot_projected_event_index(event)
+        if not start_index <= event_index <= end_index:
             continue
-        output_tokens += _int_or_zero(raw_event.data.get("outputTokens"))
+        if _copilot_projected_event_type(event) != "assistant.message":
+            continue
+        output_tokens += _int_or_zero(_copilot_event_payload(event).get("outputTokens"))
     return output_tokens
 
-def _copilot_model_run_source_refs(
+def _copilot_model_run_source_refs_from_events(
     *,
-    start_event: _CopilotRawEvent,
-    end_event: _CopilotRawEvent | None,
-    span_end_event: _CopilotRawEvent,
+    start_event: dict[str, object],
+    end_event: dict[str, object] | None,
+    span_end_event: dict[str, object],
 ) -> list[dict[str, object]]:
-    refs = [*start_event.source_refs]
+    refs = [*_dict_list(start_event.get("source_refs"))]
     if end_event is not None:
-        refs.extend(end_event.source_refs)
-    elif span_end_event.event_index != start_event.event_index:
-        refs.extend(span_end_event.source_refs)
+        refs.extend(_dict_list(end_event.get("source_refs")))
+    elif _copilot_projected_event_index(span_end_event) != _copilot_projected_event_index(start_event):
+        refs.extend(_dict_list(span_end_event.get("source_refs")))
     return _dedupe_dicts(refs)
 
-def _copilot_model_run_message_refs(
+def _copilot_model_run_message_refs_from_events(
     messages: list[dict[str, object]],
     *,
-    start_event: _CopilotRawEvent,
+    start_event: dict[str, object],
     span_end_index: int,
-    event_by_id: dict[str, _CopilotRawEvent],
+    event_by_native_id: dict[str, dict[str, object]],
 ) -> list[str]:
     refs: list[str] = []
-    direct_parent_id = _copilot_direct_parent_message_ref(
+    direct_parent_id = _copilot_direct_parent_message_ref_from_events(
         messages,
         start_event=start_event,
-        event_by_id=event_by_id,
+        event_by_native_id=event_by_native_id,
     )
     if direct_parent_id is not None:
         refs.append(direct_parent_id)
 
+    start_index = _copilot_projected_event_index(start_event)
     for message in messages:
         message_id = _string_or_none(message.get("message_id"))
         if message_id is None:
@@ -1451,21 +1573,21 @@ def _copilot_model_run_message_refs(
         event_index = _copilot_record_event_index(message)
         if event_index is None:
             continue
-        if start_event.event_index <= event_index <= span_end_index and message_id not in refs:
+        if start_index <= event_index <= span_end_index and message_id not in refs:
             refs.append(message_id)
     return refs
 
-def _copilot_direct_parent_message_ref(
+def _copilot_direct_parent_message_ref_from_events(
     messages: list[dict[str, object]],
     *,
-    start_event: _CopilotRawEvent,
-    event_by_id: dict[str, _CopilotRawEvent],
+    start_event: dict[str, object],
+    event_by_native_id: dict[str, dict[str, object]],
 ) -> str | None:
-    parent_id = start_event.parent_id
+    parent_id = _record_native_string_field(start_event, "parent_id")
     if parent_id is None:
         return None
-    parent_event = event_by_id.get(parent_id)
-    if parent_event is None or parent_event.event_type not in {
+    parent_event = event_by_native_id.get(parent_id)
+    if parent_event is None or _copilot_projected_event_type(parent_event) not in {
         "system.message",
         "user.message",
         "assistant.message",
@@ -1477,6 +1599,74 @@ def _copilot_direct_parent_message_ref(
         if message_id is not None and raw_event_id == parent_id:
             return message_id
     return None
+
+def _copilot_model_run_reasoning_trace_from_events(
+    events: list[dict[str, object]],
+    *,
+    start_index: int,
+    end_index: int,
+    model_run_index: int,
+) -> list[dict[str, object]]:
+    reasoning_trace: list[dict[str, object]] = []
+    for event in events:
+        event_index = _copilot_projected_event_index(event)
+        if not start_index <= event_index <= end_index:
+            continue
+        if _copilot_projected_event_type(event) != "assistant.message":
+            continue
+        reasoning_trace.extend(
+            _copilot_reasoning_entries_from_event_projection(
+                event,
+                model_run_index=model_run_index,
+                offset=len(reasoning_trace),
+            )
+        )
+    return reasoning_trace
+
+def _copilot_reasoning_entries_from_event_projection(
+    event: dict[str, object],
+    *,
+    model_run_index: int,
+    offset: int,
+) -> list[dict[str, object]]:
+    payload = _copilot_event_payload(event)
+    reasoning_trace: list[dict[str, object]] = []
+    for source_key, visibility in (
+        ("reasoningText", "visible"),
+        ("reasoningOpaque", "opaque"),
+        ("encryptedContent", "encrypted"),
+    ):
+        value = _string_or_none(payload.get(source_key))
+        if value is None:
+            continue
+        reasoning: dict[str, object] = {
+            "reasoning_id": f"reasoning-{model_run_index}-{offset + len(reasoning_trace) + 1}",
+            "visibility": visibility,
+            "content": value,
+            "native": _copilot_reasoning_native_from_event(
+                event,
+                reasoning_key=source_key,
+            ),
+        }
+        _copy_event_provenance(reasoning, event)
+        reasoning_trace.append(reasoning)
+    return reasoning_trace
+
+def _copilot_reasoning_native_from_event(
+    event: dict[str, object],
+    *,
+    reasoning_key: str,
+) -> dict[str, object]:
+    payload = _copilot_event_payload(event)
+    native = dict(_record_native_dict(event))
+    native["reasoning_key"] = reasoning_key
+    _copy_present_fields(
+        native,
+        payload,
+        _COPILOT_REASONING_NATIVE_FIELDS,
+    )
+    return native
+
 
 def _copilot_model_run_tool_refs(
     tool_invocations: list[dict[str, object]],
@@ -1500,79 +1690,11 @@ def _copilot_model_run_event_refs(
     start_index: int,
     end_index: int,
 ) -> list[str]:
-    refs: list[str] = []
-    for event in events:
-        event_id = _string_or_none(event.get("event_id"))
-        if event_id is None:
-            continue
-        event_index = _copilot_record_event_index(event)
-        if event_index is None:
-            continue
-        if start_index <= event_index <= end_index:
-            refs.append(event_id)
-    return refs
-
-def _copilot_model_run_reasoning_trace(
-    raw_events: _CopilotRawEvents,
-    *,
-    start_index: int,
-    end_index: int,
-    model_run_index: int,
-) -> list[dict[str, object]]:
-    reasoning_trace: list[dict[str, object]] = []
-    for raw_event in raw_events.events[start_index - 1 : end_index]:
-        if raw_event.event_type != "assistant.message":
-            continue
-        reasoning_trace.extend(
-            _copilot_reasoning_entries_from_event(
-                raw_event,
-                model_run_index=model_run_index,
-                offset=len(reasoning_trace),
-            )
-        )
-    return reasoning_trace
-
-def _copilot_reasoning_entries_from_event(
-    raw_event: _CopilotRawEvent,
-    *,
-    model_run_index: int,
-    offset: int,
-) -> list[dict[str, object]]:
-    reasoning_trace: list[dict[str, object]] = []
-    for source_key, visibility in (
-        ("reasoningText", "visible"),
-        ("reasoningOpaque", "opaque"),
-        ("encryptedContent", "encrypted"),
-    ):
-        value = _string_or_none(raw_event.data.get(source_key))
-        if value is None:
-            continue
-        reasoning: dict[str, object] = {
-            "reasoning_id": f"reasoning-{model_run_index}-{offset + len(reasoning_trace) + 1}",
-            "visibility": visibility,
-            "content": value,
-            "native": _copilot_reasoning_native(
-                raw_event,
-                reasoning_key=source_key,
-            ),
-        }
-        _copilot_attach_event_provenance(reasoning, raw_event)
-        reasoning_trace.append(reasoning)
-    return reasoning_trace
-
-def _copilot_reasoning_native(
-    raw_event: _CopilotRawEvent,
-    *,
-    reasoning_key: str,
-) -> dict[str, object]:
-    native = _copilot_event_native(raw_event)
-    native["reasoning_key"] = reasoning_key
-    _copy_present_fields(
-        native,
-        raw_event.data,
-        _COPILOT_REASONING_NATIVE_FIELDS,
+    return _event_refs_for_sequence_span(
+        events,
+        start_sequence=start_index,
+        end_sequence=end_index,
     )
-    return native
 
 def _copilot_reasoning_attachment_warnings(
     *,
@@ -1588,52 +1710,140 @@ def _copilot_reasoning_attachment_warnings(
         f"raw={raw_reasoning_count} normalized={normalized_reasoning_count}"
     ]
 
-def _copilot_usage_from_raw_events(
-    raw_events: _CopilotRawEvents,
+def _copilot_usage_from_events(
+    events: list[dict[str, object]],
 ) -> dict[str, object]:
-    warnings: list[str] = []
-    shutdown_events = [
-        raw_event
-        for raw_event in raw_events.events
-        if raw_event.event_type == "session.shutdown"
-    ]
-    if not shutdown_events:
-        return {
-            "usage": [],
-            "warnings": warnings,
-        }
-    if len(shutdown_events) > 1:
-        warnings.append(
-            f"copilot raw events has {len(shutdown_events)} session.shutdown events; using last"
-        )
+    return _project_usage_from_events(
+        events,
+        project_event=_copilot_usage_from_event,
+    )
 
-    shutdown_event = shutdown_events[-1]
-    model_metrics = shutdown_event.data.get("modelMetrics")
+def _copilot_usage_from_event(
+    event: dict[str, object],
+    index: int,
+) -> tuple[dict[str, object] | list[dict[str, object]] | None, list[str]]:
+    if _copilot_projected_event_type(event) != "session.shutdown":
+        return None, []
+
+    model_metrics = _copilot_event_payload(event).get("modelMetrics")
     if not isinstance(model_metrics, dict):
-        return {
-            "usage": [],
-            "warnings": warnings,
-        }
+        return None, []
 
     entry_result = _copilot_model_metric_entries(model_metrics)
+    warnings = _string_list(entry_result["warnings"])
     entries = entry_result["entries"]
-    warnings.extend(_string_list(entry_result["warnings"]))
-
-    usage: list[dict[str, object]] = []
-    for model_name, entry in entries:
-        usage.append(
-            _copilot_usage_record_from_model_metrics(
-                shutdown_event=shutdown_event,
+    if not isinstance(entries, list):
+        return None, warnings
+    usage_records: list[dict[str, object]] = []
+    for offset, entry_pair in enumerate(entries):
+        if not (
+            isinstance(entry_pair, tuple)
+            and len(entry_pair) == 2
+            and isinstance(entry_pair[0], str)
+            and isinstance(entry_pair[1], dict)
+        ):
+            continue
+        model_name, entry = entry_pair
+        usage_records.append(
+            _copilot_usage_record_from_event_metrics(
+                event=event,
                 model_name=model_name,
                 entry=entry,
-                index=len(usage) + 1,
+                index=index + offset,
             )
         )
 
-    return {
-        "usage": usage,
-        "warnings": warnings,
+    if not usage_records:
+        return None, warnings
+    return usage_records, warnings
+
+def _copilot_usage_record_from_event_metrics(
+    *,
+    event: dict[str, object],
+    model_name: str,
+    entry: dict[str, Any],
+    index: int,
+) -> dict[str, object]:
+    requests = entry.get("requests")
+    if not isinstance(requests, dict):
+        requests = {}
+    usage_metrics = entry.get("usage")
+    if not isinstance(usage_metrics, dict):
+        usage_metrics = {}
+
+    usage: dict[str, object] = {
+        "usage_id": f"usage-{index}",
+        "scope": "session",
+        "provider": "copilot-cli",
+        "model": model_name,
+        "native": _copilot_usage_native_from_event(
+            event=event,
+            model_name=model_name,
+            entry=entry,
+        ),
     }
+    for source_key, target_key in (
+        ("inputTokens", "input_tokens"),
+        ("outputTokens", "output_tokens"),
+        ("cacheReadTokens", "cache_read_tokens"),
+        ("cacheWriteTokens", "cache_write_tokens"),
+        ("reasoningTokens", "reasoning_tokens"),
+    ):
+        value = _int_or_none(usage_metrics.get(source_key))
+        if value is not None:
+            usage[target_key] = value
+
+    request_count = _int_or_none(requests.get("count"))
+    if request_count is not None:
+        usage["request_count"] = request_count
+
+    billing_cost = _int_or_none(requests.get("cost"))
+    if billing_cost is not None:
+        usage["provider_billing_units"] = {
+            "kind": "copilot_premium_request_cost",
+            "value": billing_cost,
+        }
+
+    source_refs = _dict_list(event.get("source_refs"))
+    if source_refs:
+        usage["source_refs"] = source_refs
+
+    return usage
+
+def _copilot_usage_native_from_event(
+    *,
+    event: dict[str, object],
+    model_name: str,
+    entry: dict[str, Any],
+) -> dict[str, object]:
+    payload = _copilot_event_payload(event)
+    native = dict(_record_native_dict(event))
+    native["model_metrics_key"] = model_name
+    native["model_metrics_entry"] = entry
+    _copy_present_fields(
+        native,
+        payload,
+        _COPILOT_USAGE_NATIVE_FIELDS,
+    )
+
+    session_token_counters: dict[str, object] = {}
+    for source_key, native_key in (
+        ("currentTokens", "current_tokens"),
+        ("systemTokens", "system_tokens"),
+        ("conversationTokens", "conversation_tokens"),
+        ("toolDefinitionsTokens", "tool_definitions_tokens"),
+    ):
+        value = _int_or_none(payload.get(source_key))
+        if value is not None:
+            session_token_counters[native_key] = value
+    if session_token_counters:
+        native["session_token_counters"] = session_token_counters
+
+    code_changes = payload.get("codeChanges")
+    if isinstance(code_changes, dict) and code_changes:
+        native["code_changes"] = code_changes
+
+    return native
 
 def _copilot_model_metric_entries(
     model_metrics: dict[str, Any],
@@ -1683,92 +1893,6 @@ def _copilot_model_metric_entries(
         "warnings": warnings,
     }
 
-def _copilot_usage_record_from_model_metrics(
-    *,
-    shutdown_event: _CopilotRawEvent,
-    model_name: str,
-    entry: dict[str, Any],
-    index: int,
-) -> dict[str, object]:
-    requests = entry.get("requests")
-    if not isinstance(requests, dict):
-        requests = {}
-    usage_metrics = entry.get("usage")
-    if not isinstance(usage_metrics, dict):
-        usage_metrics = {}
-
-    usage: dict[str, object] = {
-        "usage_id": f"usage-{index}",
-        "scope": "session",
-        "provider": "copilot-cli",
-        "model": model_name,
-        "native": _copilot_usage_native(
-            shutdown_event=shutdown_event,
-            model_name=model_name,
-            entry=entry,
-        ),
-    }
-    for source_key, target_key in (
-        ("inputTokens", "input_tokens"),
-        ("outputTokens", "output_tokens"),
-        ("cacheReadTokens", "cache_read_tokens"),
-        ("cacheWriteTokens", "cache_write_tokens"),
-        ("reasoningTokens", "reasoning_tokens"),
-    ):
-        value = _int_or_none(usage_metrics.get(source_key))
-        if value is not None:
-            usage[target_key] = value
-
-    request_count = _int_or_none(requests.get("count"))
-    if request_count is not None:
-        usage["request_count"] = request_count
-
-    billing_cost = _int_or_none(requests.get("cost"))
-    if billing_cost is not None:
-        usage["provider_billing_units"] = {
-            "kind": "copilot_premium_request_cost",
-            "value": billing_cost,
-        }
-
-    if shutdown_event.source_refs:
-        usage["source_refs"] = shutdown_event.source_refs
-
-    return usage
-
-def _copilot_usage_native(
-    *,
-    shutdown_event: _CopilotRawEvent,
-    model_name: str,
-    entry: dict[str, Any],
-) -> dict[str, object]:
-    native = _copilot_event_native(shutdown_event)
-    native["model_metrics_key"] = model_name
-    native["model_metrics_entry"] = entry
-    _copy_present_fields(
-        native,
-        shutdown_event.data,
-        _COPILOT_USAGE_NATIVE_FIELDS,
-    )
-
-    session_token_counters: dict[str, object] = {}
-    for source_key, native_key in (
-        ("currentTokens", "current_tokens"),
-        ("systemTokens", "system_tokens"),
-        ("conversationTokens", "conversation_tokens"),
-        ("toolDefinitionsTokens", "tool_definitions_tokens"),
-    ):
-        value = _int_or_none(shutdown_event.data.get(source_key))
-        if value is not None:
-            session_token_counters[native_key] = value
-    if session_token_counters:
-        native["session_token_counters"] = session_token_counters
-
-    code_changes = shutdown_event.data.get("codeChanges")
-    if isinstance(code_changes, dict) and code_changes:
-        native["code_changes"] = code_changes
-
-    return native
-
 def _copilot_raw_event_counts(raw_events: _CopilotRawEvents) -> dict[str, object]:
     event_types: dict[str, int] = {}
     reasoning_evidence_count = 0
@@ -1795,9 +1919,6 @@ def _copilot_raw_event_counts(raw_events: _CopilotRawEvents) -> dict[str, object
         "cost_evidence_count": cost_evidence_count,
         "tool_request_count": tool_request_count,
     }
-
-def _copilot_event_has_reasoning_evidence(event: _CopilotRawEvent) -> bool:
-    return _copilot_event_reasoning_evidence_count(event) > 0
 
 def _copilot_event_reasoning_evidence_count(event: _CopilotRawEvent) -> int:
     if event.event_type != "assistant.message":

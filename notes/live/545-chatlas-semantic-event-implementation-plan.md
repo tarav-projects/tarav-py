@@ -83,6 +83,8 @@ Implementation notes:
 - The builder now guarantees the required canonical event fields, including an always-present `source_refs` list.
 
 ### Phase 2: Projection Builders Over Events
+Status: done for shared helpers and the Copilot provider path.
+
 - Add shared projection builders that derive current view arrays from events:
   - messages from `kind: "message"` and `surfaces.transcript == "visible"`
   - model runs from `run.start` / `run.end` and `model_run_ref`
@@ -94,6 +96,12 @@ Implementation notes:
 Acceptance:
 - Existing export shape is preserved at the envelope level.
 - Projection outputs are generated from semantic events for at least one provider before expanding to all three.
+
+Implementation notes:
+- Added shared projection primitives under `src/agentos/chatlas/experimental/_shared.py`.
+- Copilot now builds `messages`, `tool_invocations`, `model_runs`, and `usage` after `events[]`, using canonical events as the source input.
+- Current Copilot projection intentionally preserves the existing experimental output shape; stricter transcript-only message policy should land after semantic splitting is complete.
+- Real Copilot reference export matched pre-Phase-2 `messages`, `tool_invocations`, `model_runs`, `usage`, and `events` exactly.
 
 ### Phase 3: Claude Semantic Events First
 - Convert Claude first because its raw records clearly expose mixed semantic content blocks.
@@ -200,4 +208,4 @@ Rationale:
 - How much unsupported evidence should be represented as `metric`, `session.update`, or normalization warnings.
 
 ## Immediate Next Step
-- Start Phase 1 by introducing the shared semantic event builder and migrating one narrow provider path to use it without changing output semantics yet.
+- Start Phase 3 by splitting Claude raw records into true semantic events.

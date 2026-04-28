@@ -4519,19 +4519,19 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         in payload["normalization"]["warnings"]
     )
     assert (
-        "copilot raw events messages normalized from message events: 3 messages"
+        "copilot raw events messages projected from canonical events: 3 messages"
         in payload["normalization"]["warnings"]
     )
     assert (
-        "copilot raw events tool invocations normalized by toolCallId: 1 invocations"
+        "copilot raw events tool invocations projected from canonical events by toolCallId: 1 invocations"
         in payload["normalization"]["warnings"]
     )
     assert (
-        "copilot raw events model runs normalized from turn events: 1 runs"
+        "copilot raw events model runs projected from canonical events: 1 runs"
         in payload["normalization"]["warnings"]
     )
     assert (
-        "copilot raw events usage normalized from session.shutdown.modelMetrics: 1 records"
+        "copilot raw events usage projected from canonical session.shutdown events: 1 records"
         in payload["normalization"]["warnings"]
     )
 

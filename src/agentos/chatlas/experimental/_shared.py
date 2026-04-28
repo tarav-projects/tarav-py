@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
-from typing import Any
+from typing import Any, Callable
 
 @dataclass(frozen=True)
 class _ExperimentalNormalizationResult:
@@ -201,6 +201,87 @@ def _attach_event_refs_to_tool_invocations(
         event_refs = event_refs_by_tool_invocation.get(invocation_id)
         if event_refs:
             invocation["event_refs"] = event_refs
+
+def _attach_tool_invocation_refs_to_events(
+    events: list[dict[str, object]],
+    *,
+    tool_invocations: list[dict[str, object]],
+) -> None:
+    refs_by_call_id = _tool_invocation_refs_by_call_id(tool_invocations)
+    for event in events:
+        call_id = _string_or_none(event.get("call_id"))
+        if call_id is None:
+            continue
+        tool_invocation_ref = refs_by_call_id.get(call_id)
+        if tool_invocation_ref is not None:
+            event["tool_invocation_ref"] = tool_invocation_ref
+
+def _project_messages_from_events(
+    events: list[dict[str, object]],
+    *,
+    project_event: Callable[
+        [dict[str, object], int],
+        tuple[dict[str, object] | list[dict[str, object]] | None, list[str]],
+    ],
+) -> dict[str, object]:
+    return _project_records_from_events(
+        events,
+        record_key="messages",
+        project_event=project_event,
+    )
+
+def _project_usage_from_events(
+    events: list[dict[str, object]],
+    *,
+    project_event: Callable[
+        [dict[str, object], int],
+        tuple[dict[str, object] | list[dict[str, object]] | None, list[str]],
+    ],
+) -> dict[str, object]:
+    return _project_records_from_events(
+        events,
+        record_key="usage",
+        project_event=project_event,
+    )
+
+def _project_records_from_events(
+    events: list[dict[str, object]],
+    *,
+    record_key: str,
+    project_event: Callable[
+        [dict[str, object], int],
+        tuple[dict[str, object] | list[dict[str, object]] | None, list[str]],
+    ],
+) -> dict[str, object]:
+    records: list[dict[str, object]] = []
+    warnings: list[str] = []
+    for event in events:
+        record, event_warnings = project_event(event, len(records) + 1)
+        warnings.extend(event_warnings)
+        if isinstance(record, list):
+            records.extend(record)
+        elif record is not None:
+            records.append(record)
+    return {
+        record_key: records,
+        "warnings": warnings,
+    }
+
+def _event_refs_for_sequence_span(
+    events: list[dict[str, object]],
+    *,
+    start_sequence: int,
+    end_sequence: int,
+) -> list[str]:
+    refs: list[str] = []
+    for event in events:
+        sequence = _int_or_none(event.get("sequence"))
+        event_id = _string_or_none(event.get("event_id"))
+        if sequence is None or event_id is None:
+            continue
+        if start_sequence <= sequence <= end_sequence:
+            refs.append(event_id)
+    return refs
 
 def _primary_backing_artifact(session: dict[str, Any]) -> dict[str, Any] | None:
     primary = session.get("primary_backing_artifact")
@@ -474,6 +555,11 @@ __all__ = [
     "_warn_about_tool_group_records",
     "_tool_invocation_refs_by_call_id",
     "_attach_event_refs_to_tool_invocations",
+    "_attach_tool_invocation_refs_to_events",
+    "_project_messages_from_events",
+    "_project_usage_from_events",
+    "_project_records_from_events",
+    "_event_refs_for_sequence_span",
     "_primary_backing_artifact",
     "_source_ref_id_for_artifact",
     "_experimental_unsupported_concepts",
