@@ -3372,17 +3372,10 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
         "visible",
         "visible",
     ]
-    assert events[0]["payload"] == events[0]["data"]
-    assert events[0]["data"] == {
-        "message": {
-            "role": "user",
-            "content": "claude experimental user",
-        },
-        "session_id": session_id,
-        "cwd": "/tmp/project",
-        "version": "2.1.69",
-        "is_sidechain": False,
-        "user_type": "external",
+    assert "data" not in events[0]
+    assert events[0]["payload"] == {
+        "role": "user",
+        "content": [{"type": "text", "text": "claude experimental user"}],
     }
     assert events[1]["parent_uuid"] == "msg-user-1"
     assert payload["chat"]["usage"] == []
@@ -3451,11 +3444,11 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
         in payload["normalization"]["warnings"]
     )
     assert (
-        "claude raw session messages normalized from visible message records: 2 messages"
+        "claude raw session messages projected from canonical events: 2 messages"
         in payload["normalization"]["warnings"]
     )
     assert (
-        "claude raw session events normalized from raw records: 2 events"
+        "claude raw session semantic events normalized from raw records: 2 events"
         in payload["normalization"]["warnings"]
     )
     assert (
@@ -3893,7 +3886,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
         "messages": 3,
         "model_runs": 2,
         "tool_invocations": 1,
-        "events": 7,
+        "events": 10,
         "usage": 2,
         "reasoning_traces": 1,
     }
@@ -3933,9 +3926,9 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
         "events": {
             "status": "normalized",
             "raw_record_count": 7,
-            "raw_canonical_candidate_count": 7,
+            "raw_canonical_candidate_count": 10,
             "raw_progress_count": 2,
-            "normalized_count": 7,
+            "normalized_count": 10,
         },
         "reasoning": {
             "status": "normalized",
@@ -4014,6 +4007,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
             "cache_read_tokens": 7,
             "cache_write_tokens": 5,
             "request_count": 1,
+            "timestamp": "2026-04-18T11:00:02.000Z",
             "source_refs": [
                 {"source_ref_id": "source-1", "record_index": 3, "line": 3}
             ],
@@ -4057,6 +4051,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
             "cache_read_tokens": 11,
             "cache_write_tokens": 2,
             "request_count": 1,
+            "timestamp": "2026-04-18T11:00:02.800Z",
             "source_refs": [
                 {"source_ref_id": "source-1", "record_index": 7, "line": 7}
             ],
@@ -4067,7 +4062,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
         in payload["normalization"]["warnings"]
     )
     assert (
-        "claude raw session usage normalized from message.usage: 2 records"
+        "claude raw session usage projected from canonical usage events: 2 records"
         in payload["normalization"]["warnings"]
     )
     assert (

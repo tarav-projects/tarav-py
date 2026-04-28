@@ -76,8 +76,6 @@ def _experimental_normalize_claude_code_raw_session(
         source_ref_id=source_ref_id,
     )
     raw_counts = _claude_raw_record_counts(raw_session)
-    message_result = _claude_messages_from_raw_session(raw_session)
-    messages = _dict_list(message_result["messages"])
     tool_result = _claude_tool_invocations_from_raw_session(raw_session)
     tool_invocations = _dict_list(tool_result["tool_invocations"])
     tool_invocation_refs_by_call_id = _tool_invocation_refs_by_call_id(
@@ -94,6 +92,8 @@ def _experimental_normalize_claude_code_raw_session(
         tool_invocations,
         events=events,
     )
+    message_result = _claude_messages_from_events(events)
+    messages = _dict_list(message_result["messages"])
     model_run_result = _claude_model_runs_from_raw_session(
         raw_session,
         messages=messages,
@@ -105,10 +105,7 @@ def _experimental_normalize_claude_code_raw_session(
         model_runs,
         events=events,
     )
-    usage_result = _claude_usage_from_raw_session(
-        raw_session,
-        model_runs=model_runs,
-    )
+    usage_result = _claude_usage_from_events(events)
     usage = _dict_list(usage_result["usage"])
     deferred_concepts: list[str] = []
 
@@ -127,7 +124,7 @@ def _experimental_normalize_claude_code_raw_session(
         )
     if messages:
         warnings.append(
-            "claude raw session messages normalized from visible message records: "
+            "claude raw session messages projected from canonical events: "
             f"{len(messages)} messages"
         )
     if tool_invocations:
@@ -148,12 +145,12 @@ def _experimental_normalize_claude_code_raw_session(
         )
     if usage:
         warnings.append(
-            "claude raw session usage normalized from message.usage: "
+            "claude raw session usage projected from canonical usage events: "
             f"{len(usage)} records"
         )
     if events:
         warnings.append(
-            "claude raw session events normalized from raw records: "
+            "claude raw session semantic events normalized from raw records: "
             f"{len(events)} events"
         )
     warnings.extend(_string_list(message_result["warnings"]))
@@ -213,7 +210,7 @@ def _claude_raw_record_counts(raw_session: _ClaudeRawSession) -> dict[str, objec
     progress_count = 0
     reasoning_evidence_count = 0
     request_ids: set[str] = set()
-    usage_evidence_keys: set[str] = set()
+    usage_evidence_count = 0
 
     for record in raw_session.records:
         record_kind = _claude_record_kind(record)
@@ -235,7 +232,7 @@ def _claude_raw_record_counts(raw_session: _ClaudeRawSession) -> dict[str, objec
         if request_id is not None:
             request_ids.add(request_id)
         if _claude_record_has_usage_payload(record):
-            usage_evidence_keys.add(request_id or f"record-{record.record_index}")
+            usage_evidence_count += 1
 
     return {
         "records": len(raw_session.records),
@@ -246,7 +243,7 @@ def _claude_raw_record_counts(raw_session: _ClaudeRawSession) -> dict[str, objec
         "tool_result_count": tool_result_count,
         "progress_count": progress_count,
         "reasoning_evidence_count": reasoning_evidence_count,
-        "usage_evidence_count": len(usage_evidence_keys),
+        "usage_evidence_count": usage_evidence_count,
         "distinct_request_count": len(request_ids),
     }
 
@@ -268,41 +265,631 @@ def _claude_events_from_raw_session(
             interaction_count += 1
             current_interaction_ref = f"interaction-{interaction_count}"
         interaction_ref = current_interaction_ref or "session"
-        data = _claude_event_data(record)
-        event = event_builder.append(
-            kind=_claude_event_kind(record),
-            producer=_claude_event_producer(record),
-            surfaces=_claude_event_surfaces(record),
+        _claude_append_record_semantic_events(
+            event_builder=event_builder,
+            record=record,
             interaction_ref=interaction_ref,
-            payload=data,
-            timestamp=record.timestamp,
-            source_refs=record.source_refs,
-            outcome=_claude_event_outcome(record),
-            legacy_type=_claude_event_type(record),
-            legacy_data=data,
-            legacy_native=_claude_event_native(record),
-            extra={
-                "parent_uuid": record.parent_uuid,
-                "request_id": _claude_record_request_id(record),
-                "message_id": _string_or_none(record.message.get("id")),
-            },
+            tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id or {},
+            warnings=warnings,
         )
-
-        call_id = _claude_record_call_id(record)
-        if call_id is not None:
-            event["call_id"] = call_id
-            tool_invocation_ref = (tool_invocation_refs_by_call_id or {}).get(call_id)
-            if tool_invocation_ref is not None:
-                event["tool_invocation_ref"] = tool_invocation_ref
-            elif _claude_record_has_tool_evidence(record):
-                warnings.append(
-                    "claude tool-related event "
-                    f"{record.record_index} has no matching tool invocation for tool_use id {call_id}"
-                )
 
     return {
         "events": event_builder.events,
         "warnings": warnings,
+    }
+
+def _claude_append_record_semantic_events(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    interaction_ref: str,
+    tool_invocation_refs_by_call_id: dict[str, str],
+    warnings: list[str],
+) -> None:
+    if record.record_type == "progress":
+        _claude_append_progress_event(
+            event_builder=event_builder,
+            record=record,
+            interaction_ref=interaction_ref,
+            tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id,
+            warnings=warnings,
+        )
+        return
+
+    if record.record_type == "system":
+        _claude_append_system_event(
+            event_builder=event_builder,
+            record=record,
+            interaction_ref=interaction_ref,
+        )
+        return
+
+    role = _claude_message_role(record)
+    if role in {"user", "assistant"}:
+        _claude_append_message_record_events(
+            event_builder=event_builder,
+            record=record,
+            interaction_ref=interaction_ref,
+            tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id,
+            warnings=warnings,
+        )
+        if _claude_record_has_usage_payload(record):
+            _claude_append_usage_event(
+                event_builder=event_builder,
+                record=record,
+                interaction_ref=interaction_ref,
+            )
+        return
+
+    _claude_append_session_update_event(
+        event_builder=event_builder,
+        record=record,
+        interaction_ref=interaction_ref,
+    )
+
+def _claude_append_message_record_events(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    interaction_ref: str,
+    tool_invocation_refs_by_call_id: dict[str, str],
+    warnings: list[str],
+) -> None:
+    role = _claude_message_role(record)
+    if role not in {"user", "assistant"}:
+        return
+
+    content = record.message.get("content")
+    if isinstance(content, str):
+        text = _string_or_none(content)
+        if text is not None:
+            _claude_append_message_event(
+                event_builder=event_builder,
+                record=record,
+                interaction_ref=interaction_ref,
+                role=role,
+                content=[{"type": "text", "text": text}],
+                content_types=["string"],
+            )
+        return
+    if not isinstance(content, list):
+        return
+
+    visible_blocks: list[dict[str, object]] = []
+    visible_content_types: list[str] = []
+
+    def flush_visible_blocks() -> None:
+        nonlocal visible_blocks, visible_content_types
+        if not visible_blocks:
+            return
+        _claude_append_message_event(
+            event_builder=event_builder,
+            record=record,
+            interaction_ref=interaction_ref,
+            role=role,
+            content=visible_blocks,
+            content_types=visible_content_types,
+        )
+        visible_blocks = []
+        visible_content_types = []
+
+    for content_index, item in enumerate(content, start=1):
+        if not isinstance(item, dict):
+            visible_blocks.append(
+                {
+                    "type": "unknown",
+                    "native": {"value": item},
+                }
+            )
+            visible_content_types.append("unknown")
+            warnings.append(
+                f"claude {role} message record {record.record_index} content item {content_index} is not an object"
+            )
+            continue
+
+        item_type = _string_or_none(item.get("type"))
+        if item_type == "text":
+            text = _string_or_none(item.get("text"))
+            if text is None:
+                warnings.append(
+                    f"claude {role} message record {record.record_index} content item {content_index} has no text"
+                )
+                continue
+            visible_blocks.append({"type": "text", "text": text})
+            visible_content_types.append("text")
+            continue
+
+        if item_type == "image":
+            visible_blocks.append({"type": "image", "native": item})
+            visible_content_types.append("image")
+            continue
+
+        if item_type == "thinking":
+            flush_visible_blocks()
+            _claude_append_reasoning_event(
+                event_builder=event_builder,
+                record=record,
+                content_index=content_index,
+                item=item,
+                interaction_ref=interaction_ref,
+            )
+            continue
+
+        if item_type == "tool_use":
+            flush_visible_blocks()
+            _claude_append_tool_call_event(
+                event_builder=event_builder,
+                record=record,
+                content_index=content_index,
+                item=item,
+                interaction_ref=interaction_ref,
+                tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id,
+                warnings=warnings,
+            )
+            continue
+
+        if item_type == "tool_result":
+            flush_visible_blocks()
+            _claude_append_tool_result_event(
+                event_builder=event_builder,
+                record=record,
+                content_index=content_index,
+                item=item,
+                interaction_ref=interaction_ref,
+                tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id,
+                warnings=warnings,
+            )
+            continue
+
+        visible_blocks.append({"type": "unknown", "native": item})
+        visible_content_types.append(item_type or "unknown")
+
+    flush_visible_blocks()
+
+def _claude_append_message_event(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    interaction_ref: str,
+    role: str,
+    content: list[dict[str, object]],
+    content_types: list[str],
+) -> None:
+    event_builder.append(
+        kind="message",
+        producer=_semantic_event_producer(role),
+        surfaces=_semantic_event_surfaces(
+            transcript="visible",
+            model_input="visible",
+        ),
+        interaction_ref=interaction_ref,
+        payload={
+            "role": role,
+            "content": content,
+        },
+        timestamp=record.timestamp,
+        source_refs=record.source_refs,
+        legacy_type=_claude_event_type(record),
+        legacy_native=_claude_message_native(
+            record,
+            content_types=content_types,
+        ),
+        extra=_claude_common_event_extra(record),
+    )
+
+def _claude_append_reasoning_event(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    content_index: int,
+    item: dict[str, Any],
+    interaction_ref: str,
+) -> None:
+    text = _string_or_none(item.get("thinking"))
+    if text is None:
+        return
+    payload: dict[str, object] = {
+        "visibility": "visible",
+        "content": text,
+    }
+    signature = _string_or_none(item.get("signature"))
+    if signature is not None:
+        payload["signature"] = signature
+    event_builder.append(
+        kind="reasoning",
+        producer=_semantic_event_producer("assistant"),
+        surfaces=_semantic_event_surfaces(transcript="hidden"),
+        interaction_ref=interaction_ref,
+        payload=payload,
+        timestamp=record.timestamp,
+        source_refs=_claude_item_source_refs(
+            record,
+            content_index=content_index,
+        ),
+        legacy_type="claude-code.reasoning",
+        legacy_native=_claude_reasoning_native(
+            record,
+            content_index=content_index,
+            item=item,
+        ),
+        extra={
+            **_claude_common_event_extra(record),
+            "content_index": content_index,
+        },
+    )
+
+def _claude_append_tool_call_event(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    content_index: int,
+    item: dict[str, Any],
+    interaction_ref: str,
+    tool_invocation_refs_by_call_id: dict[str, str],
+    warnings: list[str],
+) -> None:
+    call_id = _string_or_none(item.get("id"))
+    if call_id is None:
+        warnings.append(
+            f"claude assistant tool-use record {record.record_index} content item {content_index} has no id"
+        )
+        return
+
+    payload: dict[str, object] = {"call_id": call_id}
+    tool_name = _string_or_none(item.get("name"))
+    if tool_name is not None:
+        payload["tool_name"] = tool_name
+    arguments = item.get("input")
+    if arguments is not None:
+        payload["input"] = {"arguments": arguments}
+
+    event = event_builder.append(
+        kind="tool.call",
+        producer=_semantic_event_producer("assistant"),
+        surfaces=_semantic_event_surfaces(
+            transcript="hidden",
+            model_input="visible",
+        ),
+        interaction_ref=interaction_ref,
+        payload=payload,
+        timestamp=record.timestamp,
+        source_refs=_claude_item_source_refs(
+            record,
+            content_index=content_index,
+        ),
+        legacy_type="claude-code.tool.call",
+        legacy_native=_claude_content_event_native(
+            record,
+            content_index=content_index,
+            content_type="tool_use",
+        ),
+        extra={
+            **_claude_common_event_extra(record),
+            "call_id": call_id,
+            "content_index": content_index,
+        },
+    )
+    _claude_attach_tool_invocation_ref_to_event(
+        event,
+        record=record,
+        call_id=call_id,
+        tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id,
+        warnings=warnings,
+    )
+
+def _claude_append_tool_result_event(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    content_index: int,
+    item: dict[str, Any],
+    interaction_ref: str,
+    tool_invocation_refs_by_call_id: dict[str, str],
+    warnings: list[str],
+) -> None:
+    call_id = _string_or_none(item.get("tool_use_id"))
+    if call_id is None:
+        warnings.append(
+            f"claude user tool-result record {record.record_index} content item {content_index} has no tool_use_id"
+        )
+        return
+
+    payload: dict[str, object] = {"call_id": call_id}
+    content = item.get("content")
+    if content is not None:
+        payload["content"] = content
+    is_error = item.get("is_error")
+    if isinstance(is_error, bool):
+        payload["is_error"] = is_error
+    execution = _claude_tool_execution_from_tool_use_result(record.tool_use_result)
+    if execution:
+        payload["execution"] = execution
+
+    event = event_builder.append(
+        kind="tool.result",
+        producer=_semantic_event_producer(
+            "tool",
+            name=_claude_record_tool_name(record),
+        ),
+        surfaces=_semantic_event_surfaces(
+            transcript="hidden",
+            model_input="visible",
+        ),
+        interaction_ref=interaction_ref,
+        payload=payload,
+        timestamp=record.timestamp,
+        source_refs=_claude_item_source_refs(
+            record,
+            content_index=content_index,
+        ),
+        outcome=_claude_tool_result_outcome(
+            item=item,
+            tool_use_result=record.tool_use_result,
+        ),
+        legacy_type="claude-code.tool.result",
+        legacy_native=_claude_content_event_native(
+            record,
+            content_index=content_index,
+            content_type="tool_result",
+        ),
+        extra={
+            **_claude_common_event_extra(record),
+            "call_id": call_id,
+            "content_index": content_index,
+        },
+    )
+    _claude_attach_tool_invocation_ref_to_event(
+        event,
+        record=record,
+        call_id=call_id,
+        tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id,
+        warnings=warnings,
+    )
+
+def _claude_append_progress_event(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    interaction_ref: str,
+    tool_invocation_refs_by_call_id: dict[str, str],
+    warnings: list[str],
+) -> None:
+    call_id = _claude_record_call_id(record)
+    payload = _claude_progress_event_payload(record)
+    if call_id is not None:
+        payload["call_id"] = call_id
+    event = event_builder.append(
+        kind="tool.progress",
+        producer=_semantic_event_producer(
+            "system",
+            name=_string_or_none(record.data.get("hookName")),
+        ),
+        surfaces=_semantic_event_surfaces(transcript="hidden"),
+        interaction_ref=interaction_ref,
+        payload=payload,
+        timestamp=record.timestamp,
+        source_refs=record.source_refs,
+        legacy_type="claude-code.tool.progress",
+        legacy_native=_claude_content_event_native(
+            record,
+            content_type="progress",
+        ),
+        extra={
+            **_claude_common_event_extra(record),
+            "call_id": call_id,
+        },
+    )
+    if call_id is not None:
+        _claude_attach_tool_invocation_ref_to_event(
+            event,
+            record=record,
+            call_id=call_id,
+            tool_invocation_refs_by_call_id=tool_invocation_refs_by_call_id,
+            warnings=warnings,
+        )
+
+def _claude_append_usage_event(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    interaction_ref: str,
+) -> None:
+    usage_payload = record.message.get("usage")
+    if not isinstance(usage_payload, dict):
+        return
+    event_builder.append(
+        kind="usage",
+        producer=_semantic_event_producer("provider"),
+        surfaces=_semantic_event_surfaces(transcript="hidden"),
+        interaction_ref=interaction_ref,
+        payload=_claude_usage_event_payload(
+            record,
+            usage_payload=usage_payload,
+        ),
+        timestamp=record.timestamp,
+        source_refs=record.source_refs,
+        legacy_type="claude-code.usage",
+        legacy_native=_claude_usage_native(
+            record,
+            request_id=_claude_record_request_id(record),
+            usage_payload=usage_payload,
+        ),
+        extra=_claude_common_event_extra(record),
+    )
+
+def _claude_append_system_event(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    interaction_ref: str,
+) -> None:
+    subtype = _string_or_none(record.payload.get("subtype"))
+    kind = "metric" if subtype == "turn_duration" else "session.update"
+    event_builder.append(
+        kind=kind,
+        producer=_semantic_event_producer("provider"),
+        surfaces=_semantic_event_surfaces(transcript="hidden"),
+        interaction_ref=interaction_ref,
+        payload=_claude_system_event_payload(record),
+        timestamp=record.timestamp,
+        source_refs=record.source_refs,
+        legacy_type=_claude_event_type(record),
+        legacy_native=_claude_content_event_native(record),
+        extra=_claude_common_event_extra(record),
+    )
+
+def _claude_append_session_update_event(
+    *,
+    event_builder: _SemanticEventBuilder,
+    record: _ClaudeRawRecord,
+    interaction_ref: str,
+) -> None:
+    event_builder.append(
+        kind="session.update",
+        producer=_semantic_event_producer("provider"),
+        surfaces=_semantic_event_surfaces(transcript="hidden"),
+        interaction_ref=interaction_ref,
+        payload=_claude_session_update_payload(record),
+        timestamp=record.timestamp,
+        source_refs=record.source_refs,
+        legacy_type=_claude_event_type(record),
+        legacy_native=_claude_content_event_native(record),
+        extra=_claude_common_event_extra(record),
+    )
+
+def _claude_attach_tool_invocation_ref_to_event(
+    event: dict[str, object],
+    *,
+    record: _ClaudeRawRecord,
+    call_id: str,
+    tool_invocation_refs_by_call_id: dict[str, str],
+    warnings: list[str],
+) -> None:
+    tool_invocation_ref = tool_invocation_refs_by_call_id.get(call_id)
+    if tool_invocation_ref is not None:
+        event["tool_invocation_ref"] = tool_invocation_ref
+        return
+    warnings.append(
+        "claude tool-related event "
+        f"{record.record_index} has no matching tool invocation for tool_use id {call_id}"
+    )
+
+def _claude_progress_event_payload(record: _ClaudeRawRecord) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    _copy_present_fields(
+        payload,
+        record.data,
+        (
+            ("type", "progress_type"),
+            ("hookEvent", "hook_event"),
+            ("hookName", "hook_name"),
+            ("command", "command"),
+        ),
+    )
+    return payload
+
+def _claude_system_event_payload(record: _ClaudeRawRecord) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    _copy_present_fields(
+        payload,
+        record.payload,
+        (
+            ("subtype", "subtype"),
+            ("durationMs", "duration_ms"),
+            ("isMeta", "is_meta"),
+        ),
+    )
+    return payload
+
+def _claude_session_update_payload(record: _ClaudeRawRecord) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    record_kind = _claude_record_kind(record)
+    if record_kind != "unknown":
+        payload["record_kind"] = record_kind
+    return payload
+
+def _claude_tool_result_outcome(
+    *,
+    item: dict[str, Any],
+    tool_use_result: dict[str, Any],
+) -> str:
+    if item.get("is_error") is True:
+        return "error"
+    if tool_use_result.get("interrupted") is True:
+        return "interrupted"
+    return "ok"
+
+def _claude_tool_execution_from_tool_use_result(
+    tool_use_result: dict[str, Any],
+) -> dict[str, object]:
+    execution: dict[str, object] = {}
+    _copy_present_fields(
+        execution,
+        tool_use_result,
+        (
+            ("stdout", "stdout"),
+            ("stderr", "stderr"),
+            ("interrupted", "interrupted"),
+            ("isImage", "is_image"),
+            ("noOutputExpected", "no_output_expected"),
+        ),
+    )
+    return execution
+
+def _claude_usage_event_payload(
+    record: _ClaudeRawRecord,
+    *,
+    usage_payload: dict[str, Any],
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "scope": "model_run",
+        "provider": "claude-code",
+        "request_count": 1,
+    }
+    request_id = _claude_record_request_id(record)
+    if request_id is not None:
+        payload["request_id"] = request_id
+    model = _string_or_none(record.message.get("model"))
+    if model is not None:
+        payload["model"] = model
+    for source_key, target_key in (
+        ("input_tokens", "input_tokens"),
+        ("output_tokens", "output_tokens"),
+        ("cache_read_input_tokens", "cache_read_tokens"),
+        ("cache_creation_input_tokens", "cache_write_tokens"),
+    ):
+        value = _int_or_none(usage_payload.get(source_key))
+        if value is not None:
+            payload[target_key] = value
+    return payload
+
+def _claude_content_event_native(
+    record: _ClaudeRawRecord,
+    *,
+    content_index: int | None = None,
+    content_type: str | None = None,
+) -> dict[str, object]:
+    native = _claude_event_native(record)
+    if content_index is not None:
+        native["content_index"] = content_index
+    if content_type is not None:
+        native["content_type"] = content_type
+    request_id = _claude_record_request_id(record)
+    if request_id is not None:
+        native["request_id"] = request_id
+    message_id = _string_or_none(record.message.get("id"))
+    if message_id is not None:
+        native["message_id"] = message_id
+    model = _string_or_none(record.message.get("model"))
+    if model is not None:
+        native["model"] = model
+    return native
+
+def _claude_common_event_extra(record: _ClaudeRawRecord) -> dict[str, object | None]:
+    return {
+        "parent_uuid": record.parent_uuid,
+        "request_id": _claude_record_request_id(record),
+        "message_id": _string_or_none(record.message.get("id")),
     }
 
 def _claude_record_starts_interaction(record: _ClaudeRawRecord) -> bool:
@@ -312,127 +899,51 @@ def _claude_record_starts_interaction(record: _ClaudeRawRecord) -> bool:
         return False
     return _claude_record_has_visible_message(record)
 
-def _claude_event_kind(record: _ClaudeRawRecord) -> str:
-    if record.record_type == "progress":
-        return "tool.progress"
-    if record.record_type == "system":
-        subtype = _string_or_none(record.payload.get("subtype"))
-        if subtype == "turn_duration":
-            return "metric"
-        return "session.update"
-
-    role = _claude_message_role(record)
-    if role == "user":
-        if _claude_record_content_item_count(record, item_type="tool_result") > 0:
-            return "tool.result"
-        return "message"
-    if role == "assistant":
-        if _claude_record_content_item_count(record, item_type="text") > 0:
-            return "message"
-        if _claude_record_content_item_count(record, item_type="tool_use") > 0:
-            return "tool.call"
-        if _claude_record_content_item_count(record, item_type="thinking") > 0:
-            return "reasoning"
-        return "message"
-    return "session.update"
-
-def _claude_event_producer(record: _ClaudeRawRecord) -> dict[str, object]:
-    if record.record_type == "progress":
-        return _semantic_event_producer(
-            "system",
-            name=_string_or_none(record.data.get("hookName")),
-        )
-    role = _claude_message_role(record)
-    if role == "user":
-        if _claude_record_content_item_count(record, item_type="tool_result") > 0:
-            return _semantic_event_producer(
-                "tool",
-                name=_claude_record_tool_name(record),
-            )
-        return _semantic_event_producer("user")
-    if role == "assistant":
-        return _semantic_event_producer("assistant")
-    if record.record_type == "system":
-        return _semantic_event_producer("provider")
-    return _semantic_event_producer("provider")
-
 def _claude_record_tool_name(record: _ClaudeRawRecord) -> str | None:
     hook_name = _string_or_none(record.data.get("hookName"))
     if hook_name is not None and ":" in hook_name:
         return hook_name.split(":")[-1].strip() or None
     return None
 
-def _claude_event_surfaces(record: _ClaudeRawRecord) -> dict[str, object]:
-    kind = _claude_event_kind(record)
-    if kind == "message":
-        return _semantic_event_surfaces(
-            transcript="visible",
-            model_input="visible",
-        )
-    if kind == "context":
-        return _semantic_event_surfaces(
-            transcript="hidden",
-            model_input="visible",
-        )
-    if kind in {"tool.call", "tool.result"}:
-        return _semantic_event_surfaces(
-            transcript="hidden",
-            model_input="visible",
-        )
-    return _semantic_event_surfaces(transcript="hidden")
-
-def _claude_event_outcome(record: _ClaudeRawRecord) -> str | None:
-    kind = _claude_event_kind(record)
-    if kind != "tool.result":
-        return None
-    content = record.message.get("content")
-    if isinstance(content, list):
-        for item in content:
-            if not isinstance(item, dict):
-                continue
-            if _string_or_none(item.get("type")) != "tool_result":
-                continue
-            if item.get("is_error") is True:
-                return "error"
-    if record.tool_use_result.get("interrupted") is True:
-        return "interrupted"
-    return "ok"
-
-def _claude_messages_from_raw_session(
-    raw_session: _ClaudeRawSession,
+def _claude_messages_from_events(
+    events: list[dict[str, object]],
 ) -> dict[str, object]:
-    messages: list[dict[str, object]] = []
-    warnings: list[str] = []
+    return _project_messages_from_events(
+        events,
+        project_event=_claude_message_from_event,
+    )
 
-    for record in raw_session.records:
-        role = _claude_message_role(record)
-        if role not in {"user", "assistant"}:
-            continue
+def _claude_message_from_event(
+    event: dict[str, object],
+    index: int,
+) -> tuple[dict[str, object] | None, list[str]]:
+    if event.get("kind") != "message":
+        return None, []
+    surfaces = event.get("surfaces")
+    if isinstance(surfaces, dict) and surfaces.get("transcript") != "visible":
+        return None, []
 
-        content, content_types, content_warnings, include_message = (
-            _claude_message_content_blocks(record)
-        )
-        warnings.extend(content_warnings)
-        if not content or not include_message:
-            continue
+    payload = _claude_event_payload(event)
+    role = _string_or_none(payload.get("role"))
+    if role not in {"user", "assistant"}:
+        return None, [
+            f"claude message event {_int_or_zero(event.get('sequence'))} has no canonical role"
+        ]
+    content = _dict_list(payload.get("content"))
+    if not content:
+        return None, [
+            f"claude message event {_int_or_zero(event.get('sequence'))} has no canonical content"
+        ]
 
-        message: dict[str, object] = {
-            "message_id": f"message-{len(messages) + 1}",
-            "role": role,
-            "visibility": "conversation",
-            "content": content,
-            "native": _claude_message_native(
-                record,
-                content_types=content_types,
-            ),
-        }
-        _claude_attach_event_provenance(message, record)
-        messages.append(message)
-
-    return {
-        "messages": messages,
-        "warnings": warnings,
+    message: dict[str, object] = {
+        "message_id": f"message-{index}",
+        "role": role,
+        "visibility": "conversation",
+        "content": content,
+        "native": dict(_record_native_dict(event)),
     }
+    _claude_attach_event_projection_provenance(message, event)
+    return message, []
 
 def _claude_tool_invocations_from_raw_session(
     raw_session: _ClaudeRawSession,
@@ -1163,8 +1674,10 @@ def _claude_model_run_from_request_group(
     if event_refs:
         model_run["event_refs"] = event_refs
 
-    reasoning_trace = _claude_model_run_reasoning_trace(
-        records,
+    reasoning_trace = _claude_model_run_reasoning_trace_from_events(
+        events,
+        span_start_index=span_start_index,
+        span_end_index=span_end_index,
         model_run_index=index,
     )
     if reasoning_trace:
@@ -1331,20 +1844,34 @@ def _claude_model_run_event_refs(
             refs.append(event_id)
     return refs
 
-def _claude_model_run_reasoning_trace(
-    records: list[_ClaudeRawRecord],
+def _claude_model_run_reasoning_trace_from_events(
+    events: list[dict[str, object]],
     *,
+    span_start_index: int,
+    span_end_index: int,
     model_run_index: int,
 ) -> list[dict[str, object]]:
     reasoning_trace: list[dict[str, object]] = []
-    for record in records:
-        reasoning_trace.extend(
-            _claude_reasoning_entries_from_record(
-                record,
-                model_run_index=model_run_index,
-                offset=len(reasoning_trace),
-            )
-        )
+    for event in events:
+        if event.get("kind") != "reasoning":
+            continue
+        record_index = _record_native_int_field(event, "record_index")
+        if record_index is None:
+            continue
+        if not span_start_index <= record_index <= span_end_index:
+            continue
+        payload = _claude_event_payload(event)
+        content = _string_or_none(payload.get("content"))
+        if content is None:
+            continue
+        reasoning: dict[str, object] = {
+            "reasoning_id": f"reasoning-{model_run_index}-{len(reasoning_trace) + 1}",
+            "visibility": _string_or_none(payload.get("visibility")) or "visible",
+            "content": content,
+            "native": dict(_record_native_dict(event)),
+        }
+        _claude_attach_event_projection_provenance(reasoning, event)
+        reasoning_trace.append(reasoning)
     return reasoning_trace
 
 def _claude_attach_model_run_refs_to_events(
@@ -1367,46 +1894,6 @@ def _claude_attach_model_run_refs_to_events(
         model_run_ref = model_run_ref_by_event_id.get(event_id)
         if model_run_ref is not None:
             event["model_run_ref"] = model_run_ref
-
-def _claude_reasoning_entries_from_record(
-    record: _ClaudeRawRecord,
-    *,
-    model_run_index: int,
-    offset: int,
-) -> list[dict[str, object]]:
-    content = record.message.get("content")
-    if not isinstance(content, list):
-        return []
-
-    reasoning_trace: list[dict[str, object]] = []
-    for content_index, item in enumerate(content, start=1):
-        if not isinstance(item, dict):
-            continue
-        if _string_or_none(item.get("type")) != "thinking":
-            continue
-        text = _string_or_none(item.get("thinking"))
-        if text is None:
-            continue
-        reasoning: dict[str, object] = {
-            "reasoning_id": f"reasoning-{model_run_index}-{offset + len(reasoning_trace) + 1}",
-            "visibility": "visible",
-            "content": text,
-            "native": _claude_reasoning_native(
-                record,
-                content_index=content_index,
-                item=item,
-            ),
-        }
-        if record.timestamp is not None:
-            reasoning["timestamp"] = record.timestamp
-        source_refs = _claude_item_source_refs(
-            record,
-            content_index=content_index,
-        )
-        if source_refs:
-            reasoning["source_refs"] = source_refs
-        reasoning_trace.append(reasoning)
-    return reasoning_trace
 
 def _claude_reasoning_native(
     record: _ClaudeRawRecord,
@@ -1431,97 +1918,56 @@ def _claude_reasoning_native(
         native["signature"] = signature
     return native
 
-def _claude_usage_from_raw_session(
-    raw_session: _ClaudeRawSession,
-    *,
-    model_runs: list[dict[str, object]],
+def _claude_usage_from_events(
+    events: list[dict[str, object]],
 ) -> dict[str, object]:
-    warnings: list[str] = []
-    model_run_ref_by_request_id = {
-        request_id: model_run_id
-        for model_run in model_runs
-        if (request_id := _string_or_none(model_run.get("request_id"))) is not None
-        and (model_run_id := _string_or_none(model_run.get("model_run_id"))) is not None
-    }
-    grouped_records: dict[str, list[_ClaudeRawRecord]] = {}
-    for record in raw_session.records:
-        if _claude_message_role(record) != "assistant":
-            continue
-        request_id = _claude_record_request_id(record)
-        if request_id is None:
-            continue
-        if not _claude_record_has_usage_payload(record):
-            continue
-        grouped_records.setdefault(request_id, []).append(record)
+    return _project_usage_from_events(
+        events,
+        project_event=_claude_usage_from_event,
+    )
 
-    usage: list[dict[str, object]] = []
-    for request_id, records in sorted(
-        grouped_records.items(),
-        key=lambda item: item[1][0].record_index if item[1] else 0,
-    ):
-        selected_record = records[-1]
-        usage.append(
-            _claude_usage_record_from_record(
-                record=selected_record,
-                request_id=request_id,
-                model_run_ref=model_run_ref_by_request_id.get(request_id),
-                index=len(usage) + 1,
-            )
-        )
-
-    return {
-        "usage": usage,
-        "warnings": warnings,
-    }
-
-def _claude_usage_record_from_record(
-    *,
-    record: _ClaudeRawRecord,
-    request_id: str,
-    model_run_ref: str | None,
+def _claude_usage_from_event(
+    event: dict[str, object],
     index: int,
-) -> dict[str, object]:
-    usage_payload = record.message.get("usage")
-    if not isinstance(usage_payload, dict):
-        usage_payload = {}
+) -> tuple[dict[str, object] | list[dict[str, object]] | None, list[str]]:
+    if event.get("kind") != "usage":
+        return None, []
 
+    payload = _claude_event_payload(event)
     usage: dict[str, object] = {
         "usage_id": f"usage-{index}",
-        "scope": "model_run",
-        "provider": "claude-code",
-        "native": _claude_usage_native(
-            record,
-            request_id=request_id,
-            usage_payload=usage_payload,
-        ),
+        "scope": _string_or_none(payload.get("scope")) or "model_run",
+        "provider": _string_or_none(payload.get("provider")) or "claude-code",
+        "native": dict(_record_native_dict(event)),
     }
-    model = _string_or_none(record.message.get("model"))
+    model = _string_or_none(payload.get("model"))
     if model is not None:
         usage["model"] = model
+    model_run_ref = _string_or_none(event.get("model_run_ref"))
     if model_run_ref is not None:
         usage["model_run_ref"] = model_run_ref
-    for source_key, target_key in (
-        ("input_tokens", "input_tokens"),
-        ("output_tokens", "output_tokens"),
-        ("cache_read_input_tokens", "cache_read_tokens"),
-        ("cache_creation_input_tokens", "cache_write_tokens"),
+    for key in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
     ):
-        value = _int_or_none(usage_payload.get(source_key))
+        value = _int_or_none(payload.get(key))
         if value is not None:
-            usage[target_key] = value
-    usage["request_count"] = 1
-    if record.source_refs:
-        usage["source_refs"] = record.source_refs
-    return usage
+            usage[key] = value
+    usage["request_count"] = _int_or_none(payload.get("request_count")) or 1
+    _claude_attach_event_projection_provenance(usage, event)
+    return usage, []
 
 def _claude_usage_native(
     record: _ClaudeRawRecord,
     *,
-    request_id: str,
+    request_id: str | None,
     usage_payload: dict[str, Any],
 ) -> dict[str, object]:
     native = _claude_event_native(record)
-    native["request_id"] = request_id
+    if request_id is not None:
+        native["request_id"] = request_id
     message_id = _string_or_none(record.message.get("id"))
     if message_id is not None:
         native["message_id"] = message_id
@@ -1656,140 +2102,6 @@ def _claude_record_content_item_count(
         count += 1
     return count
 
-def _claude_message_content_blocks(
-    record: _ClaudeRawRecord,
-) -> tuple[list[dict[str, object]], list[str], list[str], bool]:
-    role = _claude_message_role(record)
-    content = record.message.get("content")
-
-    if role == "user":
-        if isinstance(content, str):
-            text = _string_or_none(content)
-            if text is None:
-                return [], ["string"], [], False
-            return [{"type": "text", "text": text}], ["string"], [], True
-        if not isinstance(content, list):
-            return [], [], [], False
-
-        blocks: list[dict[str, object]] = []
-        content_types: list[str] = []
-        warnings: list[str] = []
-        include_message = False
-        for item_index, item in enumerate(content, start=1):
-            if not isinstance(item, dict):
-                blocks.append(
-                    {
-                        "type": "unknown",
-                        "native": {"value": item},
-                    }
-                )
-                include_message = True
-                warnings.append(
-                    f"claude user message record {record.record_index} content item {item_index} is not an object"
-                )
-                continue
-            item_type = _string_or_none(item.get("type"))
-            if item_type is not None:
-                content_types.append(item_type)
-            if item_type == "text":
-                text = _string_or_none(item.get("text"))
-                if text is None:
-                    warnings.append(
-                        f"claude user message record {record.record_index} content item {item_index} has no text"
-                    )
-                    continue
-                blocks.append({"type": "text", "text": text})
-                include_message = True
-                continue
-            if item_type == "image":
-                blocks.append({"type": "image", "native": item})
-                include_message = True
-                continue
-            if item_type == "tool_result":
-                blocks.append(_claude_tool_result_content_block(item))
-                continue
-            blocks.append({"type": "unknown", "native": item})
-            include_message = True
-        return blocks, content_types, warnings, include_message
-
-    if role != "assistant":
-        return [], [], [], False
-    if not isinstance(content, list):
-        return [], [], [], False
-
-    blocks: list[dict[str, object]] = []
-    content_types: list[str] = []
-    warnings = []
-    include_message = False
-    for item_index, item in enumerate(content, start=1):
-        if not isinstance(item, dict):
-            blocks.append(
-                {
-                    "type": "unknown",
-                    "native": {"value": item},
-                }
-            )
-            include_message = True
-            warnings.append(
-                f"claude assistant message record {record.record_index} content item {item_index} is not an object"
-            )
-            continue
-        item_type = _string_or_none(item.get("type"))
-        if item_type is not None:
-            content_types.append(item_type)
-        if item_type == "text":
-            text = _string_or_none(item.get("text"))
-            if text is None:
-                warnings.append(
-                    f"claude assistant message record {record.record_index} content item {item_index} has no text"
-                )
-                continue
-            blocks.append({"type": "text", "text": text})
-            include_message = True
-            continue
-        if item_type == "image":
-            blocks.append({"type": "image", "native": item})
-            include_message = True
-            continue
-        if item_type == "tool_use":
-            blocks.append(_claude_tool_call_content_block(item))
-            continue
-        blocks.append({"type": "unknown", "native": item})
-        include_message = True
-    return blocks, content_types, warnings, include_message
-
-def _claude_tool_call_content_block(item: dict[str, Any]) -> dict[str, object]:
-    block: dict[str, object] = {
-        "type": "tool_call",
-        "native": item,
-    }
-    call_id = _string_or_none(item.get("id"))
-    if call_id is not None:
-        block["call_id"] = call_id
-    tool_name = _string_or_none(item.get("name"))
-    if tool_name is not None:
-        block["tool_name"] = tool_name
-    arguments = item.get("input")
-    if arguments is not None:
-        block["arguments"] = arguments
-    return block
-
-def _claude_tool_result_content_block(item: dict[str, Any]) -> dict[str, object]:
-    block: dict[str, object] = {
-        "type": "tool_result",
-        "native": item,
-    }
-    call_id = _string_or_none(item.get("tool_use_id"))
-    if call_id is not None:
-        block["call_id"] = call_id
-    content = item.get("content")
-    if content is not None:
-        block["content"] = content
-    is_error = item.get("is_error")
-    if isinstance(is_error, bool):
-        block["is_error"] = is_error
-    return block
-
 def _claude_message_native(
     record: _ClaudeRawRecord,
     *,
@@ -1827,35 +2139,11 @@ def _claude_message_native(
 
     return native
 
-def _claude_event_data(record: _ClaudeRawRecord) -> dict[str, object]:
-    data: dict[str, object] = {}
-    if record.message:
-        data["message"] = dict(record.message)
-    if record.data:
-        data["data"] = dict(record.data)
-    if record.tool_use_result:
-        data["tool_use_result"] = dict(record.tool_use_result)
-
-    for source_key, target_key in (
-        ("sessionId", "session_id"),
-        ("cwd", "cwd"),
-        ("version", "version"),
-        ("gitBranch", "git_branch"),
-        ("isSidechain", "is_sidechain"),
-        ("userType", "user_type"),
-        ("permissionMode", "permission_mode"),
-        ("sourceToolAssistantUUID", "source_tool_assistant_uuid"),
-        ("toolUseID", "tool_use_id"),
-        ("parentToolUseID", "parent_tool_use_id"),
-        ("subtype", "subtype"),
-        ("durationMs", "duration_ms"),
-        ("isMeta", "is_meta"),
-    ):
-        value = record.payload.get(source_key)
-        if value is not None:
-            data[target_key] = value
-
-    return data
+def _claude_event_payload(event: dict[str, object]) -> dict[str, Any]:
+    payload = event.get("payload")
+    if isinstance(payload, dict):
+        return dict(payload)
+    return {}
 
 def _claude_event_native(record: _ClaudeRawRecord) -> dict[str, object]:
     native: dict[str, object] = {
@@ -1872,19 +2160,34 @@ def _claude_event_native(record: _ClaudeRawRecord) -> dict[str, object]:
         native["message_role"] = role
     return native
 
-def _claude_attach_event_provenance(
+def _claude_attach_event_projection_provenance(
     payload: dict[str, object],
-    record: _ClaudeRawRecord,
+    event: dict[str, object],
 ) -> None:
-    if record.timestamp is not None:
-        payload["timestamp"] = record.timestamp
-    if record.source_refs:
-        payload["source_refs"] = record.source_refs
+    timestamp = _string_or_none(event.get("timestamp"))
+    if timestamp is not None:
+        payload["timestamp"] = timestamp
+    source_refs = _dict_list(event.get("source_refs"))
+    if source_refs:
+        payload["source_refs"] = source_refs
 
 def _claude_last_prompt_record_count(raw_counts: dict[str, object]) -> int:
     return _count_payload(raw_counts.get("record_types")).get("last-prompt", 0)
 
 def _claude_canonical_event_candidate_count(raw_counts: dict[str, object]) -> int:
+    record_types = _count_payload(raw_counts.get("record_types"))
+    semantic_count = (
+        _int_or_zero(raw_counts.get("visible_message_record_count"))
+        + _int_or_zero(raw_counts.get("tool_use_count"))
+        + _int_or_zero(raw_counts.get("tool_result_count"))
+        + _int_or_zero(raw_counts.get("progress_count"))
+        + _int_or_zero(raw_counts.get("reasoning_evidence_count"))
+        + _int_or_zero(raw_counts.get("usage_evidence_count"))
+        + record_types.get("system", 0)
+        + record_types.get("unknown", 0)
+    )
+    if semantic_count:
+        return semantic_count
     return max(
         0,
         _int_or_zero(raw_counts.get("records")) - _claude_last_prompt_record_count(raw_counts),
@@ -1958,7 +2261,7 @@ def _claude_normalization_coverage(
     reasoning_count = _model_run_reasoning_count(model_runs)
     raw_event_candidate_count = _claude_canonical_event_candidate_count(raw_counts)
     event_status = _coverage_status(len(events))
-    if raw_event_candidate_count and len(events) == raw_event_candidate_count:
+    if raw_event_candidate_count and len(events) >= raw_event_candidate_count:
         event_status = "normalized"
     elif raw_event_candidate_count and len(events):
         event_status = "partial"

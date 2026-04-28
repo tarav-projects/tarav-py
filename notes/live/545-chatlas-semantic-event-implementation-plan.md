@@ -122,6 +122,19 @@ Acceptance:
 - Claude projections can be rebuilt from events and match or improve current counts and content quality.
 - Claude usage appears as `usage` events, not only as a side projection.
 
+Implementation notes:
+- Claude now emits semantic event units from raw records:
+  - visible content -> `message`
+  - thinking blocks -> `reasoning`
+  - tool use blocks -> `tool.call`
+  - tool result blocks -> `tool.result`
+  - hook progress records -> `tool.progress`
+  - `message.usage` payloads -> `usage`
+- Claude `messages`, reasoning traces, and usage are now projected from canonical events.
+- Claude `tool_invocations` and `model_runs` still use raw-backed grouping for request/tool correlation, then attach refs back onto events.
+- `raw_canonical_candidate_count` for Claude now counts semantic evidence, so mixed records can legitimately produce more events than raw JSONL rows.
+- Transitional `type` and `native` remain on Claude events for compatibility and span reconstruction; provider-shaped `data` is no longer emitted for Claude semantic events.
+
 ### Phase 4: Copilot Semantic Events
 - Split Copilot records into semantic events:
   - `system.message` -> `context`
