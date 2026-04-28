@@ -230,7 +230,9 @@ Implementation notes:
 - Copilot model run message attachment now includes the nearest preceding visible message before a turn start, preserving the user prompt link without depending on raw `parentId`.
 - Tests now assert that canonical `chat.events` omit `type`, `data`, and `native` while retaining stable sequence, kind, payload, surface, producer, and ref behavior.
 
-### Phase 7: Regression Harness And Quality Report
+### Phase 7: Reference Harness And Quality Report
+Status: done.
+
 - Add focused tests for each reference provider session.
 - Add checks that:
   - every event has required canonical fields
@@ -238,11 +240,22 @@ Implementation notes:
   - every projection item links back to event ids or refs where applicable
   - every important raw semantic artifact is represented or explicitly reported unsupported
 - Produce a small quality report for the three reference sessions after conversion.
+- This is a current-contract harness, not a compatibility harness for legacy event rows.
 
 Acceptance:
 - `uv run python -m pytest tests/test_chatlas_commands.py -q` passes.
 - `agentos chatlas experimental export <reference-session> --format json` passes for Claude, Copilot, and Codex.
 - The report states remaining gaps rather than hiding them.
+
+Implementation notes:
+- Added one integration-style pytest that copies the checked-in samples from `dev/session-samples/` into a temporary provider home, runs `chatlas update`, and exports the experimental model for all three reference sessions.
+- The shared test assertions verify current semantic event shape, contiguous `event-N` / `sequence` order, projection links, expected event kind sets, normalization counts, and coverage states.
+- The test explicitly asserts that Codex usage is the only current unsupported/deferred concept for the reference set.
+
+Quality report:
+- Claude Code `5dbf4437-633e-4039-a627-0459d85e9ecc`: `messages=3`, `model_runs=4`, `tool_invocations=9`, `events=53`, `usage=12`, `reasoning_traces=1`; all checked coverage surfaces are normalized.
+- Copilot CLI `d1d3f48b-4b29-4dfc-b551-5536b9677225`: `messages=4`, `model_runs=3`, `tool_invocations=2`, `events=25`, `usage=1`, `reasoning_traces=5`; all checked coverage surfaces, including cost evidence, are normalized.
+- Codex `019db5fd-7a73-7ae1-b5eb-901e62258dcb`: `messages=7`, `model_runs=1`, `tool_invocations=45`, `events=163`, `usage=0`, `reasoning_traces=7`; token-count evidence is preserved as `metric` events, while canonical `usage` remains unsupported/deferred until scope allocation is reliable.
 
 ## Provider Order
 1. Claude Code
@@ -268,4 +281,4 @@ Rationale:
 - How much unsupported evidence should be represented as `metric`, `session.update`, or normalization warnings.
 
 ## Immediate Next Step
-- Start Phase 7 by adding focused reference-session checks and a short quality report for Claude Code, Copilot CLI, and Codex.
+- Run the full `tests/test_chatlas_commands.py` suite and installed-CLI smoke checks for the three reference sessions.

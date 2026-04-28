@@ -1250,6 +1250,201 @@ def _chatlas_update_argv(
     return argv
 
 
+_REFERENCE_CLAUDE_SESSION_ID = "5dbf4437-633e-4039-a627-0459d85e9ecc"
+_REFERENCE_COPILOT_SESSION_ID = "d1d3f48b-4b29-4dfc-b551-5536b9677225"
+_REFERENCE_CODEX_SESSION_ID = "019db5fd-7a73-7ae1-b5eb-901e62258dcb"
+
+
+def _copy_chatlas_reference_session_samples(home: Path) -> None:
+    sample_root = Path(__file__).resolve().parents[1] / "dev" / "session-samples"
+
+    claude_target = (
+        home
+        / ".claude"
+        / "projects"
+        / "-reference-project"
+        / f"{_REFERENCE_CLAUDE_SESSION_ID}.jsonl"
+    )
+    claude_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        sample_root / "claude-code" / f"{_REFERENCE_CLAUDE_SESSION_ID}.jsonl",
+        claude_target,
+    )
+
+    copilot_target = (
+        home
+        / ".copilot"
+        / "session-state"
+        / _REFERENCE_COPILOT_SESSION_ID
+        / "events.jsonl"
+    )
+    copilot_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        sample_root / "copilot-cli" / _REFERENCE_COPILOT_SESSION_ID / "events.jsonl",
+        copilot_target,
+    )
+
+    codex_target = (
+        home
+        / ".codex"
+        / "sessions"
+        / "2026"
+        / "04"
+        / "22"
+        / f"rollout-2026-04-22T12-19-41-{_REFERENCE_CODEX_SESSION_ID}.jsonl"
+    )
+    codex_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        sample_root
+        / "codex"
+        / _REFERENCE_CODEX_SESSION_ID
+        / f"rollout-2026-04-22T12-19-41-{_REFERENCE_CODEX_SESSION_ID}.jsonl",
+        codex_target,
+    )
+
+
+def _assert_current_semantic_event_tape(events: list[dict[str, object]]) -> None:
+    required_keys = {
+        "event_id",
+        "sequence",
+        "kind",
+        "producer",
+        "surfaces",
+        "interaction_ref",
+        "payload",
+        "source_refs",
+    }
+    assert events
+    for index, event in enumerate(events, start=1):
+        assert required_keys <= set(event)
+        assert event["event_id"] == f"event-{index}"
+        assert event["sequence"] == index
+        assert "type" not in event
+        assert "data" not in event
+        assert "native" not in event
+        assert isinstance(event["kind"], str)
+        assert isinstance(event["producer"], dict)
+        assert isinstance(event["surfaces"], dict)
+        assert isinstance(event["interaction_ref"], str)
+        assert isinstance(event["payload"], dict)
+        assert isinstance(event["source_refs"], list)
+        assert event["producer"].get("type")
+        assert {"transcript", "replay", "debug", "model_input"} <= set(event["surfaces"])
+        for source_ref in event["source_refs"]:
+            assert isinstance(source_ref, dict)
+            assert isinstance(source_ref.get("source_ref_id"), str)
+
+
+def _assert_current_projection_links(payload: dict[str, object]) -> None:
+    chat = payload["chat"]
+    assert isinstance(chat, dict)
+    events = chat["events"]
+    messages = chat["messages"]
+    model_runs = chat["model_runs"]
+    tool_invocations = chat["tool_invocations"]
+    usage_records = chat["usage"]
+    assert isinstance(events, list)
+    assert isinstance(messages, list)
+    assert isinstance(model_runs, list)
+    assert isinstance(tool_invocations, list)
+    assert isinstance(usage_records, list)
+
+    event_by_id = {
+        event["event_id"]: event
+        for event in events
+        if isinstance(event, dict) and isinstance(event.get("event_id"), str)
+    }
+    message_ids = {
+        message["message_id"]
+        for message in messages
+        if isinstance(message, dict) and isinstance(message.get("message_id"), str)
+    }
+    model_run_ids = {
+        model_run["model_run_id"]
+        for model_run in model_runs
+        if isinstance(model_run, dict) and isinstance(model_run.get("model_run_id"), str)
+    }
+    tool_invocation_ids = {
+        tool_invocation["tool_invocation_id"]
+        for tool_invocation in tool_invocations
+        if isinstance(tool_invocation, dict)
+        and isinstance(tool_invocation.get("tool_invocation_id"), str)
+    }
+
+    for message in messages:
+        assert isinstance(message, dict)
+        assert message.get("source_refs")
+
+    for tool_invocation in tool_invocations:
+        assert isinstance(tool_invocation, dict)
+        invocation_id = tool_invocation["tool_invocation_id"]
+        assert isinstance(invocation_id, str)
+        event_refs = tool_invocation.get("event_refs")
+        assert isinstance(event_refs, list)
+        assert event_refs
+        for event_ref in event_refs:
+            assert event_ref in event_by_id
+            assert event_by_id[event_ref].get("tool_invocation_ref") == invocation_id
+
+    for model_run in model_runs:
+        assert isinstance(model_run, dict)
+        event_refs = model_run.get("event_refs")
+        assert isinstance(event_refs, list)
+        assert event_refs
+        for event_ref in event_refs:
+            assert event_ref in event_by_id
+        for message_ref in model_run.get("message_refs", []):
+            assert message_ref in message_ids
+        for tool_ref in model_run.get("tool_invocation_refs", []):
+            assert tool_ref in tool_invocation_ids
+        reasoning_trace = model_run.get("reasoning_trace")
+        if isinstance(reasoning_trace, list):
+            for reasoning in reasoning_trace:
+                assert isinstance(reasoning, dict)
+                assert reasoning.get("source_refs")
+
+    for usage in usage_records:
+        assert isinstance(usage, dict)
+        assert usage.get("source_refs")
+        model_run_ref = usage.get("model_run_ref")
+        if model_run_ref is not None:
+            assert model_run_ref in model_run_ids
+
+
+def _assert_current_reference_session_quality(
+    payload: dict[str, object],
+    *,
+    provider: str,
+    session_id: str,
+    expected_counts: dict[str, int],
+    expected_kinds: set[str],
+    expected_unsupported_concepts: list[str],
+    expected_deferred_concepts: list[str],
+    expected_coverage_statuses: dict[str, str],
+) -> None:
+    assert payload["class"] == "agentos.chatlas.experimental.session_model"
+    assert payload["schema_version"] == 1
+    assert payload["experimental"] is True
+    assert payload["session"]["provider"] == provider
+    assert payload["session"]["session_id"] == session_id
+    assert payload["normalization"]["counts"] == expected_counts
+    assert payload["normalization"]["unsupported_concepts"] == expected_unsupported_concepts
+    assert payload["normalization"]["deferred_concepts"] == expected_deferred_concepts
+
+    chat = payload["chat"]
+    events = chat["events"]
+    assert isinstance(events, list)
+    assert len(events) == expected_counts["events"]
+    assert {event["kind"] for event in events if isinstance(event, dict)} == expected_kinds
+    _assert_current_semantic_event_tape(events)
+    _assert_current_projection_links(payload)
+
+    coverage = payload["normalization"]["coverage"]
+    assert isinstance(coverage, dict)
+    for concept, expected_status in expected_coverage_statuses.items():
+        assert coverage[concept]["status"] == expected_status
+
+
 def test_chatlas_update_mirrors_default_codex_home_and_commits(
     tmp_path: Path,
     monkeypatch,
@@ -4488,6 +4683,174 @@ def test_chatlas_experimental_export_errors_for_missing_provider_normalizer(
         "experimental session model export has no provider-specific raw normalizer "
         "for provider pi"
     ) in captured.err
+
+
+def test_chatlas_experimental_export_reference_samples_match_current_semantic_contract(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot-cli",
+                "id": "copilot-main",
+                "home": str(home / ".copilot"),
+            }
+        ],
+    )
+    _copy_chatlas_reference_session_samples(home)
+
+    assert (
+        main(
+            _chatlas_update_argv(
+                "--provider",
+                "codex",
+                "--provider",
+                "claude-code",
+                "--provider",
+                "copilot-cli",
+                verbose_mode="quiet",
+            )
+        )
+        == 0
+    )
+    _ = json.loads(capsys.readouterr().out)
+
+    reference_expectations = [
+        {
+            "provider": "claude-code",
+            "session_id": _REFERENCE_CLAUDE_SESSION_ID,
+            "expected_counts": {
+                "messages": 3,
+                "model_runs": 4,
+                "tool_invocations": 9,
+                "events": 53,
+                "usage": 12,
+                "reasoning_traces": 1,
+            },
+            "expected_kinds": {
+                "message",
+                "metric",
+                "reasoning",
+                "tool.call",
+                "tool.progress",
+                "tool.result",
+                "usage",
+            },
+            "expected_unsupported_concepts": [],
+            "expected_deferred_concepts": [],
+            "expected_coverage_statuses": {
+                "messages": "normalized",
+                "model_runs": "normalized",
+                "tool_invocations": "normalized",
+                "events": "normalized",
+                "reasoning": "normalized",
+                "usage": "normalized",
+            },
+        },
+        {
+            "provider": "copilot-cli",
+            "session_id": _REFERENCE_COPILOT_SESSION_ID,
+            "expected_counts": {
+                "messages": 4,
+                "model_runs": 3,
+                "tool_invocations": 2,
+                "events": 25,
+                "usage": 1,
+                "reasoning_traces": 5,
+            },
+            "expected_kinds": {
+                "context",
+                "message",
+                "reasoning",
+                "run.end",
+                "run.start",
+                "session.end",
+                "session.start",
+                "session.update",
+                "tool.call",
+                "tool.progress",
+                "tool.result",
+                "usage",
+            },
+            "expected_unsupported_concepts": [],
+            "expected_deferred_concepts": [],
+            "expected_coverage_statuses": {
+                "messages": "normalized",
+                "model_runs": "normalized",
+                "tool_invocations": "normalized",
+                "events": "normalized",
+                "reasoning": "normalized",
+                "usage": "normalized",
+                "cost": "normalized",
+            },
+        },
+        {
+            "provider": "codex",
+            "session_id": _REFERENCE_CODEX_SESSION_ID,
+            "expected_counts": {
+                "messages": 7,
+                "model_runs": 1,
+                "tool_invocations": 45,
+                "events": 163,
+                "usage": 0,
+                "reasoning_traces": 7,
+            },
+            "expected_kinds": {
+                "context",
+                "message",
+                "metric",
+                "reasoning",
+                "run.end",
+                "run.start",
+                "session.start",
+                "tool.call",
+                "tool.progress",
+                "tool.result",
+            },
+            "expected_unsupported_concepts": ["usage"],
+            "expected_deferred_concepts": ["usage"],
+            "expected_coverage_statuses": {
+                "messages": "normalized",
+                "model_runs": "normalized",
+                "tool_invocations": "normalized",
+                "events": "normalized",
+                "reasoning": "normalized",
+                "usage": "event_only",
+                "cost": "no_raw_evidence",
+            },
+        },
+    ]
+
+    for expectation in reference_expectations:
+        provider = expectation["provider"]
+        session_id = expectation["session_id"]
+        assert isinstance(provider, str)
+        assert isinstance(session_id, str)
+        assert (
+            main(
+                [
+                    "chatlas",
+                    "experimental",
+                    "export",
+                    session_id,
+                    "--provider",
+                    provider,
+                    "--format",
+                    "json",
+                ]
+            )
+            == 0
+        )
+        payload = json.loads(capsys.readouterr().out)
+        _assert_current_reference_session_quality(payload, **expectation)
 
 
 def test_chatlas_experimental_export_reports_invalid_codex_raw_lines(
