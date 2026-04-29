@@ -1569,44 +1569,10 @@ def _codex_model_run_event_refs(
 def _codex_reasoning_trace_from_events(
     events: list[dict[str, object]],
 ) -> list[dict[str, object]]:
-    reasoning_trace: list[dict[str, object]] = []
-    for event in events:
-        if event.get("kind") != "reasoning":
-            continue
-        reasoning = _codex_reasoning_from_event(
-            event,
-            index=len(reasoning_trace) + 1,
-        )
-        if reasoning is not None:
-            reasoning_trace.append(reasoning)
-    return reasoning_trace
-
-def _codex_reasoning_from_event(
-    event: dict[str, object],
-    *,
-    index: int,
-) -> dict[str, object] | None:
-    payload = _codex_event_payload(event)
-    visibility = _string_or_none(payload.get("visibility")) or "unknown"
-    native = dict(_record_native_dict(event))
-    summary = payload.get("summary")
-    if summary is not None:
-        native["summary"] = summary
-    reasoning: dict[str, object] = {
-        "reasoning_id": f"reasoning-{index}",
-        "visibility": visibility,
-        "native": native,
-    }
-    timestamp = _string_or_none(event.get("timestamp"))
-    if timestamp is not None:
-        reasoning["timestamp"] = timestamp
-    content = payload.get("content")
-    if content is not None:
-        reasoning["content"] = content
-    source_refs = _dict_list(event.get("source_refs"))
-    if source_refs:
-        reasoning["source_refs"] = source_refs
-    return reasoning
+    return _project_reasoning_trace_from_events(
+        events,
+        id_prefix="reasoning",
+    )
 
 def _codex_reasoning_content(payload: dict[str, Any]) -> object | None:
     content = payload.get("content")

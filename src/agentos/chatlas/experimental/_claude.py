@@ -1851,28 +1851,18 @@ def _claude_model_run_reasoning_trace_from_events(
     span_end_index: int,
     model_run_index: int,
 ) -> list[dict[str, object]]:
-    reasoning_trace: list[dict[str, object]] = []
-    for event in events:
-        if event.get("kind") != "reasoning":
-            continue
+    def include_event(event: dict[str, object]) -> bool:
         record_index = _record_native_int_field(event, "record_index")
         if record_index is None:
-            continue
-        if not span_start_index <= record_index <= span_end_index:
-            continue
-        payload = _claude_event_payload(event)
-        content = _string_or_none(payload.get("content"))
-        if content is None:
-            continue
-        reasoning: dict[str, object] = {
-            "reasoning_id": f"reasoning-{model_run_index}-{len(reasoning_trace) + 1}",
-            "visibility": _string_or_none(payload.get("visibility")) or "visible",
-            "content": content,
-            "native": dict(_record_native_dict(event)),
-        }
-        _claude_attach_event_projection_provenance(reasoning, event)
-        reasoning_trace.append(reasoning)
-    return reasoning_trace
+            return False
+        return span_start_index <= record_index <= span_end_index
+
+    return _project_reasoning_trace_from_events(
+        events,
+        id_prefix=f"reasoning-{model_run_index}",
+        include_event=include_event,
+        require_content=True,
+    )
 
 def _claude_attach_model_run_refs_to_events(
     model_runs: list[dict[str, object]],

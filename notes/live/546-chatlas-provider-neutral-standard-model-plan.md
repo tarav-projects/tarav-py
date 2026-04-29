@@ -241,7 +241,7 @@ Implementation notes:
 - Existing projection source refs/event refs continue to pass the Phase 3 traceability validator.
 
 ### Phase 5: Make Projection Builders More Shared
-Status: pending.
+Status: done.
 
 - Move more projection construction into shared event-driven helpers.
 - Keep provider-specific logic only where it belongs:
@@ -254,6 +254,15 @@ Acceptance:
 - Provider normalizers primarily emit semantic events.
 - Projection construction reads semantic events instead of raw provider payloads.
 - Any provider-specific projection logic is documented as temporary or justified by unavoidable correlation evidence.
+
+Implementation notes:
+- Added shared `_project_reasoning_trace_from_events` in `src/agentos/chatlas/experimental/_shared.py`.
+- Claude, Copilot, and Codex now use the shared reasoning projection helper.
+- Provider-specific code now only supplies the event inclusion rule:
+  - Claude filters reasoning events by raw record span.
+  - Copilot filters reasoning events by raw event-index span.
+  - Codex projects all reasoning events, then attaches them to model runs with existing span/turn logic.
+- Removed dead Copilot fallback code that projected reasoning from provider-shaped assistant-message payloads. Reasoning is now expected to be split into semantic `reasoning` events first.
 
 ### Phase 6: Add Contract Tests
 Status: pending.
@@ -300,4 +309,4 @@ Acceptance:
 - How strict should the schema be while the model is still experimental?
 
 ## Immediate Next Step
-- Start Phase 5 by moving more projection construction into shared event-driven helpers.
+- Start Phase 6 by tightening contract tests around provider-neutral standard-model records.

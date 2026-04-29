@@ -2332,94 +2332,16 @@ def _copilot_model_run_reasoning_trace_from_events(
     end_index: int,
     model_run_index: int,
 ) -> list[dict[str, object]]:
-    reasoning_trace: list[dict[str, object]] = []
-    for event in events:
+    def include_event(event: dict[str, object]) -> bool:
         event_index = _copilot_projected_event_index(event)
-        if not start_index <= event_index <= end_index:
-            continue
-        if event.get("kind") == "reasoning":
-            reasoning = _copilot_reasoning_entry_from_event(
-                event,
-                model_run_index=model_run_index,
-                index=len(reasoning_trace) + 1,
-            )
-            if reasoning is not None:
-                reasoning_trace.append(reasoning)
-            continue
-        if _copilot_projected_event_type(event) != "assistant.message":
-            continue
-        reasoning_trace.extend(
-            _copilot_reasoning_entries_from_event_projection(
-                event,
-                model_run_index=model_run_index,
-                offset=len(reasoning_trace),
-            )
-        )
-    return reasoning_trace
+        return start_index <= event_index <= end_index
 
-def _copilot_reasoning_entry_from_event(
-    event: dict[str, object],
-    *,
-    model_run_index: int,
-    index: int,
-) -> dict[str, object] | None:
-    payload = _copilot_event_payload(event)
-    content = _string_or_none(payload.get("content"))
-    if content is None:
-        return None
-    reasoning: dict[str, object] = {
-        "reasoning_id": f"reasoning-{model_run_index}-{index}",
-        "visibility": _string_or_none(payload.get("visibility")) or "visible",
-        "content": content,
-        "native": dict(_record_native_dict(event)),
-    }
-    _copy_event_provenance(reasoning, event)
-    return reasoning
-
-def _copilot_reasoning_entries_from_event_projection(
-    event: dict[str, object],
-    *,
-    model_run_index: int,
-    offset: int,
-) -> list[dict[str, object]]:
-    payload = _copilot_event_payload(event)
-    reasoning_trace: list[dict[str, object]] = []
-    for source_key, visibility in (
-        ("reasoningText", "visible"),
-        ("reasoningOpaque", "opaque"),
-        ("encryptedContent", "encrypted"),
-    ):
-        value = _string_or_none(payload.get(source_key))
-        if value is None:
-            continue
-        reasoning: dict[str, object] = {
-            "reasoning_id": f"reasoning-{model_run_index}-{offset + len(reasoning_trace) + 1}",
-            "visibility": visibility,
-            "content": value,
-            "native": _copilot_reasoning_native_from_event(
-                event,
-                reasoning_key=source_key,
-            ),
-        }
-        _copy_event_provenance(reasoning, event)
-        reasoning_trace.append(reasoning)
-    return reasoning_trace
-
-def _copilot_reasoning_native_from_event(
-    event: dict[str, object],
-    *,
-    reasoning_key: str,
-) -> dict[str, object]:
-    payload = _copilot_event_payload(event)
-    native = dict(_record_native_dict(event))
-    native["reasoning_key"] = reasoning_key
-    _copy_present_fields(
-        native,
-        payload,
-        _COPILOT_REASONING_NATIVE_FIELDS,
+    return _project_reasoning_trace_from_events(
+        events,
+        id_prefix=f"reasoning-{model_run_index}",
+        include_event=include_event,
+        require_content=True,
     )
-    return native
-
 
 def _copilot_model_run_tool_refs(
     tool_invocations: list[dict[str, object]],

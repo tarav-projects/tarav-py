@@ -252,6 +252,40 @@ def _project_usage_from_events(
         project_event=project_event,
     )
 
+def _project_reasoning_trace_from_events(
+    events: list[dict[str, object]],
+    *,
+    id_prefix: str,
+    include_event: Callable[[dict[str, object]], bool] | None = None,
+    require_content: bool = False,
+) -> list[dict[str, object]]:
+    reasoning_trace: list[dict[str, object]] = []
+    for event in events:
+        if event.get("kind") != "reasoning":
+            continue
+        if include_event is not None and not include_event(event):
+            continue
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+        content = _string_or_none(payload.get("content"))
+        if require_content and content is None:
+            continue
+        reasoning: dict[str, object] = {
+            "reasoning_id": f"{id_prefix}-{len(reasoning_trace) + 1}",
+            "visibility": _string_or_none(payload.get("visibility")) or "visible",
+        }
+        if content is not None:
+            reasoning["content"] = content
+        timestamp = _string_or_none(event.get("timestamp"))
+        if timestamp is not None:
+            reasoning["timestamp"] = timestamp
+        source_refs = _dict_list(event.get("source_refs"))
+        if source_refs:
+            reasoning["source_refs"] = source_refs
+        reasoning_trace.append(reasoning)
+    return reasoning_trace
+
 def _project_records_from_events(
     events: list[dict[str, object]],
     *,
@@ -810,6 +844,7 @@ __all__ = [
     "_attach_tool_invocation_refs_to_events",
     "_project_messages_from_events",
     "_project_usage_from_events",
+    "_project_reasoning_trace_from_events",
     "_project_records_from_events",
     "_event_refs_for_sequence_span",
     "_primary_backing_artifact",
