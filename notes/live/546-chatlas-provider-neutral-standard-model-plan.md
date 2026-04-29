@@ -154,7 +154,7 @@ Implementation notes:
 - The contract records source refs as the bridge back to provider-native raw artifacts.
 
 ### Phase 2: Audit Provider-Neutral Leaks
-Status: pending.
+Status: done.
 
 - Inspect current experimental exports for the three reference sessions.
 - Identify every provider-shaped field still present outside raw artifacts.
@@ -168,6 +168,18 @@ Status: pending.
 Acceptance:
 - Produce a small inventory of fields to remove, promote, or defer.
 - No provider-specific field is removed without preserving raw traceability through `source_refs`.
+
+Implementation notes:
+- Added `notes/live/549-chatlas-provider-neutral-leak-audit.md`.
+- The audit was generated from the three checked-in reference-session samples.
+- Main leak classes:
+  - projection-level `native`
+  - `session.native`
+  - event top-level source locators/correlation helpers
+  - Claude hook progress payload details
+  - Copilot raw usage aggregate payload
+  - Codex tool progress aliases
+- The audit recommends strengthening source refs before deleting `native` from projections.
 
 ### Phase 3: Strengthen Source Refs As The Native Bridge
 Status: pending.
@@ -263,4 +275,4 @@ Acceptance:
 - How strict should the schema be while the model is still experimental?
 
 ## Immediate Next Step
-- Start Phase 2 by auditing provider-neutral leaks in the three reference-session exports.
+- Start Phase 3 by validating and strengthening source refs before removing provider-native fields.
