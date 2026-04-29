@@ -511,6 +511,216 @@ def _source_ref_record_indices(source_refs: object) -> list[int]:
             record_indices.append(record_index)
     return record_indices
 
+def _standard_model_traceability_errors(payload: dict[str, object]) -> list[str]:
+    errors: list[str] = []
+    sources = payload.get("sources")
+    chat = payload.get("chat")
+    if not isinstance(sources, list):
+        return ["sources must be a list"]
+    if not isinstance(chat, dict):
+        return ["chat must be an object"]
+
+    source_ids = _standard_model_source_ids(sources, errors=errors)
+    events = chat.get("events")
+    if not isinstance(events, list):
+        errors.append("chat.events must be a list")
+        events = []
+    event_by_id = _standard_model_record_by_id(
+        events,
+        id_key="event_id",
+        path="chat.events",
+        errors=errors,
+    )
+
+    for index, event in enumerate(events):
+        path = f"chat.events[{index}]"
+        if not isinstance(event, dict):
+            errors.append(f"{path} must be an object")
+            continue
+        _validate_standard_model_source_refs(
+            event.get("source_refs"),
+            path=f"{path}.source_refs",
+            source_ids=source_ids,
+            required=True,
+            errors=errors,
+        )
+
+    for section in ("messages", "model_runs", "tool_invocations", "usage"):
+        records = chat.get(section)
+        if not isinstance(records, list):
+            errors.append(f"chat.{section} must be a list")
+            continue
+        for index, record in enumerate(records):
+            if not isinstance(record, dict):
+                errors.append(f"chat.{section}[{index}] must be an object")
+                continue
+            _validate_standard_model_projection_traceability(
+                record,
+                path=f"chat.{section}[{index}]",
+                source_ids=source_ids,
+                event_by_id=event_by_id,
+                errors=errors,
+            )
+            if section == "model_runs":
+                reasoning_trace = record.get("reasoning_trace")
+                if isinstance(reasoning_trace, list):
+                    for reasoning_index, reasoning in enumerate(reasoning_trace):
+                        if not isinstance(reasoning, dict):
+                            errors.append(
+                                f"chat.model_runs[{index}].reasoning_trace"
+                                f"[{reasoning_index}] must be an object"
+                            )
+                            continue
+                        _validate_standard_model_projection_traceability(
+                            reasoning,
+                            path=(
+                                f"chat.model_runs[{index}].reasoning_trace"
+                                f"[{reasoning_index}]"
+                            ),
+                            source_ids=source_ids,
+                            event_by_id=event_by_id,
+                            errors=errors,
+                        )
+
+    return errors
+
+def _standard_model_source_ids(
+    sources: list[object],
+    *,
+    errors: list[str],
+) -> set[str]:
+    source_ids: set[str] = set()
+    for index, source in enumerate(sources):
+        if not isinstance(source, dict):
+            errors.append(f"sources[{index}] must be an object")
+            continue
+        source_id = _string_or_none(source.get("source_ref_id"))
+        if source_id is None:
+            errors.append(f"sources[{index}].source_ref_id must be a non-empty string")
+            continue
+        if source_id in source_ids:
+            errors.append(f"sources[{index}].source_ref_id is duplicated: {source_id}")
+        source_ids.add(source_id)
+    return source_ids
+
+def _standard_model_record_by_id(
+    records: list[object],
+    *,
+    id_key: str,
+    path: str,
+    errors: list[str],
+) -> dict[str, dict[str, object]]:
+    by_id: dict[str, dict[str, object]] = {}
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            continue
+        record_id = _string_or_none(record.get(id_key))
+        if record_id is None:
+            errors.append(f"{path}[{index}].{id_key} must be a non-empty string")
+            continue
+        if record_id in by_id:
+            errors.append(f"{path}[{index}].{id_key} is duplicated: {record_id}")
+            continue
+        by_id[record_id] = record
+    return by_id
+
+def _validate_standard_model_projection_traceability(
+    record: dict[str, object],
+    *,
+    path: str,
+    source_ids: set[str],
+    event_by_id: dict[str, dict[str, object]],
+    errors: list[str],
+) -> None:
+    source_refs = record.get("source_refs")
+    event_refs = record.get("event_refs")
+    has_source_refs = isinstance(source_refs, list) and bool(source_refs)
+    has_event_refs = isinstance(event_refs, list) and bool(event_refs)
+    if not has_source_refs and not has_event_refs:
+        errors.append(f"{path} must have source_refs or event_refs")
+        return
+    if source_refs is not None:
+        _validate_standard_model_source_refs(
+            source_refs,
+            path=f"{path}.source_refs",
+            source_ids=source_ids,
+            required=False,
+            errors=errors,
+        )
+    if event_refs is not None:
+        _validate_standard_model_event_refs(
+            event_refs,
+            path=f"{path}.event_refs",
+            event_by_id=event_by_id,
+            errors=errors,
+        )
+
+def _validate_standard_model_event_refs(
+    event_refs: object,
+    *,
+    path: str,
+    event_by_id: dict[str, dict[str, object]],
+    errors: list[str],
+) -> None:
+    if not isinstance(event_refs, list):
+        errors.append(f"{path} must be a list")
+        return
+    for index, event_ref in enumerate(event_refs):
+        if not isinstance(event_ref, str) or not event_ref.strip():
+            errors.append(f"{path}[{index}] must be a non-empty string")
+            continue
+        event = event_by_id.get(event_ref)
+        if event is None:
+            errors.append(f"{path}[{index}] references unknown event {event_ref}")
+            continue
+        event_source_refs = event.get("source_refs")
+        if not isinstance(event_source_refs, list) or not event_source_refs:
+            errors.append(
+                f"{path}[{index}] references event {event_ref} without source_refs"
+            )
+
+def _validate_standard_model_source_refs(
+    source_refs: object,
+    *,
+    path: str,
+    source_ids: set[str],
+    required: bool,
+    errors: list[str],
+) -> None:
+    if not isinstance(source_refs, list):
+        errors.append(f"{path} must be a list")
+        return
+    if required and not source_refs:
+        errors.append(f"{path} must not be empty")
+        return
+    for index, source_ref in enumerate(source_refs):
+        ref_path = f"{path}[{index}]"
+        if not isinstance(source_ref, dict):
+            errors.append(f"{ref_path} must be an object")
+            continue
+        source_ref_id = _string_or_none(source_ref.get("source_ref_id"))
+        if source_ref_id is None:
+            errors.append(f"{ref_path}.source_ref_id must be a non-empty string")
+        elif source_ref_id not in source_ids:
+            errors.append(f"{ref_path}.source_ref_id is unknown: {source_ref_id}")
+        locator_keys = [
+            key
+            for key in (
+                "line",
+                "record_index",
+                "event_index",
+                "content_index",
+                "request_index",
+            )
+            if key in source_ref
+        ]
+        if not locator_keys:
+            errors.append(f"{ref_path} must include at least one locator field")
+        for key in locator_keys:
+            value = source_ref.get(key)
+            if _int_or_none(value) is None or value < 1:
+                errors.append(f"{ref_path}.{key} must be a positive integer")
+
 def _record_native_dict(record: dict[str, object]) -> dict[str, object]:
     native = record.get("native")
     if isinstance(native, dict):
@@ -619,6 +829,7 @@ __all__ = [
     "_source_ref_first_record_index",
     "_source_ref_event_indices",
     "_source_ref_record_indices",
+    "_standard_model_traceability_errors",
     "_record_native_dict",
     "_record_native_int_field",
     "_record_native_string_field",

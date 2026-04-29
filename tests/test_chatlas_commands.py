@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import main
+from agentos.chatlas.experimental._shared import _standard_model_traceability_errors
 from _helpers import write_text_file as _write
 
 
@@ -1411,6 +1412,32 @@ def _assert_current_projection_links(payload: dict[str, object]) -> None:
             assert model_run_ref in model_run_ids
 
 
+def _native_paths(value: object, *, path: str = "$") -> list[str]:
+    paths: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            item_path = f"{path}.{key}"
+            if key == "native":
+                paths.append(item_path)
+            paths.extend(_native_paths(item, path=item_path))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            paths.extend(_native_paths(item, path=f"{path}[{index}]"))
+    return paths
+
+
+def _without_native(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: _without_native(item)
+            for key, item in value.items()
+            if key != "native"
+        }
+    if isinstance(value, list):
+        return [_without_native(item) for item in value]
+    return value
+
+
 def _assert_current_reference_session_quality(
     payload: dict[str, object],
     *,
@@ -1430,6 +1457,12 @@ def _assert_current_reference_session_quality(
     assert payload["normalization"]["counts"] == expected_counts
     assert payload["normalization"]["unsupported_concepts"] == expected_unsupported_concepts
     assert payload["normalization"]["deferred_concepts"] == expected_deferred_concepts
+    assert _native_paths(payload["session"], path="session") == []
+    assert _native_paths(payload["chat"]["messages"], path="chat.messages") == []
+    assert _native_paths(payload["chat"]["model_runs"], path="chat.model_runs") == []
+    assert _native_paths(payload["chat"]["tool_invocations"], path="chat.tool_invocations") == []
+    assert _native_paths(payload["chat"]["usage"], path="chat.usage") == []
+    assert _standard_model_traceability_errors(payload) == []
 
     chat = payload["chat"]
     events = chat["events"]
@@ -3450,8 +3483,8 @@ def test_chatlas_experimental_export_emits_session_model_json(
         }
     ]
     assert payload["chat"]["messages"][0]["visibility"] == "conversation"
-    assert payload["chat"]["messages"][0]["native"] == {"record_index": 2, "line": 2}
-    assert payload["chat"]["messages"][1]["native"] == {"record_index": 3, "line": 3}
+    assert _native_paths(payload["session"], path="session") == []
+    assert _native_paths(payload["chat"], path="chat") == []
     assert payload["chat"]["messages"][0]["source_refs"] == [
         {"source_ref_id": "source-1", "record_index": 2, "line": 2}
     ]
@@ -3514,7 +3547,7 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
     assert payload["session"]["provider"] == "claude-code"
     assert payload["normalization"]["normalizer"] == "claude-code.raw_session.experimental.v1"
     assert payload["normalization"]["source_mode"] == "claude_code_raw_session"
-    assert payload["chat"]["messages"] == [
+    assert _without_native(payload["chat"]["messages"]) == _without_native([
         {
             "message_id": "message-1",
             "role": "user",
@@ -3542,7 +3575,7 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
             "timestamp": "2026-04-18T11:00:01.000Z",
             "source_refs": [{"source_ref_id": "source-1", "record_index": 2, "line": 2}],
         },
-    ]
+    ])
     assert payload["chat"]["model_runs"] == []
     assert payload["chat"]["tool_invocations"] == []
     events = payload["chat"]["events"]
@@ -3688,7 +3721,7 @@ def test_chatlas_experimental_export_normalizes_claude_tool_invocations(
     payload = json.loads(capsys.readouterr().out)
 
     assert len(payload["chat"]["messages"]) == 2
-    assert payload["chat"]["model_runs"] == [
+    assert _without_native(payload["chat"]["model_runs"]) == _without_native([
         {
             "model_run_id": "model-run-1",
             "provider": "claude-code",
@@ -3722,8 +3755,8 @@ def test_chatlas_experimental_export_normalizes_claude_tool_invocations(
                 "event-6",
             ],
         }
-    ]
-    assert payload["chat"]["tool_invocations"] == [
+    ])
+    assert _without_native(payload["chat"]["tool_invocations"]) == _without_native([
         {
             "tool_invocation_id": "tool-invocation-1",
             "call_id": "toolu-claude-1",
@@ -3804,7 +3837,7 @@ def test_chatlas_experimental_export_normalizes_claude_tool_invocations(
             ],
             "event_refs": ["event-3", "event-4", "event-5", "event-6"],
         }
-    ]
+    ])
     assert [event.get("tool_invocation_ref") for event in payload["chat"]["events"]] == [
         None,
         None,
@@ -3956,7 +3989,7 @@ def test_chatlas_experimental_export_normalizes_claude_model_runs(
     assert payload["normalization"]["unsupported_concepts"] == []
     assert payload["normalization"]["deferred_concepts"] == []
 
-    assert payload["chat"]["model_runs"] == [
+    assert _without_native(payload["chat"]["model_runs"]) == _without_native([
         {
             "model_run_id": "model-run-1",
             "provider": "claude-code",
@@ -4014,7 +4047,7 @@ def test_chatlas_experimental_export_normalizes_claude_model_runs(
             "message_refs": ["message-3"],
             "event_refs": ["event-7"],
         },
-    ]
+    ])
     assert [event.get("model_run_ref") for event in payload["chat"]["events"]] == [
         "model-run-1",
         "model-run-1",
@@ -4134,7 +4167,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
     }
 
     model_runs = payload["chat"]["model_runs"]
-    assert model_runs[0]["reasoning_trace"] == [
+    assert _without_native(model_runs[0]["reasoning_trace"]) == _without_native([
         {
             "reasoning_id": "reasoning-1-1",
             "visibility": "visible",
@@ -4154,8 +4187,8 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
                 }
             ],
         }
-    ]
-    assert payload["chat"]["usage"] == [
+    ])
+    assert _without_native(payload["chat"]["usage"]) == _without_native([
         {
             "usage_id": "usage-1",
             "scope": "model_run",
@@ -4190,7 +4223,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
                 {"source_ref_id": "source-1", "record_index": 7, "line": 7}
             ],
         },
-    ]
+    ])
     assert (
         "claude raw session reasoning normalized from thinking blocks: 1 entries"
         in payload["normalization"]["warnings"]
@@ -4402,36 +4435,25 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
         "conversation",
     ]
     assert messages[0]["content"] == [{"type": "text", "text": "copilot system prompt"}]
-    assert messages[0]["native"] == {
-        "event_index": 3,
-        "line": 3,
-        "role": "system",
-        "content_types": ["text"],
-    }
+    assert _native_paths(messages, path="messages") == []
+    assert messages[0]["source_refs"] == [
+        {"source_ref_id": "source-1", "event_index": 3, "line": 3}
+    ]
     assert messages[1]["content"] == [
         {"type": "text", "text": "copilot experimental user"}
     ]
-    assert messages[1]["native"] == {
-        "event_index": 4,
-        "line": 4,
-        "role": "user",
-        "content_types": ["text"],
-    }
     assert messages[1]["source_refs"] == [
         {"source_ref_id": "source-1", "event_index": 4, "line": 4}
     ]
     assert messages[2]["content"] == [
         {"type": "text", "text": "copilot experimental assistant"}
     ]
-    assert messages[2]["native"] == {
-        "event_index": 6,
-        "line": 6,
-        "role": "assistant",
-        "content_types": ["text"],
-    }
+    assert messages[2]["source_refs"] == [
+        {"source_ref_id": "source-1", "event_index": 6, "line": 6}
+    ]
     tool_invocations = payload["chat"]["tool_invocations"]
     assert "interaction_id" not in tool_invocations[0]
-    assert tool_invocations == [
+    assert _without_native(tool_invocations) == _without_native([
         {
             "tool_invocation_id": "tool-invocation-1",
             "call_id": "tool-call-1",
@@ -4490,8 +4512,8 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
             ],
             "event_refs": ["event-10", "event-11", "event-12"],
         }
-    ]
-    assert payload["chat"]["usage"] == [
+    ])
+    assert _without_native(payload["chat"]["usage"]) == _without_native([
         {
             "usage_id": "usage-1",
             "scope": "session",
@@ -4534,9 +4556,9 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 {"source_ref_id": "source-1", "event_index": 10, "line": 10}
             ],
         }
-    ]
+    ])
     assert "interaction_id" not in payload["chat"]["model_runs"][0]
-    assert payload["chat"]["model_runs"] == [
+    assert _without_native(payload["chat"]["model_runs"]) == _without_native([
         {
             "model_run_id": "model-run-1",
             "provider": "copilot-cli",
@@ -4614,7 +4636,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
                 },
             ],
         }
-    ]
+    ])
     assert (
         "copilot raw events parsed for future normalization: 10 events"
         in payload["normalization"]["warnings"]
@@ -4947,9 +4969,9 @@ def test_chatlas_experimental_export_preserves_codex_context_messages(
     assert messages[2]["content"] == [
         {
             "type": "unknown",
-            "native": {"type": "custom_payload", "value": {"status": "ok"}},
         }
     ]
+    assert _native_paths(messages, path="messages") == []
     assert any(
         "content item 1 has unsupported type custom_payload" in warning
         for warning in payload["normalization"]["warnings"]
@@ -5068,17 +5090,7 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
         {"source_ref_id": "source-1", "record_index": 6, "line": 6},
         {"source_ref_id": "source-1", "record_index": 7, "line": 7},
     ]
-    assert complete["native"] == {
-        "response_call_present": True,
-        "response_output_present": True,
-        "exec_end_present": True,
-        "record_indices": {
-            "function_call": [5],
-            "function_call_output": [6],
-            "exec_command_end": [7],
-        },
-        "raw_status": "completed",
-    }
+    assert "native" not in complete
 
     assert incomplete["tool_invocation_id"] == "tool-invocation-2"
     assert incomplete["call_id"] == "call-incomplete"
@@ -5302,37 +5314,13 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
         "event-8",
         "event-9",
     ]
-    assert model_run["native"] == {
-        "model_provider": "openai",
-        "reasoning_effort": "high",
-        "cwd": "/tmp/project",
-        "approval_policy": "never",
-        "sandbox_policy": {"type": "workspace-write"},
-        "current_date": "2026-03-08",
-        "timezone": "UTC",
-        "truncation_policy": {"mode": "tokens", "limit": 10000},
-        "realtime_active": False,
-        "collaboration_mode": {
-            "mode": "default",
-            "settings": {
-                "model": "gpt-5.4-mini",
-                "reasoning_effort": "high",
-            },
-        },
-        "model_context_window": 258400,
-        "duration_ms": 5000,
-        "turn_context_present": True,
-        "turn_context_record_index": 2,
-        "span_start_record_index": 2,
-        "span_end_record_index": 9,
-    }
-    assert "developer_instructions" not in json.dumps(model_run["native"]["collaboration_mode"])
+    assert "native" not in model_run
     assert model_run["source_refs"] == [
         {"source_ref_id": "source-1", "record_index": 2, "line": 2}
     ]
 
     reasoning_trace = model_run["reasoning_trace"]
-    assert reasoning_trace == [
+    assert _without_native(reasoning_trace) == _without_native([
         {
                 "reasoning_id": "reasoning-1",
                 "visibility": "encrypted",
@@ -5347,7 +5335,7 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
                 {"source_ref_id": "source-1", "record_index": 5, "line": 5}
             ],
         }
-    ]
+    ])
 
 
 def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
@@ -5417,8 +5405,10 @@ def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
     assert [entry["content"] for entry in first_run["reasoning_trace"]] == [
         "first turn reasoning"
     ]
-    assert first_run["native"]["span_start_record_index"] == 2
-    assert first_run["native"]["span_end_record_index"] == 7
+    assert "native" not in first_run
+    assert first_run["source_refs"] == [
+        {"source_ref_id": "source-1", "record_index": 2, "line": 2}
+    ]
 
     assert second_run["turn_id"] == "turn-2"
     assert second_run["message_refs"] == ["message-3", "message-4"]
@@ -5433,8 +5423,10 @@ def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
     assert [entry["content"] for entry in second_run["reasoning_trace"]] == [
         "second turn reasoning"
     ]
-    assert second_run["native"]["span_start_record_index"] == 8
-    assert second_run["native"]["span_end_record_index"] == 13
+    assert "native" not in second_run
+    assert second_run["source_refs"] == [
+        {"source_ref_id": "source-1", "record_index": 8, "line": 8}
+    ]
 
     assert not any(
         warning.startswith("codex reasoning records could not be attached to a model run:")

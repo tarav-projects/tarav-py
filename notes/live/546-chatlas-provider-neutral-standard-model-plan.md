@@ -182,7 +182,7 @@ Implementation notes:
 - The audit recommends strengthening source refs before deleting `native` from projections.
 
 ### Phase 3: Strengthen Source Refs As The Native Bridge
-Status: pending.
+Status: done.
 
 - Make `source_refs` consistent across providers and projections.
 - Ensure nested semantic evidence can be located precisely:
@@ -197,8 +197,21 @@ Acceptance:
 - Every projection record can trace back to raw evidence through either `event_refs` or direct `source_refs`.
 - Removing `native` does not make raw recovery materially worse.
 
+Implementation notes:
+- Added `_standard_model_traceability_errors` in `src/agentos/chatlas/experimental/_shared.py`.
+- The validator checks:
+  - every event has non-empty source refs
+  - every source ref points to a known `sources[]` entry
+  - every source ref has at least one locator field
+  - every locator value is a positive integer
+  - every projection record has either `source_refs` or `event_refs`
+  - every `event_ref` resolves to an event that itself has source refs
+  - nested `model_runs[].reasoning_trace[]` items remain traceable
+- The three reference-session exports now run through this validator in the current-contract harness.
+- Decision for now: keep direct `source_refs` on projections while also validating `event_refs`. Direct projection source refs are redundant in some cases, but useful during the transition away from `native`.
+
 ### Phase 4: Remove `native` From Standard Projections
-Status: pending.
+Status: done.
 
 - Remove `native` from:
   - `messages`
@@ -214,6 +227,18 @@ Acceptance:
 - Experimental export standard-model projections no longer include `native`.
 - Existing useful neutral data remains available through explicit canonical fields.
 - Tests assert absence of `native` across standard events and projections.
+
+Implementation notes:
+- The experimental export boundary now strips `native` recursively from:
+  - `session`
+  - `chat.messages`
+  - `chat.model_runs`
+  - `chat.tool_invocations`
+  - `chat.usage`
+- Provider normalizers may still use internal native scratch data while grouping events into projections, but the exported standard model no longer exposes it on those surfaces.
+- Unknown content item native payloads are also removed from projection output; raw recovery depends on `source_refs`.
+- The current-contract reference harness now rejects `native` recursively in session and projection surfaces.
+- Existing projection source refs/event refs continue to pass the Phase 3 traceability validator.
 
 ### Phase 5: Make Projection Builders More Shared
 Status: pending.
@@ -275,4 +300,4 @@ Acceptance:
 - How strict should the schema be while the model is still experimental?
 
 ## Immediate Next Step
-- Start Phase 3 by validating and strengthening source refs before removing provider-native fields.
+- Start Phase 5 by moving more projection construction into shared event-driven helpers.

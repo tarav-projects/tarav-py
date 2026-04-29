@@ -75,11 +75,13 @@ def _build_experimental_session_model(session: dict[str, Any]) -> dict[str, obje
         "agent_instance": _experimental_agent_instance_payload(session),
         "sources": sources,
         "chat": {
-            "messages": normalization_result.messages,
-            "model_runs": normalization_result.model_runs,
-            "tool_invocations": normalization_result.tool_invocations,
+            "messages": _standard_records_payload(normalization_result.messages),
+            "model_runs": _standard_records_payload(normalization_result.model_runs),
+            "tool_invocations": _standard_records_payload(
+                normalization_result.tool_invocations
+            ),
             "events": normalization_result.events,
-            "usage": normalization_result.usage,
+            "usage": _standard_records_payload(normalization_result.usage),
         },
         "normalization": normalization,
     }
@@ -143,12 +145,29 @@ def _experimental_session_payload(session: dict[str, Any]) -> dict[str, object]:
         "display_name_field",
         "created_at",
         "updated_at",
-        "native",
     ):
         value = session.get(key)
         if value is not None:
             payload[key] = value
     return payload
+
+def _standard_records_payload(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [
+        cleaned_record
+        for record in records
+        if isinstance((cleaned_record := _standard_record_payload(record)), dict)
+    ]
+
+def _standard_record_payload(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: _standard_record_payload(item)
+            for key, item in value.items()
+            if key != "native"
+        }
+    if isinstance(value, list):
+        return [_standard_record_payload(item) for item in value]
+    return value
 
 def _experimental_agent_instance_payload(session: dict[str, Any]) -> dict[str, object]:
     payload: dict[str, object] = {}
