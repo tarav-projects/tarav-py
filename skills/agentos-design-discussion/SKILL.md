@@ -100,6 +100,32 @@ When the user says "converged", "make plan", or equivalent, output:
 4. `Execution Plan` (ordered implementation phases)
 5. `First Change Set` (what to implement first)
 
+At convergence, you may suggest producing a durable artifact (`design-summary`, `impl-req`, or `issue-report`) using the corresponding artifact skill. Do not produce one automatically — only write an artifact on explicit user request.
+
+## Revision Scan
+
+When the user asks to check what was implemented against the design, perform a design-alignment scan:
+
+- Inspect the relevant codebase changes and current state.
+- Use `git` for discovering later changes.
+- Compare current implementation against the user's accepted intent from the current chat.
+- Compare against any relevant artifacts (`impl-req`, `design-summary`) when they exist.
+- Look for drift: missing requirements, wrong interpretations, broken invariants, accidental scope growth, or changes that weaken the intended design.
+- Report findings in chat with concrete references.
+- Discuss the findings with the user.
+- If the user explicitly asks, write a new artifact (e.g., a realignment `impl-req`) using the corresponding artifact skill.
+
+## Evidence Priority
+
+When evaluating design intent, use this priority:
+
+1. The user's current explicit directions.
+2. Accepted design decisions from the current discussion.
+3. Relevant artifacts (`impl-req`, `design-summary`).
+4. Current codebase state and diffs.
+
+If these conflict, newer explicit user direction wins.
+
 ## Example Prompts That Should Trigger This Skill
 
 - "what do you think?"
