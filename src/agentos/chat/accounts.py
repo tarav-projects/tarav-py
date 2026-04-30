@@ -519,25 +519,21 @@ def _iter_account_collection_results(
 
     max_workers = min(MAX_ACCOUNT_COLLECTION_WORKERS, len(configured_contexts))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_lookup: dict[Future[dict[str, Any]], tuple[int, AccountProviderContext]] = {}
+        futures: list[Future[AccountCollectionResult]] = []
         for index, context in enumerate(configured_contexts):
             provider_handler = provider_handlers_by_name[context.provider]
-            future = executor.submit(provider_handler.collect_stats, context, refresh_usage)
-            future_lookup[future] = (index, context)
-
-        for future in as_completed(future_lookup):
-            index, context = future_lookup[future]
-            try:
-                account_payload = future.result()
-                if not isinstance(account_payload, dict):
-                    raise CliError("account provider collector must return a JSON object payload")
-            except Exception as exc:
-                account_payload = _account_collection_error_payload(context, exc)
-            yield AccountCollectionResult(
-                index=index,
-                provider_name=context.provider,
-                account_payload=account_payload,
+            futures.append(
+                executor.submit(
+                    _collect_account_result,
+                    index=index,
+                    context=context,
+                    provider_handler=provider_handler,
+                    refresh_usage=refresh_usage,
+                )
             )
+
+        for future in as_completed(futures):
+            yield future.result()
 
 
 def _collect_account_result(
