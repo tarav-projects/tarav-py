@@ -3155,7 +3155,7 @@ def test_chatlas_query_matches_openclaw_logical_session_keys(
     assert session["provider_stats"]["dialog_turn_count"] == 2
 
 
-def test_chatlas_export_returns_derived_markdown_transcript(
+def test_chatlas_raw_path_and_export_read_archived_artifacts(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -3168,13 +3168,13 @@ def test_chatlas_export_returns_derived_markdown_transcript(
     _write_global_config(agentos_home / "config.json")
 
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    thread_name = "export-thread"
-    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    thread_name = "raw-export-thread"
+    rollout_name = f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
     _write_codex_dialog_rollout(
-        rollout_path,
+        home / ".codex" / "sessions" / "2026" / "03" / "25" / rollout_name,
         session_id=session_id,
-        user_text="markdown export user",
-        assistant_text="markdown export assistant",
+        user_text="raw export user",
+        assistant_text="raw export assistant",
     )
     _write_codex_session_index(
         home / ".codex" / "session_index.jsonl",
@@ -3185,16 +3185,33 @@ def test_chatlas_export_returns_derived_markdown_transcript(
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "export", thread_name]) == 0
-    output = capsys.readouterr().out
+    assert main(["chatlas", "raw", "path", thread_name, "--provider", "codex"]) == 0
+    paths = [
+        Path(line)
+        for line in capsys.readouterr().out.splitlines()
+        if line.strip()
+    ]
 
-    assert "### USER [2026-03-08T01:08:59.093Z]" in output
-    assert "markdown export user" in output
-    assert "markdown export assistant" in output
-    assert "<system-reminder>" not in output
+    assert any(path.name == rollout_name for path in paths)
+    assert all(path.is_file() for path in paths)
+
+    assert main(["chatlas", "raw", "export", thread_name, "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["class"] == "agentos.chatlas.raw_export"
+    assert payload["command"] == "chatlas raw export"
+    assert payload["session"]["session_id"] == session_id
+    rollout_source = next(
+        source
+        for source in payload["sources"]
+        if Path(source["path"]).name == rollout_name
+    )
+    assert rollout_source["content_encoding"] == "utf-8"
+    assert "raw export user" in rollout_source["content"]
+    assert "raw export assistant" in rollout_source["content"]
 
 
-def test_chatlas_export_supports_jsonl_transcript_output(
+def test_chatlas_raw_path_errors_when_query_does_not_match(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -3206,33 +3223,11 @@ def test_chatlas_export_supports_jsonl_transcript_output(
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
     _write_global_config(agentos_home / "config.json")
 
-    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
-    _write_codex_dialog_rollout(
-        rollout_path,
-        session_id=session_id,
-        user_text="jsonl export user",
-        assistant_text="jsonl export assistant",
-    )
-    _write_codex_session_index(
-        home / ".codex" / "session_index.jsonl",
-        session_id=session_id,
-        thread_name="jsonl-export-thread",
-    )
+    assert main(["chatlas", "raw", "path", "missing-session"]) == 1
+    captured = capsys.readouterr()
 
-    assert main(_chatlas_update_argv("--provider", "codex")) == 0
-    _ = json.loads(capsys.readouterr().out)
-
-    assert main(["chatlas", "export", session_id, "--format", "jsonl"]) == 0
-    payload_lines = [
-        json.loads(line)
-        for line in capsys.readouterr().out.splitlines()
-        if line.strip()
-    ]
-
-    assert [line["role"] for line in payload_lines] == ["user", "assistant"]
-    assert payload_lines[0]["text"] == "jsonl export user"
-    assert payload_lines[1]["text"] == "jsonl export assistant"
+    assert captured.out == ""
+    assert "no Chatlas session matched query missing-session" in captured.err
 
 
 def test_chatlas_session_model_export_emits_session_model_json(

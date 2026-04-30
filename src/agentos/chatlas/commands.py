@@ -5,9 +5,9 @@ import sys
 
 from agentos.chat._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
 from agentos.chatlas.core import (
-    _SUMMARY_LEVELS,
-    chatlas_export,
     chatlas_query,
+    chatlas_raw_export,
+    chatlas_raw_paths,
     chatlas_stats,
     chatlas_update,
     format_chatlas_stats_markdown,
@@ -79,24 +79,33 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_chatlas_export(args: argparse.Namespace) -> int:
-    print(
-        chatlas_export(
-            query=args.query,
-            providers=optional_string_tuple(args.providers),
-            artifact_kind=args.artifact_kind,
-            summary_level=args.summary_level,
-            output_format=args.output_format,
-        )
-    )
-    return 0
-
-
 def _cmd_chatlas_session_model_export(args: argparse.Namespace) -> int:
     payload = chatlas_export_session_model(
         query=args.query,
         providers=optional_string_tuple(args.providers),
         output_format=args.output_format,
+    )
+    print(format_json_output(payload))
+    return 0
+
+
+def _cmd_chatlas_raw_path(args: argparse.Namespace) -> int:
+    payload = chatlas_raw_paths(
+        query=args.query,
+        providers=optional_string_tuple(args.providers),
+    )
+    if args.output_format == "json":
+        print(format_json_output(payload))
+        return 0
+    for path in payload["paths"]:
+        print(path)
+    return 0
+
+
+def _cmd_chatlas_raw_export(args: argparse.Namespace) -> int:
+    payload = chatlas_raw_export(
+        query=args.query,
+        providers=optional_string_tuple(args.providers),
     )
     print(format_json_output(payload))
     return 0
@@ -242,44 +251,6 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     query_parser.set_defaults(handler=_cmd_chatlas_query)
 
-    export_parser = chatlas_subparsers.add_parser(
-        "export",
-        help="Export one normalized Chatlas session as a derived transcript or summary artifact.",
-    )
-    export_parser.add_argument(
-        "query",
-        help="Exact query value matched against URI, session id, display name, fingerprint, and native fields.",
-    )
-    export_parser.add_argument(
-        "--provider",
-        choices=_CHATLAS_PROVIDER_CHOICES,
-        action="append",
-        dest="providers",
-        help="Restrict export to a provider family. Repeat to include multiple providers.",
-    )
-    export_parser.add_argument(
-        "--kind",
-        choices=("transcript", "summary"),
-        default="transcript",
-        dest="artifact_kind",
-        help="Artifact kind to export (default: transcript).",
-    )
-    export_parser.add_argument(
-        "--summary-level",
-        choices=_SUMMARY_LEVELS,
-        default="brief",
-        dest="summary_level",
-        help="Summary level used when --kind summary is selected (default: brief).",
-    )
-    export_parser.add_argument(
-        "--format",
-        choices=("json", "jsonl", "markdown"),
-        default="markdown",
-        dest="output_format",
-        help="Output format. Transcript supports markdown/jsonl; summary supports markdown/json.",
-    )
-    export_parser.set_defaults(handler=_cmd_chatlas_export)
-
     session_model_parser = chatlas_subparsers.add_parser(
         "session-model",
         help="Work with the normalized in-memory Chatlas session model.",
@@ -313,35 +284,59 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     session_model_export_parser.set_defaults(handler=_cmd_chatlas_session_model_export)
 
-    experimental_parser = chatlas_subparsers.add_parser(
-        "experimental",
-        help="Experimental Chatlas surfaces with unstable schemas.",
+    raw_parser = chatlas_subparsers.add_parser(
+        "raw",
+        help="Inspect archived provider-native raw artifacts.",
     )
-    experimental_subparsers = experimental_parser.add_subparsers(
-        dest="chatlas_experimental_command",
+    raw_subparsers = raw_parser.add_subparsers(
+        dest="chatlas_raw_command",
         required=True,
     )
 
-    experimental_export_parser = experimental_subparsers.add_parser(
-        "export",
-        help="Export one normalized Chatlas session as an experimental standard model JSON object.",
+    raw_path_parser = raw_subparsers.add_parser(
+        "path",
+        help="Print backing raw artifact paths for one Chatlas session.",
     )
-    experimental_export_parser.add_argument(
+    raw_path_parser.add_argument(
         "query",
         help="Exact query value matched against URI, session id, display name, fingerprint, and native fields.",
     )
-    experimental_export_parser.add_argument(
+    raw_path_parser.add_argument(
         "--provider",
         choices=_CHATLAS_PROVIDER_CHOICES,
         action="append",
         dest="providers",
-        help="Restrict export to a provider family. Repeat to include multiple providers.",
+        help="Restrict lookup to a provider family. Repeat to include multiple providers.",
     )
-    experimental_export_parser.add_argument(
+    raw_path_parser.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        dest="output_format",
+        help="Output format (default: text).",
+    )
+    raw_path_parser.set_defaults(handler=_cmd_chatlas_raw_path)
+
+    raw_export_parser = raw_subparsers.add_parser(
+        "export",
+        help="Export backing raw artifact contents for one Chatlas session.",
+    )
+    raw_export_parser.add_argument(
+        "query",
+        help="Exact query value matched against URI, session id, display name, fingerprint, and native fields.",
+    )
+    raw_export_parser.add_argument(
+        "--provider",
+        choices=_CHATLAS_PROVIDER_CHOICES,
+        action="append",
+        dest="providers",
+        help="Restrict lookup to a provider family. Repeat to include multiple providers.",
+    )
+    raw_export_parser.add_argument(
         "--format",
         choices=("json",),
         default="json",
         dest="output_format",
-        help="Output format. Experimental session model export supports json only.",
+        help="Output format. Raw export supports json only.",
     )
-    experimental_export_parser.set_defaults(handler=_cmd_chatlas_session_model_export)
+    raw_export_parser.set_defaults(handler=_cmd_chatlas_raw_export)

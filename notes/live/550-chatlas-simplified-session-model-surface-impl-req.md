@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Implementation in progress; Phase 4 promoted the session model to `chatlas session-model export`.
+Implementation in progress; Phase 6 added raw path/export commands.
 
 ## User Intent
 
@@ -184,3 +184,5 @@ Promote the session-model surface:
 - 2026-04-30: Phase 2 removed update-time derived transcript and summary materialization, removed derived transcript cache loading/writing, removed derived count fields from update/stats output, and pruned tests for update-provided transcript/search summary behavior.
 - 2026-04-30: Phase 3 simplified query to session-index metadata lookup by removing transcript-content filters, summary expansions, transcript filter match output, and the now-unused summary cache readers from the query path.
 - 2026-04-30: Phase 4 moved the session-model implementation from `agentos.chatlas.experimental` to `agentos.chatlas.session_model`, added `agentos chatlas session-model export`, renamed the public export API to `chatlas_export_session_model`, changed the envelope class to `agentos.chatlas.session_model`, and removed the top-level `experimental` flag from the model contract.
+- 2026-04-30: Phase 5 removed the old `agentos chatlas export` transcript/summary command, removed `agentos chatlas experimental export`, deleted the `chatlas_export` core API and transcript/summary rendering helpers, and pruned the associated export tests.
+- 2026-04-30: Phase 6 added `agentos chatlas raw path <query>` for newline-delimited or JSON raw artifact paths and `agentos chatlas raw export <query>` for JSON raw source payloads with UTF-8 or base64 content, both using strict one-session resolution over the session index.

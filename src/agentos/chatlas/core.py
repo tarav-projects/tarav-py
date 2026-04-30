@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 import json
 import shutil
@@ -27,7 +28,6 @@ from agentos.chat.core import (
     _provider_family_for_name,
     _sort_sessions,
 )
-from agentos.chat.extractors import extract_chat_session
 from agentos.chat.providers import (
     ProviderInstance,
     load_chat_config_documents,
@@ -57,10 +57,8 @@ from agentos.chatlas.raw import (
 CHATLAS_DIRNAME = "chatlas"
 DEFAULT_CHATLAS_COMMIT_PREFIX = "chatlas update"
 _SESSION_INDEX_RELATIVE_PATH = Path("index") / "sessions.index.jsonl"
-_DERIVED_TRANSCRIPTS_RELATIVE_ROOT = Path("derived") / "transcripts"
 _SESSION_INDEX_CACHE_RELATIVE_PATH = Path("cache") / "session-index-v1.json"
 _SESSION_INDEX_DERIVATION_VERSION = 1
-_SUMMARY_LEVELS = ("brief", "detailed")
 _PROGRESS_PREFIX = "[chatlas]"
 _MAX_CHATLAS_ARCHIVE_WORKERS = 4
 _CHATLAS_DOCUMENTS_DIRNAME = "Documents"
@@ -802,55 +800,60 @@ def chatlas_query(
     }
 
 
-def chatlas_export(
+def chatlas_raw_paths(
     *,
     query: str,
     providers: tuple[str, ...] | None = None,
-    artifact_kind: str = "transcript",
-    summary_level: str = "brief",
-    output_format: str = "markdown",
     chatlas_root: Path | None = None,
-) -> str:
-    if artifact_kind not in {"transcript", "summary"}:
-        raise CliError(f"unsupported export kind: {artifact_kind}")
-    if summary_level not in _SUMMARY_LEVELS:
-        raise CliError(f"unsupported summary level: {summary_level}")
-    if output_format not in {"json", "jsonl", "markdown"}:
-        raise CliError(f"unsupported export format: {output_format}")
-    if artifact_kind == "transcript" and output_format not in {"jsonl", "markdown"}:
-        raise CliError("transcript export format must be jsonl or markdown")
-    if artifact_kind == "summary" and output_format not in {"json", "markdown"}:
-        raise CliError("summary export format must be json or markdown")
-
-    normalized_query = query.strip()
-    if not normalized_query:
-        raise CliError("query must not be empty")
-
+) -> dict[str, object]:
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
-    selections = _select_chatlas_sessions(
+    session = _select_one_chatlas_session(
         chatlas_root_path,
-        query=normalized_query,
+        query=query,
         providers=providers,
-        extractable_only=True,
     )
-    if not selections:
-        raise CliError(f"no normalized Chatlas session matched query {query}")
-    if len(selections) > 1:
-        choices = ", ".join(str(selection.session.get("uri")) for selection in selections[:5])
-        raise CliError(f"multiple Chatlas sessions matched query {query}: {choices}")
+    sources = _chatlas_raw_source_payloads(session)
+    return {
+        "status": "ok",
+        "command": "chatlas raw path",
+        "selection": _chatlas_single_session_selection_payload(
+            query=query,
+            providers=providers,
+        ),
+        "session": _compact_chatlas_session_payload(session),
+        "paths": [
+            source["path"]
+            for source in sources
+            if isinstance(source.get("path"), str)
+        ],
+        "sources": sources,
+    }
 
-    session = selections[0].session
-    if artifact_kind == "summary":
-        summary = _build_session_summary(chatlas_root_path, session, level=summary_level)
-        return _render_summary(summary, output_format=output_format)
 
-    transcript_path = _derived_transcript_path(chatlas_root_path, session, output_format=output_format)
-    if transcript_path.is_file():
-        return transcript_path.read_text(encoding="utf-8")
-
-    rendered = _render_transcript(session, output_format=output_format)
-    write_text_if_changed(transcript_path, rendered)
-    return rendered
+def chatlas_raw_export(
+    *,
+    query: str,
+    providers: tuple[str, ...] | None = None,
+    chatlas_root: Path | None = None,
+) -> dict[str, object]:
+    chatlas_root_path = _resolve_chatlas_root(chatlas_root)
+    session = _select_one_chatlas_session(
+        chatlas_root_path,
+        query=query,
+        providers=providers,
+    )
+    return {
+        "status": "ok",
+        "class": "agentos.chatlas.raw_export",
+        "schema_version": 1,
+        "command": "chatlas raw export",
+        "selection": _chatlas_single_session_selection_payload(
+            query=query,
+            providers=providers,
+        ),
+        "session": _compact_chatlas_session_payload(session),
+        "sources": _chatlas_raw_source_payloads(session, include_content=True),
+    }
 
 
 def resolve_chatlas_sessions(
@@ -1186,93 +1189,6 @@ def _session_index_record(session) -> dict[str, Any]:
     payload["class"] = "agentos.chatlas.session"
     payload["schema_version"] = 1
     return payload
-
-
-def _build_session_summary(chatlas_root: Path, session: dict[str, Any], *, level: str = "brief") -> dict[str, Any]:
-    if level not in _SUMMARY_LEVELS:
-        raise CliError(f"unsupported summary level: {level}")
-
-    turns = _load_transcript_turns(chatlas_root, session)
-    user_turns = [turn for turn in turns if _string_or_none(turn.get("role")) == "user"]
-    assistant_turns = [turn for turn in turns if _string_or_none(turn.get("role")) == "assistant"]
-    first_user_text = _first_turn_text(user_turns)
-    last_assistant_text = _last_turn_text(assistant_turns)
-    preview_source = first_user_text or last_assistant_text or _first_turn_text(turns)
-    base_summary = {
-        "schema_version": 1,
-        "level": level,
-        "uri": session.get("uri"),
-        "provider": session.get("provider"),
-        "instance": session.get("instance"),
-        "provider_instance_fingerprint": session.get("provider_instance_fingerprint"),
-        "session_id": session.get("session_id"),
-        "display_name": session.get("display_name"),
-        "created_at": session.get("created_at"),
-        "updated_at": session.get("updated_at"),
-        "turn_count": len(turns),
-        "user_turn_count": len(user_turns),
-        "assistant_turn_count": len(assistant_turns),
-        "first_user_text": first_user_text,
-        "last_assistant_text": last_assistant_text,
-        "text_preview": _truncate_summary_text(preview_source),
-    }
-    if level == "brief":
-        base_summary["class"] = "agentos.chatlas.session_summary"
-        return base_summary
-
-    base_summary["class"] = "agentos.chatlas.session_summary.detailed"
-    base_summary["first_turn_text"] = _first_turn_text(turns)
-    base_summary["last_turn_text"] = _last_turn_text(turns)
-    base_summary["user_turn_previews"] = _turn_text_previews(user_turns, limit=3)
-    base_summary["assistant_turn_previews"] = _turn_text_previews(assistant_turns, limit=3)
-    base_summary["turn_previews"] = _turn_previews(turns, limit=6)
-    return base_summary
-
-
-def _session_has_exportable_transcript(session: dict[str, Any]) -> bool:
-    if not bool(session.get("extractable")):
-        return False
-    return _primary_backing_artifact_path(session) is not None
-
-
-def _primary_backing_artifact_path(session: dict[str, Any]) -> Path | None:
-    primary = session.get("primary_backing_artifact")
-    if not isinstance(primary, dict):
-        return None
-    path = primary.get("path")
-    if not isinstance(path, str) or not path.strip():
-        return None
-    return Path(path).expanduser().resolve()
-
-
-def _render_transcript(session: dict[str, Any], *, output_format: str) -> str:
-    artifact_path = _primary_backing_artifact_path(session)
-    if artifact_path is None:
-        raise CliError(f"session has no extractable primary backing artifact: {session.get('uri')}")
-    session_id = _string_or_none(session.get("session_id"))
-    return extract_chat_session(
-        session_query=session_id,
-        file_path=str(artifact_path),
-        output_format=output_format,
-        raw=False,
-    )
-
-
-def _derived_transcript_exists(chatlas_root: Path, session: dict[str, Any], *, output_format: str) -> bool:
-    return _derived_transcript_path(chatlas_root, session, output_format=output_format).is_file()
-
-
-def _derived_transcript_path(chatlas_root: Path, session: dict[str, Any], *, output_format: str) -> Path:
-    suffix = ".md" if output_format == "markdown" else ".jsonl"
-    provider, fingerprint, session_id = _derived_transcript_session_path_components(session)
-    return chatlas_root / _DERIVED_TRANSCRIPTS_RELATIVE_ROOT / provider / fingerprint / f"{session_id}{suffix}"
-
-
-def _derived_transcript_session_path_components(session: dict[str, Any]) -> tuple[str, str, str]:
-    provider = _session_fs_component(_string_or_none(session.get("provider")) or "unknown")
-    fingerprint = _session_fs_component(_string_or_none(session.get("provider_instance_fingerprint")) or "unknown")
-    session_id = _session_fs_component(_string_or_none(session.get("session_id")) or "unknown")
-    return provider, fingerprint, session_id
 
 
 def _session_index_cache_key(session: ChatSession) -> str:
@@ -1681,10 +1597,135 @@ def _select_chatlas_sessions(
     return selections
 
 
-def _load_transcript_turns(chatlas_root: Path, session: dict[str, Any]) -> list[dict[str, Any]]:
-    return _load_jsonl_dict_rows(
-        _derived_transcript_path(chatlas_root, session, output_format="jsonl")
+def _select_one_chatlas_session(
+    chatlas_root: Path,
+    *,
+    query: str,
+    providers: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    normalized_query = query.strip()
+    if not normalized_query:
+        raise CliError("query must not be empty")
+    selections = _select_chatlas_sessions(
+        chatlas_root,
+        query=normalized_query,
+        providers=providers,
     )
+    if not selections:
+        raise CliError(f"no Chatlas session matched query {query}")
+    if len(selections) > 1:
+        choices = ", ".join(
+            str(selection.session.get("uri"))
+            for selection in selections[:5]
+        )
+        raise CliError(f"multiple Chatlas sessions matched query {query}: {choices}")
+    return selections[0].session
+
+
+def _chatlas_single_session_selection_payload(
+    *,
+    query: str,
+    providers: tuple[str, ...] | None,
+) -> dict[str, object]:
+    return {
+        "kind": "query",
+        "query": query,
+        "providers": list(providers) if providers is not None else None,
+    }
+
+
+def _chatlas_raw_source_payloads(
+    session: dict[str, Any],
+    *,
+    include_content: bool = False,
+) -> list[dict[str, object]]:
+    artifacts = session.get("backing_artifacts")
+    if not isinstance(artifacts, list):
+        primary = session.get("primary_backing_artifact")
+        artifacts = [primary] if isinstance(primary, dict) else []
+
+    sources: list[dict[str, object]] = []
+    seen: set[tuple[object, ...]] = set()
+    for index, artifact in enumerate(artifacts, start=1):
+        if not isinstance(artifact, dict):
+            continue
+        source = _chatlas_raw_source_payload(index=index, artifact=artifact)
+        identity = (
+            source.get("role"),
+            source.get("storage_kind"),
+            source.get("path"),
+            json.dumps(source.get("locator"), sort_keys=True, default=str),
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        if include_content:
+            source.update(_chatlas_raw_source_content(source))
+        sources.append(source)
+    return sources
+
+
+def _chatlas_raw_source_payload(*, index: int, artifact: dict[str, Any]) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "source_index": index,
+    }
+    for key in (
+        "role",
+        "storage_kind",
+        "path",
+        "locator",
+        "extractable",
+    ):
+        value = artifact.get(key)
+        if value is not None:
+            payload[key] = value
+    return payload
+
+
+def _chatlas_raw_source_content(source: dict[str, object]) -> dict[str, object]:
+    path_text = _string_or_none(source.get("path"))
+    if path_text is None:
+        return {
+            "content": None,
+            "content_encoding": None,
+            "content_unavailable_reason": "missing_path",
+        }
+
+    path = Path(path_text)
+    try:
+        path_stat = path.stat()
+    except OSError as exc:
+        return {
+            "content": None,
+            "content_encoding": None,
+            "content_unavailable_reason": f"stat_failed: {exc}",
+        }
+    if not stat.S_ISREG(path_stat.st_mode):
+        return {
+            "content": None,
+            "content_encoding": None,
+            "content_unavailable_reason": "not_regular_file",
+        }
+
+    try:
+        raw_content = path.read_bytes()
+    except OSError as exc:
+        return {
+            "content": None,
+            "content_encoding": None,
+            "content_unavailable_reason": f"read_failed: {exc}",
+        }
+
+    try:
+        return {
+            "content": raw_content.decode("utf-8"),
+            "content_encoding": "utf-8",
+        }
+    except UnicodeDecodeError:
+        return {
+            "content": base64.b64encode(raw_content).decode("ascii"),
+            "content_encoding": "base64",
+        }
 
 
 def _chatlas_instance_name(provider_instance: ProviderInstance) -> str:
@@ -1712,101 +1753,6 @@ def _compact_chatlas_session_payload(session: dict[str, Any]) -> dict[str, Any]:
         if value is not None:
             payload[field_name] = value
     return payload
-
-
-def _first_turn_text(turns: list[dict[str, Any]]) -> str | None:
-    for turn in turns:
-        text = _string_or_none(turn.get("text"))
-        if text is not None:
-            return text
-    return None
-
-
-def _last_turn_text(turns: list[dict[str, Any]]) -> str | None:
-    for turn in reversed(turns):
-        text = _string_or_none(turn.get("text"))
-        if text is not None:
-            return text
-    return None
-
-
-def _truncate_summary_text(text: str | None, *, limit: int = 120) -> str | None:
-    if text is None:
-        return None
-    normalized = " ".join(text.split())
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: limit - 1].rstrip() + "…"
-
-
-def _turn_text_previews(turns: list[dict[str, Any]], *, limit: int) -> list[str]:
-    previews: list[str] = []
-    for turn in turns:
-        text = _truncate_summary_text(_string_or_none(turn.get("text")), limit=160)
-        if text is None:
-            continue
-        previews.append(text)
-        if len(previews) >= limit:
-            break
-    return previews
-
-
-def _turn_previews(turns: list[dict[str, Any]], *, limit: int) -> list[dict[str, str]]:
-    previews: list[dict[str, str]] = []
-    for turn in turns:
-        role = _string_or_none(turn.get("role"))
-        text_preview = _truncate_summary_text(_string_or_none(turn.get("text")), limit=160)
-        if role is None or text_preview is None:
-            continue
-        previews.append(
-            {
-                "role": role,
-                "text_preview": text_preview,
-            }
-        )
-        if len(previews) >= limit:
-            break
-    return previews
-
-
-def _render_summary(summary: dict[str, Any], *, output_format: str) -> str:
-    if output_format == "json":
-        return json.dumps(summary, indent=2)
-    if output_format != "markdown":
-        raise CliError(f"unsupported summary output format: {output_format}")
-
-    lines = [
-        f"# Chatlas Summary ({summary.get('level', 'brief')})",
-        "",
-        f"- URI: {summary.get('uri')}",
-        f"- Provider: {summary.get('provider')}",
-        f"- Session ID: {summary.get('session_id')}",
-        f"- Display Name: {summary.get('display_name')}",
-        f"- Turns: {summary.get('turn_count', 0)}",
-        f"- User Turns: {summary.get('user_turn_count', 0)}",
-        f"- Assistant Turns: {summary.get('assistant_turn_count', 0)}",
-    ]
-    text_preview = _string_or_none(summary.get("text_preview"))
-    if text_preview is not None:
-        lines.extend(["", "## Preview", "", text_preview])
-    first_user_text = _string_or_none(summary.get("first_user_text"))
-    if first_user_text is not None:
-        lines.extend(["", "## First User", "", first_user_text])
-    last_assistant_text = _string_or_none(summary.get("last_assistant_text"))
-    if last_assistant_text is not None:
-        lines.extend(["", "## Last Assistant", "", last_assistant_text])
-    turn_previews = summary.get("turn_previews")
-    if isinstance(turn_previews, list) and turn_previews:
-        lines.extend(["", "## Outline", ""])
-        for preview in turn_previews:
-            if not isinstance(preview, dict):
-                continue
-            role = _string_or_none(preview.get("role")) or "unknown"
-            preview_text = _string_or_none(preview.get("text_preview"))
-            if preview_text is None:
-                continue
-            lines.append(f"- {role}: {preview_text}")
-    return "\n".join(lines)
 
 
 def _session_index_cache_path(chatlas_root: Path) -> Path:
@@ -1956,8 +1902,9 @@ def _session_index_path_signature_matches(
 
 
 __all__ = [
-    "chatlas_export",
     "chatlas_query",
+    "chatlas_raw_export",
+    "chatlas_raw_paths",
     "chatlas_resolved_session_stats",
     "chatlas_stats",
     "chatlas_update",
