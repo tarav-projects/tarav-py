@@ -1372,6 +1372,15 @@ def _assert_current_projection_links(payload: dict[str, object]) -> None:
         and isinstance(tool_invocation.get("tool_invocation_id"), str)
     }
 
+    for event in events:
+        assert isinstance(event, dict)
+        model_run_ref = event.get("model_run_ref")
+        if model_run_ref is not None:
+            assert model_run_ref in model_run_ids
+        tool_invocation_ref = event.get("tool_invocation_ref")
+        if tool_invocation_ref is not None:
+            assert tool_invocation_ref in tool_invocation_ids
+
     for message in messages:
         assert isinstance(message, dict)
         assert message.get("source_refs")
@@ -1438,6 +1447,60 @@ def _without_native(value: object) -> object:
     return value
 
 
+def _raw_provider_event_field_paths(value: object, *, path: str = "$") -> list[str]:
+    forbidden_keys = {
+        "data",
+        "event_type",
+        "message_type",
+        "provider_event_type",
+        "raw_event_type",
+        "record_type",
+        "source_event_type",
+    }
+    paths: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            item_path = f"{path}.{key}"
+            if key in forbidden_keys:
+                paths.append(item_path)
+            paths.extend(_raw_provider_event_field_paths(item, path=item_path))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            paths.extend(_raw_provider_event_field_paths(item, path=f"{path}[{index}]"))
+    return paths
+
+
+def _assert_current_standard_model_contract(
+    payload: dict[str, object],
+    *,
+    expected_unsupported_concepts: list[str],
+    expected_deferred_concepts: list[str],
+) -> None:
+    assert set(payload) == {
+        "class",
+        "schema_version",
+        "experimental",
+        "session",
+        "agent_instance",
+        "sources",
+        "chat",
+        "normalization",
+    }
+    assert _native_paths(payload["session"], path="session") == []
+    assert _native_paths(payload["chat"]["events"], path="chat.events") == []
+    assert _native_paths(payload["chat"]["messages"], path="chat.messages") == []
+    assert _native_paths(payload["chat"]["model_runs"], path="chat.model_runs") == []
+    assert _native_paths(payload["chat"]["tool_invocations"], path="chat.tool_invocations") == []
+    assert _native_paths(payload["chat"]["usage"], path="chat.usage") == []
+    assert _raw_provider_event_field_paths(payload["session"], path="session") == []
+    assert _raw_provider_event_field_paths(payload["chat"], path="chat") == []
+    assert _standard_model_traceability_errors(payload) == []
+    assert payload["normalization"]["unsupported_concepts"] == expected_unsupported_concepts
+    assert payload["normalization"]["deferred_concepts"] == expected_deferred_concepts
+    _assert_current_semantic_event_tape(payload["chat"]["events"])
+    _assert_current_projection_links(payload)
+
+
 def _assert_current_reference_session_quality(
     payload: dict[str, object],
     *,
@@ -1455,22 +1518,17 @@ def _assert_current_reference_session_quality(
     assert payload["session"]["provider"] == provider
     assert payload["session"]["session_id"] == session_id
     assert payload["normalization"]["counts"] == expected_counts
-    assert payload["normalization"]["unsupported_concepts"] == expected_unsupported_concepts
-    assert payload["normalization"]["deferred_concepts"] == expected_deferred_concepts
-    assert _native_paths(payload["session"], path="session") == []
-    assert _native_paths(payload["chat"]["messages"], path="chat.messages") == []
-    assert _native_paths(payload["chat"]["model_runs"], path="chat.model_runs") == []
-    assert _native_paths(payload["chat"]["tool_invocations"], path="chat.tool_invocations") == []
-    assert _native_paths(payload["chat"]["usage"], path="chat.usage") == []
-    assert _standard_model_traceability_errors(payload) == []
+    _assert_current_standard_model_contract(
+        payload,
+        expected_unsupported_concepts=expected_unsupported_concepts,
+        expected_deferred_concepts=expected_deferred_concepts,
+    )
 
     chat = payload["chat"]
     events = chat["events"]
     assert isinstance(events, list)
     assert len(events) == expected_counts["events"]
     assert {event["kind"] for event in events if isinstance(event, dict)} == expected_kinds
-    _assert_current_semantic_event_tape(events)
-    _assert_current_projection_links(payload)
 
     coverage = payload["normalization"]["coverage"]
     assert isinstance(coverage, dict)

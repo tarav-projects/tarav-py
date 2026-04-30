@@ -265,7 +265,7 @@ Implementation notes:
 - Removed dead Copilot fallback code that projected reasoning from provider-shaped assistant-message payloads. Reasoning is now expected to be split into semantic `reasoning` events first.
 
 ### Phase 6: Add Contract Tests
-Status: pending.
+Status: done.
 
 - Extend the reference-session harness to check:
   - no `native` in standard model records
@@ -279,8 +279,19 @@ Acceptance:
 - Reference sessions pass contract tests for Claude Code, Copilot CLI, and Codex.
 - Codex usage remains explicitly deferred until usage scope is reliable.
 
+Implementation notes:
+- Tightened the reference-session harness with `_assert_current_standard_model_contract`.
+- The contract assertion now checks:
+  - expected top-level envelope fields only
+  - no `native` in `session`, events, or projection views
+  - no raw provider event-row fields such as `data`, `event_type`, `record_type`, or `source_event_type` in the standard chat/session surfaces
+  - source refs and event refs pass `_standard_model_traceability_errors`
+  - event `model_run_ref` and `tool_invocation_ref` values resolve to projection ids
+  - expected unsupported/deferred concepts are explicit
+- Codex reference usage remains explicitly unsupported/deferred because token-count evidence is preserved as metrics until scope allocation is reliable.
+
 ### Phase 7: Decide Storage Direction
-Status: pending.
+Status: done.
 
 - Decide when `session.std.model` becomes a persisted Chatlas artifact rather than only an experimental export.
 - Decide whether stored artifacts contain only:
@@ -294,6 +305,20 @@ Acceptance:
 - Storage strategy preserves the event tape as source of truth.
 - Views remain rebuildable and deletable.
 - Raw artifacts remain available for audit/debug/recovery.
+
+Decision:
+- Keep `session.std.model` as an in-memory/export-time projection for now.
+- Do not persist a standard-model artifact yet.
+- Continue treating raw provider artifacts as the durable provider-native truth.
+- Continue treating the semantic `events[]` tape as the canonical standard-model source of truth.
+- Keep projection arrays such as `messages`, `model_runs`, `tool_invocations`, `reasoning_traces`, and `usage` as rebuildable views over events.
+- Experimental JSON export may include those views for inspection, but that is an output convenience, not a storage commitment.
+
+Rationale:
+- The event schema is still experimental and local sequence-based ids may need to change before persistence.
+- Persisting now would freeze incidental projection details before the standard contract is mature.
+- In-memory projection keeps iteration cheap while preserving the architectural direction: `raw artifacts -> provider normalizer -> semantic events -> views`.
+- A later persistence phase can focus on storing only the minimal stable artifact, likely `session`, `sources`, `events`, and `normalization`.
 
 ## Non-Goals
 - Do not remove raw artifacts.
@@ -309,4 +334,4 @@ Acceptance:
 - How strict should the schema be while the model is still experimental?
 
 ## Immediate Next Step
-- Start Phase 6 by tightening contract tests around provider-neutral standard-model records.
+- Continue with in-memory/export-time standard-model projection and avoid adding storage commitments until the event schema stabilizes.
