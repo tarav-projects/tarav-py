@@ -12,7 +12,7 @@ from agentos.chatlas.core import (
     chatlas_update,
     format_chatlas_stats_markdown,
 )
-from agentos.chatlas.experimental import chatlas_experimental_export_session_model
+from agentos.chatlas.session_model import chatlas_export_session_model
 from agentos.chatlas.raw import supported_chatlas_provider_families
 
 _CHATLAS_PROVIDER_CHOICES = tuple(
@@ -43,7 +43,6 @@ def _cmd_chatlas_update(args: argparse.Namespace) -> int:
         providers=optional_string_tuple(args.providers),
         scan_cache_enabled=not disable_cache and args.scan_cache == "true",
         session_index_cache_enabled=not disable_cache and args.session_index_cache == "true",
-        transcript_cache_enabled=not disable_cache and args.transcript_cache == "true",
         progress=_chatlas_update_progress_handler(args.verbose_mode),
     )
     _emit_chatlas_update_output(payload=payload, output_mode=args.output_mode)
@@ -65,8 +64,6 @@ def _cmd_chatlas_stats(args: argparse.Namespace) -> int:
 def _cmd_chatlas_query(args: argparse.Namespace) -> int:
     payload = chatlas_query(
         query=args.query,
-        text_contain=args.text_contain,
-        user_contain=args.user_contain,
         providers=optional_string_tuple(args.providers),
         instances=optional_string_tuple(args.instances),
         sort=args.sort,
@@ -75,9 +72,6 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
         updated_after=normalize_updated_since(args.updated_since),
         include_match=args.include_match,
         include_artifacts=args.include_artifacts,
-        include_summary=args.include_summary,
-        include_summary_levels=tuple(args.summary_levels or ()),
-        include_transcript_filter_match=args.include_transcript_filter_match,
         include_provider_stats=args.include_provider_stats,
         compact=args.compact,
     )
@@ -98,8 +92,8 @@ def _cmd_chatlas_export(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_chatlas_experimental_export(args: argparse.Namespace) -> int:
-    payload = chatlas_experimental_export_session_model(
+def _cmd_chatlas_session_model_export(args: argparse.Namespace) -> int:
+    payload = chatlas_export_session_model(
         query=args.query,
         providers=optional_string_tuple(args.providers),
         output_format=args.output_format,
@@ -141,19 +135,13 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     update_parser.add_argument(
         "--disable-cache",
         action="store_true",
-        help="Disable all Chatlas update caches. Overrides `--scan-cache`, `--session-index-cache`, and `--transcript-cache`.",
+        help="Disable all Chatlas update caches. Overrides `--scan-cache` and `--session-index-cache`.",
     )
     update_parser.add_argument(
         "--scan-cache",
         choices=("true", "false"),
         default="true",
         help="Use the local raw-scan cache during archive scans (default: true).",
-    )
-    update_parser.add_argument(
-        "--transcript-cache",
-        choices=("true", "false"),
-        default="true",
-        help="Use the local derived transcript cache during transcript materialization (default: true).",
     )
     update_parser.add_argument(
         "--session-index-cache",
@@ -190,24 +178,12 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
 
     query_parser = chatlas_subparsers.add_parser(
         "query",
-        help="Query normalized Chatlas sessions for inventory, exact identity, and transcript-content filters.",
+        help="Query Chatlas sessions by session index metadata.",
     )
     query_parser.add_argument(
         "query",
         nargs="?",
         help="Exact query value matched against URI, instance, session id, display name, fingerprint, and native fields.",
-    )
-    query_parser.add_argument(
-        "--text-contain",
-        default=None,
-        dest="text_contain",
-        help="Case-insensitive substring that must appear in at least one derived transcript turn.",
-    )
-    query_parser.add_argument(
-        "--user-contain",
-        default=None,
-        dest="user_contain",
-        help="Case-insensitive substring that must appear in at least one user transcript turn.",
     )
     query_parser.add_argument(
         "--provider",
@@ -260,23 +236,6 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Include full backing_artifacts rows in session output.",
     )
     query_parser.add_argument(
-        "--include-summary",
-        action="store_true",
-        help="Include the brief derived summary for each matched session.",
-    )
-    query_parser.add_argument(
-        "--summary-level",
-        choices=_SUMMARY_LEVELS,
-        action="append",
-        dest="summary_levels",
-        help="Include one derived summary level in summary_levels. Repeat for multiple levels.",
-    )
-    query_parser.add_argument(
-        "--include-transcript-filter-match",
-        action="store_true",
-        help="Include transcript filter match metadata when transcript filters are used.",
-    )
-    query_parser.add_argument(
         "--include-provider-stats",
         action="store_true",
         help="Include provider-specific stats for each matched session.",
@@ -321,6 +280,39 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     export_parser.set_defaults(handler=_cmd_chatlas_export)
 
+    session_model_parser = chatlas_subparsers.add_parser(
+        "session-model",
+        help="Work with the normalized in-memory Chatlas session model.",
+    )
+    session_model_subparsers = session_model_parser.add_subparsers(
+        dest="chatlas_session_model_command",
+        required=True,
+    )
+
+    session_model_export_parser = session_model_subparsers.add_parser(
+        "export",
+        help="Export one Chatlas session as the standard session model JSON object.",
+    )
+    session_model_export_parser.add_argument(
+        "query",
+        help="Exact query value matched against URI, session id, display name, fingerprint, and native fields.",
+    )
+    session_model_export_parser.add_argument(
+        "--provider",
+        choices=_CHATLAS_PROVIDER_CHOICES,
+        action="append",
+        dest="providers",
+        help="Restrict export to a provider family. Repeat to include multiple providers.",
+    )
+    session_model_export_parser.add_argument(
+        "--format",
+        choices=("json",),
+        default="json",
+        dest="output_format",
+        help="Output format. Session model export supports json only.",
+    )
+    session_model_export_parser.set_defaults(handler=_cmd_chatlas_session_model_export)
+
     experimental_parser = chatlas_subparsers.add_parser(
         "experimental",
         help="Experimental Chatlas surfaces with unstable schemas.",
@@ -352,4 +344,4 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="output_format",
         help="Output format. Experimental session model export supports json only.",
     )
-    experimental_export_parser.set_defaults(handler=_cmd_chatlas_experimental_export)
+    experimental_export_parser.set_defaults(handler=_cmd_chatlas_session_model_export)

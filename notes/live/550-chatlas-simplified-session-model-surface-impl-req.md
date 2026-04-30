@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Implementation started; Phase 1 renamed the session catalog path and public update fields, while transcript/summary removal remains next.
+Implementation in progress; Phase 4 promoted the session model to `chatlas session-model export`.
 
 ## User Intent
 
@@ -181,3 +181,6 @@ Promote the session-model surface:
 
 - 2026-04-30: Created after the user accepted the simplified Chatlas command surface and requested an implementation request artifact.
 - 2026-04-30: Phase 1 started. The session catalog now materializes at `index/sessions.index.jsonl`, update payloads expose `session_index_path` / `session_index_count`, and the update cache flag is now `--session-index-cache`.
+- 2026-04-30: Phase 2 removed update-time derived transcript and summary materialization, removed derived transcript cache loading/writing, removed derived count fields from update/stats output, and pruned tests for update-provided transcript/search summary behavior.
+- 2026-04-30: Phase 3 simplified query to session-index metadata lookup by removing transcript-content filters, summary expansions, transcript filter match output, and the now-unused summary cache readers from the query path.
+- 2026-04-30: Phase 4 moved the session-model implementation from `agentos.chatlas.experimental` to `agentos.chatlas.session_model`, added `agentos chatlas session-model export`, renamed the public export API to `chatlas_export_session_model`, changed the envelope class to `agentos.chatlas.session_model`, and removed the top-level `experimental` flag from the model contract.

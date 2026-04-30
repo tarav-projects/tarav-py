@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import main
-from agentos.chatlas.experimental._shared import _standard_model_traceability_errors
+from agentos.chatlas.session_model._shared import _standard_model_traceability_errors
 from _helpers import write_text_file as _write
 
 
@@ -1479,7 +1479,6 @@ def _assert_current_standard_model_contract(
     assert set(payload) == {
         "class",
         "schema_version",
-        "experimental",
         "session",
         "agent_instance",
         "sources",
@@ -1512,9 +1511,8 @@ def _assert_current_reference_session_quality(
     expected_deferred_concepts: list[str],
     expected_coverage_statuses: dict[str, str],
 ) -> None:
-    assert payload["class"] == "agentos.chatlas.experimental.session_model"
+    assert payload["class"] == "agentos.chatlas.session_model"
     assert payload["schema_version"] == 1
-    assert payload["experimental"] is True
     assert payload["session"]["provider"] == provider
     assert payload["session"]["session_id"] == session_id
     assert payload["normalization"]["counts"] == expected_counts
@@ -1580,9 +1578,6 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
     assert payload["synced_instance_count"] == 1
     assert payload["skipped_instance_count"] == 0
     assert payload["session_index_count"] == 1
-    assert payload["derived_transcript_session_count"] == 1
-    assert payload["derived_summary_count"] == 1
-    assert payload["derived_summary_counts"] == {"brief": 1, "detailed": 1}
     assert payload["instances"][0]["instance"] == "codex-main"
     assert payload["instances"][0]["destination_root"] == str(destination_root)
     assert payload["instances"][0]["includes"] == [
@@ -1607,8 +1602,6 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
     ]
     assert payload["manifest_path"] is not None
     assert Path(payload["session_index_path"]).is_file()
-    assert Path(payload["derived_summaries_path"]).is_file()
-    assert Path(payload["derived_summary_paths"]["detailed"]).is_file()
     assert (
         destination_root
         / "sessions"
@@ -1638,15 +1631,6 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
     assert normalized_rows[0]["session_id"] == session_id
     assert normalized_rows[0]["display_name"] == thread_name
     assert normalized_rows[0]["native"] == {"thread_name": thread_name}
-    derived_md_path = (
-        _default_chatlas_root(home)
-        / "derived"
-        / "transcripts"
-        / "codex"
-        / normalized_rows[0]["provider_instance_fingerprint"]
-        / f"{session_id}.md"
-    )
-    assert derived_md_path.is_file()
 
     log_subject = _git_output(chatlas_root, "log", "-1", "--pretty=%s")
     assert log_subject.startswith("chatlas update: ")
@@ -1703,7 +1687,6 @@ def test_chatlas_update_supports_configured_pi_provider(
     assert payload["changes_detected"] is True
     assert payload["synced_instance_count"] == 1
     assert payload["session_index_count"] == 1
-    assert payload["derived_transcript_session_count"] == 1
     assert payload["instances"][0]["instance"] == "pi-mm"
     assert payload["instances"][0]["destination_root"] == str(destination_root)
     assert sorted(payload["instances"][0]["includes"]) == ["sessions/**", "settings.json"]
@@ -1729,20 +1712,6 @@ def test_chatlas_update_supports_configured_pi_provider(
         "model_id": "gpt-5.4-mini",
         "thinking_level": "medium",
     }
-
-    derived_md_path = (
-        chatlas_root
-        / "derived"
-        / "transcripts"
-        / "pi"
-        / normalized_rows[0]["provider_instance_fingerprint"]
-        / f"{session_id}.md"
-    )
-    assert derived_md_path.is_file()
-    transcript_markdown = derived_md_path.read_text(encoding="utf-8")
-    assert "mission prelude" in transcript_markdown
-    assert "pi assistant" in transcript_markdown
-
 
 def test_chatlas_update_copilot_uses_raw_retention_whitelist(
     tmp_path: Path,
@@ -1836,7 +1805,6 @@ def test_chatlas_update_copilot_uses_raw_retention_whitelist(
     assert payload["changes_detected"] is True
     assert payload["synced_instance_count"] == 1
     assert payload["session_index_count"] == 2
-    assert payload["derived_transcript_session_count"] == 2
     assert instance_payload["instance"] == "copilot-main"
     assert instance_payload["destination_root"] == str(destination_root)
     assert instance_payload["includes"] == expected_includes
@@ -1879,30 +1847,6 @@ def test_chatlas_update_copilot_uses_raw_retention_whitelist(
     assert normalized_by_session_id[session_id]["instance"] == "copilot-main"
     assert normalized_by_session_id[legacy_session_id]["provider"] == "copilot-cli"
     assert normalized_by_session_id[legacy_session_id]["instance"] == "copilot-main"
-
-    derived_md_path = (
-        chatlas_root
-        / "derived"
-        / "transcripts"
-        / "copilot-cli"
-        / normalized_by_session_id[session_id]["provider_instance_fingerprint"]
-        / f"{session_id}.md"
-    )
-    legacy_derived_md_path = (
-        chatlas_root
-        / "derived"
-        / "transcripts"
-        / "copilot-cli"
-        / normalized_by_session_id[legacy_session_id]["provider_instance_fingerprint"]
-        / f"{legacy_session_id}.md"
-    )
-    transcript_markdown = derived_md_path.read_text(encoding="utf-8")
-    legacy_transcript_markdown = legacy_derived_md_path.read_text(encoding="utf-8")
-    assert "retain copilot user input" in transcript_markdown
-    assert "retain copilot assistant output" in transcript_markdown
-    assert "retain legacy copilot user input" in legacy_transcript_markdown
-    assert "retain legacy copilot assistant output" in legacy_transcript_markdown
-
 
 def test_chatlas_update_copilot_replaces_archived_instruction_symlink(
     tmp_path: Path,
@@ -2152,7 +2096,6 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
     assert payload["changes_detected"] is True
     assert payload["synced_instance_count"] == 1
     assert payload["session_index_count"] == 1
-    assert payload["derived_transcript_session_count"] == 1
     assert instance_payload["instance"] == "claude-main"
     assert instance_payload["destination_root"] is None
     assert instance_payload["destination_roots"] == {
@@ -2214,18 +2157,6 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
     assert sorted(normalized_by_session_id) == [cli_session_id]
     assert normalized_by_session_id[cli_session_id]["provider"] == "claude-code"
     assert normalized_by_session_id[cli_session_id]["instance"] == "claude-main"
-
-    cli_transcript_path = (
-        chatlas_root
-        / "derived"
-        / "transcripts"
-        / "claude-code"
-        / normalized_by_session_id[cli_session_id]["provider_instance_fingerprint"]
-        / f"{cli_session_id}.md"
-    )
-    assert "retain claude cli user input" in cli_transcript_path.read_text(encoding="utf-8")
-    assert "retain claude cli assistant output" in cli_transcript_path.read_text(encoding="utf-8")
-
 
 def test_chatlas_update_opencode_uses_raw_retention_policy(
     tmp_path: Path,
@@ -2323,7 +2254,6 @@ def test_chatlas_update_opencode_uses_raw_retention_policy(
     assert payload["changes_detected"] is True
     assert payload["synced_instance_count"] == 1
     assert payload["session_index_count"] == 1
-    assert payload["derived_transcript_session_count"] == 1
     assert instance_payload["instance"] == "opencode-main"
     assert instance_payload["destination_root"] == str(destination_root)
     assert instance_payload["includes"] == expected_includes
@@ -2352,19 +2282,6 @@ def test_chatlas_update_opencode_uses_raw_retention_policy(
     assert normalized_row["provider"] == "opencode"
     assert normalized_row["instance"] == "opencode-main"
     assert normalized_row["session_id"] == session_id
-
-    derived_md_path = (
-        chatlas_root
-        / "derived"
-        / "transcripts"
-        / "opencode"
-        / normalized_row["provider_instance_fingerprint"]
-        / f"{session_id}.md"
-    )
-    transcript_markdown = derived_md_path.read_text(encoding="utf-8")
-    assert "retain opencode user input" in transcript_markdown
-    assert "retain opencode assistant output" in transcript_markdown
-
 
 def test_chatlas_update_second_run_skips_commit_when_unchanged(
     tmp_path: Path,
@@ -2431,18 +2348,14 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
     chatlas_root = _default_chatlas_root(home)
     raw_cache_path = chatlas_raw._chatlas_raw_scan_cache_path(chatlas_root)
     session_index_cache_path = chatlas_core._session_index_cache_path(chatlas_root)
-    transcript_cache_path = chatlas_core._derived_transcript_cache_path(chatlas_root)
 
     assert first_payload["scan_cache_enabled"] is True
     assert first_payload["session_index_cache_enabled"] is True
-    assert first_payload["transcript_cache_enabled"] is True
     assert raw_cache_path.is_file()
     assert session_index_cache_path.is_file()
-    assert transcript_cache_path.is_file()
     assert "/cache/" in (chatlas_root / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert _git_output(chatlas_root, "ls-files", "cache/raw-scan-v1.json") == ""
     assert _git_output(chatlas_root, "ls-files", "cache/session-index-v1.json") == ""
-    assert _git_output(chatlas_root, "ls-files", "cache/derived-transcripts-v1.json") == ""
     assert _git_output(chatlas_root, "status", "--porcelain") == ""
 
     def fail_match(*args, **kwargs):
@@ -2451,77 +2364,38 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
     def fail_normalized_record(*args, **kwargs):
         raise AssertionError("expected session index cache to bypass session index rebuild")
 
-    def fail_render(*args, **kwargs):
-        raise AssertionError("expected transcript cache to bypass transcript rendering")
-
-    def fail_source_hash(*args, **kwargs):
-        raise AssertionError("expected transcript cache to reuse normalized source metadata")
-
     monkeypatch.setattr(chatlas_raw, "_chatlas_archive_files_match", fail_match)
     monkeypatch.setattr(chatlas_core, "_session_index_record", fail_normalized_record)
-    monkeypatch.setattr(chatlas_core, "_render_transcript", fail_render)
-    monkeypatch.setattr(chatlas_core, "_chatlas_cache_path_signature", fail_source_hash)
 
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["scan_cache_enabled"] is True
     assert payload["session_index_cache_enabled"] is True
-    assert payload["transcript_cache_enabled"] is True
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
     assert _git_output(chatlas_root, "status", "--porcelain") == ""
 
 
-def test_chatlas_derived_transcript_cache_matches_legacy_rich_signatures() -> None:
-    from agentos.chatlas import core as chatlas_core
-
-    source_signature = {
-        "source_path": "/tmp/chatlas/session/events.jsonl",
-        "size": 256,
-        "mtime_ns": 42,
-        "signature_version": 2,
-        "derivation_version": chatlas_core._DERIVED_TRANSCRIPT_DERIVATION_VERSION,
-    }
-    legacy_cache_entry = {
-        "source_path": "/tmp/chatlas/session/events.jsonl",
-        "size": 256,
-        "mtime_ns": 42,
-        "tail_sha256": "legacy-rich-tail-hash",
-        "derivation_version": chatlas_core._DERIVED_TRANSCRIPT_DERIVATION_VERSION,
-    }
-
-    assert chatlas_core._derived_transcript_cache_entry_matches(
-        legacy_cache_entry,
-        source_signature,
-    )
-
-
 @pytest.mark.parametrize(
-    "cache_flag, expected_scan, expected_normalized, expected_transcript, patched_targets",
+    "cache_flag, expected_scan, expected_normalized, patched_targets",
     [
         pytest.param(
             "--scan-cache=false",
-            False, True, True,
+            False, True,
             ("raw._chatlas_archive_files_match",),
             id="scan",
         ),
         pytest.param(
-            "--transcript-cache=false",
-            True, True, False,
-            ("core._render_transcript",),
-            id="transcript",
-        ),
-        pytest.param(
             "--session-index-cache=false",
-            True, False, True,
+            True, False,
             ("core._session_index_record",),
             id="normalized",
         ),
         pytest.param(
             "--disable-cache",
-            False, False, False,
-            ("raw._chatlas_archive_files_match", "core._session_index_record", "core._render_transcript"),
+            False, False,
+            ("raw._chatlas_archive_files_match", "core._session_index_record"),
             id="disable-all",
         ),
     ],
@@ -2533,7 +2407,6 @@ def test_chatlas_update_can_disable_caches(
     cache_flag: str,
     expected_scan: bool,
     expected_normalized: bool,
-    expected_transcript: bool,
     patched_targets: tuple[str, ...],
 ) -> None:
     from agentos.chatlas import core as chatlas_core
@@ -2579,14 +2452,13 @@ def test_chatlas_update_can_disable_caches(
 
     extra_argv = ["--provider", "codex", cache_flag]
     if cache_flag == "--disable-cache":
-        extra_argv += ["--scan-cache=true", "--session-index-cache=true", "--transcript-cache=true"]
+        extra_argv += ["--scan-cache=true", "--session-index-cache=true"]
 
     assert main(_chatlas_update_argv(*extra_argv)) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["scan_cache_enabled"] is expected_scan
     assert payload["session_index_cache_enabled"] is expected_normalized
-    assert payload["transcript_cache_enabled"] is expected_transcript
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
     for target in patched_targets:
@@ -2955,7 +2827,6 @@ def test_chatlas_update_without_selection_preserves_existing_dataset(
 
     assert payload["instance_count"] == 0
     assert payload["session_index_count"] == 1
-    assert payload["derived_transcript_session_count"] == 1
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
     assert _chatlas_home_root(home, home / ".codex").exists()
@@ -3043,16 +2914,12 @@ def test_chatlas_stats_reports_normalized_counts(
     assert "- Providers: 1" in rendered
     assert "- Sessions: 1" in rendered
     assert "## codex" in rendered
-    assert "- Derived transcripts: 1" in rendered
 
     assert main(["chatlas", "stats", "--format", "json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["command"] == "chatlas stats"
     assert payload["stats"]["session_count"] == 1
     assert payload["stats"]["provider_count"] == 1
-    assert payload["stats"]["derived_transcript_session_count"] == 1
-    assert payload["stats"]["derived_summary_count"] == 1
-    assert payload["stats"]["derived_summary_counts"] == {"brief": 1, "detailed": 1}
     assert payload["stats"]["by_provider"][0]["provider"] == "codex"
     assert payload["stats"]["last_update_recorded_at"] is not None
     assert payload["stats"]["last_update_manifest_path"] is not None
@@ -3091,11 +2958,6 @@ def test_chatlas_query_matches_normalized_thread_name(
             "query",
             thread_name,
             "--include-match",
-            "--include-summary",
-            "--summary-level",
-            "brief",
-            "--summary-level",
-            "detailed",
         ]
     ) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -3109,11 +2971,8 @@ def test_chatlas_query_matches_normalized_thread_name(
     assert session["display_name"] == thread_name
     assert session["native"] == {"thread_name": thread_name}
     assert session["match"]["fields"] == [{"field": "thread_name", "value": thread_name}]
-    assert session["summary"]["instance"] == "codex-main"
-    assert session["summary"]["turn_count"] == 0
-    assert session["summary_levels"]["brief"]["instance"] == "codex-main"
-    assert session["summary_levels"]["brief"]["level"] == "brief"
-    assert session["summary_levels"]["detailed"]["level"] == "detailed"
+    assert "summary" not in session
+    assert "summary_levels" not in session
 
 
 def test_chatlas_query_can_include_provider_stats_for_exact_session_queries(
@@ -3296,101 +3155,6 @@ def test_chatlas_query_matches_openclaw_logical_session_keys(
     assert session["provider_stats"]["dialog_turn_count"] == 2
 
 
-def test_chatlas_query_supports_user_contain_transcript_filter(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(agentos_home / "config.json")
-
-    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    _write_codex_dialog_rollout(
-        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
-        session_id=session_id,
-        user_text="searchable user text",
-        assistant_text="other assistant text",
-    )
-    _write_codex_session_index(
-        home / ".codex" / "session_index.jsonl",
-        session_id=session_id,
-        thread_name="content-query-thread",
-    )
-
-    assert main(_chatlas_update_argv("--provider", "codex")) == 0
-    _ = json.loads(capsys.readouterr().out)
-
-    assert main(
-        [
-            "chatlas",
-            "query",
-            "--user-contain",
-            "searchable user",
-            "--include-summary",
-            "--summary-level",
-            "detailed",
-            "--include-transcript-filter-match",
-        ]
-    ) == 0
-    payload = json.loads(capsys.readouterr().out)
-
-    assert payload["session_count"] == 1
-    assert payload["selection"]["query"] is None
-    assert payload["selection"]["filters"]["user_contain"] == "searchable user"
-    assert payload["sessions"][0]["transcript_filter_match"] == {"user_contain": "searchable user"}
-    assert payload["sessions"][0]["summary"]["first_user_text"] == "searchable user text"
-    assert payload["sessions"][0]["summary_levels"]["detailed"]["user_turn_previews"] == ["searchable user text"]
-
-
-def test_chatlas_query_supports_text_contain_filter(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(agentos_home / "config.json")
-
-    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    _write_codex_dialog_rollout(
-        home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl",
-        session_id=session_id,
-        user_text="neutral user text",
-        assistant_text="assistant searchable phrase",
-    )
-    _write_codex_session_index(
-        home / ".codex" / "session_index.jsonl",
-        session_id=session_id,
-        thread_name="text-filter-thread",
-    )
-
-    assert main(_chatlas_update_argv("--provider", "codex")) == 0
-    _ = json.loads(capsys.readouterr().out)
-
-    assert main(
-        [
-            "chatlas",
-            "query",
-            "--text-contain",
-            "searchable phrase",
-            "--include-summary",
-            "--include-transcript-filter-match",
-        ]
-    ) == 0
-    payload = json.loads(capsys.readouterr().out)
-
-    assert payload["session_count"] == 1
-    assert payload["sessions"][0]["transcript_filter_match"] == {"text_contain": "searchable phrase"}
-    assert payload["sessions"][0]["summary"]["last_assistant_text"] == "assistant searchable phrase"
-
-
 def test_chatlas_export_returns_derived_markdown_transcript(
     tmp_path: Path,
     monkeypatch,
@@ -3471,7 +3235,7 @@ def test_chatlas_export_supports_jsonl_transcript_output(
     assert payload_lines[1]["text"] == "jsonl export assistant"
 
 
-def test_chatlas_experimental_export_emits_session_model_json(
+def test_chatlas_session_model_export_emits_session_model_json(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -3501,12 +3265,11 @@ def test_chatlas_experimental_export_emits_session_model_json(
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    assert main(["chatlas", "session-model", "export", thread_name, "--provider", "codex"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["class"] == "agentos.chatlas.experimental.session_model"
+    assert payload["class"] == "agentos.chatlas.session_model"
     assert payload["schema_version"] == 1
-    assert payload["experimental"] is True
     assert payload["session"]["provider"] == "codex"
     assert payload["session"]["session_id"] == session_id
     assert payload["session"]["display_name"] == thread_name
@@ -3564,7 +3327,7 @@ def test_chatlas_experimental_export_emits_session_model_json(
     assert "model_runs" in payload["normalization"]["unsupported_concepts"]
 
 
-def test_chatlas_experimental_export_loads_claude_raw_session(
+def test_chatlas_session_model_export_loads_claude_raw_session(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -3590,9 +3353,7 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
     assert (
         main(
             [
-                "chatlas",
-                "experimental",
-                "export",
+                "chatlas", "session-model", "export",
                 session_id,
                 "--provider",
                 "claude-code",
@@ -3739,7 +3500,7 @@ def test_chatlas_experimental_export_loads_claude_raw_session(
     )
 
 
-def test_chatlas_experimental_export_normalizes_claude_tool_invocations(
+def test_chatlas_session_model_export_normalizes_claude_tool_invocations(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -3766,9 +3527,7 @@ def test_chatlas_experimental_export_normalizes_claude_tool_invocations(
     assert (
         main(
             [
-                "chatlas",
-                "experimental",
-                "export",
+                "chatlas", "session-model", "export",
                 session_id,
                 "--provider",
                 "claude-code",
@@ -3990,7 +3749,7 @@ def test_chatlas_experimental_export_normalizes_claude_tool_invocations(
     )
 
 
-def test_chatlas_experimental_export_normalizes_claude_model_runs(
+def test_chatlas_session_model_export_normalizes_claude_model_runs(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -4018,9 +3777,7 @@ def test_chatlas_experimental_export_normalizes_claude_model_runs(
     assert (
         main(
             [
-                "chatlas",
-                "experimental",
-                "export",
+                "chatlas", "session-model", "export",
                 session_id,
                 "--provider",
                 "claude-code",
@@ -4121,7 +3878,7 @@ def test_chatlas_experimental_export_normalizes_claude_model_runs(
     )
 
 
-def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
+def test_chatlas_session_model_export_normalizes_claude_reasoning_and_usage(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -4150,9 +3907,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
     assert (
         main(
             [
-                "chatlas",
-                "experimental",
-                "export",
+                "chatlas", "session-model", "export",
                 session_id,
                 "--provider",
                 "claude-code",
@@ -4296,7 +4051,7 @@ def test_chatlas_experimental_export_normalizes_claude_reasoning_and_usage(
     )
 
 
-def test_chatlas_experimental_export_loads_copilot_raw_events(
+def test_chatlas_session_model_export_loads_copilot_raw_events(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -4331,9 +4086,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
     assert (
         main(
             [
-                "chatlas",
-                "experimental",
-                "export",
+                "chatlas", "session-model", "export",
                 session_id,
                 "--provider",
                 "copilot-cli",
@@ -4721,7 +4474,7 @@ def test_chatlas_experimental_export_loads_copilot_raw_events(
     )
 
 
-def test_chatlas_experimental_export_errors_for_missing_provider_normalizer(
+def test_chatlas_session_model_export_errors_for_missing_provider_normalizer(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -4755,17 +4508,17 @@ def test_chatlas_experimental_export_errors_for_missing_provider_normalizer(
     assert main(_chatlas_update_argv("--provider", "pi")) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "experimental", "export", session_id, "--provider", "pi"]) == 1
+    assert main(["chatlas", "session-model", "export", session_id, "--provider", "pi"]) == 1
     captured = capsys.readouterr()
 
     assert captured.out == ""
     assert (
-        "experimental session model export has no provider-specific raw normalizer "
+        "session model export has no provider-specific raw normalizer "
         "for provider pi"
     ) in captured.err
 
 
-def test_chatlas_experimental_export_reference_samples_match_current_semantic_contract(
+def test_chatlas_session_model_export_reference_samples_match_current_semantic_contract(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -4917,9 +4670,7 @@ def test_chatlas_experimental_export_reference_samples_match_current_semantic_co
         assert (
             main(
                 [
-                    "chatlas",
-                    "experimental",
-                    "export",
+                    "chatlas", "session-model", "export",
                     session_id,
                     "--provider",
                     provider,
@@ -4933,7 +4684,7 @@ def test_chatlas_experimental_export_reference_samples_match_current_semantic_co
         _assert_current_reference_session_quality(payload, **expectation)
 
 
-def test_chatlas_experimental_export_reports_invalid_codex_raw_lines(
+def test_chatlas_session_model_export_reports_invalid_codex_raw_lines(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -4963,7 +4714,7 @@ def test_chatlas_experimental_export_reports_invalid_codex_raw_lines(
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    assert main(["chatlas", "session-model", "export", thread_name, "--provider", "codex"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["normalization"]["normalizer"] == "codex.raw_rollout.experimental.v1"
@@ -4979,7 +4730,7 @@ def test_chatlas_experimental_export_reports_invalid_codex_raw_lines(
     )
 
 
-def test_chatlas_experimental_export_preserves_codex_context_messages(
+def test_chatlas_session_model_export_preserves_codex_context_messages(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -5004,7 +4755,7 @@ def test_chatlas_experimental_export_preserves_codex_context_messages(
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    assert main(["chatlas", "session-model", "export", thread_name, "--provider", "codex"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     messages = payload["chat"]["messages"]
@@ -5036,7 +4787,7 @@ def test_chatlas_experimental_export_preserves_codex_context_messages(
     )
 
 
-def test_chatlas_experimental_export_joins_codex_tool_invocations(
+def test_chatlas_session_model_export_joins_codex_tool_invocations(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -5061,7 +4812,7 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    assert main(["chatlas", "session-model", "export", thread_name, "--provider", "codex"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["normalization"]["source_mode"] == "codex_raw_rollout"
@@ -5239,7 +4990,7 @@ def test_chatlas_experimental_export_joins_codex_tool_invocations(
     ]
 
 
-def test_chatlas_experimental_export_normalizes_codex_model_runs(
+def test_chatlas_session_model_export_normalizes_codex_model_runs(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -5264,7 +5015,7 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    assert main(["chatlas", "session-model", "export", thread_name, "--provider", "codex"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["normalization"]["source_mode"] == "codex_raw_rollout"
@@ -5396,7 +5147,7 @@ def test_chatlas_experimental_export_normalizes_codex_model_runs(
     ])
 
 
-def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
+def test_chatlas_session_model_export_attaches_codex_multi_turn_model_runs(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -5421,7 +5172,7 @@ def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     _ = json.loads(capsys.readouterr().out)
 
-    assert main(["chatlas", "experimental", "export", thread_name, "--provider", "codex"]) == 0
+    assert main(["chatlas", "session-model", "export", thread_name, "--provider", "codex"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["normalization"]["counts"] == {
@@ -5490,57 +5241,3 @@ def test_chatlas_experimental_export_attaches_codex_multi_turn_model_runs(
         warning.startswith("codex reasoning records could not be attached to a model run:")
         for warning in payload["normalization"]["warnings"]
     )
-
-
-def test_chatlas_export_supports_detailed_summary_json_output(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(agentos_home / "config.json")
-
-    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
-    thread_name = "summary-export-thread"
-    rollout_path = home / ".codex" / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
-    _write_codex_dialog_rollout(
-        rollout_path,
-        session_id=session_id,
-        user_text="summary export user",
-        assistant_text="summary export assistant",
-    )
-    _write_codex_session_index(
-        home / ".codex" / "session_index.jsonl",
-        session_id=session_id,
-        thread_name=thread_name,
-    )
-
-    assert main(_chatlas_update_argv("--provider", "codex")) == 0
-    _ = json.loads(capsys.readouterr().out)
-
-    assert main(
-        [
-            "chatlas",
-            "export",
-            thread_name,
-            "--kind",
-            "summary",
-            "--summary-level",
-            "detailed",
-            "--format",
-            "json",
-        ]
-    ) == 0
-    payload = json.loads(capsys.readouterr().out)
-
-    assert payload["level"] == "detailed"
-    assert payload["first_user_text"] == "summary export user"
-    assert payload["last_assistant_text"] == "summary export assistant"
-    assert payload["turn_previews"] == [
-        {"role": "user", "text_preview": "summary export user"},
-        {"role": "assistant", "text_preview": "summary export assistant"},
-    ]

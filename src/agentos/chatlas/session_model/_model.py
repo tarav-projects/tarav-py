@@ -11,7 +11,7 @@ from ._codex import _experimental_normalize_codex_raw_rollout
 from ._copilot import _experimental_normalize_copilot_cli_raw_events
 from ._shared import *
 
-def chatlas_experimental_export_session_model(
+def chatlas_export_session_model(
     *,
     query: str,
     providers: tuple[str, ...] | None = None,
@@ -19,7 +19,7 @@ def chatlas_experimental_export_session_model(
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
     if output_format != "json":
-        raise CliError(f"unsupported experimental export format: {output_format}")
+        raise CliError(f"unsupported session model export format: {output_format}")
 
     normalized_query = query.strip()
     if not normalized_query:
@@ -48,9 +48,10 @@ def chatlas_experimental_export_session_model(
     if not isinstance(session, dict):
         raise CliError("Chatlas query returned an invalid session payload")
 
-    return _build_experimental_session_model(session)
+    return _build_session_model(session)
 
-def _build_experimental_session_model(session: dict[str, Any]) -> dict[str, object]:
+
+def _build_session_model(session: dict[str, Any]) -> dict[str, object]:
     provider = _string_or_none(session.get("provider"))
     sources = _experimental_source_payloads(session)
     normalization_result = _experimental_normalize_provider_raw(
@@ -68,9 +69,8 @@ def _build_experimental_session_model(session: dict[str, Any]) -> dict[str, obje
     normalization.update(normalization_result.metadata)
 
     return {
-        "class": "agentos.chatlas.experimental.session_model",
+        "class": "agentos.chatlas.session_model",
         "schema_version": 1,
-        "experimental": True,
         "session": _experimental_session_payload(session),
         "agent_instance": _experimental_agent_instance_payload(session),
         "sources": sources,
@@ -94,7 +94,7 @@ def _experimental_normalize_provider_raw(
     provider = _string_or_none(session.get("provider"))
     if provider is None:
         raise CliError(
-            "experimental session model export requires a provider-specific raw normalizer; "
+            "session model export requires a provider-specific raw normalizer; "
             "session provider is missing"
         )
     if provider == "codex":
@@ -105,7 +105,7 @@ def _experimental_normalize_provider_raw(
         if codex_result is not None:
             return codex_result
         raise CliError(
-            "experimental session model export could not normalize codex raw artifacts"
+            "session model export could not normalize codex raw artifacts"
         )
     if provider == "claude-code":
         claude_result = _experimental_normalize_claude_code_raw_session(
@@ -115,7 +115,7 @@ def _experimental_normalize_provider_raw(
         if claude_result is not None:
             return claude_result
         raise CliError(
-            "experimental session model export could not normalize claude-code raw artifacts"
+            "session model export could not normalize claude-code raw artifacts"
         )
     if provider == "copilot-cli":
         copilot_result = _experimental_normalize_copilot_cli_raw_events(
@@ -125,11 +125,11 @@ def _experimental_normalize_provider_raw(
         if copilot_result is not None:
             return copilot_result
         raise CliError(
-            "experimental session model export could not normalize copilot-cli raw artifacts"
+            "session model export could not normalize copilot-cli raw artifacts"
         )
 
     raise CliError(
-        "experimental session model export has no provider-specific raw normalizer "
+        "session model export has no provider-specific raw normalizer "
         f"for provider {provider}"
     )
 

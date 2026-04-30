@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-import hashlib
 import json
 import shutil
 import stat
@@ -59,18 +58,8 @@ CHATLAS_DIRNAME = "chatlas"
 DEFAULT_CHATLAS_COMMIT_PREFIX = "chatlas update"
 _SESSION_INDEX_RELATIVE_PATH = Path("index") / "sessions.index.jsonl"
 _DERIVED_TRANSCRIPTS_RELATIVE_ROOT = Path("derived") / "transcripts"
-_DERIVED_SUMMARIES_RELATIVE_ROOT = Path("derived") / "summaries"
 _SESSION_INDEX_CACHE_RELATIVE_PATH = Path("cache") / "session-index-v1.json"
-_DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH = _DERIVED_SUMMARIES_RELATIVE_ROOT / "brief.jsonl"
-_DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH = _DERIVED_SUMMARIES_RELATIVE_ROOT / "detailed.jsonl"
-_DERIVED_TRANSCRIPT_CACHE_RELATIVE_PATH = Path("cache") / "derived-transcripts-v1.json"
-_CHATLAS_CACHE_TAIL_BYTES = 8192
 _SESSION_INDEX_DERIVATION_VERSION = 1
-_DERIVED_TRANSCRIPT_DERIVATION_VERSION = 1
-_SUMMARY_RELATIVE_PATHS = {
-    "brief": _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH,
-    "detailed": _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH,
-}
 _SUMMARY_LEVELS = ("brief", "detailed")
 _PROGRESS_PREFIX = "[chatlas]"
 _MAX_CHATLAS_ARCHIVE_WORKERS = 4
@@ -88,9 +77,6 @@ class ChatlasSettings:
 class ChatlasSessionSelection:
     session: dict[str, Any]
     matched_fields: tuple[tuple[str, str], ...]
-    transcript_filter_match: dict[str, str]
-    summary: dict[str, Any] | None
-    summary_levels: dict[str, dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -107,17 +93,10 @@ class ChatlasSessionIndexMaterialization:
     session_index_cache: dict[str, dict[str, object]]
 
 
-@dataclass(frozen=True)
-class ChatlasDerivedTranscriptMaterialization:
-    session_count: int
-    transcript_cache: dict[str, dict[str, object]]
-
-
 @dataclass
 class ChatlasUpdateCaches:
     raw_scan: dict[str, dict[str, dict[str, int]]]
     session_index: dict[str, dict[str, object]]
-    transcripts: dict[str, dict[str, object]]
 
 
 def default_chatlas_root() -> Path:
@@ -185,7 +164,6 @@ def chatlas_update(
     start_path: Path | str = ".",
     scan_cache_enabled: bool = True,
     session_index_cache_enabled: bool = True,
-    transcript_cache_enabled: bool = True,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, object]:
     settings = configured_chatlas_settings(start_path=start_path)
@@ -202,15 +180,6 @@ def chatlas_update(
         )
     if not selected_instances:
         session_index = _selected_session_index(chatlas_root_path, providers=providers)
-        derived_summary_counts = {
-            level: len(_load_derived_summaries_for_level(chatlas_root_path, level=level))
-            for level in _SUMMARY_LEVELS
-        }
-        derived_transcript_session_count = sum(
-            1
-            for session in session_index
-            if _derived_transcript_exists(chatlas_root_path, session, output_format="markdown")
-        )
         return {
             "status": "ok",
             "command": "chatlas update",
@@ -220,18 +189,9 @@ def chatlas_update(
             "derived_root": str(derived_root),
             "session_index_path": str(chatlas_root_path / _SESSION_INDEX_RELATIVE_PATH),
             "session_index_count": len(session_index),
-            "derived_transcript_session_count": derived_transcript_session_count,
-            "derived_summaries_path": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
-            "derived_summary_paths": {
-                "brief": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
-                "detailed": str(chatlas_root_path / _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH),
-            },
-            "derived_summary_count": derived_summary_counts["brief"],
-            "derived_summary_counts": derived_summary_counts,
             "manifest_path": None,
             "scan_cache_enabled": scan_cache_enabled,
             "session_index_cache_enabled": session_index_cache_enabled,
-            "transcript_cache_enabled": transcript_cache_enabled,
             "commit_prefix": settings.commit_prefix,
             "provider_count": 0,
             "instance_count": 0,
@@ -244,13 +204,12 @@ def chatlas_update(
         }
     selected_contexts = tuple(_build_chatlas_provider_context(instance) for instance in selected_instances)
     _ensure_git_repo(chatlas_root_path)
-    if scan_cache_enabled or session_index_cache_enabled or transcript_cache_enabled:
+    if scan_cache_enabled or session_index_cache_enabled:
         _ensure_chatlas_cache_gitignore(chatlas_root_path)
     update_caches = _load_chatlas_update_caches(
         chatlas_root=chatlas_root_path,
         scan_cache_enabled=scan_cache_enabled,
         session_index_cache_enabled=session_index_cache_enabled,
-        transcript_cache_enabled=transcript_cache_enabled,
     )
     _emit_chatlas_progress(
         progress,
@@ -290,32 +249,6 @@ def chatlas_update(
         ),
     )
     session_index = session_index_materialization.sessions
-    transcript_materialization = _run_chatlas_timed_phase(
-        progress=progress,
-        start_message="materializing derived transcripts",
-        finish_message=lambda materialization: (
-            f"derived transcripts: {materialization.session_count}"
-        ),
-        run=lambda: _materialize_derived_transcripts(
-            chatlas_root=chatlas_root_path,
-            session_index=session_index,
-            normalized_source_signatures=session_index_materialization.source_signatures,
-            transcript_cache=update_caches.transcripts,
-            transcript_cache_enabled=transcript_cache_enabled,
-        ),
-    )
-    derived_transcript_session_count = transcript_materialization.session_count
-    derived_summary_counts = _run_chatlas_timed_phase(
-        progress=progress,
-        start_message="materializing derived summaries",
-        finish_message=lambda counts: (
-            f"derived summaries: brief={counts['brief']} detailed={counts['detailed']}"
-        ),
-        run=lambda: _materialize_derived_summaries(
-            chatlas_root=chatlas_root_path,
-            session_index=session_index,
-        ),
-    )
     git_started_at = time.perf_counter()
     _emit_chatlas_progress(progress, "staging dataset changes")
     run_git(chatlas_root_path, "add", "-A")
@@ -337,8 +270,6 @@ def chatlas_update(
                 synced_instance_count=synced_instance_count,
                 skipped_instance_count=skipped_instance_count,
                 session_index_count=len(session_index),
-                derived_transcript_session_count=derived_transcript_session_count,
-                derived_summary_counts=derived_summary_counts,
                 instance_payloads=instance_payloads,
             ),
         )
@@ -370,13 +301,11 @@ def chatlas_update(
     )
 
     update_caches.session_index = session_index_materialization.session_index_cache
-    update_caches.transcripts = transcript_materialization.transcript_cache
     _write_chatlas_update_caches(
         chatlas_root=chatlas_root_path,
         caches=update_caches,
         scan_cache_enabled=scan_cache_enabled,
         session_index_cache_enabled=session_index_cache_enabled,
-        transcript_cache_enabled=transcript_cache_enabled,
     )
 
     provider_names = _unique_strings(tuple(context.provider_instance.family for context in selected_contexts))
@@ -389,18 +318,9 @@ def chatlas_update(
         "derived_root": str(derived_root),
         "session_index_path": str(chatlas_root_path / _SESSION_INDEX_RELATIVE_PATH),
         "session_index_count": len(session_index),
-        "derived_transcript_session_count": derived_transcript_session_count,
-        "derived_summaries_path": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
-        "derived_summary_paths": {
-            "brief": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
-            "detailed": str(chatlas_root_path / _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH),
-        },
-        "derived_summary_count": derived_summary_counts["brief"],
-        "derived_summary_counts": derived_summary_counts,
         "manifest_path": None if manifest_path is None else str(manifest_path),
         "scan_cache_enabled": scan_cache_enabled,
         "session_index_cache_enabled": session_index_cache_enabled,
-        "transcript_cache_enabled": transcript_cache_enabled,
         "commit_prefix": settings.commit_prefix,
         "provider_count": len(provider_names),
         "instance_count": len(selected_contexts),
@@ -451,15 +371,11 @@ def _load_chatlas_update_caches(
     chatlas_root: Path,
     scan_cache_enabled: bool,
     session_index_cache_enabled: bool,
-    transcript_cache_enabled: bool,
 ) -> ChatlasUpdateCaches:
     return ChatlasUpdateCaches(
         raw_scan=_load_chatlas_raw_scan_cache(chatlas_root) if scan_cache_enabled else {},
         session_index=(
             _load_session_index_cache(chatlas_root) if session_index_cache_enabled else {}
-        ),
-        transcripts=(
-            _load_derived_transcript_cache(chatlas_root) if transcript_cache_enabled else {}
         ),
     )
 
@@ -470,14 +386,11 @@ def _write_chatlas_update_caches(
     caches: ChatlasUpdateCaches,
     scan_cache_enabled: bool,
     session_index_cache_enabled: bool,
-    transcript_cache_enabled: bool,
 ) -> None:
     if scan_cache_enabled:
         _write_chatlas_raw_scan_cache(chatlas_root, caches.raw_scan)
     if session_index_cache_enabled:
         _write_session_index_cache(chatlas_root, caches.session_index)
-    if transcript_cache_enabled:
-        _write_derived_transcript_cache(chatlas_root, caches.transcripts)
 
 
 def _emit_chatlas_archive_done(
@@ -712,12 +625,6 @@ def chatlas_stats(
         if full_output or sessions_by_provider.get(provider)
     ]
     latest_manifest = _latest_update_manifest(chatlas_root_path)
-    summary_levels_by_uri = _summary_levels_by_uri(chatlas_root_path)
-
-    derived_summary_counts = _derived_summary_counts(
-        sessions,
-        summary_levels_by_uri=summary_levels_by_uri,
-    )
 
     return {
         "status": "ok",
@@ -731,11 +638,6 @@ def chatlas_stats(
             "session_count": len(sessions),
             "extractable_session_count": sum(1 for session in sessions if bool(session.get("extractable"))),
             "non_extractable_session_count": sum(1 for session in sessions if not bool(session.get("extractable"))),
-            "derived_transcript_session_count": sum(
-                1 for session in sessions if _derived_transcript_exists(chatlas_root_path, session, output_format="markdown")
-            ),
-            "derived_summary_count": derived_summary_counts["brief"],
-            "derived_summary_counts": derived_summary_counts,
             "by_provider": by_provider,
             "last_update_recorded_at": None if latest_manifest is None else latest_manifest.get("recorded_at"),
             "last_update_manifest_path": None if latest_manifest is None else latest_manifest.get("_manifest_path"),
@@ -755,8 +657,6 @@ def format_chatlas_stats_markdown(payload: dict[str, object]) -> str:
         f"- Sessions: {stats.get('session_count', 0)}",
         f"- Extractable: {stats.get('extractable_session_count', 0)}",
         f"- Non-extractable: {stats.get('non_extractable_session_count', 0)}",
-        f"- Derived transcripts: {stats.get('derived_transcript_session_count', 0)}",
-        f"- Derived summaries: {stats.get('derived_summary_count', 0)}",
     ]
 
     last_update_recorded_at = stats.get("last_update_recorded_at")
@@ -814,8 +714,6 @@ def format_chatlas_stats_markdown(payload: dict[str, object]) -> str:
 def chatlas_query(
     *,
     query: str | None,
-    text_contain: str | None = None,
-    user_contain: str | None = None,
     providers: tuple[str, ...] | None = None,
     instances: tuple[str, ...] | None = None,
     chatlas_root: Path | None = None,
@@ -825,32 +723,20 @@ def chatlas_query(
     updated_after: float | None = None,
     include_match: bool = False,
     include_artifacts: bool = False,
-    include_summary: bool = False,
-    include_summary_levels: tuple[str, ...] = (),
-    include_transcript_filter_match: bool = False,
     include_provider_stats: bool = False,
     compact: bool = False,
 ) -> dict[str, object]:
     _validate_chatlas_sort(sort)
     _validate_chatlas_limit(limit)
     normalized_query = None if query is None else query.strip()
-    normalized_text_contain = None if text_contain is None else text_contain.strip()
-    normalized_user_contain = None if user_contain is None else user_contain.strip()
     normalized_instances = _normalize_chatlas_instance_filters(instances)
     if normalized_query == "":
         normalized_query = None
-    if normalized_text_contain == "":
-        normalized_text_contain = None
-    if normalized_user_contain == "":
-        normalized_user_contain = None
-    normalized_summary_levels = _normalize_summary_levels(include_summary_levels)
 
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
     selections = _select_chatlas_sessions(
         chatlas_root_path,
         query=normalized_query,
-        text_contain=normalized_text_contain,
-        user_contain=normalized_user_contain,
         providers=providers,
         instances=normalized_instances,
         extractable_only=extractable_only,
@@ -868,17 +754,6 @@ def chatlas_query(
             enriched = dict(selection.session)
             if not include_artifacts:
                 enriched.pop("backing_artifacts", None)
-        if include_summary:
-            enriched["summary"] = selection.summary or _build_session_summary(chatlas_root_path, selection.session, level="brief")
-        if normalized_summary_levels:
-            enriched["summary_levels"] = {
-                level: selection.summary_levels.get(level) or _build_session_summary(
-                    chatlas_root_path,
-                    selection.session,
-                    level=level,
-                )
-                for level in normalized_summary_levels
-            }
         if include_match and normalized_query is not None:
             enriched["match"] = {
                 "query": normalized_query,
@@ -891,8 +766,6 @@ def chatlas_query(
                     for field_name, value in selection.matched_fields
                 ],
             }
-        if include_transcript_filter_match and selection.transcript_filter_match:
-            enriched["transcript_filter_match"] = selection.transcript_filter_match
         if include_provider_stats:
             enriched["provider_stats"] = _chatlas_provider_stats_for_session(
                 chatlas_root_path,
@@ -903,14 +776,8 @@ def chatlas_query(
     expansions: list[str] = []
     if include_artifacts:
         expansions.append("backing_artifacts")
-    if include_summary:
-        expansions.append("summary")
-    if normalized_summary_levels:
-        expansions.append("summary_levels")
     if include_match and normalized_query is not None:
         expansions.append("match")
-    if include_transcript_filter_match and (normalized_text_contain is not None or normalized_user_contain is not None):
-        expansions.append("transcript_filter_match")
     if include_provider_stats:
         expansions.append("provider_stats")
     return {
@@ -925,8 +792,6 @@ def chatlas_query(
                 "limit": limit,
                 "extractable": extractable_only,
                 "updated_after": _format_stats_timestamp(updated_after),
-                "text_contain": normalized_text_contain,
-                "user_contain": normalized_user_contain,
                 "instances": list(normalized_instances) if normalized_instances is not None else None,
                 "compact": compact,
             },
@@ -976,9 +841,7 @@ def chatlas_export(
 
     session = selections[0].session
     if artifact_kind == "summary":
-        summary = selections[0].summary_levels.get(summary_level)
-        if summary is None:
-            summary = _build_session_summary(chatlas_root_path, session, level=summary_level)
+        summary = _build_session_summary(chatlas_root_path, session, level=summary_level)
         return _render_summary(summary, output_format=output_format)
 
     transcript_path = _derived_transcript_path(chatlas_root_path, session, output_format=output_format)
@@ -1084,8 +947,6 @@ def _build_update_manifest(
     synced_instance_count: int,
     skipped_instance_count: int,
     session_index_count: int,
-    derived_transcript_session_count: int,
-    derived_summary_counts: dict[str, int],
     instance_payloads: list[dict[str, object]],
 ) -> dict[str, object]:
     provider_names = _unique_strings(
@@ -1107,9 +968,6 @@ def _build_update_manifest(
         "synced_instance_count": synced_instance_count,
         "skipped_instance_count": skipped_instance_count,
         "session_index_count": session_index_count,
-        "derived_transcript_session_count": derived_transcript_session_count,
-        "derived_summary_count": derived_summary_counts["brief"],
-        "derived_summary_counts": derived_summary_counts,
         "instances": instance_payloads,
     }
 
@@ -1174,20 +1032,6 @@ def _validate_chatlas_limit(limit: int | None) -> None:
         raise CliError("chatlas query limit must be greater than 0")
 
 
-
-def _normalize_summary_levels(levels: tuple[str, ...]) -> tuple[str, ...]:
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for level in levels:
-        if level not in _SUMMARY_LEVELS:
-            raise CliError(f"unsupported summary level: {level}")
-        if level in seen:
-            continue
-        seen.add(level)
-        normalized.append(level)
-    return tuple(normalized)
-
-
 def _materialize_session_index(
     *,
     chatlas_root: Path,
@@ -1235,102 +1079,6 @@ def _materialize_session_index(
         source_signatures=source_signatures,
         session_index_cache=next_session_index_cache,
     )
-
-
-def _materialize_derived_transcripts(
-    *,
-    chatlas_root: Path,
-    session_index: list[dict[str, Any]],
-    normalized_source_signatures: dict[str, dict[str, object]],
-    transcript_cache: dict[str, dict[str, object]],
-    transcript_cache_enabled: bool,
-) -> ChatlasDerivedTranscriptMaterialization:
-    transcript_root = chatlas_root / _DERIVED_TRANSCRIPTS_RELATIVE_ROOT
-    expected_paths: set[Path] = set()
-    transcript_session_count = 0
-    next_transcript_cache: dict[str, dict[str, object]] = {}
-
-    for session in session_index:
-        transcript_cache_key, jsonl_path, markdown_path = _derived_transcript_cache_key_and_paths(
-            chatlas_root,
-            session,
-        )
-        try:
-            source_signature = _derived_transcript_source_signature_for_session(
-                session,
-                normalized_source_signature=normalized_source_signatures.get(transcript_cache_key),
-            )
-        except (FileNotFoundError, OSError):
-            continue
-        if source_signature is None:
-            continue
-        if (
-            transcript_cache_enabled
-            and _derived_transcript_cache_entry_matches(
-                transcript_cache.get(transcript_cache_key),
-                source_signature,
-            )
-            and jsonl_path.is_file()
-            and markdown_path.is_file()
-        ):
-            transcript_session_count += 1
-            expected_paths.add(jsonl_path)
-            expected_paths.add(markdown_path)
-            next_transcript_cache[transcript_cache_key] = source_signature
-            continue
-        rendered_outputs: dict[str, str] = {}
-        try:
-            for output_format in ("jsonl", "markdown"):
-                rendered_outputs[output_format] = _render_transcript(session, output_format=output_format)
-        except (CliError, OSError, json.JSONDecodeError):
-            continue
-        transcript_session_count += 1
-        output_paths = {
-            "jsonl": jsonl_path,
-            "markdown": markdown_path,
-        }
-        for output_format, rendered_output in rendered_outputs.items():
-            transcript_path = output_paths[output_format]
-            transcript_path.parent.mkdir(parents=True, exist_ok=True)
-            write_text_if_changed(transcript_path, rendered_output)
-            expected_paths.add(transcript_path)
-        next_transcript_cache[transcript_cache_key] = source_signature
-
-    if transcript_cache_enabled and transcript_cache:
-        deleted_paths = _prune_stale_derived_transcripts(
-            chatlas_root=chatlas_root,
-            stale_cache_keys=set(transcript_cache) - set(next_transcript_cache),
-        )
-        _prune_empty_parent_dirs(deleted_paths, stop=transcript_root)
-    else:
-        _prune_stale_files(root=transcript_root, expected_paths=expected_paths)
-        _prune_empty_dirs(transcript_root, stop=transcript_root)
-    return ChatlasDerivedTranscriptMaterialization(
-        session_count=transcript_session_count,
-        transcript_cache=next_transcript_cache,
-    )
-
-
-def _materialize_derived_summaries(
-    *,
-    chatlas_root: Path,
-    session_index: list[dict[str, Any]],
-) -> dict[str, int]:
-    summary_rows_by_level = {
-        level: [
-            _build_session_summary(chatlas_root, session, level=level)
-            for session in session_index
-        ]
-        for level in _SUMMARY_LEVELS
-    }
-    for level, rows in summary_rows_by_level.items():
-        summaries_path = chatlas_root / _summary_relative_path(level)
-        rendered = "".join(json.dumps(summary, sort_keys=True) + "\n" for summary in rows)
-        write_text_if_changed(summaries_path, rendered)
-    return {
-        level: len(rows)
-        for level, rows in summary_rows_by_level.items()
-    }
 
 
 def _discover_chatlas_sessions(
@@ -1514,28 +1262,10 @@ def _derived_transcript_exists(chatlas_root: Path, session: dict[str, Any], *, o
     return _derived_transcript_path(chatlas_root, session, output_format=output_format).is_file()
 
 
-def _derived_transcript_cache_key(session: dict[str, Any]) -> str:
-    provider, fingerprint, session_id = _derived_transcript_session_path_components(session)
-    return f"{provider}/{fingerprint}/{session_id}"
-
-
 def _derived_transcript_path(chatlas_root: Path, session: dict[str, Any], *, output_format: str) -> Path:
     suffix = ".md" if output_format == "markdown" else ".jsonl"
     provider, fingerprint, session_id = _derived_transcript_session_path_components(session)
     return chatlas_root / _DERIVED_TRANSCRIPTS_RELATIVE_ROOT / provider / fingerprint / f"{session_id}{suffix}"
-
-
-def _derived_transcript_cache_key_and_paths(
-    chatlas_root: Path,
-    session: dict[str, Any],
-) -> tuple[str, Path, Path]:
-    provider, fingerprint, session_id = _derived_transcript_session_path_components(session)
-    base_dir = chatlas_root / _DERIVED_TRANSCRIPTS_RELATIVE_ROOT / provider / fingerprint
-    return (
-        f"{provider}/{fingerprint}/{session_id}",
-        base_dir / f"{session_id}.jsonl",
-        base_dir / f"{session_id}.md",
-    )
 
 
 def _derived_transcript_session_path_components(session: dict[str, Any]) -> tuple[str, str, str]:
@@ -1676,10 +1406,6 @@ def _load_session_index(chatlas_root: Path) -> list[dict[str, Any]]:
     return _load_jsonl_dict_rows(chatlas_root / _SESSION_INDEX_RELATIVE_PATH)
 
 
-def _load_derived_summaries_for_level(chatlas_root: Path, *, level: str) -> list[dict[str, Any]]:
-    return _load_jsonl_dict_rows(chatlas_root / _summary_relative_path(level))
-
-
 def _load_jsonl_dict_rows(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
@@ -1809,54 +1535,6 @@ def _build_chatlas_stats_provider_payload(
     }
 
 
-def _summary_levels_by_uri(chatlas_root: Path) -> dict[str, dict[str, dict[str, Any]]]:
-    summary_levels_by_uri: dict[str, dict[str, dict[str, Any]]] = {}
-    for level in _SUMMARY_LEVELS:
-        for row in _load_derived_summaries_for_level(chatlas_root, level=level):
-            uri = _string_or_none(row.get("uri"))
-            if uri is None:
-                continue
-            summary_levels_by_uri.setdefault(uri, {})[level] = row
-    return summary_levels_by_uri
-
-
-def _session_summary_for_uri(
-    summary_levels_by_uri: dict[str, dict[str, dict[str, Any]]],
-    session: dict[str, Any],
-    *,
-    level: str = "brief",
-) -> dict[str, Any] | None:
-    uri = _string_or_none(session.get("uri"))
-    if uri is None:
-        return None
-    return summary_levels_by_uri.get(uri, {}).get(level)
-
-
-def _session_summary_levels(
-    summary_levels_by_uri: dict[str, dict[str, dict[str, Any]]],
-    session: dict[str, Any],
-) -> dict[str, dict[str, Any]]:
-    uri = _string_or_none(session.get("uri"))
-    if uri is None:
-        return {}
-    return summary_levels_by_uri.get(uri, {})
-
-
-def _derived_summary_counts(
-    sessions: list[dict[str, Any]],
-    *,
-    summary_levels_by_uri: dict[str, dict[str, dict[str, Any]]],
-) -> dict[str, int]:
-    return {
-        level: sum(
-            1
-            for session in sessions
-            if _session_summary_for_uri(summary_levels_by_uri, session, level=level) is not None
-        )
-        for level in _SUMMARY_LEVELS
-    }
-
-
 def _latest_update_manifest(chatlas_root: Path) -> dict[str, Any] | None:
     manifest_dir = chatlas_root / "manifests" / "updates"
     if not manifest_dir.is_dir():
@@ -1976,14 +1654,11 @@ def _select_chatlas_sessions(
     chatlas_root: Path,
     *,
     query: str | None = None,
-    text_contain: str | None = None,
-    user_contain: str | None = None,
     providers: tuple[str, ...] | None = None,
     instances: tuple[str, ...] | None = None,
     extractable_only: bool = False,
     updated_after: float | None = None,
 ) -> list[ChatlasSessionSelection]:
-    summary_levels_by_uri = _summary_levels_by_uri(chatlas_root)
     instance_filters = None if instances is None else frozenset(instances)
     selections: list[ChatlasSessionSelection] = []
     for session in _selected_session_index(chatlas_root, providers=providers):
@@ -1997,70 +1672,19 @@ def _select_chatlas_sessions(
         matched_fields = _matched_session_index_fields(session, query=query)
         if query is not None and not matched_fields:
             continue
-        transcript_filter_match = _transcript_filter_match(
-            chatlas_root,
-            session,
-            text_contain=text_contain,
-            user_contain=user_contain,
-        )
-        if text_contain is not None or user_contain is not None:
-            if transcript_filter_match is None:
-                continue
         selections.append(
             ChatlasSessionSelection(
                 session=session,
                 matched_fields=matched_fields,
-                transcript_filter_match=transcript_filter_match or {},
-                summary=_session_summary_for_uri(summary_levels_by_uri, session),
-                summary_levels=_session_summary_levels(summary_levels_by_uri, session),
             )
         )
     return selections
-
-
-def _transcript_filter_match(
-    chatlas_root: Path,
-    session: dict[str, Any],
-    *,
-    text_contain: str | None = None,
-    user_contain: str | None = None,
-) -> dict[str, str] | None:
-    matched: dict[str, str] = {}
-    if text_contain is not None:
-        if not _session_text_contains(chatlas_root, session, text=text_contain):
-            return None
-        matched["text_contain"] = text_contain
-    if user_contain is not None:
-        if not _session_text_contains(chatlas_root, session, text=user_contain, role="user"):
-            return None
-        matched["user_contain"] = user_contain
-    return matched
 
 
 def _load_transcript_turns(chatlas_root: Path, session: dict[str, Any]) -> list[dict[str, Any]]:
     return _load_jsonl_dict_rows(
         _derived_transcript_path(chatlas_root, session, output_format="jsonl")
     )
-
-
-def _session_text_contains(
-    chatlas_root: Path,
-    session: dict[str, Any],
-    *,
-    text: str,
-    role: str | None = None,
-) -> bool:
-    needle = text.casefold()
-    for turn in _load_transcript_turns(chatlas_root, session):
-        turn_role = _string_or_none(turn.get("role"))
-        if role is not None and turn_role != role:
-            continue
-        turn_text = _string_or_none(turn.get("text"))
-        if turn_text is None:
-            continue
-        if needle in turn_text.casefold():
-            return True
-    return False
 
 
 def _chatlas_instance_name(provider_instance: ProviderInstance) -> str:
@@ -2145,13 +1769,6 @@ def _turn_previews(turns: list[dict[str, Any]], *, limit: int) -> list[dict[str,
     return previews
 
 
-def _summary_relative_path(level: str) -> Path:
-    path = _SUMMARY_RELATIVE_PATHS.get(level)
-    if path is None:
-        raise CliError(f"unsupported summary level: {level}")
-    return path
-
-
 def _render_summary(summary: dict[str, Any], *, output_format: str) -> str:
     if output_format == "json":
         return json.dumps(summary, indent=2)
@@ -2234,81 +1851,6 @@ def _write_session_index_cache(
     )
 
 
-def _derived_transcript_cache_path(chatlas_root: Path) -> Path:
-    return chatlas_root / _DERIVED_TRANSCRIPT_CACHE_RELATIVE_PATH
-
-
-def _load_derived_transcript_cache(chatlas_root: Path) -> dict[str, dict[str, object]]:
-    raw_sessions = load_chatlas_cache_section(
-        _derived_transcript_cache_path(chatlas_root),
-        entries_key="sessions",
-    )
-    sessions: dict[str, dict[str, object]] = {}
-    for session_key, raw_entry in raw_sessions.items():
-        if not isinstance(session_key, str) or not session_key.strip() or not isinstance(raw_entry, dict):
-            continue
-        source_path = raw_entry.get("source_path")
-        size = raw_entry.get("size")
-        mtime_ns = raw_entry.get("mtime_ns")
-        tail_sha256 = raw_entry.get("tail_sha256")
-        signature_version = raw_entry.get("signature_version")
-        derivation_version = raw_entry.get("derivation_version")
-        if (
-            not isinstance(source_path, str)
-            or not source_path.strip()
-            or not isinstance(size, int)
-            or not isinstance(mtime_ns, int)
-            or not isinstance(derivation_version, int)
-        ):
-            continue
-        if size < 0 or mtime_ns < 0:
-            continue
-        if tail_sha256 is not None and (not isinstance(tail_sha256, str) or not tail_sha256):
-            continue
-        if signature_version is not None and not isinstance(signature_version, int):
-            continue
-        entry: dict[str, object] = {
-            "source_path": source_path,
-            "size": size,
-            "mtime_ns": mtime_ns,
-            "derivation_version": derivation_version,
-        }
-        if tail_sha256 is not None:
-            entry["tail_sha256"] = tail_sha256
-        if signature_version is not None:
-            entry["signature_version"] = signature_version
-        sessions[session_key] = entry
-    return sessions
-
-
-def _write_derived_transcript_cache(chatlas_root: Path, transcript_cache: dict[str, dict[str, object]]) -> None:
-    write_chatlas_cache_section(
-        _derived_transcript_cache_path(chatlas_root),
-        cache_class="agentos.chatlas.derived_transcript_cache",
-        entries_key="sessions",
-        entries={
-            session_key: _serialize_derived_transcript_cache_entry(entry)
-            for session_key, entry in sorted(transcript_cache.items())
-        },
-    )
-
-
-def _serialize_derived_transcript_cache_entry(entry: dict[str, object]) -> dict[str, object]:
-    payload = {
-        "source_path": str(entry["source_path"]),
-        "size": int(entry["size"]),
-        "mtime_ns": int(entry["mtime_ns"]),
-        "derivation_version": int(entry["derivation_version"]),
-    }
-    tail_sha256 = entry.get("tail_sha256")
-    if tail_sha256 is not None:
-        payload["tail_sha256"] = str(tail_sha256)
-    signature_version = entry.get("signature_version")
-    if signature_version is not None:
-        payload["signature_version"] = int(signature_version)
-    return payload
-
-
 def _chatlas_cache_path_metadata_signature(path: Path) -> dict[str, object]:
     signature: dict[str, object] = {
         "path": str(path),
@@ -2330,106 +1872,6 @@ def _chatlas_cache_path_metadata_signature(path: Path) -> dict[str, object]:
         return signature
     signature["storage_kind"] = "other"
     return signature
-
-
-def _chatlas_cache_path_signature(path: Path) -> dict[str, object]:
-    signature: dict[str, object] = {
-        "path": str(path),
-    }
-    try:
-        source_stat = path.stat()
-    except OSError:
-        signature["exists"] = False
-        return signature
-
-    signature["exists"] = True
-    signature["mtime_ns"] = int(source_stat.st_mtime_ns)
-    if path.is_file():
-        try:
-            with path.open("rb") as handle:
-                if source_stat.st_size > _CHATLAS_CACHE_TAIL_BYTES:
-                    handle.seek(-_CHATLAS_CACHE_TAIL_BYTES, 2)
-                tail_bytes = handle.read()
-        except OSError:
-            signature["exists"] = False
-            signature.pop("mtime_ns", None)
-            return signature
-        signature["size"] = int(source_stat.st_size)
-        signature["tail_sha256"] = hashlib.sha256(tail_bytes).hexdigest()
-        return signature
-
-    signature["storage_kind"] = "directory" if path.is_dir() else "other"
-    return signature
-
-
-def _derived_transcript_source_signature(artifact_path: Path) -> dict[str, object]:
-    path_signature = _chatlas_cache_path_signature(artifact_path)
-    if not bool(path_signature.get("exists")) or not isinstance(path_signature.get("size"), int):
-        raise FileNotFoundError(artifact_path)
-    return {
-        "source_path": str(path_signature["path"]),
-        "size": int(path_signature["size"]),
-        "mtime_ns": int(path_signature["mtime_ns"]),
-        "tail_sha256": str(path_signature["tail_sha256"]),
-        "derivation_version": _DERIVED_TRANSCRIPT_DERIVATION_VERSION,
-    }
-
-
-def _derived_transcript_source_signature_for_session(
-    session: dict[str, Any],
-    *,
-    normalized_source_signature: dict[str, object] | None,
-) -> dict[str, object] | None:
-    if not bool(session.get("extractable")):
-        return None
-
-    source_signature = _derived_transcript_source_signature_from_normalized_source(
-        normalized_source_signature,
-    )
-    if source_signature is not None:
-        return source_signature
-
-    artifact_path = _primary_backing_artifact_path(session)
-    if artifact_path is None:
-        return None
-    return _derived_transcript_source_signature(artifact_path)
-
-
-def _derived_transcript_source_signature_from_normalized_source(
-    normalized_source_signature: dict[str, object] | None,
-) -> dict[str, object] | None:
-    if not isinstance(normalized_source_signature, dict):
-        return None
-
-    primary_artifact = normalized_source_signature.get("primary_backing_artifact")
-    if not isinstance(primary_artifact, dict):
-        return None
-
-    path_signature = primary_artifact.get("source_signature")
-    if not isinstance(path_signature, dict):
-        return None
-
-    source_path = path_signature.get("path")
-    size = path_signature.get("size")
-    mtime_ns = path_signature.get("mtime_ns")
-    if (
-        not isinstance(source_path, str)
-        or not source_path.strip()
-        or not bool(path_signature.get("exists"))
-        or not isinstance(size, int)
-        or not isinstance(mtime_ns, int)
-        or size < 0
-        or mtime_ns < 0
-    ):
-        return None
-
-    return {
-        "source_path": source_path,
-        "size": size,
-        "mtime_ns": mtime_ns,
-        "signature_version": 2,
-        "derivation_version": _DERIVED_TRANSCRIPT_DERIVATION_VERSION,
-    }
 
 
 def _session_index_cache_entry_matches(
@@ -2511,83 +1953,6 @@ def _session_index_path_signature_matches(
         cached_path_signature.get(field_name) == source_path_signature.get(field_name)
         for field_name in comparable_fields
     )
-
-
-def _derived_transcript_cache_entry_matches(
-    cached_entry: dict[str, object] | None,
-    source_signature: dict[str, object],
-) -> bool:
-    if cached_entry is None:
-        return False
-    comparable_fields = ("source_path", "size", "mtime_ns", "derivation_version")
-    for field_name in comparable_fields:
-        if cached_entry.get(field_name) != source_signature.get(field_name):
-            return False
-
-    source_tail_sha256 = source_signature.get("tail_sha256")
-    if source_tail_sha256 is not None:
-        return cached_entry.get("tail_sha256") == source_tail_sha256
-    return True
-
-
-def _prune_stale_derived_transcripts(
-    *,
-    chatlas_root: Path,
-    stale_cache_keys: set[str],
-) -> tuple[Path, ...]:
-    deleted_paths: list[Path] = []
-    for cache_key in stale_cache_keys:
-        for path in _derived_transcript_paths_for_cache_key(chatlas_root, cache_key):
-            if not path.is_file():
-                continue
-            path.unlink()
-            deleted_paths.append(path)
-    return tuple(deleted_paths)
-
-
-def _derived_transcript_paths_for_cache_key(chatlas_root: Path, cache_key: str) -> tuple[Path, ...]:
-    parts = cache_key.split("/")
-    if len(parts) != 3 or any(not part for part in parts):
-        return ()
-
-    provider, fingerprint, session_id = parts
-    base_dir = chatlas_root / _DERIVED_TRANSCRIPTS_RELATIVE_ROOT / provider / fingerprint
-    return (base_dir / f"{session_id}.jsonl", base_dir / f"{session_id}.md")
-
-
-def _prune_empty_parent_dirs(paths: tuple[Path, ...], *, stop: Path) -> None:
-    for path in sorted(paths, key=lambda candidate: len(candidate.parts), reverse=True):
-        current = path.parent
-        while current != stop and stop in current.parents:
-            if not current.exists():
-                current = current.parent
-                continue
-            if any(current.iterdir()):
-                break
-            current.rmdir()
-            current = current.parent
-
-
-def _prune_stale_files(*, root: Path, expected_paths: set[Path]) -> None:
-    if not root.exists():
-        return
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if path in expected_paths:
-            continue
-        path.unlink()
-
-
-def _prune_empty_dirs(root: Path, *, stop: Path) -> None:
-    if not root.exists():
-        return
-    for path in sorted((candidate for candidate in root.rglob("*") if candidate.is_dir()), key=lambda candidate: len(candidate.parts), reverse=True):
-        if path == stop:
-            continue
-        if any(path.iterdir()):
-            continue
-        path.rmdir()
 
 
 __all__ = [
