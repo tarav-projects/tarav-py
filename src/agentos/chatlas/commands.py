@@ -42,7 +42,7 @@ def _cmd_chatlas_update(args: argparse.Namespace) -> int:
     payload = chatlas_update(
         providers=optional_string_tuple(args.providers),
         scan_cache_enabled=not disable_cache and args.scan_cache == "true",
-        normalized_cache_enabled=not disable_cache and args.normalized_cache == "true",
+        session_index_cache_enabled=not disable_cache and args.session_index_cache == "true",
         transcript_cache_enabled=not disable_cache and args.transcript_cache == "true",
         progress=_chatlas_update_progress_handler(args.verbose_mode),
     )
@@ -141,7 +141,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     update_parser.add_argument(
         "--disable-cache",
         action="store_true",
-        help="Disable all Chatlas update caches. Overrides `--scan-cache`, `--normalized-cache`, and `--transcript-cache`.",
+        help="Disable all Chatlas update caches. Overrides `--scan-cache`, `--session-index-cache`, and `--transcript-cache`.",
     )
     update_parser.add_argument(
         "--scan-cache",
@@ -156,10 +156,10 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Use the local derived transcript cache during transcript materialization (default: true).",
     )
     update_parser.add_argument(
-        "--normalized-cache",
+        "--session-index-cache",
         choices=("true", "false"),
         default="true",
-        help="Use the local normalized session cache during normalized session materialization (default: true).",
+        help="Use the local session index cache during session index materialization (default: true).",
     )
     update_parser.set_defaults(handler=_cmd_chatlas_update)
 
@@ -247,7 +247,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     query_parser.add_argument(
         "--compact",
         action="store_true",
-        help="Return compact identifier-oriented session rows instead of the full normalized session payload.",
+        help="Return compact identifier-oriented session rows instead of the full session index payload.",
     )
     query_parser.add_argument(
         "--include-match",

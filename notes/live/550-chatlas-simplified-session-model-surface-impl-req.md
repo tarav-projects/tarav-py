@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Ready for implementation; the user accepted the simplified Chatlas direction and requested this durable implementation plan.
+Implementation started; Phase 1 renamed the session catalog path and public update fields, while transcript/summary removal remains next.
 
 ## User Intent
 
@@ -180,3 +180,4 @@ Promote the session-model surface:
 ## End Log
 
 - 2026-04-30: Created after the user accepted the simplified Chatlas command surface and requested an implementation request artifact.
+- 2026-04-30: Phase 1 started. The session catalog now materializes at `index/sessions.index.jsonl`, update payloads expose `session_index_path` / `session_index_count`, and the update cache flag is now `--session-index-cache`.

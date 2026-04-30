@@ -57,15 +57,15 @@ from agentos.chatlas.raw import (
 
 CHATLAS_DIRNAME = "chatlas"
 DEFAULT_CHATLAS_COMMIT_PREFIX = "chatlas update"
-_NORMALIZED_SESSIONS_RELATIVE_PATH = Path("normalized") / "sessions.jsonl"
+_SESSION_INDEX_RELATIVE_PATH = Path("index") / "sessions.index.jsonl"
 _DERIVED_TRANSCRIPTS_RELATIVE_ROOT = Path("derived") / "transcripts"
 _DERIVED_SUMMARIES_RELATIVE_ROOT = Path("derived") / "summaries"
-_NORMALIZED_SESSION_CACHE_RELATIVE_PATH = Path("cache") / "normalized-sessions-v1.json"
+_SESSION_INDEX_CACHE_RELATIVE_PATH = Path("cache") / "session-index-v1.json"
 _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH = _DERIVED_SUMMARIES_RELATIVE_ROOT / "brief.jsonl"
 _DERIVED_DETAILED_SUMMARIES_RELATIVE_PATH = _DERIVED_SUMMARIES_RELATIVE_ROOT / "detailed.jsonl"
 _DERIVED_TRANSCRIPT_CACHE_RELATIVE_PATH = Path("cache") / "derived-transcripts-v1.json"
 _CHATLAS_CACHE_TAIL_BYTES = 8192
-_NORMALIZED_SESSION_DERIVATION_VERSION = 1
+_SESSION_INDEX_DERIVATION_VERSION = 1
 _DERIVED_TRANSCRIPT_DERIVATION_VERSION = 1
 _SUMMARY_RELATIVE_PATHS = {
     "brief": _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH,
@@ -101,10 +101,10 @@ class ChatlasArchiveResult:
 
 
 @dataclass(frozen=True)
-class ChatlasNormalizedSessionMaterialization:
+class ChatlasSessionIndexMaterialization:
     sessions: list[dict[str, Any]]
     source_signatures: dict[str, dict[str, object]]
-    normalized_session_cache: dict[str, dict[str, object]]
+    session_index_cache: dict[str, dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -116,7 +116,7 @@ class ChatlasDerivedTranscriptMaterialization:
 @dataclass
 class ChatlasUpdateCaches:
     raw_scan: dict[str, dict[str, dict[str, int]]]
-    normalized_sessions: dict[str, dict[str, object]]
+    session_index: dict[str, dict[str, object]]
     transcripts: dict[str, dict[str, object]]
 
 
@@ -184,14 +184,14 @@ def chatlas_update(
     chatlas_root: Path | None = None,
     start_path: Path | str = ".",
     scan_cache_enabled: bool = True,
-    normalized_cache_enabled: bool = True,
+    session_index_cache_enabled: bool = True,
     transcript_cache_enabled: bool = True,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, object]:
     settings = configured_chatlas_settings(start_path=start_path)
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
     raw_root = chatlas_root_path / "raw"
-    normalized_root = chatlas_root_path / "normalized"
+    index_root = chatlas_root_path / "index"
     derived_root = chatlas_root_path / "derived"
     selected_instances = settings.provider_instances
     if providers is not None:
@@ -201,14 +201,14 @@ def chatlas_update(
             if instance.family in providers
         )
     if not selected_instances:
-        normalized_sessions = _selected_normalized_sessions(chatlas_root_path, providers=providers)
+        session_index = _selected_session_index(chatlas_root_path, providers=providers)
         derived_summary_counts = {
             level: len(_load_derived_summaries_for_level(chatlas_root_path, level=level))
             for level in _SUMMARY_LEVELS
         }
         derived_transcript_session_count = sum(
             1
-            for session in normalized_sessions
+            for session in session_index
             if _derived_transcript_exists(chatlas_root_path, session, output_format="markdown")
         )
         return {
@@ -216,10 +216,10 @@ def chatlas_update(
             "command": "chatlas update",
             "chatlas_root": str(chatlas_root_path),
             "raw_root": str(raw_root),
-            "normalized_root": str(normalized_root),
+            "index_root": str(index_root),
             "derived_root": str(derived_root),
-            "normalized_sessions_path": str(chatlas_root_path / _NORMALIZED_SESSIONS_RELATIVE_PATH),
-            "normalized_session_count": len(normalized_sessions),
+            "session_index_path": str(chatlas_root_path / _SESSION_INDEX_RELATIVE_PATH),
+            "session_index_count": len(session_index),
             "derived_transcript_session_count": derived_transcript_session_count,
             "derived_summaries_path": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
             "derived_summary_paths": {
@@ -230,7 +230,7 @@ def chatlas_update(
             "derived_summary_counts": derived_summary_counts,
             "manifest_path": None,
             "scan_cache_enabled": scan_cache_enabled,
-            "normalized_cache_enabled": normalized_cache_enabled,
+            "session_index_cache_enabled": session_index_cache_enabled,
             "transcript_cache_enabled": transcript_cache_enabled,
             "commit_prefix": settings.commit_prefix,
             "provider_count": 0,
@@ -244,12 +244,12 @@ def chatlas_update(
         }
     selected_contexts = tuple(_build_chatlas_provider_context(instance) for instance in selected_instances)
     _ensure_git_repo(chatlas_root_path)
-    if scan_cache_enabled or normalized_cache_enabled or transcript_cache_enabled:
+    if scan_cache_enabled or session_index_cache_enabled or transcript_cache_enabled:
         _ensure_chatlas_cache_gitignore(chatlas_root_path)
     update_caches = _load_chatlas_update_caches(
         chatlas_root=chatlas_root_path,
         scan_cache_enabled=scan_cache_enabled,
-        normalized_cache_enabled=normalized_cache_enabled,
+        session_index_cache_enabled=session_index_cache_enabled,
         transcript_cache_enabled=transcript_cache_enabled,
     )
     _emit_chatlas_progress(
@@ -276,20 +276,20 @@ def chatlas_update(
         elapsed_seconds=time.perf_counter() - archive_started_at,
     )
 
-    normalized_materialization = _run_chatlas_timed_phase(
+    session_index_materialization = _run_chatlas_timed_phase(
         progress=progress,
-        start_message="materializing normalized sessions",
+        start_message="materializing session index",
         finish_message=lambda materialization: (
-            f"normalized sessions: {len(materialization.sessions)}"
+            f"session index: {len(materialization.sessions)}"
         ),
-        run=lambda: _materialize_normalized_sessions(
+        run=lambda: _materialize_session_index(
             chatlas_root=chatlas_root_path,
             provider_instances=settings.provider_instances,
-            normalized_session_cache=update_caches.normalized_sessions,
-            normalized_cache_enabled=normalized_cache_enabled,
+            session_index_cache=update_caches.session_index,
+            session_index_cache_enabled=session_index_cache_enabled,
         ),
     )
-    normalized_sessions = normalized_materialization.sessions
+    session_index = session_index_materialization.sessions
     transcript_materialization = _run_chatlas_timed_phase(
         progress=progress,
         start_message="materializing derived transcripts",
@@ -298,8 +298,8 @@ def chatlas_update(
         ),
         run=lambda: _materialize_derived_transcripts(
             chatlas_root=chatlas_root_path,
-            normalized_sessions=normalized_sessions,
-            normalized_source_signatures=normalized_materialization.source_signatures,
+            session_index=session_index,
+            normalized_source_signatures=session_index_materialization.source_signatures,
             transcript_cache=update_caches.transcripts,
             transcript_cache_enabled=transcript_cache_enabled,
         ),
@@ -313,7 +313,7 @@ def chatlas_update(
         ),
         run=lambda: _materialize_derived_summaries(
             chatlas_root=chatlas_root_path,
-            normalized_sessions=normalized_sessions,
+            session_index=session_index,
         ),
     )
     git_started_at = time.perf_counter()
@@ -330,13 +330,13 @@ def chatlas_update(
                 recorded_at=recorded_at,
                 chatlas_root=chatlas_root_path,
                 raw_root=raw_root,
-                normalized_root=normalized_root,
+                index_root=index_root,
                 derived_root=derived_root,
                 settings=settings,
                 selected_contexts=selected_contexts,
                 synced_instance_count=synced_instance_count,
                 skipped_instance_count=skipped_instance_count,
-                normalized_session_count=len(normalized_sessions),
+                session_index_count=len(session_index),
                 derived_transcript_session_count=derived_transcript_session_count,
                 derived_summary_counts=derived_summary_counts,
                 instance_payloads=instance_payloads,
@@ -369,13 +369,13 @@ def chatlas_update(
         f"git finalization: {git_status} (elapsed={_format_wall_clock_elapsed(time.perf_counter() - git_started_at)})",
     )
 
-    update_caches.normalized_sessions = normalized_materialization.normalized_session_cache
+    update_caches.session_index = session_index_materialization.session_index_cache
     update_caches.transcripts = transcript_materialization.transcript_cache
     _write_chatlas_update_caches(
         chatlas_root=chatlas_root_path,
         caches=update_caches,
         scan_cache_enabled=scan_cache_enabled,
-        normalized_cache_enabled=normalized_cache_enabled,
+        session_index_cache_enabled=session_index_cache_enabled,
         transcript_cache_enabled=transcript_cache_enabled,
     )
 
@@ -385,10 +385,10 @@ def chatlas_update(
         "command": "chatlas update",
         "chatlas_root": str(chatlas_root_path),
         "raw_root": str(raw_root),
-        "normalized_root": str(normalized_root),
+        "index_root": str(index_root),
         "derived_root": str(derived_root),
-        "normalized_sessions_path": str(chatlas_root_path / _NORMALIZED_SESSIONS_RELATIVE_PATH),
-        "normalized_session_count": len(normalized_sessions),
+        "session_index_path": str(chatlas_root_path / _SESSION_INDEX_RELATIVE_PATH),
+        "session_index_count": len(session_index),
         "derived_transcript_session_count": derived_transcript_session_count,
         "derived_summaries_path": str(chatlas_root_path / _DERIVED_BRIEF_SUMMARIES_RELATIVE_PATH),
         "derived_summary_paths": {
@@ -399,7 +399,7 @@ def chatlas_update(
         "derived_summary_counts": derived_summary_counts,
         "manifest_path": None if manifest_path is None else str(manifest_path),
         "scan_cache_enabled": scan_cache_enabled,
-        "normalized_cache_enabled": normalized_cache_enabled,
+        "session_index_cache_enabled": session_index_cache_enabled,
         "transcript_cache_enabled": transcript_cache_enabled,
         "commit_prefix": settings.commit_prefix,
         "provider_count": len(provider_names),
@@ -450,13 +450,13 @@ def _load_chatlas_update_caches(
     *,
     chatlas_root: Path,
     scan_cache_enabled: bool,
-    normalized_cache_enabled: bool,
+    session_index_cache_enabled: bool,
     transcript_cache_enabled: bool,
 ) -> ChatlasUpdateCaches:
     return ChatlasUpdateCaches(
         raw_scan=_load_chatlas_raw_scan_cache(chatlas_root) if scan_cache_enabled else {},
-        normalized_sessions=(
-            _load_normalized_session_cache(chatlas_root) if normalized_cache_enabled else {}
+        session_index=(
+            _load_session_index_cache(chatlas_root) if session_index_cache_enabled else {}
         ),
         transcripts=(
             _load_derived_transcript_cache(chatlas_root) if transcript_cache_enabled else {}
@@ -469,13 +469,13 @@ def _write_chatlas_update_caches(
     chatlas_root: Path,
     caches: ChatlasUpdateCaches,
     scan_cache_enabled: bool,
-    normalized_cache_enabled: bool,
+    session_index_cache_enabled: bool,
     transcript_cache_enabled: bool,
 ) -> None:
     if scan_cache_enabled:
         _write_chatlas_raw_scan_cache(chatlas_root, caches.raw_scan)
-    if normalized_cache_enabled:
-        _write_normalized_session_cache(chatlas_root, caches.normalized_sessions)
+    if session_index_cache_enabled:
+        _write_session_index_cache(chatlas_root, caches.session_index)
     if transcript_cache_enabled:
         _write_derived_transcript_cache(chatlas_root, caches.transcripts)
 
@@ -694,7 +694,7 @@ def chatlas_stats(
     full_output: bool = False,
 ) -> dict[str, object]:
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
-    sessions = _selected_normalized_sessions(chatlas_root_path, providers=providers)
+    sessions = _selected_session_index(chatlas_root_path, providers=providers)
 
     sessions_by_provider: dict[str, list[dict[str, Any]]] = {}
     for session in sessions:
@@ -1077,13 +1077,13 @@ def _build_update_manifest(
     recorded_at: str,
     chatlas_root: Path,
     raw_root: Path,
-    normalized_root: Path,
+    index_root: Path,
     derived_root: Path,
     settings: ChatlasSettings,
     selected_contexts: tuple[object, ...],
     synced_instance_count: int,
     skipped_instance_count: int,
-    normalized_session_count: int,
+    session_index_count: int,
     derived_transcript_session_count: int,
     derived_summary_counts: dict[str, int],
     instance_payloads: list[dict[str, object]],
@@ -1098,7 +1098,7 @@ def _build_update_manifest(
         "command": "chatlas update",
         "chatlas_root": str(chatlas_root),
         "raw_root": str(raw_root),
-        "normalized_root": str(normalized_root),
+        "index_root": str(index_root),
         "derived_root": str(derived_root),
         "commit_prefix": settings.commit_prefix,
         "provider_count": len(provider_names),
@@ -1106,7 +1106,7 @@ def _build_update_manifest(
         "instance_count": len(selected_contexts),
         "synced_instance_count": synced_instance_count,
         "skipped_instance_count": skipped_instance_count,
-        "normalized_session_count": normalized_session_count,
+        "session_index_count": session_index_count,
         "derived_transcript_session_count": derived_transcript_session_count,
         "derived_summary_count": derived_summary_counts["brief"],
         "derived_summary_counts": derived_summary_counts,
@@ -1188,59 +1188,59 @@ def _normalize_summary_levels(levels: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def _materialize_normalized_sessions(
+def _materialize_session_index(
     *,
     chatlas_root: Path,
     provider_instances: tuple[ProviderInstance, ...],
-    normalized_session_cache: dict[str, dict[str, object]],
-    normalized_cache_enabled: bool,
-) -> ChatlasNormalizedSessionMaterialization:
+    session_index_cache: dict[str, dict[str, object]],
+    session_index_cache_enabled: bool,
+) -> ChatlasSessionIndexMaterialization:
     discovered_sessions = _discover_chatlas_sessions(
         raw_root=chatlas_root / "raw",
         provider_instances=provider_instances,
     )
-    normalized_sessions: list[dict[str, Any]] = []
+    session_index: list[dict[str, Any]] = []
     source_signatures: dict[str, dict[str, object]] = {}
-    next_normalized_session_cache: dict[str, dict[str, object]] = {}
+    next_session_index_cache: dict[str, dict[str, object]] = {}
     for session in discovered_sessions:
-        cache_key = _normalized_session_cache_key(session)
-        source_signature = _normalized_session_source_signature(session)
+        cache_key = _session_index_cache_key(session)
+        source_signature = _session_index_source_signature(session)
         source_signatures[cache_key] = source_signature
-        cached_entry = normalized_session_cache.get(cache_key)
+        cached_entry = session_index_cache.get(cache_key)
         if (
-            normalized_cache_enabled
-            and _normalized_session_cache_entry_matches(cached_entry, source_signature)
+            session_index_cache_enabled
+            and _session_index_cache_entry_matches(cached_entry, source_signature)
         ):
             cached_session = cached_entry.get("session")
             if isinstance(cached_session, dict):
-                normalized_session = dict(cached_session)
-                normalized_sessions.append(normalized_session)
-                next_normalized_session_cache[cache_key] = {
+                indexed_session = dict(cached_session)
+                session_index.append(indexed_session)
+                next_session_index_cache[cache_key] = {
                     "source_signature": source_signature,
-                    "session": normalized_session,
+                    "session": indexed_session,
                 }
                 continue
-        normalized_session = _normalized_session_record(session)
-        normalized_sessions.append(normalized_session)
-        next_normalized_session_cache[cache_key] = {
+        indexed_session = _session_index_record(session)
+        session_index.append(indexed_session)
+        next_session_index_cache[cache_key] = {
             "source_signature": source_signature,
-            "session": normalized_session,
+            "session": indexed_session,
         }
-    normalized_path = chatlas_root / _NORMALIZED_SESSIONS_RELATIVE_PATH
-    normalized_path.parent.mkdir(parents=True, exist_ok=True)
-    rendered = "".join(json.dumps(session, sort_keys=True) + "\n" for session in normalized_sessions)
-    write_text_if_changed(normalized_path, rendered)
-    return ChatlasNormalizedSessionMaterialization(
-        sessions=normalized_sessions,
+    index_path = chatlas_root / _SESSION_INDEX_RELATIVE_PATH
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    rendered = "".join(json.dumps(session, sort_keys=True) + "\n" for session in session_index)
+    write_text_if_changed(index_path, rendered)
+    return ChatlasSessionIndexMaterialization(
+        sessions=session_index,
         source_signatures=source_signatures,
-        normalized_session_cache=next_normalized_session_cache,
+        session_index_cache=next_session_index_cache,
     )
 
 
 def _materialize_derived_transcripts(
     *,
     chatlas_root: Path,
-    normalized_sessions: list[dict[str, Any]],
+    session_index: list[dict[str, Any]],
     normalized_source_signatures: dict[str, dict[str, object]],
     transcript_cache: dict[str, dict[str, object]],
     transcript_cache_enabled: bool,
@@ -1250,7 +1250,7 @@ def _materialize_derived_transcripts(
     transcript_session_count = 0
     next_transcript_cache: dict[str, dict[str, object]] = {}
 
-    for session in normalized_sessions:
+    for session in session_index:
         transcript_cache_key, jsonl_path, markdown_path = _derived_transcript_cache_key_and_paths(
             chatlas_root,
             session,
@@ -1314,12 +1314,12 @@ def _materialize_derived_transcripts(
 def _materialize_derived_summaries(
     *,
     chatlas_root: Path,
-    normalized_sessions: list[dict[str, Any]],
+    session_index: list[dict[str, Any]],
 ) -> dict[str, int]:
     summary_rows_by_level = {
         level: [
             _build_session_summary(chatlas_root, session, level=level)
-            for session in normalized_sessions
+            for session in session_index
         ]
         for level in _SUMMARY_LEVELS
     }
@@ -1429,7 +1429,7 @@ def _match_session_home_slot(
     return None
 
 
-def _normalized_session_record(session) -> dict[str, Any]:
+def _session_index_record(session) -> dict[str, Any]:
     payload = _build_common_session_stats(
         session,
         include_artifacts=True,
@@ -1545,14 +1545,14 @@ def _derived_transcript_session_path_components(session: dict[str, Any]) -> tupl
     return provider, fingerprint, session_id
 
 
-def _normalized_session_cache_key(session: ChatSession) -> str:
+def _session_index_cache_key(session: ChatSession) -> str:
     provider = _session_fs_component(session.provider)
     fingerprint = _session_fs_component(session.provider_instance.fingerprint)
     session_id = _session_fs_component(session.session_id)
     return f"{provider}/{fingerprint}/{session_id}"
 
 
-def _normalized_session_source_signature(session: ChatSession) -> dict[str, object]:
+def _session_index_source_signature(session: ChatSession) -> dict[str, object]:
     backing_artifacts = session.backing_artifacts()
     primary_backing_artifact = session.primary_backing_artifact()
     return {
@@ -1564,28 +1564,28 @@ def _normalized_session_source_signature(session: ChatSession) -> dict[str, obje
         "display_name_field": session.display_name_field(),
         "updated_at": _format_stats_timestamp(session.sort_timestamp()),
         "extractable": _chatlas_session_is_probably_extractable(session, backing_artifacts),
-        "native": _normalized_session_native_payload(session),
+        "native": _session_index_native_payload(session),
         "primary_backing_artifact": (
             None
             if primary_backing_artifact is None
-            else _normalized_session_backing_artifact_signature(session, primary_backing_artifact)
+            else _session_index_backing_artifact_signature(session, primary_backing_artifact)
         ),
         "backing_artifacts": [
-            _normalized_session_backing_artifact_signature(session, artifact)
+            _session_index_backing_artifact_signature(session, artifact)
             for artifact in backing_artifacts
         ],
         "signature_version": 2,
-        "derivation_version": _NORMALIZED_SESSION_DERIVATION_VERSION,
+        "derivation_version": _SESSION_INDEX_DERIVATION_VERSION,
     }
 
 
-def _normalized_session_native_payload(session: ChatSession) -> dict[str, Any]:
+def _session_index_native_payload(session: ChatSession) -> dict[str, Any]:
     payload = dict(session.native_fields())
     payload.pop("session_id", None)
     return payload
 
 
-def _normalized_session_backing_artifact_signature(
+def _session_index_backing_artifact_signature(
     session: ChatSession,
     artifact,
 ) -> dict[str, object]:
@@ -1672,8 +1672,8 @@ def _session_fs_component(value: str) -> str:
     return quote(value, safe="._-")
 
 
-def _load_normalized_sessions(chatlas_root: Path) -> list[dict[str, Any]]:
-    return _load_jsonl_dict_rows(chatlas_root / _NORMALIZED_SESSIONS_RELATIVE_PATH)
+def _load_session_index(chatlas_root: Path) -> list[dict[str, Any]]:
+    return _load_jsonl_dict_rows(chatlas_root / _SESSION_INDEX_RELATIVE_PATH)
 
 
 def _load_derived_summaries_for_level(chatlas_root: Path, *, level: str) -> list[dict[str, Any]]:
@@ -1716,12 +1716,12 @@ def _iter_chatlas_session_contexts(
         yield _build_provider_context(session_provider_instance)
 
 
-def _selected_normalized_sessions(
+def _selected_session_index(
     chatlas_root: Path,
     *,
     providers: tuple[str, ...] | None = None,
 ) -> list[dict[str, Any]]:
-    sessions = _load_normalized_sessions(chatlas_root)
+    sessions = _load_session_index(chatlas_root)
     if providers is None:
         return sessions
     requested_providers = set(providers)
@@ -1874,7 +1874,7 @@ def _latest_update_manifest(chatlas_root: Path) -> dict[str, Any] | None:
     return payload
 
 
-def _matched_normalized_session_fields(
+def _matched_session_index_fields(
     session: dict[str, Any],
     *,
     query: str | None,
@@ -1986,7 +1986,7 @@ def _select_chatlas_sessions(
     summary_levels_by_uri = _summary_levels_by_uri(chatlas_root)
     instance_filters = None if instances is None else frozenset(instances)
     selections: list[ChatlasSessionSelection] = []
-    for session in _selected_normalized_sessions(chatlas_root, providers=providers):
+    for session in _selected_session_index(chatlas_root, providers=providers):
         if not _session_matches_query_filters(
             session,
             extractable_only=extractable_only,
@@ -1994,7 +1994,7 @@ def _select_chatlas_sessions(
             instances=instance_filters,
         ):
             continue
-        matched_fields = _matched_normalized_session_fields(session, query=query)
+        matched_fields = _matched_session_index_fields(session, query=query)
         if query is not None and not matched_fields:
             continue
         transcript_filter_match = _transcript_filter_match(
@@ -2192,13 +2192,13 @@ def _render_summary(summary: dict[str, Any], *, output_format: str) -> str:
     return "\n".join(lines)
 
 
-def _normalized_session_cache_path(chatlas_root: Path) -> Path:
-    return chatlas_root / _NORMALIZED_SESSION_CACHE_RELATIVE_PATH
+def _session_index_cache_path(chatlas_root: Path) -> Path:
+    return chatlas_root / _SESSION_INDEX_CACHE_RELATIVE_PATH
 
 
-def _load_normalized_session_cache(chatlas_root: Path) -> dict[str, dict[str, object]]:
+def _load_session_index_cache(chatlas_root: Path) -> dict[str, dict[str, object]]:
     raw_sessions = load_chatlas_cache_section(
-        _normalized_session_cache_path(chatlas_root),
+        _session_index_cache_path(chatlas_root),
         entries_key="sessions",
     )
     sessions: dict[str, dict[str, object]] = {}
@@ -2216,20 +2216,20 @@ def _load_normalized_session_cache(chatlas_root: Path) -> dict[str, dict[str, ob
     return sessions
 
 
-def _write_normalized_session_cache(
+def _write_session_index_cache(
     chatlas_root: Path,
-    normalized_session_cache: dict[str, dict[str, object]],
+    session_index_cache: dict[str, dict[str, object]],
 ) -> None:
     write_chatlas_cache_section(
-        _normalized_session_cache_path(chatlas_root),
-        cache_class="agentos.chatlas.normalized_session_cache",
+        _session_index_cache_path(chatlas_root),
+        cache_class="agentos.chatlas.session_index_cache",
         entries_key="sessions",
         entries={
             session_key: {
                 "source_signature": dict(entry["source_signature"]),
                 "session": dict(entry["session"]),
             }
-            for session_key, entry in sorted(normalized_session_cache.items())
+            for session_key, entry in sorted(session_index_cache.items())
         },
     )
 
@@ -2432,7 +2432,7 @@ def _derived_transcript_source_signature_from_normalized_source(
     }
 
 
-def _normalized_session_cache_entry_matches(
+def _session_index_cache_entry_matches(
     cached_entry: dict[str, object] | None,
     source_signature: dict[str, object],
 ) -> bool:
@@ -2442,19 +2442,6 @@ def _normalized_session_cache_entry_matches(
     if not isinstance(cached_session, dict):
         return False
     cached_source_signature = cached_entry.get("source_signature")
-    return (
-        cached_source_signature == source_signature
-        or _legacy_normalized_session_cache_entry_matches(
-            cached_source_signature,
-            source_signature,
-        )
-    )
-
-
-def _legacy_normalized_session_cache_entry_matches(
-    cached_source_signature: object,
-    source_signature: dict[str, object],
-) -> bool:
     if not isinstance(cached_source_signature, dict):
         return False
 
@@ -2474,7 +2461,7 @@ def _legacy_normalized_session_cache_entry_matches(
         if cached_source_signature.get(field_name) != source_signature.get(field_name):
             return False
 
-    if not _normalized_session_artifact_signature_matches(
+    if not _session_index_artifact_signature_matches(
         cached_source_signature.get("primary_backing_artifact"),
         source_signature.get("primary_backing_artifact"),
     ):
@@ -2487,12 +2474,12 @@ def _legacy_normalized_session_cache_entry_matches(
     if len(cached_artifacts) != len(source_artifacts):
         return False
     return all(
-        _normalized_session_artifact_signature_matches(cached_artifact, source_artifact)
+        _session_index_artifact_signature_matches(cached_artifact, source_artifact)
         for cached_artifact, source_artifact in zip(cached_artifacts, source_artifacts)
     )
 
 
-def _normalized_session_artifact_signature_matches(
+def _session_index_artifact_signature_matches(
     cached_artifact: object,
     source_artifact: object,
 ) -> bool:
@@ -2506,13 +2493,13 @@ def _normalized_session_artifact_signature_matches(
         if cached_artifact.get(field_name) != source_artifact.get(field_name):
             return False
 
-    return _normalized_session_path_signature_matches(
+    return _session_index_path_signature_matches(
         cached_artifact.get("source_signature"),
         source_artifact.get("source_signature"),
     )
 
 
-def _normalized_session_path_signature_matches(
+def _session_index_path_signature_matches(
     cached_path_signature: object,
     source_path_signature: object,
 ) -> bool:

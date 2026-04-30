@@ -1579,7 +1579,7 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
     assert payload["changes_detected"] is True
     assert payload["synced_instance_count"] == 1
     assert payload["skipped_instance_count"] == 0
-    assert payload["normalized_session_count"] == 1
+    assert payload["session_index_count"] == 1
     assert payload["derived_transcript_session_count"] == 1
     assert payload["derived_summary_count"] == 1
     assert payload["derived_summary_counts"] == {"brief": 1, "detailed": 1}
@@ -1606,7 +1606,7 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
         "_auth*.json",
     ]
     assert payload["manifest_path"] is not None
-    assert Path(payload["normalized_sessions_path"]).is_file()
+    assert Path(payload["session_index_path"]).is_file()
     assert Path(payload["derived_summaries_path"]).is_file()
     assert Path(payload["derived_summary_paths"]["detailed"]).is_file()
     assert (
@@ -1629,7 +1629,7 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
     assert manifest_path.is_file()
     normalized_rows = [
         json.loads(line)
-        for line in Path(payload["normalized_sessions_path"]).read_text(encoding="utf-8").splitlines()
+        for line in Path(payload["session_index_path"]).read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     assert len(normalized_rows) == 1
@@ -1702,7 +1702,7 @@ def test_chatlas_update_supports_configured_pi_provider(
     assert payload["committed"] is True
     assert payload["changes_detected"] is True
     assert payload["synced_instance_count"] == 1
-    assert payload["normalized_session_count"] == 1
+    assert payload["session_index_count"] == 1
     assert payload["derived_transcript_session_count"] == 1
     assert payload["instances"][0]["instance"] == "pi-mm"
     assert payload["instances"][0]["destination_root"] == str(destination_root)
@@ -1716,7 +1716,7 @@ def test_chatlas_update_supports_configured_pi_provider(
 
     normalized_rows = [
         json.loads(line)
-        for line in Path(payload["normalized_sessions_path"]).read_text(encoding="utf-8").splitlines()
+        for line in Path(payload["session_index_path"]).read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     assert len(normalized_rows) == 1
@@ -1835,7 +1835,7 @@ def test_chatlas_update_copilot_uses_raw_retention_whitelist(
     assert payload["committed"] is True
     assert payload["changes_detected"] is True
     assert payload["synced_instance_count"] == 1
-    assert payload["normalized_session_count"] == 2
+    assert payload["session_index_count"] == 2
     assert payload["derived_transcript_session_count"] == 2
     assert instance_payload["instance"] == "copilot-main"
     assert instance_payload["destination_root"] == str(destination_root)
@@ -1868,7 +1868,7 @@ def test_chatlas_update_copilot_uses_raw_retention_whitelist(
 
     normalized_rows = [
         json.loads(line)
-        for line in Path(payload["normalized_sessions_path"])
+        for line in Path(payload["session_index_path"])
         .read_text(encoding="utf-8")
         .splitlines()
         if line.strip()
@@ -2151,7 +2151,7 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
     assert payload["committed"] is True
     assert payload["changes_detected"] is True
     assert payload["synced_instance_count"] == 1
-    assert payload["normalized_session_count"] == 1
+    assert payload["session_index_count"] == 1
     assert payload["derived_transcript_session_count"] == 1
     assert instance_payload["instance"] == "claude-main"
     assert instance_payload["destination_root"] is None
@@ -2205,7 +2205,7 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
 
     normalized_rows = [
         json.loads(line)
-        for line in Path(payload["normalized_sessions_path"])
+        for line in Path(payload["session_index_path"])
         .read_text(encoding="utf-8")
         .splitlines()
         if line.strip()
@@ -2322,7 +2322,7 @@ def test_chatlas_update_opencode_uses_raw_retention_policy(
     assert payload["committed"] is True
     assert payload["changes_detected"] is True
     assert payload["synced_instance_count"] == 1
-    assert payload["normalized_session_count"] == 1
+    assert payload["session_index_count"] == 1
     assert payload["derived_transcript_session_count"] == 1
     assert instance_payload["instance"] == "opencode-main"
     assert instance_payload["destination_root"] == str(destination_root)
@@ -2342,7 +2342,7 @@ def test_chatlas_update_opencode_uses_raw_retention_policy(
 
     normalized_rows = [
         json.loads(line)
-        for line in Path(payload["normalized_sessions_path"])
+        for line in Path(payload["session_index_path"])
         .read_text(encoding="utf-8")
         .splitlines()
         if line.strip()
@@ -2430,18 +2430,18 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
 
     chatlas_root = _default_chatlas_root(home)
     raw_cache_path = chatlas_raw._chatlas_raw_scan_cache_path(chatlas_root)
-    normalized_cache_path = chatlas_core._normalized_session_cache_path(chatlas_root)
+    session_index_cache_path = chatlas_core._session_index_cache_path(chatlas_root)
     transcript_cache_path = chatlas_core._derived_transcript_cache_path(chatlas_root)
 
     assert first_payload["scan_cache_enabled"] is True
-    assert first_payload["normalized_cache_enabled"] is True
+    assert first_payload["session_index_cache_enabled"] is True
     assert first_payload["transcript_cache_enabled"] is True
     assert raw_cache_path.is_file()
-    assert normalized_cache_path.is_file()
+    assert session_index_cache_path.is_file()
     assert transcript_cache_path.is_file()
     assert "/cache/" in (chatlas_root / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert _git_output(chatlas_root, "ls-files", "cache/raw-scan-v1.json") == ""
-    assert _git_output(chatlas_root, "ls-files", "cache/normalized-sessions-v1.json") == ""
+    assert _git_output(chatlas_root, "ls-files", "cache/session-index-v1.json") == ""
     assert _git_output(chatlas_root, "ls-files", "cache/derived-transcripts-v1.json") == ""
     assert _git_output(chatlas_root, "status", "--porcelain") == ""
 
@@ -2449,7 +2449,7 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
         raise AssertionError("expected scan cache to bypass destination content comparison")
 
     def fail_normalized_record(*args, **kwargs):
-        raise AssertionError("expected normalized cache to bypass normalized session rebuild")
+        raise AssertionError("expected session index cache to bypass session index rebuild")
 
     def fail_render(*args, **kwargs):
         raise AssertionError("expected transcript cache to bypass transcript rendering")
@@ -2458,7 +2458,7 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
         raise AssertionError("expected transcript cache to reuse normalized source metadata")
 
     monkeypatch.setattr(chatlas_raw, "_chatlas_archive_files_match", fail_match)
-    monkeypatch.setattr(chatlas_core, "_normalized_session_record", fail_normalized_record)
+    monkeypatch.setattr(chatlas_core, "_session_index_record", fail_normalized_record)
     monkeypatch.setattr(chatlas_core, "_render_transcript", fail_render)
     monkeypatch.setattr(chatlas_core, "_chatlas_cache_path_signature", fail_source_hash)
 
@@ -2466,7 +2466,7 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["scan_cache_enabled"] is True
-    assert payload["normalized_cache_enabled"] is True
+    assert payload["session_index_cache_enabled"] is True
     assert payload["transcript_cache_enabled"] is True
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
@@ -2513,15 +2513,15 @@ def test_chatlas_derived_transcript_cache_matches_legacy_rich_signatures() -> No
             id="transcript",
         ),
         pytest.param(
-            "--normalized-cache=false",
+            "--session-index-cache=false",
             True, False, True,
-            ("core._normalized_session_record",),
+            ("core._session_index_record",),
             id="normalized",
         ),
         pytest.param(
             "--disable-cache",
             False, False, False,
-            ("raw._chatlas_archive_files_match", "core._normalized_session_record", "core._render_transcript"),
+            ("raw._chatlas_archive_files_match", "core._session_index_record", "core._render_transcript"),
             id="disable-all",
         ),
     ],
@@ -2579,13 +2579,13 @@ def test_chatlas_update_can_disable_caches(
 
     extra_argv = ["--provider", "codex", cache_flag]
     if cache_flag == "--disable-cache":
-        extra_argv += ["--scan-cache=true", "--normalized-cache=true", "--transcript-cache=true"]
+        extra_argv += ["--scan-cache=true", "--session-index-cache=true", "--transcript-cache=true"]
 
     assert main(_chatlas_update_argv(*extra_argv)) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["scan_cache_enabled"] is expected_scan
-    assert payload["normalized_cache_enabled"] is expected_normalized
+    assert payload["session_index_cache_enabled"] is expected_normalized
     assert payload["transcript_cache_enabled"] is expected_transcript
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
@@ -2608,7 +2608,7 @@ def test_chatlas_stats_migrates_legacy_default_chatlas_root(
     legacy_root = _legacy_chatlas_root(agentos_home)
     new_root = _default_chatlas_root(home)
     _write(
-        legacy_root / "normalized" / "sessions.jsonl",
+        legacy_root / "index" / "sessions.index.jsonl",
         json.dumps(
             {
                 "class": "agentos.chatlas.session",
@@ -2626,7 +2626,7 @@ def test_chatlas_stats_migrates_legacy_default_chatlas_root(
 
     assert payload["chatlas_root"] == str(new_root)
     assert payload["stats"]["session_count"] == 1
-    assert (new_root / "normalized" / "sessions.jsonl").is_file()
+    assert (new_root / "index" / "sessions.index.jsonl").is_file()
     assert not legacy_root.exists()
 
 
@@ -2673,7 +2673,7 @@ def test_chatlas_update_preserves_archived_sessions_when_source_home_disappears(
     assert payload["committed"] is False
     assert payload["synced_instance_count"] == 0
     assert payload["skipped_instance_count"] == 1
-    assert payload["normalized_session_count"] == 1
+    assert payload["session_index_count"] == 1
     assert archived_rollout.is_file()
 
 
@@ -2717,7 +2717,7 @@ def test_chatlas_update_skips_transient_missing_source_files(
     payload = json.loads(capsys.readouterr().out)
 
     home_status = payload["instances"][0]["homes_status"][0]
-    assert payload["normalized_session_count"] == 1
+    assert payload["session_index_count"] == 1
     assert home_status["skipped_file_count"] == 0
     assert home_status["skipped_file_examples"] == []
 
@@ -2821,7 +2821,7 @@ def test_chatlas_update_uses_configured_extra_codex_instance(
         / "26"
         / f"rollout-2026-03-26T01-05-38-{extra_session_id}.jsonl"
     ).exists()
-    assert payload["normalized_session_count"] == 2
+    assert payload["session_index_count"] == 2
 
 
 def test_chatlas_update_respects_chatlas_instance_selection(
@@ -2873,7 +2873,7 @@ def test_chatlas_update_respects_chatlas_instance_selection(
 
     assert payload["instance_count"] == 1
     assert payload["synced_instance_count"] == 1
-    assert payload["normalized_session_count"] == 1
+    assert payload["session_index_count"] == 1
     assert [instance["instance"] for instance in payload["instances"]] == ["jp"]
     assert not _chatlas_home_root(home, home / ".codex").exists()
     assert (
@@ -2921,7 +2921,7 @@ def test_chatlas_update_requires_explicit_chatlas_instance_selection(
     assert payload["instance_count"] == 0
     assert payload["synced_instance_count"] == 0
     assert payload["skipped_instance_count"] == 0
-    assert payload["normalized_session_count"] == 0
+    assert payload["session_index_count"] == 0
     assert payload["instances"] == []
     assert not _chatlas_home_root(home, home / ".codex").exists()
 
@@ -2946,7 +2946,7 @@ def test_chatlas_update_without_selection_preserves_existing_dataset(
 
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     first_payload = json.loads(capsys.readouterr().out)
-    assert first_payload["normalized_session_count"] == 1
+    assert first_payload["session_index_count"] == 1
 
     _write_global_config(agentos_home / "config.json", chatlas_instance_ids=None)
 
@@ -2954,7 +2954,7 @@ def test_chatlas_update_without_selection_preserves_existing_dataset(
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["instance_count"] == 0
-    assert payload["normalized_session_count"] == 1
+    assert payload["session_index_count"] == 1
     assert payload["derived_transcript_session_count"] == 1
     assert payload["changes_detected"] is False
     assert payload["committed"] is False
@@ -2993,7 +2993,7 @@ def test_chatlas_update_uses_shared_claude_code_home_slots(
 
     assert payload["instance_count"] == 1
     assert payload["synced_instance_count"] == 1
-    assert payload["normalized_session_count"] == 0
+    assert payload["session_index_count"] == 0
     assert instance["instance"] == "claude-main"
     assert instance["destination_root"] is None
     assert instance["destination_roots"] == {
