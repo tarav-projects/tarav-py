@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Implementation in progress; Phase 6 added raw path/export commands.
+Implementation complete through Phase 7; Chatlas now backs up raw artifacts, maintains `index/sessions.index.jsonl`, exposes the in-memory session model, and provides raw artifact access commands.
 
 ## User Intent
 
@@ -34,10 +34,10 @@ This keeps provider-specific parsing isolated at the normalizer boundary and avo
 
 ## Current Situation
 
-- `agentos chatlas update` mirrors provider raw artifacts, materializes `normalized/sessions.jsonl`, materializes derived transcripts, materializes derived summaries, and commits the dataset.
-- `agentos chatlas export` supports transcript and summary exports.
-- `agentos chatlas query` supports transcript text filters and summary expansions.
-- `agentos chatlas experimental export` builds the current standard session model in memory.
+- `agentos chatlas update` mirrors provider raw artifacts, refreshes `index/sessions.index.jsonl`, and commits the dataset.
+- `agentos chatlas query` performs metadata/session-index lookup only.
+- `agentos chatlas session-model export` builds the current standard session model in memory.
+- `agentos chatlas raw path` and `agentos chatlas raw export` expose provider-native raw artifacts.
 - The accepted storage decision is that `session.std.model` remains in memory/export-time only for now.
 
 ## Requested Change
@@ -186,3 +186,4 @@ Promote the session-model surface:
 - 2026-04-30: Phase 4 moved the session-model implementation from `agentos.chatlas.experimental` to `agentos.chatlas.session_model`, added `agentos chatlas session-model export`, renamed the public export API to `chatlas_export_session_model`, changed the envelope class to `agentos.chatlas.session_model`, and removed the top-level `experimental` flag from the model contract.
 - 2026-04-30: Phase 5 removed the old `agentos chatlas export` transcript/summary command, removed `agentos chatlas experimental export`, deleted the `chatlas_export` core API and transcript/summary rendering helpers, and pruned the associated export tests.
 - 2026-04-30: Phase 6 added `agentos chatlas raw path <query>` for newline-delimited or JSON raw artifact paths and `agentos chatlas raw export <query>` for JSON raw source payloads with UTF-8 or base64 content, both using strict one-session resolution over the session index.
+- 2026-04-30: Phase 7 removed remaining `derived_root` update payload/manifest fields, tightened visible command help wording around the session index/model surface, refreshed the installed CLI, and reran focused Chatlas verification.

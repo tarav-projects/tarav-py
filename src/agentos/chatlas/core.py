@@ -168,7 +168,6 @@ def chatlas_update(
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
     raw_root = chatlas_root_path / "raw"
     index_root = chatlas_root_path / "index"
-    derived_root = chatlas_root_path / "derived"
     selected_instances = settings.provider_instances
     if providers is not None:
         selected_instances = tuple(
@@ -184,7 +183,6 @@ def chatlas_update(
             "chatlas_root": str(chatlas_root_path),
             "raw_root": str(raw_root),
             "index_root": str(index_root),
-            "derived_root": str(derived_root),
             "session_index_path": str(chatlas_root_path / _SESSION_INDEX_RELATIVE_PATH),
             "session_index_count": len(session_index),
             "manifest_path": None,
@@ -262,7 +260,6 @@ def chatlas_update(
                 chatlas_root=chatlas_root_path,
                 raw_root=raw_root,
                 index_root=index_root,
-                derived_root=derived_root,
                 settings=settings,
                 selected_contexts=selected_contexts,
                 synced_instance_count=synced_instance_count,
@@ -313,7 +310,6 @@ def chatlas_update(
         "chatlas_root": str(chatlas_root_path),
         "raw_root": str(raw_root),
         "index_root": str(index_root),
-        "derived_root": str(derived_root),
         "session_index_path": str(chatlas_root_path / _SESSION_INDEX_RELATIVE_PATH),
         "session_index_count": len(session_index),
         "manifest_path": None if manifest_path is None else str(manifest_path),
@@ -944,7 +940,6 @@ def _build_update_manifest(
     chatlas_root: Path,
     raw_root: Path,
     index_root: Path,
-    derived_root: Path,
     settings: ChatlasSettings,
     selected_contexts: tuple[object, ...],
     synced_instance_count: int,
@@ -963,7 +958,6 @@ def _build_update_manifest(
         "chatlas_root": str(chatlas_root),
         "raw_root": str(raw_root),
         "index_root": str(index_root),
-        "derived_root": str(derived_root),
         "commit_prefix": settings.commit_prefix,
         "provider_count": len(provider_names),
         "providers": list(provider_names),

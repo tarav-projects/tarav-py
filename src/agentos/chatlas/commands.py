@@ -162,7 +162,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
 
     stats_parser = chatlas_subparsers.add_parser(
         "stats",
-        help="Summarize the normalized Chatlas dataset.",
+        help="Summarize the Chatlas session index.",
     )
     stats_parser.add_argument(
         "--provider",
@@ -253,7 +253,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
 
     session_model_parser = chatlas_subparsers.add_parser(
         "session-model",
-        help="Work with the normalized in-memory Chatlas session model.",
+        help="Work with the in-memory Chatlas session model.",
     )
     session_model_subparsers = session_model_parser.add_subparsers(
         dest="chatlas_session_model_command",
