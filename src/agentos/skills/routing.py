@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +41,13 @@ SKILLS_SOURCE_KIND_PATH = "path"
 SKILLS_SOURCE_KIND_PROJECT = "project"
 SKILLS_SOURCE_KIND_PACKAGE = "package"
 DEFAULT_PROJECT_SKILLS_DIRNAME = "skills"
+SKILLS_IMPORT_MODE_DEPOT_LINKING = "depot-linking"
+SKILLS_IMPORT_MODE_FLAT_LINKING = "flat-linking"
+SKILLS_IMPORT_MODES = (
+    SKILLS_IMPORT_MODE_DEPOT_LINKING,
+    SKILLS_IMPORT_MODE_FLAT_LINKING,
+)
+SKILLS_GLOBAL_DEPOTS_DIR = ("skills", "depots")
 
 
 @dataclass(frozen=True)
@@ -100,6 +109,8 @@ class SkillsImportResult:
     selection: SkillsSelection
     skills: list[SelectedSkillRecord]
     depot_results: tuple[SkillsDepotImportResult, ...]
+    mode: str
+    global_depot_root: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -923,7 +934,8 @@ def _resolve_profile_depots(profile: SkillsRoutingProfile, caller_root: Path) ->
         if candidate.is_absolute():
             raise CliError(f"{item_label} must be a relative project path")
 
-        resolved_candidate = (caller_root / candidate).resolve()
+        unresolved_candidate = caller_root / candidate
+        resolved_candidate = unresolved_candidate.parent.resolve() / unresolved_candidate.name
         try:
             resolved_candidate.relative_to(caller_root)
         except ValueError as exc:
@@ -1137,6 +1149,158 @@ def _write_skills_state(caller_root: Path, state: dict[str, dict[str, str]]) -> 
         },
     }
     state_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _skills_global_depot_hash(selection: SkillsSelection) -> str:
+    payload = {
+        "profile": selection.profile_name,
+        "sources": [
+            {
+                "name": source.name,
+                "root": str(source.root.expanduser().resolve()),
+                "configured_path": source.configured_path,
+                "filters": [
+                    {
+                        "include": None if item.include is None else list(item.include),
+                        "exclude": list(item.exclude),
+                    }
+                    for item in source.filters
+                ],
+            }
+            for source in selection.sources
+        ],
+    }
+    payload_text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload_text.encode("utf-8")).hexdigest()[:16]
+
+
+def _skills_global_depot_root(selection: SkillsSelection) -> Path:
+    return agentos_home_dir().joinpath(
+        *SKILLS_GLOBAL_DEPOTS_DIR,
+        _skills_global_depot_hash(selection),
+    )
+
+
+def _is_generated_flat_depot_directory(
+    caller_root: Path,
+    depot_root: Path,
+) -> bool:
+    if not depot_root.exists() or depot_root.is_symlink():
+        return False
+    if not depot_root.is_dir():
+        return False
+
+    entries = sorted(depot_root.iterdir(), key=lambda path: path.name)
+    if not entries:
+        return True
+
+    state = _load_skills_state(caller_root)
+    previous_links = state.get(_state_target_key(caller_root, depot_root), {})
+    if not previous_links:
+        return False
+
+    for entry in entries:
+        if entry.name.startswith("."):
+            return False
+        if not entry.is_symlink():
+            return False
+        if previous_links.get(entry.name) != os.readlink(entry):
+            return False
+
+    return True
+
+
+def _unlink_project_depot_state(caller_root: Path, depot_root: Path) -> None:
+    state = _load_skills_state(caller_root)
+    target_key = _state_target_key(caller_root, depot_root)
+    if target_key not in state:
+        return
+    state.pop(target_key, None)
+    _write_skills_state(caller_root, state)
+
+
+def _replace_project_depot_with_global_link(
+    caller_root: Path,
+    depot_root: Path,
+    global_depot_root: Path,
+    *,
+    force: bool = False,
+) -> SkillsSyncResult:
+    normalized_depot_root = (
+        depot_root.expanduser().resolve()
+        if not depot_root.is_symlink()
+        else depot_root.expanduser()
+    )
+    normalized_global_depot_root = global_depot_root.expanduser().resolve()
+
+    if normalized_depot_root.is_symlink():
+        if _resolved_symlink_target(normalized_depot_root) == normalized_global_depot_root:
+            return SkillsSyncResult(
+                created_links=[],
+                updated_links=[],
+                removed_links=[],
+                matching_links=[normalized_depot_root],
+            )
+        normalized_depot_root.unlink()
+        normalized_depot_root.parent.mkdir(parents=True, exist_ok=True)
+        normalized_depot_root.symlink_to(
+            _relative_symlink_target(normalized_depot_root, normalized_global_depot_root),
+            target_is_directory=True,
+        )
+        _unlink_project_depot_state(caller_root, normalized_depot_root)
+        return SkillsSyncResult(
+            created_links=[],
+            updated_links=[normalized_depot_root],
+            removed_links=[],
+            matching_links=[],
+        )
+
+    if normalized_depot_root.exists():
+        if not force and not _is_generated_flat_depot_directory(caller_root, normalized_depot_root):
+            raise CliError(f"skills depot path cannot be replaced safely: {normalized_depot_root}")
+        shutil.rmtree(normalized_depot_root)
+        action = "updated"
+    else:
+        action = "created"
+
+    normalized_depot_root.parent.mkdir(parents=True, exist_ok=True)
+    normalized_depot_root.symlink_to(
+        _relative_symlink_target(normalized_depot_root, normalized_global_depot_root),
+        target_is_directory=True,
+    )
+    _unlink_project_depot_state(caller_root, normalized_depot_root)
+
+    if action == "created":
+        return SkillsSyncResult(
+            created_links=[normalized_depot_root],
+            updated_links=[],
+            removed_links=[],
+            matching_links=[],
+        )
+    return SkillsSyncResult(
+        created_links=[],
+        updated_links=[normalized_depot_root],
+        removed_links=[],
+        matching_links=[],
+    )
+
+
+def _preflight_project_depot_global_link(
+    caller_root: Path,
+    depot_root: Path,
+    *,
+    force: bool = False,
+) -> None:
+    normalized_depot_root = (
+        depot_root.expanduser().resolve()
+        if not depot_root.is_symlink()
+        else depot_root.expanduser()
+    )
+    if force or normalized_depot_root.is_symlink() or not normalized_depot_root.exists():
+        return
+    if _is_generated_flat_depot_directory(caller_root, normalized_depot_root):
+        return
+    raise CliError(f"skills depot path cannot be replaced safely: {normalized_depot_root}")
 
 
 def _plan_profile_depot_sync(
@@ -1509,7 +1673,11 @@ def import_selected_skills(
     *,
     project: Path | str | None = None,
     force: bool = False,
+    mode: str = SKILLS_IMPORT_MODE_DEPOT_LINKING,
 ) -> SkillsImportResult:
+    if mode not in SKILLS_IMPORT_MODES:
+        raise CliError(f"unsupported skills import mode: {mode}")
+
     selection, discovered, selected_skills = _resolve_selected_skills_catalog(start_path, project=project)
 
     if not selection.depot_roots:
@@ -1517,6 +1685,43 @@ def import_selected_skills(
             selection=selection,
             skills=selected_skills,
             depot_results=(),
+            mode=mode,
+        )
+
+    if mode == SKILLS_IMPORT_MODE_DEPOT_LINKING:
+        global_depot_root = _skills_global_depot_root(selection)
+        for depot_root in selection.depot_roots:
+            _preflight_project_depot_global_link(
+                selection.caller_root,
+                depot_root,
+                force=force,
+            )
+
+        global_plan = _plan_profile_depot_sync(
+            selection.caller_root,
+            global_depot_root,
+            discovered,
+            force=True,
+        )
+        _apply_profile_depot_sync(global_plan)
+
+        return SkillsImportResult(
+            selection=selection,
+            skills=selected_skills,
+            depot_results=tuple(
+                SkillsDepotImportResult(
+                    depot_root=depot_root,
+                    sync_result=_replace_project_depot_with_global_link(
+                        selection.caller_root,
+                        depot_root,
+                        global_depot_root,
+                        force=force,
+                    ),
+                )
+                for depot_root in selection.depot_roots
+            ),
+            mode=mode,
+            global_depot_root=global_depot_root,
         )
 
     sync_plans = tuple(
@@ -1539,4 +1744,5 @@ def import_selected_skills(
             )
             for plan in sync_plans
         ),
+        mode=mode,
     )

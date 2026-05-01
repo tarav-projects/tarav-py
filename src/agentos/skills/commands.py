@@ -6,7 +6,11 @@ import sys
 from pathlib import Path
 
 from agentos._core.errors import CliError
+from agentos._core.project import require_agentos_project
+from agentos._core.project_command_log import command_payload_from_args, record_project_command
 from agentos.skills.routing import (
+    SKILLS_IMPORT_MODE_DEPOT_LINKING,
+    SKILLS_IMPORT_MODES,
     import_selected_skills,
     list_selected_skills,
     resolve_selected_skill,
@@ -143,11 +147,14 @@ def _format_selected_skills_status(status) -> str:
 def _format_selected_skills_import(result, *, force: bool) -> str:
     lines = [
         "Skills import complete",
-        f"- mode: {'force' if force else 'sync'}",
+        f"- mode: {result.mode}",
+        f"- sync: {'force' if force else 'sync'}",
         f"- profile: {result.selection.profile_name}",
         f"- catalog: {len(result.skills)}",
         f"- depots: {len(result.depot_results)}",
     ]
+    if result.global_depot_root is not None:
+        lines.append(f"- global depot: {result.global_depot_root}")
     depot_sections = [
         "\n".join(
             [
@@ -179,7 +186,16 @@ def _emit_selection_warnings(selection) -> None:
         print(f"warning: {warning}", file=sys.stderr)
 
 
+def _record_skills_project_command(args: argparse.Namespace) -> None:
+    project = require_agentos_project(Path.cwd(), project=args.project)
+    record_project_command(
+        project=project,
+        agentos_command=command_payload_from_args(args),
+    )
+
+
 def _cmd_skills_list(args: argparse.Namespace) -> int:
+    _record_skills_project_command(args)
     selection, skills = list_selected_skills(Path.cwd(), project=args.project)
     _emit_selection_warnings(selection)
 
@@ -200,7 +216,13 @@ def _cmd_skills_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_skills_import(args: argparse.Namespace) -> int:
-    result = import_selected_skills(Path.cwd(), project=args.project, force=args.force)
+    _record_skills_project_command(args)
+    result = import_selected_skills(
+        Path.cwd(),
+        project=args.project,
+        force=args.force,
+        mode=args.mode,
+    )
     _emit_selection_warnings(result.selection)
 
     if result.selection.profile_name is None or not result.selection.depot_roots:
@@ -212,6 +234,7 @@ def _cmd_skills_import(args: argparse.Namespace) -> int:
 
 
 def _cmd_skills_status(args: argparse.Namespace) -> int:
+    _record_skills_project_command(args)
     status = selected_skills_status(Path.cwd(), project=args.project)
     _emit_selection_warnings(status.selection)
 
@@ -248,6 +271,7 @@ def _cmd_skills_status(args: argparse.Namespace) -> int:
 
 def _cmd_skills_path(args: argparse.Namespace) -> int:
     if args.depot:
+        _record_skills_project_command(args)
         selection = resolve_skills_selection(Path.cwd(), project=args.project)
         _emit_selection_warnings(selection)
         if not selection.depot_roots:
@@ -259,6 +283,7 @@ def _cmd_skills_path(args: argparse.Namespace) -> int:
         args._parser.print_help()
         return 0
 
+    _record_skills_project_command(args)
     selection, skill = resolve_selected_skill(args.name, Path.cwd(), project=args.project)
     _emit_selection_warnings(selection)
     if skill is not None:
@@ -310,6 +335,16 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Delete existing symlinks in every resolved depot, then recreate the "
             "imported symlink set. Conflicting non-symlink entries still error."
+        ),
+    )
+    skills_import_parser.add_argument(
+        "--mode",
+        choices=SKILLS_IMPORT_MODES,
+        default=SKILLS_IMPORT_MODE_DEPOT_LINKING,
+        help=(
+            "Import materialization mode. depot-linking links project depots to a "
+            "shared global depot; flat-linking writes per-skill links directly in "
+            f"each project depot. Default: {SKILLS_IMPORT_MODE_DEPOT_LINKING}."
         ),
     )
     _add_project_argument(skills_import_parser)

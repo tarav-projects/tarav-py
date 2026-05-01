@@ -54,7 +54,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     try:
-        args = parser.parse_args(list(argv) if argv is not None else None)
+        argv_list = list(argv) if argv is not None else sys.argv[1:]
+        args = parser.parse_args(argv_list)
+        args._agentos_argv = argv_list
         handler = getattr(args, "handler", None)
         if handler is None:
             parser.print_help()

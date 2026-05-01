@@ -11,12 +11,14 @@ from ._codex import _experimental_normalize_codex_raw_rollout
 from ._copilot import _experimental_normalize_copilot_cli_raw_events
 from ._hashes import _session_content_hash, _session_identity_hash
 from ._shared import *
+from ._views import _project_session_model_view
 
 def chatlas_export_session_model(
     *,
     query: str,
     providers: tuple[str, ...] | None = None,
     output_format: str = "json",
+    view: str = "full",
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
     if output_format != "json":
@@ -49,7 +51,8 @@ def chatlas_export_session_model(
     if not isinstance(session, dict):
         raise CliError("Chatlas query returned an invalid session payload")
 
-    return _build_session_model(session)
+    session_model = _build_session_model(session)
+    return _project_session_model_view(session_model, view=view)
 
 
 def _build_session_model(session: dict[str, Any]) -> dict[str, object]:

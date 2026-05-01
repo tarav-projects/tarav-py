@@ -45,18 +45,72 @@ def global_config_path(home_dir: Path | None = None) -> Path:
     return root / GLOBAL_CONFIG_FILENAME
 
 
-def find_agentos_project_root(start_path: Path | str = ".") -> Path | None:
+class AgentosProjectHandler:
+    def __init__(self, root: Path | str):
+        self.root = normalize_project_target(root)
+        self._project_json: dict[str, object] | None = None
+
+    @property
+    def agentos_dir(self) -> Path:
+        return project_agentos_dir(self.root)
+
+    @property
+    def marker_path(self) -> Path:
+        return project_marker_path(self.root)
+
+    @property
+    def config_path(self) -> Path:
+        return project_config_path(self.root)
+
+    @property
+    def project_json(self) -> dict[str, object]:
+        if self._project_json is None:
+            self._project_json = load_project_marker(self.marker_path)
+        return self._project_json
+
+    @property
+    def project_id(self) -> str:
+        return str(self.project_json["project_id"])
+
+    def require_marker(
+        self,
+        *,
+        include_init_hint: bool = True,
+        extra_hint: str | None = None,
+    ) -> "AgentosProjectHandler":
+        if not self.marker_path.is_file():
+            raise CliError(
+                build_not_inside_project_message(
+                    include_init_hint=include_init_hint,
+                    extra_hint=extra_hint,
+                )
+            )
+        return self
+
+    def validate(self) -> "AgentosProjectHandler":
+        self.project_json
+        return self
+
+
+def find_agentos_project(start_path: Path | str = ".") -> AgentosProjectHandler | None:
     current = Path(start_path).expanduser().resolve()
     if current.is_file():
         current = current.parent
 
     while True:
         if project_marker_path(current).is_file():
-            return current
+            return AgentosProjectHandler(current)
         parent = current.parent
         if parent == current:
             return None
         current = parent
+
+
+def find_agentos_project_root(start_path: Path | str = ".") -> Path | None:
+    project = find_agentos_project(start_path)
+    if project is None:
+        return None
+    return project.root
 
 
 def normalize_project_target(project_path: Path | str = ".") -> Path:
@@ -66,14 +120,25 @@ def normalize_project_target(project_path: Path | str = ".") -> Path:
     return current
 
 
+def resolve_agentos_project(
+    start_path: Path | str = ".",
+    *,
+    project: Path | str | None = None,
+) -> AgentosProjectHandler | None:
+    if project is not None:
+        return AgentosProjectHandler(project)
+    return find_agentos_project(start_path)
+
+
 def resolve_project_target(
     start_path: Path | str = ".",
     *,
     project: Path | str | None = None,
 ) -> Path | None:
-    if project is not None:
-        return normalize_project_target(project)
-    return find_agentos_project_root(start_path)
+    resolved_project = resolve_agentos_project(start_path, project=project)
+    if resolved_project is None:
+        return None
+    return resolved_project.root
 
 
 def build_not_inside_project_message(
@@ -96,6 +161,27 @@ def build_not_inside_project_message(
     return message
 
 
+def require_agentos_project(
+    start_path: Path | str = ".",
+    *,
+    project: Path | str | None = None,
+    include_init_hint: bool = True,
+    extra_hint: str | None = None,
+) -> AgentosProjectHandler:
+    resolved_project = resolve_agentos_project(start_path, project=project)
+    if resolved_project is None:
+        raise CliError(
+            build_not_inside_project_message(
+                include_init_hint=include_init_hint,
+                extra_hint=extra_hint,
+            )
+        )
+    return resolved_project.require_marker(
+        include_init_hint=include_init_hint,
+        extra_hint=extra_hint,
+    )
+
+
 def require_agentos_project_root(
     start_path: Path | str = ".",
     *,
@@ -103,22 +189,12 @@ def require_agentos_project_root(
     include_init_hint: bool = True,
     extra_hint: str | None = None,
 ) -> Path:
-    project_root = resolve_project_target(start_path, project=project)
-    if project_root is None:
-        raise CliError(
-            build_not_inside_project_message(
-                include_init_hint=include_init_hint,
-                extra_hint=extra_hint,
-            )
-        )
-    if not project_marker_path(project_root).is_file():
-        raise CliError(
-            build_not_inside_project_message(
-                include_init_hint=include_init_hint,
-                extra_hint=extra_hint,
-            )
-        )
-    return project_root
+    return require_agentos_project(
+        start_path,
+        project=project,
+        include_init_hint=include_init_hint,
+        extra_hint=extra_hint,
+    ).root
 
 
 def resolve_scope_agentos_dir(

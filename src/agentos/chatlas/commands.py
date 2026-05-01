@@ -84,6 +84,7 @@ def _cmd_chatlas_export(args: argparse.Namespace) -> int:
         query=args.query,
         providers=optional_string_tuple(args.providers),
         output_format=args.output_format,
+        view=args.view,
     )
     print(format_json_output(payload))
     return 0
@@ -272,6 +273,12 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         default="json",
         dest="output_format",
         help="Output format. Chatlas export supports json only.",
+    )
+    export_parser.add_argument(
+        "--view",
+        choices=("full", "transcript", "user", "replay", "events", "zip-transcript"),
+        default="full",
+        help="Export view projection (default: full).",
     )
     export_parser.set_defaults(handler=_cmd_chatlas_export)
 

@@ -92,13 +92,21 @@ Reply with the exact `session_id` or `uri` to continue.
 
 ## Step 2: Extract The Transcript
 
-Extract markdown with:
+Extract the structured transcript view with:
 
 ```bash
-agentos chatlas export "<resolved-uri>" --kind transcript --format markdown
+agentos chatlas export "<resolved-uri>" --view zip-transcript --format json
 ```
 
-Use markdown extraction unless the user explicitly asks for another format.
+Use JSON `zip-transcript` extraction unless the user explicitly asks for another supported export view.
+
+Interpret the export as the Chatlas session model:
+
+- Use `chat.messages` as the primary ordered turn source.
+- Preserve message roles from the structured payload.
+- Convert text content blocks to plain turn text before compression.
+- `zip-transcript` already filters to visible user/assistant text content only; do not expect images, encrypted content, opaque reasoning, tool payloads, or normalization metadata to be present.
+- Use `event_refs` on messages only as lightweight provenance when needed; do not reconstruct the full event tape.
 
 ## Step 3: Compress In-Agent
 
@@ -194,7 +202,7 @@ Add a short provenance header before the first transcript turn when the informat
 source-session-id: <session-id>
 source-session-uri: <resolved-uri>
 resolved-via: agentos chatlas query --include-match
-extracted-via: agentos chatlas export --kind transcript --format markdown
+extracted-via: agentos chatlas export --view zip-transcript --format json
 ```
 
 When both a session id and URI are available, include both. Treat these as first-class provenance data, not optional decoration.

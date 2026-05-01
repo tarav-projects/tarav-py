@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Ready for implementation; the design is converged and should be implemented as the new default behavior for `agentos skills import`.
+Implemented and verified; `agentos skills import` now defaults to `depot-linking` with explicit `flat-linking` available through `--mode`.
 
 ## User Intent
 
@@ -109,3 +109,5 @@ None known.
 ## End Log
 
 - 2026-04-30: Created from design discussion. Accepted contract: command-only `--mode`, default `depot-linking`, explicit `flat-linking`, and global depot creation must reuse the current flat symlink depot mechanics.
+- 2026-04-30: Implemented in `src/agentos/skills/routing.py` and `src/agentos/skills/commands.py`; tests updated in `tests/test_skills_commands.py`. Verified with `uv run python -m pytest -q` (`257 passed`) and refreshed the installed executable with `uv tool install --reinstall --editable .`.
+- 2026-04-30: Clarified `--force` behavior for `depot-linking`: forced imports now overwrite existing project depot paths before linking them to the global depot. Verified with `uv run python -m pytest -q` (`258 passed`) and refreshed the installed executable.

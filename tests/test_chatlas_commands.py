@@ -718,7 +718,16 @@ def _write_copilot_events(
     session_id: str,
     user_text: str = "hello from copilot",
     assistant_text: str = "copilot reply",
+    include_assistant_image: bool = False,
 ) -> None:
+    assistant_content: list[dict[str, object]] = [{"type": "text", "text": assistant_text}]
+    if include_assistant_image:
+        assistant_content.append(
+            {
+                "type": "image",
+                "image_url": "https://example.com/copilot.png",
+            }
+        )
     records = [
         {
             "type": "session.start",
@@ -775,7 +784,7 @@ def _write_copilot_events(
             "parentId": "event-turn-start-1",
             "timestamp": "2026-04-18T11:00:02.000Z",
             "data": {
-                "content": [{"type": "text", "text": assistant_text}],
+                "content": assistant_content,
                 "reasoningText": "check repository state",
                 "reasoningOpaque": "opaque-reasoning",
                 "encryptedContent": "encrypted-reasoning",
@@ -3418,6 +3427,144 @@ def test_chatlas_export_emits_session_model_json(
         repeated_payload["session"]["content_hash"]
         == payload["session"]["content_hash"]
     )
+    assert "view" not in payload
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                thread_name,
+                "--provider",
+                "codex",
+                "--view",
+                "full",
+            ]
+        )
+        == 0
+    )
+    full_payload = json.loads(capsys.readouterr().out)
+    assert full_payload == payload
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                thread_name,
+                "--provider",
+                "codex",
+                "--view",
+                "transcript",
+            ]
+        )
+        == 0
+    )
+    transcript_payload = json.loads(capsys.readouterr().out)
+    assert transcript_payload["class"] == "agentos.chatlas.session_model"
+    assert transcript_payload["view"] == "transcript"
+    assert [message["role"] for message in transcript_payload["chat"]["messages"]] == [
+        "user",
+        "assistant",
+    ]
+    assert transcript_payload["chat"]["model_runs"] == []
+    assert transcript_payload["chat"]["tool_invocations"] == []
+    assert [event["kind"] for event in transcript_payload["chat"]["events"]] == [
+        "message",
+        "message",
+    ]
+    assert transcript_payload["chat"]["usage"] == []
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                thread_name,
+                "--provider",
+                "codex",
+                "--view",
+                "user",
+            ]
+        )
+        == 0
+    )
+    user_payload = json.loads(capsys.readouterr().out)
+    assert user_payload["view"] == "user"
+    assert [message["role"] for message in user_payload["chat"]["messages"]] == [
+        "user",
+    ]
+    assert user_payload["chat"]["model_runs"] == []
+    assert user_payload["chat"]["tool_invocations"] == []
+    assert [event["kind"] for event in user_payload["chat"]["events"]] == [
+        "message",
+    ]
+    assert user_payload["chat"]["usage"] == []
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                thread_name,
+                "--provider",
+                "codex",
+                "--view",
+                "events",
+            ]
+        )
+        == 0
+    )
+    events_payload = json.loads(capsys.readouterr().out)
+    assert events_payload["view"] == "events"
+    assert events_payload["chat"]["messages"] == []
+    assert events_payload["chat"]["model_runs"] == []
+    assert events_payload["chat"]["tool_invocations"] == []
+    assert [event["kind"] for event in events_payload["chat"]["events"]] == [
+        "session.start",
+        "message",
+        "message",
+    ]
+    assert events_payload["chat"]["usage"] == []
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                thread_name,
+                "--provider",
+                "codex",
+                "--view",
+                "zip-transcript",
+            ]
+        )
+        == 0
+    )
+    zip_payload = json.loads(capsys.readouterr().out)
+    assert zip_payload["view"] == "zip-transcript"
+    assert set(zip_payload) == {"class", "schema_version", "session", "chat", "view"}
+    assert set(zip_payload["session"]) == {
+        "uri",
+        "provider",
+        "session_id",
+        "display_name",
+        "created_at",
+        "updated_at",
+        "identity_hash",
+        "content_hash",
+    }
+    assert set(zip_payload["chat"]) == {"messages"}
+    assert [message["role"] for message in zip_payload["chat"]["messages"]] == [
+        "user",
+        "assistant",
+    ]
+    assert [
+        message["event_refs"][0] for message in zip_payload["chat"]["messages"]
+    ] == [
+        "event-2",
+        "event-3",
+    ]
 
 
 def test_chatlas_export_loads_claude_raw_session(
@@ -3840,6 +3987,36 @@ def test_chatlas_export_normalizes_claude_tool_invocations(
         or "missing PostToolUse progress record" in warning
         for warning in payload["normalization"]["warnings"]
     )
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                session_id,
+                "--provider",
+                "claude-code",
+                "--view",
+                "replay",
+            ]
+        )
+        == 0
+    )
+    replay_payload = json.loads(capsys.readouterr().out)
+    assert replay_payload["view"] == "replay"
+    assert len(replay_payload["chat"]["messages"]) == 2
+    assert len(replay_payload["chat"]["tool_invocations"]) == 1
+    assert [event["kind"] for event in replay_payload["chat"]["events"]] == [
+        "message",
+        "message",
+        "tool.call",
+        "tool.progress",
+        "tool.result",
+        "tool.progress",
+    ]
+    assert "output" not in replay_payload["chat"]["tool_invocations"][0]
+    assert "result" not in replay_payload["chat"]["tool_invocations"][0]
+    assert replay_payload["chat"]["usage"] == []
 
 
 def test_chatlas_export_normalizes_claude_model_runs(
@@ -4565,6 +4742,125 @@ def test_chatlas_export_loads_copilot_raw_events(
         "copilot raw events usage projected from canonical usage events: 1 records"
         in payload["normalization"]["warnings"]
     )
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                session_id,
+                "--provider",
+                "copilot-cli",
+                "--view",
+                "transcript",
+            ]
+        )
+        == 0
+    )
+    transcript_payload = json.loads(capsys.readouterr().out)
+    assert transcript_payload["view"] == "transcript"
+    assert [message["role"] for message in transcript_payload["chat"]["messages"]] == [
+        "user",
+        "assistant",
+    ]
+    assert transcript_payload["chat"]["model_runs"] == []
+    assert transcript_payload["chat"]["tool_invocations"] == []
+    assert [event["kind"] for event in transcript_payload["chat"]["events"]] == [
+        "message",
+        "message",
+    ]
+    assert transcript_payload["chat"]["usage"] == []
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                session_id,
+                "--provider",
+                "copilot-cli",
+                "--view",
+                "zip-transcript",
+            ]
+        )
+        == 0
+    )
+    zip_payload = json.loads(capsys.readouterr().out)
+    assert zip_payload["view"] == "zip-transcript"
+    assert set(zip_payload) == {"class", "schema_version", "session", "chat", "view"}
+    assert set(zip_payload["chat"]) == {"messages"}
+    assert [message["role"] for message in zip_payload["chat"]["messages"]] == [
+        "user",
+        "assistant",
+    ]
+    assert all(
+        block["type"] == "text"
+        for message in zip_payload["chat"]["messages"]
+        for block in message["content"]
+    )
+
+
+def test_chatlas_zip_transcript_filters_non_text_copilot_message_content(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot-cli",
+                "id": "copilot-main",
+                "home": str(home / ".copilot"),
+            }
+        ],
+    )
+
+    session_id = "d1d3f48b-4b29-4dfc-b551-5536b9677225"
+    _write_copilot_events(
+        home / ".copilot" / "session-state" / session_id / "events.jsonl",
+        session_id=session_id,
+        user_text="copilot experimental user",
+        assistant_text="copilot experimental assistant",
+        include_assistant_image=True,
+    )
+
+    assert main(_chatlas_update_argv("--provider", "copilot-cli")) == 0
+    _ = json.loads(capsys.readouterr().out)
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                session_id,
+                "--provider",
+                "copilot-cli",
+                "--view",
+                "zip-transcript",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert all(
+        block["type"] == "text"
+        for message in payload["chat"]["messages"]
+        for block in message["content"]
+    )
+    assert payload["chat"]["messages"][1]["content"] == [
+        {"type": "text", "text": "copilot experimental assistant"}
+    ]
+    serialized = json.dumps(payload, sort_keys=True)
+    assert "reasoningOpaque" not in serialized
+    assert "encryptedContent" not in serialized
+    assert '"type": "image"' not in serialized
 
 
 def test_chatlas_export_errors_for_missing_provider_normalizer(

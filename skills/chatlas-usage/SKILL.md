@@ -1,6 +1,6 @@
 ---
 name: agentos-chatlas-usage
-description: Use when Codex needs to work with chat session data in `agentos` through the maintained Chatlas dataset rather than live provider debug commands. Trigger for Chatlas tasks such as refreshing the dataset, querying sessions, resolving one session by id/URI/name/native field, inspecting summaries or provider stats, or exporting transcripts and summaries.
+description: Use when Codex needs to work with chat session data in `agentos` through the maintained Chatlas dataset rather than live provider debug commands. Trigger for Chatlas tasks such as refreshing the dataset, querying sessions, resolving one session by id/URI/name/native field, inspecting provider stats, exporting standard-model views, or exporting raw artifacts.
 ---
 
 # Chatlas Usage
@@ -14,7 +14,8 @@ Prefer `agentos chatlas ...` for normal session workflows. Use `agentos chat deb
 - Refresh dataset: `agentos chatlas update`
 - Inventory/query sessions: `agentos chatlas query`
 - Aggregate dataset stats: `agentos chatlas stats`
-- Export transcript or summary: `agentos chatlas export`
+- Export standard-model views: `agentos chatlas export`
+- Export raw artifacts: `agentos chatlas raw path` / `agentos chatlas raw export`
 
 ## Working Rules
 
@@ -24,9 +25,8 @@ Prefer `agentos chatlas ...` for normal session workflows. Use `agentos chat deb
 - Do not default to `agentos chat debug ...` for normal session lookup or export.
 - If the task depends on fresh provider state, run `agentos chatlas update` before querying.
 - If the user is only asking about already-materialized dataset contents, query first and avoid unnecessary updates.
-- `agentos chatlas update` uses the raw scan cache by default; disable only with `--scan-cache=false` when you need a deep archive scan.
-- `agentos chatlas update` uses the normalized session cache by default; disable only with `--normalized-cache=false` when you need a deep normalized-session rebuild.
-- `agentos chatlas update` uses the derived transcript cache by default; disable only with `--transcript-cache=false` when you need a deep transcript rebuild.
+- `agentos chatlas update` uses the raw scan cache by default; set `--scan-cache false` only when you need a deeper archive scan.
+- `agentos chatlas update` uses the session-index cache by default; set `--session-index-cache false` only when you need a deeper session-index rebuild.
 - `agentos chatlas update` prints progress to stderr by default; disable live feedback with `--verbose-mode=quiet`.
 - `agentos chatlas update` prints no final stdout payload by default; request machine-readable output with `--output-mode=json`.
 
@@ -42,12 +42,13 @@ Common patterns:
 agentos chatlas query
 agentos chatlas query "<query>" --include-match
 agentos chatlas query "<query>" --include-match --include-provider-stats
-agentos chatlas query --user-contain "<text>" --include-summary
+agentos chatlas query "<query>" --include-artifacts
+agentos chatlas query "<query>" --updated-since 2d --sort newest
+agentos chatlas query "<query>" --compact
 agentos chatlas query "<query>" --include-artifacts
 agentos chatlas update
-agentos chatlas update --scan-cache=false
-agentos chatlas update --normalized-cache=false
-agentos chatlas update --transcript-cache=false
+agentos chatlas update --scan-cache false
+agentos chatlas update --session-index-cache false
 agentos chatlas update --verbose-mode=quiet --output-mode=json
 ```
 
@@ -55,20 +56,34 @@ Use these flags intentionally:
 
 - `--include-match`: show exact matched fields for identity resolution
 - `--include-artifacts`: include backing artifact rows
-- `--include-summary`: include brief summary
-- `--summary-level brief|detailed`: include derived summary levels
 - `--include-provider-stats`: include provider-specific stats for each resolved session
-- `--include-transcript-filter-match`: show why transcript filters matched
+- `--updated-since`: restrict to recently updated sessions, e.g. `2d` or `72h`
+- `--compact`: return identifier-oriented session rows
+- `--extractable`: keep only sessions whose primary artifact can be extracted
 
 ## Export Workflow
 
-Use `agentos chatlas export` after resolution when the task needs artifact contents rather than metadata.
+Use `agentos chatlas export` after resolution when the task needs a standard-model session view rather than just metadata.
 
 ```bash
-agentos chatlas export "<query>" --kind transcript --format markdown
-agentos chatlas export "<query>" --kind transcript --format jsonl
-agentos chatlas export "<query>" --kind summary --summary-level detailed --format markdown
+agentos chatlas export "<query>" --view full --format json
+agentos chatlas export "<query>" --view transcript --format json
+agentos chatlas export "<query>" --view user --format json
+agentos chatlas export "<query>" --view replay --format json
+agentos chatlas export "<query>" --view events --format json
+agentos chatlas export "<query>" --view zip-transcript --format json
+agentos chatlas raw path "<query>"
+agentos chatlas raw export "<query>" --format json
 ```
+
+View guidance:
+
+- `full`: complete standard session model
+- `transcript`: visible user/assistant transcript messages and matching message events
+- `user`: visible user-authored messages only
+- `replay`: visible messages plus lightweight tool-call replay data
+- `events`: canonical event tape with derived projections emptied
+- `zip-transcript`: minimal session header plus visible user/assistant text messages only
 
 ## When To Use `chat debug`
 
@@ -80,4 +95,4 @@ Use `agentos chat debug ...` only for live-side work such as:
 - using `--raw` extraction
 - connector/debug tasks where dataset mediation is undesirable
 
-If the task is “find a session”, “inspect a session”, “export a transcript”, or “work with preserved chat history”, Chatlas is the right tool.
+If the task is “find a session”, “inspect a session”, “export a standard-model view”, “export raw artifacts”, or “work with preserved chat history”, Chatlas is the right tool.

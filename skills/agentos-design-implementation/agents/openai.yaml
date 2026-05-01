@@ -1,0 +1,4 @@
+interface:
+  display_name: "agentos-design-implementation"
+  short_description: "Disciplined implementation of designs and plans"
+  default_prompt: "Implement the design in small, verifiable chunks. Read before writing, follow the plan, surface deviations early, and apply reference best practices."

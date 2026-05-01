@@ -1119,6 +1119,8 @@ def test_skills_import_materializes_default_local_skill_depots(
     )
 
     monkeypatch.chdir(workspace)
+    expected_agents_depot = workspace / ".agents" / "skills"
+    expected_claude_depot = workspace / ".claude" / "skills"
     expected_agents_path = workspace / ".agents" / "skills" / "base-alpha-skill"
     expected_claude_path = workspace / ".claude" / "skills" / "base-alpha-skill"
     assert not expected_agents_path.exists()
@@ -1128,16 +1130,210 @@ def test_skills_import_materializes_default_local_skill_depots(
     out = capsys.readouterr().out
 
     assert "Skills import complete" in out
-    assert "- mode: sync" in out
+    assert "- mode: depot-linking" in out
+    assert "- sync: sync" in out
     assert "- catalog: 1" in out
     assert "- depots: 2" in out
+    assert f"- global depot: {agentos_home / 'skills' / 'depots'}" in out
     assert f"Depot: {workspace / '.agents' / 'skills'}" in out
     assert f"Depot: {workspace / '.claude' / 'skills'}" in out
     assert "- created: 1" in out
+    assert expected_agents_depot.is_symlink()
+    assert expected_claude_depot.is_symlink()
+    assert expected_agents_depot.resolve() == expected_claude_depot.resolve()
+    assert expected_agents_depot.resolve().parent == agentos_home / "skills" / "depots"
     assert expected_agents_path.is_symlink()
     assert expected_agents_path.resolve() == source_skill.resolve()
     assert expected_claude_path.is_symlink()
     assert expected_claude_path.resolve() == source_skill.resolve()
+
+
+def test_skills_import_flat_linking_materializes_project_skill_depots(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    source_skill = workspace / "skills" / "alpha-skill"
+    _create_skill(source_skill, description="Base alpha skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "base": {"path": str(workspace / "skills")},
+        },
+        profiles={
+            "default": {
+                "sources": [
+                    {"name": "base"},
+                ]
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace)
+    expected_agents_depot = workspace / ".agents" / "skills"
+    expected_claude_depot = workspace / ".claude" / "skills"
+    expected_agents_path = expected_agents_depot / "base-alpha-skill"
+    expected_claude_path = expected_claude_depot / "base-alpha-skill"
+
+    assert main(["skills", "import", "--mode", "flat-linking"]) == 0
+    out = capsys.readouterr().out
+
+    assert "Skills import complete" in out
+    assert "- mode: flat-linking" in out
+    assert "- sync: sync" in out
+    assert expected_agents_depot.is_dir()
+    assert not expected_agents_depot.is_symlink()
+    assert expected_claude_depot.is_dir()
+    assert not expected_claude_depot.is_symlink()
+    assert expected_agents_path.is_symlink()
+    assert expected_agents_path.resolve() == source_skill.resolve()
+    assert expected_claude_path.is_symlink()
+    assert expected_claude_path.resolve() == source_skill.resolve()
+
+
+def test_skills_import_depot_linking_refreshes_shared_global_depot(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_root = tmp_path / "source-skills"
+    alpha_skill = source_root / "alpha-skill"
+    _create_skill(alpha_skill, description="Base alpha skill")
+    workspace_a = tmp_path / "workspace-a"
+    workspace_b = tmp_path / "workspace-b"
+    _create_local_agents_context(workspace_a)
+    _create_local_agents_context(workspace_b)
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "base": {"path": str(source_root)},
+        },
+        profiles={
+            "default": {
+                "depots": [".agents/skills"],
+                "sources": [
+                    {"name": "base"},
+                ],
+            }
+        },
+    )
+
+    monkeypatch.chdir(workspace_a)
+    assert main(["skills", "import"]) == 0
+    capsys.readouterr()
+    depot_a = workspace_a / ".agents" / "skills"
+    global_depot = depot_a.resolve()
+    assert depot_a.is_symlink()
+    assert global_depot.parent == agentos_home / "skills" / "depots"
+    assert (depot_a / "base-alpha-skill").resolve() == alpha_skill.resolve()
+
+    monkeypatch.chdir(workspace_b)
+    assert main(["skills", "import"]) == 0
+    capsys.readouterr()
+    depot_b = workspace_b / ".agents" / "skills"
+    assert depot_b.is_symlink()
+    assert depot_b.resolve() == global_depot
+
+    beta_skill = source_root / "beta-skill"
+    _create_skill(beta_skill, description="Base beta skill")
+    assert not (depot_a / "base-beta-skill").exists()
+
+    assert main(["skills", "import"]) == 0
+    capsys.readouterr()
+
+    assert depot_b.resolve() == global_depot
+    assert (depot_b / "base-beta-skill").is_symlink()
+    assert (depot_b / "base-beta-skill").resolve() == beta_skill.resolve()
+    assert (depot_a / "base-beta-skill").is_symlink()
+    assert (depot_a / "base-beta-skill").resolve() == beta_skill.resolve()
+
+
+def test_skills_import_depot_linking_rejects_unmanaged_project_depot(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    _create_skill(workspace / "skills" / "alpha-skill", description="Base alpha skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "base": {"path": str(workspace / "skills")},
+        },
+        profiles={
+            "default": {
+                "depots": [".agents/skills"],
+                "sources": [
+                    {"name": "base"},
+                ],
+            }
+        },
+    )
+
+    depot_root = workspace / ".agents" / "skills"
+    depot_root.mkdir(parents=True, exist_ok=True)
+    (depot_root / "notes.txt").write_text("user data\n", encoding="utf-8")
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "import"]) == 1
+    stderr = capsys.readouterr().err
+
+    assert "error: skills depot path cannot be replaced safely:" in stderr
+    assert depot_root.is_dir()
+    assert not depot_root.is_symlink()
+    assert (depot_root / "notes.txt").read_text(encoding="utf-8") == "user data\n"
+
+
+def test_skills_import_depot_linking_force_overwrites_project_depot(
+    capsys,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    source_skill = workspace / "skills" / "alpha-skill"
+    _create_skill(source_skill, description="Base alpha skill")
+
+    _write_global_routing_config(
+        agentos_home,
+        sources={
+            "base": {"path": str(workspace / "skills")},
+        },
+        profiles={
+            "default": {
+                "depots": [".agents/skills"],
+                "sources": [
+                    {"name": "base"},
+                ],
+            }
+        },
+    )
+
+    depot_root = workspace / ".agents" / "skills"
+    depot_root.mkdir(parents=True, exist_ok=True)
+    (depot_root / "notes.txt").write_text("user data\n", encoding="utf-8")
+
+    monkeypatch.chdir(workspace)
+    assert main(["skills", "import", "--force"]) == 0
+    out = capsys.readouterr().out
+
+    assert "- mode: depot-linking" in out
+    assert "- sync: force" in out
+    assert depot_root.is_symlink()
+    assert depot_root.resolve().parent == agentos_home / "skills" / "depots"
+    assert not (depot_root / "notes.txt").exists()
+    assert (depot_root / "base-alpha-skill").is_symlink()
+    assert (depot_root / "base-alpha-skill").resolve() == source_skill.resolve()
 
 
 def test_skills_import_returns_authoritative_empty_catalog_when_no_context_exists(
@@ -1260,11 +1456,12 @@ def test_skills_import_force_rebuilds_depot_symlink_layer(
     extra_path.symlink_to(extra_skill.resolve(), target_is_directory=True)
 
     monkeypatch.chdir(workspace)
-    assert main(["skills", "import", "--force"]) == 0
+    assert main(["skills", "import", "--force", "--mode", "flat-linking"]) == 0
     out = capsys.readouterr().out
 
     assert "Skills import complete" in out
-    assert "- mode: force" in out
+    assert "- mode: flat-linking" in out
+    assert "- sync: force" in out
     assert "- created: 1" in out
     assert "- updated: 0" in out
     assert "- removed: 2" in out
@@ -1308,7 +1505,7 @@ def test_skills_import_force_preserves_non_symlink_conflicts(
     extra_path.symlink_to(extra_skill.resolve(), target_is_directory=True)
 
     monkeypatch.chdir(workspace)
-    assert main(["skills", "import", "--force"]) == 1
+    assert main(["skills", "import", "--force", "--mode", "flat-linking"]) == 1
     stderr = capsys.readouterr().err
 
     assert "error: skills import found conflicting existing paths:" in stderr
@@ -1353,7 +1550,7 @@ def test_skills_import_force_preflights_all_default_depots_before_writing(
     claude_path.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.chdir(workspace)
-    assert main(["skills", "import", "--force"]) == 1
+    assert main(["skills", "import", "--force", "--mode", "flat-linking"]) == 1
     stderr = capsys.readouterr().err
 
     assert "error: skills import found conflicting existing paths:" in stderr

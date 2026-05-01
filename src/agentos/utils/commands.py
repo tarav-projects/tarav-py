@@ -6,6 +6,8 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.ids import generate_uuid4_string, validate_uuid_string
+from agentos._core.project import require_agentos_project
+from agentos._core.project_command_log import command_payload_from_args, record_project_command
 from agentos.utils.tmp_folder import allocate_project_tmp_folder
 
 
@@ -33,9 +35,14 @@ def _cmd_utils_uuid(args: argparse.Namespace) -> int:
 
 
 def _cmd_utils_tmp_folder_new(args: argparse.Namespace) -> int:
+    project = require_agentos_project(project=args.project)
+    record_project_command(
+        project=project,
+        agentos_command=command_payload_from_args(args),
+    )
     folder_path = allocate_project_tmp_folder(
         create=bool(args.create),
-        project=args.project,
+        project=project.root,
     )
     print(str(folder_path))
     return 0
