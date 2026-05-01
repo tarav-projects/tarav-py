@@ -64,6 +64,10 @@ CHAT_ACCOUNT_USAGE_ERROR_DETAIL_WIDTH = 78
 CHAT_ACCOUNT_USAGE_SPEED_WINDOW_MINUTES = 30
 CHAT_ACCOUNT_USAGE_SPEED_MIN_INTERVALS = 2
 ACCOUNT_STATS_COMMAND_NAME = "agent accounts stats"
+CODEX_APP_SERVER_OPTOUT_NOTIFICATION_METHODS = (
+    "account/updated",
+    "account/rateLimits/updated",
+)
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
@@ -2941,6 +2945,9 @@ def _read_codex_account_rate_limits(instance: AccountProviderContext) -> dict[st
         "id": 1,
         "method": "initialize",
         "params": {
+            "capabilities": {
+                "optOutNotificationMethods": list(CODEX_APP_SERVER_OPTOUT_NOTIFICATION_METHODS),
+            },
             "clientInfo": {
                 "name": "agentos",
                 "version": "1",
@@ -2954,16 +2961,22 @@ def _read_codex_account_rate_limits(instance: AccountProviderContext) -> dict[st
 
     try:
         _write_json_line(process, init_request)
-        init_response = _read_process_json_line(process, timeout_sec=instance.timeout_sec)
-        if init_response.get("id") != 1:
-            raise CliError("codex app-server initialize returned an unexpected response id")
+        init_response = _read_process_json_response(
+            process,
+            timeout_sec=instance.timeout_sec,
+            request_id=1,
+            request_name="initialize",
+        )
         if "result" not in init_response:
             raise CliError("codex app-server initialize response is missing result")
 
         _write_json_line(process, rate_limits_request)
-        rate_limits_response = _read_process_json_line(process, timeout_sec=instance.timeout_sec)
-        if rate_limits_response.get("id") != 2:
-            raise CliError("codex app-server rate-limit request returned an unexpected response id")
+        rate_limits_response = _read_process_json_response(
+            process,
+            timeout_sec=instance.timeout_sec,
+            request_id=2,
+            request_name="rate-limit request",
+        )
 
         error_payload = rate_limits_response.get("error")
         if error_payload is not None:
@@ -3050,6 +3063,22 @@ def _read_process_json_line(
     if not isinstance(payload, dict):
         raise CliError("provider command must return a JSON object")
     return payload
+
+
+def _read_process_json_response(
+    process: subprocess.Popen[str],
+    *,
+    timeout_sec: int,
+    request_id: int,
+    request_name: str,
+) -> dict[str, Any]:
+    while True:
+        payload = _read_process_json_line(process, timeout_sec=timeout_sec)
+        if payload.get("id") == request_id:
+            return payload
+        if "method" in payload and "id" not in payload:
+            continue
+        raise CliError(f"codex app-server {request_name} returned an unexpected response id")
 
 
 def _read_process_stderr(process: subprocess.Popen[str]) -> str:

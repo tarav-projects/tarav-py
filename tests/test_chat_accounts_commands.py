@@ -3419,6 +3419,95 @@ def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -
     assert payload["usage_summary"] == "Weekly 42%"
 
 
+def test_read_codex_account_rate_limits_ignores_app_server_notifications(monkeypatch) -> None:
+    instance = _account_context(
+        provider="codex",
+        instance_id="codex-tk",
+        label="Codex tk",
+        cli_command=("codex",),
+        timeout_sec=15,
+    )
+
+    class _FakeStdin:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class _FakeStderr:
+        def read(self) -> str:
+            return ""
+
+    class _FakeProcess:
+        def __init__(self) -> None:
+            self.stdin = _FakeStdin()
+            self.stderr = _FakeStderr()
+            self.returncode = 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return 0
+
+        def terminate(self) -> None:
+            raise AssertionError("terminate should not be called")
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be called")
+
+    fake_process = _FakeProcess()
+    observed_requests: list[dict[str, object]] = []
+    response_iter = iter(
+        [
+            {"id": 1, "result": {}},
+            {"method": "account/rateLimits/updated", "params": {"rateLimits": {"limitId": "codex"}}},
+            {"id": 2, "result": {"rateLimits": {"limitId": "codex"}}},
+        ]
+    )
+
+    monkeypatch.setattr(
+        chat_accounts.subprocess,
+        "Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+    monkeypatch.setattr(
+        chat_accounts,
+        "_write_json_line",
+        lambda process, payload: observed_requests.append(payload),
+    )
+    monkeypatch.setattr(
+        chat_accounts,
+        "_read_process_json_line",
+        lambda process, *, timeout_sec: next(response_iter),
+    )
+
+    payload = chat_accounts._read_codex_account_rate_limits(instance)
+
+    assert payload == {"rateLimits": {"limitId": "codex"}}
+    assert observed_requests == [
+        {
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "capabilities": {
+                    "optOutNotificationMethods": [
+                        "account/updated",
+                        "account/rateLimits/updated",
+                    ]
+                },
+                "clientInfo": {
+                    "name": "agentos",
+                    "version": "1",
+                },
+            },
+        },
+        {
+            "id": 2,
+            "method": "account/rateLimits/read",
+        },
+    ]
+
+
 def test_chat_accounts_stats_keeps_per_account_errors_in_payload(
     tmp_path: Path,
     monkeypatch,
