@@ -41,6 +41,7 @@ from agentos.chatlas._cache_io import (
     write_chatlas_cache_section,
     write_text_if_changed,
 )
+from agentos.chatlas.session_model._hashes import _session_identity_hash
 from agentos.chatlas.raw import (
     ChatlasProviderMirrorResult,
     _build_chatlas_provider_context,
@@ -56,9 +57,9 @@ from agentos.chatlas.raw import (
 
 CHATLAS_DIRNAME = "chatlas"
 DEFAULT_CHATLAS_COMMIT_PREFIX = "chatlas update"
-_SESSION_INDEX_RELATIVE_PATH = Path("index") / "sessions.index.jsonl"
+_SESSION_INDEX_ROOT_RELATIVE_PATH = Path("index") / "sessions"
 _SESSION_INDEX_CACHE_RELATIVE_PATH = Path("cache") / "session-index-v1.json"
-_SESSION_INDEX_DERIVATION_VERSION = 1
+_SESSION_INDEX_DERIVATION_VERSION = 2
 _PROGRESS_PREFIX = "[chatlas]"
 _MAX_CHATLAS_ARCHIVE_WORKERS = 4
 _CHATLAS_DOCUMENTS_DIRNAME = "Documents"
@@ -183,7 +184,7 @@ def chatlas_update(
             "chatlas_root": str(chatlas_root_path),
             "raw_root": str(raw_root),
             "index_root": str(index_root),
-            "session_index_path": str(chatlas_root_path / _SESSION_INDEX_RELATIVE_PATH),
+            "session_index_root": str(_session_index_dir(chatlas_root_path)),
             "session_index_count": len(session_index),
             "manifest_path": None,
             "scan_cache_enabled": scan_cache_enabled,
@@ -310,7 +311,7 @@ def chatlas_update(
         "chatlas_root": str(chatlas_root_path),
         "raw_root": str(raw_root),
         "index_root": str(index_root),
-        "session_index_path": str(chatlas_root_path / _SESSION_INDEX_RELATIVE_PATH),
+        "session_index_root": str(_session_index_dir(chatlas_root_path)),
         "session_index_count": len(session_index),
         "manifest_path": None if manifest_path is None else str(manifest_path),
         "scan_cache_enabled": scan_cache_enabled,
@@ -1067,10 +1068,7 @@ def _materialize_session_index(
             "source_signature": source_signature,
             "session": indexed_session,
         }
-    index_path = chatlas_root / _SESSION_INDEX_RELATIVE_PATH
-    index_path.parent.mkdir(parents=True, exist_ok=True)
-    rendered = "".join(json.dumps(session, sort_keys=True) + "\n" for session in session_index)
-    write_text_if_changed(index_path, rendered)
+    _write_session_index_shards(chatlas_root, session_index)
     return ChatlasSessionIndexMaterialization(
         sessions=session_index,
         source_signatures=source_signatures,
@@ -1180,6 +1178,10 @@ def _session_index_record(session) -> dict[str, Any]:
         include_artifacts=True,
     )
     payload["instance"] = _chatlas_instance_name(session.provider_instance)
+    payload["identity_hash"] = _session_identity_hash(
+        provider=session.provider,
+        provider_session_id=session.session_id,
+    )
     payload["class"] = "agentos.chatlas.session"
     payload["schema_version"] = 1
     return payload
@@ -1312,9 +1314,70 @@ def _session_fs_component(value: str) -> str:
     return quote(value, safe="._-")
 
 
-def _load_session_index(chatlas_root: Path) -> list[dict[str, Any]]:
-    return _load_jsonl_dict_rows(chatlas_root / _SESSION_INDEX_RELATIVE_PATH)
+def _session_index_dir(chatlas_root: Path) -> Path:
+    return chatlas_root / _SESSION_INDEX_ROOT_RELATIVE_PATH
 
+
+def _session_index_shard_prefix(session: dict[str, Any]) -> str:
+    identity_hash = session.get("identity_hash")
+    if not isinstance(identity_hash, str) or not identity_hash.startswith("sha256:"):
+        raise CliError("session index row is missing sha256 identity_hash")
+    digest = identity_hash.removeprefix("sha256:")
+    if len(digest) < 2:
+        raise CliError("session index row has invalid identity_hash")
+    return digest[:2]
+
+
+def _session_index_shard_path(chatlas_root: Path, prefix: str) -> Path:
+    return _session_index_dir(chatlas_root) / f"{prefix}.index.jsonl"
+
+
+def _write_session_index_shards(
+    chatlas_root: Path,
+    sessions: list[dict[str, Any]],
+) -> None:
+    index_dir = _session_index_dir(chatlas_root)
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    shards: dict[str, list[dict[str, Any]]] = {}
+    for session in sessions:
+        shards.setdefault(_session_index_shard_prefix(session), []).append(session)
+
+    expected_paths = {
+        _session_index_shard_path(chatlas_root, prefix)
+        for prefix in shards
+    }
+    for shard_path in index_dir.glob("*.index.jsonl"):
+        if shard_path not in expected_paths:
+            shard_path.unlink()
+
+    for prefix, shard_sessions in sorted(shards.items()):
+        sorted_sessions = sorted(
+            shard_sessions,
+            key=lambda session: (
+                str(session.get("provider", "")),
+                str(session.get("instance", "")),
+                str(session.get("session_id", "")),
+            ),
+        )
+        rendered = "".join(
+            json.dumps(session, sort_keys=True) + "\n"
+            for session in sorted_sessions
+        )
+        write_text_if_changed(
+            _session_index_shard_path(chatlas_root, prefix),
+            rendered,
+        )
+
+
+def _load_session_index(chatlas_root: Path) -> list[dict[str, Any]]:
+    index_dir = _session_index_dir(chatlas_root)
+    if not index_dir.is_dir():
+        return []
+    sessions: list[dict[str, Any]] = []
+    for shard_path in sorted(index_dir.glob("*.index.jsonl")):
+        sessions.extend(_load_jsonl_dict_rows(shard_path))
+    return sessions
 
 def _load_jsonl_dict_rows(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
@@ -1475,6 +1538,7 @@ def _matched_session_index_fields(
         "instance",
         "provider_instance_fingerprint",
         "session_id",
+        "identity_hash",
     ):
         value = _string_or_none(session.get(field_name))
         if value == query:

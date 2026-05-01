@@ -79,7 +79,7 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_chatlas_session_model_export(args: argparse.Namespace) -> int:
+def _cmd_chatlas_export(args: argparse.Namespace) -> int:
     payload = chatlas_export_session_model(
         query=args.query,
         providers=optional_string_tuple(args.providers),
@@ -192,7 +192,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     query_parser.add_argument(
         "query",
         nargs="?",
-        help="Exact query value matched against URI, instance, session id, display name, fingerprint, and native fields.",
+        help="Exact query value matched against URI, identity hash, instance, session id, display name, fingerprint, and native fields.",
     )
     query_parser.add_argument(
         "--provider",
@@ -251,38 +251,29 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     query_parser.set_defaults(handler=_cmd_chatlas_query)
 
-    session_model_parser = chatlas_subparsers.add_parser(
-        "session-model",
-        help="Work with the in-memory Chatlas session model.",
-    )
-    session_model_subparsers = session_model_parser.add_subparsers(
-        dest="chatlas_session_model_command",
-        required=True,
-    )
-
-    session_model_export_parser = session_model_subparsers.add_parser(
+    export_parser = chatlas_subparsers.add_parser(
         "export",
         help="Export one Chatlas session as the standard session model JSON object.",
     )
-    session_model_export_parser.add_argument(
+    export_parser.add_argument(
         "query",
-        help="Exact query value matched against URI, session id, display name, fingerprint, and native fields.",
+        help="Exact query value matched against URI, identity hash, session id, display name, fingerprint, and native fields.",
     )
-    session_model_export_parser.add_argument(
+    export_parser.add_argument(
         "--provider",
         choices=_CHATLAS_PROVIDER_CHOICES,
         action="append",
         dest="providers",
         help="Restrict export to a provider family. Repeat to include multiple providers.",
     )
-    session_model_export_parser.add_argument(
+    export_parser.add_argument(
         "--format",
         choices=("json",),
         default="json",
         dest="output_format",
-        help="Output format. Session model export supports json only.",
+        help="Output format. Chatlas export supports json only.",
     )
-    session_model_export_parser.set_defaults(handler=_cmd_chatlas_session_model_export)
+    export_parser.set_defaults(handler=_cmd_chatlas_export)
 
     raw_parser = chatlas_subparsers.add_parser(
         "raw",
@@ -299,7 +290,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     raw_path_parser.add_argument(
         "query",
-        help="Exact query value matched against URI, session id, display name, fingerprint, and native fields.",
+        help="Exact query value matched against URI, identity hash, session id, display name, fingerprint, and native fields.",
     )
     raw_path_parser.add_argument(
         "--provider",
@@ -323,7 +314,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     raw_export_parser.add_argument(
         "query",
-        help="Exact query value matched against URI, session id, display name, fingerprint, and native fields.",
+        help="Exact query value matched against URI, identity hash, session id, display name, fingerprint, and native fields.",
     )
     raw_export_parser.add_argument(
         "--provider",

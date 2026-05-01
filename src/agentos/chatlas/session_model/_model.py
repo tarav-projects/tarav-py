@@ -9,6 +9,7 @@ from agentos.chatlas.core import chatlas_query
 from ._claude import _experimental_normalize_claude_code_raw_session
 from ._codex import _experimental_normalize_codex_raw_rollout
 from ._copilot import _experimental_normalize_copilot_cli_raw_events
+from ._hashes import _session_content_hash, _session_identity_hash
 from ._shared import *
 
 def chatlas_export_session_model(
@@ -19,7 +20,7 @@ def chatlas_export_session_model(
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
     if output_format != "json":
-        raise CliError(f"unsupported session model export format: {output_format}")
+        raise CliError(f"unsupported chatlas export format: {output_format}")
 
     normalized_query = query.strip()
     if not normalized_query:
@@ -67,11 +68,14 @@ def _build_session_model(session: dict[str, Any]) -> dict[str, object]:
         "unsupported_concepts": normalization_result.unsupported_concepts,
     }
     normalization.update(normalization_result.metadata)
+    events = normalization_result.events
+    session_payload = _experimental_session_payload(session)
+    session_payload.update(_experimental_session_hashes(session, events=events))
 
     return {
         "class": "agentos.chatlas.session_model",
         "schema_version": 1,
-        "session": _experimental_session_payload(session),
+        "session": session_payload,
         "agent_instance": _experimental_agent_instance_payload(session),
         "sources": sources,
         "chat": {
@@ -80,7 +84,7 @@ def _build_session_model(session: dict[str, Any]) -> dict[str, object]:
             "tool_invocations": _standard_records_payload(
                 normalization_result.tool_invocations
             ),
-            "events": normalization_result.events,
+            "events": events,
             "usage": _standard_records_payload(normalization_result.usage),
         },
         "normalization": normalization,
@@ -94,7 +98,7 @@ def _experimental_normalize_provider_raw(
     provider = _string_or_none(session.get("provider"))
     if provider is None:
         raise CliError(
-            "session model export requires a provider-specific raw normalizer; "
+            "chatlas export requires a provider-specific raw normalizer; "
             "session provider is missing"
         )
     if provider == "codex":
@@ -105,7 +109,7 @@ def _experimental_normalize_provider_raw(
         if codex_result is not None:
             return codex_result
         raise CliError(
-            "session model export could not normalize codex raw artifacts"
+            "chatlas export could not normalize codex raw artifacts"
         )
     if provider == "claude-code":
         claude_result = _experimental_normalize_claude_code_raw_session(
@@ -115,7 +119,7 @@ def _experimental_normalize_provider_raw(
         if claude_result is not None:
             return claude_result
         raise CliError(
-            "session model export could not normalize claude-code raw artifacts"
+            "chatlas export could not normalize claude-code raw artifacts"
         )
     if provider == "copilot-cli":
         copilot_result = _experimental_normalize_copilot_cli_raw_events(
@@ -125,11 +129,11 @@ def _experimental_normalize_provider_raw(
         if copilot_result is not None:
             return copilot_result
         raise CliError(
-            "session model export could not normalize copilot-cli raw artifacts"
+            "chatlas export could not normalize copilot-cli raw artifacts"
         )
 
     raise CliError(
-        "session model export has no provider-specific raw normalizer "
+        "chatlas export has no provider-specific raw normalizer "
         f"for provider {provider}"
     )
 
@@ -150,6 +154,29 @@ def _experimental_session_payload(session: dict[str, Any]) -> dict[str, object]:
         if value is not None:
             payload[key] = value
     return payload
+
+def _experimental_session_hashes(
+    session: dict[str, Any],
+    *,
+    events: list[dict[str, object]],
+) -> dict[str, object]:
+    provider = _string_or_none(session.get("provider"))
+    session_id = _string_or_none(session.get("session_id"))
+    if provider is None:
+        raise CliError(
+            "chatlas export requires provider to compute identity_hash"
+        )
+    if session_id is None:
+        raise CliError(
+            "chatlas export requires session_id to compute identity_hash"
+        )
+    return {
+        "identity_hash": _session_identity_hash(
+            provider=provider,
+            provider_session_id=session_id,
+        ),
+        "content_hash": _session_content_hash(events=events),
+    }
 
 def _standard_records_payload(records: list[dict[str, object]]) -> list[dict[str, object]]:
     return [
