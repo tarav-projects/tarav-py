@@ -17,11 +17,13 @@ Minimal protocol for Agentos-managed numeric filename workflows.
 
 - Canonical numbered filename shape is `NNN-short-topic.ext`.
 - `NNN` is zero-padded to a fixed width, currently `3`.
+- Numeric prefixes are stable handles, so the meaningful title may change while the number remains fixed.
 - A numbering domain is defined by:
   - the scan root include path
   - the filename pattern matched by the allocator
   - the minimum floor
   - any reserved prefix range policy
+  - whether numbers must be unique only inside the domain or across a broader project surface
 - The numbering source is only the files inside that domain that match the configured `NNN-` prefix pattern.
 
 ## Allocator Behavior
@@ -50,8 +52,15 @@ Minimal protocol for Agentos-managed numeric filename workflows.
   - filename pattern
   - numbering source
   - floor or reserved range
+  - uniqueness scope
   - exact `agentos prefix next` command, if allocation is automated
 - This skill owns only the shared numbering semantics that all those domain skills inherit.
+
+## Cross-Domain Coordination
+
+- Some systems need numbers to be unique across a broader surface than one folder.
+- Example: Agentos notes are moving toward project-wide md-surface uniqueness, where the same note number should not identify different notes in different note folders.
+- Current `agentos prefix next` behavior is still include-path based. Until a domain has project-wide allocation/checking support, domain skills should document any broader uniqueness expectation and require inspection or deterministic checks when relevant.
 
 ## Workflow For A New Numbered Artifact Type
 
@@ -64,6 +73,7 @@ Minimal protocol for Agentos-managed numeric filename workflows.
    - filename pattern
    - numbering source
    - floor or reserved range
+   - uniqueness scope
    - exact `agentos prefix next` command, if allocation is automated
    - stability rule: gaps allowed, no renumbering
 6. Ensure the domain protocol stays focused on numbering/location only, unless it intentionally owns broader structure.
@@ -76,6 +86,7 @@ Minimal protocol for Agentos-managed numeric filename workflows.
 - Does the protocol state the exact numbering source?
 - Is the minimum floor explicit?
 - Is the human-vs-agent range policy explicit?
+- Is the uniqueness scope explicit?
 - Does the protocol explicitly allow gaps and forbid renumbering?
 - Does the protocol include the exact `agentos prefix next` command when automation exists?
 

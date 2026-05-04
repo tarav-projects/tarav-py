@@ -37,7 +37,15 @@ You are part of the **Agentos Index Notes Maintenance System** - a set of agents
 - Index notes must be stored in `notes/index/` (or the location specified in `AGENTS.md`)
 - Canonical filename pattern: `NNN-short-topic.md`
 - `NNN` must be zero-padded 3 digits
-- Prefix range: `000-499` (reserved for index notes)
+- Numeric prefixes are stable handles and should not be changed after assignment
+- Gaps are allowed. Do not renumber existing notes to fill gaps.
+- Current range model:
+  - `000-099`: reserved notes with fixed system roles
+  - `100-499`: rolling index notes
+  - `500-999`: rolling other notes
+- New rolling index notes should use `100-499`
+- Existing pre-migration index notes with lower prefixes should keep their assigned numbers
+- Note numbers should be unique across the project md surface, not only inside `notes/index/`
 - Example: `005-simuleos-arch.md`, `010-workflows-inventory.md`
 
 ## Write Scope
