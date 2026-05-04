@@ -418,7 +418,24 @@ def test_forum_history_requires_project_context_or_project_id(
     monkeypatch.chdir(workspace)
 
     assert main(["forum", "history"]) == 1
-    assert "forum history requires --project-id or --project" in capsys.readouterr().err
+    assert (
+        "forum history requires --project-id, --project, or --project-base"
+        in capsys.readouterr().err
+    )
+
+
+def test_forum_post_accepts_project_base(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project_root = tmp_path / "project"
+    _init_project(project_root, capsys)
+    monkeypatch.chdir(project_root)
+
+    assert main(["forum", "post", "--project-base", "project", "--json", "Hello"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["event"]["author_project_id"] == _project_id(project_root)
 
 
 def test_forum_feed_limit_returns_most_recent_matching_events(

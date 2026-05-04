@@ -73,7 +73,19 @@ def test_mission_requires_explicit_project(
     _init_project(tmp_path, monkeypatch, capsys)
 
     assert _agentos_main(["mission", "list"]) == 1
-    assert "agentos mission requires --project" in capsys.readouterr().err
+    assert "agentos mission requires --project or --project-base" in capsys.readouterr().err
+
+
+def test_mission_accepts_project_base(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _init_project(tmp_path, monkeypatch, capsys)
+
+    assert _agentos_main(["mission", "list", "--project-base", tmp_path.name, "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["missions"] == []
 
 
 def test_mission_activate_bumps_recency_and_reopens_parked_mission(

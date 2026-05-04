@@ -89,7 +89,7 @@ def test_prefix_next_bare_project_targets_current_directory(
     assert capsys.readouterr().out.strip() == "501"
 
 
-def test_prefix_next_project_name_assertion_matches_root_basename(
+def test_prefix_next_project_base_assertion_matches_root_basename_with_discovery(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -102,8 +102,7 @@ def test_prefix_next_project_name_assertion_matches_root_basename(
         [
             "prefix",
             "next",
-            "--project",
-            "--project-name",
+            "--project-base",
             "named-project",
             "--target",
             "notes/live",
@@ -113,31 +112,32 @@ def test_prefix_next_project_name_assertion_matches_root_basename(
     assert capsys.readouterr().out.strip() == "500"
 
 
-def test_prefix_next_project_name_assertion_prefers_marker_name(
+def test_prefix_next_project_base_assertion_ignores_marker_name(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
+    project_root = tmp_path / "basename-project"
+    project_root.mkdir()
     set_fake_agentos_home(monkeypatch, tmp_path / "agentos-home")
     assert main(
         [
             "init",
             "--project",
-            str(tmp_path),
+            str(project_root),
             "--project-name",
             "declared-name",
         ]
     ) == 0
     capsys.readouterr()
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.chdir(project_root)
 
     assert main(
         [
             "prefix",
             "next",
-            "--project",
-            "--project-name",
-            "declared-name",
+            "--project-base",
+            "basename-project",
             "--target",
             "notes/live",
         ]
@@ -146,7 +146,7 @@ def test_prefix_next_project_name_assertion_prefers_marker_name(
     assert capsys.readouterr().out.strip() == "500"
 
 
-def test_prefix_next_project_name_assertion_fails_on_mismatch(
+def test_prefix_next_project_base_assertion_fails_on_mismatch(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -158,14 +158,42 @@ def test_prefix_next_project_name_assertion_fails_on_mismatch(
             "prefix",
             "next",
             "--project",
-            "--project-name",
+            "--project-base",
             "other-project",
             "--target",
             "notes/live",
         ]
     ) == 1
 
-    assert "project name assertion failed" in capsys.readouterr().err
+    assert "project base assertion failed" in capsys.readouterr().err
+
+
+def test_prefix_next_combines_project_path_with_project_base_assertion(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project_root = tmp_path / "path-project"
+    other_root = tmp_path / "other"
+    project_root.mkdir()
+    other_root.mkdir()
+    _init_project(project_root, monkeypatch, capsys)
+    monkeypatch.chdir(other_root)
+
+    assert main(
+        [
+            "prefix",
+            "next",
+            "--project",
+            str(project_root),
+            "--project-base",
+            "path-project",
+            "--target",
+            "notes/live",
+        ]
+    ) == 0
+
+    assert capsys.readouterr().out.strip() == "500"
 
 
 def test_prefix_next_explicit_project_without_target_fails(
@@ -191,7 +219,9 @@ def test_prefix_next_requires_explicit_project_for_target_mode(
 
     assert main(["prefix", "next", "--target", "notes/live"]) == 1
 
-    assert capsys.readouterr().err.strip() == "error: prefix target mode requires --project"
+    assert capsys.readouterr().err.strip() == (
+        "error: prefix target mode requires --project or --project-base"
+    )
 
 
 def test_prefix_next_requires_existing_project_for_target_mode(

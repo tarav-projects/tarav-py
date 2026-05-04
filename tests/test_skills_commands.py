@@ -94,7 +94,17 @@ def test_skills_list_requires_explicit_project(capsys, monkeypatch, tmp_path: Pa
     monkeypatch.chdir(workspace)
 
     assert _agentos_main(["skills", "list"]) == 1
-    assert "agentos skills requires --project" in capsys.readouterr().err
+    assert "agentos skills requires --project or --project-base" in capsys.readouterr().err
+
+
+def test_skills_list_accepts_project_base(capsys, monkeypatch, tmp_path: Path) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    monkeypatch.chdir(workspace)
+
+    assert _agentos_main(["skills", "list", "--project-base", "workspace"]) == 0
+    assert NO_SELECTED_SKILLS_MESSAGE in capsys.readouterr().out
 
 
 def test_skills_help_describes_import_manager(capsys) -> None:

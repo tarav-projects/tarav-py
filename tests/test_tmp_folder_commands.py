@@ -104,4 +104,22 @@ def test_tmp_folder_new_requires_explicit_project(
 
     monkeypatch.chdir(tmp_path)
     assert main(["utils", "tmp-folder", "new"]) == 1
-    assert "agentos utils tmp-folder new requires --project" in capsys.readouterr().err
+    assert (
+        "agentos utils tmp-folder new requires --project or --project-base"
+        in capsys.readouterr().err
+    )
+
+
+def test_tmp_folder_new_accepts_project_base(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["utils", "tmp-folder", "new", "--project-base", tmp_path.name]) == 0
+    generated_path = Path(capsys.readouterr().out.strip())
+    assert generated_path.parent == (tmp_path / ".agentos" / "tmp").resolve()

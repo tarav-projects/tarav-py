@@ -95,7 +95,22 @@ def test_tape_name_mode_requires_explicit_project(
 
     monkeypatch.chdir(tmp_path)
     assert _agentos_main(["tape", "init", "--tape", "bla"]) == 1
-    assert "agentos tape --tape requires --project" in capsys.readouterr().err
+    assert "agentos tape --tape requires --project or --project-base" in capsys.readouterr().err
+
+
+def test_tape_name_mode_accepts_project_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert _agentos_main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.chdir(tmp_path)
+    assert _agentos_main(["tape", "init", "--tape", "bla", "--project-base", tmp_path.name]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["resolution"] == "project-tape"
+    assert payload["project_root"] == str(tmp_path)
 
 
 def test_append_with_init_creates_missing_tape(
