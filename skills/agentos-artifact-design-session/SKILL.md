@@ -99,6 +99,35 @@ Observations, ideas, or considerations that have emerged but are not yet promote
 - When promoting a note to an item, add it to both the Items list and create its section.
 - When an item's status changes, update both the Items list and note it in End Log if significant.
 
+## Length Management
+
+The main session document should stay compact and focused on active work. When it grows long (~400-500+ lines), consider extracting content into companion live files.
+
+### End Log Extraction
+
+When the End Log grows large, extract it to a companion file:
+
+- Create a sibling live file (e.g. `NNN-session-name-log.md`).
+- Replace the End Log section in the main document with a link: `See [session log](./NNN-session-name-log.md)`.
+- The agent appends freely to the extracted log file.
+
+### Content Extraction
+
+When items (closed or just long) add length pressure, their content can be moved out:
+
+- Keep the one-line summary in the Items list (with status and short description).
+- Move the full item section content to a companion aux file: `NNN-session-name-aux-0.md`, `NNN-session-name-aux-1.md`, etc.
+- Add a link in the Items list pointing to the aux file and section.
+- The full content is still accessible but out of the way of active work.
+- Multiple aux files allow splitting by theme, size, or any natural grouping.
+
+### Extraction Rules
+
+- Extraction is optional and triggered by length, not by status change. Closing does not auto-extract.
+- The main document remains the coordination surface — it should always show the full Items list with statuses.
+- Extracted content is still part of the session, just housed in companion files.
+- Extraction is user-gated like other document modifications.
+
 ## Relationship To Other Artifacts
 
 - A `design-session` may produce a `design-summary` at the end if the user wants a cleaner post-hoc record.

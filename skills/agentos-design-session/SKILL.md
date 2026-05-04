@@ -24,6 +24,14 @@ Do not use it for quick, focused design discussions (use `agentos-design-discuss
 - `agentos-artifact-design-session` — for the document format and protocol.
 - `agentos-live-note-base` — for file location and naming.
 
+## References
+
+Always load all `references/*.md` files. They contain detailed protocols for:
+
+- `session-status.md` — status report format, next-item selection criteria.
+- `uncommitted-work.md` — tracking uncommitted discussion, continue semantics.
+- `capture-audit.md` — chat-to-document sync verification.
+
 ## Agent Roles
 
 The agent operates in two simultaneous roles:
@@ -85,7 +93,7 @@ When the agent thinks an item is ready to close:
 - On approval, update the item status to `closed` and finalize the section content.
 - "Closed" means sufficient for this session, not that the design is finished.
 
-Closed items can still receive minor updates (e.g. a refinement discovered while discussing another item) without reopening. Closed does not mean frozen.
+Closed items can still receive minor updates without reopening. Closed does not mean frozen.
 
 Reopening is an explicit user action that signals: "I want to directly work on this item again — significant work remains." It is not needed for small tweaks.
 
@@ -101,112 +109,13 @@ When the conversation consistently moves away from the plan:
 
 A session ends when:
 
-- All items are approved.
+- All items are closed.
 - The user explicitly ends it.
 - The user asks to produce a different artifact (e.g., `design-summary`, `impl-req`).
 
-On ending, suggest an End Log entry summarizing: items approved, items still open, any deferred work.
-
-## Uncommitted Work
-
-The document is the committed state. The chat is the working tree. Discussion that hasn't been captured in the document is uncommitted work.
-
-The agent tracks this internally — no formal computation needed. It knows what was discussed and what made it into the document.
-
-### When to surface uncommitted work
-
-- **After any document update:** "BTW, [other item] also has uncommitted discussion — want me to propose an update for that too?"
-- **On continue triggers:** when the user says "continue", "what's next", "now what", or similar — surface uncommitted work before suggesting the next item.
-- **On item switch:** if the user moves to a different item and there's substantial uncommitted work on the previous one — brief nudge: "[previous item] has uncommitted discussion — park it or update?"
-
-### Continue Semantics
-
-When the user says "continue" / "what's next" / "now what":
-
-1. If there's uncommitted work: "We have uncommitted discussion on [item] — want me to propose an update before moving on?"
-2. If the user declines (or nothing uncommitted): show session status + next item suggestions.
-3. If resuming a previously discussed item: briefly recall where we left off.
-
-### Next Item Suggestions
-
-The status report includes next item suggestions. Selection criteria (in rough priority):
-
-- Items with significant uncommitted work (finish what's started).
-- Items that unblock other items.
-- Highest-leverage open items.
-- Items closest to `needs-approval`.
-
-Keep explanations to one line each. The user picks.
-
-## Session Status
-
-When the user asks for session status, provide a short structured report:
-
-```
-Session: [title]
-Progress: [N approved / M needs-approval / M open] — T total
-
-Items:
-  [needs-approval]
-  - [item] — [one-line state]
-  - [item] — [one-line state]
-
-  [open · has work]
-  - [item] — [one-line state]
-  - [item] — [one-line state]
-
-  [open · not started]
-  - [item] — [one-line state]
-
-Uncommitted:
-  - [item] — [what was discussed but not written]
-
-Suggest closing:
-  - [item] — [why: saturated / no new ground / sufficient for session]
-
-Active: [what we're currently discussing, if anything]
-
-Next:
-1. [item] — [why]
-2. [item] — [why]
-3. [item] — [why]
-
-Recommendation: [N] — [short reason].
-```
-
-Rules:
-- Group items by status, most actionable first.
-- Split open items into "has work" vs "not started".
-- Uncommitted lists items with chat discussion not yet captured in the document. Say "none" if clean.
-- Suggest closing lists items the agent thinks are ready to close (saturated, no new ground, sufficient). Omit if none.
-- Next suggests up to 3 items with one-line rationale. Include a recommendation.
-- Keep it scannable. The user may call this repeatedly.
-
-## Capture Audit
-
-Scan the chat to verify that all relevant user ideas, approvals, and decisions have been captured in the design-session document.
-
-### Triggers
-
-- User requests: "capture-audit", "did we miss anything?", "scan the chat", "check what we missed"
-- Agent suggests it when appropriate: after a long discussion stretch, before ending a session, or when multiple items were discussed rapidly without document updates.
-
-### Output
-
-Produce a short report — do not auto-update the document:
-
-```
-Capture audit:
-- [item]: [what's missing — user idea, approval, constraint, correction]
-- [item]: [what's missing]
-- [new]: [concept mentioned but not yet an item]
-```
-
-If nothing is missing: "Capture audit: document is in sync."
-
-### After The Report
-
-The user decides what to update. The agent may propose specific edits based on the report, but waits for approval as usual.
+On ending:
+- Suggest an End Log entry summarizing: items closed, items still open, any deferred work.
+- Brief "what's next" nudge: suggest the most natural follow-up (e.g. "promote these concepts into index notes", "produce an impl-req for X", "start a new session for Y", or simply "this can rest as reference").
 
 ## Upgrade From Design Discussion
 
@@ -229,7 +138,7 @@ When a `design-discussion` grows complex:
 Same as `agentos-design-discussion`:
 
 1. The user's current explicit directions.
-2. Accepted design decisions from the current session (approved items).
+2. Accepted design decisions from the current session (closed items).
 3. The session document's current state.
 4. Current codebase state and diffs.
 
