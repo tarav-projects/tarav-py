@@ -75,6 +75,16 @@ Each source entry should capture:
 - `caveats`: some skills are complex and product-specific; do not cargo-cult Claude-specific harness behavior into agent-agnostic skills
 - `search-hints`: `skills/*/SKILL.md`, `template/SKILL.md`, `spec/agent-skills-spec.md`, `skills/skill-creator`, `skills/mcp-builder`, `skills/docx`, `skills/webapp-testing`
 
+## mattpocock-skills
+
+- `id`: `mattpocock-skills`
+- `kind`: local mined repo mirror
+- `location`: `/Users/pereiro/.agents/skills-mine/mattpocock-skills`
+- `why-it-matters`: high-signal public skill corpus centered on practical software engineering workflows, small composable skills, and explicit setup patterns for project-specific conventions
+- `best-for`: engineering workflow design, concise skill scoping, setup/bootstrap skills, interview or grilling flows, TDD and diagnosis loops, architecture-improvement prompts, and mining a real skill-authoring example from `write-a-skill`
+- `caveats`: the repo is organized around slash-command style invocation and some agent-specific setup assumptions; reuse the workflow shape and packaging ideas without importing product-specific command syntax or repo conventions verbatim
+- `search-hints`: `README.md`, `skills/engineering/*/SKILL.md`, `skills/productivity/write-a-skill/SKILL.md`, `skills/productivity/grill-me/SKILL.md`, `skills/engineering/grill-with-docs/SKILL.md`, `skills/engineering/tdd/SKILL.md`, `skills/engineering/diagnose/SKILL.md`, `skills/engineering/setup-matt-pocock-skills/SKILL.md`
+
 ## agent-skills-standard
 
 - `id`: `agent-skills-standard`
