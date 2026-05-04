@@ -169,8 +169,8 @@ Each source entry should capture:
 
 - `id`: `agentos-project-skills`
 - `kind`: local project skill directory
-- `location`: `/Users/pereiro/projects/agentos/skills`
-- `why-it-matters`: project-local and more experimental skill patterns that may not yet be reflected in the home skill set
+- `location`: `/Users/pereiro/projects/agentos-project/agentos-md/skills`
+- `why-it-matters`: Agentos md-surface skill patterns that may not yet be reflected in the home skill set
 - `best-for`: discussion-driven designs, task miners, in-progress conventions, and side-by-side comparison against home skills
 - `caveats`: may diverge from home copies; some entries are partial or project-specific
 - `search-hints`: `design-discussion`, `design-interview`, `todo-miner`, `tasks001-*`, `index-*`
