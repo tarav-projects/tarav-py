@@ -6,8 +6,8 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.ids import generate_uuid4_string, validate_uuid_string
-from agentos._core.project import require_explicit_agentos_project
-from agentos._core.project_command_log import command_payload_from_args, record_project_command
+from agentos._core.project import add_explicit_project_arguments, require_explicit_agentos_project
+from agentos._core.project_command_log import record_project_command_from_args
 from agentos.utils.tmp_folder import allocate_project_tmp_folder
 
 
@@ -37,12 +37,12 @@ def _cmd_utils_uuid(args: argparse.Namespace) -> int:
 def _cmd_utils_tmp_folder_new(args: argparse.Namespace) -> int:
     project = require_explicit_agentos_project(
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
         command_name="agentos utils tmp-folder new",
     )
-    record_project_command(
+    record_project_command_from_args(
         project=project,
-        agentos_command=command_payload_from_args(args),
+        args=args,
     )
     folder_path = allocate_project_tmp_folder(
         create=bool(args.create),
@@ -94,17 +94,12 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Create the generated folder. By default only prints the path.",
     )
-    tmp_folder_new_parser.add_argument(
-        "--project",
-        nargs="?",
-        type=Path,
-        const=Path("."),
-        default=None,
-        help="Required project target. Bare --project targets current pwd. Tmp-folder allocation requires an existing project.",
-    )
-    tmp_folder_new_parser.add_argument(
-        "--project-name",
-        default=None,
-        help="Assert the resolved project name after resolving --project.",
+    add_explicit_project_arguments(
+        tmp_folder_new_parser,
+        project_help=(
+            "Required project selector unless --project-base is supplied. "
+            "Bare --project targets current pwd. "
+            "Tmp-folder allocation requires an existing project."
+        ),
     )
     tmp_folder_new_parser.set_defaults(handler=_cmd_utils_tmp_folder_new)

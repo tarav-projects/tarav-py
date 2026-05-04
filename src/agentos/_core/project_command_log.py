@@ -39,6 +39,17 @@ def record_project_command(
         return
 
 
+def record_project_command_from_args(
+    *,
+    project: AgentosProjectHandler,
+    args: object,
+) -> None:
+    record_project_command(
+        project=project,
+        agentos_command=command_payload_from_args(args),
+    )
+
+
 def command_payload_from_args(args: object) -> dict[str, object]:
     command_parts: list[str] = []
     current = getattr(args, "command", None)

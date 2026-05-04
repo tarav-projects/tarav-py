@@ -5,8 +5,12 @@ import json
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos._core.project import AgentosProjectHandler, require_explicit_agentos_project
-from agentos._core.project_command_log import command_payload_from_args, record_project_command
+from agentos._core.project import (
+    AgentosProjectHandler,
+    add_explicit_project_arguments,
+    require_explicit_agentos_project,
+)
+from agentos._core.project_command_log import record_project_command_from_args
 from agentos.skills.routing import query_selected_skills
 
 from .core import (
@@ -29,7 +33,7 @@ from .core import (
 def _project(args: argparse.Namespace) -> AgentosProjectHandler:
     return require_explicit_agentos_project(
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
         command_name="agentos mission",
     )
 
@@ -39,9 +43,9 @@ def _project_root(args: argparse.Namespace) -> Path:
 
 
 def _record_mission_project_command(args: argparse.Namespace, project: AgentosProjectHandler) -> None:
-    record_project_command(
+    record_project_command_from_args(
         project=project,
-        agentos_command=command_payload_from_args(args),
+        args=args,
     )
 
 
@@ -424,18 +428,13 @@ def _add_mission_flag(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_project_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--project",
-        nargs="?",
-        type=Path,
-        const=Path("."),
-        default=None,
-        help="Required project target. Bare --project targets current pwd. Mission commands require an existing project.",
-    )
-    parser.add_argument(
-        "--project-name",
-        default=None,
-        help="Assert the resolved project name after resolving --project.",
+    add_explicit_project_arguments(
+        parser,
+        project_help=(
+            "Required project selector unless --project-base is supplied. "
+            "Bare --project targets current pwd. "
+            "Mission commands require an existing project."
+        ),
     )
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -147,6 +148,16 @@ def require_explicit_project_target(
     return project
 
 
+def require_explicit_project_selector(
+    project: Path | str | None,
+    project_base: str | None,
+    *,
+    command_name: str,
+) -> None:
+    if project is None and project_base is None:
+        raise CliError(f"{command_name} requires --project or --project-base")
+
+
 def project_marker_name(marker: dict[str, object]) -> str | None:
     for field_name in ("project_name", "name"):
         raw_name = marker.get(field_name)
@@ -155,20 +166,20 @@ def project_marker_name(marker: dict[str, object]) -> str | None:
     return None
 
 
-def assert_project_name(
+def assert_project_base(
     project: AgentosProjectHandler,
-    expected_name: str | None,
+    expected_base: str | None,
 ) -> None:
-    if expected_name is None:
+    if expected_base is None:
         return
-    expected = str(expected_name).strip()
+    expected = str(expected_base).strip()
     if not expected:
-        raise CliError("project name assertion must not be empty")
+        raise CliError("project base assertion must not be empty")
 
-    actual = project.project_name
+    actual = project.root.name
     if actual != expected:
         raise CliError(
-            "project name assertion failed: "
+            "project base assertion failed: "
             f"expected {expected!r}, resolved {actual!r} at {project.root}"
         )
 
@@ -177,16 +188,37 @@ def require_explicit_agentos_project(
     *,
     project: Path | str | None,
     command_name: str,
-    project_name: str | None = None,
+    project_base: str | None = None,
     include_init_hint: bool = True,
 ) -> AgentosProjectHandler:
-    explicit_project = require_explicit_project_target(project, command_name=command_name)
+    require_explicit_project_selector(project, project_base, command_name=command_name)
     resolved_project = require_agentos_project(
-        project=explicit_project,
+        start_path=Path.cwd(),
+        project=project,
         include_init_hint=include_init_hint,
     )
-    assert_project_name(resolved_project, project_name)
+    assert_project_base(resolved_project, project_base)
     return resolved_project
+
+
+def add_explicit_project_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    project_help: str,
+) -> None:
+    parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help=project_help,
+    )
+    parser.add_argument(
+        "--project-base",
+        default=None,
+        help="Assert the resolved project root basename after project discovery or --project resolution.",
+    )
 
 
 def resolve_project_target(
@@ -307,17 +339,17 @@ def resolve_project_tape_dir(
     *,
     start_path: Path | str = ".",
     project: Path | str | None = None,
-    project_name: str | None = None,
+    project_base: str | None = None,
 ) -> tuple[Path, Path, str]:
     normalized_tape_name = validate_string_for_path(tape_name, field_name="tape")
-    explicit_project = require_explicit_project_target(project, command_name="agentos tape --tape")
+    require_explicit_project_selector(project, project_base, command_name="agentos tape --tape")
     resolved_project = require_agentos_project(
         start_path,
-        project=explicit_project,
+        project=project,
         include_init_hint=True,
         extra_hint="pass --root",
     )
-    assert_project_name(resolved_project, project_name)
+    assert_project_base(resolved_project, project_base)
     project_root = resolved_project.root
     return (project_agentos_dir(project_root) / "tapes" / normalized_tape_name, project_root, normalized_tape_name)
 

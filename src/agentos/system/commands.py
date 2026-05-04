@@ -11,7 +11,7 @@ from agentos._core.errors import CliError
 from agentos._core.project import (
     AgentosProjectHandler,
     SCOPE_VALUES,
-    assert_project_name,
+    assert_project_base,
     find_agentos_project_root,
     global_storage_paths,
     local_storage_paths,
@@ -38,9 +38,9 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     )
     project_root = find_agentos_project_root(project_target)
     if project_root is not None:
-        assert_project_name(AgentosProjectHandler(project_root).validate(), args.project_name)
-    elif args.project_name is not None:
-        raise CliError("project name assertion requires a resolved agentos project")
+        assert_project_base(AgentosProjectHandler(project_root).validate(), args.project_base)
+    elif args.project_base is not None:
+        raise CliError("project base assertion requires a resolved agentos project")
     inside_project = project_root is not None
 
     effective_scope, effective_paths, effective_project_root = resolve_scope_storage_paths(
@@ -114,9 +114,9 @@ def register_system_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Project target override for diagnostics. Bare --project targets current pwd. Doctor does not require an existing project.",
     )
     doctor_parser.add_argument(
-        "--project-name",
+        "--project-base",
         default=None,
-        help="Assert the discovered project name when a project is resolved.",
+        help="Assert the discovered project root basename when a project is resolved.",
     )
     doctor_parser.set_defaults(handler=_cmd_doctor)
 

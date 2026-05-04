@@ -5,8 +5,12 @@ import json
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos._core.project import load_project_config, require_explicit_agentos_project
-from agentos._core.project_command_log import command_payload_from_args, record_project_command
+from agentos._core.project import (
+    add_explicit_project_arguments,
+    load_project_config,
+    require_explicit_agentos_project,
+)
+from agentos._core.project_command_log import record_project_command_from_args
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos._core.scan import resolve_relative_paths_under_root, resolve_root_dir
 
@@ -24,10 +28,10 @@ from .core import (
 
 def _cmd_prefix_next(args: argparse.Namespace) -> int:
     if args.target is not None:
-        if args.project is None:
-            raise CliError("prefix target mode requires --project")
+        if args.project is None and args.project_base is None:
+            raise CliError("prefix target mode requires --project or --project-base")
         return _cmd_prefix_next_project(args)
-    if args.project is not None:
+    if args.project is not None or args.project_base is not None:
         raise CliError("prefix target is required")
     return _cmd_prefix_next_legacy(args)
 
@@ -104,12 +108,12 @@ def _normalize_project_relative_target(root: Path, raw_target: str) -> str:
 def _cmd_prefix_next_project(args: argparse.Namespace) -> int:
     project = require_explicit_agentos_project(
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
         command_name="agentos prefix next",
     )
-    record_project_command(
+    record_project_command_from_args(
         project=project,
-        agentos_command=command_payload_from_args(args),
+        args=args,
     )
     root = project.root
     policy = _load_prefix_policy(project.config_path)
@@ -170,18 +174,13 @@ def register_prefix_commands(subparsers: argparse._SubParsersAction) -> None:
         "next",
         help="Print the next available numeric prefix for a project target.",
     )
-    prefix_next_parser.add_argument(
-        "--project",
-        type=Path,
-        nargs="?",
-        const=Path("."),
-        default=None,
-        help="Required for target mode. Bare --project targets current pwd. Prefix target mode requires an existing project.",
-    )
-    prefix_next_parser.add_argument(
-        "--project-name",
-        default=None,
-        help="Assert the resolved project name after resolving --project.",
+    add_explicit_project_arguments(
+        prefix_next_parser,
+        project_help=(
+            "Required selector for target mode unless --project-base is supplied. "
+            "Bare --project targets current pwd. "
+            "Prefix target mode requires an existing project."
+        ),
     )
     prefix_next_parser.add_argument(
         "--target",

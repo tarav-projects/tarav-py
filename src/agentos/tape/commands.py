@@ -9,8 +9,12 @@ from jmespath.exceptions import JMESPathError
 
 from agentos._core.errors import CliError
 from agentos._core.json_input import load_json_arg as _load_json_arg
-from agentos._core.project import AgentosProjectHandler, resolve_project_tape_dir
-from agentos._core.project_command_log import command_payload_from_args, record_project_command
+from agentos._core.project import (
+    AgentosProjectHandler,
+    add_explicit_project_arguments,
+    resolve_project_tape_dir,
+)
+from agentos._core.project_command_log import record_project_command_from_args
 from agentos.tape.folder_core import (
     TapeFolderConfig,
     append_staging_record,
@@ -39,13 +43,13 @@ def _resolve_tape_root(
     root_path: str | None,
     tape_name: str | None,
     project: Path | str | None,
-    project_name: str | None = None,
+    project_base: str | None = None,
 ) -> tuple[Path, dict[str, object]]:
     if root_path is not None:
         if project is not None:
             raise CliError("--project is not supported with --root")
-        if project_name is not None:
-            raise CliError("--project-name is not supported with --root")
+        if project_base is not None:
+            raise CliError("--project-base is not supported with --root")
         resolved_root = Path(root_path).expanduser().resolve()
         return (
             resolved_root,
@@ -63,7 +67,7 @@ def _resolve_tape_root(
         tape_name,
         start_path=Path.cwd(),
         project=project,
-        project_name=project_name,
+        project_base=project_base,
     )
     return (
         resolved_root,
@@ -80,9 +84,9 @@ def _record_tape_project_command(args: argparse.Namespace, resolution: dict[str,
     if project_root is None:
         return
     project = AgentosProjectHandler(Path(str(project_root))).validate()
-    record_project_command(
+    record_project_command_from_args(
         project=project,
-        agentos_command=command_payload_from_args(args),
+        args=args,
     )
 
 
@@ -452,7 +456,7 @@ def _cmd_tape_init(args: argparse.Namespace) -> int:
         root_path=args.root_path,
         tape_name=args.tape_name,
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
     )
     _record_tape_project_command(args, resolution)
 
@@ -504,7 +508,7 @@ def _cmd_tape_append(args: argparse.Namespace) -> int:
         root_path=args.root_path,
         tape_name=args.tape_name,
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
     )
     _record_tape_project_command(args, resolution)
 
@@ -548,7 +552,7 @@ def _cmd_tape_append_batch(args: argparse.Namespace) -> int:
         root_path=args.root_path,
         tape_name=args.tape_name,
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
     )
     _record_tape_project_command(args, resolution)
 
@@ -600,7 +604,7 @@ def _cmd_tape_consolidate(args: argparse.Namespace) -> int:
         root_path=args.root_path,
         tape_name=args.tape_name,
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
     )
     _record_tape_project_command(args, resolution)
 
@@ -630,7 +634,7 @@ def _cmd_tape_query(args: argparse.Namespace) -> int:
         root_path=args.root_path,
         tape_name=args.tape_name,
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
     )
     _record_tape_project_command(args, resolution)
     consolidate_payload: dict[str, object] | None = None
@@ -688,7 +692,7 @@ def _cmd_tape_verify(args: argparse.Namespace) -> int:
         root_path=args.root_path,
         tape_name=args.tape_name,
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
     )
     _record_tape_project_command(args, resolution)
     result = verify_segment_headers(root_path)
@@ -707,7 +711,7 @@ def _cmd_tape_config(args: argparse.Namespace) -> int:
         root_path=args.root_path,
         tape_name=args.tape_name,
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
     )
     _record_tape_project_command(args, resolution)
     config = load_tape_folder_config(root_path)
@@ -729,7 +733,7 @@ def _cmd_tape_doctor(args: argparse.Namespace) -> int:
         root_path=args.root_path,
         tape_name=args.tape_name,
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
     )
     _record_tape_project_command(args, resolution)
     config = load_tape_folder_config(root_path)
@@ -770,7 +774,7 @@ def _cmd_tape_lint(args: argparse.Namespace) -> int:
         root_path=args.root_path,
         tape_name=args.tape_name,
         project=args.project,
-        project_name=args.project_name,
+        project_base=args.project_base,
     )
     _record_tape_project_command(args, resolution)
     if args.max_findings <= 0:
@@ -803,18 +807,13 @@ def _add_tape_target_group(parser: argparse.ArgumentParser) -> None:
         dest="root_path",
         help="Explicit tape root directory (headless mode).",
     )
-    parser.add_argument(
-        "--project",
-        nargs="?",
-        type=Path,
-        const=Path("."),
-        default=None,
-        help="Required project target for --tape mode only. Bare --project targets current pwd. --tape requires an existing project; not valid with --root.",
-    )
-    parser.add_argument(
-        "--project-name",
-        default=None,
-        help="Assert the resolved project name after resolving --project.",
+    add_explicit_project_arguments(
+        parser,
+        project_help=(
+            "Required project selector for --tape mode unless --project-base is supplied. "
+            "Bare --project targets current pwd. "
+            "--tape requires an existing project; not valid with --root."
+        ),
     )
 
 

@@ -7,8 +7,12 @@ from textwrap import dedent
 
 from agentos._core.errors import CliError
 from agentos._core.ids import generate_uuid4_string, validate_uuid_string
-from agentos._core.project import AgentosProjectHandler, require_explicit_agentos_project
-from agentos._core.project_command_log import command_payload_from_args, record_project_command
+from agentos._core.project import (
+    AgentosProjectHandler,
+    add_explicit_project_arguments,
+    require_explicit_agentos_project,
+)
+from agentos._core.project_command_log import record_project_command_from_args
 from agentos.forum.core import (
     VALID_FORUM_REACTIONS,
     append_forum_event,
@@ -96,7 +100,8 @@ FORUM_HISTORY_DESCRIPTION = dedent(
     Show authored history from one project's append-only log.
 
     Use --project-id for headless reads outside a project checkout, or
-    --project to read the explicitly selected local project's authored events.
+    --project/--project-base to read the explicitly selected local project's
+    authored events.
     """
 )
 
@@ -104,7 +109,7 @@ FORUM_HISTORY_DESCRIPTION = dedent(
 def _resolve_author_project(args: argparse.Namespace) -> dict[str, object]:
     project = require_explicit_agentos_project(
         project=getattr(args, "project", None),
-        project_name=getattr(args, "project_name", None),
+        project_base=getattr(args, "project_base", None),
         command_name="agentos forum",
     )
     return current_author_project(
@@ -115,9 +120,9 @@ def _resolve_author_project(args: argparse.Namespace) -> dict[str, object]:
 
 def _record_forum_project_command(args: argparse.Namespace, author_project: dict[str, object]) -> None:
     project = AgentosProjectHandler(Path(str(author_project["project_root"]))).validate()
-    record_project_command(
+    record_project_command_from_args(
         project=project,
-        agentos_command=command_payload_from_args(args),
+        args=args,
     )
 
 
@@ -332,7 +337,7 @@ def _resolve_history_project_id(args: argparse.Namespace) -> str:
         author_project = _resolve_author_project(args)
     except CliError as exc:
         raise CliError(
-            "forum history requires --project-id or --project"
+            "forum history requires --project-id, --project, or --project-base"
         ) from exc
     return str(author_project["project_id"])
 
@@ -352,18 +357,13 @@ def _cmd_forum_history(args: argparse.Namespace) -> int:
 
 
 def _add_project_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--project",
-        nargs="?",
-        type=Path,
-        const=Path("."),
-        default=None,
-        help="Required project target. Bare --project targets current pwd. Forum project-authored commands require an existing project.",
-    )
-    parser.add_argument(
-        "--project-name",
-        default=None,
-        help="Assert the resolved project name after resolving --project.",
+    add_explicit_project_arguments(
+        parser,
+        project_help=(
+            "Required project selector unless --project-base is supplied. "
+            "Bare --project targets current pwd. "
+            "Forum project-authored commands require an existing project."
+        ),
     )
 
 
