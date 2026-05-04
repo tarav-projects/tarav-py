@@ -24,6 +24,7 @@ Canonical TOC and orientation note for `notes/index/`.
 - `003-Agentos.Mission.md` — mission control as a lightweight coordination surface for named blocks of work.
 - `004-Agentos.Project.md` — project identity and targeting model for project-scoped Agentos behavior.
 - `005-Agentos.Skills.md` — selection and import model for project-local skills.
+- `100-Project.Selection.Protocol.md` — explicit project selector contract for project-aware command surfaces.
 
 ### External Integration Declaration
 

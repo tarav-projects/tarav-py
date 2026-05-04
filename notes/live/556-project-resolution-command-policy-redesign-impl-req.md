@@ -4,19 +4,21 @@
 
 Implemented in the Python CLI. Full tests pass; `ruff` could not be run because the project environment does not currently include the executable.
 
+2026-05-04 update: the project assertion surface was realigned to `Project.Selection.Protocol` in `notes/index/100-Project.Selection.Protocol.md`. Project-aware commands now require at least one explicit selector: `--project`, `--project-base`, or both. `--project-name` remains marker metadata for `agentos init`; it is not the command safety assertion.
+
 ## User Intent
 
 Make project resolution coherent across `agentos` commands.
 
-Project-aware commands must use explicit project targeting. The minimal explicit project target is bare `--project`, which means the current working directory is the intended project target. Commands should not silently target an `Agentos.Project` through omitted `--project` unless they are explicitly declared read-only discovery or diagnostic surfaces.
+Project-aware commands must use explicit project selection. The minimal explicit selectors are `--project`, `--project-base`, or both. Commands should not silently target an `Agentos.Project` when every project selector is omitted unless they are explicitly declared read-only discovery or diagnostic surfaces.
 
-The redesign should also add a project name assertion mechanism:
+The redesign should also add a project root basename assertion mechanism:
 
 ```txt
-project=<project-name>
+--project-base <basename>
 ```
 
-This assertion must verify the project already resolved by discovery or explicit targeting. It must not become global project search.
+This assertion must verify the project already resolved by discovery or explicit targeting. It checks `resolved_project.root.name`, not marker `project_name`, and must not become global project search.
 
 ## Why This Exists
 
@@ -93,32 +95,32 @@ assert_project_name(project, expected_name)
 
 Do not overbuild the abstraction. The goal is consistent behavior and help text, not a large framework.
 
-### Project Name Assertion
+### Project Basename Assertion
 
-Add support for a project name assertion after project resolution.
+Add support for a project root basename assertion after project resolution.
 
 Design:
 
 - assertion verifies the resolved project
 - assertion does not search globally
-- assertion should match a project name declared in `.agentos/project.json` when available
-- if no marker project name exists, assertion should match the basename of the resolved project root
+- assertion matches the basename of the resolved project root
+- assertion does not use marker-level `project_name`
 - mismatch should fail clearly and include the resolved root
 
 Marker schema note:
 
 - existing markers currently require `class` and `project_id`
-- add optional `project_name` or equivalent only if implementation keeps backward compatibility
+- marker `project_name` may remain metadata for `agentos init`
 - do not break existing project markers that lack a name field
 
-Possible CLI spelling:
+CLI spelling:
 
 ```sh
-agentos <command> --project agentos-py ...
-agentos <command> --project /path/to/project --project-name agentos-py ...
+agentos <command> --project-base agentos-py ...
+agentos <command> --project /path/to/project --project-base agentos-py ...
 ```
 
-The final spelling should be chosen consistently. The accepted design concept is `project=<project-name>` as assertion, not global search.
+`--project <value>` remains path-shaped. Relative values such as `--project agentos-md` are filesystem paths, not project names.
 
 ### Shared `--project` Parser Behavior
 
@@ -126,15 +128,16 @@ Create shared parser helpers for project-aware commands so help text and argpars
 
 For project-aware commands:
 
-- `--project` must be present
+- at least one explicit project selector must be present: `--project`, `--project-base`, or both
 - bare `--project` means current directory
 - `--project <path>` means exact intended project target
-- omitted `--project` is an error unless the command is explicitly diagnostic/read-only or config-resolution-only
+- `--project-base <basename>` means discover from `pwd` and assert the resolved project root basename
+- omitted project selectors are an error unless the command is explicitly diagnostic/read-only or config-resolution-only
 
 Recommended behavior:
 
 ```txt
-error: <command> requires --project
+error: <command> requires --project or --project-base
 ```
 
 For read-only discovery or diagnostic commands, use clear wording in help text that omitted project targeting is allowed by command policy.
@@ -191,7 +194,7 @@ Keep:
 - project command activity logging
 - no implicit parent-walk when `--project` is omitted
 
-Add project name assertion support when the shared mechanism exists.
+Add project basename assertion support when the shared mechanism exists.
 
 #### `agentos skills`
 
@@ -284,7 +287,7 @@ If this feels too confusing after implementation starts, consider renaming futur
 - Do not remove read-only discovery behavior from `agentos rev-parse`.
 - Do not remove diagnostic behavior from `agentos doctor`.
 - Do not require `--project` for explicit headless `--root` modes.
-- Do not turn project name assertion into global project search.
+- Do not turn project basename assertion into global project search.
 - Do not break existing `.agentos/project.json` markers without a name field.
 - Do not initialize projects except through `agentos init`.
 - Do not silently create `.agentos/project.json` from any project-aware command other than `init`.
@@ -309,20 +312,20 @@ If this feels too confusing after implementation starts, consider renaming futur
 - `agentos init` without `--project` fails unless `--scope global` is used.
 - `agentos init --project` initializes the current directory.
 - `agentos init --project /path/to/project` initializes the explicit path.
-- Project-aware mutating or allocating commands fail without `--project`.
-- `agentos prefix next --target notes/live` continues to fail without `--project`.
-- `agentos skills list` fails without `--project`.
-- `agentos mission status` fails without `--project`.
-- `agentos utils tmp-folder new` fails without `--project`.
-- `agentos tape <subcommand> --tape <name>` fails without `--project`.
+- Project-aware mutating or allocating commands fail without `--project` or `--project-base`.
+- `agentos prefix next --target notes/live` continues to fail without `--project` or `--project-base`.
+- `agentos skills list` fails without `--project` or `--project-base`.
+- `agentos mission status` fails without `--project` or `--project-base`.
+- `agentos utils tmp-folder new` fails without `--project` or `--project-base`.
+- `agentos tape <subcommand> --tape <name>` fails without `--project` or `--project-base`.
 - `agentos tape <subcommand> --root <path>` remains valid without `--project`.
 - `agentos forum post "..."` fails without `--project`.
 - `agentos forum history` fails unless `--project-id` or `--project` is provided.
 - `agentos rev-parse --show-toplevel --path <path>` still supports parent-walk discovery.
 - `agentos doctor` still produces diagnostics outside an initialized project.
-- Project name assertion verifies the resolved project and fails on mismatch.
+- Project basename assertion verifies the resolved project root basename and fails on mismatch.
 - Existing project markers without project names continue to load.
-- Tests cover exact explicit target behavior, bare `--project`, omitted-project failures, diagnostic exceptions, headless `--root` exceptions, and project name assertion.
+- Tests cover exact explicit target behavior, bare `--project`, `--project-base`, combined selectors, omitted-selector failures, diagnostic exceptions, headless `--root` exceptions, and project basename assertion.
 
 ## Relevant Files Or Surfaces
 
@@ -352,13 +355,13 @@ If this feels too confusing after implementation starts, consider renaming futur
 
 ## Open Questions
 
-- What exact CLI spelling should expose project name assertion: `--project-name`, `--project-is`, `--assert-project`, or a structured `project=<name>` argument?
-- Should project name assertion be available on every project-aware command immediately, or only on commands with the highest nested-workspace risk first?
+- Resolved: project root basename assertion uses `--project-base`; marker-level `--project-name` is not the command safety assertion.
+- Should project basename assertion be available on every project-aware command immediately, or only on commands with the highest nested-workspace risk first?
 - Should read-only project commands such as `mission status` be logged, or only mutating commands?
 - Should `agentos doctor --project <path>` treat the path as exact diagnostic target or as a parent-walk start path? Current behavior parent-walks, which is useful but should be explicit.
 - Should `agentos agent --project` eventually be renamed because it is a config-resolution start path rather than a required project target?
 
-None of these block the first implementation pass if the core rule is enforced: project-aware commands require explicit `--project`, and declared diagnostic/headless/config-resolution exceptions are documented in code and tests.
+None of these block the first implementation pass if the core rule is enforced: project-aware commands require `--project`, `--project-base`, or both, and declared diagnostic/headless/config-resolution exceptions are documented in code and tests.
 
 ## Related Impl-Reqs
 
@@ -368,4 +371,5 @@ None of these block the first implementation pass if the core rule is enforced: 
 ## End Log
 
 - 2026-05-04: Created after reviewing current command project-resolution behavior and adding `Project.Discovery.System` plus explicit `--project` command policy to the Agentos markdown index.
-- 2026-05-04: Implemented explicit project targeting for project-aware commands, project-name assertion, project command logging coverage for mission/forum/tape project modes, and related tests. Verified with `uv run python -m pytest -q` (`299 passed`). `uv run ruff check .` could not run because `ruff` is not installed in the project environment.
+- 2026-05-04: First implementation pass added explicit project targeting for project-aware commands, an initial marker-name assertion surface, project command logging coverage for mission/forum/tape project modes, and related tests. Verified with `uv run python -m pytest -q` (`299 passed`). `uv run ruff check .` could not run because `ruff` is not installed in the project environment. The assertion surface was later superseded by `--project-base`.
+- 2026-05-04: Realigned command selection with `Project.Selection.Protocol`: added `--project-base`, changed project-aware command errors to require `--project` or `--project-base`, kept `--project` path-shaped, and verified with `uv run python -m pytest -q` (`300 passed`).
