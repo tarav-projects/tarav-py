@@ -49,7 +49,7 @@ def test_mission_templates_reads_selected_imported_skills(
     )
 
     monkeypatch.chdir(workspace)
-    assert main(["mission", "templates", "--json"]) == 0
+    assert main(["mission", "templates", "--project", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload == [

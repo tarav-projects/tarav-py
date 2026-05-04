@@ -7,7 +7,18 @@ import pytest
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos.cli import main
+from agentos.cli import main as _agentos_main
+
+
+def main(argv: list[str]) -> int:
+    if (
+        len(argv) >= 2
+        and argv[0] == "tape"
+        and "--tape" in argv
+        and "--project" not in argv
+    ):
+        return _agentos_main([argv[0], argv[1], "--project", *argv[2:]])
+    return _agentos_main(argv)
 
 
 def test_validate_string_for_path_rejects_traversal_tokens() -> None:
@@ -33,6 +44,11 @@ def test_init_project_writes_class_fields(
     assert payload["marker"]["class"] == "agentos.project"
     config_payload = json.loads((tmp_path / ".agentos" / "config.json").read_text(encoding="utf-8"))
     assert config_payload["class"] == "agentos.project.config"
+
+
+def test_init_project_scope_requires_explicit_project(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["init"]) == 1
+    assert "agentos init requires --project" in capsys.readouterr().err
 
 
 def test_init_global_writes_class_field(
@@ -67,6 +83,19 @@ def test_folder_init_resolves_tape_name_to_project_tapes_folder(
     assert payload["tape"] == "bla"
     assert payload["root_path"] == str(expected_root)
     assert (expected_root / "tape.manifest.json").is_file()
+
+
+def test_tape_name_mode_requires_explicit_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert _agentos_main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.chdir(tmp_path)
+    assert _agentos_main(["tape", "init", "--tape", "bla"]) == 1
+    assert "agentos tape --tape requires --project" in capsys.readouterr().err
 
 
 def test_append_with_init_creates_missing_tape(

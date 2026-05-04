@@ -5,11 +5,23 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli import build_parser, main
+from agentos.cli import build_parser, main as _agentos_main
 from _helpers import set_fake_agentos_home as _set_fake_agentos_home, write_global_routing_config as _write_global_routing_config, write_project_marker as _write_project_marker
 
 NO_SELECTED_SKILLS_MESSAGE = "No skills are selected for import into this project target."
 DEFAULT_DEPOT_PATHS = (Path(".agents/skills"), Path(".claude/skills"))
+
+
+def main(argv: list[str]) -> int:
+    if (
+        len(argv) >= 2
+        and argv[0] == "skills"
+        and argv[1] != "--help"
+        and "--help" not in argv
+        and "--project" not in argv
+    ):
+        return _agentos_main([*argv, "--project"])
+    return _agentos_main(argv)
 
 
 def _create_skill(path: Path, *, description: str) -> None:
@@ -75,6 +87,16 @@ def test_skills_list_returns_authoritative_empty_catalog(capsys, monkeypatch, tm
     )
 
 
+def test_skills_list_requires_explicit_project(capsys, monkeypatch, tmp_path: Path) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    workspace = tmp_path / "workspace"
+    _create_local_agents_context(workspace)
+    monkeypatch.chdir(workspace)
+
+    assert _agentos_main(["skills", "list"]) == 1
+    assert "agentos skills requires --project" in capsys.readouterr().err
+
+
 def test_skills_help_describes_import_manager(capsys) -> None:
     with pytest.raises(SystemExit, match="0"):
         main(["skills", "--help"])
@@ -118,7 +140,7 @@ def test_skills_list_uses_default_profile_and_predicts_local_depot_paths(
     )
 
     monkeypatch.chdir(workspace)
-    assert main(["skills", "list", "--json"]) == 0
+    assert main(["skills", "list", "--project", str(workspace), "--json"]) == 0
     listed = json.loads(capsys.readouterr().out)
 
     assert listed == [
@@ -185,7 +207,7 @@ def test_skills_list_uses_agentos_project_root_before_pwd(
     )
 
     monkeypatch.chdir(nested)
-    assert main(["skills", "list", "--json"]) == 0
+    assert main(["skills", "list", "--project", str(project_root), "--json"]) == 0
     listed = json.loads(capsys.readouterr().out)
 
     assert listed == [
@@ -226,7 +248,7 @@ def test_skills_list_uses_nearest_local_agents_context_before_agentos_project_ro
     )
 
     monkeypatch.chdir(deeper_root)
-    assert main(["skills", "list", "--json"]) == 0
+    assert main(["skills", "list", "--project", str(child_root), "--json"]) == 0
     listed = json.loads(capsys.readouterr().out)
 
     assert listed == [
@@ -339,7 +361,7 @@ def test_skills_list_honors_local_project_profile_override(
     )
 
     monkeypatch.chdir(nested)
-    assert main(["skills", "list", "--json"]) == 0
+    assert main(["skills", "list", "--project", str(project_root), "--json"]) == 0
     listed = json.loads(capsys.readouterr().out)
 
     assert listed == [

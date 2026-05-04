@@ -384,7 +384,7 @@ def test_forum_history_supports_explicit_project_id_without_local_project(
     assert payload["events"][0]["event"]["event_id"] == reply["event_id"]
 
 
-def test_forum_history_defaults_to_current_local_project(
+def test_forum_history_uses_explicit_local_project(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -396,11 +396,11 @@ def test_forum_history_defaults_to_current_local_project(
     monkeypatch.chdir(project_a)
     project_a_id = _project_id(project_a)
 
-    assert main(["forum", "post", "--json", "Hello from A"]) == 0
+    assert main(["forum", "post", "--project", "--json", "Hello from A"]) == 0
     post_payload = json.loads(capsys.readouterr().out)
     post = post_payload["event"]
 
-    assert main(["forum", "history", "--json"]) == 0
+    assert main(["forum", "history", "--project", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["project_id"] == project_a_id
@@ -418,7 +418,7 @@ def test_forum_history_requires_project_context_or_project_id(
     monkeypatch.chdir(workspace)
 
     assert main(["forum", "history"]) == 1
-    assert "forum history requires --project-id or an existing local project" in capsys.readouterr().err
+    assert "forum history requires --project-id or --project" in capsys.readouterr().err
 
 
 def test_forum_feed_limit_returns_most_recent_matching_events(

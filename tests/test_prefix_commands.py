@@ -89,6 +89,85 @@ def test_prefix_next_bare_project_targets_current_directory(
     assert capsys.readouterr().out.strip() == "501"
 
 
+def test_prefix_next_project_name_assertion_matches_root_basename(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project_root = tmp_path / "named-project"
+    project_root.mkdir()
+    _init_project(project_root, monkeypatch, capsys)
+
+    assert main(
+        [
+            "prefix",
+            "next",
+            "--project",
+            "--project-name",
+            "named-project",
+            "--target",
+            "notes/live",
+        ]
+    ) == 0
+
+    assert capsys.readouterr().out.strip() == "500"
+
+
+def test_prefix_next_project_name_assertion_prefers_marker_name(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    set_fake_agentos_home(monkeypatch, tmp_path / "agentos-home")
+    assert main(
+        [
+            "init",
+            "--project",
+            str(tmp_path),
+            "--project-name",
+            "declared-name",
+        ]
+    ) == 0
+    capsys.readouterr()
+    monkeypatch.chdir(tmp_path)
+
+    assert main(
+        [
+            "prefix",
+            "next",
+            "--project",
+            "--project-name",
+            "declared-name",
+            "--target",
+            "notes/live",
+        ]
+    ) == 0
+
+    assert capsys.readouterr().out.strip() == "500"
+
+
+def test_prefix_next_project_name_assertion_fails_on_mismatch(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _init_project(tmp_path, monkeypatch, capsys)
+
+    assert main(
+        [
+            "prefix",
+            "next",
+            "--project",
+            "--project-name",
+            "other-project",
+            "--target",
+            "notes/live",
+        ]
+    ) == 1
+
+    assert "project name assertion failed" in capsys.readouterr().err
+
+
 def test_prefix_next_explicit_project_without_target_fails(
     tmp_path: Path,
     monkeypatch,

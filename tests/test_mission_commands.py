@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.cli import main
+from agentos.cli import main as _agentos_main
+
+
+def main(argv: list[str]) -> int:
+    if argv and argv[0] == "mission" and "--project" not in argv:
+        return _agentos_main([*argv, "--project"])
+    return _agentos_main(argv)
 
 
 def _init_project(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -57,6 +63,17 @@ def test_mission_defaults_to_most_recent_active_and_no_active_file_is_created(
     payload = json.loads(capsys.readouterr().out)
     assert payload["default"] == "beta"
     assert [mission["name"] for mission in payload["missions"][:2]] == ["beta", "alpha"]
+
+
+def test_mission_requires_explicit_project(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _init_project(tmp_path, monkeypatch, capsys)
+
+    assert _agentos_main(["mission", "list"]) == 1
+    assert "agentos mission requires --project" in capsys.readouterr().err
 
 
 def test_mission_activate_bumps_recency_and_reopens_parked_mission(

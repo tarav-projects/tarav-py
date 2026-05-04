@@ -10,6 +10,7 @@ from agentos._core.project_command_log import (
     project_command_log_path,
     record_project_command,
 )
+from agentos.cli import main
 
 
 def test_project_command_log_path_rolls_by_year_month(monkeypatch, tmp_path: Path) -> None:
@@ -78,3 +79,60 @@ def test_record_project_command_is_best_effort_after_project_validation(
         project=project,
         agentos_command={"command": "skills list", "argv": ["skills", "list"]},
     )
+
+
+def _read_logged_commands(agentos_home: Path) -> list[dict[str, object]]:
+    log_paths = sorted((agentos_home / "projects" / "activity").glob("*.jsonl"))
+    return [
+        json.loads(line)
+        for path in log_paths
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+
+
+def test_mission_mutation_records_project_command(monkeypatch, tmp_path: Path, capsys) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    assert main(["init", "--project", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    assert main(
+        [
+            "mission",
+            "new",
+            "alpha",
+            "--project",
+            str(tmp_path),
+            "--goal",
+            "Alpha",
+            "--validation",
+            "Alpha check",
+        ]
+    ) == 0
+    capsys.readouterr()
+
+    commands = [event["agentos_command"]["command"] for event in _read_logged_commands(agentos_home)]
+    assert "mission new" in commands
+
+
+def test_forum_write_records_project_command(monkeypatch, tmp_path: Path, capsys) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    assert main(["init", "--project", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    assert main(["forum", "post", "--project", str(tmp_path), "Hello"]) == 0
+    capsys.readouterr()
+
+    commands = [event["agentos_command"]["command"] for event in _read_logged_commands(agentos_home)]
+    assert "forum post" in commands
+
+
+def test_project_tape_mode_records_project_command(monkeypatch, tmp_path: Path, capsys) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    assert main(["init", "--project", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    assert main(["tape", "init", "--project", str(tmp_path), "--tape", "events"]) == 0
+    capsys.readouterr()
+
+    commands = [event["agentos_command"]["command"] for event in _read_logged_commands(agentos_home)]
+    assert "tape init" in commands

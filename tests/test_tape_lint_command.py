@@ -5,7 +5,18 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli import main
+from agentos.cli import main as _agentos_main
+
+
+def main(argv: list[str]) -> int:
+    if (
+        len(argv) >= 2
+        and argv[0] == "tape"
+        and "--tape" in argv
+        and "--project" not in argv
+    ):
+        return _agentos_main([argv[0], argv[1], "--project", *argv[2:]])
+    return _agentos_main(argv)
 
 
 def _setup_project_tape(
