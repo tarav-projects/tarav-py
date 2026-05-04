@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos._core.project import require_agentos_project
+from agentos._core.project import require_explicit_agentos_project
 from agentos._core.project_command_log import command_payload_from_args, record_project_command
 from agentos.skills.routing import (
     SKILLS_IMPORT_MODE_DEPOT_LINKING,
@@ -177,7 +177,12 @@ def _add_project_argument(parser: argparse.ArgumentParser) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override. Bare --project targets current pwd. Skills commands require an existing project.",
+        help="Required project target. Bare --project targets current pwd. Skills commands require an existing project.",
+    )
+    parser.add_argument(
+        "--project-name",
+        default=None,
+        help="Assert the resolved project name after resolving --project.",
     )
 
 
@@ -187,7 +192,11 @@ def _emit_selection_warnings(selection) -> None:
 
 
 def _record_skills_project_command(args: argparse.Namespace) -> None:
-    project = require_agentos_project(Path.cwd(), project=args.project)
+    project = require_explicit_agentos_project(
+        project=args.project,
+        project_name=args.project_name,
+        command_name="agentos skills",
+    )
     record_project_command(
         project=project,
         agentos_command=command_payload_from_args(args),

@@ -224,7 +224,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override for config resolution. Bare --project targets current pwd. Agent commands do not require an existing project.",
+        help="Config start path for project-local config discovery. Bare --project uses current pwd. Agent commands do not require an existing project.",
     )
     list_parser.add_argument(
         "--json",
@@ -289,7 +289,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override for config resolution. Bare --project targets current pwd. Agent commands do not require an existing project.",
+        help="Config start path for project-local config discovery. Bare --project uses current pwd. Agent commands do not require an existing project.",
     )
     accounts_stats_parser.set_defaults(handler=_cmd_chat_accounts_stats)
 
@@ -319,7 +319,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override for config resolution. Bare --project targets current pwd. Agent commands do not require an existing project.",
+        help="Config start path for project-local config discovery. Bare --project uses current pwd. Agent commands do not require an existing project.",
     )
     run_parser.add_argument(
         "--cwd",

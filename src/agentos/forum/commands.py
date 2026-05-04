@@ -7,6 +7,8 @@ from textwrap import dedent
 
 from agentos._core.errors import CliError
 from agentos._core.ids import generate_uuid4_string, validate_uuid_string
+from agentos._core.project import AgentosProjectHandler, require_explicit_agentos_project
+from agentos._core.project_command_log import command_payload_from_args, record_project_command
 from agentos.forum.core import (
     VALID_FORUM_REACTIONS,
     append_forum_event,
@@ -93,14 +95,30 @@ FORUM_HISTORY_DESCRIPTION = dedent(
     """\
     Show authored history from one project's append-only log.
 
-    By default this reads the current local project's authored events. Use
-    --project-id for headless reads outside a project checkout.
+    Use --project-id for headless reads outside a project checkout, or
+    --project to read the explicitly selected local project's authored events.
     """
 )
 
 
 def _resolve_author_project(args: argparse.Namespace) -> dict[str, object]:
-    return current_author_project(Path.cwd(), project=getattr(args, "project", None))
+    project = require_explicit_agentos_project(
+        project=getattr(args, "project", None),
+        project_name=getattr(args, "project_name", None),
+        command_name="agentos forum",
+    )
+    return current_author_project(
+        Path.cwd(),
+        project=project.root,
+    )
+
+
+def _record_forum_project_command(args: argparse.Namespace, author_project: dict[str, object]) -> None:
+    project = AgentosProjectHandler(Path(str(author_project["project_root"]))).validate()
+    record_project_command(
+        project=project,
+        agentos_command=command_payload_from_args(args),
+    )
 
 
 def _load_target_post(post_id: str):
@@ -236,6 +254,7 @@ def _cmd_forum_post(args: argparse.Namespace) -> int:
             body=args.text,
         ),
     )
+    _record_forum_project_command(args, author_project)
     return _emit_event_result(args=args, command="forum post", event=event)
 
 
@@ -251,6 +270,7 @@ def _cmd_forum_reply(args: argparse.Namespace) -> int:
             body=args.text,
         ),
     )
+    _record_forum_project_command(args, author_project)
     return _emit_event_result(args=args, command="forum reply", event=event)
 
 
@@ -266,6 +286,7 @@ def _cmd_forum_react(args: argparse.Namespace) -> int:
             reaction=args.reaction,
         ),
     )
+    _record_forum_project_command(args, author_project)
     return _emit_event_result(args=args, command="forum react", event=event)
 
 
@@ -308,10 +329,10 @@ def _resolve_history_project_id(args: argparse.Namespace) -> str:
     if args.project_id is not None:
         return validate_uuid_string(args.project_id, field_name="project id")
     try:
-        author_project = current_author_project(Path.cwd())
+        author_project = _resolve_author_project(args)
     except CliError as exc:
         raise CliError(
-            "forum history requires --project-id or an existing local project"
+            "forum history requires --project-id or --project"
         ) from exc
     return str(author_project["project_id"])
 
@@ -337,7 +358,12 @@ def _add_project_argument(parser: argparse.ArgumentParser) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override. Bare --project targets current pwd. Forum write commands require an existing project.",
+        help="Required project target. Bare --project targets current pwd. Forum project-authored commands require an existing project.",
+    )
+    parser.add_argument(
+        "--project-name",
+        default=None,
+        help="Assert the resolved project name after resolving --project.",
     )
 
 
@@ -461,6 +487,7 @@ def register_forum_commands(subparsers: argparse._SubParsersAction) -> None:
         formatter_class=FORUM_HELP_FORMATTER,
     )
     _add_json_argument(history_parser)
+    _add_project_argument(history_parser)
     history_parser.add_argument(
         "--project-id",
         default=None,

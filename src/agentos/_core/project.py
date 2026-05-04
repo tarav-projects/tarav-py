@@ -72,6 +72,13 @@ class AgentosProjectHandler:
     def project_id(self) -> str:
         return str(self.project_json["project_id"])
 
+    @property
+    def project_name(self) -> str:
+        declared_name = project_marker_name(self.project_json)
+        if declared_name is not None:
+            return declared_name
+        return self.root.name
+
     def require_marker(
         self,
         *,
@@ -128,6 +135,58 @@ def resolve_agentos_project(
     if project is not None:
         return AgentosProjectHandler(project)
     return find_agentos_project(start_path)
+
+
+def require_explicit_project_target(
+    project: Path | str | None,
+    *,
+    command_name: str,
+) -> Path | str:
+    if project is None:
+        raise CliError(f"{command_name} requires --project")
+    return project
+
+
+def project_marker_name(marker: dict[str, object]) -> str | None:
+    for field_name in ("project_name", "name"):
+        raw_name = marker.get(field_name)
+        if isinstance(raw_name, str) and raw_name.strip():
+            return raw_name.strip()
+    return None
+
+
+def assert_project_name(
+    project: AgentosProjectHandler,
+    expected_name: str | None,
+) -> None:
+    if expected_name is None:
+        return
+    expected = str(expected_name).strip()
+    if not expected:
+        raise CliError("project name assertion must not be empty")
+
+    actual = project.project_name
+    if actual != expected:
+        raise CliError(
+            "project name assertion failed: "
+            f"expected {expected!r}, resolved {actual!r} at {project.root}"
+        )
+
+
+def require_explicit_agentos_project(
+    *,
+    project: Path | str | None,
+    command_name: str,
+    project_name: str | None = None,
+    include_init_hint: bool = True,
+) -> AgentosProjectHandler:
+    explicit_project = require_explicit_project_target(project, command_name=command_name)
+    resolved_project = require_agentos_project(
+        project=explicit_project,
+        include_init_hint=include_init_hint,
+    )
+    assert_project_name(resolved_project, project_name)
+    return resolved_project
 
 
 def resolve_project_target(
@@ -248,14 +307,18 @@ def resolve_project_tape_dir(
     *,
     start_path: Path | str = ".",
     project: Path | str | None = None,
+    project_name: str | None = None,
 ) -> tuple[Path, Path, str]:
     normalized_tape_name = validate_string_for_path(tape_name, field_name="tape")
-    project_root = require_agentos_project_root(
+    explicit_project = require_explicit_project_target(project, command_name="agentos tape --tape")
+    resolved_project = require_agentos_project(
         start_path,
-        project=project,
+        project=explicit_project,
         include_init_hint=True,
         extra_hint="pass --root",
     )
+    assert_project_name(resolved_project, project_name)
+    project_root = resolved_project.root
     return (project_agentos_dir(project_root) / "tapes" / normalized_tape_name, project_root, normalized_tape_name)
 
 
@@ -368,6 +431,7 @@ def initialize_project_layout(
     *,
     ensure: bool = False,
     project_id: str | None = None,
+    project_name: str | None = None,
 ) -> dict[str, object]:
     root = Path(project_root).expanduser().resolve()
     if not root.exists():
@@ -386,6 +450,9 @@ def initialize_project_layout(
         normalized_project_id = _normalize_project_id(project_id) if project_id is not None else None
         if normalized_project_id is not None and marker_payload.get("project_id") != normalized_project_id:
             raise CliError("project already initialized with a different project_id")
+        normalized_project_name = str(project_name).strip() if project_name is not None else None
+        if normalized_project_name and project_marker_name(marker_payload) != normalized_project_name:
+            raise CliError("project already initialized with a different project_name")
         if not ensure:
             raise CliError(f"agentos project already initialized: {marker_path}")
     else:
@@ -396,6 +463,9 @@ def initialize_project_layout(
             "project_id": _normalize_project_id(project_id),
             "created_at": _utc_now_iso(),
         }
+        normalized_project_name = str(project_name).strip() if project_name is not None else None
+        if normalized_project_name:
+            marker_payload["project_name"] = normalized_project_name
         marker_path.write_text(json.dumps(marker_payload, indent=2) + "\n", encoding="utf-8")
         marker_created = True
 

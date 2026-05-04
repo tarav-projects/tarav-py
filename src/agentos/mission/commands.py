@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos._core.project import require_agentos_project_root
+from agentos._core.project import AgentosProjectHandler, require_explicit_agentos_project
+from agentos._core.project_command_log import command_payload_from_args, record_project_command
 from agentos.skills.routing import query_selected_skills
 
 from .core import (
@@ -25,18 +26,32 @@ from .core import (
 )
 
 
-def _project_root(args: argparse.Namespace) -> "Path":
-    return require_agentos_project_root(
+def _project(args: argparse.Namespace) -> AgentosProjectHandler:
+    return require_explicit_agentos_project(
         project=args.project,
-        include_init_hint=True,
+        project_name=args.project_name,
+        command_name="agentos mission",
+    )
+
+
+def _project_root(args: argparse.Namespace) -> Path:
+    return _project(args).root
+
+
+def _record_mission_project_command(args: argparse.Namespace, project: AgentosProjectHandler) -> None:
+    record_project_command(
+        project=project,
+        agentos_command=command_payload_from_args(args),
     )
 
 
 # ── mission new ──────────────────────────────────────────────────────
 
 def _cmd_new(args: argparse.Namespace) -> int:
-    root = _project_root(args)
+    project = _project(args)
+    root = project.root
     mission = create_mission(root, args.name, args.goal, args.validation)
+    _record_mission_project_command(args, project)
     if args.json:
         print(json.dumps(mission, indent=2))
     else:
@@ -47,12 +62,14 @@ def _cmd_new(args: argparse.Namespace) -> int:
 # ── mission activate ─────────────────────────────────────────────────
 
 def _cmd_activate(args: argparse.Namespace) -> int:
-    root = _project_root(args)
+    project = _project(args)
+    root = project.root
     mission = load_mission(root, args.name)
     mission["status"] = "active"
     mission["finished"] = None
     touch_mission(mission)
     save_mission(root, mission)
+    _record_mission_project_command(args, project)
     if args.json:
         print(json.dumps(mission, indent=2))
     else:
@@ -103,12 +120,14 @@ def _cmd_status(args: argparse.Namespace) -> int:
 # ── mission done ─────────────────────────────────────────────────────
 
 def _cmd_done(args: argparse.Namespace) -> int:
-    root = _project_root(args)
+    project = _project(args)
+    root = project.root
     name = resolve_mission_name(root, args.name)
     mission = load_mission(root, name)
     mission["status"] = "done"
     mission["finished"] = touch_mission(mission)
     save_mission(root, mission)
+    _record_mission_project_command(args, project)
 
     if args.json:
         print(json.dumps(mission, indent=2))
@@ -120,12 +139,14 @@ def _cmd_done(args: argparse.Namespace) -> int:
 # ── mission park ─────────────────────────────────────────────────────
 
 def _cmd_park(args: argparse.Namespace) -> int:
-    root = _project_root(args)
+    project = _project(args)
+    root = project.root
     name = resolve_mission_name(root, args.name)
     mission = load_mission(root, name)
     mission["status"] = "parked"
     touch_mission(mission)
     save_mission(root, mission)
+    _record_mission_project_command(args, project)
 
     if args.json:
         print(json.dumps(mission, indent=2))
@@ -188,12 +209,14 @@ def _cmd_list(args: argparse.Namespace) -> int:
 # ── mission todo add ─────────────────────────────────────────────────
 
 def _cmd_todo_add(args: argparse.Namespace) -> int:
-    root = _project_root(args)
+    project = _project(args)
+    root = project.root
     name = resolve_mission_name(root, args.mission)
     mission = load_mission(root, name)
     mission.setdefault("todos", []).append({"text": args.text, "done": False})
     touch_mission(mission)
     save_mission(root, mission)
+    _record_mission_project_command(args, project)
     idx = len(mission["todos"])
     if args.json:
         print(json.dumps({"mission": name, "index": idx, "text": args.text}))
@@ -205,7 +228,8 @@ def _cmd_todo_add(args: argparse.Namespace) -> int:
 # ── mission todo done ────────────────────────────────────────────────
 
 def _cmd_todo_done(args: argparse.Namespace) -> int:
-    root = _project_root(args)
+    project = _project(args)
+    root = project.root
     name = resolve_mission_name(root, args.mission)
     mission = load_mission(root, name)
     todos = mission.get("todos", [])
@@ -215,6 +239,7 @@ def _cmd_todo_done(args: argparse.Namespace) -> int:
     todos[idx - 1]["done"] = True
     touch_mission(mission)
     save_mission(root, mission)
+    _record_mission_project_command(args, project)
     if args.json:
         print(json.dumps({"mission": name, "index": idx, "done": True}))
     else:
@@ -225,12 +250,14 @@ def _cmd_todo_done(args: argparse.Namespace) -> int:
 # ── mission note ─────────────────────────────────────────────────────
 
 def _cmd_note(args: argparse.Namespace) -> int:
-    root = _project_root(args)
+    project = _project(args)
+    root = project.root
     name = resolve_mission_name(root, args.mission)
     mission = load_mission(root, name)
     mission.setdefault("notes", []).append(args.text)
     touch_mission(mission)
     save_mission(root, mission)
+    _record_mission_project_command(args, project)
     if args.json:
         print(json.dumps({"mission": name, "note": args.text}))
     else:
@@ -241,7 +268,8 @@ def _cmd_note(args: argparse.Namespace) -> int:
 # ── mission fork ─────────────────────────────────────────────────────
 
 def _cmd_fork(args: argparse.Namespace) -> int:
-    root = _project_root(args)
+    project = _project(args)
+    root = project.root
     name = resolve_mission_name(root, args.mission)
     mission = load_mission(root, name)
 
@@ -252,6 +280,7 @@ def _cmd_fork(args: argparse.Namespace) -> int:
         )
         touch_mission(mission)
         save_mission(root, mission)
+        _record_mission_project_command(args, project)
         if args.json:
             print(json.dumps({
                 "mission": name,
@@ -264,6 +293,7 @@ def _cmd_fork(args: argparse.Namespace) -> int:
         mission.setdefault("notes", []).append(f"FORK: {args.text}")
         touch_mission(mission)
         save_mission(root, mission)
+        _record_mission_project_command(args, project)
         if args.json:
             print(json.dumps({"mission": name, "fork": args.text}))
         else:
@@ -330,12 +360,14 @@ def _cmd_help(args: argparse.Namespace) -> int:
 
 
 def _cmd_help_set(args: argparse.Namespace) -> int:
-    root = _project_root(args)
+    project = _project(args)
+    root = project.root
     name = resolve_mission_name(root, args.mission)
     mission = load_mission(root, name)
     set_help_entry(mission, args.field, args.text)
     touch_mission(mission)
     save_mission(root, mission)
+    _record_mission_project_command(args, project)
     if args.json:
         print(json.dumps({"mission": name, "field": args.field, "help": args.text}))
     else:
@@ -398,7 +430,12 @@ def _add_project_argument(parser: argparse.ArgumentParser) -> None:
         type=Path,
         const=Path("."),
         default=None,
-        help="Project target override. Bare --project targets current pwd. Mission commands require an existing project.",
+        help="Required project target. Bare --project targets current pwd. Mission commands require an existing project.",
+    )
+    parser.add_argument(
+        "--project-name",
+        default=None,
+        help="Assert the resolved project name after resolving --project.",
     )
 
 

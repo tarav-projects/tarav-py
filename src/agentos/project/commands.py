@@ -10,6 +10,7 @@ from agentos._core.project import (
     initialize_global_layout,
     initialize_project_layout,
     find_agentos_project_root,
+    require_explicit_project_target,
 )
 
 
@@ -33,11 +34,13 @@ def _cmd_init(args: argparse.Namespace) -> int:
         print(json.dumps(output, indent=2))
         return 0
 
-    root = args.project.expanduser().resolve()
+    project_target = require_explicit_project_target(args.project, command_name="agentos init")
+    root = project_target.expanduser().resolve()
     payload = initialize_project_layout(
         root,
         ensure=args.ensure,
         project_id=args.project_id,
+        project_name=args.project_name,
     )
     output = {
         "status": "ok",
@@ -89,13 +92,18 @@ def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         nargs="?",
         const=Path("."),
-        default=Path("."),
-        help="Project target for --scope project. Bare --project targets current pwd and may be initialized if missing.",
+        default=None,
+        help="Required for --scope project. Bare --project targets current pwd and may be initialized if missing.",
     )
     init_parser.add_argument(
         "--project-id",
         default=None,
         help="Explicit project UUID for --scope project.",
+    )
+    init_parser.add_argument(
+        "--project-name",
+        default=None,
+        help="Optional project name to store in the project marker.",
     )
     init_parser.add_argument(
         "--ensure",

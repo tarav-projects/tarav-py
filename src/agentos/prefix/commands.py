@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos._core.project import load_project_config, require_agentos_project
+from agentos._core.project import load_project_config, require_explicit_agentos_project
 from agentos._core.project_command_log import command_payload_from_args, record_project_command
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos._core.scan import resolve_relative_paths_under_root, resolve_root_dir
@@ -102,7 +102,11 @@ def _normalize_project_relative_target(root: Path, raw_target: str) -> str:
 
 
 def _cmd_prefix_next_project(args: argparse.Namespace) -> int:
-    project = require_agentos_project(Path.cwd(), project=args.project)
+    project = require_explicit_agentos_project(
+        project=args.project,
+        project_name=args.project_name,
+        command_name="agentos prefix next",
+    )
     record_project_command(
         project=project,
         agentos_command=command_payload_from_args(args),
@@ -173,6 +177,11 @@ def register_prefix_commands(subparsers: argparse._SubParsersAction) -> None:
         const=Path("."),
         default=None,
         help="Required for target mode. Bare --project targets current pwd. Prefix target mode requires an existing project.",
+    )
+    prefix_next_parser.add_argument(
+        "--project-name",
+        default=None,
+        help="Assert the resolved project name after resolving --project.",
     )
     prefix_next_parser.add_argument(
         "--target",
