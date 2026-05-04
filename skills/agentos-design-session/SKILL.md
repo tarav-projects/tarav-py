@@ -43,18 +43,19 @@ Additionally:
 
 - Track which items are being discussed and notice when the conversation moves between topics.
 - Notice when new topics emerge that should be added to the plan. After 2-3 exchanges on an unlisted topic, proactively suggest adding it.
-- Notice when a topic has converged enough to suggest moving to `needs-approval`.
+- Notice when a topic has converged enough to move to `converging`, or suggest closing.
 - Notice when the conversation drifts to an orthogonal concept for 2+ turns — flag it.
 - Surface these observations naturally in chat — do not wait for the user to notice.
 
 ## User-Gating Protocol
 
-All modifications to the design-session document require explicit user approval:
+Significant modifications to the design-session document require explicit user approval:
 
 - The agent may freely discuss, propose, and suggest in chat.
-- Before any write or edit to the session document, the agent must state what it wants to change and wait for approval.
-- This includes: creating the document, adding items, changing item status, updating motivation, updating item content, promoting notes to items.
-- Keep proposals concise: "I'd like to add [item] to the plan and mark [other item] as needs-approval. OK?"
+- The agent can update observational states (`fresh → in-progress`, `in-progress → converging`) without asking.
+- User gates: closing items, reopening items, adding new items, updating item content, reverting states.
+- Before gated changes, state what you want to change and wait for approval.
+- Keep proposals concise: "I'd like to add [item] to the plan and close [other item]. OK?"
 
 ## Lifecycle
 
@@ -70,18 +71,23 @@ All modifications to the design-session document require explicit user approval:
 1. Discuss items following `agentos-design-discussion` principles.
 2. Periodically surface facilitation observations:
    - "This feels like a new topic — should I add it to the plan?"
-   - "I think we've converged on [item] — ready to mark it needs-approval?"
+   - "I think [item] is converging — close it or keep going?"
    - "We've been on this adjacent topic for a while — worth its own item, or part of [existing item]?"
 3. Update the document only on user approval.
 4. Items don't need to be discussed in order — follow the conversation's natural flow.
 
-### Item Approval
+### Closing Items
 
-When proposing a status transition to `needs-approval`:
+When the agent thinks an item is ready to close:
 
-- State: "I think [item] is ready. Here's what I'd write: [brief summary of converged outcome]."
+- Suggest in chat: "I think [item] is sufficient for this session. Here's what I'd write: [brief summary]. Close it?"
 - Wait for user confirmation.
-- On approval, update the item status and section content in the document.
+- On approval, update the item status to `closed` and finalize the section content.
+- "Closed" means sufficient for this session, not that the design is finished.
+
+Closed items can still receive minor updates (e.g. a refinement discovered while discussing another item) without reopening. Closed does not mean frozen.
+
+Reopening is an explicit user action that signals: "I want to directly work on this item again — significant work remains." It is not needed for small tweaks.
 
 ### Scope Drift
 
@@ -155,6 +161,9 @@ Items:
 Uncommitted:
   - [item] — [what was discussed but not written]
 
+Suggest closing:
+  - [item] — [why: saturated / no new ground / sufficient for session]
+
 Active: [what we're currently discussing, if anything]
 
 Next:
@@ -169,6 +178,7 @@ Rules:
 - Group items by status, most actionable first.
 - Split open items into "has work" vs "not started".
 - Uncommitted lists items with chat discussion not yet captured in the document. Say "none" if clean.
+- Suggest closing lists items the agent thinks are ready to close (saturated, no new ground, sufficient). Omit if none.
 - Next suggests up to 3 items with one-line rationale. Include a recommendation.
 - Keep it scannable. The user may call this repeatedly.
 

@@ -30,12 +30,20 @@ Use this skill when:
 
 ## Item States
 
-Items progress through these states:
+States reflect the agent's evaluation of where each item is. They are feedback signals, not gates.
 
-- `open` — identified as needing discussion, not yet started.
-- `in-progress` — actively being discussed.
-- `needs-approval` — discussion has converged, awaiting user confirmation.
-- `approved` — user has confirmed the outcome.
+- `fresh` — just added, no discussion yet.
+- `in-progress` — some discussion has happened.
+- `converging` — getting mature, likely ready to close soon.
+- `closed` — done for this session (user-gated).
+- `reopened` — user reopened a previously closed item. Pairs with any other state except `fresh` (e.g. `[in-progress, reopened]`).
+
+Transition rules:
+- Agent can move: `fresh → in-progress`, `in-progress → converging` (observational, not gates).
+- User gates: `→ closed`, `→ reopened`, and any revert.
+- Agent can suggest closing in chat but does not change the label without user approval.
+
+Semantics: `closed` means "sufficient for this session," not "design is finished." A session is delta work — it does not claim completeness.
 
 ## Minimal Structure
 
@@ -81,13 +89,13 @@ Observations, ideas, or considerations that have emerged but are not yet promote
 
 - Write for readability mid-session — someone joining the conversation should be able to scan the document and understand the current state.
 - Item sections should be self-contained enough to understand without reading the full chat.
-- When an item reaches `approved`, its section should contain the decision and brief rationale, not the exploration history.
+- When an item reaches `closed`, its section should contain the session's outcome (which may range from a brief concept introduction to a full converged design).
 - Reference relevant files, notes, or surfaces rather than duplicating their content.
 
 ## Updating Guidance
 
 - All modifications to the document require user approval before writing.
-- When updating, preserve approved items unchanged unless the user explicitly reopens them.
+- When updating, preserve closed items unchanged unless the user explicitly reopens them.
 - When promoting a note to an item, add it to both the Items list and create its section.
 - When an item's status changes, update both the Items list and note it in End Log if significant.
 
