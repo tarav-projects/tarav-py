@@ -24,6 +24,8 @@ from .core import (
 
 def _cmd_prefix_next(args: argparse.Namespace) -> int:
     if args.target is not None:
+        if args.project is None:
+            raise CliError("prefix target mode requires --project")
         return _cmd_prefix_next_project(args)
     if args.project is not None:
         raise CliError("prefix target is required")
@@ -170,7 +172,7 @@ def register_prefix_commands(subparsers: argparse._SubParsersAction) -> None:
         nargs="?",
         const=Path("."),
         default=None,
-        help="Project target override. Bare --project targets current pwd. Prefix target mode requires an existing project.",
+        help="Required for target mode. Bare --project targets current pwd. Prefix target mode requires an existing project.",
     )
     prefix_next_parser.add_argument(
         "--target",

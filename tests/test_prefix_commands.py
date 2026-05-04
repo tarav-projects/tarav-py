@@ -26,7 +26,7 @@ def test_prefix_next_allocates_rolling_prefix_across_project_scope(
     write_text_file(tmp_path / "notes" / "index" / "100-index-note.md", "")
     write_text_file(tmp_path / "notes" / "live" / "010.TODOS.md", "")
 
-    assert main(["prefix", "next", "--target", "notes/live"]) == 0
+    assert main(["prefix", "next", "--project", "--target", "notes/live"]) == 0
 
     assert capsys.readouterr().out.strip() == "502"
 
@@ -40,7 +40,7 @@ def test_prefix_next_allocates_index_prefix_from_index_range(
     write_text_file(tmp_path / "notes" / "index" / "100-Agentos.Index.Notes.md", "")
     write_text_file(tmp_path / "notes" / "live" / "500-session.md", "")
 
-    assert main(["prefix", "next", "--target", "notes/index"]) == 0
+    assert main(["prefix", "next", "--project", "--target", "notes/index"]) == 0
 
     assert capsys.readouterr().out.strip() == "101"
 
@@ -53,7 +53,7 @@ def test_prefix_next_uses_longest_prefix_route_for_descendants(
     _init_project(tmp_path, monkeypatch, capsys)
     write_text_file(tmp_path / "notes" / "index" / "100-root.md", "")
 
-    assert main(["prefix", "next", "--target", "notes/index/archive"]) == 0
+    assert main(["prefix", "next", "--project", "--target", "notes/index/archive"]) == 0
 
     assert capsys.readouterr().out.strip() == "101"
 
@@ -103,14 +103,26 @@ def test_prefix_next_explicit_project_without_target_fails(
     assert capsys.readouterr().err.strip() == "error: prefix target is required"
 
 
-def test_prefix_next_requires_project_for_target_mode(
+def test_prefix_next_requires_explicit_project_for_target_mode(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _init_project(tmp_path, monkeypatch, capsys)
+
+    assert main(["prefix", "next", "--target", "notes/live"]) == 1
+
+    assert capsys.readouterr().err.strip() == "error: prefix target mode requires --project"
+
+
+def test_prefix_next_requires_existing_project_for_target_mode(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
-    assert main(["prefix", "next", "--target", "notes/live"]) == 1
+    assert main(["prefix", "next", "--project", "--target", "notes/live"]) == 1
 
     assert "not inside an agentos project" in capsys.readouterr().err
 
@@ -122,7 +134,7 @@ def test_prefix_next_rejects_absolute_target(
 ) -> None:
     _init_project(tmp_path, monkeypatch, capsys)
 
-    assert main(["prefix", "next", "--target", str(tmp_path / "notes" / "live")]) == 1
+    assert main(["prefix", "next", "--project", "--target", str(tmp_path / "notes" / "live")]) == 1
 
     assert capsys.readouterr().err.strip() == (
         "error: prefix target must be relative to the agentos project root"
@@ -136,7 +148,7 @@ def test_prefix_next_rejects_target_that_escapes_project(
 ) -> None:
     _init_project(tmp_path, monkeypatch, capsys)
 
-    assert main(["prefix", "next", "--target", "../outside"]) == 1
+    assert main(["prefix", "next", "--project", "--target", "../outside"]) == 1
 
     assert capsys.readouterr().err.strip() == "error: prefix target escapes project root: ../outside"
 
@@ -152,7 +164,7 @@ def test_prefix_next_rejects_custom_prefix_config(
     config["prefix"] = {"scan": {}}
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
-    assert main(["prefix", "next", "--target", "notes/live"]) == 1
+    assert main(["prefix", "next", "--project", "--target", "notes/live"]) == 1
 
     assert capsys.readouterr().err.strip() == (
         "error: custom project prefix config is not supported yet"
@@ -166,7 +178,7 @@ def test_prefix_next_missing_default_include_roots_are_ignored(
 ) -> None:
     _init_project(tmp_path, monkeypatch, capsys)
 
-    assert main(["prefix", "next", "--target", "notes/live"]) == 0
+    assert main(["prefix", "next", "--project", "--target", "notes/live"]) == 0
 
     assert capsys.readouterr().out.strip() == "500"
 
@@ -180,7 +192,7 @@ def test_prefix_next_include_override_limits_project_scope(
     write_text_file(tmp_path / "notes" / "live" / "500-session.md", "")
     write_text_file(tmp_path / "dev" / "live" / "501-probe.py", "")
 
-    assert main(["prefix", "next", "--target", "notes/live", "--include", "notes/live"]) == 0
+    assert main(["prefix", "next", "--project", "--target", "notes/live", "--include", "notes/live"]) == 0
 
     assert capsys.readouterr().out.strip() == "501"
 
@@ -194,7 +206,7 @@ def test_prefix_next_exclude_filters_project_scope(
     write_text_file(tmp_path / "notes" / "live" / "500-session.md", "")
     write_text_file(tmp_path / "dev" / "live" / "501-probe.py", "")
 
-    assert main(["prefix", "next", "--target", "notes/live", "--exclude", "dev/live"]) == 0
+    assert main(["prefix", "next", "--project", "--target", "notes/live", "--exclude", "dev/live"]) == 0
 
     assert capsys.readouterr().out.strip() == "501"
 
@@ -208,7 +220,7 @@ def test_prefix_next_json_reports_project_metadata(
     write_text_file(tmp_path / "notes" / "live" / "500-session.md", "")
     write_text_file(tmp_path / "notes" / "live" / "010.TODOS.md", "")
 
-    assert main(["prefix", "next", "--target", "notes/live", "--json"]) == 0
+    assert main(["prefix", "next", "--project", "--target", "notes/live", "--json"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["next_prefix"] == "501"
@@ -236,7 +248,7 @@ def test_prefix_next_records_project_command(
         lambda: "2026-05-04T10:00:00Z",
     )
 
-    assert main(["prefix", "next", "--target", "notes/live"]) == 0
+    assert main(["prefix", "next", "--project", "--target", "notes/live"]) == 0
     capsys.readouterr()
 
     log_path = tmp_path / "agentos-home" / ".agentos" / "projects" / "activity" / "202605.jsonl"
@@ -250,7 +262,7 @@ def test_prefix_next_records_project_command(
             "project_root": str(tmp_path),
             "agentos_command": {
                 "command": "prefix next",
-                "argv": ["prefix", "next", "--target", "notes/live"],
+                "argv": ["prefix", "next", "--project", "--target", "notes/live"],
             },
         }
     ]
@@ -264,7 +276,7 @@ def test_prefix_next_fails_when_range_is_exhausted(
     _init_project(tmp_path, monkeypatch, capsys)
     write_text_file(tmp_path / "notes" / "live" / "999-last.md", "")
 
-    assert main(["prefix", "next", "--target", "notes/live"]) == 1
+    assert main(["prefix", "next", "--project", "--target", "notes/live"]) == 1
 
     assert "prefix range exhausted" in capsys.readouterr().err
 
