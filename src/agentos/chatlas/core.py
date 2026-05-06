@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 import json
-import shutil
 import stat
 import time
 from dataclasses import dataclass
@@ -15,7 +14,6 @@ from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_strings
 from agentos._core.git_ops import git_has_staged_changes, run_git
-from agentos._core.project import agentos_home_dir
 from agentos.chat.core import (
     _build_common_session_stats,
     _build_provider_context,
@@ -100,10 +98,6 @@ class ChatlasUpdateCaches:
 
 def default_chatlas_root() -> Path:
     return Path.home().expanduser().resolve() / _CHATLAS_DOCUMENTS_DIRNAME / CHATLAS_DIRNAME
-
-
-def _legacy_default_chatlas_root() -> Path:
-    return agentos_home_dir() / CHATLAS_DIRNAME
 
 
 def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSettings:
@@ -983,29 +977,7 @@ def _resolve_chatlas_root(chatlas_root: Path | None) -> Path:
     if chatlas_root is not None:
         return chatlas_root.expanduser().resolve()
 
-    resolved_default_root = default_chatlas_root().expanduser().resolve()
-    _migrate_legacy_chatlas_root_if_needed(resolved_default_root)
-    return resolved_default_root
-
-
-def _migrate_legacy_chatlas_root_if_needed(default_root: Path) -> None:
-    legacy_root = _legacy_default_chatlas_root().expanduser().resolve()
-    if default_root == legacy_root:
-        return
-    if default_root.exists():
-        return
-    if not legacy_root.exists():
-        return
-    if not legacy_root.is_dir():
-        raise CliError(f"legacy chatlas root is not a directory: {legacy_root}")
-
-    default_root.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        shutil.move(str(legacy_root), str(default_root))
-    except (OSError, shutil.Error) as exc:
-        raise CliError(
-            f"failed to migrate chatlas root from {legacy_root} to {default_root}: {exc}"
-        ) from exc
+    return default_chatlas_root().expanduser().resolve()
 
 
 def _compact_timestamp(value: str) -> str:

@@ -17,62 +17,22 @@ from agentos._core.project import (
     load_project_config,
     project_config_path,
 )
-
-
-@dataclass(frozen=True)
-class ProviderFamily:
-    family: str
-
-
-@dataclass(frozen=True)
-class ProviderHomeSlot:
-    key: str
-    default_home: str
-    direct_relpaths: tuple[str, ...] = ()
-    grep_relpaths: tuple[str, ...] = ()
-    sqlite_db_relpaths: tuple[str, ...] = ()
-    direct_anchor_roles: tuple[str, ...] = ()
-    sqlite_db_anchor_roles: tuple[str, ...] = ()
-
-    def build_paths(self, *, home: Path) -> tuple[tuple[Path, ...], tuple[Path, ...], tuple[Path, ...]]:
-        return (
-            tuple(_join_provider_home(home, relpath) for relpath in self.direct_relpaths),
-            tuple(_join_provider_home(home, relpath) for relpath in self.grep_relpaths),
-            tuple(_join_provider_home(home, relpath) for relpath in self.sqlite_db_relpaths),
-        )
-
-    def build_anchors(self, *, home: Path) -> tuple["ProviderInstanceAnchor", ...]:
-        direct_roles = self.direct_anchor_roles or tuple(
-            f"direct_target_{index + 1}" for index, _ in enumerate(self.direct_relpaths)
-        )
-        sqlite_roles = self.sqlite_db_anchor_roles or tuple(
-            f"sqlite_db_{index + 1}" for index, _ in enumerate(self.sqlite_db_relpaths)
-        )
-        if len(direct_roles) != len(self.direct_relpaths):
-            raise ValueError(f"provider slot {self.key} direct anchor roles must match direct relpaths")
-        if len(sqlite_roles) != len(self.sqlite_db_relpaths):
-            raise ValueError(f"provider slot {self.key} sqlite anchor roles must match sqlite db relpaths")
-
-        anchors = [
-            ProviderInstanceAnchor(
-                role=role,
-                path=_join_provider_home(home, relpath),
-                slot=self.key,
-            )
-            for role, relpath in zip(direct_roles, self.direct_relpaths, strict=True)
-        ]
-        anchors.extend(
-            ProviderInstanceAnchor(
-                role=role,
-                path=_join_provider_home(home, relpath),
-                slot=self.key,
-            )
-            for role, relpath in zip(sqlite_roles, self.sqlite_db_relpaths, strict=True)
-        )
-        return tuple(anchors)
-
-    def supports_session_discovery(self) -> bool:
-        return bool(self.direct_relpaths or self.sqlite_db_relpaths)
+from agentos.agent.run_profiles import (
+    provider_family_default_cli_command,
+    provider_family_default_model,
+    provider_family_default_model_flag,
+    provider_family_default_prompt_flag,
+    provider_family_default_run_args,
+)
+from agentos.providers import (
+    ProviderFamily,
+    ProviderHomeAnchor as ProviderInstanceAnchor,
+    ProviderHomeSlot,
+    canonical_provider_families,
+    canonical_provider_family_for_name,
+    require_canonical_provider_family,
+)
+from agentos.home.providers import home_provider_for_name
 
 
 @dataclass(frozen=True)
@@ -89,28 +49,7 @@ class ChatProviderSpec:
         return self.provider_family.family
 
 
-_CANONICAL_PROVIDER_FAMILIES = tuple(
-    ProviderFamily(family=family_name)
-    for family_name in (
-        "agents",
-        "claude-code",
-        "codex",
-        "copilot-cli",
-        "gemini-cli",
-        "opencode",
-        "pi",
-        "openclaw",
-    )
-)
-_CANONICAL_PROVIDER_FAMILIES_BY_NAME = {
-    provider_family.family: provider_family
-    for provider_family in _CANONICAL_PROVIDER_FAMILIES
-}
 _CANONICAL_CHAT_PROVIDER_SPECS: tuple[ChatProviderSpec, ...] = ()
-
-
-def canonical_provider_families() -> tuple[ProviderFamily, ...]:
-    return _CANONICAL_PROVIDER_FAMILIES
 
 
 def canonical_chat_provider_specs() -> tuple[ChatProviderSpec, ...]:
@@ -124,28 +63,30 @@ def canonical_chat_provider_spec_for_name(family_name: str) -> ChatProviderSpec 
     return None
 
 
-def canonical_provider_family_for_name(family_name: str) -> ProviderFamily | None:
-    return _CANONICAL_PROVIDER_FAMILIES_BY_NAME.get(family_name)
-
-
-def require_canonical_provider_family(family_name: str) -> ProviderFamily:
-    provider_family = canonical_provider_family_for_name(family_name)
-    if provider_family is None:
+def _chat_provider_spec(
+    family_name: str,
+    *,
+    supports_session_discovery: bool = True,
+    supports_chatlas_raw: bool = True,
+    chatlas_default_excludes: tuple[str, ...] = (),
+    chatlas_default_includes: tuple[str, ...] = (),
+) -> ChatProviderSpec:
+    home_provider = home_provider_for_name(family_name)
+    if home_provider is None:
         raise ValueError(f"unknown provider family: {family_name}")
-    return provider_family
+    return ChatProviderSpec(
+        provider_family=home_provider.provider_family,
+        home_slots=home_provider.home_slots,
+        supports_session_discovery=supports_session_discovery,
+        supports_chatlas_raw=supports_chatlas_raw,
+        chatlas_default_excludes=chatlas_default_excludes,
+        chatlas_default_includes=chatlas_default_includes,
+    )
 
 
 _CANONICAL_CHAT_PROVIDER_SPECS = (
-    ChatProviderSpec(
-        provider_family=require_canonical_provider_family("copilot-cli"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.copilot",
-                direct_relpaths=("session-state",),
-                direct_anchor_roles=("session_state_root",),
-            ),
-        ),
+    _chat_provider_spec(
+        "copilot-cli",
         chatlas_default_includes=(
             "session-state/**/events.jsonl",
             "session-state/*.jsonl",
@@ -168,32 +109,16 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
             "config.json",
         ),
     ),
-    ChatProviderSpec(
-        provider_family=require_canonical_provider_family("gemini-cli"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.gemini",
-                direct_relpaths=("tmp", "history"),
-                direct_anchor_roles=("tmp_root", "history_root"),
-            ),
-        ),
+    _chat_provider_spec(
+        "gemini-cli",
         chatlas_default_excludes=(
             "tmp/bin/",
             "oauth_creds.json",
             "google_accounts.json",
         ),
     ),
-    ChatProviderSpec(
-        provider_family=require_canonical_provider_family("codex"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.codex",
-                direct_relpaths=("sessions", "archived_sessions", "session_index.jsonl"),
-                direct_anchor_roles=("sessions_root", "archive_root", "session_index"),
-            ),
-        ),
+    _chat_provider_spec(
+        "codex",
         chatlas_default_includes=(
             "sessions/**/*.jsonl",
             "archived_sessions/**/*.jsonl",
@@ -214,24 +139,8 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
             "skills",
         ),
     ),
-    ChatProviderSpec(
-        provider_family=require_canonical_provider_family("claude-code"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="cli",
-                default_home="~/.claude",
-                direct_relpaths=("projects",),
-                grep_relpaths=("",),
-                direct_anchor_roles=("projects_root",),
-            ),
-            ProviderHomeSlot(
-                key="desktop",
-                default_home="~/Library/Application Support/Claude",
-                direct_relpaths=("claude-code-sessions",),
-                grep_relpaths=("claude-code-sessions",),
-                direct_anchor_roles=("desktop_sessions_root",),
-            ),
-        ),
+    _chat_provider_spec(
+        "claude-code",
         chatlas_default_includes=(
             "projects/**/*.jsonl",
             "projects/**/sessions-index.json",
@@ -300,19 +209,8 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
             "window-state.json",
         ),
     ),
-    ChatProviderSpec(
-        provider_family=require_canonical_provider_family("opencode"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.local/share/opencode",
-                direct_relpaths=("storage/session_diff",),
-                grep_relpaths=("storage", "log"),
-                sqlite_db_relpaths=("opencode.db",),
-                direct_anchor_roles=("session_diff_root",),
-                sqlite_db_anchor_roles=("sqlite_db",),
-            ),
-        ),
+    _chat_provider_spec(
+        "opencode",
         chatlas_default_includes=(
             "opencode.db",
             "opencode.db-wal",
@@ -328,16 +226,8 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
             "bin/",
         ),
     ),
-    ChatProviderSpec(
-        provider_family=require_canonical_provider_family("pi"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.pi/agent",
-                direct_relpaths=("sessions",),
-                direct_anchor_roles=("sessions_root",),
-            ),
-        ),
+    _chat_provider_spec(
+        "pi",
         chatlas_default_includes=(
             "sessions/**",
             "settings.json",
@@ -347,16 +237,8 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
             "bin/",
         ),
     ),
-    ChatProviderSpec(
-        provider_family=require_canonical_provider_family("openclaw"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.openclaw",
-                direct_relpaths=("agents",),
-                direct_anchor_roles=("agents_root",),
-            ),
-        ),
+    _chat_provider_spec(
+        "openclaw",
         chatlas_default_excludes=("agents/*/agent/auth*.json",),
         chatlas_default_includes=(
             "agents/*/sessions/**",
@@ -376,14 +258,8 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
             "cron/jobs.json",
         ),
     ),
-    ChatProviderSpec(
-        provider_family=require_canonical_provider_family("agents"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.agents",
-            ),
-        ),
+    _chat_provider_spec(
+        "agents",
         supports_session_discovery=False,
     ),
 )
@@ -611,11 +487,11 @@ def default_provider_instances(
                 direct_targets=_unique_paths(tuple(direct_targets)),
                 grep_targets=_unique_paths(tuple(grep_targets)),
                 sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
-                cli_command=_provider_family_default_cli_command(provider_spec.family),
-                run_args=_provider_family_default_run_args(provider_spec.family),
-                default_model=_provider_family_default_model(provider_spec.family),
-                model_flag=_provider_family_default_model_flag(provider_spec.family),
-                prompt_flag=_provider_family_default_prompt_flag(provider_spec.family),
+                cli_command=provider_family_default_cli_command(provider_spec.family),
+                run_args=provider_family_default_run_args(provider_spec.family),
+                default_model=provider_family_default_model(provider_spec.family),
+                model_flag=provider_family_default_model_flag(provider_spec.family),
+                prompt_flag=provider_family_default_prompt_flag(provider_spec.family),
                 anchors=tuple(anchors),
                 is_default=True,
             )
@@ -702,7 +578,7 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
             field_name=entry.field_name("cli_command"),
         )
         if raw_cli_command is not None
-        else _provider_family_default_cli_command(family_name)
+        else provider_family_default_cli_command(family_name)
     )
     run_args = (
         _load_string_argv(
@@ -710,7 +586,7 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
             field_name=entry.field_name("run_args"),
         )
         if raw_run_args is not None
-        else _provider_family_default_run_args(family_name)
+        else provider_family_default_run_args(family_name)
     )
     env = _load_string_mapping(
         raw_env,
@@ -723,19 +599,19 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
     else:
         timeout_sec = raw_timeout_sec
     if raw_default_model is None:
-        default_model = _provider_family_default_model(family_name)
+        default_model = provider_family_default_model(family_name)
     elif not isinstance(raw_default_model, str) or not raw_default_model.strip():
         raise CliError(f"{entry.field_name('default_model')} must be a non-empty string")
     else:
         default_model = raw_default_model.strip()
     if raw_model_flag is None:
-        model_flag = _provider_family_default_model_flag(family_name)
+        model_flag = provider_family_default_model_flag(family_name)
     elif not isinstance(raw_model_flag, str) or not raw_model_flag.strip():
         raise CliError(f"{entry.field_name('model_flag')} must be a non-empty string")
     else:
         model_flag = raw_model_flag.strip()
     if raw_prompt_flag is None:
-        prompt_flag = _provider_family_default_prompt_flag(family_name)
+        prompt_flag = provider_family_default_prompt_flag(family_name)
     elif not isinstance(raw_prompt_flag, str) or not raw_prompt_flag.strip():
         raise CliError(f"{entry.field_name('prompt_flag')} must be a non-empty string")
     else:
@@ -882,25 +758,6 @@ def _validate_unique_provider_instance_ids(provider_instances: tuple["ProviderIn
         )
 
 
-@dataclass(frozen=True)
-class ProviderInstanceAnchor:
-    role: str
-    path: Path
-    slot: str | None = None
-
-    def identity_key(self) -> tuple[str, str | None, str]:
-        return (self.role, self.slot, str(self.path))
-
-    def summary(self) -> dict[str, str]:
-        payload = {
-            "role": self.role,
-            "path": str(self.path),
-        }
-        if self.slot is not None:
-            payload["slot"] = self.slot
-        return payload
-
-
 def _provider_instance_fingerprint(
     *,
     family: str,
@@ -916,58 +773,6 @@ def _provider_instance_fingerprint(
         digest.update(b"\0")
         digest.update(str(anchor.path).encode("utf-8"))
     return digest.hexdigest()
-
-
-def _join_provider_home(home: Path, relpath: str) -> Path:
-    if not relpath:
-        return home
-    return home / relpath
-
-
-def _provider_family_default_cli_command(family_name: str) -> tuple[str, ...]:
-    if family_name == "codex":
-        return ("codex",)
-    if family_name == "copilot-cli":
-        return ("copilot",)
-    if family_name == "pi":
-        return ("pi",)
-    return ()
-
-
-def _provider_family_default_run_args(family_name: str) -> tuple[str, ...]:
-    if family_name == "codex":
-        return ("exec", "--dangerously-bypass-approvals-and-sandbox")
-    if family_name == "copilot-cli":
-        return ("--allow-all-tools", "--no-ask-user")
-    if family_name == "opencode":
-        return ("run",)
-    return ()
-
-
-def _provider_family_default_model(family_name: str) -> str | None:
-    if family_name == "codex":
-        return "gpt-5.4"
-    return None
-
-
-def _provider_family_default_model_flag(family_name: str) -> str | None:
-    if family_name == "codex":
-        return "--model"
-    if family_name == "copilot-cli":
-        return "--model"
-    if family_name == "opencode":
-        return "--model"
-    if family_name == "pi":
-        return "--model"
-    return None
-
-
-def _provider_family_default_prompt_flag(family_name: str) -> str | None:
-    if family_name == "copilot-cli":
-        return "-p"
-    if family_name == "pi":
-        return "-p"
-    return None
 
 
 def _normalize_provider_home(home: object, *, field_name: str) -> str:
