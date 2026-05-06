@@ -79,6 +79,15 @@ def _resolve_tape_root(
     )
 
 
+def _resolve_tape_root_from_args(args: argparse.Namespace) -> tuple[Path, dict[str, object]]:
+    return _resolve_tape_root(
+        root_path=args.root_path,
+        tape_name=args.tape_name,
+        project=args.project,
+        project_base=args.project_base,
+    )
+
+
 def _record_tape_project_command(args: argparse.Namespace, resolution: dict[str, object]) -> None:
     project_root = resolution.get("project_root")
     if project_root is None:
@@ -452,12 +461,7 @@ def _parse_append_batch_entries(raw_payload: object) -> list[dict[str, object]]:
 
 
 def _cmd_tape_init(args: argparse.Namespace) -> int:
-    root_path, resolution = _resolve_tape_root(
-        root_path=args.root_path,
-        tape_name=args.tape_name,
-        project=args.project,
-        project_base=args.project_base,
-    )
+    root_path, resolution = _resolve_tape_root_from_args(args)
     _record_tape_project_command(args, resolution)
 
     _validate_tape_type(args.tape_type)
@@ -504,12 +508,7 @@ def _cmd_tape_init(args: argparse.Namespace) -> int:
 
 
 def _cmd_tape_append(args: argparse.Namespace) -> int:
-    root_path, resolution = _resolve_tape_root(
-        root_path=args.root_path,
-        tape_name=args.tape_name,
-        project=args.project,
-        project_base=args.project_base,
-    )
+    root_path, resolution = _resolve_tape_root_from_args(args)
     _record_tape_project_command(args, resolution)
 
     config, tape_created, warnings = _prepare_write_context(
@@ -548,12 +547,7 @@ def _cmd_tape_append(args: argparse.Namespace) -> int:
 
 
 def _cmd_tape_append_batch(args: argparse.Namespace) -> int:
-    root_path, resolution = _resolve_tape_root(
-        root_path=args.root_path,
-        tape_name=args.tape_name,
-        project=args.project,
-        project_base=args.project_base,
-    )
+    root_path, resolution = _resolve_tape_root_from_args(args)
     _record_tape_project_command(args, resolution)
 
     config, tape_created, warnings = _prepare_write_context(
@@ -600,12 +594,7 @@ def _cmd_tape_append_batch(args: argparse.Namespace) -> int:
 
 
 def _cmd_tape_consolidate(args: argparse.Namespace) -> int:
-    root_path, resolution = _resolve_tape_root(
-        root_path=args.root_path,
-        tape_name=args.tape_name,
-        project=args.project,
-        project_base=args.project_base,
-    )
+    root_path, resolution = _resolve_tape_root_from_args(args)
     _record_tape_project_command(args, resolution)
 
     config, tape_created, warnings = _prepare_write_context(
@@ -630,12 +619,7 @@ def _cmd_tape_consolidate(args: argparse.Namespace) -> int:
 
 
 def _cmd_tape_query(args: argparse.Namespace) -> int:
-    root_path, resolution = _resolve_tape_root(
-        root_path=args.root_path,
-        tape_name=args.tape_name,
-        project=args.project,
-        project_base=args.project_base,
-    )
+    root_path, resolution = _resolve_tape_root_from_args(args)
     _record_tape_project_command(args, resolution)
     consolidate_payload: dict[str, object] | None = None
     if args.pre_consolidate:
@@ -688,12 +672,7 @@ def _cmd_tape_query(args: argparse.Namespace) -> int:
 
 
 def _cmd_tape_verify(args: argparse.Namespace) -> int:
-    root_path, resolution = _resolve_tape_root(
-        root_path=args.root_path,
-        tape_name=args.tape_name,
-        project=args.project,
-        project_base=args.project_base,
-    )
+    root_path, resolution = _resolve_tape_root_from_args(args)
     _record_tape_project_command(args, resolution)
     result = verify_segment_headers(root_path)
     output = _build_tape_output(
@@ -707,12 +686,7 @@ def _cmd_tape_verify(args: argparse.Namespace) -> int:
 
 
 def _cmd_tape_config(args: argparse.Namespace) -> int:
-    root_path, resolution = _resolve_tape_root(
-        root_path=args.root_path,
-        tape_name=args.tape_name,
-        project=args.project,
-        project_base=args.project_base,
-    )
+    root_path, resolution = _resolve_tape_root_from_args(args)
     _record_tape_project_command(args, resolution)
     config = load_tape_folder_config(root_path)
     output = _build_tape_output(
@@ -729,12 +703,7 @@ def _cmd_tape_config(args: argparse.Namespace) -> int:
 
 
 def _cmd_tape_doctor(args: argparse.Namespace) -> int:
-    root_path, resolution = _resolve_tape_root(
-        root_path=args.root_path,
-        tape_name=args.tape_name,
-        project=args.project,
-        project_base=args.project_base,
-    )
+    root_path, resolution = _resolve_tape_root_from_args(args)
     _record_tape_project_command(args, resolution)
     config = load_tape_folder_config(root_path)
     verify_payload = verify_segment_headers(root_path)
@@ -770,12 +739,7 @@ def _cmd_tape_doctor(args: argparse.Namespace) -> int:
 
 
 def _cmd_tape_lint(args: argparse.Namespace) -> int:
-    root_path, resolution = _resolve_tape_root(
-        root_path=args.root_path,
-        tape_name=args.tape_name,
-        project=args.project,
-        project_base=args.project_base,
-    )
+    root_path, resolution = _resolve_tape_root_from_args(args)
     _record_tape_project_command(args, resolution)
     if args.max_findings <= 0:
         raise CliError("--max-findings must be > 0")
