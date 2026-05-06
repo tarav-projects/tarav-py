@@ -13,7 +13,8 @@ Canonical TOC and orientation note for `notes/index/`.
 
 ## How To Read It
 
-- Start with `004-Agentos.Project.md` to understand project identity and targeting.
+- Start with `001-ontology.md` to resolve the explicit concepts used on this surface.
+- Read `004-Agentos.Project.md` to understand project identity and targeting.
 - Read the core concept notes that match the subsystem you are touching.
 - Treat working notes in this folder as background only, not as canonical specs.
 
@@ -26,6 +27,10 @@ Canonical TOC and orientation note for `notes/index/`.
 - `005-Agentos.Skills.md` — selection and import model for project-local skills.
 - `100-Project.Selection.Protocol.md` — explicit project selector contract for project-aware command surfaces.
 
+### Ontology
+
+- `001-ontology.md` — registry of the explicit concepts currently used by this index surface.
+
 ### External Integration Declaration
 
 - `002-Tara.Integration.Ontology.md` — consumer-side declaration of Tara concepts implemented by Agentos.
@@ -37,7 +42,7 @@ Canonical TOC and orientation note for `notes/index/`.
 
 ### Earlier Interface Note
 
-- `001-chat-session-interface.md` — background note from earlier chat-session interface work; useful for session/history redesign context.
+- `101-chat-session-interface.md` — background note from earlier chat-session interface work; useful for session/history redesign context.
 
 ### Working Notes
 
