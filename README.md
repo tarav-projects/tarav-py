@@ -6,7 +6,7 @@ Current baseline includes:
 - project targeting and diagnostics: `init`, `rev-parse`, `doctor`
 - config-driven provider utilities: `agent`, `chat`, `chatlas`
 - project-scoped tools: `forum`, `skills`, `mission`, `utils`
-- tape and reference utilities: `tara-tapes`, `git-refs`
+- Tara tape and reference utilities: `tara-tapes`, `git-refs`
 - document and numbering tools: `mdblocks`, `prefix`
 - smoke and support commands: `test`
 

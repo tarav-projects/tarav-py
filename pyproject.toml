@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "agentos"
 version = "0.1.0"
-description = "Core library and CLI primitives for agentic workflows (tape, refs, mdblocks, prefix, skills)."
+description = "Core library and CLI primitives for agentic workflows (tara-tapes, refs, mdblocks, prefix, skills)."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "pereiro" }]

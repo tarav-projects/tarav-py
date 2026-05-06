@@ -66,7 +66,6 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         "requested_scope": args.scope,
         "effective_scope": effective_scope,
         "effective_agentos_dir": str(effective_agentos_dir),
-        "effective_tapes_dir": str(effective_paths["tapes"]),
         "effective_indexes_dir": str(effective_paths["indexes"]),
         "effective_tmp_dir": str(effective_paths["tmp"]),
         "effective_project_root": (

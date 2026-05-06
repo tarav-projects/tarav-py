@@ -18,8 +18,8 @@ GLOBAL_CONFIG_FILENAME = "config.json"
 PROJECT_SCHEMA_VERSION = 1
 GLOBAL_SCHEMA_VERSION = 1
 SCOPE_VALUES = ("project", "global", "auto")
-PROJECT_DIR_NAMES = ("tapes", "indexes", "tmp", "state")
-GLOBAL_DIR_NAMES = ("tapes", "indexes", "tmp", "cache")
+PROJECT_DIR_NAMES = ("indexes", "tmp", "state")
+GLOBAL_DIR_NAMES = ("indexes", "tmp", "cache")
 
 
 def agentos_home_dir() -> Path:
@@ -340,7 +340,6 @@ def local_storage_paths(project_root: Path) -> dict[str, Path]:
         "agentos_dir": base,
         "project_marker": project_marker_path(project_root),
         "config": project_config_path(project_root),
-        "tapes": base / "tapes",
         "indexes": base / "indexes",
         "tmp": base / "tmp",
         "state": base / "state",
@@ -352,7 +351,6 @@ def global_storage_paths(home_dir: Path | None = None) -> dict[str, Path]:
     return {
         "agentos_dir": base,
         "config": global_config_path(base),
-        "tapes": base / "tapes",
         "indexes": base / "indexes",
         "tmp": base / "tmp",
         "cache": base / "cache",
