@@ -1258,10 +1258,6 @@ def _default_chatlas_root(home: Path) -> Path:
     return home / "Documents" / "chatlas"
 
 
-def _legacy_chatlas_root(agentos_home: Path) -> Path:
-    return agentos_home / "chatlas"
-
-
 def _chatlas_home_root(home: Path, source_home: Path) -> Path:
     return _default_chatlas_root(home) / "raw" / source_home.relative_to(home)
 
@@ -2519,48 +2515,6 @@ def test_chatlas_update_can_disable_caches(
     assert payload["committed"] is False
     for target in patched_targets:
         assert counters[target] > 0, f"expected {target} to be called"
-
-
-def test_chatlas_stats_migrates_legacy_default_chatlas_root(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write_global_config(agentos_home / "config.json")
-
-    legacy_root = _legacy_chatlas_root(agentos_home)
-    new_root = _default_chatlas_root(home)
-    identity_hash = _session_identity_hash(
-        provider="codex",
-        provider_session_id="legacy-session",
-    )
-    _write(
-        _session_index_shard_path(legacy_root / "index" / "sessions", identity_hash),
-        json.dumps(
-            {
-                "class": "agentos.chatlas.session",
-                "schema_version": 1,
-                "provider": "codex",
-                "session_id": "legacy-session",
-                "identity_hash": identity_hash,
-                "extractable": False,
-            }
-        )
-        + "\n",
-    )
-
-    assert main(["chatlas", "stats", "--format", "json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-
-    assert payload["chatlas_root"] == str(new_root)
-    assert payload["stats"]["session_count"] == 1
-    assert (new_root / "index" / "sessions").is_dir()
-    assert not legacy_root.exists()
 
 
 def test_chatlas_update_preserves_archived_sessions_when_source_home_disappears(
