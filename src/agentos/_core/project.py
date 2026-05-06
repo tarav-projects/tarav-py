@@ -18,8 +18,8 @@ GLOBAL_CONFIG_FILENAME = "config.json"
 PROJECT_SCHEMA_VERSION = 1
 GLOBAL_SCHEMA_VERSION = 1
 SCOPE_VALUES = ("project", "global", "auto")
-PROJECT_DIR_NAMES = ("indexes", "tmp", "state")
-GLOBAL_DIR_NAMES = ("indexes", "tmp", "cache")
+PROJECT_STORAGE_DIR_NAMES = ("indexes", "tmp", "state")
+GLOBAL_STORAGE_DIR_NAMES = ("indexes", "tmp", "cache")
 
 
 def agentos_home_dir() -> Path:
@@ -334,15 +334,17 @@ def resolve_scope_storage_paths(
     )
 
 
+def _storage_dir_paths(base: Path, names: tuple[str, ...]) -> dict[str, Path]:
+    return {name: base / name for name in names}
+
+
 def local_storage_paths(project_root: Path) -> dict[str, Path]:
     base = project_agentos_dir(project_root)
     return {
         "agentos_dir": base,
         "project_marker": project_marker_path(project_root),
         "config": project_config_path(project_root),
-        "indexes": base / "indexes",
-        "tmp": base / "tmp",
-        "state": base / "state",
+        **_storage_dir_paths(base, PROJECT_STORAGE_DIR_NAMES),
     }
 
 
@@ -351,9 +353,7 @@ def global_storage_paths(home_dir: Path | None = None) -> dict[str, Path]:
     return {
         "agentos_dir": base,
         "config": global_config_path(base),
-        "indexes": base / "indexes",
-        "tmp": base / "tmp",
-        "cache": base / "cache",
+        **_storage_dir_paths(base, GLOBAL_STORAGE_DIR_NAMES),
     }
 
 
@@ -479,7 +479,7 @@ def initialize_project_layout(
         marker_path.write_text(json.dumps(marker_payload, indent=2) + "\n", encoding="utf-8")
         marker_created = True
 
-    dirs = _ensure_named_dirs(paths["agentos_dir"], PROJECT_DIR_NAMES)
+    dirs = _ensure_named_dirs(paths["agentos_dir"], PROJECT_STORAGE_DIR_NAMES)
     config_created = _ensure_json_file(
         config_path,
         {"class": "agentos.project.config", "schema_version": PROJECT_SCHEMA_VERSION},
@@ -517,7 +517,7 @@ def initialize_global_layout(
         config_payload = {"class": "agentos.global.config", "schema_version": GLOBAL_SCHEMA_VERSION}
         config_created = _ensure_json_file(config_path, config_payload)
 
-    dirs = _ensure_named_dirs(base, GLOBAL_DIR_NAMES)
+    dirs = _ensure_named_dirs(base, GLOBAL_STORAGE_DIR_NAMES)
 
     return {
         "agentos_dir": base,
