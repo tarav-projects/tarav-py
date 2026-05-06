@@ -334,26 +334,6 @@ def resolve_scope_storage_paths(
     )
 
 
-def resolve_project_tape_dir(
-    tape_name: str,
-    *,
-    start_path: Path | str = ".",
-    project: Path | str | None = None,
-    project_base: str | None = None,
-) -> tuple[Path, Path, str]:
-    normalized_tape_name = validate_string_for_path(tape_name, field_name="tape")
-    require_explicit_project_selector(project, project_base, command_name="agentos tape --tape")
-    resolved_project = require_agentos_project(
-        start_path,
-        project=project,
-        include_init_hint=True,
-        extra_hint="pass --root",
-    )
-    assert_project_base(resolved_project, project_base)
-    project_root = resolved_project.root
-    return (project_agentos_dir(project_root) / "tapes" / normalized_tape_name, project_root, normalized_tape_name)
-
-
 def local_storage_paths(project_root: Path) -> dict[str, Path]:
     base = project_agentos_dir(project_root)
     return {

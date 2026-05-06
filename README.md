@@ -6,7 +6,7 @@ Current baseline includes:
 - project targeting and diagnostics: `init`, `rev-parse`, `doctor`
 - config-driven provider utilities: `agent`, `chat`, `chatlas`
 - project-scoped tools: `forum`, `skills`, `mission`, `utils`
-- tape and reference utilities: `tape`, `tara-tapes`, `git-refs`
+- tape and reference utilities: `tara-tapes`, `git-refs`
 - document and numbering tools: `mdblocks`, `prefix`
 - smoke and support commands: `test`
 
@@ -26,7 +26,7 @@ Command policy depends on the surface:
 
 - `doctor` can inspect a project target without requiring an existing project
 - `agent ...` and the relevant `chat ...` leaves use `--project` for config resolution only
-- `forum post|reply|react`, `skills ...`, `mission ...`, `utils tmp-folder new`, and `tape --tape ...` require an existing project
+- `forum post|reply|react`, `skills ...`, `mission ...`, and `utils tmp-folder new` require an existing project
 - `forum feed|thread` can read without a local project; `forum history` defaults to the current project and accepts `--project-id` for headless reads
 - `init --scope project --project ...` may initialize an explicit project target
 
@@ -246,60 +246,10 @@ Output notes:
 - `{ "name": "agentos", "include": ["agentos-session-status"] }` imports only matching skills from that source or expanded package
 - `{ "name": "agentos", "exclude": ["agentos-team"] }` imports the source or expanded package except matching skills
 
-## Tape CLI (folder-backed default)
-
-`agentos tape` uses a single interface for folder-backed JSONL tapes.
-
-Subcommands:
-- `init`
-- `append`
-- `append-batch`
-- `consolidate`
-- `query`
-- `verify`
-- `config`
-- `doctor`
-
-Target selection:
-- Project mode: `--tape <name>` resolves to `<project>/.agentos/tapes/<name>/`
-- Headless mode: `--root <path>` targets an explicit tape folder
-
-Write behavior:
-- `append`, `append-batch`, `consolidate` error if tape is missing
-- Pass `--init` to allow implicit initialization on missing tape
-- If explicit init flags mismatch existing config, command succeeds with warnings
-- If no explicit init flags are passed and existing config is non-default, command warns
-
-Naming behavior:
-- `sequential` uses `max_records_per_segment` for rollover (`0001.jsonl`, `0002.jsonl`, ...)
-- `monthly` rolls strictly by month (`YYMM.jsonl`) and ignores `max_records_per_segment`
-- `daily` rolls strictly by day (`YYMMDD.jsonl`) and ignores `max_records_per_segment`
-
-Quick examples:
-
-```sh
-# project-scoped tape
-agentos tape init --tape bla
-agentos tape init --tape bla --tape-class events.demo --data-schema-json '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["k"],"properties":{"k":{"type":"string"}},"additionalProperties":false}'
-agentos tape init --tape bla --allowed-classes-json '["event.alpha","event.beta"]'
-agentos tape append --tape bla --writer-id proc-a --class event.alpha
-agentos tape append --tape bla --writer-id proc-a --class event.alpha --data-json '{"k":"v"}'
-agentos tape append --tape bla --writer-id proc-a --class event.alpha --override-created-at 2026-03-01T10:11:12Z
-agentos tape consolidate --tape bla
-agentos tape query --tape bla --mode best_effort --count
-agentos tape query --tape bla --mode committed --count --consolidate
-agentos tape query --tape bla --mode best_effort --jmes "[?data.task_id=='task-123']"
-agentos tape config --tape bla
-agentos tape doctor --tape bla
-
-# headless explicit root
-agentos tape append --root /tmp/my-tape --writer-id proc-a --class event.alpha --init
-```
-
 ## Tara Tapes CLI
 
-`agentos tara-tapes` is a separate, spec-first subsystem for Tara-compliant tapes.
-The initial surface uses explicit `--root` targeting only.
+`agentos tara-tapes` is the active tape system. It is a spec-first subsystem for
+Tara-compliant tapes and uses explicit `--root` targeting.
 
 Subcommands:
 - `init`

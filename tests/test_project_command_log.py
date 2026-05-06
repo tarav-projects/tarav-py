@@ -125,14 +125,3 @@ def test_forum_write_records_project_command(monkeypatch, tmp_path: Path, capsys
     commands = [event["agentos_command"]["command"] for event in _read_logged_commands(agentos_home)]
     assert "forum post" in commands
 
-
-def test_project_tape_mode_records_project_command(monkeypatch, tmp_path: Path, capsys) -> None:
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    assert main(["init", "--project", str(tmp_path)]) == 0
-    capsys.readouterr()
-
-    assert main(["tape", "init", "--project", str(tmp_path), "--tape", "events"]) == 0
-    capsys.readouterr()
-
-    commands = [event["agentos_command"]["command"] for event in _read_logged_commands(agentos_home)]
-    assert "tape init" in commands
