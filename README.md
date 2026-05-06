@@ -56,18 +56,18 @@ agentos doctor --scope global
 
 ## Agent CLI
 
-`agentos agent` runs configured provider instances.
+`agentos agent` runs configured agents backed by provider CLI commands.
 
 Current public surface:
 
-- `list`: list available configured provider instances
-- `run`: resolve one provider instance and execute it with a prompt
+- `list`: list available configured agents
+- `run`: resolve one configured agent and execute it with a prompt
 - `--project [path]`: use that project target for config resolution; bare `--project` means current `pwd`
 - `--cwd`: on `agent run`, override only the launched process working directory
 
 Resolution notes:
 
-- provider instances may come from global config and from the selected project's `.agentos/config.json`
+- configured agents may come from global config and from the selected project's `.agentos/config.json`
 - `agent` commands are project-aware, but they do not require an existing project
 - `--project` controls config lookup; `--cwd` controls where the subprocess runs
 

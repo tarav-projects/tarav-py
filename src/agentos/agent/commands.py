@@ -10,13 +10,15 @@ from pathlib import Path
 
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
+from agentos.agent.providers import (
+    AgentosAgent,
+    AgentRunRequest,
+    load_configured_agents,
+    resolve_agent,
+)
 from agentos.chat.accounts import supported_account_provider_families
 from agentos.chat.commands import _cmd_chat_accounts_stats
-from agentos.chat.providers import (
-    ProviderInstance,
-    canonical_provider_families,
-    load_configured_provider_instances,
-)
+from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provider_families())
 _AGENT_ACCOUNTS_PROVIDER_CHOICES = tuple(
@@ -28,48 +30,18 @@ def _list_provider_instances(
     *,
     provider: str | None,
     start_path: Path,
-) -> tuple[ProviderInstance, ...]:
-    instances = load_configured_provider_instances(start_path=start_path)
+) -> tuple[AgentosAgent, ...]:
+    instances = load_configured_agents(start_path=start_path)
     if provider is None:
         return instances
-    return tuple(instance for instance in instances if instance.family == provider)
+    return tuple(instance for instance in instances if instance.provider == provider)
 
 
-def _resolve_provider_instance(
-    *,
-    provider: str,
-    instance_id: str | None,
-    start_path: Path,
-) -> ProviderInstance:
-    matching = [
-        instance
-        for instance in load_configured_provider_instances(start_path=start_path)
-        if instance.family == provider
-    ]
-    if not matching:
-        raise CliError(f"no configured provider instances found for provider {provider}")
-
-    if instance_id is not None:
-        for instance in matching:
-            if instance.instance_id == instance_id:
-                return instance
-        raise CliError(
-            f"no provider instance {instance_id!r} found for provider {provider}"
-        )
-
-    if len(matching) == 1:
-        return matching[0]
-
-    available = ", ".join(instance.instance_id or "<default>" for instance in matching)
-    raise CliError(
-        f"provider {provider} is ambiguous; pass --instance (available: {available})"
-    )
-
-
-def _format_instance_line(instance: ProviderInstance) -> str:
-    instance_id = instance.instance_id or "<default>"
+def _format_instance_line(agent: AgentosAgent) -> str:
+    instance = agent.provider_instance
+    instance_id = agent.instance_id or "<default>"
     suffix_parts: list[str] = [f"id={instance_id}"]
-    if instance.label is not None and instance.label != instance.instance_id:
+    if instance.label is not None and instance.label != agent.instance_id:
         suffix_parts.append(instance.label)
     if instance.default_model is not None:
         suffix_parts.append(f"model={instance.default_model}")
@@ -88,26 +60,26 @@ def _config_start_path(args: argparse.Namespace) -> Path:
 
 def _cmd_agent_list(args: argparse.Namespace) -> int:
     config_start_path = _config_start_path(args)
-    instances = _list_provider_instances(
+    agents = _list_provider_instances(
         provider=args.provider,
         start_path=config_start_path,
     )
     if args.json:
         payload = {
-            "instances": [instance.summary() for instance in instances],
+            "instances": [agent.summary() for agent in agents],
         }
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
 
-    if not instances:
+    if not agents:
         if args.provider is None:
-            print("No agent provider instances configured.")
+            print("No agents configured.")
         else:
-            print(f"No agent provider instances configured for provider {args.provider}.")
+            print(f"No agents configured for provider {args.provider}.")
         return 0
 
-    for instance in instances:
-        print(_format_instance_line(instance))
+    for agent in agents:
+        print(_format_instance_line(agent))
     return 0
 
 
@@ -124,36 +96,8 @@ def _resolve_prompt(prompt_parts: list[str]) -> str:
     return prompt
 
 
-def _build_agent_command(
-    instance: ProviderInstance,
-    *,
-    prompt: str,
-    model: str | None,
-) -> list[str]:
-    if not instance.cli_command:
-        raise CliError(
-            f"provider instance {instance.instance_id or '<default>'} for {instance.family} has no cli_command"
-        )
-
-    command = list(instance.cli_command)
-    command.extend(instance.run_args)
-    effective_model = model or instance.default_model
-    if effective_model is not None:
-        if instance.model_flag is None:
-            raise CliError(
-                f"provider instance {instance.instance_id or '<default>'} for {instance.family} does not define model_flag"
-            )
-        command.extend([instance.model_flag, effective_model])
-
-    if instance.prompt_flag is not None:
-        command.extend([instance.prompt_flag, prompt])
-    else:
-        command.append(prompt)
-    return command
-
-
 def _format_agent_run_command(
-    command: list[str],
+    command: tuple[str, ...],
     *,
     env_overrides: dict[str, str],
 ) -> str:
@@ -170,28 +114,24 @@ def _format_agent_run_command(
 def _cmd_agent_run(args: argparse.Namespace) -> int:
     config_start_path = _config_start_path(args)
     cwd = Path(args.cwd).expanduser().resolve() if args.cwd else Path.cwd().resolve()
-    instance = _resolve_provider_instance(
+    agent = resolve_agent(
         provider=args.provider,
         instance_id=args.instance,
         start_path=config_start_path,
     )
     prompt = _resolve_prompt(args.prompt)
-    command = _build_agent_command(
-        instance,
-        prompt=prompt,
-        model=args.model,
-    )
+    resolved_run = agent.resolve_run(AgentRunRequest(prompt=prompt, model=args.model))
 
     env = os.environ.copy()
-    env.update(dict(instance.env))
+    env.update(resolved_run.env_mapping())
 
     if args.dry_run:
-        print(_format_agent_run_command(command, env_overrides=dict(instance.env)))
+        print(_format_agent_run_command(resolved_run.command, env_overrides=resolved_run.env_mapping()))
         return 0
 
     try:
         result = subprocess.run(
-            command,
+            list(resolved_run.command),
             cwd=str(cwd),
             env=env,
             check=False,
@@ -204,13 +144,13 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
 def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     agent_parser = subparsers.add_parser(
         "agent",
-        help="Run configured agent provider instances with global/project config resolution.",
+        help="Run configured agents with global/project config resolution.",
     )
     agent_subparsers = agent_parser.add_subparsers(dest="agent_command")
 
     list_parser = agent_subparsers.add_parser(
         "list",
-        help="List available agent provider instances.",
+        help="List available configured agents.",
     )
     list_parser.add_argument(
         "--provider",
@@ -229,7 +169,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     list_parser.add_argument(
         "--json",
         action="store_true",
-        help="Print instances as JSON.",
+        help="Print agents as JSON.",
     )
     list_parser.set_defaults(handler=_cmd_agent_list)
 
@@ -295,7 +235,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
 
     run_parser = agent_subparsers.add_parser(
         "run",
-        help="Run one provider instance with a prompt.",
+        help="Run one configured agent with a prompt.",
     )
     run_parser.add_argument(
         "--provider",
@@ -306,7 +246,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     run_parser.add_argument(
         "--instance",
         default=None,
-        help="Configured provider instance id. Optional when provider resolution is unambiguous.",
+        help="Configured agent id. Optional when provider resolution is unambiguous.",
     )
     run_parser.add_argument(
         "--model",

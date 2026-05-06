@@ -439,6 +439,53 @@ def test_agent_list_accepts_canonical_non_chat_provider_family(
     ]
 
 
+def test_provider_capabilities_are_scoped_by_subsystem() -> None:
+    from agentos.agent.run_profiles import supported_agent_run_providers
+    from agentos.chat.accounts import supported_account_provider_families
+    from agentos.chatlas.raw import supported_chatlas_provider_families
+    from agentos.home.providers import supported_home_providers
+
+    default_run_providers = {
+        provider.family
+        for provider in supported_agent_run_providers()
+        if provider.supports_default_run_profile
+    }
+    account_providers = {
+        provider.family
+        for provider in supported_account_provider_families()
+    }
+    chatlas_providers = {
+        provider.family
+        for provider in supported_chatlas_provider_families()
+    }
+    home_providers_with_session_layout = {
+        provider.family
+        for provider in supported_home_providers()
+        if provider.supports_session_discovery
+    }
+
+    assert "pi" in default_run_providers
+    assert "pi" not in account_providers
+    assert "pi" in chatlas_providers
+    assert "pi" in home_providers_with_session_layout
+    assert "claude-code" not in default_run_providers
+    assert "claude-code" in account_providers
+    assert "claude-code" in chatlas_providers
+    assert "claude-code" in home_providers_with_session_layout
+
+
+def test_chat_provider_specs_reuse_shared_provider_home_topology() -> None:
+    from agentos.chat.providers import canonical_chat_provider_spec_for_name
+    from agentos.providers import canonical_provider_spec_for_name
+
+    provider_spec = canonical_provider_spec_for_name("codex")
+    chat_provider_spec = canonical_chat_provider_spec_for_name("codex")
+
+    assert provider_spec is not None
+    assert chat_provider_spec is not None
+    assert chat_provider_spec.home_slots == provider_spec.home_slots
+
+
 def test_agent_run_uses_explicit_project_target_for_config_resolution(
     tmp_path: Path,
     monkeypatch,
