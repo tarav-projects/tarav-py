@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from agentos._core.errors import CliError
 
@@ -17,10 +18,17 @@ from .core import (
     parse_topology,
     place_one,
     read_canvas,
+    resize_node,
     topology_to_canvas,
     topology_to_dict,
     write_canvas,
 )
+
+
+def _resize_all_nodes(canvas: dict[str, Any]) -> None:
+    """Auto-resize all nodes based on their text content."""
+    for node in canvas.get("nodes", []):
+        resize_node(node)
 
 
 def _cmd_canvas_init(args: argparse.Namespace) -> int:
@@ -31,6 +39,7 @@ def _cmd_canvas_init(args: argparse.Namespace) -> int:
     data = json.loads(topology_path.read_text(encoding="utf-8"))
     topo = parse_topology(data)
     canvas = topology_to_canvas(topo)
+    _resize_all_nodes(canvas)
 
     out_path = Path(args.file)
     write_canvas(out_path, canvas)
@@ -85,6 +94,7 @@ def _cmd_canvas_add_node(args: argparse.Namespace) -> int:
             }
         )
 
+    _resize_all_nodes(canvas)
     write_canvas(canvas_path, canvas)
     print(f"Added node '{node_id}'")
     return 0
@@ -113,6 +123,7 @@ def _cmd_canvas_add_edge(args: argparse.Namespace) -> int:
         }
     )
 
+    _resize_all_nodes(canvas)
     write_canvas(canvas_path, canvas)
     print(f"Added edge '{args.edge_id}' ({args.from_node} -> {args.to_node})")
     return 0
@@ -148,6 +159,7 @@ def _cmd_canvas_place(args: argparse.Namespace) -> int:
     target_node["x"] = int(x)
     target_node["y"] = int(y)
 
+    _resize_all_nodes(canvas)
     write_canvas(canvas_path, canvas)
     print(f"Placed node '{node_id}' at ({int(x)}, {int(y)})")
     return 0

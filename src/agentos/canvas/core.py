@@ -58,8 +58,22 @@ def topology_to_dict(topo: Topology) -> dict[str, Any]:
 # Canvas I/O
 # ---------------------------------------------------------------------------
 
-NODE_WIDTH = 280
-NODE_HEIGHT = 140
+MIN_NODE_WIDTH = 240
+MAX_NODE_WIDTH = 320
+MIN_NODE_HEIGHT = 140
+PX_PER_CHAR = 7
+PX_PER_LINE = 50
+
+
+def estimate_node_size(text: str) -> tuple[int, int]:
+    """Estimate canvas node dimensions from text content."""
+    lines = text.split("\n")
+    num_lines = len(lines)
+    max_line_len = max((len(line) for line in lines), default=0)
+
+    width = max(MIN_NODE_WIDTH, min(MAX_NODE_WIDTH, max_line_len * PX_PER_CHAR))
+    height = max(MIN_NODE_HEIGHT, num_lines * PX_PER_LINE)
+    return (width, height)
 
 
 def make_node_text(node_id: str) -> str:
@@ -72,17 +86,28 @@ def make_edge_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
-def make_canvas_node(node_id: str, x: float, y: float) -> dict[str, Any]:
-    """Build a canvas node dict at the given position."""
+def make_canvas_node(node_id: str, x: float, y: float, text: str | None = None) -> dict[str, Any]:
+    """Build a canvas node dict at the given position, auto-sized from content."""
+    if text is None:
+        text = make_node_text(node_id)
+    width, height = estimate_node_size(text)
     return {
         "id": node_id,
         "type": "text",
-        "text": make_node_text(node_id),
+        "text": text,
         "x": int(x),
         "y": int(y),
-        "width": NODE_WIDTH,
-        "height": NODE_HEIGHT,
+        "width": width,
+        "height": height,
     }
+
+
+def resize_node(node: dict[str, Any]) -> None:
+    """Resize a canvas node in-place based on its current text content."""
+    text = node.get("text", "")
+    width, height = estimate_node_size(text)
+    node["width"] = width
+    node["height"] = height
 
 
 def read_canvas(path: Path) -> dict[str, Any]:
@@ -104,8 +129,8 @@ def write_canvas(path: Path, canvas: dict[str, Any]) -> None:
 def layout_grid(node_ids: list[str]) -> dict[str, tuple[float, float]]:
     """Simple grid layout. Returns {node_id: (x, y)}."""
     cols = max(1, math.ceil(math.sqrt(len(node_ids))))
-    spacing_x = NODE_WIDTH + 80
-    spacing_y = NODE_HEIGHT + 80
+    spacing_x = MAX_NODE_WIDTH + 80
+    spacing_y = MIN_NODE_HEIGHT + 80
     positions: dict[str, tuple[float, float]] = {}
     for i, nid in enumerate(node_ids):
         col = i % cols
@@ -135,14 +160,14 @@ def place_one(
         # No connected neighbors found — place below the lowest node
         if existing_positions:
             max_y = max(y for _, y in existing_positions.values())
-            return (0.0, max_y + NODE_HEIGHT + 80)
+            return (0.0, max_y + MIN_NODE_HEIGHT + 80)
         return (0.0, 0.0)
 
     cx = sum(x for x, _ in neighbor_positions) / len(neighbor_positions)
     cy = sum(y for _, y in neighbor_positions) / len(neighbor_positions)
 
     # Offset below centroid
-    candidate = (cx, cy + NODE_HEIGHT + 80)
+    candidate = (cx, cy + MIN_NODE_HEIGHT + 80)
 
     # Nudge to avoid overlap
     candidate = _avoid_overlap(candidate, existing_positions)
@@ -158,12 +183,12 @@ def _avoid_overlap(
     for _ in range(20):
         overlaps = False
         for ex, ey in existing.values():
-            if abs(x - ex) < NODE_WIDTH + 20 and abs(y - ey) < NODE_HEIGHT + 20:
+            if abs(x - ex) < MAX_NODE_WIDTH + 20 and abs(y - ey) < MIN_NODE_HEIGHT + 20:
                 overlaps = True
                 break
         if not overlaps:
             return (x, y)
-        x += NODE_WIDTH + 40
+        x += MAX_NODE_WIDTH + 40
     return (x, y)
 
 
