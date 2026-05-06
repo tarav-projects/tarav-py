@@ -10,21 +10,16 @@ from pathlib import Path
 from agentos._core.errors import CliError
 
 from .core import (
-    LintError,
-    TopologyEdge,
-    Topology,
     canvas_to_topology,
     lint_canvas,
+    make_canvas_node,
+    make_edge_id,
     parse_topology,
     place_one,
     read_canvas,
     topology_to_canvas,
     topology_to_dict,
     write_canvas,
-    _make_node_text,
-    _short_id,
-    NODE_WIDTH,
-    NODE_HEIGHT,
 )
 
 
@@ -77,23 +72,13 @@ def _cmd_canvas_add_node(args: argparse.Namespace) -> int:
     x, y = place_one(node_id, canvas, connected_to)
 
     # Add node
-    canvas.setdefault("nodes", []).append(
-        {
-            "id": node_id,
-            "type": "text",
-            "text": _make_node_text(node_id),
-            "x": int(x),
-            "y": int(y),
-            "width": NODE_WIDTH,
-            "height": NODE_HEIGHT,
-        }
-    )
+    canvas.setdefault("nodes", []).append(make_canvas_node(node_id, x, y))
 
     # Add edge if --connect-to and --edge-id provided
     if args.connect_to and args.edge_id:
         canvas.setdefault("edges", []).append(
             {
-                "id": _short_id(),
+                "id": make_edge_id(),
                 "fromNode": args.connect_to,
                 "toNode": node_id,
                 "label": args.edge_id,
@@ -121,7 +106,7 @@ def _cmd_canvas_add_edge(args: argparse.Namespace) -> int:
 
     canvas.setdefault("edges", []).append(
         {
-            "id": _short_id(),
+            "id": make_edge_id(),
             "fromNode": args.from_node,
             "toNode": args.to_node,
             "label": args.edge_id,

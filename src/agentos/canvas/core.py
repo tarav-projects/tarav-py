@@ -62,13 +62,27 @@ NODE_WIDTH = 280
 NODE_HEIGHT = 140
 
 
-def _make_node_text(node_id: str) -> str:
+def make_node_text(node_id: str) -> str:
     """Generate Canvas.Inline.Note.Style text for a node."""
     return f"## {node_id}\n> node: {node_id}"
 
 
-def _short_id() -> str:
+def make_edge_id() -> str:
+    """Generate a short unique canvas edge id."""
     return uuid.uuid4().hex[:12]
+
+
+def make_canvas_node(node_id: str, x: float, y: float) -> dict[str, Any]:
+    """Build a canvas node dict at the given position."""
+    return {
+        "id": node_id,
+        "type": "text",
+        "text": make_node_text(node_id),
+        "x": int(x),
+        "y": int(y),
+        "width": NODE_WIDTH,
+        "height": NODE_HEIGHT,
+    }
 
 
 def read_canvas(path: Path) -> dict[str, Any]:
@@ -162,31 +176,17 @@ def topology_to_canvas(topo: Topology) -> dict[str, Any]:
     """Convert a Topology into a positioned .canvas JSON dict."""
     positions = layout_grid(topo.nodes)
 
-    nodes = []
-    for nid in topo.nodes:
-        x, y = positions[nid]
-        nodes.append(
-            {
-                "id": nid,
-                "type": "text",
-                "text": _make_node_text(nid),
-                "x": int(x),
-                "y": int(y),
-                "width": NODE_WIDTH,
-                "height": NODE_HEIGHT,
-            }
-        )
+    nodes = [make_canvas_node(nid, *positions[nid]) for nid in topo.nodes]
 
-    edges = []
-    for edge in topo.edges:
-        edges.append(
-            {
-                "id": _short_id(),
-                "fromNode": edge.from_node,
-                "toNode": edge.to_node,
-                "label": edge.edge_id,
-            }
-        )
+    edges = [
+        {
+            "id": make_edge_id(),
+            "fromNode": e.from_node,
+            "toNode": e.to_node,
+            "label": e.edge_id,
+        }
+        for e in topo.edges
+    ]
 
     return {"nodes": nodes, "edges": edges}
 
@@ -309,61 +309,49 @@ def lint_canvas(canvas: dict[str, Any]) -> list[LintError]:
                 )
 
     # Rule 4: Card.Edge directional consistency
+    # Each connector is classified as: "directed" (arrow flows through) or "undirected" (no arrows).
+    # Valid: all connectors same class. Invalid: sink, source, or mixed.
     for ec_id in edge_card_ids:
-        incoming = []
-        outgoing = []
+        connector_classes: list[str] = []  # "directed" | "undirected" | "reverse"
         for edge in canvas.get("edges", []):
             from_end = edge.get("fromEnd", "none")
             to_end = edge.get("toEnd", "arrow")
             if edge.get("toNode") == ec_id:
-                incoming.append((edge, from_end, to_end))
+                # Connector pointing into edge card
+                if to_end == "arrow" and from_end == "none":
+                    connector_classes.append("directed_in")
+                elif to_end == "none" and from_end == "none":
+                    connector_classes.append("undirected")
+                else:
+                    connector_classes.append("other")
             elif edge.get("fromNode") == ec_id:
-                outgoing.append((edge, from_end, to_end))
+                # Connector going out of edge card
+                if to_end == "arrow" and from_end == "none":
+                    connector_classes.append("directed_out")
+                elif to_end == "none" and from_end == "none":
+                    connector_classes.append("undirected")
+                else:
+                    connector_classes.append("other")
 
-        # Check for sink: all arrows point INTO the edge card
-        all_incoming_directed = all(
-            to_end == "arrow" for _, _, to_end in incoming
-        )
-        all_outgoing_reverse = all(
-            from_end == "arrow" for _, from_end, _ in outgoing
-        )
-        if incoming and outgoing:
-            # Collect actual directions
-            in_directions = set()
-            for _, from_end, to_end in incoming:
-                in_directions.add(("in", from_end, to_end))
-            out_directions = set()
-            for _, from_end, to_end in outgoing:
-                out_directions.add(("out", from_end, to_end))
+        if len(connector_classes) < 2:
+            continue
 
-            # Check for mixed directionality
-            has_directed_in = any(to_end == "arrow" for _, _, to_end in incoming)
-            has_undirected_in = any(
-                to_end == "none" and from_end == "none"
-                for _, from_end, to_end in incoming
+        classes = set(connector_classes)
+
+        # Sink: all connectors flow in
+        if classes == {"directed_in"}:
+            errors.append(
+                LintError(rule=4, message=f"Edge card '{ec_id}' is a sink (all arrows point in)")
             )
-            has_directed_out = any(from_end == "none" and to_end == "arrow" for _, from_end, to_end in outgoing)
-            has_undirected_out = any(
-                to_end == "none" and from_end == "none"
-                for _, from_end, to_end in outgoing
+        # Source: all connectors flow out
+        elif classes == {"directed_out"}:
+            errors.append(
+                LintError(rule=4, message=f"Edge card '{ec_id}' is a source (all arrows point out)")
             )
-
-            # Sink: everything flows in, nothing flows out
-            if all_incoming_directed and all_outgoing_reverse:
-                errors.append(
-                    LintError(
-                        rule=4,
-                        message=f"Edge card '{ec_id}' is a sink (all arrows point in)",
-                    )
-                )
-
-            # Mixed: some directed, some undirected
-            if (has_directed_in or has_directed_out) and (has_undirected_in or has_undirected_out):
-                errors.append(
-                    LintError(
-                        rule=4,
-                        message=f"Edge card '{ec_id}' has mixed directionality",
-                    )
-                )
+        # Mixed: some directed, some undirected
+        elif "undirected" in classes and classes - {"undirected"}:
+            errors.append(
+                LintError(rule=4, message=f"Edge card '{ec_id}' has mixed directionality")
+            )
 
     return errors
