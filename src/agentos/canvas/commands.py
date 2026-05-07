@@ -17,7 +17,7 @@ from .core import (
     make_edge_id,
     model_to_canvas,
     model_to_dict,
-    parse_init_input,
+    parse_model,
     place_one,
     read_canvas,
     read_model,
@@ -29,23 +29,31 @@ from .core import (
 )
 
 
-def _resize_all_nodes(canvas: dict[str, Any]) -> None:
-    """Auto-resize all nodes based on their text content."""
+def _resize_new_nodes(canvas: dict[str, Any], new_node_ids: set[str]) -> None:
+    """Auto-resize only newly created nodes."""
     for node in canvas.get("nodes", []):
-        resize_node(node)
+        if node["id"] in new_node_ids:
+            resize_node(node)
 
 
 def _cmd_canvas_init(args: argparse.Namespace) -> int:
-    topology_path = Path(args.topology)
-    if not topology_path.exists():
-        raise CliError(f"topology file not found: {topology_path}")
-
-    data = json.loads(topology_path.read_text(encoding="utf-8"))
-    model = parse_init_input(data)
-    canvas = model_to_canvas(model)
-    _resize_all_nodes(canvas)
+    model_path = Path(args.model)
+    if not model_path.exists():
+        raise CliError(f"model file not found: {model_path}")
 
     out_path = Path(args.file)
+    if out_path.exists() and not args.this_is_dangerous:
+        raise CliError(
+            f"{out_path} already exists. Re-init overwrites all positions. "
+            "Pass --this-is-dangerous to proceed."
+        )
+
+    data = json.loads(model_path.read_text(encoding="utf-8"))
+    model = parse_model(data)
+    canvas = model_to_canvas(model)
+    new_ids = {c.id for c in model.cards}
+    _resize_new_nodes(canvas, new_ids)
+
     write_canvas(out_path, canvas)
     print(f"Created {out_path} ({len(model.cards)} cards, {len(model.relationships)} relationships)")
     return 0
@@ -87,9 +95,11 @@ def _cmd_canvas_add_card(args: argparse.Namespace) -> int:
     if args.connect_to:
         connected_to.append(args.connect_to)
 
-    # Place the canvas node
+    # Place the canvas node (new card only)
     x, y = place_one(card_id, canvas, connected_to)
-    canvas.setdefault("nodes", []).append(make_canvas_node(new_card, x, y))
+    new_node = make_canvas_node(new_card, x, y)
+    resize_node(new_node)
+    canvas.setdefault("nodes", []).append(new_node)
 
     # Add edge relationship if --connect-to and --edge-id provided
     if args.connect_to and args.edge_id:
@@ -107,7 +117,6 @@ def _cmd_canvas_add_card(args: argparse.Namespace) -> int:
         })
 
     write_model(canvas, model)
-    _resize_all_nodes(canvas)
     write_canvas(canvas_path, canvas)
     print(f"Added card '{card_id}' (type: {card_type})")
     return 0
@@ -148,55 +157,10 @@ def _cmd_canvas_add_edge(args: argparse.Namespace) -> int:
         })
 
     write_model(canvas, model)
-    _resize_all_nodes(canvas)
     write_canvas(canvas_path, canvas)
     print(f"Added {rel_type} '{args.edge_id}' ({args.from_card} -> {args.to_card})")
     return 0
 
-
-def _cmd_canvas_place(args: argparse.Namespace) -> int:
-    canvas_path = Path(args.file)
-    if not canvas_path.exists():
-        raise CliError(f"canvas file not found: {canvas_path}")
-
-    canvas = read_canvas(canvas_path)
-    node_id = args.node_id
-
-    target_node = None
-    for node in canvas.get("nodes", []):
-        if node["id"] == node_id:
-            target_node = node
-            break
-
-    if target_node is None:
-        raise CliError(f"node '{node_id}' not found")
-
-    # Find connected neighbors from model
-    model = read_model(canvas)
-    connected_to = []
-    for rel in model.relationships:
-        if rel.rel_type == "edge":
-            if rel.from_card == node_id:
-                connected_to.append(rel.to_card)
-            elif rel.to_card == node_id:
-                connected_to.append(rel.from_card)
-
-    # Fallback to canvas edges if no model relationships
-    if not connected_to:
-        for edge in canvas.get("edges", []):
-            if edge.get("fromNode") == node_id:
-                connected_to.append(edge["toNode"])
-            elif edge.get("toNode") == node_id:
-                connected_to.append(edge["fromNode"])
-
-    x, y = place_one(node_id, canvas, connected_to)
-    target_node["x"] = int(x)
-    target_node["y"] = int(y)
-
-    _resize_all_nodes(canvas)
-    write_canvas(canvas_path, canvas)
-    print(f"Placed node '{node_id}' at ({int(x)}, {int(y)})")
-    return 0
 
 
 def _cmd_canvas_sync(args: argparse.Namespace) -> int:
@@ -211,7 +175,8 @@ def _cmd_canvas_sync(args: argparse.Namespace) -> int:
         print("Already in sync.")
         return 0
 
-    _resize_all_nodes(canvas)
+    new_node_ids = {a.detail for a in actions if a.action == "created_node"}
+    _resize_new_nodes(canvas, new_node_ids)
     write_canvas(canvas_path, canvas)
 
     for action in actions:
@@ -249,8 +214,9 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
     init_parser = canvas_subparsers.add_parser(
         "init", help="Create a canvas from a topology JSON file."
     )
-    init_parser.add_argument("--topology", required=True, help="Path to topology JSON file.")
+    init_parser.add_argument("--model", required=True, help="Path to model JSON file (same format as _model).")
     init_parser.add_argument("--file", required=True, help="Output .canvas file path.")
+    init_parser.add_argument("--this-is-dangerous", action="store_true", dest="this_is_dangerous", help="Overwrite existing canvas (all positions will be reset).")
     init_parser.set_defaults(handler=_cmd_canvas_init)
 
     # show
@@ -281,14 +247,6 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
     add_edge_parser.add_argument("--edge-id", required=True, help="Relationship ID.")
     add_edge_parser.add_argument("--rel-type", default="edge", help="Relationship type (edge, adjacent, contains). Default: edge.")
     add_edge_parser.set_defaults(handler=_cmd_canvas_add_edge)
-
-    # place
-    place_parser = canvas_subparsers.add_parser(
-        "place", help="Reposition a node near its neighbors."
-    )
-    place_parser.add_argument("--file", required=True, help="Path to .canvas file.")
-    place_parser.add_argument("--node-id", required=True, help="Node to reposition.")
-    place_parser.set_defaults(handler=_cmd_canvas_place)
 
     # sync
     sync_parser = canvas_subparsers.add_parser(

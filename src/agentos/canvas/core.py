@@ -79,86 +79,6 @@ def write_model(canvas: dict[str, Any], model: CanvasModel) -> None:
     canvas[MODEL_KEY] = model_to_dict(model)
 
 
-# ---------------------------------------------------------------------------
-# Topology (init input format)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class TopologyEdge:
-    from_node: str
-    to_node: str
-    edge_id: str
-
-
-@dataclass
-class Topology:
-    nodes: list[str] = field(default_factory=list)
-    edges: list[TopologyEdge] = field(default_factory=list)
-
-
-def parse_topology(data: dict[str, Any]) -> Topology:
-    """Parse a topology JSON dict into a Topology object.
-
-    Supports both the new cards+relationships format and the legacy
-    nodes+edges format.
-    """
-    # New format: cards + relationships
-    if "cards" in data:
-        nodes = [c["id"] for c in data["cards"]]
-        edges: list[TopologyEdge] = []
-        for r in data.get("relationships", []):
-            edges.append(
-                TopologyEdge(from_node=r["from"], to_node=r["to"], edge_id=r["id"])
-            )
-        return Topology(nodes=nodes, edges=edges)
-
-    # Legacy format: nodes (string list) + edges
-    nodes = list(data.get("nodes", []))
-    edges = []
-    for edge in data.get("edges", []):
-        edges.append(
-            TopologyEdge(
-                from_node=edge["from"],
-                to_node=edge["to"],
-                edge_id=edge["edge-id"],
-            )
-        )
-    return Topology(nodes=nodes, edges=edges)
-
-
-def parse_init_input(data: dict[str, Any]) -> CanvasModel:
-    """Parse the init input JSON into a CanvasModel.
-
-    Supports both the new cards+relationships format and the legacy
-    nodes+edges format (cards default to type 'node').
-    """
-    if "cards" in data:
-        return parse_model(data)
-
-    # Legacy: nodes as strings, edges
-    cards = [ModelCard(id=n, type="node") for n in data.get("nodes", [])]
-    relationships = [
-        ModelRelationship(
-            from_card=e["from"],
-            to_card=e["to"],
-            rel_type="edge",
-            id=e.get("edge-id", e.get("id", uuid.uuid4().hex[:12])),
-        )
-        for e in data.get("edges", [])
-    ]
-    return CanvasModel(cards=cards, relationships=relationships)
-
-
-def topology_to_dict(topo: Topology) -> dict[str, Any]:
-    """Serialize a Topology into the canonical JSON format."""
-    return {
-        "nodes": topo.nodes,
-        "edges": [
-            {"from": e.from_node, "to": e.to_node, "edge-id": e.edge_id}
-            for e in topo.edges
-        ],
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +399,15 @@ def lint_canvas(canvas: dict[str, Any]) -> list[LintError]:
                 message=f"Contains relationship '{rel.id}': '{rel.to_card}' is not inside '{rel.from_card}'",
             ))
 
+    # Rule: every canvas edge label must be a valid TID.Pair
+    for edge in canvas.get("edges", []):
+        label = edge.get("label", "")
+        if label and not _is_tid_pair(label):
+            errors.append(LintError(
+                rule="canvas.edge.label_not_tid",
+                message=f"Edge '{edge.get('fromNode')}' -> '{edge.get('toNode')}' label '{label}' is not a valid TID.Pair (expected 'type: id')",
+            ))
+
     # Rule: canvas nodes not in model (informational)
     for nid in canvas_node_ids:
         if nid not in model_card_ids:
@@ -488,6 +417,12 @@ def lint_canvas(canvas: dict[str, Any]) -> list[LintError]:
             ))
 
     return errors
+
+
+def _is_tid_pair(label: str) -> bool:
+    """Check if a string is a valid TID.Pair ('type: id')."""
+    parts = label.split(": ", 1)
+    return len(parts) == 2 and parts[0].strip() != "" and parts[1].strip() != ""
 
 
 def _nodes_adjacent(a: dict[str, Any], b: dict[str, Any], tolerance: int = 10) -> bool:
