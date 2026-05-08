@@ -135,6 +135,39 @@ def test_agent_run_uses_configured_instance_env(
     assert observed["codex_home"] == str(work_home)
 
 
+def test_configured_codex_agent_uses_provider_native_model(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["/opt/homebrew/bin/codex"],
+            }
+        ],
+    )
+
+    from agentos.agent.providers import load_configured_agents
+    from agentos.codex.agent import CodexAgent
+
+    agents = load_configured_agents()
+
+    assert len(agents) == 1
+    assert isinstance(agents[0], CodexAgent)
+    assert agents[0].instance_id == "work"
+
+
 def test_agent_run_uses_copilot_cli_provider_instance(
     tmp_path: Path,
     monkeypatch,
