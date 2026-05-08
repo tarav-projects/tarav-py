@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-First Codex agent-run model slice implemented; remaining work includes Codex.Session, Codex.Normalizer, Chatlas/account/session migration, other providers, and legacy model removal.
+Implementation pass complete: provider-native agent/session slices, provider-owned Chatlas retention policy, narrowed config/context boundaries, provider-session Chatlas normalization, legacy model symbol removal, flat run-profile removal, and verification/audit have been completed.
 
 ## User Intent
 
@@ -54,37 +54,35 @@ Exact Python module/class names are implementation details, but the model bounda
 
 ## Why This Exists
 
-The current codebase contains a lot of working functionality, but its model is wrong for the accepted design.
+At request time, the codebase contained a lot of working functionality, but its model was wrong for the accepted design.
 
-Current provider-related code is organized around generic or subsystem-owned shapes:
+Provider-related code was organized around generic or subsystem-owned shapes:
 
-- `ProviderInstance` mixes configured actor data, home roots, launch config, session discovery facts, account behavior, Chatlas raw policy, identity/fingerprint behavior, and transitional config semantics.
+- `ProviderInstance` mixed configured actor data, home roots, launch config, session discovery facts, account behavior, Chatlas raw policy, identity/fingerprint behavior, and transitional config semantics.
 - `SessionSource` is close to native session data, but it is named and shaped as a chat-discovery source, not as `<Provider>.Session`.
 - `SessionProviderHandler`, `AccountProviderHandler`, and `ChatlasProviderHandler` describe subsystem provider adapters as separate centers.
-- `AgentosAgent` currently wraps `ProviderInstance` instead of being a provider-native agent.
+- `AgentosAgent` wrapped `ProviderInstance` instead of being a provider-native agent.
 - `run_profiles.py` encodes flat provider command defaults that risk becoming a generic schema.
 
 The newer design explicitly rejects letting that existing model remain the architecture. Agentos should not treat "provider" as one central object with all capabilities. It should model concrete provider agents and provider sessions first, with shared primitives used only where they genuinely fit.
 
 ## Current Situation
 
-Relevant current surfaces:
+Relevant original/current surfaces:
 
 - `src/agentos/providers.py`
   - Shared provider family list, home-slot topology, and home anchors.
   - This is useful as low-level vocabulary, but it should not become the conceptual center of the model.
 - `src/agentos/chat/providers.py`
-  - Defines `ChatProviderSpec`, config parsing from `agent.instances[]`, `ProviderInstance`, config helpers, and selection helpers.
-  - This is the main overloaded legacy model surface.
+  - Now defines `ChatProviderSpec`, config parsing from `agent.instances[]`, `LegacyProviderConfig`, config helpers, and selection helpers.
+  - This remains the legacy config input boundary, not a runtime provider model.
 - `src/agentos/agent/providers.py`
-  - Defines `AgentosAgent` as a thin wrapper around `ProviderInstance`.
-  - Useful behavior exists here, but the wrapper should not be the final model.
+  - Now resolves configured provider-native agents through narrow shared primitives.
 - `src/agentos/agent/run_profiles.py`
-  - Holds provider command defaults and flag defaults.
-  - These mechanics may be reused, but should move behind provider-specific runner capabilities.
+  - Deleted during implementation; command defaults now live only as legacy config input mechanics, with a narrow default-run capability query in `agent.providers`.
 - `src/agentos/chat/sessions.py`
-  - Defines `SessionSource`, `ChatSession`, and provider-specific source classes such as `CodexSessionSource`, `ClaudeCodeSessionSource`, `PiSessionSource`.
-  - This contains important provider-native session facts and should be mined for `<Provider>.Session`, not merely renamed in place without reconsidering boundaries.
+  - Now defines `ChatSession`, `ChatSessionRecord`, and provider-specific record bridge classes over provider-native sessions.
+  - Provider-native session facts have moved into `<Provider>.Session` modules.
 - `src/agentos/chat/core.py`
   - Owns session discovery/find/stats handlers and many provider-specific scanners/readers.
   - This contains reusable mechanics for session discovery and stats, but currently makes chat/session discovery the architectural owner.
@@ -366,19 +364,18 @@ Behavioral acceptance:
 - Existing focused tests still pass or are intentionally updated to the new internal model:
 
 ```sh
-uv run pytest tests/test_agent_commands.py -q
-uv run pytest tests/test_chat_commands.py tests/test_chat_extract_commands.py -q
-uv run pytest tests/test_chatlas_commands.py -q
-uv run pytest tests/test_chat_accounts_commands.py -q
+uv run python -m pytest tests/test_agent_commands.py -q
+uv run python -m pytest tests/test_chatlas_commands.py -q
+uv run python -m pytest tests/test_chat_accounts_commands.py -q
+uv run python -m pytest -q
 ```
 
 Recommended incremental verification:
 
 ```sh
-uv run pytest tests/test_agent_commands.py -q
-uv run pytest tests/test_chatlas_commands.py -q -k "codex or session_model or export"
-uv run pytest tests/test_chat_commands.py -q -k codex
-uv run pytest tests/test_chat_accounts_commands.py -q -k codex
+uv run python -m pytest tests/test_agent_commands.py -q
+uv run python -m pytest tests/test_chatlas_commands.py -q -k "codex or session_model or export"
+uv run python -m pytest tests/test_chat_accounts_commands.py -q -k codex
 ```
 
 ## Relevant Files Or Surfaces
@@ -400,7 +397,7 @@ Current runtime surfaces:
 - `src/agentos/providers.py`
 - `src/agentos/agent/commands.py`
 - `src/agentos/agent/providers.py`
-- `src/agentos/agent/run_profiles.py`
+- `src/agentos/agent/run_profiles.py` (deleted during implementation)
 - `src/agentos/chat/providers.py`
 - `src/agentos/chat/sessions.py`
 - `src/agentos/chat/core.py`
@@ -413,8 +410,6 @@ Current runtime surfaces:
 Tests:
 
 - `tests/test_agent_commands.py`
-- `tests/test_chat_commands.py`
-- `tests/test_chat_extract_commands.py`
 - `tests/test_chatlas_commands.py`
 - `tests/test_chat_accounts_commands.py`
 - `tests/test_chatlas_session_hashes.py`
@@ -442,3 +437,46 @@ Tests:
 
 - 2026-05-08: Created after design discussion converged on provider-native modules as the model centers, with `Agentos.Agent` as shared abstract concept and `<Provider>.Agent` / `<Provider>.Session` as concrete anchors.
 - 2026-05-08: Implemented the first narrow Codex agent-run slice. Added shared run primitives in `src/agentos/agent/primitives.py`, added `src/agentos/codex/agent.py` with `CodexAgent` and `CodexAgentRunner`, made configured Codex entries resolve to `CodexAgent` for `agent run` / `agent list`, and added focused test coverage that configured Codex agents use the provider-native model. Remaining phases are not complete.
+- 2026-05-08: Implemented the first Codex session-normalizer slice. Added `src/agentos/codex/session.py` with `CodexSession`, routed the Codex Chatlas raw rollout normalizer through `CodexSession`, and added focused test coverage for building a provider-native Codex session from current Chatlas payloads. Full Chatlas/session/account migration remains incomplete.
+- 2026-05-08: Moved Codex Chatlas default raw retention include/exclude policy into `src/agentos/codex/chatlas.py` and made the existing generic chat provider spec consume that provider-native policy. This starts moving Chatlas ownership provider-side without changing archive behavior.
+- 2026-05-08: Added `src/agentos/codex/accounts.py` with `CodexAgentAccounts` and made Codex account stats convert the legacy account context into that provider-native capability before collecting login/usage data. Added focused test coverage that the Codex rate-limit reader receives `CodexAgentAccounts`. Broader account orchestration still uses the legacy generic context.
+- 2026-05-08: Moved Codex rollout/index session discovery into `src/agentos/codex/session.py` as provider-native `CodexSession` discovery functions. `chat.core` now bridges those native sessions into its existing `CodexSessionSource` wrapper for legacy orchestration, and focused tests cover native discovery. Full removal of legacy `SessionSource` remains incomplete.
+- 2026-05-08: Added `CodexAgentChatlas` in `src/agentos/codex/chatlas.py` and made Chatlas raw context construction use it for Codex effective include/exclude policy. The archive pipeline still carries `ProviderInstance`, but Codex Chatlas policy resolution is now provider-native.
+- 2026-05-08: Updated Codex mux default-instance resolution to return provider-native `CodexAgent` instead of using `ProviderInstance` as the runtime object. Added focused test coverage for the mux default instance resolver.
+- 2026-05-08: Added `src/agentos/claude/session.py` with provider-native `ClaudeSession` and routed the Claude Chatlas raw-session normalizer through it. Added focused test coverage for building `ClaudeSession` from current Chatlas payloads. Claude discovery/account/Chatlas capability migration remains incomplete.
+- 2026-05-08: Added `src/agentos/copilot/session.py` with provider-native `CopilotSession` and routed the Copilot Chatlas raw-events normalizer through it. Added focused test coverage for building `CopilotSession` from current Chatlas payloads. Copilot discovery/account/Chatlas capability migration remains incomplete.
+- 2026-05-08: Moved Claude project/desktop session discovery into `src/agentos/claude/session.py` as provider-native `ClaudeSession` discovery functions. `chat.core` now bridges those native sessions into its existing `ClaudeCodeSessionSource` wrapper for legacy orchestration, and focused tests cover native project-session discovery. Claude account and Chatlas capability migration remain incomplete.
+- 2026-05-08: Moved Copilot CLI session discovery into `src/agentos/copilot/session.py` as provider-native `CopilotSession` discovery functions. `chat.core` now bridges those native sessions into its existing `CopilotCliSessionSource` wrapper, and focused Chatlas tests cover the Copilot update/export path through the native session bridge. Copilot account and Chatlas capability migration remain incomplete.
+- 2026-05-08: Added `src/agentos/pi/session.py` with provider-native `PiSession` discovery functions and moved Pi JSONL session parsing out of `chat.core`. `chat.core` now bridges native Pi sessions into `PiSessionSource` for legacy orchestration, and focused tests cover native Pi session discovery plus the configured Pi Chatlas update path. Pi runner/account/Chatlas capability migration remains incomplete.
+- 2026-05-08: Added `src/agentos/opencode/session.py` with provider-native `OpencodeSession` discovery for session diff JSON files and SQLite session rows. `chat.core` now bridges native OpenCode sessions into `OpencodeSessionSource`, and focused tests cover native OpenCode discovery plus the existing Chatlas update path. OpenCode Chatlas capability migration and standard-model normalization remain incomplete.
+- 2026-05-08: Added `src/agentos/gemini/session.py` with provider-native `GeminiSession` discovery and moved Gemini CLI JSON session parsing out of `chat.core`. `chat.core` now bridges native Gemini sessions into `GeminiCliSessionSource`, and focused tests cover native Gemini discovery. Gemini Chatlas capability migration and standard-model normalization remain incomplete.
+- 2026-05-08: Added `src/agentos/openclaw/session.py` with provider-native `OpenclawSession` discovery for per-agent session indexes, transcripts, and logical session keys. `chat.core` now bridges native OpenClaw sessions into `OpenclawSessionSource`, and focused tests cover native OpenClaw discovery plus the existing logical-key query path. OpenClaw Chatlas capability migration and standard-model normalization remain incomplete.
+- 2026-05-08: Moved Chatlas raw retention include/exclude constants for Claude, Copilot CLI, Gemini CLI, OpenCode, Pi, and OpenClaw into provider-owned `chatlas.py` modules. `chat.providers` still registers the policies for legacy orchestration, but no longer owns those provider-specific policy literals. Focused Chatlas retention/update tests pass.
+- 2026-05-08: Narrowed raw Chatlas `ChatlasProviderContext` so it no longer stores `ProviderInstance`; it now carries only family, instance name, default flag, homes, and effective policy needed by raw mirroring. `ProviderInstance` remains at config parsing, selection, and validation boundaries. Focused Chatlas update tests pass.
+- 2026-05-08: Narrowed `AccountProviderContext` so it no longer stores `ProviderInstance`; it now carries only provider, instance id, label, command, environment, timeout, refresh, and usage-progression fields needed by account collectors. `ProviderInstance` remains at account config selection and validation boundaries. Focused account tests pass.
+- 2026-05-08: Replaced the non-Codex `AgentosAgent` provider-instance wrapper with `LegacyConfiguredAgent`, a narrow configured-agent object that copies only the fields needed by agent list/run. Codex still resolves to provider-native `CodexAgent`; other providers no longer carry `ProviderInstance` as their runtime agent object. Focused agent command tests pass.
+- 2026-05-08: Narrowed `SessionProviderContext` with copied provider summary and fingerprint fields used by stats and URI resolution. `ProviderInstance` remains only as the temporary bridge input for `SessionSource` construction. Focused Chatlas query/update tests pass.
+- 2026-05-08: Narrowed `SessionSource` so discovered chat sessions now carry a copied `SessionProviderIdentity` instead of the full legacy `ProviderInstance`. Chatlas session indexing and chat stats now read provider identity/fingerprint through that narrow object, and tests cover the bridge. Full test suite passes: `uv run python -m pytest -q` reported 290 passed. `ProviderInstance` remains at config parsing, provider selection, Chatlas archive reconstruction, and temporary session bridge entrypoints.
+- 2026-05-08: Narrowed `SessionProviderContext` further so it no longer stores `SessionProviderHandler`; direct discovery/find orchestration now resolves the handler from the provider family at call time. Full test suite passes: `uv run python -m pytest -q` reported 290 passed. `SessionProviderHandler` still exists as the legacy orchestration registry and remains a later removal target.
+- 2026-05-08: Narrowed `AccountProviderContext` and `ChatlasProviderContext` so neither stores its subsystem handler object. Handler registries still exist as legacy orchestration registries, but subsystem contexts now carry only task data. Affected suites pass: `uv run python -m pytest tests/test_chat_accounts_commands.py tests/test_chatlas_commands.py -q` reported 108 passed. Full test suite passes: `uv run python -m pytest -q` reported 290 passed.
+- 2026-05-08: Removed unused runner/model fields from `SessionProviderHandler`, keeping Codex run defaults out of chat/session discovery orchestration. Chatlas suite passes: `uv run python -m pytest tests/test_chatlas_commands.py -q` reported 53 passed. Full test suite passes: `uv run python -m pytest -q` reported 290 passed.
+- 2026-05-08: Removed `ProviderInstance` from `SessionProviderContext`; session discovery context now carries `SessionProviderIdentity` plus target paths, and the legacy config object is converted at context construction. Chatlas suite passes: `uv run python -m pytest tests/test_chatlas_commands.py -q` reported 53 passed. Full test suite passes: `uv run python -m pytest -q` reported 290 passed.
+- 2026-05-08: Added provider-native `Agent` objects for Agents, Claude, Copilot, Pi, OpenCode, Gemini, and OpenClaw, and made configured agent resolution return those concrete objects instead of the `LegacyConfiguredAgent` runtime wrapper. Removed the generic configured command fallback. Agent command tests pass: `uv run python -m pytest tests/test_agent_commands.py -q` reported 14 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Removed `AccountProviderHandler`; account orchestration now carries supported provider families as low-level provider vocabulary and dispatches collection by `AccountProviderContext.provider`. Account context remains a task-data object, not a subsystem handler wrapper. Account tests pass: `uv run python -m pytest tests/test_chat_accounts_commands.py -q` reported 55 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Removed `SessionProviderHandler`; session orchestration now carries supported provider families as low-level provider vocabulary, dispatches discovery/find/stats by provider-native session source type, and exposes session home-slot lookup separately for Chatlas archive reconstruction. Chatlas tests pass: `uv run python -m pytest tests/test_chatlas_commands.py -q` reported 53 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Removed `ChatlasProviderHandler`; raw Chatlas support now resolves directly from provider specs and provider-owned retention constants instead of a subsystem handler object. Chatlas/agent tests pass: `uv run python -m pytest tests/test_chatlas_commands.py tests/test_agent_commands.py -q` reported 67 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Added narrow `AgentConfig` as the provider-agent constructor input and moved `ProviderInstance` conversion to `agent.providers` and Codex mux boundaries. Provider-native agent modules no longer import or accept `ProviderInstance` directly. Agent/Codex tests pass: `uv run python -m pytest tests/test_agent_commands.py tests/test_codex_commands.py -q` reported 30 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Removed the `ProviderInstance` dependency from `chat.sessions`; `SessionProviderIdentity` is now a narrow identity object, and the legacy DTO conversion happens in `chat.core` at session context construction. Chatlas tests pass: `uv run python -m pytest tests/test_chatlas_commands.py -q` reported 53 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Added narrow `ChatlasArchiveConfig` for raw Chatlas archive context construction and changed `CodexAgentChatlas` to consume that archive config instead of the legacy `ProviderInstance` DTO. Legacy conversion is now at Chatlas provider selection/validation boundaries. Chatlas tests pass: `uv run python -m pytest tests/test_chatlas_commands.py -q` reported 53 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Reviewed the recent `src/agentos/copilot/session.py` provider-native session slice and fixed timestamp coercion so ISO Chatlas payload timestamps are retained; Copilot session merge now preserves the newest known timestamp. Focused Copilot Chatlas tests pass: `uv run python -m pytest tests/test_chatlas_commands.py -q -k "copilot_session_model or copilot"` reported 5 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Added narrow `SessionProviderConfig` so session discovery context construction no longer accepts `ProviderInstance` directly. Legacy conversion now happens before context construction in `chat.core` and Chatlas session-index reconstruction. Chatlas/session suites pass: `uv run python -m pytest tests/test_chat_cli_common.py tests/test_chatlas_session_hashes.py tests/test_chatlas_commands.py -q` reported 65 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Removed the temporary `ProviderInstance` rehydration from Chatlas session-index reconstruction; archived homes now become `SessionProviderConfig` directly before provider-native session discovery. Chatlas/session-index tests pass: `uv run python -m pytest tests/test_chatlas_commands.py tests/test_chatlas_session_hashes.py -q` reported 59 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Added narrow `AccountProviderConfig` so account context construction no longer accepts `ProviderInstance` directly. Legacy conversion now happens before context construction in account request resolution and focused tests. Account tests pass: `uv run python -m pytest tests/test_chat_accounts_commands.py -q` reported 55 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Changed `ChatlasSettings` to carry narrow `ChatlasArchiveConfig` objects instead of legacy `ProviderInstance` objects. Chatlas core now uses `ProviderInstance` only at config loading/selection boundaries, then archives and materializes sessions from archive configs. Chatlas/session-index tests pass: `uv run python -m pytest tests/test_chatlas_commands.py tests/test_chatlas_session_hashes.py -q` reported 59 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Changed account provider selection to return `AccountProviderConfig` objects instead of exposing configured `ProviderInstance` objects to account stats request resolution. Account tests pass: `uv run python -m pytest tests/test_chat_accounts_commands.py -q` reported 55 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Changed chat/session discovery grouping to work from `SessionProviderConfig` objects instead of configured/default `ProviderInstance` objects. `configured_provider_instances` remains a config-boundary helper, while runtime session contexts are built from narrow config. Chatlas/session suites pass: `uv run python -m pytest tests/test_chat_cli_common.py tests/test_chatlas_commands.py tests/test_chatlas_session_hashes.py -q` reported 65 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Replaced the legacy `SessionSource` bridge surface with `ChatSessionRecord` and provider-specific `*SessionRecord` bridge classes. `ChatSession` now wraps a `record` rather than a `source`, and chat/session orchestration uses record naming for dedupe, sorting, and stats. Provider-native discovery remains the source of these records. Chatlas/session suites pass: `uv run python -m pytest tests/test_chat_cli_common.py tests/test_chatlas_commands.py tests/test_chatlas_session_hashes.py -q` reported 65 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Replaced the misleading `ProviderInstance` DTO name with `LegacyProviderConfig` and renamed related config parser/selector helpers. The `agent.instances[]` user-facing config shape is unchanged, but runtime code no longer exposes a `ProviderInstance` model symbol. Targeted suites pass: `uv run python -m pytest tests/test_agent_commands.py tests/test_codex_commands.py tests/test_chat_accounts_commands.py tests/test_chat_cli_common.py tests/test_chatlas_commands.py tests/test_chatlas_session_hashes.py -q` reported 150 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Removed the flat `src/agentos/agent/run_profiles.py` module. Provider command defaults now live only inside the legacy config reader in `chat.providers`, while `agent.providers` exposes a narrow `supported_default_run_provider_families()` capability query for tests and callers that need only support shape. Targeted suites pass: `uv run python -m pytest tests/test_agent_commands.py tests/test_chatlas_commands.py tests/test_chat_accounts_commands.py -q` reported 122 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Moved Chatlas standard-model export dispatch so provider-specific normalizers consume provider-native `CodexSession`, `ClaudeSession`, and `CopilotSession` objects directly instead of receiving a generic Chatlas session `dict`. Removed the old dict-shaped provider normalizer wrappers. Focused export/session-model tests pass: `uv run python -m pytest tests/test_chatlas_commands.py -q -k "session_model or export or codex or claude or copilot"` reported 31 passed. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
+- 2026-05-08: Final cleanup renamed leftover internal functions that still said provider instance / legacy provider config after they had become configured-agent or Chatlas provider-context flows. Final audit scan found no remaining `ProviderInstance`, `SessionSource`, subsystem handler, `AgentosAgent`, `LegacyConfiguredAgent`, `ConfiguredCommandAgent`, `run_profiles`, `AgentRunProvider`, flat run-profile helper, or dict-shaped provider-normalizer wrapper symbols in `src/agentos` or `tests`. Full test suite passes: `uv run python -m pytest -q` reported 291 passed.
