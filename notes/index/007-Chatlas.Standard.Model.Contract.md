@@ -23,6 +23,8 @@ source_refs = bridge between them
 
 The standard model must not embed provider-native blobs just because the normalizer has access to them. If a consumer needs provider-native details, it should resolve `source_refs` against the preserved raw artifact.
 
+Provider-specific normalizers should conceptually normalize from `<Provider>.Session`, the provider-native session artifact model, into `Agentos.Session` / `Session.Model`. Raw artifacts remain the evidence base; `<Provider>.Session` is the native session boundary, not a replacement for retained raw data.
+
 ## Export View Rule
 
 ```text

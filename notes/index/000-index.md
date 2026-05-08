@@ -37,6 +37,7 @@ Canonical TOC and orientation note for `notes/index/`.
 
 ### Session Data Model
 
+- `102-Agentos.Agent.Model.md` — provider-native agent/session model, subsystem extensions, and normalizer boundary.
 - `006-Session.Model.md` — standard provider-neutral data model for agent session interchange (Session.Model).
 - `007-Chatlas.Standard.Model.Contract.md` — Chatlas standard model contract, provider-neutral boundary, source refs, and export-view projection rules.
 

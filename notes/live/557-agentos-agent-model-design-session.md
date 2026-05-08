@@ -2,42 +2,21 @@
 
 ## Motivation
 
-Design a provider-neutral Agentos agent model that can manage runnable agents across providers, accounts, homes, run profiles, and sessions.
+Design an Agentos agent/session model that can manage provider-native agents and sessions while keeping provider-agnostic outputs explicit.
 
-The MVP should support running a simple prompt such as `say hi` on any accessible configured agent/provider/account/home combination, while keeping session tracking and auxiliary homes explicit so operational probes do not pollute tracked Chatlas history.
+The current converged direction is captured in `notes/live/560-agentos-agent-session-model-design-summary.md`: use two provider-native anchors, `<Provider>.Agent` and `<Provider>.Session`, with subsystem extensions under those anchors where useful.
 
 ## Items
 
-- Agentos.Agent: [in-progress] runnable configured agent; replaces Agent.Instance
-  - Agent.Provider: [in-progress] provider family/spec, adapter responsibilities, capability declarations
-  - Provider.Account: [fresh] auth/account identity, usage/account stats, secret boundaries
-  - Agent.Home: [fresh] filesystem home roots, session storage, tracking policy, auxiliary homes
-  - Agent.Session: [fresh] launched run/session identity, run file, transcript linkage, Chatlas relationship
-  - Agent.RunProfile: [fresh] command/env/model/prompt execution profile for a runnable agent
+- Agentos.Agent / Provider.Agent: [converging] provider-native configured actor; replaces Agent.Instance
+- Provider.Session: [converging] provider-native session artifact model
+- Agentos.Session / Session.Model: [converging] provider-agnostic normalized session model
+- Chatlas.Normalizer: [converging] provider-specific conversion from Provider.Session to Agentos.Session
+- Provider.Agent extensions: [in-progress] subsystem extensions such as Runner, Chatlas, Accounts, and Home
 
-## Agentos.Agent
+## Agentos.Agent / Provider.Agent
 
-Agentos.Agent is Agentos' internal model for a runnable provider CLI configuration.
-
-It is not a new agent runtime. It is a provider-specific configuration object that lets Agentos correctly run an existing terminal interface such as `codex`, `claude`, `gemini`, or `pi`.
-
-Core meaning:
-
-```text
-Agentos.Agent = enough provider-specific config to build and run the right command
-```
-
-Running an Agentos.Agent means:
-
-```text
-resolve config
-build provider-native command
-prepare env/home/account context
-execute terminal command
-record enough run metadata to relate the result to a session
-```
-
-Implementation is provider-specific:
+Agentos.Agent is the abstract Agentos concept for a provider-native configured actor. The concrete model is provider-specific:
 
 ```text
 Codex.Agent
@@ -47,79 +26,96 @@ Pi.Agent
 ...
 ```
 
-The common layer should normalize Agentos control concepts: run request, resolved command, environment, home/account selection, run result, and session tracking policy.
-
-It should not pretend providers share the same native account model, command syntax, session storage, or auth behavior.
-
-The design direction is: config stays provider-neutral at the top level where possible, but loading that config produces a provider-specific Agentos.Agent object that knows how to run itself.
-
-## Agent.Provider
-
-Provider family/spec, adapter responsibilities, and capability declarations.
-
-Agent.Provider is Agentos' provider-family definition and adapter boundary.
-
-It is not a configured runnable agent, account, or home. It defines what Agentos knows about a provider family and which provider-specific services exist for that family.
+It is not a new agent runtime. It is the Agentos model for a configured provider actor that can support provider-specific tasks such as running, Chatlas capture, account checks, home resolution, and session discovery.
 
 Core meaning:
 
 ```text
-Agent.Provider = provider-family spec + provider-specific adapter entrypoints
+<Provider>.Agent = provider-native configured actor
 ```
 
-Provider behavior should be organized by subsystem using the conceptual shape:
+The base provider agent should stay small. Subsystem-specific data and behavior can attach as provider-agent extensions when useful:
 
 ```text
-<Subsystem>.<family>.Provider
+<Provider>.Agent.Runner
+<Provider>.Agent.Chatlas
+<Provider>.Agent.Accounts
+<Provider>.Agent.Home
+```
+
+This keeps the model from spreading into many sibling top-level objects while preserving room for provider-specific complexity.
+
+## Provider.Session
+
+Provider.Session is the provider-native session artifact model.
+
+It is the missing middle layer between raw provider files/events and the provider-agnostic Agentos session model. It captures native provider facts such as ids, paths, event streams, SQLite rows, timestamps, workspace hints, and raw artifact references where those exist.
+
+Core meaning:
+
+```text
+<Provider>.Session = provider-native session facts
 ```
 
 Examples:
 
 ```text
-Agent.Codex.Provider
-Home.Codex.Provider
-Session.Codex.Provider
-Account.Codex.Provider
-Chatlas.Codex.Provider
+Codex.Session
+Claude.Session
+Pi.Session
+OpenCode.Session
 ```
 
-These names are examples, not final API names.
+Provider.Session is not the normalized standard model.
 
-It may define or route to provider-specific knowledge such as supported home slots, default run profile shape, session discovery support, account stats support, Chatlas/raw retention defaults, capability declarations, and provider-specific validation rules.
+## Agentos.Session / Session.Model
 
-It should not contain user-specific configuration. User-specific provider usage belongs to Agentos.Agent, Provider.Account, Agent.Home, or Agent.Session.
+Agentos.Session is the provider-agnostic normalized session model. In the current index surface, this is represented by `Session.Model`.
 
-## Provider.Account
+It is derived from provider-native sessions through provider-specific normalization. It should not absorb provider-native quirks that belong in `<Provider>.Session` or raw artifacts.
 
-Auth/account identity, usage/account stats, and secret boundaries.
+Boundary:
 
-Early framing: account represents the provider-side credential or billing identity. It should be explicit instead of inferred only from environment variables or home directory contents.
+```text
+raw provider artifacts
+  -> <Provider>.Session
+  -> Agentos.Session / Session.Model
+```
 
-## Agent.Home
+## Chatlas.Normalizer
 
-Filesystem home roots, session storage, tracking policy, and auxiliary homes.
+Chatlas.Normalizer is the provider-specific conversion boundary.
 
-Early framing: home is the provider filesystem/state root used by an agent. It should support durable tracked homes and auxiliary homes for probes, stats refreshes, and disposable sessions.
+It converts:
 
-## Agent.Session
+```text
+<Provider>.Session -> Agentos.Session / Session.Model
+```
 
-Launched run/session identity, run file, transcript linkage, and Chatlas relationship.
+This keeps native session shape out of the normalized model while preserving a clear conversion point for Codex, Claude, Pi, Copilot, OpenCode, and other providers.
 
-Early framing: session is the result of running an `Agentos.Agent`. It should link the run request, provider-native session artifacts, and any Chatlas/session-model representation without making Chatlas the runtime authority.
+## Provider.Agent Extensions
 
-## Agent.RunProfile
+Subsystem behavior can extend the provider agent when useful:
 
-Command/env/model/prompt execution profile for a runnable agent.
+```text
+<Provider>.Agent.Runner
+<Provider>.Agent.Chatlas
+<Provider>.Agent.Accounts
+<Provider>.Agent.Home
+```
 
-Early framing: run profile owns launch mechanics such as executable, fixed args, prompt passing, model flags, environment rendering, and run modes. It prevents `Agentos.Agent` from becoming a flat provider-specific launch blob.
+These are not separate top-level model anchors. They are focused extensions of the provider agent for specific Agentos subsystems.
 
 ## Notes
 
 - Current code already has an overloaded `agent.instances[]` / `ProviderInstance` shape that mixes launch config, home topology, session discovery, and account behavior.
-- Current design direction is to replace `Agent.Instance` with `Agentos.Agent` as the runnable object.
+- Current design direction is to replace `Agent.Instance` with provider-native `<Provider>.Agent` as the configured actor.
 - Provider infra implementation request: `notes/live/558-agent-provider-infra-redesign-impl-req.md`.
+- Converged design summary: `notes/live/560-agentos-agent-session-model-design-summary.md`.
 
 ## End Log
 
 - 2026-05-06: Created session with initial component list approved in chat.
 - 2026-05-06: Updated Agentos.Agent and Agent.Provider to in-progress; captured provider subsystem-adapter direction and linked provider infra impl-req.
+- 2026-05-08: Reconciled session with the converged design summary. Superseded the earlier sibling-object framing (`Provider.Account`, `Agent.Home`, `Agent.Session`, `Agent.RunProfile`) with provider-native `Agent` and `Session` anchors plus provider-agent subsystem extensions.

@@ -33,10 +33,15 @@ Standard provider-neutral data model for representing an agent coding session on
 
 ```text
 provider raw artifacts
-  → provider normalizer
+  → <Provider>.Session
+  → Chatlas.Normalizer.<Provider>
   → Session.Model
   → common services (export, search, summary, replay, UI)
 ```
+
+`<Provider>.Session` is the provider-native session artifact model. It is the explicit middle layer between raw provider files/events and the provider-neutral `Session.Model`.
+
+`Session.Model` is the concrete standard data model for `Agentos.Session`, the provider-agnostic normalized session concept.
 
 ## Design Rules
 - Preserve raw evidence; do not discard provider-specific data.
@@ -58,6 +63,7 @@ provider raw artifacts
 - A2A, MCP, FIPA: solve different problems (inter-agent delegation, tool access, legacy agent comms).
 
 ## Related
+- Agent model: `102-Agentos.Agent.Model.md`
 - Architecture: `notes/live/534-chatlas-standard-chat-model.md`
 - Implementation plan: `notes/live/538-chatlas-provider-normalizers-plan.md`
 - Standards research: `notes/live/540-agent-session-model-standards-research.md`
