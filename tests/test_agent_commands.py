@@ -10,7 +10,7 @@ from agentos.cli import main
 from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
 
 
-def test_agent_run_uses_configured_provider_instance(
+def test_agent_run_uses_configured_legacy_provider_config(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -168,7 +168,58 @@ def test_configured_codex_agent_uses_provider_native_model(
     assert agents[0].instance_id == "work"
 
 
-def test_agent_run_uses_copilot_cli_provider_instance(
+def test_configured_provider_agents_use_provider_native_models(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "agents",
+                "id": "agents-main",
+                "cli_command": ["agents"],
+            },
+            {
+                "provider": "claude-code",
+                "id": "claude-main",
+                "cli_command": ["claude"],
+            },
+            {
+                "provider": "copilot-cli",
+                "id": "copilot-main",
+            },
+            {
+                "provider": "pi",
+                "id": "pi-main",
+            },
+        ],
+    )
+
+    from agentos.agent.providers import load_configured_agents
+    from agentos.agents.agent import AgentsAgent
+    from agentos.claude.agent import ClaudeAgent
+    from agentos.copilot.agent import CopilotAgent
+    from agentos.pi.agent import PiAgent
+
+    agents = load_configured_agents()
+
+    assert [type(agent) for agent in agents] == [AgentsAgent, ClaudeAgent, CopilotAgent, PiAgent]
+    assert [agent.instance_id for agent in agents] == [
+        "agents-main",
+        "claude-main",
+        "copilot-main",
+        "pi-main",
+    ]
+
+
+def test_agent_run_uses_copilot_cli_legacy_provider_config(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -363,7 +414,7 @@ def test_agent_run_dry_run_prints_instance_env_prefix(
     )
 
 
-def test_agent_list_prints_configured_instances(
+def test_agent_list_prints_configured_legacy_configs(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -473,16 +524,12 @@ def test_agent_list_accepts_canonical_non_chat_provider_family(
 
 
 def test_provider_capabilities_are_scoped_by_subsystem() -> None:
-    from agentos.agent.run_profiles import supported_agent_run_providers
+    from agentos.agent.providers import supported_default_run_provider_families
     from agentos.chat.accounts import supported_account_provider_families
     from agentos.chatlas.raw import supported_chatlas_provider_families
     from agentos.home.providers import supported_home_providers
 
-    default_run_providers = {
-        provider.family
-        for provider in supported_agent_run_providers()
-        if provider.supports_default_run_profile
-    }
+    default_run_providers = set(supported_default_run_provider_families())
     account_providers = {
         provider.family
         for provider in supported_account_provider_families()

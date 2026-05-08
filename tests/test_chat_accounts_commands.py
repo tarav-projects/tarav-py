@@ -52,8 +52,8 @@ def _account_instance(
     env: tuple[tuple[str, str], ...] = (),
     timeout_sec: int = 15,
     live_usage_refresh: bool = False,
-) -> chat_accounts.ProviderInstance:
-    return chat_accounts.ProviderInstance(
+) -> chat_accounts.LegacyProviderConfig:
+    return chat_accounts.LegacyProviderConfig(
         family=provider,
         instance_id=instance_id,
         label=label,
@@ -75,16 +75,22 @@ def _account_context(
     live_usage_refresh: bool = False,
 ) -> chat_accounts.AccountProviderContext:
     return chat_accounts._build_account_provider_context(
-        _account_instance(
-            provider=provider,
-            instance_id=instance_id,
-            label=label,
-            cli_command=cli_command,
-            env=env,
-            timeout_sec=timeout_sec,
-            live_usage_refresh=live_usage_refresh,
+        chat_accounts._account_provider_config_from_legacy_config(
+            _account_instance(
+                provider=provider,
+                instance_id=instance_id,
+                label=label,
+                cli_command=cli_command,
+                env=env,
+                timeout_sec=timeout_sec,
+                live_usage_refresh=live_usage_refresh,
+            )
         )
     )
+
+
+def _account_config(instance: chat_accounts.LegacyProviderConfig) -> chat_accounts.AccountProviderConfig:
+    return chat_accounts._account_provider_config_from_legacy_config(instance)
 
 
 def _usage_over_time_limit_payload(
@@ -165,7 +171,7 @@ def _usage_stats_payload(
     }
 
 
-def test_chat_accounts_stats_summarizes_configured_provider_instances(
+def test_chat_accounts_stats_summarizes_configured_legacy_provider_configs(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -850,23 +856,18 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
         }
 
     monkeypatch.setattr(
-            chat_accounts,
-            "supported_account_provider_families",
-            lambda: (
-            chat_accounts.AccountProviderHandler(
-                provider_family=chat_accounts.ProviderFamily(family="alpha"),
-                collect_stats=collect,
-            ),
-            chat_accounts.AccountProviderHandler(
-                provider_family=chat_accounts.ProviderFamily(family="beta"),
-                collect_stats=collect,
-            ),
+        chat_accounts,
+        "supported_account_provider_families",
+        lambda: (
+            chat_accounts.ProviderFamily(family="alpha"),
+            chat_accounts.ProviderFamily(family="beta"),
         ),
     )
+    monkeypatch.setattr(chat_accounts, "_collect_account_payload", collect)
     monkeypatch.setattr(
         chat_accounts,
-        "configured_account_provider_instances",
-        lambda start_path=".": instances,
+        "configured_account_provider_configs",
+        lambda start_path=".": tuple(_account_config(instance) for instance in instances),
     )
     monkeypatch.setattr(chat_accounts, "load_chat_accounts_usage_total_config", lambda start_path=".": None)
     monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
@@ -922,20 +923,15 @@ def test_iter_chat_account_stats_refresh_payloads_yields_partial_updates_as_acco
         chat_accounts,
         "supported_account_provider_families",
         lambda: (
-            chat_accounts.AccountProviderHandler(
-                provider_family=chat_accounts.ProviderFamily(family="alpha"),
-                collect_stats=collect,
-            ),
-            chat_accounts.AccountProviderHandler(
-                provider_family=chat_accounts.ProviderFamily(family="beta"),
-                collect_stats=collect,
-            ),
+            chat_accounts.ProviderFamily(family="alpha"),
+            chat_accounts.ProviderFamily(family="beta"),
         ),
     )
+    monkeypatch.setattr(chat_accounts, "_collect_account_payload", collect)
     monkeypatch.setattr(
         chat_accounts,
-        "configured_account_provider_instances",
-        lambda start_path=".": instances,
+        "configured_account_provider_configs",
+        lambda start_path=".": tuple(_account_config(instance) for instance in instances),
     )
     monkeypatch.setattr(chat_accounts, "load_chat_accounts_usage_total_config", lambda start_path=".": None)
     monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
@@ -1015,20 +1011,15 @@ def test_iter_chat_account_stats_refresh_payloads_converts_collector_failure_to_
         chat_accounts,
         "supported_account_provider_families",
         lambda: (
-            chat_accounts.AccountProviderHandler(
-                provider_family=chat_accounts.ProviderFamily(family="alpha"),
-                collect_stats=collect,
-            ),
-            chat_accounts.AccountProviderHandler(
-                provider_family=chat_accounts.ProviderFamily(family="beta"),
-                collect_stats=collect,
-            ),
+            chat_accounts.ProviderFamily(family="alpha"),
+            chat_accounts.ProviderFamily(family="beta"),
         ),
     )
+    monkeypatch.setattr(chat_accounts, "_collect_account_payload", collect)
     monkeypatch.setattr(
         chat_accounts,
-        "configured_account_provider_instances",
-        lambda start_path=".": instances,
+        "configured_account_provider_configs",
+        lambda start_path=".": tuple(_account_config(instance) for instance in instances),
     )
     monkeypatch.setattr(chat_accounts, "load_chat_accounts_usage_total_config", lambda start_path=".": None)
     monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
@@ -1070,16 +1061,14 @@ def test_iter_chat_account_stats_refresh_payloads_converts_single_collector_fail
         chat_accounts,
         "supported_account_provider_families",
         lambda: (
-            chat_accounts.AccountProviderHandler(
-                provider_family=chat_accounts.ProviderFamily(family="alpha"),
-                collect_stats=collect,
-            ),
+            chat_accounts.ProviderFamily(family="alpha"),
         ),
     )
+    monkeypatch.setattr(chat_accounts, "_collect_account_payload", collect)
     monkeypatch.setattr(
         chat_accounts,
-        "configured_account_provider_instances",
-        lambda start_path=".": (instance,),
+        "configured_account_provider_configs",
+        lambda start_path=".": (_account_config(instance),),
     )
     monkeypatch.setattr(chat_accounts, "load_chat_accounts_usage_total_config", lambda start_path=".": None)
     monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
@@ -3123,6 +3112,74 @@ def test_chat_accounts_stats_usage_shows_top_level_selected_accounts_aggregate(
     assert output.index("Selected accounts aggregate:") < output.index("⬢ codex-b (Codex B):")
 
 
+def test_codex_account_stats_uses_provider_native_accounts_model(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "codex-main",
+                "label": "Codex main",
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del capture_output, text, check, env, timeout
+        assert command == ["codex", "login", "status"]
+        return subprocess.CompletedProcess(command, 0, stdout="Logged in using ChatGPT\n", stderr="")
+
+    observed: dict[str, object] = {}
+
+    def fake_codex_usage(instance) -> dict[str, object]:
+        from agentos.codex.accounts import CodexAgentAccounts
+
+        observed["instance_type"] = type(instance)
+        assert isinstance(instance, CodexAgentAccounts)
+        assert instance.instance_id == "codex-main"
+        return {
+            "rateLimits": {
+                "limitId": "codex",
+                "primary": {
+                    "usedPercent": 10,
+                    "windowDurationMins": 300,
+                    "resetsAt": 1_774_526_400,
+                },
+            }
+        }
+
+    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
+    monkeypatch.setattr(chat_accounts, "_read_codex_account_rate_limits", fake_codex_usage)
+
+    assert main(["agent", "accounts", "stats", "--provider", "codex"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert observed["instance_type"].__name__ == "CodexAgentAccounts"
+    providers = {provider["provider"]: provider for provider in payload["providers"]}
+    codex_account = providers["codex"]["accounts"][0]
+    assert codex_account["id"] == "codex-main"
+    assert codex_account["label"] == "Codex main"
+
+
 def test_chat_accounts_stats_usage_total_rejects_unknown_instance_ids(
     tmp_path: Path,
     monkeypatch,
@@ -3170,7 +3227,7 @@ def test_chat_accounts_rejects_empty_account_instance_ids(
     )
 
     with pytest.raises(chat_accounts.CliError, match="agent.accounts.instance_ids must be a non-empty JSON array"):
-        chat_accounts.configured_account_provider_instances()
+        chat_accounts.configured_account_provider_configs()
 
 
 def test_chat_accounts_stats_usage_formats_account_check_errors_nicely(

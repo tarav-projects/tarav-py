@@ -1190,7 +1190,7 @@ def _write_global_config(
     chatlas_instance_ids: list[str] | None | object = _DEFAULT_CHATLAS_INSTANCE_IDS,
 ) -> None:
     home = path.parent.parent / "home"
-    configured_instances = [
+    configured_legacy_configs = [
         {
             "provider": "codex",
             "id": "codex-main",
@@ -1220,14 +1220,14 @@ def _write_global_config(
         "class": "agentos.global.config",
         "schema_version": 1,
         "agent": {
-            "instances": configured_instances,
+            "instances": configured_legacy_configs,
         },
     }
     if chatlas_instance_ids is _DEFAULT_CHATLAS_INSTANCE_IDS:
         payload["chatlas"] = {
             "instance_ids": [
                 instance_id
-                for instance in configured_instances
+                for instance in configured_legacy_configs
                 if isinstance((instance_id := instance.get("id")), str)
             ],
         }
@@ -1668,6 +1668,61 @@ def test_chatlas_update_mirrors_default_codex_home_and_commits(
 
     log_subject = _git_output(chatlas_root, "log", "-1", "--pretty=%s")
     assert log_subject.startswith("chatlas update: ")
+
+
+def test_codex_chatlas_context_uses_provider_native_capability(
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / ".codex"
+
+    from agentos.chatlas.raw import ChatlasArchiveConfig, _build_chatlas_provider_context
+    from agentos.codex.chatlas import CodexAgentChatlas
+
+    archive_config = ChatlasArchiveConfig(
+        family="codex",
+        instance_id="codex-main",
+        label=None,
+        is_default=False,
+        homes=(("home", codex_home),),
+        includes=("custom/**",),
+        excludes=("custom-secret.json",),
+        identity=("codex", "codex-main", str(codex_home)),
+        uri_key="abc123def456",
+        fingerprint="abc123def456",
+        summary_payload={"family": "codex", "instance_id": "codex-main", "fingerprint": "abc123def456"},
+    )
+
+    codex_chatlas = CodexAgentChatlas.from_archive_config(archive_config)
+    context = _build_chatlas_provider_context(archive_config)
+
+    assert context.effective_includes == codex_chatlas.includes
+    assert context.effective_excludes == codex_chatlas.excludes
+    assert "custom/**" in context.effective_includes
+    assert "custom-secret.json" in context.effective_excludes
+    assert "_auth*.json" in context.effective_excludes
+
+
+def test_chat_session_uses_narrow_provider_identity(tmp_path: Path) -> None:
+    from agentos.chat.sessions import ChatSession, CodexSessionRecord, SessionProviderIdentity
+
+    provider_identity = SessionProviderIdentity(
+        family="codex",
+        identity=("codex", "codex-main", str(tmp_path / "rollout.jsonl")),
+        uri_key="abc123",
+        fingerprint="abc123",
+        summary_payload={"family": "codex", "fingerprint": "abc123", "instance_id": "codex-main"},
+    )
+    session = ChatSession(
+        record=CodexSessionRecord(
+            provider_identity=provider_identity,
+            native_session_id="session-1",
+            artifact_paths=(tmp_path / "rollout.jsonl",),
+        )
+    )
+
+    assert not hasattr(session.record, "legacy_provider_config")
+    assert session.provider_identity.fingerprint == "abc123"
+    assert ("provider_instance_fingerprint", "abc123") in session.query_fields()
 
 
 def test_chatlas_session_index_shards_delete_stale_files(tmp_path: Path) -> None:
@@ -3519,6 +3574,315 @@ def test_chatlas_export_emits_session_model_json(
         "event-2",
         "event-3",
     ]
+
+
+def test_codex_session_model_uses_provider_native_session_input(
+    tmp_path: Path,
+) -> None:
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    rollout_path = tmp_path / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    index_path = tmp_path / "session_index.jsonl"
+    session_payload = {
+        "provider": "codex",
+        "session_id": session_id,
+        "display_name": "codex-thread",
+        "updated_at": "2026-03-25T01:05:38Z",
+        "primary_backing_artifact": {
+            "role": "transcript",
+            "storage_kind": "file",
+            "path": str(rollout_path),
+        },
+        "backing_artifacts": [
+            {
+                "role": "transcript",
+                "storage_kind": "file",
+                "path": str(rollout_path),
+            },
+            {
+                "role": "session_index",
+                "storage_kind": "file",
+                "path": str(index_path),
+            },
+        ],
+    }
+    sources = [
+        {
+            "source_ref_id": "source-1",
+            "role": "transcript",
+            "storage_kind": "file",
+            "path": str(rollout_path),
+        }
+    ]
+
+    from agentos.codex.session import CodexSession
+
+    codex_session = CodexSession.from_chatlas_session_payload(
+        session_payload,
+        sources=sources,
+    )
+
+    assert codex_session is not None
+    assert codex_session.native_session_id == session_id
+    assert codex_session.rollout_path == rollout_path
+    assert codex_session.source_ref_id == "source-1"
+    assert codex_session.thread_name == "codex-thread"
+    assert codex_session.index_paths == (index_path,)
+
+
+def test_codex_session_discovery_uses_provider_native_session_model(
+    tmp_path: Path,
+) -> None:
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    thread_name = "codex-discovery-thread"
+    codex_home = tmp_path / ".codex"
+    rollout_path = codex_home / "sessions" / "2026" / "03" / "25" / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    index_path = codex_home / "session_index.jsonl"
+    _write_codex_dialog_rollout(
+        rollout_path,
+        session_id=session_id,
+        user_text="discovery user",
+        assistant_text="discovery assistant",
+    )
+    _write_codex_session_index(
+        index_path,
+        session_id=session_id,
+        thread_name=thread_name,
+    )
+
+    from agentos.codex.session import CodexSession, discover_codex_sessions
+
+    sessions = discover_codex_sessions(targets=(codex_home / "sessions", index_path))
+
+    assert len(sessions) == 1
+    assert isinstance(sessions[0], CodexSession)
+    assert sessions[0].native_session_id == session_id
+    assert sessions[0].rollout_paths == (rollout_path,)
+    assert sessions[0].index_paths == (index_path,)
+    assert sessions[0].thread_name == thread_name
+
+
+def test_claude_session_model_uses_provider_native_session_input(
+    tmp_path: Path,
+) -> None:
+    session_id = "claude-session-1"
+    transcript_path = tmp_path / f"{session_id}.jsonl"
+    session_payload = {
+        "provider": "claude-code",
+        "session_id": session_id,
+        "display_name": "claude-thread",
+        "updated_at": "2026-03-25T01:05:38Z",
+        "primary_backing_artifact": {
+            "role": "transcript",
+            "storage_kind": "file",
+            "path": str(transcript_path),
+        },
+        "backing_artifacts": [
+            {
+                "role": "transcript",
+                "storage_kind": "file",
+                "path": str(transcript_path),
+            }
+        ],
+    }
+    sources = [
+        {
+            "source_ref_id": "source-1",
+            "role": "transcript",
+            "storage_kind": "file",
+            "path": str(transcript_path),
+        }
+    ]
+
+    from agentos.claude.session import ClaudeSession
+
+    claude_session = ClaudeSession.from_chatlas_session_payload(
+        session_payload,
+        sources=sources,
+    )
+
+    assert claude_session is not None
+    assert claude_session.native_session_id == session_id
+    assert claude_session.transcript_path == transcript_path
+    assert claude_session.source_ref_id == "source-1"
+    assert claude_session.title == "claude-thread"
+
+
+def test_claude_session_discovery_uses_provider_native_session_model(
+    tmp_path: Path,
+) -> None:
+    session_id = "claude-session-1"
+    projects_root = tmp_path / ".claude" / "projects"
+    transcript_path = projects_root / "project-a" / f"{session_id}.jsonl"
+    _write_claude_session(
+        transcript_path,
+        session_id=session_id,
+        user_text="discovery user",
+        assistant_text="discovery assistant",
+    )
+
+    from agentos.claude.session import ClaudeSession, discover_claude_sessions
+
+    sessions = discover_claude_sessions(targets=(projects_root,))
+
+    assert len(sessions) == 1
+    assert isinstance(sessions[0], ClaudeSession)
+    assert sessions[0].native_session_id == session_id
+    assert sessions[0].artifact_paths == (transcript_path,)
+    assert sessions[0].source_kind == "project"
+
+
+def test_copilot_session_model_uses_provider_native_session_input(
+    tmp_path: Path,
+) -> None:
+    session_id = "d1d3f48b-4b29-4dfc-b551-5536b9677225"
+    events_path = tmp_path / "session-state" / session_id / "events.jsonl"
+    session_payload = {
+        "provider": "copilot-cli",
+        "session_id": session_id,
+        "updated_at": "2026-03-25T01:05:38Z",
+        "primary_backing_artifact": {
+            "role": "transcript",
+            "storage_kind": "file",
+            "path": str(events_path),
+        },
+        "backing_artifacts": [
+            {
+                "role": "transcript",
+                "storage_kind": "file",
+                "path": str(events_path),
+            }
+        ],
+    }
+    sources = [
+        {
+            "source_ref_id": "source-1",
+            "role": "transcript",
+            "storage_kind": "file",
+            "path": str(events_path),
+        }
+    ]
+
+    from agentos.copilot.session import CopilotSession
+
+    copilot_session = CopilotSession.from_chatlas_session_payload(
+        session_payload,
+        sources=sources,
+    )
+
+    assert copilot_session is not None
+    assert copilot_session.native_session_id == session_id
+    assert copilot_session.events_path == events_path
+    assert copilot_session.source_ref_id == "source-1"
+    assert copilot_session.updated_at is not None
+
+
+def test_pi_session_discovery_uses_provider_native_session_model(
+    tmp_path: Path,
+) -> None:
+    session_id = "019d9cde-0ff5-75a6-b36d-c11a19c2e1b4"
+    pi_home = tmp_path / ".pi" / "profiles" / "codex-mm"
+    transcript_path = (
+        pi_home
+        / "sessions"
+        / "--Users-pereiro-projects-agentos-project-agentos-iterante-dev--"
+        / f"2026-04-17T19-14-52-021Z_{session_id}.jsonl"
+    )
+    _write_pi_session(transcript_path, session_id=session_id, include_custom_message=True)
+
+    from agentos.pi.session import PiSession, discover_pi_sessions
+
+    sessions = discover_pi_sessions(targets=(pi_home / "sessions",))
+
+    assert len(sessions) == 1
+    assert isinstance(sessions[0], PiSession)
+    assert sessions[0].native_session_id == session_id
+    assert sessions[0].artifact_paths == (transcript_path,)
+    assert sessions[0].cwd == "/Users/pereiro/projects/agentos-project/agentos-iterante-dev"
+    assert sessions[0].model_provider == "openai-codex"
+    assert sessions[0].model_id == "gpt-5.4-mini"
+    assert sessions[0].thinking_level == "medium"
+
+
+def test_opencode_session_discovery_uses_provider_native_session_model(
+    tmp_path: Path,
+) -> None:
+    session_id = "ses_3db2f3c9f0e34924a7d7"
+    opencode_home = tmp_path / ".local" / "share" / "opencode"
+    db_path = opencode_home / "opencode.db"
+    diff_path = opencode_home / "storage" / "session_diff" / f"{session_id}.json"
+    connection = _write_opencode_db(db_path, session_id=session_id)
+    connection.close()
+    _write(diff_path, "[]\n")
+
+    from agentos.opencode.session import OpencodeSession, discover_opencode_sessions
+
+    sessions = discover_opencode_sessions(
+        targets=(diff_path.parent,),
+        sqlite_db_paths=(db_path,),
+    )
+
+    assert len(sessions) == 1
+    assert isinstance(sessions[0], OpencodeSession)
+    assert sessions[0].native_session_id == session_id
+    assert sessions[0].diff_path == diff_path
+    assert sessions[0].sqlite_db_path == db_path
+
+
+def test_gemini_session_discovery_uses_provider_native_session_model(
+    tmp_path: Path,
+) -> None:
+    session_id = "session-gemini-1"
+    gemini_home = tmp_path / ".gemini"
+    transcript_path = gemini_home / "tmp" / "chats" / "session-20260508.json"
+    _write(
+        transcript_path,
+        json.dumps(
+            {
+                "sessionId": session_id,
+                "lastUpdated": "2026-05-08T12:00:00Z",
+            }
+        )
+        + "\n",
+    )
+
+    from agentos.gemini.session import GeminiSession, discover_gemini_sessions
+
+    sessions = discover_gemini_sessions(targets=(gemini_home,))
+
+    assert len(sessions) == 1
+    assert isinstance(sessions[0], GeminiSession)
+    assert sessions[0].native_session_id == session_id
+    assert sessions[0].artifact_paths == (transcript_path,)
+    assert sessions[0].updated_at is not None
+
+
+def test_openclaw_session_discovery_uses_provider_native_session_model(
+    tmp_path: Path,
+) -> None:
+    session_id = "9ce6dc88-dd77-4ea1-9c6b-2c4e9fd5d401"
+    session_key = "agent:main:telegram:direct:734641842"
+    transcript_path = _write_openclaw_session(
+        tmp_path / ".openclaw" / "agents" / "main" / "sessions",
+        session_id=session_id,
+        session_key=session_key,
+    )
+
+    from agentos.openclaw.session import OpenclawSession, discover_openclaw_sessions, find_openclaw_sessions
+
+    sessions = discover_openclaw_sessions(targets=(tmp_path / ".openclaw" / "agents",))
+    matching_sessions = find_openclaw_sessions(
+        targets=(tmp_path / ".openclaw" / "agents",),
+        query=session_key,
+    )
+
+    assert len(sessions) == 1
+    assert isinstance(sessions[0], OpenclawSession)
+    assert sessions[0].native_session_id == session_id
+    assert sessions[0].transcript_path == transcript_path.resolve()
+    assert sessions[0].sessions_index_path == transcript_path.with_name("sessions.json").resolve()
+    assert sessions[0].session_keys == (session_key,)
+    assert sessions[0].agent_id == "main"
+    assert matching_sessions == sessions
 
 
 def test_chatlas_export_loads_claude_raw_session(

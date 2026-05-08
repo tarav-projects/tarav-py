@@ -246,6 +246,37 @@ def test_codex_command_derives_mux_defaults_from_agent_instance(
     assert _readlink(instance_home / "auth.json") == managed_auth
 
 
+def test_codex_mux_default_instance_resolves_provider_native_agent(
+    tmp_path: Path,
+) -> None:
+    instance_home = tmp_path / "instance-codex-home"
+    config = {
+        "agent": {
+            "instances": [
+                {
+                    "provider": "codex",
+                    "id": "codex-main",
+                    "home": str(instance_home),
+                    "cli_command": ["/usr/local/bin/instance-codex"],
+                    "run_args": ["exec"],
+                }
+            ]
+        }
+    }
+
+    from agentos.codex.agent import CodexAgent
+    from agentos.codex.commands import _resolve_codex_mux_default_instance
+
+    instance = _resolve_codex_mux_default_instance(
+        "codex-main",
+        config=config,
+    )
+
+    assert isinstance(instance, CodexAgent)
+    assert instance.instance_id == "codex-main"
+    assert instance.homes_map()["home"] == instance_home.resolve()
+
+
 def test_codex_command_explicit_mux_fields_override_default_instance_launcher(
     tmp_path: Path,
     monkeypatch,
