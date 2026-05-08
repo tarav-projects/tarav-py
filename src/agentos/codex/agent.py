@@ -5,8 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.agent.primitives import AgentRunRequest, ResolvedAgentRun
-from agentos.chat.providers import ProviderInstance
+from agentos.agent.primitives import AgentConfig, AgentRunRequest, ResolvedAgentRun
 
 
 CODEX_PROVIDER = "codex"
@@ -28,27 +27,30 @@ class CodexAgent:
     fingerprint: str | None = None
 
     @classmethod
-    def from_legacy_config(cls, instance: ProviderInstance) -> CodexAgent:
-        if instance.family != CODEX_PROVIDER:
-            raise CliError(f"cannot build Codex.Agent from provider {instance.family}")
+    def from_config(cls, config: AgentConfig) -> CodexAgent:
+        if config.provider != CODEX_PROVIDER:
+            raise CliError(f"cannot build Codex.Agent from provider {config.provider}")
         return cls(
-            instance_id=instance.instance_id,
-            label=instance.label,
-            homes=instance.homes,
-            cli_command=instance.cli_command,
-            run_args=instance.run_args,
-            env=instance.env,
-            timeout_sec=instance.timeout_sec,
-            default_model=instance.default_model,
-            model_flag=instance.model_flag,
-            prompt_flag=instance.prompt_flag,
-            is_default=instance.is_default,
-            fingerprint=instance.fingerprint,
+            instance_id=config.instance_id,
+            label=config.label,
+            homes=config.homes,
+            cli_command=config.cli_command,
+            run_args=config.run_args,
+            env=config.env,
+            timeout_sec=config.timeout_sec,
+            default_model=config.default_model,
+            model_flag=config.model_flag,
+            prompt_flag=config.prompt_flag,
+            is_default=config.is_default,
+            fingerprint=config.fingerprint,
         )
 
     @property
     def provider(self) -> str:
         return CODEX_PROVIDER
+
+    def homes_map(self) -> dict[str, Path]:
+        return {key: path for key, path in self.homes}
 
     def runner(self) -> CodexAgentRunner:
         return CodexAgentRunner(agent=self)

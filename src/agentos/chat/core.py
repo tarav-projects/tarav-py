@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,24 +13,60 @@ from agentos._core.sequences import _unique_paths
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
-    default_provider_instances,
-    ProviderHomeSlot,
-    load_configured_provider_instances,
+    default_legacy_provider_configs,
+    LegacyProviderConfig,
+    load_legacy_provider_configs,
 )
+from agentos.chat.providers import ProviderFamily
 from agentos.chat.sessions import (
     BackingArtifact,
     ChatSession,
-    ClaudeCodeSessionSource,
-    CodexSessionSource,
-    CopilotCliSessionSource,
-    GeminiCliSessionSource,
-    OpenclawSessionSource,
-    OpencodeSessionSource,
-    PiSessionSource,
-    ProviderInstance,
-    SessionSource,
+    ClaudeCodeSessionRecord,
+    CodexSessionRecord,
+    CopilotCliSessionRecord,
+    GeminiCliSessionRecord,
+    OpenclawSessionRecord,
+    OpencodeSessionRecord,
+    PiSessionRecord,
+    SessionProviderIdentity,
+    ChatSessionRecord,
     coerce_timestamp,
     safe_path_mtime,
+)
+from agentos.codex.session import (
+    CodexSession,
+    discover_codex_sessions,
+    find_codex_sessions,
+)
+from agentos.claude.session import (
+    ClaudeSession,
+    discover_claude_sessions,
+    find_claude_sessions,
+)
+from agentos.copilot.session import (
+    CopilotSession,
+    discover_copilot_sessions,
+    find_copilot_sessions,
+)
+from agentos.pi.session import (
+    PiSession,
+    discover_pi_sessions,
+    find_pi_sessions,
+)
+from agentos.opencode.session import (
+    OpencodeSession,
+    discover_opencode_sessions,
+    find_opencode_sessions,
+)
+from agentos.gemini.session import (
+    GeminiSession,
+    discover_gemini_sessions,
+    find_gemini_sessions,
+)
+from agentos.openclaw.session import (
+    OpenclawSession,
+    discover_openclaw_sessions,
+    find_openclaw_sessions,
 )
 
 TEXT_FILE_SUFFIXES = {
@@ -48,36 +83,11 @@ MAX_GREP_FILE_BYTES = 5 * 1024 * 1024
 SESSION_SORT_CHOICES = {"lexical", "newest", "oldest"}
 
 @dataclass(frozen=True)
-class SessionProviderHandler:
-    family: str
-    home_slots: tuple[ProviderHomeSlot, ...]
-    discover_sources: Callable[[SessionProviderContext], list[SessionSource]]
-    find_sources: Callable[[SessionProviderContext, str], list[SessionSource]]
-    build_source_stats: Callable[[SessionSource], dict[str, Any]]
-    cli_command: tuple[str, ...] = ()
-    run_args: tuple[str, ...] = ()
-    default_model: str | None = None
-    model_flag: str | None = None
-    prompt_flag: str | None = None
-
-    def supported_home_keys(self) -> tuple[str, ...]:
-        return tuple(slot.key for slot in self.home_slots)
-
-    def discover_sessions(self, context: SessionProviderContext) -> list[ChatSession]:
-        return _wrap_session_sources(self.discover_sources(context))
-
-    def find_sessions(
-        self,
-        context: SessionProviderContext,
-        query: str,
-    ) -> list[ChatSession]:
-        return _wrap_session_sources(self.find_sources(context, query))
-
-
-@dataclass(frozen=True)
 class SessionProviderContext:
-    provider_handler: SessionProviderHandler
-    provider_instance: ProviderInstance
+    provider_identity: SessionProviderIdentity
+    provider: str
+    instance_summary: dict[str, Any]
+    instance_fingerprint: str
     direct_targets: tuple[Path, ...]
     direct_existing_targets: tuple[Path, ...]
     direct_missing_targets: tuple[Path, ...]
@@ -90,195 +100,102 @@ class SessionProviderContext:
 
 
 @dataclass(frozen=True)
+class SessionProviderConfig:
+    provider_identity: SessionProviderIdentity
+    provider: str
+    instance_summary: dict[str, Any]
+    instance_fingerprint: str
+    direct_targets: tuple[Path, ...]
+    grep_targets: tuple[Path, ...]
+    sqlite_db_paths: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
 class ChatSessionUriQuery:
     provider_family: str
     instance_fingerprint_prefix: str
     session_id: str
 
 
-def _make_direct_session_discovery(
-    discover_sources: Callable[..., list[SessionSource]],
-    *,
-    include_sqlite: bool = False,
-) -> Callable[[SessionProviderContext], list[SessionSource]]:
-    def handler(context: SessionProviderContext) -> list[SessionSource]:
-        kwargs: dict[str, Any] = {
-            "provider_instance": context.provider_instance,
-            "targets": context.direct_existing_targets,
-        }
-        if include_sqlite:
-            kwargs["sqlite_db_paths"] = context.sqlite_existing_db_paths
-        return discover_sources(**kwargs)
-
-    return handler
+SESSION_DISCOVERY_PROVIDER_FAMILIES = {
+    "claude-code",
+    "codex",
+    "copilot-cli",
+    "gemini-cli",
+    "openclaw",
+    "opencode",
+    "pi",
+}
 
 
-def _make_direct_session_finder(
-    find_sources: Callable[..., list[SessionSource]],
-    *,
-    query_arg: str,
-    include_sqlite: bool = False,
-) -> Callable[[SessionProviderContext, str], list[SessionSource]]:
-    def handler(context: SessionProviderContext, query: str) -> list[SessionSource]:
-        kwargs: dict[str, Any] = {
-            "provider_instance": context.provider_instance,
-            "targets": context.direct_existing_targets,
-            query_arg: query,
-        }
-        if include_sqlite:
-            kwargs["sqlite_db_paths"] = context.sqlite_existing_db_paths
-        return find_sources(**kwargs)
-
-    return handler
-
-
-def _make_typed_session_stats_builder(
-    source_type: type[SessionSource],
-    build_source_stats: Callable[[Any], dict[str, Any]],
-) -> Callable[[SessionSource], dict[str, Any]]:
-    def handler(source: SessionSource) -> dict[str, Any]:
-        if not isinstance(source, source_type):
-            raise CliError(f"chat session stats is not implemented for provider {source.provider_family}")
-        return build_source_stats(source)
-
-    return handler
-
-
-def supported_provider_families() -> tuple[SessionProviderHandler, ...]:
-    session_factories = {
-        "copilot-cli": dict(
-            discover_sources=_make_direct_session_discovery(_list_copilot_sessions),
-            find_sources=_make_direct_session_finder(
-                _find_copilot_sessions,
-                query_arg="session_id",
-            ),
-            build_source_stats=_make_typed_session_stats_builder(
-                CopilotCliSessionSource,
-                _build_copilot_cli_session_stats,
-            ),
-        ),
-        "gemini-cli": dict(
-            discover_sources=_make_direct_session_discovery(_list_gemini_sessions),
-            find_sources=_make_direct_session_finder(
-                _find_gemini_sessions,
-                query_arg="session_id",
-            ),
-            build_source_stats=_make_typed_session_stats_builder(
-                GeminiCliSessionSource,
-                _build_gemini_cli_session_stats,
-            ),
-        ),
-        "codex": dict(
-            discover_sources=_make_direct_session_discovery(_list_codex_sessions),
-            find_sources=_make_direct_session_finder(
-                _find_codex_sessions,
-                query_arg="query",
-            ),
-            build_source_stats=_make_typed_session_stats_builder(
-                CodexSessionSource,
-                _build_codex_session_stats,
-            ),
-            cli_command=("codex",),
-            run_args=("exec", "--dangerously-bypass-approvals-and-sandbox"),
-            default_model="gpt-5.4",
-            model_flag="--model",
-        ),
-        "claude-code": dict(
-            discover_sources=_make_direct_session_discovery(_list_claude_code_sessions),
-            find_sources=_make_direct_session_finder(
-                _find_claude_code_sessions,
-                query_arg="query",
-            ),
-            build_source_stats=_make_typed_session_stats_builder(
-                ClaudeCodeSessionSource,
-                _build_claude_code_session_stats,
-            ),
-        ),
-        "opencode": dict(
-            discover_sources=_make_direct_session_discovery(
-                _list_opencode_sessions,
-                include_sqlite=True,
-            ),
-            find_sources=_make_direct_session_finder(
-                _find_opencode_sessions,
-                query_arg="session_id",
-                include_sqlite=True,
-            ),
-            build_source_stats=_make_typed_session_stats_builder(
-                OpencodeSessionSource,
-                _build_opencode_session_stats,
-            ),
-        ),
-        "openclaw": dict(
-            discover_sources=_make_direct_session_discovery(_list_openclaw_sessions),
-            find_sources=_make_direct_session_finder(
-                _find_openclaw_sessions,
-                query_arg="session_id",
-            ),
-            build_source_stats=_make_typed_session_stats_builder(
-                OpenclawSessionSource,
-                _build_openclaw_session_stats,
-            ),
-        ),
-        "pi": dict(
-            discover_sources=_make_direct_session_discovery(_list_pi_sessions),
-            find_sources=_make_direct_session_finder(
-                _find_pi_sessions,
-                query_arg="session_id",
-            ),
-            build_source_stats=_make_typed_session_stats_builder(
-                PiSessionSource,
-                _build_pi_session_stats,
-            ),
-        ),
-    }
-    handlers: list[SessionProviderHandler] = []
+def supported_provider_families() -> tuple[ProviderFamily, ...]:
+    families: list[ProviderFamily] = []
     for provider_spec in canonical_chat_provider_specs():
         if not provider_spec.supports_session_discovery:
             continue
-        handler_kwargs = session_factories.get(provider_spec.family)
-        if handler_kwargs is None:
+        if provider_spec.family not in SESSION_DISCOVERY_PROVIDER_FAMILIES:
             continue
-        home_slots = tuple(slot for slot in provider_spec.home_slots if slot.supports_session_discovery())
-        handlers.append(
-            SessionProviderHandler(
-                family=provider_spec.family,
-                home_slots=home_slots,
-                **handler_kwargs,
-            )
-        )
-    return tuple(handlers)
+        families.append(provider_spec.provider_family)
+    return tuple(families)
 
 
-def configured_provider_instances(*, start_path: Path | str = ".") -> tuple[ProviderInstance, ...]:
+def configured_legacy_provider_configs(*, start_path: Path | str = ".") -> tuple[LegacyProviderConfig, ...]:
     supported_families = {provider_handler.family for provider_handler in supported_provider_families()}
-    provider_instances = tuple(
-        provider_instance
-        for provider_instance in load_configured_provider_instances(start_path=start_path)
-        if provider_instance.family in supported_families
+    legacy_provider_configs = tuple(
+        legacy_provider_config
+        for legacy_provider_config in load_legacy_provider_configs(start_path=start_path)
+        if legacy_provider_config.family in supported_families
     )
-    return _dedupe_provider_instances(provider_instances)
+    return _dedupe_legacy_provider_configs(legacy_provider_configs)
 
 
-def _session_provider_instances(*, start_path: Path | str = ".") -> tuple[ProviderInstance, ...]:
-    configured_instances = configured_provider_instances(start_path=start_path)
-    default_instances = default_provider_instances(supports_session_discovery_only=True)
-    return _dedupe_provider_instances(configured_instances + default_instances)
+def configured_session_provider_configs(
+    *,
+    start_path: Path | str = ".",
+) -> tuple[SessionProviderConfig, ...]:
+    configured_legacy_configs = configured_legacy_provider_configs(start_path=start_path)
+    default_legacy_configs = default_legacy_provider_configs(supports_session_discovery_only=True)
+    provider_configs = tuple(
+        _session_provider_config_from_legacy_config(legacy_provider_config)
+        for legacy_provider_config in configured_legacy_configs + default_legacy_configs
+    )
+    return _dedupe_session_provider_configs(provider_configs)
 
 
-def _provider_family_for_name(family_name: str) -> SessionProviderHandler | None:
+def _provider_family_for_name(family_name: str) -> ProviderFamily | None:
     for family in supported_provider_families():
         if family.family == family_name:
             return family
     return None
 
-def _dedupe_provider_instances(provider_instances: tuple[ProviderInstance, ...]) -> tuple[ProviderInstance, ...]:
-    unique_instances: dict[tuple[object, ...], ProviderInstance] = {}
-    for provider_instance in provider_instances:
-        key = provider_instance.identity_key()
+
+def _session_provider_home_slots(family_name: str):
+    provider_spec = canonical_chat_provider_specs()
+    for spec in provider_spec:
+        if spec.family == family_name:
+            return tuple(slot for slot in spec.home_slots if slot.supports_session_discovery())
+    return ()
+
+def _dedupe_legacy_provider_configs(
+    legacy_provider_configs: tuple[LegacyProviderConfig, ...],
+) -> tuple[LegacyProviderConfig, ...]:
+    unique_instances: dict[tuple[object, ...], LegacyProviderConfig] = {}
+    for legacy_provider_config in legacy_provider_configs:
+        key = legacy_provider_config.identity_key()
         if key not in unique_instances:
-            unique_instances[key] = provider_instance
+            unique_instances[key] = legacy_provider_config
     return tuple(unique_instances.values())
+
+
+def _dedupe_session_provider_configs(
+    provider_configs: tuple[SessionProviderConfig, ...],
+) -> tuple[SessionProviderConfig, ...]:
+    unique_configs: dict[tuple[object, ...], SessionProviderConfig] = {}
+    for provider_config in provider_configs:
+        key = provider_config.provider_identity.identity_key()
+        if key not in unique_configs:
+            unique_configs[key] = provider_config
+    return tuple(unique_configs.values())
 
 
 def list_chat_sessions(
@@ -688,42 +605,58 @@ def _iter_provider_context_groups(
     providers: tuple[str, ...] | None,
     *,
     start_path: Path | str = ".",
-) -> tuple[tuple[SessionProviderHandler, tuple[SessionProviderContext, ...]], ...]:
-    provider_instances = _session_provider_instances(start_path=start_path)
+) -> tuple[tuple[ProviderFamily, tuple[SessionProviderContext, ...]], ...]:
+    provider_configs = configured_session_provider_configs(start_path=start_path)
     if providers is not None:
         requested_providers = set(providers)
-        provider_instances = tuple(
-            provider_instance
-            for provider_instance in provider_instances
-            if provider_instance.family in requested_providers
+        provider_configs = tuple(
+            provider_config
+            for provider_config in provider_configs
+            if provider_config.provider in requested_providers
         )
 
     contexts_by_family: dict[str, list[SessionProviderContext]] = {}
-    for provider_instance in provider_instances:
-        context = _build_provider_context(provider_instance)
-        contexts_by_family.setdefault(provider_instance.family, []).append(context)
+    for provider_config in provider_configs:
+        context = _build_provider_context(provider_config)
+        contexts_by_family.setdefault(provider_config.provider, []).append(context)
 
-    groups: list[tuple[SessionProviderHandler, tuple[SessionProviderContext, ...]]] = []
-    for provider_handler in supported_provider_families():
-        family_contexts = contexts_by_family.get(provider_handler.family)
+    groups: list[tuple[ProviderFamily, tuple[SessionProviderContext, ...]]] = []
+    for provider_family in supported_provider_families():
+        family_contexts = contexts_by_family.get(provider_family.family)
         if not family_contexts:
             continue
-        groups.append((provider_handler, tuple(family_contexts)))
+        groups.append((provider_family, tuple(family_contexts)))
     return tuple(groups)
 
 
-def _build_provider_context(provider_instance: ProviderInstance) -> SessionProviderContext:
-    provider_handler = _provider_family_for_name(provider_instance.family)
-    if provider_handler is None:
-        raise CliError(f"unsupported provider family {provider_instance.family}")
+def _session_provider_config_from_legacy_config(
+    legacy_provider_config: LegacyProviderConfig,
+) -> SessionProviderConfig:
+    return SessionProviderConfig(
+        provider_identity=_session_provider_identity_from_legacy_config(legacy_provider_config),
+        provider=legacy_provider_config.family,
+        instance_summary=legacy_provider_config.summary(),
+        instance_fingerprint=legacy_provider_config.fingerprint,
+        direct_targets=legacy_provider_config.direct_targets,
+        grep_targets=legacy_provider_config.grep_targets,
+        sqlite_db_paths=legacy_provider_config.sqlite_db_paths,
+    )
 
-    direct_targets = provider_instance.direct_targets
-    grep_targets = provider_instance.grep_targets
-    sqlite_db_paths = provider_instance.sqlite_db_paths
+
+def _build_provider_context(config: SessionProviderConfig) -> SessionProviderContext:
+    provider_handler = _provider_family_for_name(config.provider)
+    if provider_handler is None:
+        raise CliError(f"unsupported provider family {config.provider}")
+
+    direct_targets = config.direct_targets
+    grep_targets = config.grep_targets
+    sqlite_db_paths = config.sqlite_db_paths
 
     return SessionProviderContext(
-        provider_handler=provider_handler,
-        provider_instance=provider_instance,
+        provider_identity=config.provider_identity,
+        provider=config.provider,
+        instance_summary=config.instance_summary,
+        instance_fingerprint=config.instance_fingerprint,
         direct_targets=direct_targets,
         direct_existing_targets=tuple(target for target in direct_targets if target.exists()),
         direct_missing_targets=tuple(target for target in direct_targets if not target.exists()),
@@ -733,6 +666,16 @@ def _build_provider_context(provider_instance: ProviderInstance) -> SessionProvi
         sqlite_db_paths=sqlite_db_paths,
         sqlite_existing_db_paths=tuple(path for path in sqlite_db_paths if path.exists()),
         sqlite_missing_db_paths=tuple(path for path in sqlite_db_paths if not path.exists()),
+    )
+
+
+def _session_provider_identity_from_legacy_config(legacy_provider_config: LegacyProviderConfig) -> SessionProviderIdentity:
+    return SessionProviderIdentity(
+        family=legacy_provider_config.family,
+        identity=legacy_provider_config.identity_key(),
+        uri_key=legacy_provider_config.uri_component(),
+        fingerprint=legacy_provider_config.fingerprint,
+        summary_payload=legacy_provider_config.summary(),
     )
 
 
@@ -820,7 +763,7 @@ def _build_provider_payload(
         "provider": provider_family,
         "provider_family": provider_family,
         "provider_instance_count": len(contexts),
-        "provider_instances": [context.provider_instance.summary() for context in contexts],
+        "provider_instances": [context.instance_summary for context in contexts],
         "candidate_targets": [str(path) for path in candidate_targets],
         "searched_targets": [str(path) for path in searched_targets],
         "missing_targets": [str(path) for path in missing_targets],
@@ -1062,7 +1005,7 @@ def _build_common_session_stats(
     payload = {
         "provider": session.provider,
         "uri": session.uri,
-        "provider_instance_fingerprint": session.provider_instance.fingerprint,
+        "provider_instance_fingerprint": session.provider_identity.fingerprint,
         "session_id": session.session_id,
         "display_name": _session_display_name(session),
         "display_name_field": _session_display_field_name(session),
@@ -1088,10 +1031,7 @@ def _build_common_session_stats(
 
 
 def _build_provider_session_stats(session: ChatSession) -> dict[str, Any]:
-    provider_family = _provider_family_for_name(session.provider_family)
-    if provider_family is None:
-        raise CliError(f"chat session stats is not implemented for provider {session.provider_family}")
-    return provider_family.build_source_stats(session.source)
+    return _build_session_record_stats(session.record)
 
 
 def _parse_chat_session_uri(query: str) -> ChatSessionUriQuery | None:
@@ -1121,7 +1061,7 @@ def _session_matches_uri_query(
     return (
         session.provider_family == uri_query.provider_family
         and session.session_id == uri_query.session_id
-        and session.provider_instance.matches_fingerprint_prefix(uri_query.instance_fingerprint_prefix)
+        and session.provider_identity.matches_fingerprint_prefix(uri_query.instance_fingerprint_prefix)
     )
 
 
@@ -1139,7 +1079,7 @@ def _strategies_attempted(
 
 
 def _discover_direct_provider_sessions(context: SessionProviderContext) -> list[ChatSession]:
-    return context.provider_handler.discover_sessions(context)
+    return _wrap_session_records(_discover_provider_session_records(context))
 
 
 def _find_direct_provider_sessions(
@@ -1148,318 +1088,303 @@ def _find_direct_provider_sessions(
 ) -> list[ChatSession]:
     uri_query = _parse_chat_session_uri(query)
     if uri_query is not None:
-        if context.provider_handler.family != uri_query.provider_family:
+        if context.provider != uri_query.provider_family:
             return []
-        if not context.provider_instance.matches_fingerprint_prefix(uri_query.instance_fingerprint_prefix):
+        if not context.instance_fingerprint.startswith(uri_query.instance_fingerprint_prefix):
             return []
         return [
             session
             for session in _discover_direct_provider_sessions(context)
             if _session_matches_uri_query(session, uri_query)
         ]
-    return context.provider_handler.find_sessions(context, query)
+    return _wrap_session_records(_find_provider_session_records(context, query))
 
 
-def _wrap_session_sources(session_sources: list[SessionSource]) -> list[ChatSession]:
-    return [ChatSession(source=source) for source in session_sources]
+def _wrap_session_records(session_records: list[ChatSessionRecord]) -> list[ChatSession]:
+    return [ChatSession(record=source) for source in session_records]
+
+
+def _discover_provider_session_records(context: SessionProviderContext) -> list[ChatSessionRecord]:
+    if context.provider == "claude-code":
+        return _list_claude_code_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+        )
+    if context.provider == "codex":
+        return _list_codex_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+        )
+    if context.provider == "copilot-cli":
+        return _list_copilot_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+        )
+    if context.provider == "gemini-cli":
+        return _list_gemini_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+        )
+    if context.provider == "openclaw":
+        return _list_openclaw_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+        )
+    if context.provider == "opencode":
+        return _list_opencode_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+            sqlite_db_paths=context.sqlite_existing_db_paths,
+        )
+    if context.provider == "pi":
+        return _list_pi_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+        )
+    raise CliError(f"unsupported provider family {context.provider}")
+
+
+def _find_provider_session_records(
+    context: SessionProviderContext,
+    query: str,
+) -> list[ChatSessionRecord]:
+    if context.provider == "claude-code":
+        return _find_claude_code_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+            query=query,
+        )
+    if context.provider == "codex":
+        return _find_codex_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+            query=query,
+        )
+    if context.provider == "copilot-cli":
+        return _find_copilot_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+            session_id=query,
+        )
+    if context.provider == "gemini-cli":
+        return _find_gemini_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+            session_id=query,
+        )
+    if context.provider == "openclaw":
+        return _find_openclaw_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+            session_id=query,
+        )
+    if context.provider == "opencode":
+        return _find_opencode_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+            session_id=query,
+            sqlite_db_paths=context.sqlite_existing_db_paths,
+        )
+    if context.provider == "pi":
+        return _find_pi_sessions(
+            provider_identity=context.provider_identity,
+            targets=context.direct_existing_targets,
+            session_id=query,
+        )
+    raise CliError(f"unsupported provider family {context.provider}")
+
+
+def _build_session_record_stats(record: ChatSessionRecord) -> dict[str, Any]:
+    if isinstance(record, ClaudeCodeSessionRecord):
+        return _build_claude_code_session_stats(record)
+    if isinstance(record, CodexSessionRecord):
+        return _build_codex_session_stats(record)
+    if isinstance(record, CopilotCliSessionRecord):
+        return _build_copilot_cli_session_stats(record)
+    if isinstance(record, GeminiCliSessionRecord):
+        return _build_gemini_cli_session_stats(record)
+    if isinstance(record, OpenclawSessionRecord):
+        return _build_openclaw_session_stats(record)
+    if isinstance(record, OpencodeSessionRecord):
+        return _build_opencode_session_stats(record)
+    if isinstance(record, PiSessionRecord):
+        return _build_pi_session_stats(record)
+    raise CliError(f"chat session stats is not implemented for provider {record.provider_family}")
 
 
 def _list_claude_code_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
-) -> list[SessionSource]:
-    sessions: list[SessionSource] = []
-
-    for target in targets:
-        if target.name == "projects":
-            for path in _glob_paths(target, "**/*.jsonl"):
-                session = _read_claude_project_session(path, provider_instance=provider_instance)
-                if session is not None:
-                    sessions.append(session)
-            continue
-
-        for path in _glob_paths(target, "**/*.json"):
-            session = _read_claude_desktop_session(path, provider_instance=provider_instance)
-            if session is not None:
-                sessions.append(session)
-
-    return _dedupe_session_sources(sessions)
+) -> list[ChatSessionRecord]:
+    return [
+        _claude_session_record_from_native(
+            session,
+            provider_identity=provider_identity,
+        )
+        for session in discover_claude_sessions(targets=targets)
+    ]
 
 
 def _find_claude_code_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
     query: str,
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-    all_sessions = _list_claude_code_sessions(provider_instance=provider_instance, targets=targets)
-
-    for session in all_sessions:
-        if session.matches_query(query):
-            _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _claude_session_record_from_native(
+            session,
+            provider_identity=provider_identity,
+        )
+        for session in find_claude_sessions(targets=targets, query=query)
+    ]
 
 
 def _list_codex_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-
-    for target in targets:
-        if target.is_file() and target.name == "session_index.jsonl":
-            for session in _read_codex_index_sessions(target, provider_instance=provider_instance):
-                _merge_session_source(sessions_by_id, session)
-            continue
-        for path in _glob_paths(target, "**/rollout-*.jsonl"):
-            session = _read_codex_rollout_session(path, provider_instance=provider_instance)
-            if session is not None:
-                _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _codex_session_record_from_native(
+            session,
+            provider_identity=provider_identity,
+        )
+        for session in discover_codex_sessions(targets=targets)
+    ]
 
 
 def _find_codex_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
     query: str,
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-    all_sessions = _list_codex_sessions(provider_instance=provider_instance, targets=targets)
-
-    for session in all_sessions:
-        if session.matches_query(query):
-            _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _codex_session_record_from_native(
+            session,
+            provider_identity=provider_identity,
+        )
+        for session in find_codex_sessions(targets=targets, query=query)
+    ]
 
 
 def _list_copilot_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-
-    for target in targets:
-        if not target.is_dir():
-            continue
-
-        for child in sorted(target.iterdir(), key=lambda path: path.name):
-            session: SessionSource | None = None
-            if child.is_dir():
-                session = CopilotCliSessionSource(
-                    provider_instance=provider_instance,
-                    native_session_id=child.name,
-                    session_root=child,
-                    updated_at=_copilot_updated_at(child),
-                )
-            elif child.is_file() and child.suffix == ".jsonl":
-                session = CopilotCliSessionSource(
-                    provider_instance=provider_instance,
-                    native_session_id=child.stem,
-                    session_file=child,
-                    updated_at=safe_path_mtime(child),
-                )
-
-            if session is not None:
-                _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _copilot_session_record_from_native(session, provider_identity=provider_identity)
+        for session in discover_copilot_sessions(targets=targets)
+    ]
 
 
 def _find_copilot_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
     session_id: str,
-) -> list[SessionSource]:
-    sessions: list[SessionSource] = []
-
-    for target in targets:
-        session_root = target / session_id
-        session_file = target / f"{session_id}.jsonl"
-        if not session_root.is_dir() and not session_file.is_file():
-            continue
-
-        sessions.append(
-            CopilotCliSessionSource(
-                provider_instance=provider_instance,
-                native_session_id=session_id,
-                session_root=session_root if session_root.is_dir() else None,
-                session_file=session_file if session_file.is_file() else None,
-                updated_at=_copilot_updated_at(session_root if session_root.is_dir() else None)
-                or safe_path_mtime(session_file if session_file.is_file() else None),
-            )
-        )
-
-    return _dedupe_session_sources(sessions)
+) -> list[ChatSessionRecord]:
+    return [
+        _copilot_session_record_from_native(session, provider_identity=provider_identity)
+        for session in find_copilot_sessions(targets=targets, query=session_id)
+    ]
 
 
 def _list_gemini_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
-) -> list[SessionSource]:
-    sessions: list[SessionSource] = []
-
-    for target in targets:
-        for path in _glob_paths(target, "**/chats/session-*.json"):
-            session = _read_gemini_session(path, provider_instance=provider_instance)
-            if session is not None:
-                sessions.append(session)
-
-    return _dedupe_session_sources(sessions)
+) -> list[ChatSessionRecord]:
+    return [
+        _gemini_session_record_from_native(session, provider_identity=provider_identity)
+        for session in discover_gemini_sessions(targets=targets)
+    ]
 
 
 def _find_gemini_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
     session_id: str,
-) -> list[SessionSource]:
-    sessions: list[SessionSource] = []
-
-    for target in targets:
-        for path in _glob_paths(target, "**/chats/session-*.json"):
-            session = _read_gemini_session(path, provider_instance=provider_instance)
-            if session is None:
-                continue
-            if not _gemini_session_matches(session_id, session, path):
-                continue
-            sessions.append(session)
-
-    return _dedupe_session_sources(sessions)
+) -> list[ChatSessionRecord]:
+    return [
+        _gemini_session_record_from_native(session, provider_identity=provider_identity)
+        for session in find_gemini_sessions(targets=targets, query=session_id)
+    ]
 
 
 def _list_pi_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-
-    for target in targets:
-        for path in _glob_paths(target, "**/*.jsonl"):
-            session = _read_pi_session(path, provider_instance=provider_instance)
-            if session is not None:
-                _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _pi_session_record_from_native(session, provider_identity=provider_identity)
+        for session in discover_pi_sessions(targets=targets)
+    ]
 
 
 def _find_pi_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
     session_id: str,
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-    all_sessions = _list_pi_sessions(provider_instance=provider_instance, targets=targets)
-
-    for session in all_sessions:
-        if session.matches_query(session_id):
-            _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _pi_session_record_from_native(session, provider_identity=provider_identity)
+        for session in find_pi_sessions(targets=targets, query=session_id)
+    ]
 
 
 def _list_opencode_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
     sqlite_db_paths: tuple[Path, ...],
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-
-    for target in targets:
-        for path in _glob_paths(target, "*.json"):
-            _merge_session_source(
-                sessions_by_id,
-                OpencodeSessionSource(
-                    provider_instance=provider_instance,
-                    native_session_id=path.stem,
-                    diff_path=path,
-                    updated_at=safe_path_mtime(path),
-                ),
-            )
-
-    for sqlite_db_path in sqlite_db_paths:
-        for session in _query_opencode_sessions(sqlite_db_path, provider_instance=provider_instance):
-            _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _opencode_session_record_from_native(session, provider_identity=provider_identity)
+        for session in discover_opencode_sessions(targets=targets, sqlite_db_paths=sqlite_db_paths)
+    ]
 
 
 def _find_opencode_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
     session_id: str,
     sqlite_db_paths: tuple[Path, ...],
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-
-    for target in targets:
-        session_file = target / f"{session_id}.json"
-        if session_file.is_file():
-            _merge_session_source(
-                sessions_by_id,
-                OpencodeSessionSource(
-                    provider_instance=provider_instance,
-                    native_session_id=session_id,
-                    diff_path=session_file,
-                    updated_at=safe_path_mtime(session_file),
-                ),
-            )
-
-    for sqlite_db_path in sqlite_db_paths:
-        for session in _query_opencode_sessions(
-            sqlite_db_path,
-            provider_instance=provider_instance,
-            session_id=session_id,
-        ):
-            _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _opencode_session_record_from_native(session, provider_identity=provider_identity)
+        for session in find_opencode_sessions(targets=targets, sqlite_db_paths=sqlite_db_paths, query=session_id)
+    ]
 
 
 def _list_openclaw_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-
-    for target in targets:
-        for agent_dir in _iter_openclaw_agent_dirs(target):
-            for session in _read_openclaw_agent_sessions(agent_dir, provider_instance=provider_instance):
-                _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _openclaw_session_record_from_native(session, provider_identity=provider_identity)
+        for session in discover_openclaw_sessions(targets=targets)
+    ]
 
 
 def _find_openclaw_sessions(
     *,
-    provider_instance: ProviderInstance,
+    provider_identity: SessionProviderIdentity,
     targets: tuple[Path, ...],
     session_id: str,
-) -> list[SessionSource]:
-    sessions_by_id: dict[tuple[object, ...], SessionSource] = {}
-
-    for target in targets:
-        for agent_dir in _iter_openclaw_agent_dirs(target):
-            for session in _read_openclaw_agent_sessions(agent_dir, provider_instance=provider_instance):
-                if session.session_id != session_id and session_id not in session.session_keys:
-                    continue
-                _merge_session_source(sessions_by_id, session)
-
-    return _sort_session_sources(list(sessions_by_id.values()), "lexical")
+) -> list[ChatSessionRecord]:
+    return [
+        _openclaw_session_record_from_native(session, provider_identity=provider_identity)
+        for session in find_openclaw_sessions(targets=targets, query=session_id)
+    ]
 
 
 def _append_unique_finding(
@@ -1505,7 +1430,7 @@ def _session_findings(
         enriched["matched_value"] = query
         enriched["session_id"] = session.session_id
         enriched["uri"] = session.uri
-        enriched["provider_instance_fingerprint"] = session.provider_instance.fingerprint
+        enriched["provider_instance_fingerprint"] = session.provider_identity.fingerprint
         enriched["native"] = _session_native_payload(session)
         findings.append(enriched)
 
@@ -1532,7 +1457,7 @@ def _merge_session(
         sessions_by_id[session_key] = session
         return
 
-    if type(existing.source) is type(session.source):
+    if type(existing.record) is type(session.record):
         sessions_by_id[session_key] = existing.merge(session)
         return
 
@@ -1583,11 +1508,11 @@ def _session_preference_key(session: ChatSession) -> tuple[float, int, str]:
     )
 
 
-def _merge_session_source(
-    sessions_by_id: dict[tuple[object, ...], SessionSource],
-    session: SessionSource,
+def _merge_session_record(
+    sessions_by_id: dict[tuple[object, ...], ChatSessionRecord],
+    session: ChatSessionRecord,
 ) -> None:
-    session_key = session.source_identity_key()
+    session_key = session.record_identity_key()
     existing = sessions_by_id.get(session_key)
     if existing is None:
         sessions_by_id[session_key] = session
@@ -1597,18 +1522,18 @@ def _merge_session_source(
         sessions_by_id[session_key] = existing.merge(session)
         return
 
-    if _session_source_preference_key(session) > _session_source_preference_key(existing):
+    if _session_record_preference_key(session) > _session_record_preference_key(existing):
         sessions_by_id[session_key] = session
 
 
-def _dedupe_session_sources(sessions: list[SessionSource]) -> list[SessionSource]:
-    deduped: dict[tuple[object, ...], SessionSource] = {}
+def _dedupe_session_records(sessions: list[ChatSessionRecord]) -> list[ChatSessionRecord]:
+    deduped: dict[tuple[object, ...], ChatSessionRecord] = {}
     for session in sessions:
-        _merge_session_source(deduped, session)
-    return _sort_session_sources(list(deduped.values()), "lexical")
+        _merge_session_record(deduped, session)
+    return _sort_session_records(list(deduped.values()), "lexical")
 
 
-def _sort_session_sources(sessions: list[SessionSource], sort: str) -> list[SessionSource]:
+def _sort_session_records(sessions: list[ChatSessionRecord], sort: str) -> list[ChatSessionRecord]:
     _validate_sort_choice(sort)
 
     if sort == "lexical":
@@ -1635,7 +1560,7 @@ def _sort_session_sources(sessions: list[SessionSource], sort: str) -> list[Sess
     return sessions
 
 
-def _session_source_preference_key(session: SessionSource) -> tuple[float, int, str]:
+def _session_record_preference_key(session: ChatSessionRecord) -> tuple[float, int, str]:
     timestamp = session.sort_timestamp()
     return (
         timestamp if timestamp is not None else float("-inf"),
@@ -1754,7 +1679,7 @@ def _try_build_dialog_turn_stats(callback: Callable[[], list[Any]]) -> dict[str,
     return _build_dialog_turn_stats(turns)
 
 
-def _build_claude_code_session_stats(session: ClaudeCodeSessionSource) -> dict[str, Any]:
+def _build_claude_code_session_stats(session: ClaudeCodeSessionRecord) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "artifact_count": len(session.artifact_paths),
         "source_kind": session.source_kind,
@@ -1814,7 +1739,7 @@ def _build_claude_code_session_stats(session: ClaudeCodeSessionSource) -> dict[s
     return payload
 
 
-def _build_codex_session_stats(session: CodexSessionSource) -> dict[str, Any]:
+def _build_codex_session_stats(session: CodexSessionRecord) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "rollout_artifact_count": len(session.artifact_paths),
         "session_index_count": len(session.index_paths),
@@ -1918,7 +1843,7 @@ def _build_codex_session_stats(session: CodexSessionSource) -> dict[str, Any]:
     return payload
 
 
-def _build_copilot_cli_session_stats(session: CopilotCliSessionSource) -> dict[str, Any]:
+def _build_copilot_cli_session_stats(session: CopilotCliSessionRecord) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "session_root_present": session.session_root is not None,
         "session_file_present": session.session_file is not None,
@@ -1983,7 +1908,7 @@ def _build_copilot_cli_session_stats(session: CopilotCliSessionSource) -> dict[s
     return payload
 
 
-def _build_gemini_cli_session_stats(session: GeminiCliSessionSource) -> dict[str, Any]:
+def _build_gemini_cli_session_stats(session: GeminiCliSessionRecord) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "artifact_count": len(session.artifact_paths),
     }
@@ -2051,7 +1976,7 @@ def _build_gemini_cli_session_stats(session: GeminiCliSessionSource) -> dict[str
     return payload
 
 
-def _build_pi_session_stats(session: PiSessionSource) -> dict[str, Any]:
+def _build_pi_session_stats(session: PiSessionRecord) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "artifact_count": len(session.artifact_paths),
     }
@@ -2139,7 +2064,7 @@ def _build_pi_session_stats(session: PiSessionSource) -> dict[str, Any]:
     return payload
 
 
-def _build_openclaw_session_stats(session: OpenclawSessionSource) -> dict[str, Any]:
+def _build_openclaw_session_stats(session: OpenclawSessionRecord) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "has_transcript": session.transcript_path is not None and session.transcript_path.is_file(),
         "has_sessions_index": session.sessions_index_path is not None and session.sessions_index_path.is_file(),
@@ -2210,7 +2135,7 @@ def _build_openclaw_session_stats(session: OpenclawSessionSource) -> dict[str, A
     return payload
 
 
-def _build_opencode_session_stats(session: OpencodeSessionSource) -> dict[str, Any]:
+def _build_opencode_session_stats(session: OpencodeSessionRecord) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "has_diff_artifact": session.diff_path is not None and session.diff_path.is_file(),
         "has_sqlite_db": session.sqlite_db_path is not None and session.sqlite_db_path.is_file(),
@@ -2464,495 +2389,111 @@ def _format_stats_timestamp(timestamp: float | None) -> str | None:
     )
 
 
-def _iter_openclaw_agent_dirs(root: Path) -> tuple[Path, ...]:
-    if not root.is_dir():
-        return ()
-    return tuple(
-        child
-        for child in sorted(root.iterdir(), key=lambda path: path.name)
-        if child.is_dir() and (child / "sessions").is_dir()
+def _claude_session_record_from_native(
+    session: ClaudeSession,
+    *,
+    provider_identity: SessionProviderIdentity,
+) -> ClaudeCodeSessionRecord:
+    return ClaudeCodeSessionRecord(
+        provider_identity=provider_identity,
+        native_session_id=session.native_session_id,
+        artifact_paths=session.artifact_paths,
+        source_kind=session.source_kind,
+        title=session.title,
+        updated_at=session.updated_at if isinstance(session.updated_at, (int, float)) else None,
     )
 
 
-def _read_openclaw_agent_sessions(
-    agent_dir: Path,
+def _codex_session_record_from_native(
+    session: CodexSession,
     *,
-    provider_instance: ProviderInstance,
-) -> list[OpenclawSessionSource]:
-    sessions_dir = agent_dir / "sessions"
-    index_path = sessions_dir / "sessions.json"
-    transcript_paths = {
-        path.stem: path
-        for path in sorted(sessions_dir.glob("*.jsonl"), key=lambda path: path.name)
-        if ".reset." not in path.name
-    }
-
-    sessions_by_id: dict[tuple[object, ...], OpenclawSessionSource] = {}
-    index_obj = _read_json_file(index_path)
-    if isinstance(index_obj, dict):
-        for session_key, entry in index_obj.items():
-            if not isinstance(entry, dict):
-                continue
-            session_id = entry.get("sessionId")
-            if not isinstance(session_id, str) or not session_id:
-                continue
-
-            session_file = entry.get("sessionFile")
-            transcript_path: Path | None = None
-            if isinstance(session_file, str) and session_file:
-                candidate = Path(session_file).expanduser()
-                if candidate.is_file():
-                    transcript_path = candidate.resolve()
-            if transcript_path is None:
-                transcript_path = transcript_paths.get(session_id)
-
-            session = OpenclawSessionSource(
-                provider_instance=provider_instance,
-                native_session_id=session_id,
-                transcript_path=transcript_path,
-                sessions_index_path=index_path.resolve(),
-                session_keys=(session_key,) if isinstance(session_key, str) and session_key else (),
-                agent_id=agent_dir.name,
-                updated_at=coerce_timestamp(entry.get("updatedAt"))
-                or safe_path_mtime(transcript_path)
-                or safe_path_mtime(index_path),
-            )
-            _merge_session_source(sessions_by_id, session)
-
-    for session_id, transcript_path in transcript_paths.items():
-        session_key = (
-            provider_instance.family,
-            provider_instance.identity_key(),
-            session_id,
-        )
-        existing = sessions_by_id.get(session_key)
-        if existing is None:
-            sessions_by_id[session_key] = OpenclawSessionSource(
-                provider_instance=provider_instance,
-                native_session_id=session_id,
-                transcript_path=transcript_path.resolve(),
-                sessions_index_path=index_path.resolve() if index_path.exists() else None,
-                session_keys=(),
-                agent_id=agent_dir.name,
-                updated_at=safe_path_mtime(transcript_path),
-            )
-            continue
-
-        sessions_by_id[session_key] = OpenclawSessionSource(
-            provider_instance=provider_instance,
-            native_session_id=session_id,
-            transcript_path=existing.transcript_path or transcript_path.resolve(),
-            sessions_index_path=existing.sessions_index_path,
-            session_keys=existing.session_keys,
-            agent_id=existing.agent_id,
-            updated_at=existing.updated_at or safe_path_mtime(transcript_path),
-        )
-
-    return list(sessions_by_id.values())
-
-
-def _read_json_file(path: Path) -> dict[str, Any] | None:
-    try:
-        raw_text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return None
-
-    try:
-        obj = json.loads(raw_text)
-    except json.JSONDecodeError:
-        return None
-
-    if not isinstance(obj, dict):
-        return None
-    return obj
-
-
-def _read_first_jsonl_object(path: Path) -> dict[str, Any] | None:
-    try:
-        with path.open("r", encoding="utf-8", errors="ignore") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(obj, dict):
-                    return obj
-    except OSError:
-        return None
-
-    return None
-
-
-def _read_codex_session_meta(path: Path) -> dict[str, Any] | None:
-    try:
-        with path.open("r", encoding="utf-8", errors="ignore") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-                if obj.get("type") != "session_meta":
-                    continue
-                payload = obj.get("payload")
-                if not isinstance(payload, dict):
-                    continue
-                if not isinstance(payload.get("id"), str):
-                    continue
-                return obj
-    except OSError:
-        return None
-
-    return None
-
-
-def _is_claude_project_session_artifact(path: Path) -> bool:
-    if path.suffix != ".jsonl":
-        return False
-    return "subagents" not in path.parts
-
-
-def _read_claude_project_session(
-    path: Path,
-    *,
-    provider_instance: ProviderInstance,
-) -> ClaudeCodeSessionSource | None:
-    if not _is_claude_project_session_artifact(path):
-        return None
-
-    first_obj = _read_first_jsonl_object(path)
-    session_id = path.stem
-    updated_at = safe_path_mtime(path)
-
-    if first_obj is not None:
-        first_session_id = first_obj.get("sessionId")
-        if isinstance(first_session_id, str) and first_session_id:
-            session_id = first_session_id
-        updated_at = coerce_timestamp(first_obj.get("timestamp")) or updated_at
-
-    return ClaudeCodeSessionSource(
-        provider_instance=provider_instance,
-        native_session_id=session_id,
-        artifact_paths=(path,),
-        source_kind="project",
-        updated_at=updated_at,
+    provider_identity: SessionProviderIdentity,
+) -> CodexSessionRecord:
+    return CodexSessionRecord(
+        provider_identity=provider_identity,
+        native_session_id=session.native_session_id,
+        artifact_paths=session.rollout_paths,
+        thread_name=session.thread_name,
+        index_paths=session.index_paths,
+        updated_at=session.updated_at,
     )
 
 
-def _read_claude_desktop_session(
-    path: Path,
+def _copilot_session_record_from_native(
+    session: CopilotSession,
     *,
-    provider_instance: ProviderInstance,
-) -> ClaudeCodeSessionSource | None:
-    obj = _read_json_file(path)
-    if obj is None:
-        return None
-
-    session_id = obj.get("sessionId")
-    if not isinstance(session_id, str) or not session_id:
-        return None
-
-    updated_at = (
-        coerce_timestamp(obj.get("lastActivityAt"))
-        or coerce_timestamp(obj.get("createdAt"))
-        or safe_path_mtime(path)
-    )
-    return ClaudeCodeSessionSource(
-        provider_instance=provider_instance,
-        native_session_id=session_id,
-        artifact_paths=(path,),
-        source_kind="desktop",
-        title=obj.get("title") if isinstance(obj.get("title"), str) and obj.get("title") else None,
-        updated_at=updated_at,
+    provider_identity: SessionProviderIdentity,
+) -> CopilotCliSessionRecord:
+    session_root = session.events_path.parent if session.events_path.name == "events.jsonl" else None
+    session_file = session.events_path if session.events_path.is_file() else None
+    return CopilotCliSessionRecord(
+        provider_identity=provider_identity,
+        native_session_id=session.native_session_id,
+        session_root=session_root,
+        session_file=session_file,
+        updated_at=session.updated_at,
     )
 
 
-def _read_codex_rollout_session(
-    path: Path,
+def _gemini_session_record_from_native(
+    session: GeminiSession,
     *,
-    provider_instance: ProviderInstance,
-) -> CodexSessionSource | None:
-    meta_obj = _read_codex_session_meta(path)
-    if meta_obj is None:
-        return None
-
-    payload = meta_obj.get("payload")
-    if not isinstance(payload, dict):
-        return None
-
-    session_id = payload.get("id")
-    if not isinstance(session_id, str) or not session_id:
-        return None
-
-    updated_at = safe_path_mtime(path) or coerce_timestamp(meta_obj.get("timestamp"))
-    return CodexSessionSource(
-        provider_instance=provider_instance,
-        native_session_id=session_id,
-        artifact_paths=(path,),
-        updated_at=updated_at,
+    provider_identity: SessionProviderIdentity,
+) -> GeminiCliSessionRecord:
+    return GeminiCliSessionRecord(
+        provider_identity=provider_identity,
+        native_session_id=session.native_session_id,
+        artifact_paths=session.artifact_paths,
+        updated_at=session.updated_at,
     )
 
 
-def _read_codex_index_sessions(
-    path: Path,
+def _pi_session_record_from_native(
+    session: PiSession,
     *,
-    provider_instance: ProviderInstance,
-) -> list[CodexSessionSource]:
-    if not path.is_file():
-        return []
-
-    sessions: list[CodexSessionSource] = []
-    try:
-        with path.open("r", encoding="utf-8", errors="ignore") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-                session_id = obj.get("id")
-                if not isinstance(session_id, str) or not session_id:
-                    continue
-                thread_name = obj.get("thread_name")
-                if not isinstance(thread_name, str) or not thread_name:
-                    thread_name = None
-                updated_at = coerce_timestamp(obj.get("updated_at")) or safe_path_mtime(path)
-                sessions.append(
-                    CodexSessionSource(
-                        provider_instance=provider_instance,
-                        native_session_id=session_id,
-                        thread_name=thread_name,
-                        index_paths=(path,),
-                        updated_at=updated_at,
-                    )
-                )
-    except OSError:
-        return []
-
-    return sessions
-
-
-def _read_gemini_session(
-    path: Path,
-    *,
-    provider_instance: ProviderInstance,
-) -> GeminiCliSessionSource | None:
-    obj = _read_json_file(path)
-    if obj is None:
-        return None
-
-    session_id = obj.get("sessionId")
-    if not isinstance(session_id, str) or not session_id:
-        return None
-
-    updated_at = (
-        coerce_timestamp(obj.get("lastUpdated"))
-        or coerce_timestamp(obj.get("startTime"))
-        or safe_path_mtime(path)
-    )
-    return GeminiCliSessionSource(
-        provider_instance=provider_instance,
-        native_session_id=session_id,
-        artifact_paths=(path,),
-        updated_at=updated_at,
+    provider_identity: SessionProviderIdentity,
+) -> PiSessionRecord:
+    return PiSessionRecord(
+        provider_identity=provider_identity,
+        native_session_id=session.native_session_id,
+        artifact_paths=session.artifact_paths,
+        cwd=session.cwd,
+        model_provider=session.model_provider,
+        model_id=session.model_id,
+        thinking_level=session.thinking_level,
+        started_at=session.started_at,
+        updated_at=session.updated_at,
     )
 
 
-def _read_pi_session(
-    path: Path,
+def _opencode_session_record_from_native(
+    session: OpencodeSession,
     *,
-    provider_instance: ProviderInstance,
-) -> PiSessionSource | None:
-    first_obj = _read_first_jsonl_object(path)
-    if first_obj is None or first_obj.get("type") != "session":
-        return None
-
-    session_id = first_obj.get("id")
-    if not isinstance(session_id, str) or not session_id:
-        return None
-
-    if not _has_pi_session_signature(path):
-        return None
-
-    cwd = first_obj.get("cwd") if isinstance(first_obj.get("cwd"), str) and first_obj.get("cwd") else None
-    started_at = coerce_timestamp(first_obj.get("timestamp"))
-    updated_at = safe_path_mtime(path) or started_at
-    model_provider: str | None = None
-    model_id: str | None = None
-    thinking_level: str | None = None
-
-    try:
-        with path.open("r", encoding="utf-8", errors="ignore") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-
-                record_type = obj.get("type")
-                if record_type == "model_change" and (model_provider is None or model_id is None):
-                    provider = obj.get("provider")
-                    candidate_model_id = obj.get("modelId")
-                    if model_provider is None and isinstance(provider, str) and provider:
-                        model_provider = provider
-                    if model_id is None and isinstance(candidate_model_id, str) and candidate_model_id:
-                        model_id = candidate_model_id
-                    continue
-
-                if record_type == "thinking_level_change" and thinking_level is None:
-                    candidate_thinking_level = obj.get("thinkingLevel")
-                    if isinstance(candidate_thinking_level, str) and candidate_thinking_level:
-                        thinking_level = candidate_thinking_level
-                    continue
-    except OSError:
-        return None
-
-    return PiSessionSource(
-        provider_instance=provider_instance,
-        native_session_id=session_id,
-        artifact_paths=(path,),
-        cwd=cwd,
-        model_provider=model_provider,
-        model_id=model_id,
-        thinking_level=thinking_level,
-        started_at=started_at,
-        updated_at=updated_at,
+    provider_identity: SessionProviderIdentity,
+) -> OpencodeSessionRecord:
+    return OpencodeSessionRecord(
+        provider_identity=provider_identity,
+        native_session_id=session.native_session_id,
+        diff_path=session.diff_path,
+        sqlite_db_path=session.sqlite_db_path,
+        updated_at=session.updated_at,
     )
 
 
-def _gemini_session_matches(
-    requested_session_id: str,
-    session: GeminiCliSessionSource,
-    path: Path,
-) -> bool:
-    if requested_session_id == session.session_id:
-        return True
-    return requested_session_id in path.name
-
-
-def _has_pi_session_signature(path: Path) -> bool:
-    try:
-        with path.open("r", encoding="utf-8", errors="ignore") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-
-                record_type = obj.get("type")
-                if record_type == "model_change":
-                    provider = obj.get("provider")
-                    model_id = obj.get("modelId")
-                    if isinstance(provider, str) and provider and isinstance(model_id, str) and model_id:
-                        return True
-                    continue
-
-                if record_type == "thinking_level_change":
-                    thinking_level = obj.get("thinkingLevel")
-                    if isinstance(thinking_level, str) and thinking_level:
-                        return True
-                    continue
-
-                if record_type == "custom_message":
-                    return True
-
-                if record_type != "message":
-                    continue
-
-                message = obj.get("message")
-                if not isinstance(message, dict):
-                    continue
-                if message.get("role") == "toolResult":
-                    return True
-                metadata = message.get("metadata")
-                if isinstance(metadata, dict) and metadata:
-                    return True
-                content = message.get("content")
-                if not isinstance(content, list):
-                    continue
-                for item in content:
-                    if not isinstance(item, dict):
-                        continue
-                    if item.get("type") in {"thinking", "toolCall"}:
-                        return True
-    except OSError:
-        return False
-
-    return False
-
-
-def _query_opencode_sessions(
-    sqlite_db_path: Path,
+def _openclaw_session_record_from_native(
+    session: OpenclawSession,
     *,
-    provider_instance: ProviderInstance,
-    session_id: str | None = None,
-) -> list[OpencodeSessionSource]:
-    from agentos.chat.extractors.opencode import connect_opencode_db
-
-    try:
-        connection = connect_opencode_db(sqlite_db_path)
-    except sqlite3.Error:
-        return []
-
-    sessions: list[OpencodeSessionSource] = []
-    try:
-        try:
-            if session_id is None:
-                cursor = connection.execute("SELECT id, time_updated FROM session ORDER BY id")
-            else:
-                cursor = connection.execute(
-                    "SELECT id, time_updated FROM session WHERE id = ? ORDER BY id",
-                    (session_id,),
-                )
-            rows = cursor.fetchall()
-        except sqlite3.Error:
-            if session_id is None:
-                cursor = connection.execute("SELECT id FROM session ORDER BY id")
-            else:
-                cursor = connection.execute(
-                    "SELECT id FROM session WHERE id = ? ORDER BY id",
-                    (session_id,),
-                )
-            rows = [(row_id, None) for (row_id,) in cursor.fetchall()]
-    except sqlite3.Error:
-        return []
-    finally:
-        connection.close()
-
-    for row_id, time_updated in rows:
-        if not isinstance(row_id, str) or not row_id:
-            continue
-        sessions.append(
-            OpencodeSessionSource(
-                provider_instance=provider_instance,
-                native_session_id=row_id,
-                sqlite_db_path=sqlite_db_path,
-                updated_at=coerce_timestamp(time_updated),
-            )
-        )
-
-    return sessions
+    provider_identity: SessionProviderIdentity,
+) -> OpenclawSessionRecord:
+    return OpenclawSessionRecord(
+        provider_identity=provider_identity,
+        native_session_id=session.native_session_id,
+        transcript_path=session.transcript_path,
+        sessions_index_path=session.sessions_index_path,
+        session_keys=session.session_keys,
+        agent_id=session.agent_id,
+        updated_at=session.updated_at,
+    )
 
 
 __all__ = [
@@ -2963,6 +2504,7 @@ __all__ = [
     "format_chat_session_stats_markdown",
     "list_chat_sessions",
     "resolve_chat_sessions",
-    "configured_provider_instances",
+    "configured_session_provider_configs",
+    "configured_legacy_provider_configs",
     "supported_provider_families",
 ]

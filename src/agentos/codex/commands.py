@@ -9,12 +9,14 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir, global_config_path, load_global_config
+from agentos.agent.primitives import AgentConfig
 from agentos.chat.providers import (
     AGENT_INSTANCE_CONFIG_SOURCE,
-    ProviderInstance,
-    provider_instance_config_entries_from_config,
-    provider_instance_from_config_entry,
+    LegacyProviderConfig,
+    legacy_provider_config_entries_from_config,
+    legacy_provider_config_from_config_entry,
 )
+from agentos.codex.agent import CodexAgent
 
 CODEX_AUTH_FILENAME = "auth.json"
 CODEX_DEFAULT_EXECUTABLE = "/opt/homebrew/bin/codex"
@@ -71,13 +73,13 @@ def _normalize_string_tuple(value: object, *, field_name: str) -> tuple[str, ...
     return tuple(normalized)
 
 
-def _load_global_agent_instances(config: dict[str, object]) -> tuple[ProviderInstance, ...]:
-    entries = provider_instance_config_entries_from_config(
+def _load_global_agent_instances(config: dict[str, object]) -> tuple[LegacyProviderConfig, ...]:
+    entries = legacy_provider_config_entries_from_config(
         config,
         source=AGENT_INSTANCE_CONFIG_SOURCE,
     )
-    instances = tuple(provider_instance_from_config_entry(entry) for entry in entries)
-    seen_ids: dict[str, ProviderInstance] = {}
+    instances = tuple(legacy_provider_config_from_config_entry(entry) for entry in entries)
+    seen_ids: dict[str, LegacyProviderConfig] = {}
     for instance in instances:
         if instance.instance_id is None:
             raise CliError("agent.instances ids must not be empty")
@@ -97,7 +99,7 @@ def _resolve_codex_mux_default_instance(
     raw_default_instance_id: object,
     *,
     config: dict[str, object],
-) -> ProviderInstance:
+) -> CodexAgent:
     default_instance_id = validate_string_for_path(
         _require_non_empty_string(
             raw_default_instance_id,
@@ -105,12 +107,12 @@ def _resolve_codex_mux_default_instance(
         ),
         field_name="codex.mux.default_instance_id",
     )
-    instances_by_id = {
+    legacy_configs_by_id = {
         instance.instance_id: instance
         for instance in _load_global_agent_instances(config)
         if instance.instance_id is not None
     }
-    instance = instances_by_id.get(default_instance_id)
+    instance = legacy_configs_by_id.get(default_instance_id)
     if instance is None:
         raise CliError(
             "codex.mux.default_instance_id references unknown agent instance id: "
@@ -121,10 +123,26 @@ def _resolve_codex_mux_default_instance(
             "codex.mux.default_instance_id must reference an agent.instances codex entry; "
             f"got {default_instance_id} ({instance.family})"
         )
-    return instance
+    return CodexAgent.from_config(
+        AgentConfig(
+            provider=instance.family,
+            instance_id=instance.instance_id,
+            label=instance.label,
+            homes=instance.homes,
+            cli_command=instance.cli_command,
+            run_args=instance.run_args,
+            env=instance.env,
+            timeout_sec=instance.timeout_sec,
+            default_model=instance.default_model,
+            model_flag=instance.model_flag,
+            prompt_flag=instance.prompt_flag,
+            is_default=instance.is_default,
+            fingerprint=instance.fingerprint,
+        )
+    )
 
 
-def _resolve_codex_mux_instance_home(instance: ProviderInstance) -> Path:
+def _resolve_codex_mux_instance_home(instance: CodexAgent) -> Path:
     homes = instance.homes_map()
     home = homes.get("home")
     if home is None and len(instance.homes) == 1:
@@ -137,7 +155,7 @@ def _resolve_codex_mux_instance_home(instance: ProviderInstance) -> Path:
     return home
 
 
-def _resolve_codex_mux_instance_executable(instance: ProviderInstance) -> str:
+def _resolve_codex_mux_instance_executable(instance: CodexAgent) -> str:
     if not instance.cli_command:
         raise CliError(
             f"agent.instances entry {instance.instance_id!r} for provider codex "
@@ -146,7 +164,7 @@ def _resolve_codex_mux_instance_executable(instance: ProviderInstance) -> str:
     return instance.cli_command[0]
 
 
-def _resolve_codex_mux_instance_base_args(instance: ProviderInstance) -> tuple[str, ...]:
+def _resolve_codex_mux_instance_base_args(instance: CodexAgent) -> tuple[str, ...]:
     cli_tail = instance.cli_command[1:] if len(instance.cli_command) > 1 else ()
     return (*cli_tail, *instance.run_args)
 
@@ -166,7 +184,7 @@ def _load_codex_mux_config() -> CodexMuxConfig:
         mux_config = raw_mux
 
     raw_default_instance_id = mux_config.get("default_instance_id")
-    default_instance: ProviderInstance | None = None
+    default_instance: CodexAgent | None = None
     if raw_default_instance_id is not None:
         default_instance = _resolve_codex_mux_default_instance(
             raw_default_instance_id,

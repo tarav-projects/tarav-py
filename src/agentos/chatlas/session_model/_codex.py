@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agentos.codex.session import CodexSession
 from agentos.chat.extractors.codex import is_codex_rollout_path
 
 from ._shared import *
@@ -37,20 +38,12 @@ class _CodexRawRollout:
     records: list[_CodexRawRecord]
     warnings: list[str]
 
-def _experimental_normalize_codex_raw_rollout(
-    session: dict[str, Any],
-    *,
-    sources: list[dict[str, object]],
+def _experimental_normalize_codex_session(
+    session: CodexSession,
 ) -> _ExperimentalNormalizationResult | None:
-    primary_artifact = _primary_backing_artifact(session)
-    if primary_artifact is None:
+    primary_path = session.rollout_path
+    if primary_path is None:
         return None
-
-    primary_path_text = _string_or_none(primary_artifact.get("path"))
-    if primary_path_text is None:
-        return None
-
-    primary_path = Path(primary_path_text)
     if not primary_path.is_file():
         return None
 
@@ -60,10 +53,9 @@ def _experimental_normalize_codex_raw_rollout(
     except OSError:
         return None
 
-    source_ref_id = _source_ref_id_for_artifact(primary_artifact, sources=sources)
     rollout = _load_codex_raw_rollout_records(
         primary_path,
-        source_ref_id=source_ref_id,
+        source_ref_id=session.source_ref_id,
     )
     tool_result = _codex_tool_invocations_from_raw_rollout(rollout)
     tool_invocations = _dict_list(tool_result["tool_invocations"])

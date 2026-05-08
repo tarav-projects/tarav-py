@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agentos.claude.session import ClaudeSession
 from agentos.chat.extractors.claude_code import is_claude_code_session_path
 
 from ._shared import *
@@ -47,20 +48,10 @@ class _ClaudeToolResultRecord:
     tool_use_result: dict[str, Any]
     source_refs: list[dict[str, object]]
 
-def _experimental_normalize_claude_code_raw_session(
-    session: dict[str, Any],
-    *,
-    sources: list[dict[str, object]],
+def _experimental_normalize_claude_session(
+    session: ClaudeSession,
 ) -> _ExperimentalNormalizationResult | None:
-    primary_artifact = _primary_backing_artifact(session)
-    if primary_artifact is None:
-        return None
-
-    primary_path_text = _string_or_none(primary_artifact.get("path"))
-    if primary_path_text is None:
-        return None
-
-    primary_path = Path(primary_path_text)
+    primary_path = session.transcript_path
     if not primary_path.is_file():
         return None
 
@@ -70,10 +61,9 @@ def _experimental_normalize_claude_code_raw_session(
     except OSError:
         return None
 
-    source_ref_id = _source_ref_id_for_artifact(primary_artifact, sources=sources)
     raw_session = _load_claude_raw_session_records(
         primary_path,
-        source_ref_id=source_ref_id,
+        source_ref_id=session.source_ref_id,
     )
     raw_counts = _claude_raw_record_counts(raw_session)
     tool_result = _claude_tool_invocations_from_raw_session(raw_session)

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
+from agentos.copilot.session import CopilotSession
 from agentos.chat.extractors.copilot_cli import is_copilot_cli_session_path
 
 from ._shared import *
@@ -64,20 +65,10 @@ class _CopilotToolRequestEvent:
     payload: dict[str, Any]
     source_refs: list[dict[str, object]]
 
-def _experimental_normalize_copilot_cli_raw_events(
-    session: dict[str, Any],
-    *,
-    sources: list[dict[str, object]],
+def _experimental_normalize_copilot_session(
+    session: CopilotSession,
 ) -> _ExperimentalNormalizationResult | None:
-    primary_artifact = _primary_backing_artifact(session)
-    if primary_artifact is None:
-        return None
-
-    primary_path_text = _string_or_none(primary_artifact.get("path"))
-    if primary_path_text is None:
-        return None
-
-    primary_path = Path(primary_path_text)
+    primary_path = session.events_path
     if not primary_path.is_file():
         return None
 
@@ -87,10 +78,9 @@ def _experimental_normalize_copilot_cli_raw_events(
     except (CliError, OSError):
         return None
 
-    source_ref_id = _source_ref_id_for_artifact(primary_artifact, sources=sources)
     raw_events = _load_copilot_raw_events(
         primary_path,
-        source_ref_id=source_ref_id,
+        source_ref_id=session.source_ref_id,
     )
     raw_counts = _copilot_raw_event_counts(raw_events)
 

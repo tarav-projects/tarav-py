@@ -1,8 +1,11 @@
-from .agent import CodexAgent, CodexAgentRunner
-from .commands import register_codex_commands
+from __future__ import annotations
+
+
+def register_codex_commands(subparsers) -> None:
+    from .commands import register_codex_commands as register
+
+    register(subparsers)
 
 __all__ = [
-    "CodexAgent",
-    "CodexAgentRunner",
     "register_codex_commands",
 ]

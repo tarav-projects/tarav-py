@@ -17,22 +17,40 @@ from agentos._core.project import (
     load_project_config,
     project_config_path,
 )
-from agentos.agent.run_profiles import (
-    provider_family_default_cli_command,
-    provider_family_default_model,
-    provider_family_default_model_flag,
-    provider_family_default_prompt_flag,
-    provider_family_default_run_args,
-)
 from agentos.providers import (
     ProviderFamily,
-    ProviderHomeAnchor as ProviderInstanceAnchor,
+    ProviderHomeAnchor as LegacyProviderConfigAnchor,
     ProviderHomeSlot,
     canonical_provider_families,
     canonical_provider_family_for_name,
     require_canonical_provider_family,
 )
+from agentos.codex.chatlas import (
+    CODEX_CHATLAS_DEFAULT_EXCLUDES,
+    CODEX_CHATLAS_DEFAULT_INCLUDES,
+)
+from agentos.claude.chatlas import (
+    CLAUDE_CHATLAS_DEFAULT_EXCLUDES,
+    CLAUDE_CHATLAS_DEFAULT_INCLUDES,
+)
+from agentos.copilot.chatlas import (
+    COPILOT_CHATLAS_DEFAULT_EXCLUDES,
+    COPILOT_CHATLAS_DEFAULT_INCLUDES,
+)
+from agentos.gemini.chatlas import GEMINI_CHATLAS_DEFAULT_EXCLUDES
 from agentos.home.providers import home_provider_for_name
+from agentos.openclaw.chatlas import (
+    OPENCLAW_CHATLAS_DEFAULT_EXCLUDES,
+    OPENCLAW_CHATLAS_DEFAULT_INCLUDES,
+)
+from agentos.opencode.chatlas import (
+    OPENCODE_CHATLAS_DEFAULT_EXCLUDES,
+    OPENCODE_CHATLAS_DEFAULT_INCLUDES,
+)
+from agentos.pi.chatlas import (
+    PI_CHATLAS_DEFAULT_EXCLUDES,
+    PI_CHATLAS_DEFAULT_INCLUDES,
+)
 
 
 @dataclass(frozen=True)
@@ -50,6 +68,52 @@ class ChatProviderSpec:
 
 
 _CANONICAL_CHAT_PROVIDER_SPECS: tuple[ChatProviderSpec, ...] = ()
+
+
+def _legacy_provider_default_cli_command(family_name: str) -> tuple[str, ...]:
+    if family_name == "codex":
+        return ("codex",)
+    if family_name == "copilot-cli":
+        return ("copilot",)
+    if family_name == "pi":
+        return ("pi",)
+    return ()
+
+
+def _legacy_provider_default_run_args(family_name: str) -> tuple[str, ...]:
+    if family_name == "codex":
+        return ("exec", "--dangerously-bypass-approvals-and-sandbox")
+    if family_name == "copilot-cli":
+        return ("--allow-all-tools", "--no-ask-user")
+    if family_name == "opencode":
+        return ("run",)
+    return ()
+
+
+def _legacy_provider_default_model(family_name: str) -> str | None:
+    if family_name == "codex":
+        return "gpt-5.4"
+    return None
+
+
+def _legacy_provider_default_model_flag(family_name: str) -> str | None:
+    if family_name == "codex":
+        return "--model"
+    if family_name == "copilot-cli":
+        return "--model"
+    if family_name == "opencode":
+        return "--model"
+    if family_name == "pi":
+        return "--model"
+    return None
+
+
+def _legacy_provider_default_prompt_flag(family_name: str) -> str | None:
+    if family_name == "copilot-cli":
+        return "-p"
+    if family_name == "pi":
+        return "-p"
+    return None
 
 
 def canonical_chat_provider_specs() -> tuple[ChatProviderSpec, ...]:
@@ -87,176 +151,37 @@ def _chat_provider_spec(
 _CANONICAL_CHAT_PROVIDER_SPECS = (
     _chat_provider_spec(
         "copilot-cli",
-        chatlas_default_includes=(
-            "session-state/**/events.jsonl",
-            "session-state/*.jsonl",
-            "session-state/**/files/**",
-            "session-state/**/plan.md",
-            "session-state/**/checkpoints/*.md",
-            "copilot-instructions.md",
-        ),
-        chatlas_default_excludes=(
-            "pkg/",
-            "logs/",
-            "ide/",
-            "session-state/**/workspace.yaml",
-            "session-state/**/checkpoints/index.md",
-            "session-state/**/vscode.metadata.json",
-            "session-state/**/session.db",
-            "session-state/**/rewind-snapshots/**",
-            "session-state/**/*.lock",
-            "command-history-state.json",
-            "config.json",
-        ),
+        chatlas_default_includes=COPILOT_CHATLAS_DEFAULT_INCLUDES,
+        chatlas_default_excludes=COPILOT_CHATLAS_DEFAULT_EXCLUDES,
     ),
     _chat_provider_spec(
         "gemini-cli",
-        chatlas_default_excludes=(
-            "tmp/bin/",
-            "oauth_creds.json",
-            "google_accounts.json",
-        ),
+        chatlas_default_excludes=GEMINI_CHATLAS_DEFAULT_EXCLUDES,
     ),
     _chat_provider_spec(
         "codex",
-        chatlas_default_includes=(
-            "sessions/**/*.jsonl",
-            "archived_sessions/**/*.jsonl",
-            "session_index.jsonl",
-            "history.jsonl",
-            "AGENTS.md",
-            "rules/*.rules",
-        ),
-        chatlas_default_excludes=(
-            "log/",
-            "vendor_imports/",
-            "worktrees/",
-            "shell_snapshots/",
-            "models_cache.json",
-            "sqlite/",
-            "tmp/",
-            "auth.json",
-            "skills",
-        ),
+        chatlas_default_includes=CODEX_CHATLAS_DEFAULT_INCLUDES,
+        chatlas_default_excludes=CODEX_CHATLAS_DEFAULT_EXCLUDES,
     ),
     _chat_provider_spec(
         "claude-code",
-        chatlas_default_includes=(
-            "projects/**/*.jsonl",
-            "projects/**/sessions-index.json",
-            "archive/**/*.jsonl",
-            "usage-data/session-meta/*.json",
-            "usage-data/facets/*.json",
-            "tasks/**/[0-9]*.json",
-            "todos/*.json",
-            "settings.json",
-            "CLAUDE.md",
-            "claude-code-sessions/**/*.json",
-        ),
-        chatlas_default_excludes=(
-            "debug/",
-            "telemetry/",
-            "cache/",
-            "Cache/",
-            "Code Cache/",
-            "Cookies",
-            "Cookies-journal",
-            "Crashpad/",
-            "DIPS",
-            "DawnGraphiteCache/",
-            "DawnWebGPUCache/",
-            "GPUCache/",
-            "Local Storage/",
-            "Network Persistent State",
-            "Preferences",
-            "Session Storage/",
-            "Shared Dictionary/",
-            "SharedStorage",
-            "TransportSecurity",
-            "Trust Tokens",
-            "Trust Tokens-journal",
-            "WebStorage/",
-            "ant-did",
-            "blob_storage/",
-            "claude-code/",
-            "claude-code-vm/",
-            "statsig/",
-            "sentry/",
-            "shell-snapshots/",
-            "paste-cache/",
-            "session-env/",
-            "downloads/",
-            "ide/",
-            "plugins/",
-            "skills",
-            "vm_bundles/",
-            "file-history/",
-            "backups/",
-            "history.jsonl",
-            "sessions/",
-            "tasks/**/*.lock",
-            "tasks/**/.highwatermark",
-            "mcp-needs-auth-cache.json",
-            "hooks/",
-            "statusline",
-            "statusline.dump",
-            ".example-claude-statusline.json",
-            "stats-cache.json",
-            "config.json",
-            "claude_desktop_config.json",
-            "git-worktrees.json",
-            "extensions-blocklist.json",
-            "window-state.json",
-        ),
+        chatlas_default_includes=CLAUDE_CHATLAS_DEFAULT_INCLUDES,
+        chatlas_default_excludes=CLAUDE_CHATLAS_DEFAULT_EXCLUDES,
     ),
     _chat_provider_spec(
         "opencode",
-        chatlas_default_includes=(
-            "opencode.db",
-            "opencode.db-wal",
-            "storage/session_diff/*.json",
-            "tool-output/tool_*",
-        ),
-        chatlas_default_excludes=(
-            "auth.json",
-            "log/",
-            "snapshot/",
-            "opencode.db-shm",
-            "storage/migration",
-            "bin/",
-        ),
+        chatlas_default_includes=OPENCODE_CHATLAS_DEFAULT_INCLUDES,
+        chatlas_default_excludes=OPENCODE_CHATLAS_DEFAULT_EXCLUDES,
     ),
     _chat_provider_spec(
         "pi",
-        chatlas_default_includes=(
-            "sessions/**",
-            "settings.json",
-        ),
-        chatlas_default_excludes=(
-            "auth.json",
-            "bin/",
-        ),
+        chatlas_default_includes=PI_CHATLAS_DEFAULT_INCLUDES,
+        chatlas_default_excludes=PI_CHATLAS_DEFAULT_EXCLUDES,
     ),
     _chat_provider_spec(
         "openclaw",
-        chatlas_default_excludes=("agents/*/agent/auth*.json",),
-        chatlas_default_includes=(
-            "agents/*/sessions/**",
-            "agents/*/agent/*.md",
-            "agents/*/agent/*.json",
-            "agents/*/agent/*.toml",
-            "agents/*/agent/*.yaml",
-            "agents/*/agent/*.yml",
-            "agents/*/agent/*.ini",
-            "workspace/AGENTS.md",
-            "workspace/BOOTSTRAP.md",
-            "workspace/HEARTBEAT.md",
-            "workspace/IDENTITY.md",
-            "workspace/SOUL.md",
-            "workspace/TOOLS.md",
-            "workspace/USER.md",
-            "cron/jobs.json",
-        ),
+        chatlas_default_excludes=OPENCLAW_CHATLAS_DEFAULT_EXCLUDES,
+        chatlas_default_includes=OPENCLAW_CHATLAS_DEFAULT_INCLUDES,
     ),
     _chat_provider_spec(
         "agents",
@@ -266,19 +191,19 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
 
 
 @dataclass(frozen=True)
-class ProviderInstanceConfigSource:
+class LegacyProviderConfigSource:
     object_path: tuple[str, ...]
     field_prefix: str
 
 
-AGENT_INSTANCE_CONFIG_SOURCE = ProviderInstanceConfigSource(
+AGENT_INSTANCE_CONFIG_SOURCE = LegacyProviderConfigSource(
     object_path=("agent", "instances"),
     field_prefix="agent.instances",
 )
 
 
 @dataclass(frozen=True)
-class ProviderInstanceConfigEntry:
+class LegacyProviderConfigEntry:
     field_prefix: str
     index: int
     raw_instance: dict[str, object]
@@ -306,23 +231,23 @@ def load_chat_config_documents(*, start_path: Path | str = ".") -> tuple[dict[st
     return tuple(configs)
 
 
-def provider_instance_config_entries_from_config(
+def legacy_provider_config_entries_from_config(
     config: dict[str, object],
     *,
-    source: ProviderInstanceConfigSource,
-) -> tuple[ProviderInstanceConfigEntry, ...]:
+    source: LegacyProviderConfigSource,
+) -> tuple[LegacyProviderConfigEntry, ...]:
     raw_instances = _config_value_at_object_path(config, object_path=source.object_path)
     if raw_instances is None:
         return ()
     if not isinstance(raw_instances, list):
         raise CliError(f"config field {'.'.join(source.object_path)} must be a JSON array")
 
-    entries: list[ProviderInstanceConfigEntry] = []
+    entries: list[LegacyProviderConfigEntry] = []
     for index, raw_instance in enumerate(raw_instances):
         if not isinstance(raw_instance, dict):
             raise CliError(f"{source.field_prefix}[{index}] must be a JSON object")
         entries.append(
-            ProviderInstanceConfigEntry(
+            LegacyProviderConfigEntry(
                 field_prefix=source.field_prefix,
                 index=index,
                 raw_instance=raw_instance,
@@ -331,16 +256,16 @@ def provider_instance_config_entries_from_config(
     return tuple(entries)
 
 
-def load_provider_instance_config_entries(
+def load_legacy_provider_config_entries(
     *,
     start_path: Path | str = ".",
-    sources: tuple[ProviderInstanceConfigSource, ...],
-) -> tuple[ProviderInstanceConfigEntry, ...]:
-    entries: list[ProviderInstanceConfigEntry] = []
+    sources: tuple[LegacyProviderConfigSource, ...],
+) -> tuple[LegacyProviderConfigEntry, ...]:
+    entries: list[LegacyProviderConfigEntry] = []
     for config in load_chat_config_documents(start_path=start_path):
         for source in sources:
             entries.extend(
-                provider_instance_config_entries_from_config(
+                legacy_provider_config_entries_from_config(
                     config,
                     source=source,
                 )
@@ -370,41 +295,41 @@ def _config_value_at_object_path(config: dict[str, object], *, object_path: tupl
     return current.get(object_path[-1])
 
 
-def load_configured_provider_instances(*, start_path: Path | str = ".") -> tuple["ProviderInstance", ...]:
-    entries = load_provider_instance_config_entries(
+def load_legacy_provider_configs(*, start_path: Path | str = ".") -> tuple["LegacyProviderConfig", ...]:
+    entries = load_legacy_provider_config_entries(
         start_path=start_path,
         sources=(AGENT_INSTANCE_CONFIG_SOURCE,),
     )
-    provider_instances = tuple(provider_instance_from_config_entry(entry) for entry in entries)
-    _validate_unique_provider_instance_ids(provider_instances)
-    return provider_instances
+    legacy_provider_configs = tuple(legacy_provider_config_from_config_entry(entry) for entry in entries)
+    _validate_unique_legacy_provider_config_ids(legacy_provider_configs)
+    return legacy_provider_configs
 
 
-def select_configured_provider_instances(
-    configured_instances: tuple["ProviderInstance", ...],
+def select_legacy_provider_configs(
+    configured_legacy_configs: tuple["LegacyProviderConfig", ...],
     *,
     selected_instance_ids: tuple[str, ...] | None,
     supported_families: set[str],
     selector_field_name: str,
     unsupported_instance_label: str,
     default_to_supported_families: bool,
-) -> tuple["ProviderInstance", ...]:
+) -> tuple["LegacyProviderConfig", ...]:
     if selected_instance_ids is None:
         if not default_to_supported_families:
             return ()
         return tuple(
-            provider_instance
-            for provider_instance in configured_instances
-            if provider_instance.family in supported_families
+            legacy_provider_config
+            for legacy_provider_config in configured_legacy_configs
+            if legacy_provider_config.family in supported_families
         )
 
-    instances_by_id = {
-        provider_instance.instance_id: provider_instance
-        for provider_instance in configured_instances
-        if provider_instance.instance_id is not None
+    legacy_configs_by_id = {
+        legacy_provider_config.instance_id: legacy_provider_config
+        for legacy_provider_config in configured_legacy_configs
+        if legacy_provider_config.instance_id is not None
     }
     missing_ids = [
-        instance_id for instance_id in selected_instance_ids if instance_id not in instances_by_id
+        instance_id for instance_id in selected_instance_ids if instance_id not in legacy_configs_by_id
     ]
     if missing_ids:
         suffix = "s" if len(missing_ids) != 1 else ""
@@ -416,7 +341,7 @@ def select_configured_provider_instances(
     unsupported_ids = [
         instance_id
         for instance_id in selected_instance_ids
-        if instances_by_id[instance_id].family not in supported_families
+        if legacy_configs_by_id[instance_id].family not in supported_families
     ]
     if unsupported_ids:
         suffix = "s" if len(unsupported_ids) != 1 else ""
@@ -424,7 +349,7 @@ def select_configured_provider_instances(
             f"{selector_field_name} references unsupported {unsupported_instance_label} "
             f"instance id{suffix}: {', '.join(unsupported_ids)}"
         )
-    return tuple(instances_by_id[instance_id] for instance_id in selected_instance_ids)
+    return tuple(legacy_configs_by_id[instance_id] for instance_id in selected_instance_ids)
 
 
 def load_unique_string_list(
@@ -456,11 +381,11 @@ def load_unique_string_list(
     return tuple(items)
 
 
-def default_provider_instances(
+def default_legacy_provider_configs(
     *,
     supports_session_discovery_only: bool = False,
-) -> tuple["ProviderInstance", ...]:
-    instances: list[ProviderInstance] = []
+) -> tuple["LegacyProviderConfig", ...]:
+    instances: list[LegacyProviderConfig] = []
     for provider_spec in canonical_chat_provider_specs():
         if supports_session_discovery_only and not provider_spec.supports_session_discovery:
             continue
@@ -469,7 +394,7 @@ def default_provider_instances(
         direct_targets: list[Path] = []
         grep_targets: list[Path] = []
         sqlite_db_paths: list[Path] = []
-        anchors: list[ProviderInstanceAnchor] = []
+        anchors: list[LegacyProviderConfigAnchor] = []
 
         for slot in provider_spec.home_slots:
             home = Path(slot.default_home).expanduser().resolve()
@@ -481,17 +406,17 @@ def default_provider_instances(
             anchors.extend(slot.build_anchors(home=home))
 
         instances.append(
-            ProviderInstance(
+            LegacyProviderConfig(
                 family=provider_spec.family,
                 homes=tuple(homes),
                 direct_targets=_unique_paths(tuple(direct_targets)),
                 grep_targets=_unique_paths(tuple(grep_targets)),
                 sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
-                cli_command=provider_family_default_cli_command(provider_spec.family),
-                run_args=provider_family_default_run_args(provider_spec.family),
-                default_model=provider_family_default_model(provider_spec.family),
-                model_flag=provider_family_default_model_flag(provider_spec.family),
-                prompt_flag=provider_family_default_prompt_flag(provider_spec.family),
+                cli_command=_legacy_provider_default_cli_command(provider_spec.family),
+                run_args=_legacy_provider_default_run_args(provider_spec.family),
+                default_model=_legacy_provider_default_model(provider_spec.family),
+                model_flag=_legacy_provider_default_model_flag(provider_spec.family),
+                prompt_flag=_legacy_provider_default_prompt_flag(provider_spec.family),
                 anchors=tuple(anchors),
                 is_default=True,
             )
@@ -499,7 +424,7 @@ def default_provider_instances(
     return tuple(instances)
 
 
-def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "ProviderInstance":
+def legacy_provider_config_from_config_entry(entry: LegacyProviderConfigEntry) -> "LegacyProviderConfig":
     raw_instance = entry.raw_instance
     family_name = raw_instance.get("provider")
     if not isinstance(family_name, str) or not family_name:
@@ -578,7 +503,7 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
             field_name=entry.field_name("cli_command"),
         )
         if raw_cli_command is not None
-        else provider_family_default_cli_command(family_name)
+        else _legacy_provider_default_cli_command(family_name)
     )
     run_args = (
         _load_string_argv(
@@ -586,7 +511,7 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
             field_name=entry.field_name("run_args"),
         )
         if raw_run_args is not None
-        else provider_family_default_run_args(family_name)
+        else _legacy_provider_default_run_args(family_name)
     )
     env = _load_string_mapping(
         raw_env,
@@ -599,19 +524,19 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
     else:
         timeout_sec = raw_timeout_sec
     if raw_default_model is None:
-        default_model = provider_family_default_model(family_name)
+        default_model = _legacy_provider_default_model(family_name)
     elif not isinstance(raw_default_model, str) or not raw_default_model.strip():
         raise CliError(f"{entry.field_name('default_model')} must be a non-empty string")
     else:
         default_model = raw_default_model.strip()
     if raw_model_flag is None:
-        model_flag = provider_family_default_model_flag(family_name)
+        model_flag = _legacy_provider_default_model_flag(family_name)
     elif not isinstance(raw_model_flag, str) or not raw_model_flag.strip():
         raise CliError(f"{entry.field_name('model_flag')} must be a non-empty string")
     else:
         model_flag = raw_model_flag.strip()
     if raw_prompt_flag is None:
-        prompt_flag = provider_family_default_prompt_flag(family_name)
+        prompt_flag = _legacy_provider_default_prompt_flag(family_name)
     elif not isinstance(raw_prompt_flag, str) or not raw_prompt_flag.strip():
         raise CliError(f"{entry.field_name('prompt_flag')} must be a non-empty string")
     else:
@@ -641,7 +566,7 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
     resolved_direct_targets: tuple[Path, ...] = ()
     resolved_grep_targets: tuple[Path, ...] = ()
     resolved_sqlite_db_paths: tuple[Path, ...] = ()
-    anchors: tuple[ProviderInstanceAnchor, ...] = ()
+    anchors: tuple[LegacyProviderConfigAnchor, ...] = ()
 
     if home is not None or homes:
         if provider_spec is None:
@@ -686,7 +611,7 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
         direct_targets_list: list[Path] = []
         grep_targets_list: list[Path] = []
         sqlite_db_paths_list: list[Path] = []
-        anchors_list: list[ProviderInstanceAnchor] = []
+        anchors_list: list[LegacyProviderConfigAnchor] = []
         for slot in provider_spec.home_slots:
             raw_home = resolved_homes.get(slot.key)
             if raw_home is None:
@@ -713,12 +638,12 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
         resolved_direct_targets = _resolve_raw_paths(direct_paths)
         resolved_grep_targets = _resolve_raw_paths(grep_paths) if grep_paths else resolved_direct_targets
         resolved_sqlite_db_paths = _resolve_raw_paths(sqlite_db_paths)
-        anchors = _build_explicit_provider_instance_anchors(
+        anchors = _build_explicit_legacy_provider_config_anchors(
             direct_targets=resolved_direct_targets,
             sqlite_db_paths=resolved_sqlite_db_paths,
         )
 
-    return ProviderInstance(
+    return LegacyProviderConfig(
         family=provider_family.family,
         instance_id=instance_id,
         label=label,
@@ -742,26 +667,26 @@ def provider_instance_from_config_entry(entry: ProviderInstanceConfigEntry) -> "
     )
 
 
-def _validate_unique_provider_instance_ids(provider_instances: tuple["ProviderInstance", ...]) -> None:
-    seen_instances: dict[str, ProviderInstance] = {}
-    for provider_instance in provider_instances:
-        if provider_instance.instance_id is None:
+def _validate_unique_legacy_provider_config_ids(legacy_provider_configs: tuple["LegacyProviderConfig", ...]) -> None:
+    seen_legacy_configs: dict[str, LegacyProviderConfig] = {}
+    for legacy_provider_config in legacy_provider_configs:
+        if legacy_provider_config.instance_id is None:
             raise CliError("agent.instances ids must not be empty")
-        existing = seen_instances.get(provider_instance.instance_id)
+        existing = seen_legacy_configs.get(legacy_provider_config.instance_id)
         if existing is None:
-            seen_instances[provider_instance.instance_id] = provider_instance
+            seen_legacy_configs[legacy_provider_config.instance_id] = legacy_provider_config
             continue
         raise CliError(
             "agent.instances ids must be unique; "
-            f"duplicate id {provider_instance.instance_id} for providers "
-            f"{existing.family} and {provider_instance.family}"
+            f"duplicate id {legacy_provider_config.instance_id} for providers "
+            f"{existing.family} and {legacy_provider_config.family}"
         )
 
 
-def _provider_instance_fingerprint(
+def _legacy_provider_config_fingerprint(
     *,
     family: str,
-    anchors: tuple[ProviderInstanceAnchor, ...],
+    anchors: tuple[LegacyProviderConfigAnchor, ...],
 ) -> str:
     digest = hashlib.sha256()
     digest.update(family.encode("utf-8"))
@@ -854,17 +779,17 @@ def _resolve_raw_paths(raw_paths: tuple[str, ...]) -> tuple[Path, ...]:
     return _unique_paths(tuple(Path(raw_path).expanduser().resolve() for raw_path in raw_paths))
 
 
-def _build_explicit_provider_instance_anchors(
+def _build_explicit_legacy_provider_config_anchors(
     *,
     direct_targets: tuple[Path, ...],
     sqlite_db_paths: tuple[Path, ...],
-) -> tuple["ProviderInstanceAnchor", ...]:
+) -> tuple["LegacyProviderConfigAnchor", ...]:
     anchors = [
-        ProviderInstanceAnchor(role=f"direct_target_{index + 1}", path=path)
+        LegacyProviderConfigAnchor(role=f"direct_target_{index + 1}", path=path)
         for index, path in enumerate(direct_targets)
     ]
     anchors.extend(
-        ProviderInstanceAnchor(role=f"sqlite_db_{index + 1}", path=path)
+        LegacyProviderConfigAnchor(role=f"sqlite_db_{index + 1}", path=path)
         for index, path in enumerate(sqlite_db_paths)
     )
     return tuple(anchors)
@@ -872,7 +797,7 @@ def _build_explicit_provider_instance_anchors(
 
 
 @dataclass(frozen=True)
-class ProviderInstance:
+class LegacyProviderConfig:
     family: str
     instance_id: str | None = None
     label: str | None = None
@@ -891,7 +816,7 @@ class ProviderInstance:
     usage_progression_limit: str | None = None
     includes: tuple[str, ...] = ()
     excludes: tuple[str, ...] = ()
-    anchors: tuple[ProviderInstanceAnchor, ...] = ()
+    anchors: tuple[LegacyProviderConfigAnchor, ...] = ()
     is_default: bool = False
 
     def homes_map(self) -> dict[str, Path]:
@@ -900,19 +825,19 @@ class ProviderInstance:
     @property
     def fingerprint(self) -> str:
         if self.anchors:
-            return _provider_instance_fingerprint(
+            return _legacy_provider_config_fingerprint(
                 family=self.family,
                 anchors=self.anchors,
             )
 
         fallback_anchors = tuple(
-            ProviderInstanceAnchor(role=f"direct_target_{index + 1}", path=path)
+            LegacyProviderConfigAnchor(role=f"direct_target_{index + 1}", path=path)
             for index, path in enumerate(self.direct_targets)
         ) + tuple(
-            ProviderInstanceAnchor(role=f"sqlite_db_{index + 1}", path=path)
+            LegacyProviderConfigAnchor(role=f"sqlite_db_{index + 1}", path=path)
             for index, path in enumerate(self.sqlite_db_paths)
         )
-        return _provider_instance_fingerprint(
+        return _legacy_provider_config_fingerprint(
             family=self.family,
             anchors=fallback_anchors,
         )
@@ -1004,19 +929,19 @@ __all__ = [
     "canonical_provider_family_for_name",
     "ChatProviderSpec",
     "AGENT_INSTANCE_CONFIG_SOURCE",
-    "default_provider_instances",
+    "default_legacy_provider_configs",
     "load_chat_config_documents",
-    "load_configured_provider_instances",
+    "load_legacy_provider_configs",
     "load_unique_string_list",
-    "load_provider_instance_config_entries",
+    "load_legacy_provider_config_entries",
     "ProviderFamily",
     "ProviderHomeSlot",
-    "ProviderInstanceConfigEntry",
-    "ProviderInstanceConfigSource",
-    "ProviderInstance",
-    "ProviderInstanceAnchor",
-    "provider_instance_from_config_entry",
-    "provider_instance_config_entries_from_config",
+    "LegacyProviderConfigEntry",
+    "LegacyProviderConfigSource",
+    "LegacyProviderConfig",
+    "LegacyProviderConfigAnchor",
+    "legacy_provider_config_from_config_entry",
+    "legacy_provider_config_entries_from_config",
     "require_canonical_provider_family",
-    "select_configured_provider_instances",
+    "select_legacy_provider_configs",
 ]

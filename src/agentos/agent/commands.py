@@ -26,7 +26,7 @@ _AGENT_ACCOUNTS_PROVIDER_CHOICES = tuple(
 )
 
 
-def _list_provider_instances(
+def _list_configured_agents(
     *,
     provider: str | None,
     start_path: Path,
@@ -59,7 +59,7 @@ def _config_start_path(args: argparse.Namespace) -> Path:
 
 def _cmd_agent_list(args: argparse.Namespace) -> int:
     config_start_path = _config_start_path(args)
-    agents = _list_provider_instances(
+    agents = _list_configured_agents(
         provider=args.provider,
         start_path=config_start_path,
     )

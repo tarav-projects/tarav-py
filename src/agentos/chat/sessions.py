@@ -7,9 +7,6 @@ from typing import Any
 from urllib.parse import quote
 
 from agentos._core.sequences import _unique_paths, _unique_strings
-from agentos.chat.providers import ProviderInstance, ProviderInstanceAnchor
-
-
 def coerce_timestamp(value: object) -> float | None:
     if value is None:
         return None
@@ -80,6 +77,27 @@ def _build_path_finding(
 
 
 @dataclass(frozen=True)
+class SessionProviderIdentity:
+    family: str
+    identity: tuple[object, ...]
+    uri_key: str
+    fingerprint: str
+    summary_payload: dict[str, Any]
+
+    def identity_key(self) -> tuple[object, ...]:
+        return self.identity
+
+    def uri_component(self) -> str:
+        return self.uri_key
+
+    def summary(self) -> dict[str, Any]:
+        return dict(self.summary_payload)
+
+    def matches_fingerprint_prefix(self, prefix: str) -> bool:
+        return self.fingerprint.startswith(prefix)
+
+
+@dataclass(frozen=True)
 class BackingArtifact:
     role: str
     path: Path
@@ -104,13 +122,13 @@ class BackingArtifact:
 
 
 @dataclass(frozen=True)
-class SessionSource:
-    provider_instance: ProviderInstance
+class ChatSessionRecord:
+    provider_identity: SessionProviderIdentity
     native_session_id: str
 
     @property
     def provider_family(self) -> str:
-        return self.provider_instance.family
+        return self.provider_identity.family
 
     @property
     def provider(self) -> str:
@@ -120,10 +138,10 @@ class SessionSource:
     def session_id(self) -> str:
         return self.native_session_id
 
-    def source_identity_key(self) -> tuple[object, ...]:
+    def record_identity_key(self) -> tuple[object, ...]:
         return (
             self.provider_family,
-            self.provider_instance.identity_key(),
+            self.provider_identity.identity_key(),
             self.native_session_id,
         )
 
@@ -151,7 +169,7 @@ class SessionSource:
     def sort_timestamp(self) -> float | None:
         return None
 
-    def merge(self, other: SessionSource) -> SessionSource:
+    def merge(self, other: ChatSessionRecord) -> ChatSessionRecord:
         raise TypeError(f"cannot merge {type(self).__name__} with {type(other).__name__}")
 
     def display_name(self) -> str | None:
@@ -184,39 +202,39 @@ class SessionSource:
         return ()
 
 
-def _merge_requires_same_identity(left: SessionSource, right: SessionSource) -> bool:
-    return type(left) is type(right) and left.source_identity_key() == right.source_identity_key()
+def _merge_requires_same_identity(left: ChatSessionRecord, right: ChatSessionRecord) -> bool:
+    return type(left) is type(right) and left.record_identity_key() == right.record_identity_key()
 
 
-def _build_chat_session_uri(source: SessionSource) -> str:
+def _build_chat_session_uri(record: ChatSessionRecord) -> str:
     return (
-        f"agentos://chat-session/{quote(source.provider_family, safe='')}/"
-        f"{source.provider_instance.uri_component()}/"
-        f"{quote(source.native_session_id, safe='')}"
+        f"agentos://chat-session/{quote(record.provider_family, safe='')}/"
+        f"{record.provider_identity.uri_component()}/"
+        f"{quote(record.native_session_id, safe='')}"
     )
 
 
 @dataclass(frozen=True)
 class ChatSession:
-    source: SessionSource
+    record: ChatSessionRecord
 
     def query_fields(self) -> tuple[tuple[str, str], ...]:
         return (
             ("uri", self.uri),
-            ("provider_instance_fingerprint", self.provider_instance.fingerprint),
-        ) + self.source.query_fields()
+            ("provider_instance_fingerprint", self.provider_identity.fingerprint),
+        ) + self.record.query_fields()
 
     @property
     def uri(self) -> str:
-        return _build_chat_session_uri(self.source)
+        return _build_chat_session_uri(self.record)
 
     @property
     def provider_family(self) -> str:
-        return self.source.provider_family
+        return self.record.provider_family
 
     @property
-    def provider_instance(self) -> ProviderInstance:
-        return self.source.provider_instance
+    def provider_identity(self) -> SessionProviderIdentity:
+        return self.record.provider_identity
 
     @property
     def provider(self) -> str:
@@ -224,39 +242,39 @@ class ChatSession:
 
     @property
     def session_id(self) -> str:
-        return self.source.session_id
+        return self.record.session_id
 
     def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
-        return self.source.backing_artifacts()
+        return self.record.backing_artifacts()
 
     def primary_backing_artifact(self) -> BackingArtifact | None:
-        return self.source.primary_backing_artifact()
+        return self.record.primary_backing_artifact()
 
     def canonical_findings(self) -> tuple[dict[str, Any], ...]:
-        return self.source.canonical_findings()
+        return self.record.canonical_findings()
 
     def primary_artifact_path(self) -> Path | None:
-        return self.source.primary_artifact_path()
+        return self.record.primary_artifact_path()
 
     def created_timestamp(self) -> float | None:
-        return self.source.created_timestamp()
+        return self.record.created_timestamp()
 
     def sort_timestamp(self) -> float | None:
-        return self.source.sort_timestamp()
+        return self.record.sort_timestamp()
 
     def merge(self, other: ChatSession) -> ChatSession:
         if self.uri != other.uri:
             raise TypeError(f"cannot merge distinct chat sessions: {self.uri} != {other.uri}")
-        return ChatSession(source=self.source.merge(other.source))
+        return ChatSession(record=self.record.merge(other.record))
 
     def display_name(self) -> str | None:
-        return self.source.display_name()
+        return self.record.display_name()
 
     def display_name_field(self) -> str | None:
-        return self.source.display_name_field()
+        return self.record.display_name_field()
 
     def native_fields(self) -> dict[str, Any]:
-        return self.source.native_fields()
+        return self.record.native_fields()
 
     def matches_query(self, query: str) -> bool:
         return any(value == query for _, value in self.query_fields())
@@ -273,11 +291,11 @@ class ChatSession:
         query: str,
         matched_field: str,
     ) -> tuple[dict[str, Any], ...]:
-        return self.source.supplemental_findings(query=query, matched_field=matched_field)
+        return self.record.supplemental_findings(query=query, matched_field=matched_field)
 
 
 @dataclass(frozen=True)
-class ClaudeCodeSessionSource(SessionSource):
+class ClaudeCodeSessionRecord(ChatSessionRecord):
     artifact_paths: tuple[Path, ...]
     source_kind: str = "project"
     title: str | None = None
@@ -311,14 +329,14 @@ class ClaudeCodeSessionSource(SessionSource):
             *(safe_path_mtime(path) for path in self.artifact_paths),
         )
 
-    def merge(self, other: SessionSource) -> SessionSource:
+    def merge(self, other: ChatSessionRecord) -> ChatSessionRecord:
         if not _merge_requires_same_identity(self, other):
             return super().merge(other)
-        assert isinstance(other, ClaudeCodeSessionSource)
+        assert isinstance(other, ClaudeCodeSessionRecord)
 
         source_kind = self.source_kind if self.source_kind == other.source_kind else "mixed"
-        return ClaudeCodeSessionSource(
-            provider_instance=self.provider_instance,
+        return ClaudeCodeSessionRecord(
+            provider_identity=self.provider_identity,
             native_session_id=self.native_session_id,
             artifact_paths=_unique_paths(self.artifact_paths + other.artifact_paths),
             source_kind=source_kind,
@@ -348,7 +366,7 @@ class ClaudeCodeSessionSource(SessionSource):
 
 
 @dataclass(frozen=True)
-class CodexSessionSource(SessionSource):
+class CodexSessionRecord(ChatSessionRecord):
     artifact_paths: tuple[Path, ...] = ()
     thread_name: str | None = None
     index_paths: tuple[Path, ...] = ()
@@ -391,13 +409,13 @@ class CodexSessionSource(SessionSource):
             *(safe_path_mtime(path) for path in self.artifact_paths),
         )
 
-    def merge(self, other: SessionSource) -> SessionSource:
+    def merge(self, other: ChatSessionRecord) -> ChatSessionRecord:
         if not _merge_requires_same_identity(self, other):
             return super().merge(other)
-        assert isinstance(other, CodexSessionSource)
+        assert isinstance(other, CodexSessionRecord)
 
-        return CodexSessionSource(
-            provider_instance=self.provider_instance,
+        return CodexSessionRecord(
+            provider_identity=self.provider_identity,
             native_session_id=self.native_session_id,
             artifact_paths=_unique_paths(self.artifact_paths + other.artifact_paths),
             thread_name=self.thread_name or other.thread_name,
@@ -449,7 +467,7 @@ class CodexSessionSource(SessionSource):
 
 
 @dataclass(frozen=True)
-class CopilotCliSessionSource(SessionSource):
+class CopilotCliSessionRecord(ChatSessionRecord):
     session_root: Path | None = None
     session_file: Path | None = None
     updated_at: float | None = None
@@ -508,13 +526,13 @@ class CopilotCliSessionSource(SessionSource):
             safe_path_mtime(self.session_root),
         )
 
-    def merge(self, other: SessionSource) -> SessionSource:
+    def merge(self, other: ChatSessionRecord) -> ChatSessionRecord:
         if not _merge_requires_same_identity(self, other):
             return super().merge(other)
-        assert isinstance(other, CopilotCliSessionSource)
+        assert isinstance(other, CopilotCliSessionRecord)
 
-        return CopilotCliSessionSource(
-            provider_instance=self.provider_instance,
+        return CopilotCliSessionRecord(
+            provider_identity=self.provider_identity,
             native_session_id=self.native_session_id,
             session_root=self.session_root or other.session_root,
             session_file=self.session_file or other.session_file,
@@ -523,7 +541,7 @@ class CopilotCliSessionSource(SessionSource):
 
 
 @dataclass(frozen=True)
-class GeminiCliSessionSource(SessionSource):
+class GeminiCliSessionRecord(ChatSessionRecord):
     artifact_paths: tuple[Path, ...]
     updated_at: float | None = None
 
@@ -552,13 +570,13 @@ class GeminiCliSessionSource(SessionSource):
             *(safe_path_mtime(path) for path in self.artifact_paths),
         )
 
-    def merge(self, other: SessionSource) -> SessionSource:
+    def merge(self, other: ChatSessionRecord) -> ChatSessionRecord:
         if not _merge_requires_same_identity(self, other):
             return super().merge(other)
-        assert isinstance(other, GeminiCliSessionSource)
+        assert isinstance(other, GeminiCliSessionRecord)
 
-        return GeminiCliSessionSource(
-            provider_instance=self.provider_instance,
+        return GeminiCliSessionRecord(
+            provider_identity=self.provider_identity,
             native_session_id=self.native_session_id,
             artifact_paths=_unique_paths(self.artifact_paths + other.artifact_paths),
             updated_at=_coalesce_timestamp(self.updated_at, other.updated_at),
@@ -566,7 +584,7 @@ class GeminiCliSessionSource(SessionSource):
 
 
 @dataclass(frozen=True)
-class PiSessionSource(SessionSource):
+class PiSessionRecord(ChatSessionRecord):
     artifact_paths: tuple[Path, ...]
     cwd: str | None = None
     model_provider: str | None = None
@@ -604,10 +622,10 @@ class PiSessionSource(SessionSource):
             *(safe_path_mtime(path) for path in self.artifact_paths),
         )
 
-    def merge(self, other: SessionSource) -> SessionSource:
+    def merge(self, other: ChatSessionRecord) -> ChatSessionRecord:
         if not _merge_requires_same_identity(self, other):
             return super().merge(other)
-        assert isinstance(other, PiSessionSource)
+        assert isinstance(other, PiSessionRecord)
 
         cwd = self.cwd if self.cwd == other.cwd else self.cwd or other.cwd
         model_provider = (
@@ -621,8 +639,8 @@ class PiSessionSource(SessionSource):
             if self.thinking_level == other.thinking_level
             else self.thinking_level or other.thinking_level
         )
-        return PiSessionSource(
-            provider_instance=self.provider_instance,
+        return PiSessionRecord(
+            provider_identity=self.provider_identity,
             native_session_id=self.native_session_id,
             artifact_paths=_unique_paths(self.artifact_paths + other.artifact_paths),
             cwd=cwd,
@@ -657,7 +675,7 @@ class PiSessionSource(SessionSource):
 
 
 @dataclass(frozen=True)
-class OpenclawSessionSource(SessionSource):
+class OpenclawSessionRecord(ChatSessionRecord):
     transcript_path: Path | None = None
     sessions_index_path: Path | None = None
     session_keys: tuple[str, ...] = ()
@@ -711,14 +729,14 @@ class OpenclawSessionSource(SessionSource):
             safe_path_mtime(self.sessions_index_path),
         )
 
-    def merge(self, other: SessionSource) -> SessionSource:
+    def merge(self, other: ChatSessionRecord) -> ChatSessionRecord:
         if not _merge_requires_same_identity(self, other):
             return super().merge(other)
-        assert isinstance(other, OpenclawSessionSource)
+        assert isinstance(other, OpenclawSessionRecord)
 
         agent_id = self.agent_id if self.agent_id == other.agent_id else self.agent_id or other.agent_id
-        return OpenclawSessionSource(
-            provider_instance=self.provider_instance,
+        return OpenclawSessionRecord(
+            provider_identity=self.provider_identity,
             native_session_id=self.native_session_id,
             transcript_path=self.transcript_path or other.transcript_path,
             sessions_index_path=self.sessions_index_path or other.sessions_index_path,
@@ -740,7 +758,7 @@ class OpenclawSessionSource(SessionSource):
 
 
 @dataclass(frozen=True)
-class OpencodeSessionSource(SessionSource):
+class OpencodeSessionRecord(ChatSessionRecord):
     diff_path: Path | None = None
     sqlite_db_path: Path | None = None
     updated_at: float | None = None
@@ -794,13 +812,13 @@ class OpencodeSessionSource(SessionSource):
             safe_path_mtime(self.sqlite_db_path),
         )
 
-    def merge(self, other: SessionSource) -> SessionSource:
+    def merge(self, other: ChatSessionRecord) -> ChatSessionRecord:
         if not _merge_requires_same_identity(self, other):
             return super().merge(other)
-        assert isinstance(other, OpencodeSessionSource)
+        assert isinstance(other, OpencodeSessionRecord)
 
-        return OpencodeSessionSource(
-            provider_instance=self.provider_instance,
+        return OpencodeSessionRecord(
+            provider_identity=self.provider_identity,
             native_session_id=self.native_session_id,
             diff_path=self.diff_path or other.diff_path,
             sqlite_db_path=self.sqlite_db_path or other.sqlite_db_path,
@@ -811,16 +829,15 @@ class OpencodeSessionSource(SessionSource):
 __all__ = [
     "BackingArtifact",
     "ChatSession",
-    "ClaudeCodeSessionSource",
-    "CodexSessionSource",
-    "CopilotCliSessionSource",
-    "GeminiCliSessionSource",
-    "PiSessionSource",
-    "OpenclawSessionSource",
-    "OpencodeSessionSource",
-    "ProviderInstance",
-    "ProviderInstanceAnchor",
-    "SessionSource",
+    "ClaudeCodeSessionRecord",
+    "CodexSessionRecord",
+    "CopilotCliSessionRecord",
+    "GeminiCliSessionRecord",
+    "PiSessionRecord",
+    "OpenclawSessionRecord",
+    "OpencodeSessionRecord",
+    "SessionProviderIdentity",
+    "ChatSessionRecord",
     "coerce_timestamp",
     "safe_path_mtime",
 ]

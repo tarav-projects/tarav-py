@@ -24,16 +24,17 @@ from agentos.chat.core import (
     _format_resolved_session_choices,
     _format_stats_timestamp,
     _provider_family_for_name,
+    _session_provider_home_slots,
     _sort_sessions,
+    SessionProviderConfig,
 )
 from agentos.chat.providers import (
-    ProviderInstance,
     load_chat_config_documents,
-    load_configured_provider_instances,
+    load_legacy_provider_configs,
     load_unique_string_list,
-    select_configured_provider_instances,
+    select_legacy_provider_configs,
 )
-from agentos.chat.sessions import ChatSession, coerce_timestamp
+from agentos.chat.sessions import ChatSession, SessionProviderIdentity, coerce_timestamp
 from agentos.chatlas._cache_io import (
     load_chatlas_cache_section,
     write_chatlas_cache_section,
@@ -41,13 +42,14 @@ from agentos.chatlas._cache_io import (
 )
 from agentos.chatlas.session_model._hashes import _session_identity_hash
 from agentos.chatlas.raw import (
+    ChatlasArchiveConfig,
     ChatlasProviderMirrorResult,
     _build_chatlas_provider_context,
+    _chatlas_archive_config_from_legacy_config,
     _chatlas_home_destination,
-    _dedupe_chatlas_instances,
+    _dedupe_chatlas_archive_configs,
     _load_chatlas_raw_scan_cache,
-    _mirror_chatlas_provider_instance,
-    _resolve_chatlas_instance_name,
+    _mirror_chatlas_provider_context,
     _validate_unique_chatlas_destinations,
     _write_chatlas_raw_scan_cache,
     supported_chatlas_provider_families,
@@ -67,7 +69,7 @@ T = TypeVar("T")
 @dataclass(frozen=True)
 class ChatlasSettings:
     commit_prefix: str
-    provider_instances: tuple[ProviderInstance, ...]
+    provider_configs: tuple[ChatlasArchiveConfig, ...]
 
 
 @dataclass(frozen=True)
@@ -103,12 +105,12 @@ def default_chatlas_root() -> Path:
 def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSettings:
     commit_prefix = DEFAULT_CHATLAS_COMMIT_PREFIX
     supported_families = {
-        provider_handler.family for provider_handler in supported_chatlas_provider_families()
+        provider_family.family for provider_family in supported_chatlas_provider_families()
     }
-    all_provider_instances = load_configured_provider_instances(start_path=start_path)
+    all_legacy_provider_configs = load_legacy_provider_configs(start_path=start_path)
     selected_instance_ids = load_chatlas_instance_ids(start_path=start_path)
-    provider_instances = select_configured_provider_instances(
-        all_provider_instances,
+    legacy_provider_configs = select_legacy_provider_configs(
+        all_legacy_provider_configs,
         selected_instance_ids=selected_instance_ids,
         supported_families=supported_families,
         selector_field_name="chatlas.instance_ids",
@@ -125,11 +127,15 @@ def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSetti
                     raise CliError("config field chatlas.commit_prefix must be a non-empty string")
                 commit_prefix = raw_commit_prefix.strip()
 
-    deduped_instances = _dedupe_chatlas_instances(provider_instances)
-    _validate_unique_chatlas_destinations(deduped_instances)
+    provider_configs = tuple(
+        _chatlas_archive_config_from_legacy_config(legacy_provider_config)
+        for legacy_provider_config in legacy_provider_configs
+    )
+    deduped_configs = _dedupe_chatlas_archive_configs(provider_configs)
+    _validate_unique_chatlas_destinations(deduped_configs)
     return ChatlasSettings(
         commit_prefix=commit_prefix,
-        provider_instances=deduped_instances,
+        provider_configs=deduped_configs,
     )
 
 
@@ -163,14 +169,14 @@ def chatlas_update(
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
     raw_root = chatlas_root_path / "raw"
     index_root = chatlas_root_path / "index"
-    selected_instances = settings.provider_instances
+    selected_configs = settings.provider_configs
     if providers is not None:
-        selected_instances = tuple(
-            instance
-            for instance in selected_instances
-            if instance.family in providers
+        selected_configs = tuple(
+            config
+            for config in selected_configs
+            if config.family in providers
         )
-    if not selected_instances:
+    if not selected_configs:
         session_index = _selected_session_index(chatlas_root_path, providers=providers)
         return {
             "status": "ok",
@@ -193,7 +199,10 @@ def chatlas_update(
             "commit_message": None,
             "instances": [],
         }
-    selected_contexts = tuple(_build_chatlas_provider_context(instance) for instance in selected_instances)
+    selected_contexts = tuple(
+        _build_chatlas_provider_context(config)
+        for config in selected_configs
+    )
     _ensure_git_repo(chatlas_root_path)
     if scan_cache_enabled or session_index_cache_enabled:
         _ensure_chatlas_cache_gitignore(chatlas_root_path)
@@ -208,7 +217,7 @@ def chatlas_update(
     )
 
     archive_started_at = time.perf_counter()
-    archive_results = _archive_chatlas_provider_instances(
+    archive_results = _archive_chatlas_provider_contexts(
         selected_contexts=selected_contexts,
         raw_root=raw_root,
         progress=progress,
@@ -234,7 +243,7 @@ def chatlas_update(
         ),
         run=lambda: _materialize_session_index(
             chatlas_root=chatlas_root_path,
-            provider_instances=settings.provider_instances,
+            provider_configs=settings.provider_configs,
             session_index_cache=update_caches.session_index,
             session_index_cache_enabled=session_index_cache_enabled,
         ),
@@ -298,7 +307,7 @@ def chatlas_update(
         session_index_cache_enabled=session_index_cache_enabled,
     )
 
-    provider_names = _unique_strings(tuple(context.provider_instance.family for context in selected_contexts))
+    provider_names = _unique_strings(tuple(context.family for context in selected_contexts))
     return {
         "status": "ok",
         "command": "chatlas update",
@@ -330,7 +339,7 @@ def _emit_chatlas_progress(progress: Callable[[str], None] | None, message: str)
 
 def _chatlas_progress_context_label(context) -> str:
     instance = context.resolved_instance_name
-    provider = context.provider_instance.family
+    provider = context.family
     return f"{provider}/{instance}"
 
 
@@ -396,7 +405,7 @@ def _emit_chatlas_archive_done(
     )
 
 
-def _archive_chatlas_provider_instances(
+def _archive_chatlas_provider_contexts(
     *,
     selected_contexts: tuple[object, ...],
     raw_root: Path,
@@ -411,7 +420,7 @@ def _archive_chatlas_provider_instances(
         context = selected_contexts[0]
         context_label = _chatlas_progress_context_label(context)
         _emit_chatlas_progress(progress, f"{context_label}: archive start")
-        mirror_result = _mirror_chatlas_provider_instance(
+        mirror_result = _mirror_chatlas_provider_context(
             context=context,
             raw_root=raw_root,
             progress=progress,
@@ -435,7 +444,7 @@ def _archive_chatlas_provider_instances(
             context_label = _chatlas_progress_context_label(context)
             _emit_chatlas_progress(progress, f"{context_label}: archive start")
             future = executor.submit(
-                _mirror_chatlas_provider_instance,
+                _mirror_chatlas_provider_context,
                 context=context,
                 raw_root=raw_root,
                 progress=progress,
@@ -606,7 +615,7 @@ def chatlas_stats(
     requested_providers = (
         tuple(providers)
         if providers is not None
-        else tuple(provider_handler.family for provider_handler in supported_chatlas_provider_families())
+        else tuple(provider_family.family for provider_family in supported_chatlas_provider_families())
     )
     by_provider = [
         _build_chatlas_stats_provider_payload(provider, sessions_by_provider.get(provider, []))
@@ -943,7 +952,7 @@ def _build_update_manifest(
     instance_payloads: list[dict[str, object]],
 ) -> dict[str, object]:
     provider_names = _unique_strings(
-        tuple(context.provider_instance.family for context in selected_contexts)
+        tuple(context.family for context in selected_contexts)
     )
     return {
         "class": "agentos.chatlas.update",
@@ -1005,13 +1014,13 @@ def _validate_chatlas_limit(limit: int | None) -> None:
 def _materialize_session_index(
     *,
     chatlas_root: Path,
-    provider_instances: tuple[ProviderInstance, ...],
+    provider_configs: tuple[ChatlasArchiveConfig, ...],
     session_index_cache: dict[str, dict[str, object]],
     session_index_cache_enabled: bool,
 ) -> ChatlasSessionIndexMaterialization:
     discovered_sessions = _discover_chatlas_sessions(
         raw_root=chatlas_root / "raw",
-        provider_instances=provider_instances,
+        provider_configs=provider_configs,
     )
     session_index: list[dict[str, Any]] = []
     source_signatures: dict[str, dict[str, object]] = {}
@@ -1051,42 +1060,42 @@ def _materialize_session_index(
 def _discover_chatlas_sessions(
     *,
     raw_root: Path,
-    provider_instances: tuple[ProviderInstance, ...],
+    provider_configs: tuple[ChatlasArchiveConfig, ...],
 ) -> list[ChatSession]:
     discovered_sessions = []
-    for provider_instance in provider_instances:
-        session_provider_instance = _chatlas_session_provider_instance(
+    for provider_config in provider_configs:
+        session_provider_config = _chatlas_session_provider_config(
             raw_root=raw_root,
-            archive_provider_instance=provider_instance,
+            archive_provider_config=provider_config,
         )
-        if session_provider_instance is None:
+        if session_provider_config is None:
             continue
-        context = _build_provider_context(session_provider_instance)
+        context = _build_provider_context(session_provider_config)
         discovered_sessions.extend(_discover_direct_provider_sessions(context))
 
     return _dedupe_sessions(discovered_sessions)
 
 
-def _chatlas_session_provider_instance(
+def _chatlas_session_provider_config(
     *,
     raw_root: Path,
-    archive_provider_instance: ProviderInstance,
-) -> ProviderInstance | None:
-    provider_handler = _provider_family_for_name(archive_provider_instance.family)
-    if provider_handler is None:
+    archive_provider_config: ChatlasArchiveConfig,
+) -> SessionProviderConfig | None:
+    provider_family = _provider_family_for_name(archive_provider_config.family)
+    if provider_family is None:
         return None
 
     direct_targets: list[Path] = []
     grep_targets: list[Path] = []
     sqlite_db_paths: list[Path] = []
 
-    for home_key, source_home_path in archive_provider_instance.homes:
+    for home_key, source_home_path in archive_provider_config.homes:
         raw_home_path = _chatlas_home_destination(
             raw_root=raw_root,
             home_path=source_home_path,
         )
         home_slot = _match_session_home_slot(
-            provider_handler.family,
+            provider_family.family,
             source_home_path,
             slot_key=home_key,
         )
@@ -1100,23 +1109,31 @@ def _chatlas_session_provider_instance(
     if not direct_targets and not sqlite_db_paths:
         return None
 
-    return ProviderInstance(
-        family=archive_provider_instance.family,
-        instance_id=archive_provider_instance.instance_id,
-        label=archive_provider_instance.label,
-        homes=archive_provider_instance.homes,
-        direct_targets=tuple(direct_targets),
-        grep_targets=tuple(grep_targets),
-        sqlite_db_paths=tuple(sqlite_db_paths),
-        cli_command=archive_provider_instance.cli_command,
-        env=archive_provider_instance.env,
-        timeout_sec=archive_provider_instance.timeout_sec,
-        live_usage_refresh=archive_provider_instance.live_usage_refresh,
-        usage_progression_limit=archive_provider_instance.usage_progression_limit,
-        includes=archive_provider_instance.includes,
-        excludes=archive_provider_instance.excludes,
-        anchors=archive_provider_instance.anchors,
-        is_default=archive_provider_instance.is_default,
+    direct_targets_tuple = tuple(direct_targets)
+    grep_targets_tuple = tuple(grep_targets)
+    sqlite_db_paths_tuple = tuple(sqlite_db_paths)
+    instance_summary = archive_provider_config.summary()
+    if direct_targets_tuple:
+        instance_summary["direct_targets"] = [str(path) for path in direct_targets_tuple]
+    if grep_targets_tuple:
+        instance_summary["grep_targets"] = [str(path) for path in grep_targets_tuple]
+    if sqlite_db_paths_tuple:
+        instance_summary["sqlite_db_paths"] = [str(path) for path in sqlite_db_paths_tuple]
+
+    return SessionProviderConfig(
+        provider_identity=SessionProviderIdentity(
+            family=archive_provider_config.family,
+            identity=archive_provider_config.identity_key(),
+            uri_key=archive_provider_config.uri_key,
+            fingerprint=archive_provider_config.fingerprint,
+            summary_payload=instance_summary,
+        ),
+        provider=archive_provider_config.family,
+        instance_summary=instance_summary,
+        instance_fingerprint=archive_provider_config.fingerprint,
+        direct_targets=direct_targets_tuple,
+        grep_targets=grep_targets_tuple,
+        sqlite_db_paths=sqlite_db_paths_tuple,
     )
 
 
@@ -1126,21 +1143,22 @@ def _match_session_home_slot(
     *,
     slot_key: str | None = None,
 ):
-    provider_handler = _provider_family_for_name(provider_family)
-    if provider_handler is None:
+    provider_family_obj = _provider_family_for_name(provider_family)
+    if provider_family_obj is None:
         return None
 
     if slot_key is not None:
-        for home_slot in provider_handler.home_slots:
+        for home_slot in _session_provider_home_slots(provider_family):
             if home_slot.key == slot_key:
                 return home_slot
 
     source_home_name = source_home_path.name
-    for home_slot in provider_handler.home_slots:
+    home_slots = _session_provider_home_slots(provider_family)
+    for home_slot in home_slots:
         if Path(home_slot.default_home).expanduser().name == source_home_name:
             return home_slot
-    if len(provider_handler.home_slots) == 1:
-        return provider_handler.home_slots[0]
+    if len(home_slots) == 1:
+        return home_slots[0]
     return None
 
 
@@ -1149,7 +1167,7 @@ def _session_index_record(session) -> dict[str, Any]:
         session,
         include_artifacts=True,
     )
-    payload["instance"] = _chatlas_instance_name(session.provider_instance)
+    payload["instance"] = _chatlas_session_identity_name(session.provider_identity)
     payload["identity_hash"] = _session_identity_hash(
         provider=session.provider,
         provider_session_id=session.session_id,
@@ -1161,7 +1179,7 @@ def _session_index_record(session) -> dict[str, Any]:
 
 def _session_index_cache_key(session: ChatSession) -> str:
     provider = _session_fs_component(session.provider)
-    fingerprint = _session_fs_component(session.provider_instance.fingerprint)
+    fingerprint = _session_fs_component(session.provider_identity.fingerprint)
     session_id = _session_fs_component(session.session_id)
     return f"{provider}/{fingerprint}/{session_id}"
 
@@ -1171,8 +1189,8 @@ def _session_index_source_signature(session: ChatSession) -> dict[str, object]:
     primary_backing_artifact = session.primary_backing_artifact()
     return {
         "provider": session.provider,
-        "instance": _chatlas_instance_name(session.provider_instance),
-        "provider_instance_fingerprint": session.provider_instance.fingerprint,
+        "instance": _chatlas_session_identity_name(session.provider_identity),
+        "provider_instance_fingerprint": session.provider_identity.fingerprint,
         "session_id": session.session_id,
         "display_name": session.display_name(),
         "display_name_field": session.display_name_field(),
@@ -1375,16 +1393,16 @@ def _iter_chatlas_session_contexts(
     settings = configured_chatlas_settings(start_path=start_path)
     raw_root = chatlas_root / "raw"
     requested_providers = None if providers is None else set(providers)
-    for provider_instance in settings.provider_instances:
-        if requested_providers is not None and provider_instance.family not in requested_providers:
+    for provider_config in settings.provider_configs:
+        if requested_providers is not None and provider_config.family not in requested_providers:
             continue
-        session_provider_instance = _chatlas_session_provider_instance(
+        session_provider_config = _chatlas_session_provider_config(
             raw_root=raw_root,
-            archive_provider_instance=provider_instance,
+            archive_provider_config=provider_config,
         )
-        if session_provider_instance is None:
+        if session_provider_config is None:
             continue
-        yield _build_provider_context(session_provider_instance)
+        yield _build_provider_context(session_provider_config)
 
 
 def _selected_session_index(
@@ -1758,8 +1776,34 @@ def _chatlas_raw_source_content(source: dict[str, object]) -> dict[str, object]:
         }
 
 
-def _chatlas_instance_name(provider_instance: ProviderInstance) -> str:
-    return _resolve_chatlas_instance_name(provider_instance)
+def _chatlas_session_identity_name(provider_identity: SessionProviderIdentity) -> str:
+    summary = provider_identity.summary()
+    instance_id = summary.get("instance_id")
+    if isinstance(instance_id, str) and instance_id:
+        return instance_id
+
+    homes = summary.get("homes")
+    if isinstance(homes, dict):
+        derived_name = _derive_chatlas_identity_name(provider_identity.family, homes.values())
+        if derived_name is not None:
+            return derived_name
+
+    return provider_identity.fingerprint[:12]
+
+
+def _derive_chatlas_identity_name(family: str, home_paths: object) -> str | None:
+    for home_path in home_paths:
+        basename = Path(str(home_path)).expanduser().name
+        if not basename:
+            continue
+        for separator in ("-", "_"):
+            family_prefix = f"{family}{separator}"
+            if basename.startswith(family_prefix):
+                suffix = basename[len(family_prefix):].strip()
+                if suffix:
+                    return suffix
+        return basename
+    return None
 
 
 def _normalize_chatlas_instance_filters(instances: tuple[str, ...] | None) -> tuple[str, ...] | None:

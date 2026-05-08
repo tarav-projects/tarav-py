@@ -17,11 +17,11 @@ from agentos._core.path_validation import validate_string_for_path
 from agentos._core.scan import normalize_rel
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
-    ProviderHomeSlot,
-    ProviderInstance,
-    ProviderInstanceAnchor,
+    ProviderFamily,
+    LegacyProviderConfig,
     canonical_chat_provider_spec_for_name,
 )
+from agentos.codex.chatlas import CodexAgentChatlas
 from agentos.chatlas._cache_io import load_chatlas_cache_section, write_chatlas_cache_section
 
 _CHATLAS_RAW_SCAN_CACHE_RELATIVE_PATH = Path("cache") / "raw-scan-v1.json"
@@ -37,120 +37,18 @@ ChatlasRawScanCache = dict[str, ChatlasRawScanCacheHome]
 
 
 @dataclass(frozen=True)
-class ChatlasProviderHandler:
-    family: str
-    home_slots: tuple[ProviderHomeSlot, ...]
-    default_excludes: tuple[str, ...] = ()
-    default_includes: tuple[str, ...] = ()
-
-    def supported_home_keys(self) -> tuple[str, ...]:
-        return tuple(slot.key for slot in self.home_slots)
-
-    def instance_from_home(
-        self,
-        home: str,
-        *,
-        field_prefix: str,
-        index: int | None,
-        is_default: bool,
-        instance_name: str | None,
-        includes: tuple[str, ...],
-        excludes: tuple[str, ...],
-    ) -> ProviderInstance:
-        if len(self.home_slots) != 1:
-            field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="home")
-            homes_field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="homes")
-            supported_keys = ", ".join(self.supported_home_keys())
-            raise CliError(
-                f"{field_name} is only supported for providers with a single home root; "
-                f"use {homes_field_name} with keys: {supported_keys}"
-            )
-        slot = self.home_slots[0]
-        return self.instance_from_homes(
-            {slot.key: home},
-            field_prefix=field_prefix,
-            index=index,
-            is_default=is_default,
-            instance_name=instance_name,
-            includes=includes,
-            excludes=excludes,
-        )
-
-    def instance_from_homes(
-        self,
-        homes: dict[str, str],
-        *,
-        field_prefix: str,
-        index: int | None,
-        is_default: bool,
-        instance_name: str | None,
-        includes: tuple[str, ...],
-        excludes: tuple[str, ...],
-    ) -> ProviderInstance:
-        supported_slots = {slot.key: slot for slot in self.home_slots}
-        unsupported_keys = sorted(key for key in homes if key not in supported_slots)
-        homes_field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="homes")
-        if unsupported_keys:
-            supported_keys = ", ".join(self.supported_home_keys())
-            unsupported_text = ", ".join(unsupported_keys)
-            raise CliError(
-                f"{homes_field_name} contains unsupported keys for provider {self.family}: "
-                f"{unsupported_text} (supported: {supported_keys})"
-            )
-
-        normalized_homes: list[tuple[str, Path]] = []
-        for slot in self.home_slots:
-            raw_home = homes.get(slot.key)
-            if raw_home is None:
-                continue
-            normalized_home = Path(
-                _normalize_chatlas_home(
-                    raw_home,
-                    field_name=f"{homes_field_name}.{slot.key}",
-                )
-            ).expanduser().resolve()
-            normalized_homes.append((slot.key, normalized_home))
-
-        if not normalized_homes:
-            supported_keys = ", ".join(self.supported_home_keys())
-            raise CliError(
-                f"{homes_field_name} must include at least one supported home key: {supported_keys}"
-            )
-
-        resolved_instance_name: str | None = None
-        if instance_name is not None:
-            field_name = _provider_instance_field_name(field_prefix=field_prefix, index=index, field="instance")
-            resolved_instance_name = validate_string_for_path(instance_name, field_name=field_name)
-
-        anchors = tuple(
-            ProviderInstanceAnchor(role="home", path=home_path, slot=home_key)
-            for home_key, home_path in normalized_homes
-        )
-
-        return ProviderInstance(
-            family=self.family,
-            instance_id=resolved_instance_name,
-            homes=tuple(normalized_homes),
-            includes=_unique_strings(self.default_includes + includes),
-            excludes=_unique_strings(self.default_excludes + excludes),
-            anchors=anchors,
-            is_default=is_default,
-        )
-
-
-@dataclass(frozen=True)
 class ChatlasProviderContext:
-    provider_handler: ChatlasProviderHandler
-    provider_instance: ProviderInstance
+    family: str
     resolved_instance_name: str
+    is_default: bool
+    homes: tuple[tuple[str, Path], ...]
     effective_includes: tuple[str, ...]
     effective_excludes: tuple[str, ...]
 
     def destination_root(self, raw_root: Path) -> Path:
-        homes = self.provider_instance.homes
-        if len(homes) != 1:
+        if len(self.homes) != 1:
             return raw_root
-        _, home_path = homes[0]
+        _, home_path = self.homes[0]
         return _chatlas_home_destination(
             raw_root=raw_root,
             home_path=home_path,
@@ -164,18 +62,39 @@ class ChatlasProviderContext:
                     home_path=home_path,
                 )
             )
-            for key, home_path in self.provider_instance.homes
+            for key, home_path in self.homes
         }
         return {
-            "provider": self.provider_instance.family,
+            "provider": self.family,
             "instance": self.resolved_instance_name,
-            "is_default": self.provider_instance.is_default,
-            "homes": {key: str(path) for key, path in self.provider_instance.homes},
+            "is_default": self.is_default,
+            "homes": {key: str(path) for key, path in self.homes},
             "includes": list(self.effective_includes),
             "excludes": list(self.effective_excludes),
-            "destination_root": str(self.destination_root(raw_root)) if len(self.provider_instance.homes) == 1 else None,
+            "destination_root": str(self.destination_root(raw_root)) if len(self.homes) == 1 else None,
             "destination_roots": destination_roots,
         }
+
+
+@dataclass(frozen=True)
+class ChatlasArchiveConfig:
+    family: str
+    instance_id: str | None
+    label: str | None
+    is_default: bool
+    homes: tuple[tuple[str, Path], ...]
+    includes: tuple[str, ...]
+    excludes: tuple[str, ...]
+    identity: tuple[object, ...]
+    uri_key: str
+    fingerprint: str
+    summary_payload: dict[str, Any]
+
+    def identity_key(self) -> tuple[object, ...]:
+        return self.identity
+
+    def summary(self) -> dict[str, Any]:
+        return dict(self.summary_payload)
 
 
 @dataclass(frozen=True)
@@ -216,70 +135,70 @@ class ChatlasProviderMirrorResult:
     elapsed_seconds: float
 
 
-def _build_chatlas_provider_handler(provider_spec) -> ChatlasProviderHandler:
-    return ChatlasProviderHandler(
-        family=provider_spec.family,
-        home_slots=provider_spec.home_slots,
-        default_excludes=provider_spec.chatlas_default_excludes,
-        default_includes=provider_spec.chatlas_default_includes,
+def supported_chatlas_provider_families() -> tuple[ProviderFamily, ...]:
+    return tuple(
+        provider_spec.provider_family
+        for provider_spec in canonical_chat_provider_specs()
+        if provider_spec.supports_chatlas_raw
     )
 
 
-_CHATLAS_PROVIDER_HANDLERS = tuple(
-    _build_chatlas_provider_handler(provider_spec)
-    for provider_spec in canonical_chat_provider_specs()
-    if provider_spec.supports_chatlas_raw
-)
-_CHATLAS_PROVIDER_HANDLERS_BY_NAME = {
-    provider_handler.family: provider_handler
-    for provider_handler in _CHATLAS_PROVIDER_HANDLERS
-}
-
-
-def supported_chatlas_provider_families() -> tuple[ChatlasProviderHandler, ...]:
-    return _CHATLAS_PROVIDER_HANDLERS
-
-
-def _chatlas_provider_handler_for_name(family_name: str) -> ChatlasProviderHandler | None:
+def _chatlas_provider_spec_for_name(family_name: str):
     provider_spec = canonical_chat_provider_spec_for_name(family_name)
     if provider_spec is None or not provider_spec.supports_chatlas_raw:
         return None
-    return _CHATLAS_PROVIDER_HANDLERS_BY_NAME.get(family_name)
+    return provider_spec
 
 
-def _provider_instance_field_name(*, field_prefix: str, index: int | None, field: str) -> str:
-    if index is None:
-        return field
-    return f"{field_prefix}[{index}].{field}"
+def _chatlas_archive_config_from_legacy_config(
+    legacy_provider_config: LegacyProviderConfig,
+) -> ChatlasArchiveConfig:
+    return ChatlasArchiveConfig(
+        family=legacy_provider_config.family,
+        instance_id=legacy_provider_config.instance_id,
+        label=legacy_provider_config.label,
+        is_default=legacy_provider_config.is_default,
+        homes=legacy_provider_config.homes,
+        includes=legacy_provider_config.includes,
+        excludes=legacy_provider_config.excludes,
+        identity=legacy_provider_config.identity_key(),
+        uri_key=legacy_provider_config.uri_component(),
+        fingerprint=legacy_provider_config.fingerprint,
+        summary_payload=legacy_provider_config.summary(),
+    )
 
 
-def _normalize_chatlas_home(home: object, *, field_name: str) -> str:
-    if not isinstance(home, str) or not home.strip():
-        raise CliError(f"{field_name} must be a non-empty string")
-    return home.strip()
-
-
-def _build_chatlas_provider_context(provider_instance: ProviderInstance) -> ChatlasProviderContext:
-    provider_handler = _chatlas_provider_handler_for_name(provider_instance.family)
-    if provider_handler is None:
-        raise CliError(f"unsupported chatlas provider family {provider_instance.family}")
+def _build_chatlas_provider_context(config: ChatlasArchiveConfig) -> ChatlasProviderContext:
+    provider_spec = _chatlas_provider_spec_for_name(config.family)
+    if provider_spec is None:
+        raise CliError(f"unsupported chatlas provider family {config.family}")
+    if config.family == "codex":
+        codex_chatlas = CodexAgentChatlas.from_archive_config(config)
+        return ChatlasProviderContext(
+            family=config.family,
+            resolved_instance_name=_resolve_chatlas_instance_name(config),
+            is_default=config.is_default,
+            homes=config.homes,
+            effective_includes=codex_chatlas.includes,
+            effective_excludes=codex_chatlas.excludes,
+        )
 
     return ChatlasProviderContext(
-        provider_handler=provider_handler,
-        provider_instance=provider_instance,
-        resolved_instance_name=_resolve_chatlas_instance_name(provider_instance),
+        family=config.family,
+        resolved_instance_name=_resolve_chatlas_instance_name(config),
+        is_default=config.is_default,
+        homes=config.homes,
         effective_includes=_unique_strings(
-            provider_handler.default_includes + provider_instance.includes
+            provider_spec.chatlas_default_includes + config.includes
         ),
         effective_excludes=_unique_strings(
-            provider_handler.default_excludes
-            + provider_instance.excludes
-            + _derived_chatlas_instance_excludes(provider_instance.family, provider_instance.homes)
+            provider_spec.chatlas_default_excludes
+            + config.excludes
         ),
     )
 
 
-def _mirror_chatlas_provider_instance(
+def _mirror_chatlas_provider_context(
     *,
     context: ChatlasProviderContext,
     raw_root: Path,
@@ -292,7 +211,7 @@ def _mirror_chatlas_provider_instance(
     scan_cache_updates: ChatlasRawScanCache = {}
     archived = False
 
-    for home_key, home_path in context.provider_instance.homes:
+    for home_key, home_path in context.homes:
         exists = home_path.is_dir()
         destination_path = _chatlas_home_destination(
             raw_root=raw_root,
@@ -308,7 +227,7 @@ def _mirror_chatlas_provider_instance(
         if exists:
             _emit_raw_progress(
                 progress,
-                f"{context.provider_instance.family}/{context.resolved_instance_name}:{home_key} archive {home_path}",
+                f"{context.family}/{context.resolved_instance_name}:{home_key} archive {home_path}",
             )
             cache_home_key = _chatlas_raw_scan_cache_home_key(
                 raw_root=raw_root,
@@ -320,7 +239,7 @@ def _mirror_chatlas_provider_instance(
                 includes=context.effective_includes,
                 excludes=context.effective_excludes,
                 progress=progress,
-                progress_label=f"{context.provider_instance.family}/{context.resolved_instance_name}:{home_key}",
+                progress_label=f"{context.family}/{context.resolved_instance_name}:{home_key}",
                 scan_cache_entries=None if scan_cache is None else scan_cache.get(cache_home_key),
                 scan_cache_enabled=scan_cache_enabled,
             )
@@ -1038,28 +957,32 @@ def _chatlas_home_relpath(home_path: Path) -> Path:
     return Path(normalized_home.name)
 
 
-def _dedupe_chatlas_instances(provider_instances: tuple[ProviderInstance, ...]) -> tuple[ProviderInstance, ...]:
-    unique_instances: dict[tuple[object, ...], ProviderInstance] = {}
-    for provider_instance in provider_instances:
-        key = provider_instance.identity_key()
-        if key not in unique_instances:
-            unique_instances[key] = provider_instance
-    return tuple(unique_instances.values())
+def _dedupe_chatlas_archive_configs(
+    provider_configs: tuple[ChatlasArchiveConfig, ...],
+) -> tuple[ChatlasArchiveConfig, ...]:
+    unique_configs: dict[tuple[object, ...], ChatlasArchiveConfig] = {}
+    for provider_config in provider_configs:
+        key = provider_config.identity_key()
+        if key not in unique_configs:
+            unique_configs[key] = provider_config
+    return tuple(unique_configs.values())
 
 
-def _validate_unique_chatlas_destinations(provider_instances: tuple[ProviderInstance, ...]) -> None:
-    seen_destinations: dict[tuple[str, str], ProviderInstance] = {}
-    for provider_instance in provider_instances:
-        context = _build_chatlas_provider_context(provider_instance)
-        key = (provider_instance.family, context.resolved_instance_name)
+def _validate_unique_chatlas_destinations(
+    provider_configs: tuple[ChatlasArchiveConfig, ...],
+) -> None:
+    seen_destinations: dict[tuple[str, str], ChatlasArchiveConfig] = {}
+    for provider_config in provider_configs:
+        context = _build_chatlas_provider_context(provider_config)
+        key = (provider_config.family, context.resolved_instance_name)
         if key in seen_destinations:
             existing = seen_destinations[key]
             raise CliError(
                 "chatlas provider instances resolve to the same destination "
-                f"{provider_instance.family}/{context.resolved_instance_name}: "
-                f"{existing.homes_map()} and {provider_instance.homes_map()}"
+                f"{provider_config.family}/{context.resolved_instance_name}: "
+                f"{dict(existing.homes)} and {dict(provider_config.homes)}"
             )
-        seen_destinations[key] = provider_instance
+        seen_destinations[key] = provider_config
 
 
 
@@ -1085,24 +1008,16 @@ def _derive_chatlas_instance_name(
     return validate_string_for_path(basename, field_name="chatlas instance name")
 
 
-def _resolve_chatlas_instance_name(provider_instance: ProviderInstance) -> str:
-    if provider_instance.instance_id is not None:
-        return provider_instance.instance_id
-    derived_name = _derive_chatlas_instance_name(provider_instance.family, provider_instance.homes)
+def _resolve_chatlas_instance_name(config: ChatlasArchiveConfig) -> str:
+    if config.instance_id is not None:
+        return config.instance_id
+    derived_name = _derive_chatlas_instance_name(config.family, config.homes)
     if derived_name is not None:
         return derived_name
-    return provider_instance.fingerprint[:12]
-
-
-def _derived_chatlas_instance_excludes(
-    family: str,
-    homes: tuple[tuple[str, Path], ...],
-) -> tuple[str, ...]:
-    if family != "codex":
-        return ()
-    return ("_auth*.json",)
+    return config.fingerprint[:12]
 
 
 __all__ = [
+    "ChatlasArchiveConfig",
     "supported_chatlas_provider_families",
 ]

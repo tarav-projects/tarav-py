@@ -16,19 +16,20 @@ import urllib.request
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Iterator
 
 from agentos._core.errors import CliError
 from agentos._core.project import agentos_home_dir
 from agentos.chat.providers import (
     ProviderFamily,
-    ProviderInstance,
+    LegacyProviderConfig,
     load_chat_config_documents,
-    load_configured_provider_instances,
+    load_legacy_provider_configs,
     load_unique_string_list,
     require_canonical_provider_family,
-    select_configured_provider_instances,
+    select_legacy_provider_configs,
 )
+from agentos.codex.accounts import CodexAgentAccounts
 from agentos.tara_tapes.core import (
     append_tara_tape_stage_record,
     bootstrap_tara_tape,
@@ -75,42 +76,30 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
 @dataclass(frozen=True)
-class AccountProviderHandler:
-    provider_family: ProviderFamily
-    collect_stats: Callable[[AccountProviderContext, bool], dict[str, Any]]
-
-    @property
-    def family(self) -> str:
-        return self.provider_family.family
-
-
-@dataclass(frozen=True)
 class AccountProviderContext:
-    provider_handler: AccountProviderHandler
-    provider_instance: ProviderInstance
+    provider: str
+    instance_id: str
+    label: str
     cli_command: tuple[str, ...]
     env: tuple[tuple[str, str], ...]
     timeout_sec: int
     live_usage_refresh: bool
     usage_progression_limit: str | None
 
-    @property
-    def provider(self) -> str:
-        return self.provider_instance.family
-
-    @property
-    def instance_id(self) -> str:
-        instance_id = self.provider_instance.instance_id
-        if instance_id is None:
-            raise CliError("account provider instance is missing instance_id")
-        return instance_id
-
-    @property
-    def label(self) -> str:
-        return self.provider_instance.label or self.instance_id
-
     def env_mapping(self) -> dict[str, str]:
         return dict(self.env)
+
+
+@dataclass(frozen=True)
+class AccountProviderConfig:
+    provider: str
+    instance_id: str | None
+    label: str | None
+    cli_command: tuple[str, ...]
+    env: tuple[tuple[str, str], ...]
+    timeout_sec: int | None
+    live_usage_refresh: bool | None
+    usage_progression_limit: str | None
 
 
 @dataclass(frozen=True)
@@ -196,46 +185,41 @@ class AccountCommandError(Exception):
         self.exit_code = exit_code
 
 
-def supported_account_provider_families() -> tuple[AccountProviderHandler, ...]:
+def supported_account_provider_families() -> tuple[ProviderFamily, ...]:
     return (
-        AccountProviderHandler(
-            provider_family=require_canonical_provider_family("codex"),
-            collect_stats=_collect_codex_account_stats,
-        ),
-        AccountProviderHandler(
-            provider_family=require_canonical_provider_family("claude-code"),
-            collect_stats=_collect_claude_code_account_stats,
-        ),
-        AccountProviderHandler(
-            provider_family=require_canonical_provider_family("copilot-cli"),
-            collect_stats=_collect_copilot_account_stats,
-        ),
+        require_canonical_provider_family("codex"),
+        require_canonical_provider_family("claude-code"),
+        require_canonical_provider_family("copilot-cli"),
     )
 
 
-def configured_account_provider_instances(
+def configured_account_provider_configs(
     *,
     start_path: Path | str = ".",
-) -> tuple[ProviderInstance, ...]:
-    supported_families = {provider_handler.family for provider_handler in supported_account_provider_families()}
-    all_provider_instances = load_configured_provider_instances(start_path=start_path)
+) -> tuple[AccountProviderConfig, ...]:
+    supported_families = {provider_family.family for provider_family in supported_account_provider_families()}
+    all_legacy_provider_configs = load_legacy_provider_configs(start_path=start_path)
     selected_instance_ids = load_agent_accounts_instance_ids(start_path=start_path)
-    provider_instances = select_configured_provider_instances(
-        all_provider_instances,
+    legacy_provider_configs = select_legacy_provider_configs(
+        all_legacy_provider_configs,
         selected_instance_ids=selected_instance_ids,
         supported_families=supported_families,
         selector_field_name="agent.accounts.instance_ids",
         unsupported_instance_label="account",
         default_to_supported_families=True,
     )
-    for provider_instance in provider_instances:
-        if _account_provider_requires_cli_command(provider_instance.family) and not provider_instance.cli_command:
+    provider_configs = tuple(
+        _account_provider_config_from_legacy_config(legacy_provider_config)
+        for legacy_provider_config in legacy_provider_configs
+    )
+    for provider_config in provider_configs:
+        if _account_provider_requires_cli_command(provider_config.provider) and not provider_config.cli_command:
             raise CliError(
-                f"agent.instances entry {provider_instance.instance_id!r} for provider "
-                f"{provider_instance.family} must define cli_command"
+                f"agent.instances entry {provider_config.instance_id!r} for provider "
+                f"{provider_config.provider} must define cli_command"
             )
-    _validate_unique_account_instance_ids(tuple(provider_instances))
-    return tuple(provider_instances)
+    _validate_unique_account_instance_ids(provider_configs)
+    return provider_configs
 
 
 def chat_account_stats(
@@ -268,7 +252,7 @@ def iter_chat_account_stats_refresh_payloads(
     full_output: bool = False,
     start_path: Path | str = ".",
 ) -> tuple[dict[str, object], ...]:
-    provider_handlers, configured_contexts, provider_handlers_by_name, usage_total_config = _resolve_chat_account_stats_request(
+    provider_families, configured_contexts, usage_total_config = _resolve_chat_account_stats_request(
         instance_ids=instance_ids,
         providers=providers,
         start_path=start_path,
@@ -277,7 +261,7 @@ def iter_chat_account_stats_refresh_payloads(
 
     if configured_contexts:
         yield _build_chat_account_stats_payload(
-            provider_handlers=provider_handlers,
+            provider_families=provider_families,
             configured_contexts=configured_contexts,
             collected_results=ordered_results,
             usage_total_config=usage_total_config,
@@ -290,14 +274,13 @@ def iter_chat_account_stats_refresh_payloads(
     completed_count = 0
     for collected_result in _iter_account_collection_results(
         configured_contexts=configured_contexts,
-        provider_handlers_by_name=provider_handlers_by_name,
         refresh_usage=refresh_usage,
     ):
         ordered_results[collected_result.index] = collected_result
         completed_count += 1
         is_final = completed_count == len(configured_contexts)
         yield _build_chat_account_stats_payload(
-            provider_handlers=provider_handlers,
+            provider_families=provider_families,
             configured_contexts=configured_contexts,
             collected_results=ordered_results,
             usage_total_config=usage_total_config,
@@ -309,7 +292,7 @@ def iter_chat_account_stats_refresh_payloads(
 
     if not configured_contexts:
         yield _build_chat_account_stats_payload(
-            provider_handlers=provider_handlers,
+            provider_families=provider_families,
             configured_contexts=configured_contexts,
             collected_results=ordered_results,
             usage_total_config=usage_total_config,
@@ -326,23 +309,22 @@ def _resolve_chat_account_stats_request(
     providers: tuple[str, ...] | None,
     start_path: Path | str,
 ) -> tuple[
-    tuple[AccountProviderHandler, ...],
+    tuple[ProviderFamily, ...],
     tuple[AccountProviderContext, ...],
-    dict[str, AccountProviderHandler],
     AccountUsageTotalConfig | None,
 ]:
-    provider_handlers = supported_account_provider_families()
+    provider_families = supported_account_provider_families()
     if providers is not None:
         allowed_providers = set(providers)
-        provider_handlers = tuple(
-            provider_handler
-            for provider_handler in provider_handlers
-            if provider_handler.family in allowed_providers
+        provider_families = tuple(
+            provider_family
+            for provider_family in provider_families
+            if provider_family.family in allowed_providers
         )
 
     all_configured_contexts = tuple(
-        _build_account_provider_context(instance)
-        for instance in configured_account_provider_instances(start_path=start_path)
+        _build_account_provider_context(config)
+        for config in configured_account_provider_configs(start_path=start_path)
     )
     usage_total_config = load_chat_accounts_usage_total_config(start_path=start_path)
     if usage_total_config is not None:
@@ -378,15 +360,12 @@ def _resolve_chat_account_stats_request(
             suffix = "s" if len(missing_ids) != 1 else ""
             raise CliError(f"unknown account instance id{suffix}: {', '.join(missing_ids)}")
 
-    provider_handlers_by_name = {
-        provider_handler.family: provider_handler for provider_handler in provider_handlers
-    }
-    return provider_handlers, configured_contexts, provider_handlers_by_name, usage_total_config
+    return provider_families, configured_contexts, usage_total_config
 
 
 def _build_chat_account_stats_payload(
     *,
-    provider_handlers: tuple[AccountProviderHandler, ...],
+    provider_families: tuple[ProviderFamily, ...],
     configured_contexts: tuple[AccountProviderContext, ...],
     collected_results: list[AccountCollectionResult | None],
     usage_total_config: AccountUsageTotalConfig | None,
@@ -400,7 +379,7 @@ def _build_chat_account_stats_payload(
 
     provider_payloads: list[dict[str, Any]] = []
     provider_accounts_by_name = {
-        provider_handler.family: [] for provider_handler in provider_handlers
+        provider_family.family: [] for provider_family in provider_families
     }
 
     ok_count = 0
@@ -427,15 +406,15 @@ def _build_chat_account_stats_payload(
         provider_accounts_by_name[provider_name].append(account_payload)
         account_count += 1
 
-    for provider_handler in provider_handlers:
-        provider_accounts = provider_accounts_by_name[provider_handler.family]
+    for provider_family in provider_families:
+        provider_accounts = provider_accounts_by_name[provider_family.family]
         provider_ok_count = sum(1 for account in provider_accounts if account.get("check_status") == "ok")
         provider_error_count = sum(
             1 for account in provider_accounts if account.get("check_status") == "error"
         )
         provider_payloads.append(
             {
-                "provider": provider_handler.family,
+                "provider": provider_family.family,
                 "account_count": len(provider_accounts),
                 "ok_count": provider_ok_count,
                 "error_count": provider_error_count,
@@ -485,13 +464,11 @@ def default_chat_account_stats_tape_root() -> Path:
 def _collect_account_results(
     *,
     configured_contexts: tuple[AccountProviderContext, ...],
-    provider_handlers_by_name: dict[str, AccountProviderHandler],
     refresh_usage: bool,
 ) -> list[tuple[str, dict[str, Any]]]:
     ordered_results: list[tuple[str, dict[str, Any]] | None] = [None] * len(configured_contexts)
     for collected_result in _iter_account_collection_results(
         configured_contexts=configured_contexts,
-        provider_handlers_by_name=provider_handlers_by_name,
         refresh_usage=refresh_usage,
     ):
         ordered_results[collected_result.index] = (
@@ -504,7 +481,6 @@ def _collect_account_results(
 def _iter_account_collection_results(
     *,
     configured_contexts: tuple[AccountProviderContext, ...],
-    provider_handlers_by_name: dict[str, AccountProviderHandler],
     refresh_usage: bool,
 ) -> tuple[AccountCollectionResult, ...]:
     if not configured_contexts:
@@ -512,11 +488,9 @@ def _iter_account_collection_results(
 
     if len(configured_contexts) == 1:
         context = configured_contexts[0]
-        provider_handler = provider_handlers_by_name[context.provider]
         yield _collect_account_result(
             index=0,
             context=context,
-            provider_handler=provider_handler,
             refresh_usage=refresh_usage,
         )
         return
@@ -525,13 +499,11 @@ def _iter_account_collection_results(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures: list[Future[AccountCollectionResult]] = []
         for index, context in enumerate(configured_contexts):
-            provider_handler = provider_handlers_by_name[context.provider]
             futures.append(
                 executor.submit(
                     _collect_account_result,
                     index=index,
                     context=context,
-                    provider_handler=provider_handler,
                     refresh_usage=refresh_usage,
                 )
             )
@@ -544,11 +516,10 @@ def _collect_account_result(
     *,
     index: int,
     context: AccountProviderContext,
-    provider_handler: AccountProviderHandler,
     refresh_usage: bool,
 ) -> AccountCollectionResult:
     try:
-        account_payload = provider_handler.collect_stats(context, refresh_usage)
+        account_payload = _collect_account_payload(context, refresh_usage)
         if not isinstance(account_payload, dict):
             raise CliError("account provider collector must return a JSON object payload")
     except Exception as exc:
@@ -558,6 +529,19 @@ def _collect_account_result(
         provider_name=context.provider,
         account_payload=account_payload,
     )
+
+
+def _collect_account_payload(
+    context: AccountProviderContext,
+    refresh_usage: bool,
+) -> dict[str, Any]:
+    if context.provider == "codex":
+        return _collect_codex_account_stats(context, refresh_usage)
+    if context.provider == "claude-code":
+        return _collect_claude_code_account_stats(context, refresh_usage)
+    if context.provider == "copilot-cli":
+        return _collect_copilot_account_stats(context, refresh_usage)
+    raise CliError(f"unsupported account provider family {context.provider}")
 
 
 def _account_collection_error_payload(
@@ -2106,20 +2090,20 @@ def _usage_time_ratio_value(used_percent: int, elapsed_percent: int) -> float:
 
 
 def _validate_unique_account_instance_ids(
-    provider_instances: tuple[ProviderInstance, ...],
+    provider_configs: tuple[AccountProviderConfig, ...],
 ) -> None:
-    seen_instances: dict[str, ProviderInstance] = {}
-    for provider_instance in provider_instances:
-        if provider_instance.instance_id is None:
+    seen_legacy_configs: dict[str, AccountProviderConfig] = {}
+    for provider_config in provider_configs:
+        if provider_config.instance_id is None:
             raise CliError("agent.instances ids must not be empty")
-        existing = seen_instances.get(provider_instance.instance_id)
+        existing = seen_legacy_configs.get(provider_config.instance_id)
         if existing is None:
-            seen_instances[provider_instance.instance_id] = provider_instance
+            seen_legacy_configs[provider_config.instance_id] = provider_config
             continue
         raise CliError(
             "agent.instances ids must be unique; "
-            f"duplicate id {provider_instance.instance_id} for providers "
-            f"{existing.family} and {provider_instance.family}"
+            f"duplicate id {provider_config.instance_id} for providers "
+            f"{existing.provider} and {provider_config.provider}"
         )
 
 
@@ -2127,28 +2111,37 @@ def _account_provider_requires_cli_command(family_name: str) -> bool:
     return family_name in {"codex", "claude-code"}
 
 
-def _account_provider_handler_for_name(family_name: str) -> AccountProviderHandler | None:
-    for provider_handler in supported_account_provider_families():
-        if provider_handler.family == family_name:
-            return provider_handler
-    return None
+def _account_provider_config_from_legacy_config(
+    legacy_provider_config: LegacyProviderConfig,
+) -> AccountProviderConfig:
+    return AccountProviderConfig(
+        provider=legacy_provider_config.family,
+        instance_id=legacy_provider_config.instance_id,
+        label=legacy_provider_config.label,
+        cli_command=legacy_provider_config.cli_command,
+        env=legacy_provider_config.env,
+        timeout_sec=legacy_provider_config.timeout_sec,
+        live_usage_refresh=legacy_provider_config.live_usage_refresh,
+        usage_progression_limit=legacy_provider_config.usage_progression_limit,
+    )
 
 
-def _build_account_provider_context(provider_instance: ProviderInstance) -> AccountProviderContext:
-    provider_handler = _account_provider_handler_for_name(provider_instance.family)
-    if provider_handler is None:
-        raise CliError(f"unsupported account provider family {provider_instance.family}")
-    if provider_instance.instance_id is None:
+def _build_account_provider_context(config: AccountProviderConfig) -> AccountProviderContext:
+    supported_families = {provider_family.family for provider_family in supported_account_provider_families()}
+    if config.provider not in supported_families:
+        raise CliError(f"unsupported account provider family {config.provider}")
+    if config.instance_id is None:
         raise CliError("account provider instance is missing instance_id")
 
     return AccountProviderContext(
-        provider_handler=provider_handler,
-        provider_instance=provider_instance,
-        cli_command=provider_instance.cli_command,
-        env=provider_instance.env,
-        timeout_sec=provider_instance.timeout_sec or DEFAULT_ACCOUNT_TIMEOUT_SEC,
-        live_usage_refresh=bool(provider_instance.live_usage_refresh),
-        usage_progression_limit=provider_instance.usage_progression_limit,
+        provider=config.provider,
+        instance_id=config.instance_id,
+        label=config.label or config.instance_id,
+        cli_command=config.cli_command,
+        env=config.env,
+        timeout_sec=config.timeout_sec or DEFAULT_ACCOUNT_TIMEOUT_SEC,
+        live_usage_refresh=bool(config.live_usage_refresh),
+        usage_progression_limit=config.usage_progression_limit,
     )
 
 
@@ -2701,21 +2694,22 @@ def _collect_codex_account_stats(
     refresh_usage: bool,
 ) -> dict[str, Any]:
     del refresh_usage
+    codex_accounts = CodexAgentAccounts.from_account_context(instance)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         auth_future = executor.submit(
             _collect_parsed_command_payload,
-            instance,
+            codex_accounts,
             extra_args=("login", "status"),
             parser=_parse_codex_login_status,
         )
-        usage_future = executor.submit(_collect_codex_usage_payload, instance)
+        usage_future = executor.submit(_collect_codex_usage_payload, codex_accounts)
 
     try:
         auth_payload = auth_future.result()
     except AccountCommandError as exc:
         return _error_account_result(
-            instance,
+            codex_accounts,
             error_type=exc.error_type,
             message=exc.message,
             exit_code=exc.exit_code,
@@ -2726,25 +2720,25 @@ def _collect_codex_account_stats(
         usage_payload = usage_future.result()
     except AccountCommandError as exc:
         usage_payload = _usage_error_payload(
-            provider=instance.provider,
+            provider=codex_accounts.provider,
             error_type=exc.error_type,
             message=exc.message,
             exit_code=exc.exit_code,
         )
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
         usage_payload = _usage_error_payload(
-            provider=instance.provider,
+            provider=codex_accounts.provider,
             error_type="invalid_output",
             message=str(exc),
         )
 
     return _ok_account_result(
-        instance,
+        codex_accounts,
         _merge_account_payloads(auth_payload, usage_payload),
     )
 
 
-def _collect_codex_usage_payload(instance: AccountProviderContext) -> dict[str, Any]:
+def _collect_codex_usage_payload(instance: CodexAgentAccounts) -> dict[str, Any]:
     return _parse_codex_rate_limits(_read_codex_account_rate_limits(instance))
 
 
@@ -2917,7 +2911,7 @@ def _successful_command_output(result: subprocess.CompletedProcess[str]) -> str:
     return success_output
 
 
-def _read_codex_account_rate_limits(instance: AccountProviderContext) -> dict[str, Any]:
+def _read_codex_account_rate_limits(instance: CodexAgentAccounts) -> dict[str, Any]:
     command = [*instance.cli_command, "app-server"]
     env = _account_provider_environment(instance)
 
@@ -4436,7 +4430,7 @@ def _rounded_percent(value: float) -> int:
 
 __all__ = [
     "chat_account_stats",
-    "configured_account_provider_instances",
+    "configured_account_provider_configs",
     "format_chat_account_stats_markdown",
     "format_chat_account_stats_usage",
     "iter_chat_account_stats_refresh_payloads",
