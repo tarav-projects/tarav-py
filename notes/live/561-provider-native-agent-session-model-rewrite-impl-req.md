@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Requested but not implemented; this impl-req defines a codebase model rewrite toward provider-native Agent and Session anchors while reusing existing mechanics only after they are pulled behind the new model.
+First Codex agent-run model slice implemented; remaining work includes Codex.Session, Codex.Normalizer, Chatlas/account/session migration, other providers, and legacy model removal.
 
 ## User Intent
 
@@ -441,3 +441,4 @@ Tests:
 ## End Log
 
 - 2026-05-08: Created after design discussion converged on provider-native modules as the model centers, with `Agentos.Agent` as shared abstract concept and `<Provider>.Agent` / `<Provider>.Session` as concrete anchors.
+- 2026-05-08: Implemented the first narrow Codex agent-run slice. Added shared run primitives in `src/agentos/agent/primitives.py`, added `src/agentos/codex/agent.py` with `CodexAgent` and `CodexAgentRunner`, made configured Codex entries resolve to `CodexAgent` for `agent run` / `agent list`, and added focused test coverage that configured Codex agents use the provider-native model. Remaining phases are not complete.
