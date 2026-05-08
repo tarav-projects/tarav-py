@@ -248,105 +248,169 @@ def model_to_canvas(model: CanvasModel) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Sync — forward-pass model → canvas
+# Render — model + old canvas → new canvas (the compiler)
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class SyncAction:
-    action: str  # "created_node", "created_edge", "skipped"
+class RenderError:
+    rule: str
+    message: str
+
+
+@dataclass
+class RenderAction:
+    action: str
     detail: str
 
 
-def sync_canvas(canvas: dict[str, Any]) -> list[SyncAction]:
-    """Forward-pass sync: model → canvas.
+@dataclass
+class RenderResult:
+    errors: list[RenderError]
+    actions: list[RenderAction]
+    canvas: dict[str, Any]
 
-    Creates canvas nodes for model cards that have no canvas node.
-    Creates canvas edges for model edge-relationships that have no canvas edge.
-    Non-edge relationships (adjacent, contains) are not synced — they are
-    spatial constraints checked by lint.
+
+def render_canvas(canvas: dict[str, Any]) -> RenderResult:
+    """Compile model into canvas. model + old canvas → new canvas.
+
+    The model is the authority for what exists. The old canvas provides
+    positions, sizes, text, and colors. The output is a new canvas that
+    reflects the model with layout inherited from the old canvas.
+
+    Returns a RenderResult with errors (lint-like), actions (what changed),
+    and the new canvas dict. The caller decides whether to write it.
     """
+    errors: list[RenderError] = []
+    actions: list[RenderAction] = []
     model = read_model(canvas)
-    actions: list[SyncAction] = []
 
-    # Index existing canvas nodes and edges
-    canvas_node_ids = {n["id"] for n in canvas.get("nodes", [])}
-    canvas_edge_pairs = set()
+    if not model.cards and not model.relationships:
+        errors.append(RenderError(
+            rule="model.missing",
+            message="No _model found in canvas file",
+        ))
+        return RenderResult(errors=errors, actions=actions, canvas=canvas)
+
+    # Index old canvas state
+    old_nodes_by_id: dict[str, dict[str, Any]] = {
+        n["id"]: n for n in canvas.get("nodes", [])
+    }
+    # Index old edges by (fromNode, toNode) for reuse of canvas edge properties
+    old_edges_by_pair: dict[tuple[str, str], dict[str, Any]] = {}
     for e in canvas.get("edges", []):
-        canvas_edge_pairs.add((e.get("fromNode"), e.get("toNode"), e.get("label", "")))
+        key = (e.get("fromNode", ""), e.get("toNode", ""))
+        old_edges_by_pair[key] = e
 
-    # Forward-pass: model cards → canvas nodes
+    # --- Build new nodes from model ---
+    new_nodes: list[dict[str, Any]] = []
+    # Track positions for placement of new cards
+    placed_positions: dict[str, tuple[float, float]] = {}
+
     for card in model.cards:
-        if card.id not in canvas_node_ids:
+        old_node = old_nodes_by_id.get(card.id)
+        if old_node is not None:
+            # Carry over from old canvas: position, size, text, color, all properties
+            node = dict(old_node)
+
+            # Migrate text from model if present
+            model_text = _get_model_card_text(canvas, card.id)
+            if model_text is not None:
+                node["text"] = model_text
+                actions.append(RenderAction("migrated_text", card.id))
+
+            new_nodes.append(node)
+            placed_positions[card.id] = (node["x"], node["y"])
+        else:
+            # New card — needs placement
             connected_to = [
                 r.to_card if r.from_card == card.id else r.from_card
                 for r in model.relationships
                 if r.rel_type == "edge" and (r.from_card == card.id or r.to_card == card.id)
             ]
-            x, y = place_one(card.id, canvas, connected_to)
+            # Build a temporary canvas for place_one using already-placed nodes
+            temp_canvas: dict[str, Any] = {"nodes": new_nodes}
+            x, y = place_one(card.id, temp_canvas, connected_to)
             node = make_canvas_node(card, x, y)
-            resize_node(node)
-            canvas.setdefault("nodes", []).append(node)
-            canvas_node_ids.add(card.id)
-            actions.append(SyncAction("created_node", card.id))
+            new_nodes.append(node)
+            placed_positions[card.id] = (x, y)
+            actions.append(RenderAction("created_node", card.id))
 
-    # Forward-pass: model edge-relationships → canvas edges
+    # --- Build new edges from model ---
+    new_edges: list[dict[str, Any]] = []
     for rel in model.relationships:
         if rel.rel_type != "edge":
             continue
-        if (rel.from_card, rel.to_card, rel.id) not in canvas_edge_pairs:
-            canvas.setdefault("edges", []).append({
+
+        pair = (rel.from_card, rel.to_card)
+        old_edge = old_edges_by_pair.get(pair)
+        if old_edge is not None:
+            # Carry over canvas edge properties (direction, color, etc.)
+            edge = dict(old_edge)
+            # Update label to match model
+            if edge.get("label", "") != rel.id:
+                actions.append(RenderAction("updated_label",
+                    f"{rel.from_card} -> {rel.to_card}: '{edge.get('label', '')}' -> '{rel.id}'"))
+                edge["label"] = rel.id
+            new_edges.append(edge)
+        else:
+            # New edge
+            new_edges.append({
                 "id": make_edge_id(),
                 "fromNode": rel.from_card,
                 "toNode": rel.to_card,
                 "label": rel.id,
             })
-            actions.append(SyncAction("created_edge", f"{rel.from_card} --{rel.id}--> {rel.to_card}"))
+            actions.append(RenderAction("created_edge",
+                f"{rel.from_card} --{rel.id}--> {rel.to_card}"))
 
-    return actions
+    # --- Report dropped canvas elements ---
+    model_card_ids = {c.id for c in model.cards}
+    for nid in old_nodes_by_id:
+        if nid not in model_card_ids:
+            actions.append(RenderAction("dropped_node", nid))
+
+    model_edge_pairs = {
+        (r.from_card, r.to_card) for r in model.relationships if r.rel_type == "edge"
+    }
+    for pair, old_edge in old_edges_by_pair.items():
+        if pair not in model_edge_pairs:
+            actions.append(RenderAction("dropped_edge",
+                f"{pair[0]} -> {pair[1]} (label: '{old_edge.get('label', '')}')"))
+
+    # --- Clear migrated model text ---
+    _clear_model_card_texts(canvas)
+
+    # --- Build new canvas ---
+    new_canvas: dict[str, Any] = {"nodes": new_nodes, "edges": new_edges}
+    write_model(new_canvas, model)
+
+    # --- Lint the result ---
+    errors = _lint_rendered(new_canvas, model)
+
+    return RenderResult(errors=errors, actions=actions, canvas=new_canvas)
 
 
-# ---------------------------------------------------------------------------
-# Lint — read-only model↔canvas consistency
-# ---------------------------------------------------------------------------
+def _get_model_card_text(canvas: dict[str, Any], card_id: str) -> str | None:
+    """Get pending text for a card from the model layer, if any."""
+    raw = canvas.get(MODEL_KEY, {})
+    texts = raw.get("_texts", {})
+    return texts.get(card_id)
 
 
-@dataclass
-class LintError:
-    rule: str
-    message: str
+def _clear_model_card_texts(canvas: dict[str, Any]) -> None:
+    """Clear all pending texts from the model layer."""
+    raw = canvas.get(MODEL_KEY, {})
+    raw.pop("_texts", None)
 
 
-def lint_canvas(canvas: dict[str, Any]) -> list[LintError]:
-    """Lint a canvas dict against model↔canvas consistency rules."""
-    errors: list[LintError] = []
-    model = read_model(canvas)
+def _lint_rendered(canvas: dict[str, Any], model: CanvasModel) -> list[RenderError]:
+    """Lint a rendered canvas against model rules."""
+    errors: list[RenderError] = []
 
-    if not model.cards and not model.relationships:
-        errors.append(LintError(
-            rule="model.missing",
-            message="No _model found in canvas file",
-        ))
-        return errors
-
-    # Index canvas state
-    canvas_node_ids = {n["id"] for n in canvas.get("nodes", [])}
     canvas_nodes_by_id: dict[str, dict[str, Any]] = {
         n["id"]: n for n in canvas.get("nodes", [])
     }
-    canvas_edge_set: set[tuple[str, str, str]] = set()
-    for e in canvas.get("edges", []):
-        canvas_edge_set.add((e.get("fromNode", ""), e.get("toNode", ""), e.get("label", "")))
-
-    model_card_ids = {c.id for c in model.cards}
-
-    # Rule: every model card has a canvas node
-    for card in model.cards:
-        if card.id not in canvas_node_ids:
-            errors.append(LintError(
-                rule="model.card.missing_node",
-                message=f"Model card '{card.id}' has no canvas node",
-            ))
 
     # Rule: model card type matches canvas TID.Pair
     for card in model.cards:
@@ -356,19 +420,9 @@ def lint_canvas(canvas: dict[str, Any]) -> list[LintError]:
         text = node.get("text", "")
         expected_tid = f"{card.type}: {card.id}"
         if expected_tid not in text:
-            errors.append(LintError(
+            errors.append(RenderError(
                 rule="model.card.type_mismatch",
                 message=f"Card '{card.id}' model type '{card.type}' not found in canvas text",
-            ))
-
-    # Rule: every model edge-relationship has a canvas edge
-    for rel in model.relationships:
-        if rel.rel_type != "edge":
-            continue
-        if (rel.from_card, rel.to_card, rel.id) not in canvas_edge_set:
-            errors.append(LintError(
-                rule="model.rel.missing_edge",
-                message=f"Model relationship '{rel.id}' ({rel.from_card} -> {rel.to_card}) has no canvas edge",
             ))
 
     # Rule: adjacent — cards touch borders
@@ -380,7 +434,7 @@ def lint_canvas(canvas: dict[str, Any]) -> list[LintError]:
         if a is None or b is None:
             continue
         if not _nodes_adjacent(a, b):
-            errors.append(LintError(
+            errors.append(RenderError(
                 rule="model.rel.adjacent",
                 message=f"Adjacent relationship '{rel.id}': cards '{rel.from_card}' and '{rel.to_card}' do not touch",
             ))
@@ -394,7 +448,7 @@ def lint_canvas(canvas: dict[str, Any]) -> list[LintError]:
         if parent is None or child is None:
             continue
         if not _node_contains(parent, child):
-            errors.append(LintError(
+            errors.append(RenderError(
                 rule="model.rel.contains",
                 message=f"Contains relationship '{rel.id}': '{rel.to_card}' is not inside '{rel.from_card}'",
             ))
@@ -403,17 +457,9 @@ def lint_canvas(canvas: dict[str, Any]) -> list[LintError]:
     for edge in canvas.get("edges", []):
         label = edge.get("label", "")
         if label and not _is_tid_pair(label):
-            errors.append(LintError(
+            errors.append(RenderError(
                 rule="canvas.edge.label_not_tid",
                 message=f"Edge '{edge.get('fromNode')}' -> '{edge.get('toNode')}' label '{label}' is not a valid TID.Pair (expected 'type: id')",
-            ))
-
-    # Rule: canvas nodes not in model (informational)
-    for nid in canvas_node_ids:
-        if nid not in model_card_ids:
-            errors.append(LintError(
-                rule="canvas.orphan_node",
-                message=f"Canvas node '{nid}' has no model card",
             ))
 
     return errors

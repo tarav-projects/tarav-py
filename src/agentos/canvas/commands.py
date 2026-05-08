@@ -6,7 +6,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 from agentos._core.errors import CliError
 
@@ -21,19 +20,11 @@ from .core import (
     place_one,
     read_canvas,
     read_model,
+    render_canvas,
     resize_node,
-    sync_canvas,
-    lint_canvas,
     write_canvas,
     write_model,
 )
-
-
-def _resize_new_nodes(canvas: dict[str, Any], new_node_ids: set[str]) -> None:
-    """Auto-resize only newly created nodes."""
-    for node in canvas.get("nodes", []):
-        if node["id"] in new_node_ids:
-            resize_node(node)
 
 
 def _cmd_canvas_init(args: argparse.Namespace) -> int:
@@ -51,8 +42,6 @@ def _cmd_canvas_init(args: argparse.Namespace) -> int:
     data = json.loads(model_path.read_text(encoding="utf-8"))
     model = parse_model(data)
     canvas = model_to_canvas(model)
-    new_ids = {c.id for c in model.cards}
-    _resize_new_nodes(canvas, new_ids)
 
     write_canvas(out_path, canvas)
     print(f"Created {out_path} ({len(model.cards)} cards, {len(model.relationships)} relationships)")
@@ -71,6 +60,75 @@ def _cmd_canvas_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_canvas_card(args: argparse.Namespace) -> int:
+    canvas_path = Path(args.file)
+    if not canvas_path.exists():
+        raise CliError(f"canvas file not found: {canvas_path}")
+
+    canvas = read_canvas(canvas_path)
+    model = read_model(canvas)
+
+    # No card-id: list all card IDs
+    if not args.card_id:
+        for card in model.cards:
+            print(f"{card.type}: {card.id}")
+        return 0
+
+    # Find the card in model
+    card = None
+    for c in model.cards:
+        if c.id == args.card_id:
+            card = c
+            break
+    if card is None:
+        raise CliError(f"card '{args.card_id}' not found in model")
+
+    # Find the canvas node
+    canvas_node = None
+    for n in canvas.get("nodes", []):
+        if n["id"] == args.card_id:
+            canvas_node = n
+            break
+
+    # --text: just print the text content
+    if args.text:
+        if canvas_node is None:
+            raise CliError(f"card '{args.card_id}' has no canvas node")
+        print(canvas_node.get("text", ""))
+        return 0
+
+    # Full card view: model + canvas merged
+    result: dict[str, Any] = {
+        "id": card.id,
+        "type": card.type,
+    }
+
+    if canvas_node is not None:
+        result["text"] = canvas_node.get("text", "")
+        result["x"] = canvas_node.get("x")
+        result["y"] = canvas_node.get("y")
+        result["width"] = canvas_node.get("width")
+        result["height"] = canvas_node.get("height")
+        if "color" in canvas_node:
+            result["color"] = canvas_node["color"]
+
+    # Collect relationships involving this card
+    rels = []
+    for r in model.relationships:
+        if r.from_card == args.card_id or r.to_card == args.card_id:
+            rels.append({
+                "from": r.from_card,
+                "to": r.to_card,
+                "type": r.rel_type,
+                "id": r.id,
+            })
+    if rels:
+        result["relationships"] = rels
+
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def _cmd_canvas_add_card(args: argparse.Namespace) -> int:
     canvas_path = Path(args.file)
     if not canvas_path.exists():
@@ -82,7 +140,6 @@ def _cmd_canvas_add_card(args: argparse.Namespace) -> int:
     card_id = args.card_id
     card_type = args.card_type
 
-    # Check if card already exists in model
     for card in model.cards:
         if card.id == card_id:
             raise CliError(f"card '{card_id}' already exists in model")
@@ -90,15 +147,13 @@ def _cmd_canvas_add_card(args: argparse.Namespace) -> int:
     new_card = ModelCard(id=card_id, type=card_type)
     model.cards.append(new_card)
 
-    # Determine connections
+    # Place the canvas node (new card only)
     connected_to = []
     if args.connect_to:
         connected_to.append(args.connect_to)
 
-    # Place the canvas node (new card only)
     x, y = place_one(card_id, canvas, connected_to)
     new_node = make_canvas_node(new_card, x, y)
-    resize_node(new_node)
     canvas.setdefault("nodes", []).append(new_node)
 
     # Add edge relationship if --connect-to and --edge-id provided
@@ -130,7 +185,6 @@ def _cmd_canvas_add_edge(args: argparse.Namespace) -> int:
     canvas = read_canvas(canvas_path)
     model = read_model(canvas)
 
-    # Verify both cards exist in model
     model_card_ids = {c.id for c in model.cards}
     if args.from_card not in model_card_ids:
         raise CliError(f"card '{args.from_card}' not found in model")
@@ -139,7 +193,6 @@ def _cmd_canvas_add_edge(args: argparse.Namespace) -> int:
 
     rel_type = args.rel_type or "edge"
 
-    # Add to model
     model.relationships.append(ModelRelationship(
         from_card=args.from_card,
         to_card=args.to_card,
@@ -147,7 +200,6 @@ def _cmd_canvas_add_edge(args: argparse.Namespace) -> int:
         id=args.edge_id,
     ))
 
-    # Add canvas edge for edge-type relationships
     if rel_type == "edge":
         canvas.setdefault("edges", []).append({
             "id": make_edge_id(),
@@ -162,45 +214,48 @@ def _cmd_canvas_add_edge(args: argparse.Namespace) -> int:
     return 0
 
 
-
-def _cmd_canvas_sync(args: argparse.Namespace) -> int:
+def _cmd_canvas_render(args: argparse.Namespace) -> int:
     canvas_path = Path(args.file)
     if not canvas_path.exists():
         raise CliError(f"canvas file not found: {canvas_path}")
 
     canvas = read_canvas(canvas_path)
-    actions = sync_canvas(canvas)
+    result = render_canvas(canvas)
 
-    if not actions:
-        print("Already in sync.")
-        return 0
+    # Always report errors
+    if result.errors:
+        for err in result.errors:
+            print(f"[{err.rule}] {err.message}", file=sys.stderr)
 
-    new_node_ids = {a.detail for a in actions if a.action == "created_node"}
-    _resize_new_nodes(canvas, new_node_ids)
-    write_canvas(canvas_path, canvas)
+    # Always report actions
+    if result.actions:
+        for action in result.actions:
+            print(f"[{action.action}] {action.detail}")
 
-    for action in actions:
-        print(f"[{action.action}] {action.detail}")
-    print(f"\n{len(actions)} action(s)")
-    return 0
-
-
-def _cmd_canvas_lint(args: argparse.Namespace) -> int:
-    canvas_path = Path(args.file)
-    if not canvas_path.exists():
-        raise CliError(f"canvas file not found: {canvas_path}")
-
-    canvas = read_canvas(canvas_path)
-    errors = lint_canvas(canvas)
-
-    if not errors:
+    if not args.apply:
+        # Dry run — just report
+        if result.errors:
+            print(f"\n{len(result.errors)} error(s)", file=sys.stderr)
+            return 1
+        if result.actions:
+            print(f"\n{len(result.actions)} action(s) pending. Run with --apply to write.")
+            return 0
         print("OK")
         return 0
 
-    for err in errors:
-        print(f"[{err.rule}] {err.message}", file=sys.stderr)
-    print(f"\n{len(errors)} error(s)", file=sys.stderr)
-    return 1
+    # Apply — write the rendered canvas
+    write_canvas(canvas_path, result.canvas)
+
+    if result.actions:
+        print(f"\n{len(result.actions)} action(s) applied.")
+    else:
+        print("Nothing to do.")
+
+    if result.errors:
+        print(f"{len(result.errors)} error(s) remain after render.", file=sys.stderr)
+        return 1
+
+    return 0
 
 
 def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
@@ -212,7 +267,7 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
 
     # init
     init_parser = canvas_subparsers.add_parser(
-        "init", help="Create a canvas from a topology JSON file."
+        "init", help="Create a canvas from a model JSON file."
     )
     init_parser.add_argument("--model", required=True, help="Path to model JSON file (same format as _model).")
     init_parser.add_argument("--file", required=True, help="Output .canvas file path.")
@@ -225,6 +280,15 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     show_parser.add_argument("--file", required=True, help="Path to .canvas file.")
     show_parser.set_defaults(handler=_cmd_canvas_show)
+
+    # card (query)
+    card_parser = canvas_subparsers.add_parser(
+        "card", help="Query card info. Lists all cards if no --card-id given."
+    )
+    card_parser.add_argument("--file", required=True, help="Path to .canvas file.")
+    card_parser.add_argument("--card-id", help="Card to query. Omit to list all.")
+    card_parser.add_argument("--text", action="store_true", help="Print only the card text content.")
+    card_parser.set_defaults(handler=_cmd_canvas_card)
 
     # add-card
     add_card_parser = canvas_subparsers.add_parser(
@@ -248,16 +312,10 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
     add_edge_parser.add_argument("--rel-type", default="edge", help="Relationship type (edge, adjacent, contains). Default: edge.")
     add_edge_parser.set_defaults(handler=_cmd_canvas_add_edge)
 
-    # sync
-    sync_parser = canvas_subparsers.add_parser(
-        "sync", help="Forward-pass model to canvas sync."
+    # render
+    render_parser = canvas_subparsers.add_parser(
+        "render", help="Compile model into canvas. Dry run by default."
     )
-    sync_parser.add_argument("--file", required=True, help="Path to .canvas file.")
-    sync_parser.set_defaults(handler=_cmd_canvas_sync)
-
-    # lint
-    lint_parser = canvas_subparsers.add_parser(
-        "lint", help="Validate model-canvas consistency."
-    )
-    lint_parser.add_argument("--file", required=True, help="Path to .canvas file.")
-    lint_parser.set_defaults(handler=_cmd_canvas_lint)
+    render_parser.add_argument("--file", required=True, help="Path to .canvas file.")
+    render_parser.add_argument("--apply", action="store_true", help="Write the rendered canvas to disk.")
+    render_parser.set_defaults(handler=_cmd_canvas_render)
