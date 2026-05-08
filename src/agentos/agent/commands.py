@@ -11,8 +11,8 @@ from pathlib import Path
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
 from agentos.agent.providers import (
-    AgentosAgent,
     AgentRunRequest,
+    ConfiguredAgent,
     load_configured_agents,
     resolve_agent,
 )
@@ -30,26 +30,25 @@ def _list_provider_instances(
     *,
     provider: str | None,
     start_path: Path,
-) -> tuple[AgentosAgent, ...]:
+) -> tuple[ConfiguredAgent, ...]:
     instances = load_configured_agents(start_path=start_path)
     if provider is None:
         return instances
     return tuple(instance for instance in instances if instance.provider == provider)
 
 
-def _format_instance_line(agent: AgentosAgent) -> str:
-    instance = agent.provider_instance
+def _format_instance_line(agent: ConfiguredAgent) -> str:
     instance_id = agent.instance_id or "<default>"
     suffix_parts: list[str] = [f"id={instance_id}"]
-    if instance.label is not None and instance.label != agent.instance_id:
-        suffix_parts.append(instance.label)
-    if instance.default_model is not None:
-        suffix_parts.append(f"model={instance.default_model}")
-    if instance.homes:
-        homes_text = ", ".join(f"{key}={path}" for key, path in instance.homes)
+    if agent.label is not None and agent.label != agent.instance_id:
+        suffix_parts.append(agent.label)
+    if agent.default_model is not None:
+        suffix_parts.append(f"model={agent.default_model}")
+    if agent.homes:
+        homes_text = ", ".join(f"{key}={path}" for key, path in agent.homes)
         suffix_parts.append(f"homes={homes_text}")
 
-    return f"{instance.family} [{'; '.join(suffix_parts)}]"
+    return f"{agent.provider} [{'; '.join(suffix_parts)}]"
 
 
 def _config_start_path(args: argparse.Namespace) -> Path:

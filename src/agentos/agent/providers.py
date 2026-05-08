@@ -2,26 +2,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from agentos._core.errors import CliError
+from agentos.agent.primitives import AgentRunRequest, ResolvedAgentRun
 from agentos.chat.providers import ProviderInstance, load_configured_provider_instances
+from agentos.codex.agent import CodexAgent
 
 
-@dataclass(frozen=True)
-class AgentRunRequest:
-    prompt: str
-    model: str | None = None
-
-
-@dataclass(frozen=True)
-class ResolvedAgentRun:
+class ConfiguredAgent(Protocol):
     provider: str
     instance_id: str | None
-    command: tuple[str, ...]
-    env: tuple[tuple[str, str], ...]
+    label: str | None
+    homes: tuple[tuple[str, Path], ...]
+    default_model: str | None
 
-    def env_mapping(self) -> dict[str, str]:
-        return dict(self.env)
+    def summary(self) -> dict[str, object]: ...
+
+    def resolve_run(self, request: AgentRunRequest) -> ResolvedAgentRun: ...
 
 
 @dataclass(frozen=True)
@@ -35,6 +33,18 @@ class AgentosAgent:
     @property
     def instance_id(self) -> str | None:
         return self.provider_instance.instance_id
+
+    @property
+    def label(self) -> str | None:
+        return self.provider_instance.label
+
+    @property
+    def homes(self) -> tuple[tuple[str, Path], ...]:
+        return self.provider_instance.homes
+
+    @property
+    def default_model(self) -> str | None:
+        return self.provider_instance.default_model
 
     def summary(self) -> dict[str, object]:
         return self.provider_instance.summary()
@@ -53,11 +63,17 @@ class AgentosAgent:
         )
 
 
-def load_configured_agents(*, start_path: Path | str = ".") -> tuple[AgentosAgent, ...]:
+def load_configured_agents(*, start_path: Path | str = ".") -> tuple[ConfiguredAgent, ...]:
     return tuple(
-        AgentosAgent(provider_instance=provider_instance)
+        _agent_from_legacy_config(provider_instance)
         for provider_instance in load_configured_provider_instances(start_path=start_path)
     )
+
+
+def _agent_from_legacy_config(provider_instance: ProviderInstance) -> ConfiguredAgent:
+    if provider_instance.family == "codex":
+        return CodexAgent.from_legacy_config(provider_instance)
+    return AgentosAgent(provider_instance=provider_instance)
 
 
 def resolve_agent(
@@ -65,7 +81,7 @@ def resolve_agent(
     provider: str,
     instance_id: str | None,
     start_path: Path,
-) -> AgentosAgent:
+) -> ConfiguredAgent:
     matching = [
         agent
         for agent in load_configured_agents(start_path=start_path)
@@ -122,6 +138,7 @@ def _build_agent_command(
 __all__ = [
     "AgentosAgent",
     "AgentRunRequest",
+    "ConfiguredAgent",
     "load_configured_agents",
     "ResolvedAgentRun",
     "resolve_agent",
