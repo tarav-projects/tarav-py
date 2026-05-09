@@ -1,6 +1,6 @@
 # Agentos.Agent.Model
 
-`Agentos.Agent.Model` defines how Agentos represents provider integration for runnable agents and sessions.
+`Agentos.Agent.Model` defines how Agentos represents provider-native agents and sessions.
 
 The model uses two provider-native anchors:
 
@@ -11,7 +11,7 @@ Agentos keeps provider-specific shape in those native anchors and derives provid
 
 ## Provider Agent
 
-`<Provider>.Agent` is the configured provider actor.
+`<Provider>.Agent` is the Agentos model of one configured provider actor.
 
 Examples:
 
@@ -20,26 +20,23 @@ Examples:
 - `Pi.Agent`
 - `OpenCode.Agent`
 
-It is not a new runtime. It is the Agentos model for a configured provider actor that may support tasks such as running, Chatlas capture, account checks, home resolution, and session discovery.
+It is not a new runtime and it is not a generic `Agent.Instance`. It represents the installed or configured agent as that provider exposes it: home roots, command/runtime identity, native configuration, account/runtime facts where relevant, and provider-native capabilities Agentos needs to use.
 
-Subsystem behavior may attach as focused provider-agent extensions:
+Provider agents are provider-specific. `Codex.Agent` and `Claude.Agent` do not need to have the same fields. They only need to satisfy the Agentos-level tasks they actually support.
 
-- `<Provider>.Agent.Runner`
-- `<Provider>.Agent.Chatlas`
-- `<Provider>.Agent.Accounts`
-- `<Provider>.Agent.Home`
+A provider agent owns provider-native access to its sessions:
 
-These extensions are not separate top-level model anchors. They keep the base provider agent small while leaving room for provider-specific complexity.
+```text
+<Provider>.Agent
+  -> discover/load native sessions
+  -> returns <Provider>.Session
+```
 
-A provider agent is the composition point for task-specific provider behavior.
-
-It may start from a minimal configuration and be resolved or enriched for a specific task by combining the provider-native agent anchor with the relevant subsystem extension data. For example, running an agent may use runner, home, account, and terminal-command facts, while Chatlas capture may use home, raw-artifact, and session-discovery facts.
-
-Subsystem extensions contribute the facts needed for a task without becoming separate top-level model anchors.
+This means session discovery is not a separate generic provider-session model. If Agentos needs to enumerate sessions for Codex, it asks `Codex.Agent` to produce `Codex.Session` objects.
 
 ## Provider Session
 
-`<Provider>.Session` is the native session artifact model for a provider.
+`<Provider>.Session` is the Agentos model of one provider-native session.
 
 Examples:
 
@@ -48,15 +45,27 @@ Examples:
 - `Pi.Session`
 - `OpenCode.Session`
 
-It captures provider-native facts such as ids, file paths, event streams, SQLite rows, timestamps, workspace hints, and raw artifact references where those exist.
+It contains all provider-relevant facts about that one session:
+
+- native session id
+- native transcript or artifact paths
+- native index refs or locators
+- timestamps
+- title, thread, or workspace hints
+- raw artifact refs
+- provider-specific metadata needed to understand or normalize the session
 
 `<Provider>.Session` is not the provider-agnostic Agentos session model.
+
+`Codex.Session` and `Claude.Session` may have different fields because Codex and Claude store sessions differently.
 
 ## Agentos Session
 
 `Agentos.Session` is the provider-agnostic normalized session model.
 
 In the current index surface, `Session.Model` is the concrete standard data model for `Agentos.Session`.
+
+`Session.Model` is derived output. It is not the native runtime or session object for any provider.
 
 Boundary:
 
@@ -68,9 +77,9 @@ raw provider artifacts
 
 Provider-native quirks should stay in raw artifacts or `<Provider>.Session`. Provider-agnostic facts belong in `Agentos.Session` / `Session.Model`.
 
-## Chatlas Normalizer
+## Normalizer
 
-`Chatlas.Normalizer` is the provider-specific conversion boundary.
+A provider normalizer is the provider-specific conversion boundary.
 
 It converts:
 
@@ -78,7 +87,28 @@ It converts:
 <Provider>.Session -> Agentos.Session / Session.Model
 ```
 
-Provider-specific normalizers may exist for Codex, Claude, Pi, Copilot, OpenCode, and other providers.
+Examples:
+
+```text
+Codex.Session -> Codex.Normalizer -> Session.Model
+Claude.Session -> Claude.Normalizer -> Session.Model
+```
+
+The normalizer is where provider-specific raw/session meaning becomes provider-neutral session data.
+
+## Coordination
+
+Agentos may coordinate across many provider agents:
+
+```text
+configured agents
+  -> each agent discovers provider-native sessions
+  -> Agentos coordinates lists, registries, queries, or exports
+```
+
+Cross-provider querying, registry maintenance, indexing, and resolution are Agentos coordination concerns. They are not responsibilities of `<Provider>.Session`.
+
+A provider session should expose its facts. It should not own global search semantics.
 
 ## Shared Primitives
 
@@ -96,11 +126,15 @@ These are reusable primitives, not a forced object hierarchy. Provider-specific 
 ## Design Rules
 
 - Prefer two provider-native anchors: `<Provider>.Agent` and `<Provider>.Session`.
+- Provider-specific objects are the source of provider-specific truth.
+- `<Provider>.Agent` models one configured provider actor.
+- `<Provider>.Agent` owns access to that provider's native capabilities, including session discovery/loading when supported.
+- `<Provider>.Session` models one native session and contains all provider-relevant facts about that session.
 - Keep `Agentos.Session` provider-agnostic.
 - Normalize provider-native sessions through explicit provider normalizers.
-- Treat `<Provider>.Agent` as the composition point for task-specific subsystem data.
-- Use provider-agent extensions for subsystem behavior when useful.
-- Do not turn every subsystem concern into a separate top-level model object.
+- Provider quirks belong in raw artifacts or `<Provider>.Session`, not in `Session.Model`.
+- Cross-provider coordination belongs to Agentos-level services, not to provider sessions.
+- Shared Agentos primitives are allowed only when they do not become a forced schema for every provider.
 - Do not prescribe implementation mechanics in the concept model.
 
 ## Relationship To Current Implementation
