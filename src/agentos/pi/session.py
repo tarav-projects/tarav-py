@@ -27,6 +27,9 @@ class PiSessionRef:
     def provider(self) -> str:
         return PI_PROVIDER
 
+    def matches_query(self, query: str) -> bool:
+        return query == self.native_session_id
+
     def to_session(self) -> "PiSession":
         return PiSession(
             native_session_id=self.native_session_id,
@@ -54,9 +57,6 @@ class PiSession:
     @property
     def provider(self) -> str:
         return PI_PROVIDER
-
-    def matches_query(self, query: str) -> bool:
-        return query in {self.native_session_id}
 
     def merge(self, other: PiSession) -> PiSession:
         if self.native_session_id != other.native_session_id:
@@ -103,8 +103,9 @@ def discover_pi_session_refs(*, targets: tuple[Path, ...]) -> tuple[PiSessionRef
 
 def find_pi_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[PiSession, ...]:
     sessions_by_id: dict[str, PiSession] = {}
-    for session in discover_pi_sessions(targets=targets):
-        if session.matches_query(query):
+    for session_ref in discover_pi_session_refs(targets=targets):
+        if session_ref.matches_query(query):
+            session = session_ref.to_session()
             _merge_pi_session(sessions_by_id, session)
     return _sort_pi_sessions(tuple(sessions_by_id.values()))
 

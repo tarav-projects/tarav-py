@@ -1702,26 +1702,53 @@ def test_codex_chatlas_context_uses_provider_native_capability(
     assert "_auth*.json" in context.effective_excludes
 
 
-def test_chat_session_uses_narrow_provider_identity(tmp_path: Path) -> None:
-    from agentos.chat.sessions import ChatSession, CodexSessionRecord, SessionProviderIdentity
+def test_provider_session_ref_entry_uses_provider_agent_context(tmp_path: Path) -> None:
+    from agentos.agent.primitives import AgentConfig
+    from agentos.chat.core import ProviderAgentContext, ProviderSessionRefEntry
+    from agentos.chat.providers import LegacyProviderConfig
+    from agentos.codex.agent import CodexAgent
+    from agentos.codex.session import CodexSessionRef
 
-    provider_identity = SessionProviderIdentity(
+    rollout_path = tmp_path / "rollout.jsonl"
+    legacy_config = LegacyProviderConfig(
         family="codex",
-        identity=("codex", "codex-main", str(tmp_path / "rollout.jsonl")),
-        uri_key="abc123",
-        fingerprint="abc123",
-        summary_payload={"family": "codex", "fingerprint": "abc123", "instance_id": "codex-main"},
+        instance_id="codex-main",
+        homes=(("home", tmp_path),),
+        direct_targets=(rollout_path,),
     )
-    session = ChatSession(
-        record=CodexSessionRecord(
-            provider_identity=provider_identity,
-            native_session_id="session-1",
-            artifact_paths=(tmp_path / "rollout.jsonl",),
+    agent = CodexAgent.from_config(
+        AgentConfig(
+            provider="codex",
+            instance_id="codex-main",
+            homes=(("home", tmp_path),),
         )
     )
+    context = ProviderAgentContext(
+        agent=agent,
+        legacy_config=legacy_config,
+        provider="codex",
+        instance_summary={"family": "codex", "fingerprint": "abc123", "instance_id": "codex-main"},
+        instance_fingerprint="abc123",
+        direct_targets=(rollout_path,),
+        direct_existing_targets=(),
+        direct_missing_targets=(rollout_path,),
+        grep_targets=(),
+        grep_existing_targets=(),
+        grep_missing_targets=(),
+        sqlite_db_paths=(),
+        sqlite_existing_db_paths=(),
+        sqlite_missing_db_paths=(),
+    )
+    session = ProviderSessionRefEntry(
+        context=context,
+        session_ref=CodexSessionRef(
+            native_session_id="session-1",
+            rollout_paths=(rollout_path,),
+        ),
+    )
 
-    assert not hasattr(session.record, "legacy_provider_config")
-    assert session.provider_identity.fingerprint == "abc123"
+    assert not hasattr(session, "legacy_provider_config")
+    assert session.context.instance_fingerprint == "abc123"
     assert ("provider_instance_fingerprint", "abc123") in session.query_fields()
 
 

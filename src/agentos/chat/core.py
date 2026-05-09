@@ -20,39 +20,20 @@ from agentos.chat.providers import (
     load_legacy_provider_configs,
 )
 from agentos.chat.providers import ProviderFamily
-from agentos.chat.sessions import (
+from agentos.chat.session_primitives import (
     BackingArtifact,
+    _build_path_finding,
+    _coalesce_timestamp,
     coerce_timestamp,
     safe_path_mtime,
 )
-from agentos.codex.session import (
-    CodexSession,
-    CodexSessionRef,
-)
-from agentos.claude.session import (
-    ClaudeSession,
-    ClaudeSessionRef,
-)
-from agentos.copilot.session import (
-    CopilotSession,
-    CopilotSessionRef,
-)
-from agentos.pi.session import (
-    PiSession,
-    PiSessionRef,
-)
-from agentos.opencode.session import (
-    OpencodeSession,
-    OpencodeSessionRef,
-)
-from agentos.gemini.session import (
-    GeminiSession,
-    GeminiSessionRef,
-)
-from agentos.openclaw.session import (
-    OpenclawSession,
-    OpenclawSessionRef,
-)
+from agentos.codex.session import CodexSessionRef
+from agentos.claude.session import ClaudeSessionRef
+from agentos.copilot.session import CopilotSessionRef
+from agentos.gemini.session import GeminiSessionRef
+from agentos.openclaw.session import OpenclawSessionRef
+from agentos.opencode.session import OpencodeSessionRef
+from agentos.pi.session import PiSessionRef
 
 TEXT_FILE_SUFFIXES = {
     ".json",
@@ -228,7 +209,7 @@ class ProviderSessionRefEntry:
 
 
 @dataclass(frozen=True)
-class ChatSessionUriQuery:
+class SessionRefUriQuery:
     provider_family: str
     instance_fingerprint_prefix: str
     session_id: str
@@ -333,7 +314,7 @@ def list_chat_sessions(
     _validate_session_limit(limit)
 
     provider_groups = _iter_provider_context_groups(providers, start_path=start_path)
-    discovered_sessions: list[ChatSession] = []
+    discovered_sessions: list[ProviderSessionRefEntry] = []
     provider_payloads: list[dict[str, Any]] = []
 
     for _, contexts in provider_groups:
@@ -406,7 +387,7 @@ def chat_session_stats(
     total_non_extractable_sessions = 0
 
     for provider_family, contexts in _iter_provider_context_groups(providers):
-        sessions: list[ChatSession] = []
+        sessions: list[ProviderSessionRefEntry] = []
         for context in contexts:
             sessions.extend(_discover_direct_provider_sessions(context))
         sessions = _sort_sessions(_dedupe_sessions(sessions), "lexical")
@@ -641,7 +622,7 @@ def find_chat_session(
     search_findings: list[dict[str, Any]] = []
     search_findings_seen_keys: set[tuple[object, ...]] = set()
     provider_payloads: list[dict[str, Any]] = []
-    sessions_by_provider: dict[str, list[ChatSession]] = {}
+    sessions_by_provider: dict[str, list[ProviderSessionRefEntry]] = {}
     search_findings_by_provider: dict[str, list[dict[str, Any]]] = {}
 
     for session in sessions:
@@ -714,8 +695,8 @@ def resolve_chat_sessions(
     *,
     providers: tuple[str, ...] | None = None,
     start_path: Path | str = ".",
-) -> list[ChatSession]:
-    resolved_sessions: list[ChatSession] = []
+) -> list[ProviderSessionRefEntry]:
+    resolved_sessions: list[ProviderSessionRefEntry] = []
     for _, contexts in _iter_provider_context_groups(providers, start_path=start_path):
         for context in contexts:
             resolved_sessions.extend(_find_direct_provider_sessions(context, query))
@@ -797,7 +778,7 @@ def _agent_config_from_legacy_config(instance: LegacyProviderConfig) -> AgentCon
 def _find_session_for_provider(
     *,
     provider_family: str,
-    contexts: tuple[SessionProviderContext, ...],
+    contexts: tuple[ProviderAgentContext, ...],
     query: str,
     include_grep: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -832,7 +813,7 @@ def _find_session_for_provider(
 def _build_provider_payload(
     *,
     provider_family: str,
-    contexts: tuple[SessionProviderContext, ...],
+    contexts: tuple[ProviderAgentContext, ...],
     include_grep: bool,
     item_count_key: str,
     item_count: int,
@@ -900,8 +881,8 @@ def _build_provider_payload(
 def _build_stats_provider_payload(
     *,
     provider_family: str,
-    contexts: tuple[SessionProviderContext, ...],
-    sessions: list[ChatSession],
+    contexts: tuple[ProviderAgentContext, ...],
+    sessions: list[ProviderSessionRefEntry],
 ) -> dict[str, Any]:
     extractable_sessions = [session for session in sessions if _session_is_extractable(session)]
     timestamps = [
@@ -928,14 +909,14 @@ def _build_stats_provider_payload(
     }
 
 
-def _session_native_payload(session: ChatSession) -> dict[str, Any]:
+def _session_native_payload(session: ProviderSessionRefEntry) -> dict[str, Any]:
     payload = dict(session.native_fields())
     payload.pop("session_id", None)
     return payload
 
 
 def _matched_query_fields(
-    session: ChatSession,
+    session: ProviderSessionRefEntry,
     *,
     query: str,
 ) -> tuple[tuple[str, str], ...]:
@@ -957,7 +938,7 @@ def _matched_query_fields(
 
 
 def _build_session_match_payload(
-    session: ChatSession,
+    session: ProviderSessionRefEntry,
     *,
     query: str,
 ) -> dict[str, Any]:
@@ -979,7 +960,7 @@ def _build_session_match_payload(
 
 
 def _backing_artifact_is_extractable(
-    session: ChatSession,
+    session: ProviderSessionRefEntry,
     artifact: BackingArtifact,
 ) -> bool:
     path = artifact.path
@@ -1022,7 +1003,7 @@ def _backing_artifact_is_extractable(
 
 
 def _serialize_backing_artifact(
-    session: ChatSession,
+    session: ProviderSessionRefEntry,
     artifact: BackingArtifact,
 ) -> dict[str, Any]:
     return artifact.summary(
@@ -1038,7 +1019,7 @@ def _created_timestamp_from_turns(turns: list[Any]) -> float | None:
     return None
 
 
-def _session_created_timestamp(session: ChatSession) -> float | None:
+def _session_created_timestamp(session: ProviderSessionRefEntry) -> float | None:
     created_at = session.created_timestamp()
     if created_at is not None:
         return created_at
@@ -1110,7 +1091,7 @@ def _session_created_timestamp(session: ChatSession) -> float | None:
 
 
 def _build_common_session_stats(
-    session: ChatSession,
+    session: ProviderSessionRefEntry,
     *,
     query: str | None = None,
     include_artifacts: bool = False,
@@ -1120,7 +1101,7 @@ def _build_common_session_stats(
     payload = {
         "provider": session.provider,
         "uri": session.uri,
-        "provider_instance_fingerprint": session.provider_identity.fingerprint,
+        "provider_instance_fingerprint": session.context.instance_fingerprint,
         "session_id": session.session_id,
         "display_name": _session_display_name(session),
         "display_name_field": _session_display_field_name(session),
@@ -1145,11 +1126,60 @@ def _build_common_session_stats(
     return payload
 
 
-def _build_provider_session_stats(session: ChatSession) -> dict[str, Any]:
-    return _build_session_record_stats(session.record)
+def _build_provider_session_stats(session: ProviderSessionRefEntry) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "provider": session.provider,
+        "session_id": session.session_id,
+        "display_name": session.display_name(),
+        "created_at": _format_stats_timestamp(_session_created_timestamp(session)),
+        "updated_at": _format_stats_timestamp(session.sort_timestamp()),
+        "extractable": _session_is_extractable(session),
+        "backing_artifact_count": len(session.backing_artifacts()),
+    }
+    primary = session.primary_artifact_path()
+    if primary is not None:
+        payload["primary_backing_artifact"] = str(primary)
+    payload.update(_session_native_payload(session))
+
+    if isinstance(session.session_ref, CodexSessionRef):
+        payload["rollout_artifact_count"] = len(session.session_ref.rollout_paths)
+        payload["session_index_count"] = len(session.session_ref.index_paths)
+        payload["has_rollout_artifact"] = _session_is_extractable(session)
+        payload["dialog_turn_count"] = _provider_dialog_turn_count(session)
+    if isinstance(session.session_ref, OpenclawSessionRef):
+        payload["has_transcript"] = session.session_ref.transcript_path is not None and session.session_ref.transcript_path.is_file()
+        payload["has_sessions_index"] = session.session_ref.sessions_index_path is not None and session.session_ref.sessions_index_path.is_file()
+        payload["session_key_count"] = len(session.session_ref.session_keys)
+        payload["dialog_turn_count"] = _provider_dialog_turn_count(session)
+
+    return {key: value for key, value in payload.items() if value is not None}
 
 
-def _parse_chat_session_uri(query: str) -> ChatSessionUriQuery | None:
+def _provider_dialog_turn_count(session: ProviderSessionRefEntry) -> int | None:
+    path = session.primary_artifact_path()
+    if path is None or not path.is_file():
+        return None
+    try:
+        if session.provider == "codex":
+            from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
+
+            return len(extract_dialog_from_codex_rollout(path, raw=False))
+        if session.provider == "openclaw":
+            from agentos.chat.extractors.openclaw import extract_dialog_from_openclaw_session, load_openclaw_session_records
+
+            return len(
+                extract_dialog_from_openclaw_session(
+                    records=load_openclaw_session_records(path),
+                    session_id=session.session_id,
+                    raw=False,
+                )
+            )
+    except (CliError, OSError, json.JSONDecodeError):
+        return None
+    return None
+
+
+def _parse_chat_session_uri(query: str) -> SessionRefUriQuery | None:
     prefix = "agentos://chat-session/"
     if not query.startswith(prefix):
         return None
@@ -1162,7 +1192,7 @@ def _parse_chat_session_uri(query: str) -> ChatSessionUriQuery | None:
     provider_family, instance_fingerprint_prefix, session_id = (unquote(part) for part in parts)
     if not provider_family or not instance_fingerprint_prefix or not session_id:
         return None
-    return ChatSessionUriQuery(
+    return SessionRefUriQuery(
         provider_family=provider_family,
         instance_fingerprint_prefix=instance_fingerprint_prefix.lower(),
         session_id=session_id,
@@ -1170,18 +1200,136 @@ def _parse_chat_session_uri(query: str) -> ChatSessionUriQuery | None:
 
 
 def _session_matches_uri_query(
-    session: ChatSession,
-    uri_query: ChatSessionUriQuery,
+    session: ProviderSessionRefEntry,
+    uri_query: SessionRefUriQuery,
 ) -> bool:
     return (
         session.provider_family == uri_query.provider_family
         and session.session_id == uri_query.session_id
-        and session.provider_identity.matches_fingerprint_prefix(uri_query.instance_fingerprint_prefix)
+        and session.context.instance_fingerprint.startswith(uri_query.instance_fingerprint_prefix)
     )
 
 
+def _session_ref_backing_artifacts(session_ref: ProviderSessionRef) -> tuple[BackingArtifact, ...]:
+    if isinstance(session_ref, ClaudeSessionRef):
+        return tuple(
+            BackingArtifact(role="transcript" if path.suffix == ".jsonl" else "metadata", path=path)
+            for path in session_ref.artifact_paths
+        )
+    if isinstance(session_ref, CodexSessionRef):
+        artifacts = [BackingArtifact(role="transcript", path=path) for path in session_ref.rollout_paths]
+        artifacts.extend(
+            BackingArtifact(
+                role="session_index",
+                path=path,
+                locator={"kind": "jsonl_record_match", "match": {"id": session_ref.native_session_id}},
+            )
+            for path in session_ref.index_paths
+        )
+        return tuple(artifacts)
+    if isinstance(session_ref, CopilotSessionRef):
+        artifacts = [BackingArtifact(role="transcript", path=session_ref.events_path)]
+        if session_ref.events_path.name == "events.jsonl":
+            artifacts.append(
+                BackingArtifact(role="session_root", path=session_ref.events_path.parent, storage_kind="directory")
+            )
+        return tuple(artifacts)
+    if isinstance(session_ref, GeminiSessionRef):
+        return tuple(BackingArtifact(role="transcript", path=path) for path in session_ref.artifact_paths)
+    if isinstance(session_ref, PiSessionRef):
+        return tuple(BackingArtifact(role="transcript", path=path) for path in session_ref.artifact_paths)
+    if isinstance(session_ref, OpenclawSessionRef):
+        artifacts: list[BackingArtifact] = []
+        if session_ref.transcript_path is not None:
+            artifacts.append(BackingArtifact(role="transcript", path=session_ref.transcript_path))
+        if session_ref.sessions_index_path is not None:
+            locator: dict[str, Any]
+            if session_ref.session_keys:
+                locator = {"kind": "json_object_keys", "keys": list(session_ref.session_keys)}
+            else:
+                locator = {"kind": "json_object_value_match", "match": {"sessionId": session_ref.native_session_id}}
+            artifacts.append(BackingArtifact(role="session_index", path=session_ref.sessions_index_path, locator=locator))
+        return tuple(artifacts)
+    if isinstance(session_ref, OpencodeSessionRef):
+        artifacts = []
+        if session_ref.diff_path is not None:
+            artifacts.append(BackingArtifact(role="session_diff", path=session_ref.diff_path))
+        if session_ref.sqlite_db_path is not None:
+            artifacts.append(
+                BackingArtifact(
+                    role="sqlite_session_row",
+                    path=session_ref.sqlite_db_path,
+                    storage_kind="sqlite_row",
+                    locator={
+                        "kind": "sqlite_row_match",
+                        "table": "session",
+                        "key": {"id": session_ref.native_session_id},
+                    },
+                )
+            )
+        return tuple(artifacts)
+    return ()
+
+
+def _session_ref_display_name(session_ref: ProviderSessionRef) -> str | None:
+    if isinstance(session_ref, ClaudeSessionRef):
+        return session_ref.title
+    if isinstance(session_ref, CodexSessionRef):
+        return session_ref.thread_name
+    return None
+
+
+def _session_ref_display_name_field(session_ref: ProviderSessionRef) -> str | None:
+    if isinstance(session_ref, ClaudeSessionRef) and session_ref.title is not None:
+        return "title"
+    if isinstance(session_ref, CodexSessionRef) and session_ref.thread_name is not None:
+        return "thread_name"
+    return None
+
+
+def _session_ref_native_payload(session_ref: ProviderSessionRef) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if isinstance(session_ref, ClaudeSessionRef) and session_ref.title is not None:
+        payload["title"] = session_ref.title
+    if isinstance(session_ref, CodexSessionRef) and session_ref.thread_name is not None:
+        payload["thread_name"] = session_ref.thread_name
+    if isinstance(session_ref, PiSessionRef):
+        if session_ref.cwd is not None:
+            payload["cwd"] = session_ref.cwd
+        if session_ref.model_provider is not None:
+            payload["model_provider"] = session_ref.model_provider
+        if session_ref.model_id is not None:
+            payload["model_id"] = session_ref.model_id
+        if session_ref.thinking_level is not None:
+            payload["thinking_level"] = session_ref.thinking_level
+    if isinstance(session_ref, OpenclawSessionRef):
+        if session_ref.session_keys:
+            payload["session_keys"] = list(session_ref.session_keys)
+        if session_ref.agent_id is not None:
+            payload["agent_id"] = session_ref.agent_id
+    return payload
+
+
+def _session_ref_sort_timestamp(session_ref: ProviderSessionRef) -> float | None:
+    if isinstance(session_ref, ClaudeSessionRef):
+        return _coalesce_timestamp(coerce_timestamp(session_ref.updated_at), *(safe_path_mtime(path) for path in session_ref.artifact_paths))
+    if isinstance(session_ref, CodexSessionRef):
+        return _coalesce_timestamp(session_ref.updated_at, *(safe_path_mtime(path) for path in session_ref.rollout_paths))
+    if isinstance(session_ref, CopilotSessionRef):
+        return _coalesce_timestamp(session_ref.updated_at, safe_path_mtime(session_ref.events_path), safe_path_mtime(session_ref.events_path.parent))
+    if isinstance(session_ref, GeminiSessionRef):
+        return _coalesce_timestamp(session_ref.updated_at, *(safe_path_mtime(path) for path in session_ref.artifact_paths))
+    if isinstance(session_ref, PiSessionRef):
+        return _coalesce_timestamp(session_ref.updated_at, session_ref.started_at, *(safe_path_mtime(path) for path in session_ref.artifact_paths))
+    if isinstance(session_ref, OpenclawSessionRef):
+        return _coalesce_timestamp(session_ref.updated_at, safe_path_mtime(session_ref.transcript_path), safe_path_mtime(session_ref.sessions_index_path))
+    if isinstance(session_ref, OpencodeSessionRef):
+        return _coalesce_timestamp(session_ref.updated_at, safe_path_mtime(session_ref.diff_path), safe_path_mtime(session_ref.sqlite_db_path))
+    return None
+
+
 def _strategies_attempted(
-    contexts: tuple[SessionProviderContext, ...],
+    contexts: tuple[ProviderAgentContext, ...],
     *,
     include_grep: bool,
 ) -> list[str]:
@@ -1193,7 +1341,7 @@ def _strategies_attempted(
     return strategies
 
 
-def _discover_direct_provider_sessions(context: SessionProviderContext) -> list[ChatSession]:
+def _discover_direct_provider_sessions(context: ProviderAgentContext) -> list[ProviderSessionRefEntry]:
     if not hasattr(context.agent, "discover_session_refs"):
         return []
     return [
@@ -1203,9 +1351,9 @@ def _discover_direct_provider_sessions(context: SessionProviderContext) -> list[
 
 
 def _find_direct_provider_sessions(
-    context: SessionProviderContext,
+    context: ProviderAgentContext,
     query: str,
-) -> list[ChatSession]:
+) -> list[ProviderSessionRefEntry]:
     uri_query = _parse_chat_session_uri(query)
     if uri_query is not None:
         if context.provider != uri_query.provider_family:
@@ -1221,293 +1369,6 @@ def _find_direct_provider_sessions(
         session
         for session in _discover_direct_provider_sessions(context)
         if session.matches_query(query)
-    ]
-
-
-def _wrap_session_records(session_records: list[ChatSessionRecord]) -> list[ChatSession]:
-    return [ChatSession(record=source) for source in session_records]
-
-
-def _discover_provider_session_records(context: SessionProviderContext) -> list[ChatSessionRecord]:
-    if context.provider == "claude-code":
-        return _list_claude_code_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-        )
-    if context.provider == "codex":
-        return _list_codex_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-        )
-    if context.provider == "copilot-cli":
-        return _list_copilot_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-        )
-    if context.provider == "gemini-cli":
-        return _list_gemini_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-        )
-    if context.provider == "openclaw":
-        return _list_openclaw_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-        )
-    if context.provider == "opencode":
-        return _list_opencode_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-            sqlite_db_paths=context.sqlite_existing_db_paths,
-        )
-    if context.provider == "pi":
-        return _list_pi_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-        )
-    raise CliError(f"unsupported provider family {context.provider}")
-
-
-def _find_provider_session_records(
-    context: SessionProviderContext,
-    query: str,
-) -> list[ChatSessionRecord]:
-    if context.provider == "claude-code":
-        return _find_claude_code_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-            query=query,
-        )
-    if context.provider == "codex":
-        return _find_codex_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-            query=query,
-        )
-    if context.provider == "copilot-cli":
-        return _find_copilot_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-            session_id=query,
-        )
-    if context.provider == "gemini-cli":
-        return _find_gemini_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-            session_id=query,
-        )
-    if context.provider == "openclaw":
-        return _find_openclaw_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-            session_id=query,
-        )
-    if context.provider == "opencode":
-        return _find_opencode_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-            session_id=query,
-            sqlite_db_paths=context.sqlite_existing_db_paths,
-        )
-    if context.provider == "pi":
-        return _find_pi_sessions(
-            provider_identity=context.provider_identity,
-            targets=context.direct_existing_targets,
-            session_id=query,
-        )
-    raise CliError(f"unsupported provider family {context.provider}")
-
-
-def _build_session_record_stats(record: ChatSessionRecord) -> dict[str, Any]:
-    if isinstance(record, ClaudeCodeSessionRecord):
-        return _build_claude_code_session_stats(record)
-    if isinstance(record, CodexSessionRecord):
-        return _build_codex_session_stats(record)
-    if isinstance(record, CopilotCliSessionRecord):
-        return _build_copilot_cli_session_stats(record)
-    if isinstance(record, GeminiCliSessionRecord):
-        return _build_gemini_cli_session_stats(record)
-    if isinstance(record, OpenclawSessionRecord):
-        return _build_openclaw_session_stats(record)
-    if isinstance(record, OpencodeSessionRecord):
-        return _build_opencode_session_stats(record)
-    if isinstance(record, PiSessionRecord):
-        return _build_pi_session_stats(record)
-    raise CliError(f"chat session stats is not implemented for provider {record.provider_family}")
-
-
-def _list_claude_code_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-) -> list[ChatSessionRecord]:
-    return [
-        _claude_session_record_from_native(
-            session,
-            provider_identity=provider_identity,
-        )
-        for session in discover_claude_sessions(targets=targets)
-    ]
-
-
-def _find_claude_code_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-    query: str,
-) -> list[ChatSessionRecord]:
-    return [
-        _claude_session_record_from_native(
-            session,
-            provider_identity=provider_identity,
-        )
-        for session in find_claude_sessions(targets=targets, query=query)
-    ]
-
-
-def _list_codex_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-) -> list[ChatSessionRecord]:
-    return [
-        _codex_session_record_from_native(
-            session,
-            provider_identity=provider_identity,
-        )
-        for session in discover_codex_sessions(targets=targets)
-    ]
-
-
-def _find_codex_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-    query: str,
-) -> list[ChatSessionRecord]:
-    return [
-        _codex_session_record_from_native(
-            session,
-            provider_identity=provider_identity,
-        )
-        for session in find_codex_sessions(targets=targets, query=query)
-    ]
-
-
-def _list_copilot_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-) -> list[ChatSessionRecord]:
-    return [
-        _copilot_session_record_from_native(session, provider_identity=provider_identity)
-        for session in discover_copilot_sessions(targets=targets)
-    ]
-
-
-def _find_copilot_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-    session_id: str,
-) -> list[ChatSessionRecord]:
-    return [
-        _copilot_session_record_from_native(session, provider_identity=provider_identity)
-        for session in find_copilot_sessions(targets=targets, query=session_id)
-    ]
-
-
-def _list_gemini_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-) -> list[ChatSessionRecord]:
-    return [
-        _gemini_session_record_from_native(session, provider_identity=provider_identity)
-        for session in discover_gemini_sessions(targets=targets)
-    ]
-
-
-def _find_gemini_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-    session_id: str,
-) -> list[ChatSessionRecord]:
-    return [
-        _gemini_session_record_from_native(session, provider_identity=provider_identity)
-        for session in find_gemini_sessions(targets=targets, query=session_id)
-    ]
-
-
-def _list_pi_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-) -> list[ChatSessionRecord]:
-    return [
-        _pi_session_record_from_native(session, provider_identity=provider_identity)
-        for session in discover_pi_sessions(targets=targets)
-    ]
-
-
-def _find_pi_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-    session_id: str,
-) -> list[ChatSessionRecord]:
-    return [
-        _pi_session_record_from_native(session, provider_identity=provider_identity)
-        for session in find_pi_sessions(targets=targets, query=session_id)
-    ]
-
-
-def _list_opencode_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-    sqlite_db_paths: tuple[Path, ...],
-) -> list[ChatSessionRecord]:
-    return [
-        _opencode_session_record_from_native(session, provider_identity=provider_identity)
-        for session in discover_opencode_sessions(targets=targets, sqlite_db_paths=sqlite_db_paths)
-    ]
-
-
-def _find_opencode_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-    session_id: str,
-    sqlite_db_paths: tuple[Path, ...],
-) -> list[ChatSessionRecord]:
-    return [
-        _opencode_session_record_from_native(session, provider_identity=provider_identity)
-        for session in find_opencode_sessions(targets=targets, sqlite_db_paths=sqlite_db_paths, query=session_id)
-    ]
-
-
-def _list_openclaw_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-) -> list[ChatSessionRecord]:
-    return [
-        _openclaw_session_record_from_native(session, provider_identity=provider_identity)
-        for session in discover_openclaw_sessions(targets=targets)
-    ]
-
-
-def _find_openclaw_sessions(
-    *,
-    provider_identity: SessionProviderIdentity,
-    targets: tuple[Path, ...],
-    session_id: str,
-) -> list[ChatSessionRecord]:
-    return [
-        _openclaw_session_record_from_native(session, provider_identity=provider_identity)
-        for session in find_openclaw_sessions(targets=targets, query=session_id)
     ]
 
 
@@ -1529,20 +1390,20 @@ def _append_unique_finding(
     findings.append(finding)
 
 
-def _session_summary(session: ChatSession) -> dict[str, Any]:
+def _session_summary(session: ProviderSessionRefEntry) -> dict[str, Any]:
     return _build_common_session_stats(session)
 
 
-def _session_display_name(session: ChatSession) -> str | None:
+def _session_display_name(session: ProviderSessionRefEntry) -> str | None:
     return session.display_name()
 
 
-def _session_display_field_name(session: ChatSession) -> str | None:
+def _session_display_field_name(session: ProviderSessionRefEntry) -> str | None:
     return session.display_name_field()
 
 
 def _session_findings(
-    session: ChatSession,
+    session: ProviderSessionRefEntry,
     *,
     query: str,
 ) -> tuple[dict[str, Any], ...]:
@@ -1554,7 +1415,7 @@ def _session_findings(
         enriched["matched_value"] = query
         enriched["session_id"] = session.session_id
         enriched["uri"] = session.uri
-        enriched["provider_instance_fingerprint"] = session.provider_identity.fingerprint
+        enriched["provider_instance_fingerprint"] = session.context.instance_fingerprint
         enriched["native"] = _session_native_payload(session)
         findings.append(enriched)
 
@@ -1564,7 +1425,7 @@ def _session_findings(
     return session.supplemental_findings(query=query, matched_field=matched_field)
 
 
-def _matched_field_name(session: ChatSession, *, query: str) -> str:
+def _matched_field_name(session: ProviderSessionRefEntry, *, query: str) -> str:
     matched_fields = _matched_query_fields(session, query=query)
     if matched_fields:
         return matched_fields[0][0]
@@ -1572,8 +1433,8 @@ def _matched_field_name(session: ChatSession, *, query: str) -> str:
 
 
 def _merge_session(
-    sessions_by_id: dict[str, ChatSession],
-    session: ChatSession,
+    sessions_by_id: dict[str, ProviderSessionRefEntry],
+    session: ProviderSessionRefEntry,
 ) -> None:
     session_key = session.uri
     existing = sessions_by_id.get(session_key)
@@ -1581,7 +1442,7 @@ def _merge_session(
         sessions_by_id[session_key] = session
         return
 
-    if type(existing.record) is type(session.record):
+    if type(existing.session_ref) is type(session.session_ref):
         sessions_by_id[session_key] = existing.merge(session)
         return
 
@@ -1589,14 +1450,14 @@ def _merge_session(
         sessions_by_id[session_key] = session
 
 
-def _dedupe_sessions(sessions: list[ChatSession]) -> list[ChatSession]:
-    deduped: dict[str, ChatSession] = {}
+def _dedupe_sessions(sessions: list[ProviderSessionRefEntry]) -> list[ProviderSessionRefEntry]:
+    deduped: dict[str, ProviderSessionRefEntry] = {}
     for session in sessions:
         _merge_session(deduped, session)
     return _sort_sessions(list(deduped.values()), "lexical")
 
 
-def _sort_sessions(sessions: list[ChatSession], sort: str) -> list[ChatSession]:
+def _sort_sessions(sessions: list[ProviderSessionRefEntry], sort: str) -> list[ProviderSessionRefEntry]:
     _validate_sort_choice(sort)
 
     if sort == "lexical":
@@ -1623,89 +1484,13 @@ def _sort_sessions(sessions: list[ChatSession], sort: str) -> list[ChatSession]:
     return sessions
 
 
-def _session_preference_key(session: ChatSession) -> tuple[float, int, str]:
+def _session_preference_key(session: ProviderSessionRefEntry) -> tuple[float, int, str]:
     timestamp = session.sort_timestamp()
     return (
         timestamp if timestamp is not None else float("-inf"),
         len(session.canonical_findings()),
         str(session.primary_artifact_path() or ""),
     )
-
-
-def _merge_session_record(
-    sessions_by_id: dict[tuple[object, ...], ChatSessionRecord],
-    session: ChatSessionRecord,
-) -> None:
-    session_key = session.record_identity_key()
-    existing = sessions_by_id.get(session_key)
-    if existing is None:
-        sessions_by_id[session_key] = session
-        return
-
-    if type(existing) is type(session):
-        sessions_by_id[session_key] = existing.merge(session)
-        return
-
-    if _session_record_preference_key(session) > _session_record_preference_key(existing):
-        sessions_by_id[session_key] = session
-
-
-def _dedupe_session_records(sessions: list[ChatSessionRecord]) -> list[ChatSessionRecord]:
-    deduped: dict[tuple[object, ...], ChatSessionRecord] = {}
-    for session in sessions:
-        _merge_session_record(deduped, session)
-    return _sort_session_records(list(deduped.values()), "lexical")
-
-
-def _sort_session_records(sessions: list[ChatSessionRecord], sort: str) -> list[ChatSessionRecord]:
-    _validate_sort_choice(sort)
-
-    if sort == "lexical":
-        sessions.sort(key=lambda session: session.session_id)
-        return sessions
-
-    if sort == "newest":
-        sessions.sort(
-            key=lambda session: (
-                session.sort_timestamp() is None,
-                -(session.sort_timestamp() or 0.0),
-                session.session_id,
-            )
-        )
-        return sessions
-
-    sessions.sort(
-        key=lambda session: (
-            session.sort_timestamp() is None,
-            session.sort_timestamp() or 0.0,
-            session.session_id,
-        )
-    )
-    return sessions
-
-
-def _session_record_preference_key(session: ChatSessionRecord) -> tuple[float, int, str]:
-    timestamp = session.sort_timestamp()
-    return (
-        timestamp if timestamp is not None else float("-inf"),
-        len(session.canonical_findings()),
-        str(session.primary_artifact_path() or ""),
-    )
-
-
-def _session_matches_list_filters(
-    session: ChatSession,
-    *,
-    extractable_only: bool,
-    updated_after: float | None,
-) -> bool:
-    if extractable_only and not _session_is_extractable(session):
-        return False
-    if updated_after is not None:
-        timestamp = session.sort_timestamp()
-        if timestamp is None or timestamp < updated_after:
-            return False
-    return True
 
 
 def _format_provider_stats_label(key: str) -> str:
@@ -1803,557 +1588,7 @@ def _try_build_dialog_turn_stats(callback: Callable[[], list[Any]]) -> dict[str,
     return _build_dialog_turn_stats(turns)
 
 
-def _build_claude_code_session_stats(session: ClaudeCodeSessionRecord) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "artifact_count": len(session.artifact_paths),
-        "source_kind": session.source_kind,
-        "has_extractable_artifact": False,
-    }
-
-    from agentos.chat.extractors.claude_code import (
-        extract_dialog_from_claude_code_session,
-        is_claude_code_session_path,
-    )
-
-    artifact_path = next(
-        (path for path in session.artifact_paths if path.is_file() and is_claude_code_session_path(path)),
-        None,
-    )
-    if artifact_path is None:
-        return payload
-
-    payload["has_extractable_artifact"] = True
-    record_count = 0
-
-    try:
-        with artifact_path.open("r", encoding="utf-8", errors="ignore") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-
-                record_count += 1
-    except OSError:
-        return payload
-
-    turns = _try_provider_stats_call(
-        lambda: extract_dialog_from_claude_code_session(artifact_path, raw=False)
-    )
-    if not isinstance(turns, list):
-        return payload
-
-    turn_stats = _build_dialog_turn_stats(turns)
-    payload.update(
-        {
-            "record_count": record_count,
-            "message_record_count": turn_stats["dialog_turn_count"],
-            "user_message_count": turn_stats["user_turn_count"],
-            "assistant_message_count": turn_stats["assistant_turn_count"],
-            "first_record_at": turn_stats["first_turn_at"],
-            "last_record_at": turn_stats["last_turn_at"],
-            **turn_stats,
-        }
-    )
-    return payload
-
-
-def _build_codex_session_stats(session: CodexSessionRecord) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "rollout_artifact_count": len(session.artifact_paths),
-        "session_index_count": len(session.index_paths),
-        "has_rollout_artifact": _session_is_extractable(session),
-    }
-
-    artifact_path = session.primary_artifact_path()
-    if artifact_path is None or not artifact_path.is_file():
-        return payload
-
-    record_count = 0
-    session_meta_count = 0
-    response_item_count = 0
-    event_message_count = 0
-    message_count = 0
-    user_message_count = 0
-    assistant_message_count = 0
-    developer_message_count = 0
-    tool_call_count = 0
-    tool_call_output_count = 0
-    reasoning_item_count = 0
-    first_record_at: float | None = None
-    last_record_at: float | None = None
-
-    try:
-        with artifact_path.open("r", encoding="utf-8", errors="ignore") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-
-                record_count += 1
-                first_record_at, last_record_at = _update_time_bounds(
-                    first_record_at,
-                    last_record_at,
-                    obj.get("timestamp"),
-                )
-
-                record_type = obj.get("type")
-                if record_type == "session_meta":
-                    session_meta_count += 1
-                    continue
-                if record_type == "event_msg":
-                    event_message_count += 1
-                    continue
-                if record_type != "response_item":
-                    continue
-
-                response_item_count += 1
-                response_payload = obj.get("payload")
-                if not isinstance(response_payload, dict):
-                    continue
-
-                response_type = response_payload.get("type")
-                if response_type == "message":
-                    message_count += 1
-                    role = response_payload.get("role")
-                    if role == "user":
-                        user_message_count += 1
-                    elif role == "assistant":
-                        assistant_message_count += 1
-                    elif role == "developer":
-                        developer_message_count += 1
-                elif response_type == "function_call":
-                    tool_call_count += 1
-                elif response_type == "function_call_output":
-                    tool_call_output_count += 1
-                elif response_type == "reasoning":
-                    reasoning_item_count += 1
-    except OSError:
-        return payload
-
-    # Import lazily to avoid an import cycle through agentos.chat.extractors.__init__.
-    from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
-
-    turns = extract_dialog_from_codex_rollout(artifact_path, raw=False)
-    payload.update(
-        {
-            "record_count": record_count,
-            "session_meta_count": session_meta_count,
-            "response_item_count": response_item_count,
-            "event_message_count": event_message_count,
-            "message_count": message_count,
-            "user_message_count": user_message_count,
-            "assistant_message_count": assistant_message_count,
-            "developer_message_count": developer_message_count,
-            "tool_call_count": tool_call_count,
-            "tool_call_output_count": tool_call_output_count,
-            "reasoning_item_count": reasoning_item_count,
-            "first_record_at": _format_stats_timestamp(first_record_at),
-            "last_record_at": _format_stats_timestamp(last_record_at),
-            **_build_dialog_turn_stats(turns),
-        }
-    )
-    return payload
-
-
-def _build_copilot_cli_session_stats(session: CopilotCliSessionRecord) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "session_root_present": session.session_root is not None,
-        "session_file_present": session.session_file is not None,
-    }
-
-    artifact_path = session.primary_artifact_path()
-    if artifact_path is None or not artifact_path.is_file():
-        return payload
-
-    from agentos.chat.extractors.copilot_cli import (
-        load_copilot_cli_events,
-        extract_dialog_from_copilot_cli_session,
-    )
-
-    events = _try_provider_stats_call(lambda: load_copilot_cli_events(artifact_path))
-    if not isinstance(events, list):
-        return payload
-
-    session_start_count = 0
-    user_message_event_count = 0
-    assistant_message_event_count = 0
-    tool_event_count = 0
-    skill_invoked_count = 0
-    first_event_at: float | None = None
-    last_event_at: float | None = None
-
-    for event in events:
-        event_type = event.get("type")
-        first_event_at, last_event_at = _update_time_bounds(first_event_at, last_event_at, event.get("timestamp"))
-        if event_type == "session.start":
-            session_start_count += 1
-        elif event_type == "user.message":
-            user_message_event_count += 1
-        elif event_type == "assistant.message":
-            assistant_message_event_count += 1
-        elif event_type in {"tool.execution_start", "tool.execution_complete"}:
-            tool_event_count += 1
-        elif event_type == "skill.invoked":
-            skill_invoked_count += 1
-
-    payload.update(
-        {
-            "event_count": len(events),
-            "session_start_count": session_start_count,
-            "user_message_event_count": user_message_event_count,
-            "assistant_message_event_count": assistant_message_event_count,
-            "tool_event_count": tool_event_count,
-            "skill_invoked_count": skill_invoked_count,
-            "first_event_at": _format_stats_timestamp(first_event_at),
-            "last_event_at": _format_stats_timestamp(last_event_at),
-        }
-    )
-    payload.update(
-        _try_build_dialog_turn_stats(
-            lambda: extract_dialog_from_copilot_cli_session(
-                events=events,
-                session_id=session.session_id,
-                raw=False,
-            )
-        )
-    )
-    return payload
-
-
-def _build_gemini_cli_session_stats(session: GeminiCliSessionRecord) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "artifact_count": len(session.artifact_paths),
-    }
-
-    artifact_path = session.primary_artifact_path()
-    if artifact_path is None or not artifact_path.is_file():
-        return payload
-
-    from agentos.chat.extractors.gemini_cli import (
-        load_gemini_cli_session_data,
-        extract_dialog_from_gemini_cli_session,
-    )
-
-    session_data = _try_provider_stats_call(lambda: load_gemini_cli_session_data(artifact_path))
-    if not isinstance(session_data, dict):
-        return payload
-
-    messages = session_data.get("messages")
-    if not isinstance(messages, list):
-        return payload
-
-    message_count = 0
-    user_message_count = 0
-    assistant_message_count = 0
-    thought_count = 0
-    tool_call_count = 0
-    for message in messages:
-        if not isinstance(message, dict):
-            continue
-        message_count += 1
-        message_type = message.get("type")
-        if message_type == "user":
-            user_message_count += 1
-        elif message_type == "gemini":
-            assistant_message_count += 1
-        thoughts = message.get("thoughts")
-        if isinstance(thoughts, list):
-            thought_count += len(thoughts)
-        tool_calls = message.get("toolCalls")
-        if isinstance(tool_calls, list):
-            tool_call_count += len(tool_calls)
-
-    payload.update(
-        {
-            "message_count": message_count,
-            "user_message_count": user_message_count,
-            "assistant_message_count": assistant_message_count,
-            "thought_count": thought_count,
-            "tool_call_count": tool_call_count,
-            "start_time": session_data.get("startTime") if isinstance(session_data.get("startTime"), str) else None,
-            "last_updated": session_data.get("lastUpdated")
-            if isinstance(session_data.get("lastUpdated"), str)
-            else None,
-        }
-    )
-    payload.update(
-        _try_build_dialog_turn_stats(
-            lambda: extract_dialog_from_gemini_cli_session(
-                session_data=session_data,
-                session_id=session.session_id,
-                raw=False,
-            )
-        )
-    )
-    return payload
-
-
-def _build_pi_session_stats(session: PiSessionRecord) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "artifact_count": len(session.artifact_paths),
-    }
-    if session.cwd is not None:
-        payload["cwd"] = session.cwd
-    if session.model_provider is not None:
-        payload["model_provider"] = session.model_provider
-    if session.model_id is not None:
-        payload["model_id"] = session.model_id
-    if session.thinking_level is not None:
-        payload["thinking_level"] = session.thinking_level
-
-    artifact_path = session.primary_artifact_path()
-    if artifact_path is None or not artifact_path.is_file():
-        return payload
-
-    from agentos.chat.extractors.pi import (
-        extract_dialog_from_pi_session,
-        load_pi_session_records,
-    )
-
-    records = _try_provider_stats_call(lambda: load_pi_session_records(artifact_path))
-    if not isinstance(records, list):
-        return payload
-
-    message_record_count = 0
-    user_message_count = 0
-    assistant_message_count = 0
-    tool_result_message_count = 0
-    custom_message_count = 0
-    model_change_count = 0
-    thinking_level_change_count = 0
-    first_record_at: float | None = None
-    last_record_at: float | None = None
-
-    for record in records:
-        record_type = record.get("type")
-        first_record_at, last_record_at = _update_time_bounds(
-            first_record_at,
-            last_record_at,
-            record.get("timestamp"),
-        )
-        if record_type == "message":
-            message_record_count += 1
-            message = record.get("message")
-            if not isinstance(message, dict):
-                continue
-            role = message.get("role")
-            if role == "user":
-                user_message_count += 1
-            elif role == "assistant":
-                assistant_message_count += 1
-            elif role == "toolResult":
-                tool_result_message_count += 1
-        elif record_type == "custom_message":
-            custom_message_count += 1
-        elif record_type == "model_change":
-            model_change_count += 1
-        elif record_type == "thinking_level_change":
-            thinking_level_change_count += 1
-
-    payload.update(
-        {
-            "record_count": len(records),
-            "message_record_count": message_record_count,
-            "user_message_count": user_message_count,
-            "assistant_message_count": assistant_message_count,
-            "tool_result_message_count": tool_result_message_count,
-            "custom_message_count": custom_message_count,
-            "model_change_count": model_change_count,
-            "thinking_level_change_count": thinking_level_change_count,
-            "first_record_at": _format_stats_timestamp(first_record_at),
-            "last_record_at": _format_stats_timestamp(last_record_at),
-        }
-    )
-    payload.update(
-        _try_build_dialog_turn_stats(
-            lambda: extract_dialog_from_pi_session(
-                records=records,
-                session_id=session.session_id,
-                raw=False,
-            )
-        )
-    )
-    return payload
-
-
-def _build_openclaw_session_stats(session: OpenclawSessionRecord) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "has_transcript": session.transcript_path is not None and session.transcript_path.is_file(),
-        "has_sessions_index": session.sessions_index_path is not None and session.sessions_index_path.is_file(),
-        "session_key_count": len(session.session_keys),
-        "agent_id": session.agent_id,
-    }
-
-    artifact_path = session.transcript_path
-    if artifact_path is None or not artifact_path.is_file():
-        return payload
-
-    from agentos.chat.extractors.openclaw import (
-        load_openclaw_session_records,
-        extract_dialog_from_openclaw_session,
-    )
-
-    records = _try_provider_stats_call(lambda: load_openclaw_session_records(artifact_path))
-    if not isinstance(records, list):
-        return payload
-
-    session_record_count = 0
-    message_record_count = 0
-    user_message_count = 0
-    assistant_message_count = 0
-    first_record_at: float | None = None
-    last_record_at: float | None = None
-
-    for record in records:
-        record_type = record.get("type")
-        first_record_at, last_record_at = _update_time_bounds(
-            first_record_at,
-            last_record_at,
-            record.get("timestamp"),
-        )
-        if record_type == "session":
-            session_record_count += 1
-        elif record_type == "message":
-            message_record_count += 1
-            message = record.get("message")
-            if not isinstance(message, dict):
-                continue
-            role = message.get("role")
-            if role == "user":
-                user_message_count += 1
-            elif role == "assistant":
-                assistant_message_count += 1
-
-    payload.update(
-        {
-            "record_count": len(records),
-            "session_record_count": session_record_count,
-            "message_record_count": message_record_count,
-            "user_message_count": user_message_count,
-            "assistant_message_count": assistant_message_count,
-            "first_record_at": _format_stats_timestamp(first_record_at),
-            "last_record_at": _format_stats_timestamp(last_record_at),
-        }
-    )
-    payload.update(
-        _try_build_dialog_turn_stats(
-            lambda: extract_dialog_from_openclaw_session(
-                records=records,
-                session_id=session.session_id,
-                raw=False,
-            )
-        )
-    )
-    return payload
-
-
-def _build_opencode_session_stats(session: OpencodeSessionRecord) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "has_diff_artifact": session.diff_path is not None and session.diff_path.is_file(),
-        "has_sqlite_db": session.sqlite_db_path is not None and session.sqlite_db_path.is_file(),
-    }
-
-    from agentos.chat.extractors.opencode import (
-        load_opencode_session_messages,
-        resolve_opencode_db_path,
-        extract_dialog_from_opencode_session,
-    )
-
-    db_path = session.sqlite_db_path
-    if db_path is None and session.diff_path is not None:
-        resolved_db_path = _try_provider_stats_call(
-            lambda: resolve_opencode_db_path(session.diff_path)
-        )
-        if isinstance(resolved_db_path, Path):
-            db_path = resolved_db_path
-
-    if db_path is None or not db_path.is_file():
-        return payload
-
-    payload["has_sqlite_db"] = True
-    messages = _try_provider_stats_call(
-        lambda: load_opencode_session_messages(db_path=db_path, session_id=session.session_id)
-    )
-    if not isinstance(messages, list):
-        return payload
-    if not messages:
-        return payload
-
-    message_count = 0
-    user_message_count = 0
-    assistant_message_count = 0
-    part_count = 0
-    text_part_count = 0
-    non_text_part_count = 0
-    first_message_at: float | None = None
-    last_message_at: float | None = None
-
-    for message in messages:
-        message_count += 1
-        role = message.get("role")
-        if role == "user":
-            user_message_count += 1
-        elif role == "assistant":
-            assistant_message_count += 1
-
-        first_message_at, last_message_at = _update_time_bounds(
-            first_message_at,
-            last_message_at,
-            message.get("time_created"),
-        )
-
-        parts = message.get("parts")
-        if not isinstance(parts, list):
-            continue
-        part_count += len(parts)
-        for part in parts:
-            if not isinstance(part, dict):
-                continue
-            part_data = part.get("data")
-            if not isinstance(part_data, dict):
-                continue
-            if part_data.get("type") == "text":
-                text_part_count += 1
-            else:
-                non_text_part_count += 1
-
-    payload.update(
-        {
-            "message_count": message_count,
-            "user_message_count": user_message_count,
-            "assistant_message_count": assistant_message_count,
-            "part_count": part_count,
-            "text_part_count": text_part_count,
-            "non_text_part_count": non_text_part_count,
-            "first_message_at": _format_stats_timestamp(first_message_at),
-            "last_message_at": _format_stats_timestamp(last_message_at),
-        }
-    )
-    payload.update(
-        _try_build_dialog_turn_stats(
-            lambda: extract_dialog_from_opencode_session(
-                db_path=db_path,
-                session_id=session.session_id,
-                raw=False,
-            )
-        )
-    )
-    return payload
-
-
-def _format_resolved_session_choices(sessions: list[ChatSession]) -> str:
+def _format_resolved_session_choices(sessions: list[ProviderSessionRefEntry]) -> str:
     choices: list[str] = []
     for session in sessions:
         display_name = _session_display_name(session)
@@ -2491,7 +1726,7 @@ def _copilot_updated_at(session_root: Path | None) -> float | None:
     return safe_path_mtime(events_path) or safe_path_mtime(session_root)
 
 
-def _session_is_extractable(session: ChatSession) -> bool:
+def _session_is_extractable(session: ProviderSessionRefEntry) -> bool:
     backing_artifacts = session.backing_artifacts()
     if backing_artifacts:
         return any(
@@ -2513,112 +1748,6 @@ def _format_stats_timestamp(timestamp: float | None) -> str | None:
     )
 
 
-def _claude_session_record_from_native(
-    session: ClaudeSession,
-    *,
-    provider_identity: SessionProviderIdentity,
-) -> ClaudeCodeSessionRecord:
-    return ClaudeCodeSessionRecord(
-        provider_identity=provider_identity,
-        native_session_id=session.native_session_id,
-        artifact_paths=session.artifact_paths,
-        source_kind=session.source_kind,
-        title=session.title,
-        updated_at=session.updated_at if isinstance(session.updated_at, (int, float)) else None,
-    )
-
-
-def _codex_session_record_from_native(
-    session: CodexSession,
-    *,
-    provider_identity: SessionProviderIdentity,
-) -> CodexSessionRecord:
-    return CodexSessionRecord(
-        provider_identity=provider_identity,
-        native_session_id=session.native_session_id,
-        artifact_paths=session.rollout_paths,
-        thread_name=session.thread_name,
-        index_paths=session.index_paths,
-        updated_at=session.updated_at,
-    )
-
-
-def _copilot_session_record_from_native(
-    session: CopilotSession,
-    *,
-    provider_identity: SessionProviderIdentity,
-) -> CopilotCliSessionRecord:
-    session_root = session.events_path.parent if session.events_path.name == "events.jsonl" else None
-    session_file = session.events_path if session.events_path.is_file() else None
-    return CopilotCliSessionRecord(
-        provider_identity=provider_identity,
-        native_session_id=session.native_session_id,
-        session_root=session_root,
-        session_file=session_file,
-        updated_at=session.updated_at,
-    )
-
-
-def _gemini_session_record_from_native(
-    session: GeminiSession,
-    *,
-    provider_identity: SessionProviderIdentity,
-) -> GeminiCliSessionRecord:
-    return GeminiCliSessionRecord(
-        provider_identity=provider_identity,
-        native_session_id=session.native_session_id,
-        artifact_paths=session.artifact_paths,
-        updated_at=session.updated_at,
-    )
-
-
-def _pi_session_record_from_native(
-    session: PiSession,
-    *,
-    provider_identity: SessionProviderIdentity,
-) -> PiSessionRecord:
-    return PiSessionRecord(
-        provider_identity=provider_identity,
-        native_session_id=session.native_session_id,
-        artifact_paths=session.artifact_paths,
-        cwd=session.cwd,
-        model_provider=session.model_provider,
-        model_id=session.model_id,
-        thinking_level=session.thinking_level,
-        started_at=session.started_at,
-        updated_at=session.updated_at,
-    )
-
-
-def _opencode_session_record_from_native(
-    session: OpencodeSession,
-    *,
-    provider_identity: SessionProviderIdentity,
-) -> OpencodeSessionRecord:
-    return OpencodeSessionRecord(
-        provider_identity=provider_identity,
-        native_session_id=session.native_session_id,
-        diff_path=session.diff_path,
-        sqlite_db_path=session.sqlite_db_path,
-        updated_at=session.updated_at,
-    )
-
-
-def _openclaw_session_record_from_native(
-    session: OpenclawSession,
-    *,
-    provider_identity: SessionProviderIdentity,
-) -> OpenclawSessionRecord:
-    return OpenclawSessionRecord(
-        provider_identity=provider_identity,
-        native_session_id=session.native_session_id,
-        transcript_path=session.transcript_path,
-        sessions_index_path=session.sessions_index_path,
-        session_keys=session.session_keys,
-        agent_id=session.agent_id,
-        updated_at=session.updated_at,
-    )
-
 
 __all__ = [
     "chat_session_resolved_stats",
@@ -2628,7 +1757,7 @@ __all__ = [
     "format_chat_session_stats_markdown",
     "list_chat_sessions",
     "resolve_chat_sessions",
-    "configured_session_provider_configs",
+    "configured_session_provider_contexts",
     "configured_legacy_provider_configs",
     "supported_provider_families",
 ]

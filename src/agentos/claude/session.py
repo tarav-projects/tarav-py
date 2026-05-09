@@ -27,6 +27,9 @@ class ClaudeSessionRef:
     def transcript_path(self) -> Path:
         return self.artifact_paths[0]
 
+    def matches_query(self, query: str) -> bool:
+        return query in {self.native_session_id, self.title}
+
     def to_session(self) -> "ClaudeSession":
         return ClaudeSession(
             native_session_id=self.native_session_id,
@@ -99,9 +102,6 @@ class ClaudeSession:
             updated_at=_string_or_none(session.get("updated_at")),
         )
 
-    def matches_query(self, query: str) -> bool:
-        return query in {self.native_session_id, self.title}
-
     def merge(self, other: ClaudeSession) -> ClaudeSession:
         if self.native_session_id != other.native_session_id:
             raise TypeError(
@@ -146,8 +146,9 @@ def discover_claude_session_refs(*, targets: tuple[Path, ...]) -> tuple[ClaudeSe
 
 def find_claude_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[ClaudeSession, ...]:
     sessions_by_id: dict[str, ClaudeSession] = {}
-    for session in discover_claude_sessions(targets=targets):
-        if session.matches_query(query):
+    for session_ref in discover_claude_session_refs(targets=targets):
+        if session_ref.matches_query(query):
+            session = session_ref.to_session()
             _merge_claude_session(sessions_by_id, session)
     return _sort_claude_sessions(tuple(sessions_by_id.values()))
 

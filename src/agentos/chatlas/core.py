@@ -26,7 +26,7 @@ from agentos.chat.providers import (
     load_unique_string_list,
     select_legacy_provider_configs,
 )
-from agentos.chat.sessions import BackingArtifact, coerce_timestamp, safe_path_mtime
+from agentos.chat.session_primitives import BackingArtifact, coerce_timestamp, safe_path_mtime
 from agentos.chatlas._cache_io import (
     load_chatlas_cache_section,
     write_chatlas_cache_section,

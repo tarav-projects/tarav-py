@@ -33,6 +33,9 @@ class CodexSessionRef:
     def session_id(self) -> str:
         return self.native_session_id
 
+    def matches_query(self, query: str) -> bool:
+        return query in {self.native_session_id, self.thread_name}
+
     def to_session(self) -> "CodexSession":
         return CodexSession(
             native_session_id=self.native_session_id,
@@ -114,9 +117,6 @@ class CodexSession:
     def session_id(self) -> str:
         return self.native_session_id
 
-    def matches_query(self, query: str) -> bool:
-        return query in {self.native_session_id, self.thread_name}
-
     def merge(self, other: "CodexSession") -> "CodexSession":
         return CodexSessionRef(
             native_session_id=self.native_session_id,
@@ -177,8 +177,9 @@ def discover_codex_sessions(*, targets: tuple[Path, ...]) -> tuple[CodexSession,
 
 def find_codex_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[CodexSession, ...]:
     sessions_by_id: dict[str, CodexSession] = {}
-    for session in discover_codex_sessions(targets=targets):
-        if session.matches_query(query):
+    for session_ref in discover_codex_session_refs(targets=targets):
+        if session_ref.matches_query(query):
+            session = session_ref.to_session()
             _merge_codex_session(sessions_by_id, session)
     return _sort_codex_sessions(tuple(sessions_by_id.values()))
 

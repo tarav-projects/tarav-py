@@ -22,6 +22,11 @@ class GeminiSessionRef:
     def provider(self) -> str:
         return GEMINI_PROVIDER
 
+    def matches_query(self, query: str) -> bool:
+        if query == self.native_session_id:
+            return True
+        return any(query in path.name for path in self.artifact_paths)
+
     def to_session(self) -> "GeminiSession":
         return GeminiSession(
             native_session_id=self.native_session_id,
@@ -39,11 +44,6 @@ class GeminiSession:
     @property
     def provider(self) -> str:
         return GEMINI_PROVIDER
-
-    def matches_query(self, query: str) -> bool:
-        if query == self.native_session_id:
-            return True
-        return any(query in path.name for path in self.artifact_paths)
 
     def merge(self, other: GeminiSession) -> GeminiSession:
         if self.native_session_id != other.native_session_id:
@@ -79,8 +79,9 @@ def discover_gemini_session_refs(*, targets: tuple[Path, ...]) -> tuple[GeminiSe
 def find_gemini_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[GeminiSession, ...]:
     sessions_by_id: dict[str, GeminiSession] = {}
 
-    for session in discover_gemini_sessions(targets=targets):
-        if session.matches_query(query):
+    for session_ref in discover_gemini_session_refs(targets=targets):
+        if session_ref.matches_query(query):
+            session = session_ref.to_session()
             _merge_gemini_session(sessions_by_id, session)
 
     return _sort_gemini_sessions(tuple(sessions_by_id.values()))
