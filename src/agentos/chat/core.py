@@ -101,12 +101,153 @@ class ProviderSessionRefEntry:
     context: ProviderAgentContext
     session_ref: ProviderSessionRef
 
+    @property
+    def provider_family(self) -> str:
+        return self.context.provider
+
+    @property
+    def provider(self) -> str:
+        return self.context.provider
+
+    @property
+    def session_id(self) -> str:
+        return self.session_ref.native_session_id
+
+    @property
+    def uri(self) -> str:
+        return _build_session_ref_uri(self)
+
+    def record_identity_key(self) -> tuple[object, ...]:
+        return (
+            self.provider,
+            self.context.legacy_config.identity_key(),
+            self.session_id,
+        )
+
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        return _session_ref_backing_artifacts(self.session_ref)
+
+    def primary_backing_artifact(self) -> BackingArtifact | None:
+        artifacts = self.backing_artifacts()
+        if not artifacts:
+            return None
+        return artifacts[0]
+
+    def canonical_findings(self) -> tuple[dict[str, Any], ...]:
+        return tuple(
+            _build_path_finding(provider=self.provider, path=artifact.path)
+            for artifact in self.backing_artifacts()
+            if artifact.role in {"transcript", "session_diff"}
+        )
+
+    def primary_artifact_path(self) -> Path | None:
+        primary = self.primary_backing_artifact()
+        if primary is None:
+            return None
+        return primary.path
+
+    def created_timestamp(self) -> float | None:
+        if isinstance(self.session_ref, PiSessionRef):
+            return self.session_ref.started_at
+        return None
+
+    def sort_timestamp(self) -> float | None:
+        return _session_ref_sort_timestamp(self.session_ref)
+
+    def merge(self, other: "ProviderSessionRefEntry") -> "ProviderSessionRefEntry":
+        if self.record_identity_key() != other.record_identity_key():
+            raise TypeError(f"cannot merge distinct session refs: {self.uri} != {other.uri}")
+        ref = self.session_ref
+        if hasattr(ref, "merge"):
+            ref = ref.merge(other.session_ref)
+        return ProviderSessionRefEntry(context=self.context, session_ref=ref)
+
+    def display_name(self) -> str | None:
+        return _session_ref_display_name(self.session_ref)
+
+    def display_name_field(self) -> str | None:
+        return _session_ref_display_name_field(self.session_ref)
+
+    def native_fields(self) -> dict[str, Any]:
+        payload = {"session_id": self.session_id}
+        payload.update(_session_ref_native_payload(self.session_ref))
+        return payload
+
+    def query_fields(self) -> tuple[tuple[str, str], ...]:
+        fields = [
+            ("uri", self.uri),
+            ("provider_instance_fingerprint", self.context.instance_fingerprint),
+            ("session_id", self.session_id),
+        ]
+        display_name = self.display_name()
+        display_name_field = self.display_name_field()
+        if display_name is not None:
+            fields.append((display_name_field or "display_name", display_name))
+        native = _session_ref_native_payload(self.session_ref)
+        for field_name, raw_value in native.items():
+            if isinstance(raw_value, str):
+                fields.append((_query_field_name_for_native_field(field_name), raw_value))
+            elif isinstance(raw_value, list):
+                fields.extend(
+                    (_query_field_name_for_native_field(field_name), value)
+                    for value in raw_value
+                    if isinstance(value, str)
+                )
+        return tuple(fields)
+
+    def matches_query(self, query: str) -> bool:
+        return any(value == query for _, value in self.query_fields())
+
+    def matched_field(self, query: str) -> str:
+        for field_name, value in self.query_fields():
+            if value == query:
+                return field_name
+        return "query"
+
+    def supplemental_findings(
+        self,
+        *,
+        query: str,
+        matched_field: str,
+    ) -> tuple[dict[str, Any], ...]:
+        if not isinstance(self.session_ref, CodexSessionRef):
+            return ()
+        return tuple(
+            {
+                "provider": self.provider,
+                "strategy": "index",
+                "match_kind": "exact",
+                "path": str(path),
+                "matched_field": matched_field,
+                "matched_value": query,
+                "session_id": self.session_id,
+                "thread_name": self.session_ref.thread_name,
+            }
+            for path in self.session_ref.index_paths
+        )
+
 
 @dataclass(frozen=True)
 class ChatSessionUriQuery:
     provider_family: str
     instance_fingerprint_prefix: str
     session_id: str
+
+
+def _build_session_ref_uri(entry: ProviderSessionRefEntry) -> str:
+    from urllib.parse import quote
+
+    return (
+        f"agentos://chat-session/{quote(entry.provider, safe='')}/"
+        f"{entry.context.legacy_config.uri_component()}/"
+        f"{quote(entry.session_id, safe='')}"
+    )
+
+
+def _query_field_name_for_native_field(field_name: str) -> str:
+    if field_name == "session_keys":
+        return "session_key"
+    return field_name
 
 
 SESSION_DISCOVERY_PROVIDER_FAMILIES = {
