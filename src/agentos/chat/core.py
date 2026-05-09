@@ -1194,7 +1194,12 @@ def _strategies_attempted(
 
 
 def _discover_direct_provider_sessions(context: SessionProviderContext) -> list[ChatSession]:
-    return _wrap_session_records(_discover_provider_session_records(context))
+    if not hasattr(context.agent, "discover_session_refs"):
+        return []
+    return [
+        ProviderSessionRefEntry(context=context, session_ref=session_ref)
+        for session_ref in context.agent.discover_session_refs()
+    ]
 
 
 def _find_direct_provider_sessions(
@@ -1212,7 +1217,11 @@ def _find_direct_provider_sessions(
             for session in _discover_direct_provider_sessions(context)
             if _session_matches_uri_query(session, uri_query)
         ]
-    return _wrap_session_records(_find_provider_session_records(context, query))
+    return [
+        session
+        for session in _discover_direct_provider_sessions(context)
+        if session.matches_query(query)
+    ]
 
 
 def _wrap_session_records(session_records: list[ChatSessionRecord]) -> list[ChatSession]:
