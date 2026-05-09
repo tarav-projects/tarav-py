@@ -2,9 +2,10 @@
 
 `Agentos.Agent.Model` defines how Agentos represents provider-native agents and sessions.
 
-The model uses two provider-native anchors:
+The model uses three provider-native anchors:
 
 - `<Provider>.Agent` — the provider-native configured actor
+- `<Provider>.SessionRef` — a lightweight provider-native reference to one session
 - `<Provider>.Session` — the provider-native session artifact model
 
 Agentos keeps provider-specific shape in those native anchors and derives provider-agnostic outputs through explicit conversion boundaries.
@@ -28,11 +29,39 @@ A provider agent owns provider-native access to its sessions:
 
 ```text
 <Provider>.Agent
-  -> discover/load native sessions
+  -> discover native session refs
+  -> returns <Provider>.SessionRef
+
+<Provider>.Agent
+  -> load a native session ref
   -> returns <Provider>.Session
 ```
 
-This means session discovery is not a separate generic provider-session model. If Agentos needs to enumerate sessions for Codex, it asks `Codex.Agent` to produce `Codex.Session` objects.
+This means session discovery is not a separate generic provider-session model. If Agentos needs to enumerate sessions for Codex, it asks `Codex.Agent` to produce `Codex.SessionRef` objects. If Agentos needs the full session, it asks `Codex.Agent` to load a `Codex.Session` from the selected ref.
+
+## Provider SessionRef
+
+`<Provider>.SessionRef` is the lightweight provider-native reference to one session.
+
+Examples:
+
+- `Codex.SessionRef`
+- `Claude.SessionRef`
+- `Pi.SessionRef`
+- `OpenCode.SessionRef`
+
+It is not the full session content. It carries enough metadata to identify, list, sort, query, and later load the full `<Provider>.Session`.
+
+It may include provider-native facts such as:
+
+- native session id
+- configured agent identity
+- display or thread title
+- created or updated timestamps
+- primary artifact ref
+- lightweight native locator or index facts
+
+`<Provider>.SessionRef` is safe for registries and indexes because it describes session identity and basic metadata, not the full provider-native session content.
 
 ## Provider Session
 
@@ -71,6 +100,7 @@ Boundary:
 
 ```text
 raw provider artifacts
+  -> <Provider>.SessionRef
   -> <Provider>.Session
   -> Agentos.Session / Session.Model
 ```
@@ -102,11 +132,12 @@ Agentos may coordinate across many provider agents:
 
 ```text
 configured agents
-  -> each agent discovers provider-native sessions
+  -> each agent discovers provider-native session refs
   -> Agentos coordinates lists, registries, queries, or exports
+  -> selected refs are loaded through their provider agent when full sessions are needed
 ```
 
-Cross-provider querying, registry maintenance, indexing, and resolution are Agentos coordination concerns. They are not responsibilities of `<Provider>.Session`.
+Cross-provider querying, registry maintenance, indexing, and resolution are Agentos coordination concerns. They work over provider-native session refs and are not responsibilities of `<Provider>.Session`.
 
 A provider session should expose its facts. It should not own global search semantics.
 
@@ -125,10 +156,11 @@ These are reusable primitives, not a forced object hierarchy. Provider-specific 
 
 ## Design Rules
 
-- Prefer two provider-native anchors: `<Provider>.Agent` and `<Provider>.Session`.
+- Prefer three provider-native anchors: `<Provider>.Agent`, `<Provider>.SessionRef`, and `<Provider>.Session`.
 - Provider-specific objects are the source of provider-specific truth.
 - `<Provider>.Agent` models one configured provider actor.
-- `<Provider>.Agent` owns access to that provider's native capabilities, including session discovery/loading when supported.
+- `<Provider>.Agent` owns access to that provider's native capabilities, including session ref discovery and session loading when supported.
+- `<Provider>.SessionRef` models one lightweight provider-native session reference for registries, indexes, and selection.
 - `<Provider>.Session` models one native session and contains all provider-relevant facts about that session.
 - Keep `Agentos.Session` provider-agnostic.
 - Normalize provider-native sessions through explicit provider normalizers.
