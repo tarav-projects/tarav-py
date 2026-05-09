@@ -13,6 +13,30 @@ OPENCLAW_PROVIDER = "openclaw"
 
 
 @dataclass(frozen=True)
+class OpenclawSessionRef:
+    native_session_id: str
+    transcript_path: Path | None = None
+    sessions_index_path: Path | None = None
+    session_keys: tuple[str, ...] = ()
+    agent_id: str | None = None
+    updated_at: float | None = None
+
+    @property
+    def provider(self) -> str:
+        return OPENCLAW_PROVIDER
+
+    def to_session(self) -> "OpenclawSession":
+        return OpenclawSession(
+            native_session_id=self.native_session_id,
+            transcript_path=self.transcript_path,
+            sessions_index_path=self.sessions_index_path,
+            session_keys=self.session_keys,
+            agent_id=self.agent_id,
+            updated_at=self.updated_at,
+        )
+
+
+@dataclass(frozen=True)
 class OpenclawSession:
     native_session_id: str
     transcript_path: Path | None = None
@@ -54,6 +78,13 @@ def discover_openclaw_sessions(*, targets: tuple[Path, ...]) -> tuple[OpenclawSe
     return _sort_openclaw_sessions(tuple(sessions_by_id.values()))
 
 
+def discover_openclaw_session_refs(*, targets: tuple[Path, ...]) -> tuple[OpenclawSessionRef, ...]:
+    return tuple(
+        _openclaw_session_ref_from_session(session)
+        for session in discover_openclaw_sessions(targets=targets)
+    )
+
+
 def find_openclaw_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[OpenclawSession, ...]:
     sessions_by_id: dict[str, OpenclawSession] = {}
 
@@ -62,6 +93,10 @@ def find_openclaw_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[Op
             _merge_openclaw_session(sessions_by_id, session)
 
     return _sort_openclaw_sessions(tuple(sessions_by_id.values()))
+
+
+def load_openclaw_session(session_ref: OpenclawSessionRef) -> OpenclawSession:
+    return session_ref.to_session()
 
 
 def read_openclaw_agent_sessions(agent_dir: Path) -> tuple[OpenclawSession, ...]:
@@ -121,6 +156,17 @@ def read_openclaw_agent_sessions(agent_dir: Path) -> tuple[OpenclawSession, ...]
         )
 
     return tuple(sessions_by_id.values())
+
+
+def _openclaw_session_ref_from_session(session: OpenclawSession) -> OpenclawSessionRef:
+    return OpenclawSessionRef(
+        native_session_id=session.native_session_id,
+        transcript_path=session.transcript_path,
+        sessions_index_path=session.sessions_index_path,
+        session_keys=session.session_keys,
+        agent_id=session.agent_id,
+        updated_at=session.updated_at,
+    )
 
 
 def _iter_openclaw_agent_dirs(root: Path) -> tuple[Path, ...]:
@@ -230,7 +276,10 @@ def _string_or_none(value: object) -> str | None:
 
 __all__ = [
     "OpenclawSession",
+    "OpenclawSessionRef",
+    "discover_openclaw_session_refs",
     "discover_openclaw_sessions",
     "find_openclaw_sessions",
+    "load_openclaw_session",
     "read_openclaw_agent_sessions",
 ]

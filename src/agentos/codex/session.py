@@ -11,7 +11,7 @@ CODEX_PROVIDER = "codex"
 
 
 @dataclass(frozen=True)
-class CodexSession:
+class CodexSessionRef:
     native_session_id: str
     rollout_paths: tuple[Path, ...] = ()
     source_ref_id: str | None = None
@@ -33,15 +33,22 @@ class CodexSession:
     def session_id(self) -> str:
         return self.native_session_id
 
-    def matches_query(self, query: str) -> bool:
-        return query in {self.native_session_id, self.thread_name}
+    def to_session(self) -> "CodexSession":
+        return CodexSession(
+            native_session_id=self.native_session_id,
+            rollout_paths=self.rollout_paths,
+            source_ref_id=self.source_ref_id,
+            thread_name=self.thread_name,
+            index_paths=self.index_paths,
+            updated_at=self.updated_at,
+        )
 
-    def merge(self, other: CodexSession) -> CodexSession:
+    def merge(self, other: "CodexSessionRef") -> "CodexSessionRef":
         if self.native_session_id != other.native_session_id:
             raise TypeError(
-                f"cannot merge Codex sessions: {self.native_session_id} != {other.native_session_id}"
+                f"cannot merge Codex session refs: {self.native_session_id} != {other.native_session_id}"
             )
-        return CodexSession(
+        return CodexSessionRef(
             native_session_id=self.native_session_id,
             rollout_paths=_unique_paths(self.rollout_paths + other.rollout_paths),
             source_ref_id=self.source_ref_id or other.source_ref_id,
@@ -56,7 +63,7 @@ class CodexSession:
         session: dict[str, Any],
         *,
         sources: list[dict[str, object]],
-    ) -> CodexSession | None:
+    ) -> "CodexSessionRef | None":
         if session.get("provider") != CODEX_PROVIDER:
             return None
 
@@ -84,20 +91,88 @@ class CodexSession:
         )
 
 
-def discover_codex_sessions(*, targets: tuple[Path, ...]) -> tuple[CodexSession, ...]:
-    sessions_by_id: dict[str, CodexSession] = {}
+@dataclass(frozen=True)
+class CodexSession:
+    native_session_id: str
+    rollout_paths: tuple[Path, ...] = ()
+    source_ref_id: str | None = None
+    thread_name: str | None = None
+    index_paths: tuple[Path, ...] = ()
+    updated_at: float | None = None
+
+    @property
+    def provider(self) -> str:
+        return CODEX_PROVIDER
+
+    @property
+    def rollout_path(self) -> Path | None:
+        if not self.rollout_paths:
+            return None
+        return self.rollout_paths[0]
+
+    @property
+    def session_id(self) -> str:
+        return self.native_session_id
+
+    def matches_query(self, query: str) -> bool:
+        return query in {self.native_session_id, self.thread_name}
+
+    def merge(self, other: "CodexSession") -> "CodexSession":
+        return CodexSessionRef(
+            native_session_id=self.native_session_id,
+            rollout_paths=self.rollout_paths,
+            source_ref_id=self.source_ref_id,
+            thread_name=self.thread_name,
+            index_paths=self.index_paths,
+            updated_at=self.updated_at,
+        ).merge(
+            CodexSessionRef(
+                native_session_id=other.native_session_id,
+                rollout_paths=other.rollout_paths,
+                source_ref_id=other.source_ref_id,
+                thread_name=other.thread_name,
+                index_paths=other.index_paths,
+                updated_at=other.updated_at,
+            )
+        ).to_session()
+
+    @classmethod
+    def from_chatlas_session_payload(
+        cls,
+        session: dict[str, Any],
+        *,
+        sources: list[dict[str, object]],
+    ) -> "CodexSession | None":
+        session_ref = CodexSessionRef.from_chatlas_session_payload(
+            session,
+            sources=sources,
+        )
+        if session_ref is None:
+            return None
+        return session_ref.to_session()
+
+
+def discover_codex_session_refs(*, targets: tuple[Path, ...]) -> tuple[CodexSessionRef, ...]:
+    session_refs_by_id: dict[str, CodexSessionRef] = {}
 
     for target in targets:
         if target.is_file() and target.name == "session_index.jsonl":
-            for session in read_codex_index_sessions(target):
-                _merge_codex_session(sessions_by_id, session)
+            for session_ref in read_codex_index_session_refs(target):
+                _merge_codex_session_ref(session_refs_by_id, session_ref)
             continue
         for path in _glob_paths(target, "**/rollout-*.jsonl"):
-            session = read_codex_rollout_session(path)
-            if session is not None:
-                _merge_codex_session(sessions_by_id, session)
+            session_ref = read_codex_rollout_session_ref(path)
+            if session_ref is not None:
+                _merge_codex_session_ref(session_refs_by_id, session_ref)
 
-    return _sort_codex_sessions(tuple(sessions_by_id.values()))
+    return _sort_codex_session_refs(tuple(session_refs_by_id.values()))
+
+
+def discover_codex_sessions(*, targets: tuple[Path, ...]) -> tuple[CodexSession, ...]:
+    return tuple(
+        session_ref.to_session()
+        for session_ref in discover_codex_session_refs(targets=targets)
+    )
 
 
 def find_codex_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[CodexSession, ...]:
@@ -108,7 +183,7 @@ def find_codex_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[Codex
     return _sort_codex_sessions(tuple(sessions_by_id.values()))
 
 
-def read_codex_rollout_session(path: Path) -> CodexSession | None:
+def read_codex_rollout_session_ref(path: Path) -> CodexSessionRef | None:
     meta_obj = _read_codex_session_meta(path)
     if meta_obj is None:
         return None
@@ -121,18 +196,28 @@ def read_codex_rollout_session(path: Path) -> CodexSession | None:
     if session_id is None:
         return None
 
-    return CodexSession(
+    return CodexSessionRef(
         native_session_id=session_id,
         rollout_paths=(path,),
-        updated_at=_coalesce_timestamp(_safe_path_mtime(path), _coerce_timestamp(meta_obj.get("timestamp"))),
+        updated_at=_coalesce_timestamp(
+            _safe_path_mtime(path),
+            _coerce_timestamp(meta_obj.get("timestamp")),
+        ),
     )
 
 
-def read_codex_index_sessions(path: Path) -> tuple[CodexSession, ...]:
+def read_codex_rollout_session(path: Path) -> CodexSession | None:
+    session_ref = read_codex_rollout_session_ref(path)
+    if session_ref is None:
+        return None
+    return session_ref.to_session()
+
+
+def read_codex_index_session_refs(path: Path) -> tuple[CodexSessionRef, ...]:
     if not path.is_file():
         return ()
 
-    sessions: list[CodexSession] = []
+    session_refs: list[CodexSessionRef] = []
     try:
         with path.open("r", encoding="utf-8", errors="ignore") as handle:
             for line in handle:
@@ -148,8 +233,8 @@ def read_codex_index_sessions(path: Path) -> tuple[CodexSession, ...]:
                 session_id = _string_or_none(obj.get("id"))
                 if session_id is None:
                     continue
-                sessions.append(
-                    CodexSession(
+                session_refs.append(
+                    CodexSessionRef(
                         native_session_id=session_id,
                         thread_name=_string_or_none(obj.get("thread_name")),
                         index_paths=(path,),
@@ -159,7 +244,18 @@ def read_codex_index_sessions(path: Path) -> tuple[CodexSession, ...]:
     except OSError:
         return ()
 
-    return tuple(sessions)
+    return tuple(session_refs)
+
+
+def read_codex_index_sessions(path: Path) -> tuple[CodexSession, ...]:
+    return tuple(
+        session_ref.to_session()
+        for session_ref in read_codex_index_session_refs(path)
+    )
+
+
+def load_codex_session(session_ref: CodexSessionRef) -> CodexSession:
+    return session_ref.to_session()
 
 
 def _read_codex_session_meta(path: Path) -> dict[str, Any] | None:
@@ -208,8 +304,25 @@ def _merge_codex_session(sessions_by_id: dict[str, CodexSession], session: Codex
     sessions_by_id[session.native_session_id] = existing.merge(session)
 
 
+def _merge_codex_session_ref(
+    session_refs_by_id: dict[str, CodexSessionRef],
+    session_ref: CodexSessionRef,
+) -> None:
+    existing = session_refs_by_id.get(session_ref.native_session_id)
+    if existing is None:
+        session_refs_by_id[session_ref.native_session_id] = session_ref
+        return
+    session_refs_by_id[session_ref.native_session_id] = existing.merge(session_ref)
+
+
 def _sort_codex_sessions(sessions: tuple[CodexSession, ...]) -> tuple[CodexSession, ...]:
     return tuple(sorted(sessions, key=lambda session: session.native_session_id))
+
+
+def _sort_codex_session_refs(
+    session_refs: tuple[CodexSessionRef, ...],
+) -> tuple[CodexSessionRef, ...]:
+    return tuple(sorted(session_refs, key=lambda session_ref: session_ref.native_session_id))
 
 
 def _coalesce_timestamp(*values: float | None) -> float | None:
@@ -326,8 +439,13 @@ def _string_or_none(value: object) -> str | None:
 
 __all__ = [
     "CodexSession",
+    "CodexSessionRef",
+    "discover_codex_session_refs",
     "discover_codex_sessions",
     "find_codex_sessions",
+    "load_codex_session",
+    "read_codex_index_session_refs",
     "read_codex_index_sessions",
+    "read_codex_rollout_session_ref",
     "read_codex_rollout_session",
 ]

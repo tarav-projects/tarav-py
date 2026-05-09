@@ -13,6 +13,24 @@ GEMINI_PROVIDER = "gemini-cli"
 
 
 @dataclass(frozen=True)
+class GeminiSessionRef:
+    native_session_id: str
+    artifact_paths: tuple[Path, ...]
+    updated_at: float | None = None
+
+    @property
+    def provider(self) -> str:
+        return GEMINI_PROVIDER
+
+    def to_session(self) -> "GeminiSession":
+        return GeminiSession(
+            native_session_id=self.native_session_id,
+            artifact_paths=self.artifact_paths,
+            updated_at=self.updated_at,
+        )
+
+
+@dataclass(frozen=True)
 class GeminiSession:
     native_session_id: str
     artifact_paths: tuple[Path, ...]
@@ -51,6 +69,13 @@ def discover_gemini_sessions(*, targets: tuple[Path, ...]) -> tuple[GeminiSessio
     return _sort_gemini_sessions(tuple(sessions_by_id.values()))
 
 
+def discover_gemini_session_refs(*, targets: tuple[Path, ...]) -> tuple[GeminiSessionRef, ...]:
+    return tuple(
+        _gemini_session_ref_from_session(session)
+        for session in discover_gemini_sessions(targets=targets)
+    )
+
+
 def find_gemini_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[GeminiSession, ...]:
     sessions_by_id: dict[str, GeminiSession] = {}
 
@@ -59,6 +84,10 @@ def find_gemini_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[Gemi
             _merge_gemini_session(sessions_by_id, session)
 
     return _sort_gemini_sessions(tuple(sessions_by_id.values()))
+
+
+def load_gemini_session(session_ref: GeminiSessionRef) -> GeminiSession:
+    return session_ref.to_session()
 
 
 def read_gemini_session(path: Path) -> GeminiSession | None:
@@ -78,6 +107,14 @@ def read_gemini_session(path: Path) -> GeminiSession | None:
             or _coerce_timestamp(obj.get("startTime"))
             or _safe_path_mtime(path)
         ),
+    )
+
+
+def _gemini_session_ref_from_session(session: GeminiSession) -> GeminiSessionRef:
+    return GeminiSessionRef(
+        native_session_id=session.native_session_id,
+        artifact_paths=session.artifact_paths,
+        updated_at=session.updated_at,
     )
 
 
@@ -176,7 +213,10 @@ def _string_or_none(value: object) -> str | None:
 
 __all__ = [
     "GeminiSession",
+    "GeminiSessionRef",
+    "discover_gemini_session_refs",
     "discover_gemini_sessions",
     "find_gemini_sessions",
+    "load_gemini_session",
     "read_gemini_session",
 ]

@@ -4,10 +4,12 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
+from agentos.agent.primitives import AgentConfig
+from agentos.agent.providers import agent_from_config
 from agentos.chatlas.core import chatlas_query
-from agentos.claude.session import ClaudeSession
-from agentos.codex.session import CodexSession
-from agentos.copilot.session import CopilotSession
+from agentos.claude.session import ClaudeSession, ClaudeSessionRef
+from agentos.codex.session import CodexSession, CodexSessionRef
+from agentos.copilot.session import CopilotSession, CopilotSessionRef
 
 from ._claude import _experimental_normalize_claude_session
 from ._codex import _experimental_normalize_codex_session
@@ -108,11 +110,12 @@ def _experimental_normalize_provider_raw(
             "session provider is missing"
         )
     if provider == "codex":
-        codex_session = CodexSession.from_chatlas_session_payload(
+        codex_session_ref = CodexSessionRef.from_chatlas_session_payload(
             session,
             sources=sources,
         )
-        if codex_session is not None:
+        if codex_session_ref is not None:
+            codex_session = _load_session_from_ref(provider, codex_session_ref)
             codex_result = _experimental_normalize_codex_session(codex_session)
         else:
             codex_result = None
@@ -122,11 +125,12 @@ def _experimental_normalize_provider_raw(
             "chatlas export could not normalize codex raw artifacts"
         )
     if provider == "claude-code":
-        claude_session = ClaudeSession.from_chatlas_session_payload(
+        claude_session_ref = ClaudeSessionRef.from_chatlas_session_payload(
             session,
             sources=sources,
         )
-        if claude_session is not None:
+        if claude_session_ref is not None:
+            claude_session = _load_session_from_ref(provider, claude_session_ref)
             claude_result = _experimental_normalize_claude_session(claude_session)
         else:
             claude_result = None
@@ -136,11 +140,12 @@ def _experimental_normalize_provider_raw(
             "chatlas export could not normalize claude-code raw artifacts"
         )
     if provider == "copilot-cli":
-        copilot_session = CopilotSession.from_chatlas_session_payload(
+        copilot_session_ref = CopilotSessionRef.from_chatlas_session_payload(
             session,
             sources=sources,
         )
-        if copilot_session is not None:
+        if copilot_session_ref is not None:
+            copilot_session = _load_session_from_ref(provider, copilot_session_ref)
             copilot_result = _experimental_normalize_copilot_session(copilot_session)
         else:
             copilot_result = None
@@ -154,6 +159,14 @@ def _experimental_normalize_provider_raw(
         "chatlas export has no provider-specific raw normalizer "
         f"for provider {provider}"
     )
+
+
+def _load_session_from_ref(
+    provider: str,
+    session_ref: CodexSessionRef | ClaudeSessionRef | CopilotSessionRef,
+) -> CodexSession | ClaudeSession | CopilotSession:
+    agent = agent_from_config(AgentConfig(provider=provider))
+    return agent.load_session(session_ref)
 
 def _experimental_session_payload(session: dict[str, Any]) -> dict[str, object]:
     payload: dict[str, object] = {}

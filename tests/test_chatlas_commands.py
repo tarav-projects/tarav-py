@@ -2472,7 +2472,7 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
         raise AssertionError("expected session index cache to bypass session index rebuild")
 
     monkeypatch.setattr(chatlas_raw, "_chatlas_archive_files_match", fail_match)
-    monkeypatch.setattr(chatlas_core, "_session_index_record", fail_normalized_record)
+    monkeypatch.setattr(chatlas_core, "_session_ref_index_record", fail_normalized_record)
 
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -2496,13 +2496,13 @@ def test_chatlas_update_default_caches_skip_deep_rebuild_work(
         pytest.param(
             "--session-index-cache=false",
             True, False,
-            ("core._session_index_record",),
+            ("core._session_ref_index_record",),
             id="normalized",
         ),
         pytest.param(
             "--disable-cache",
             False, False,
-            ("raw._chatlas_archive_files_match", "core._session_index_record"),
+            ("raw._chatlas_archive_files_match", "core._session_ref_index_record"),
             id="disable-all",
         ),
     ],

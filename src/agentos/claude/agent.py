@@ -5,7 +5,19 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.agent.primitives import AgentConfig, AgentRunRequest, ResolvedAgentRun, resolve_terminal_agent_run
+from agentos.agent.primitives import (
+    AgentConfig,
+    AgentRunRequest,
+    provider_session_paths,
+    ResolvedAgentRun,
+    resolve_terminal_agent_run,
+)
+from agentos.claude.session import (
+    ClaudeSession,
+    ClaudeSessionRef,
+    discover_claude_session_refs,
+    load_claude_session,
+)
 
 
 CLAUDE_PROVIDER = "claude-code"
@@ -49,6 +61,13 @@ class ClaudeAgent:
 
     def resolve_run(self, request: AgentRunRequest) -> ResolvedAgentRun:
         return resolve_terminal_agent_run(self, request)
+
+    def discover_session_refs(self) -> tuple[ClaudeSessionRef, ...]:
+        direct_targets, _ = provider_session_paths(CLAUDE_PROVIDER, self.homes)
+        return discover_claude_session_refs(targets=direct_targets)
+
+    def load_session(self, session_ref: ClaudeSessionRef) -> ClaudeSession:
+        return load_claude_session(session_ref)
 
     def summary(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"family": self.provider, "is_default": self.is_default}

@@ -10,6 +10,41 @@ COPILOT_PROVIDER = "copilot-cli"
 
 
 @dataclass(frozen=True)
+class CopilotSessionRef:
+    native_session_id: str
+    events_path: Path
+    source_ref_id: str | None = None
+    updated_at: float | None = None
+
+    @property
+    def provider(self) -> str:
+        return COPILOT_PROVIDER
+
+    def to_session(self) -> "CopilotSession":
+        return CopilotSession(
+            native_session_id=self.native_session_id,
+            events_path=self.events_path,
+            source_ref_id=self.source_ref_id,
+            updated_at=self.updated_at,
+        )
+
+    @classmethod
+    def from_chatlas_session_payload(
+        cls,
+        session: dict[str, Any],
+        *,
+        sources: list[dict[str, object]],
+    ) -> "CopilotSessionRef | None":
+        copilot_session = CopilotSession.from_chatlas_session_payload(
+            session,
+            sources=sources,
+        )
+        if copilot_session is None:
+            return None
+        return _copilot_session_ref_from_session(copilot_session)
+
+
+@dataclass(frozen=True)
 class CopilotSession:
     native_session_id: str
     events_path: Path
@@ -71,12 +106,20 @@ def discover_copilot_sessions(*, targets: tuple[Path, ...]) -> tuple[CopilotSess
     return _sort_copilot_sessions(tuple(sessions_by_id.values()))
 
 
+def discover_copilot_session_refs(*, targets: tuple[Path, ...]) -> tuple[CopilotSessionRef, ...]:
+    return tuple(_copilot_session_ref_from_session(session) for session in discover_copilot_sessions(targets=targets))
+
+
 def find_copilot_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[CopilotSession, ...]:
     sessions_by_id: dict[str, CopilotSession] = {}
     for session in discover_copilot_sessions(targets=targets):
         if query in {session.native_session_id, session.events_path.stem}:
             _merge_copilot_session(sessions_by_id, session)
     return _sort_copilot_sessions(tuple(sessions_by_id.values()))
+
+
+def load_copilot_session(session_ref: CopilotSessionRef) -> CopilotSession:
+    return session_ref.to_session()
 
 
 def read_copilot_session(path: Path) -> CopilotSession | None:
@@ -98,6 +141,15 @@ def read_copilot_session(path: Path) -> CopilotSession | None:
         )
 
     return None
+
+
+def _copilot_session_ref_from_session(session: CopilotSession) -> CopilotSessionRef:
+    return CopilotSessionRef(
+        native_session_id=session.native_session_id,
+        events_path=session.events_path,
+        source_ref_id=session.source_ref_id,
+        updated_at=session.updated_at,
+    )
 
 
 def _merge_copilot_session(
@@ -207,6 +259,9 @@ def _string_or_none(value: object) -> str | None:
 
 __all__ = [
     "CopilotSession",
+    "CopilotSessionRef",
+    "discover_copilot_session_refs",
     "discover_copilot_sessions",
     "find_copilot_sessions",
+    "load_copilot_session",
 ]

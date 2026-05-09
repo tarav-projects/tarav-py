@@ -5,7 +5,19 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.agent.primitives import AgentConfig, AgentRunRequest, ResolvedAgentRun, resolve_terminal_agent_run
+from agentos.agent.primitives import (
+    AgentConfig,
+    AgentRunRequest,
+    provider_session_paths,
+    ResolvedAgentRun,
+    resolve_terminal_agent_run,
+)
+from agentos.opencode.session import (
+    OpencodeSession,
+    OpencodeSessionRef,
+    discover_opencode_session_refs,
+    load_opencode_session,
+)
 
 
 OPENCODE_PROVIDER = "opencode"
@@ -49,6 +61,16 @@ class OpencodeAgent:
 
     def resolve_run(self, request: AgentRunRequest) -> ResolvedAgentRun:
         return resolve_terminal_agent_run(self, request)
+
+    def discover_session_refs(self) -> tuple[OpencodeSessionRef, ...]:
+        direct_targets, sqlite_db_paths = provider_session_paths(OPENCODE_PROVIDER, self.homes)
+        return discover_opencode_session_refs(
+            targets=direct_targets,
+            sqlite_db_paths=sqlite_db_paths,
+        )
+
+    def load_session(self, session_ref: OpencodeSessionRef) -> OpencodeSession:
+        return load_opencode_session(session_ref)
 
     def summary(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"family": self.provider, "is_default": self.is_default}

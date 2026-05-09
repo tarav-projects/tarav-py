@@ -33,7 +33,7 @@ class ConfiguredAgent(Protocol):
 
 def load_configured_agents(*, start_path: Path | str = ".") -> tuple[ConfiguredAgent, ...]:
     return tuple(
-        _agent_from_legacy_config(legacy_provider_config)
+        agent_from_config(_agent_config_from_legacy_config(legacy_provider_config))
         for legacy_provider_config in load_legacy_provider_configs(start_path=start_path)
     )
 
@@ -42,8 +42,7 @@ def supported_default_run_provider_families() -> tuple[str, ...]:
     return DEFAULT_RUN_PROVIDER_FAMILIES
 
 
-def _agent_from_legacy_config(legacy_provider_config: LegacyProviderConfig) -> ConfiguredAgent:
-    config = _agent_config_from_legacy_config(legacy_provider_config)
+def agent_from_config(config: AgentConfig) -> ConfiguredAgent:
     if config.provider == "agents":
         return AgentsAgent.from_config(config)
     if config.provider == "codex":
@@ -60,7 +59,7 @@ def _agent_from_legacy_config(legacy_provider_config: LegacyProviderConfig) -> C
         return OpencodeAgent.from_config(config)
     if config.provider == "pi":
         return PiAgent.from_config(config)
-    raise CliError(f"unsupported configured agent provider {legacy_provider_config.family}")
+    raise CliError(f"unsupported configured agent provider {config.provider}")
 
 
 def _agent_config_from_legacy_config(instance: LegacyProviderConfig) -> AgentConfig:
@@ -114,6 +113,7 @@ def resolve_agent(
 
 __all__ = [
     "AgentRunRequest",
+    "agent_from_config",
     "ConfiguredAgent",
     "load_configured_agents",
     "ResolvedAgentRun",

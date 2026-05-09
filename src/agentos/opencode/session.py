@@ -10,6 +10,26 @@ OPENCODE_PROVIDER = "opencode"
 
 
 @dataclass(frozen=True)
+class OpencodeSessionRef:
+    native_session_id: str
+    diff_path: Path | None = None
+    sqlite_db_path: Path | None = None
+    updated_at: float | None = None
+
+    @property
+    def provider(self) -> str:
+        return OPENCODE_PROVIDER
+
+    def to_session(self) -> "OpencodeSession":
+        return OpencodeSession(
+            native_session_id=self.native_session_id,
+            diff_path=self.diff_path,
+            sqlite_db_path=self.sqlite_db_path,
+            updated_at=self.updated_at,
+        )
+
+
+@dataclass(frozen=True)
 class OpencodeSession:
     native_session_id: str
     diff_path: Path | None = None
@@ -58,6 +78,20 @@ def discover_opencode_sessions(
     return _sort_opencode_sessions(tuple(sessions_by_id.values()))
 
 
+def discover_opencode_session_refs(
+    *,
+    targets: tuple[Path, ...],
+    sqlite_db_paths: tuple[Path, ...],
+) -> tuple[OpencodeSessionRef, ...]:
+    return tuple(
+        _opencode_session_ref_from_session(session)
+        for session in discover_opencode_sessions(
+            targets=targets,
+            sqlite_db_paths=sqlite_db_paths,
+        )
+    )
+
+
 def find_opencode_sessions(
     *,
     targets: tuple[Path, ...],
@@ -83,6 +117,10 @@ def find_opencode_sessions(
             _merge_opencode_session(sessions_by_id, session)
 
     return _sort_opencode_sessions(tuple(sessions_by_id.values()))
+
+
+def load_opencode_session(session_ref: OpencodeSessionRef) -> OpencodeSession:
+    return session_ref.to_session()
 
 
 def query_opencode_sessions(
@@ -134,6 +172,15 @@ def query_opencode_sessions(
         )
 
     return tuple(sessions)
+
+
+def _opencode_session_ref_from_session(session: OpencodeSession) -> OpencodeSessionRef:
+    return OpencodeSessionRef(
+        native_session_id=session.native_session_id,
+        diff_path=session.diff_path,
+        sqlite_db_path=session.sqlite_db_path,
+        updated_at=session.updated_at,
+    )
 
 
 def _glob_paths(root: Path, pattern: str) -> tuple[Path, ...]:
@@ -211,7 +258,10 @@ def _coalesce_timestamp(*values: float | None) -> float | None:
 
 __all__ = [
     "OpencodeSession",
+    "OpencodeSessionRef",
+    "discover_opencode_session_refs",
     "discover_opencode_sessions",
     "find_opencode_sessions",
+    "load_opencode_session",
     "query_opencode_sessions",
 ]

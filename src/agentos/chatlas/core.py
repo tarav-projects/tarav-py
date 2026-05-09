@@ -14,19 +14,11 @@ from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_strings
 from agentos._core.git_ops import git_has_staged_changes, run_git
+from agentos.agent.primitives import AgentConfig
+from agentos.agent.providers import ConfiguredAgent, agent_from_config
 from agentos.chat.core import (
-    _build_common_session_stats,
-    _build_provider_context,
-    _build_provider_session_stats,
-    _dedupe_sessions,
-    _discover_direct_provider_sessions,
-    _find_direct_provider_sessions,
-    _format_resolved_session_choices,
     _format_stats_timestamp,
     _provider_family_for_name,
-    _session_provider_home_slots,
-    _sort_sessions,
-    SessionProviderConfig,
 )
 from agentos.chat.providers import (
     load_chat_config_documents,
@@ -34,13 +26,20 @@ from agentos.chat.providers import (
     load_unique_string_list,
     select_legacy_provider_configs,
 )
-from agentos.chat.sessions import ChatSession, SessionProviderIdentity, coerce_timestamp
+from agentos.chat.sessions import BackingArtifact, coerce_timestamp, safe_path_mtime
 from agentos.chatlas._cache_io import (
     load_chatlas_cache_section,
     write_chatlas_cache_section,
     write_text_if_changed,
 )
 from agentos.chatlas.session_model._hashes import _session_identity_hash
+from agentos.claude.session import ClaudeSessionRef
+from agentos.codex.session import CodexSessionRef
+from agentos.copilot.session import CopilotSessionRef
+from agentos.gemini.session import GeminiSessionRef
+from agentos.openclaw.session import OpenclawSessionRef
+from agentos.opencode.session import OpencodeSessionRef
+from agentos.pi.session import PiSessionRef
 from agentos.chatlas.raw import (
     ChatlasArchiveConfig,
     ChatlasProviderMirrorResult,
@@ -64,6 +63,15 @@ _PROGRESS_PREFIX = "[chatlas]"
 _MAX_CHATLAS_ARCHIVE_WORKERS = 4
 _CHATLAS_DOCUMENTS_DIRNAME = "Documents"
 T = TypeVar("T")
+ProviderSessionRef = (
+    ClaudeSessionRef
+    | CodexSessionRef
+    | CopilotSessionRef
+    | GeminiSessionRef
+    | OpenclawSessionRef
+    | OpencodeSessionRef
+    | PiSessionRef
+)
 
 
 @dataclass(frozen=True)
@@ -90,6 +98,13 @@ class ChatlasSessionIndexMaterialization:
     sessions: list[dict[str, Any]]
     source_signatures: dict[str, dict[str, object]]
     session_index_cache: dict[str, dict[str, object]]
+
+
+@dataclass(frozen=True)
+class ChatlasProviderSessionRef:
+    archive_config: ChatlasArchiveConfig
+    agent: ConfiguredAgent
+    session_ref: ProviderSessionRef
 
 
 @dataclass
@@ -862,16 +877,17 @@ def resolve_chatlas_sessions(
     providers: tuple[str, ...] | None = None,
     chatlas_root: Path | None = None,
     start_path: Path | str = ".",
-) -> list[ChatSession]:
+) -> list[dict[str, Any]]:
     chatlas_root_path = _resolve_chatlas_root(chatlas_root)
-    resolved_sessions: list[ChatSession] = []
-    for context in _iter_chatlas_session_contexts(
-        chatlas_root=chatlas_root_path,
-        start_path=start_path,
+    selections = _select_chatlas_sessions(
+        chatlas_root_path,
+        query=query,
         providers=providers,
-    ):
-        resolved_sessions.extend(_find_direct_provider_sessions(context, query))
-    return _sort_sessions(_dedupe_sessions(resolved_sessions), "lexical")
+    )
+    return [
+        _chatlas_session_with_match(selection)
+        for selection in _sort_chatlas_session_selections(selections, sort="lexical")
+    ]
 
 
 def chatlas_resolved_session_stats(
@@ -881,17 +897,17 @@ def chatlas_resolved_session_stats(
     chatlas_root: Path | None = None,
     start_path: Path | str = ".",
 ) -> dict[str, object]:
+    _ = start_path
     sessions = resolve_chatlas_sessions(
         query,
         providers=providers,
         chatlas_root=chatlas_root,
-        start_path=start_path,
     )
     if not sessions:
         raise CliError(f"no session matched query {query}")
     if len(sessions) > 1:
         raise CliError(
-            f"multiple sessions matched query {query}: {_format_resolved_session_choices(sessions)}"
+            f"multiple sessions matched query {query}: {_format_chatlas_resolved_session_choices(sessions)}"
         )
 
     session = sessions[0]
@@ -903,8 +919,8 @@ def chatlas_resolved_session_stats(
             "query": query,
             "providers": list(providers) if providers is not None else None,
         },
-        "session": _build_common_session_stats(session, query=query),
-        "stats": _build_provider_session_stats(session),
+        "session": session,
+        "stats": _chatlas_provider_stats_from_index_session(session),
     }
 
 
@@ -1018,16 +1034,16 @@ def _materialize_session_index(
     session_index_cache: dict[str, dict[str, object]],
     session_index_cache_enabled: bool,
 ) -> ChatlasSessionIndexMaterialization:
-    discovered_sessions = _discover_chatlas_sessions(
+    discovered_sessions = _discover_chatlas_session_refs(
         raw_root=chatlas_root / "raw",
         provider_configs=provider_configs,
     )
     session_index: list[dict[str, Any]] = []
     source_signatures: dict[str, dict[str, object]] = {}
     next_session_index_cache: dict[str, dict[str, object]] = {}
-    for session in discovered_sessions:
-        cache_key = _session_index_cache_key(session)
-        source_signature = _session_index_source_signature(session)
+    for session_ref in discovered_sessions:
+        cache_key = _session_ref_index_cache_key(session_ref)
+        source_signature = _session_ref_index_source_signature(session_ref)
         source_signatures[cache_key] = source_signature
         cached_entry = session_index_cache.get(cache_key)
         if (
@@ -1043,7 +1059,7 @@ def _materialize_session_index(
                     "session": indexed_session,
                 }
                 continue
-        indexed_session = _session_index_record(session)
+        indexed_session = _session_ref_index_record(session_ref)
         session_index.append(indexed_session)
         next_session_index_cache[cache_key] = {
             "source_signature": source_signature,
@@ -1057,153 +1073,187 @@ def _materialize_session_index(
     )
 
 
-def _discover_chatlas_sessions(
+def _discover_chatlas_session_refs(
     *,
     raw_root: Path,
     provider_configs: tuple[ChatlasArchiveConfig, ...],
-) -> list[ChatSession]:
-    discovered_sessions = []
+) -> list[ChatlasProviderSessionRef]:
+    discovered_sessions: list[ChatlasProviderSessionRef] = []
     for provider_config in provider_configs:
-        session_provider_config = _chatlas_session_provider_config(
+        agent = _chatlas_session_agent(
             raw_root=raw_root,
             archive_provider_config=provider_config,
         )
-        if session_provider_config is None:
+        if agent is None or not hasattr(agent, "discover_session_refs"):
             continue
-        context = _build_provider_context(session_provider_config)
-        discovered_sessions.extend(_discover_direct_provider_sessions(context))
+        for session_ref in agent.discover_session_refs():
+            discovered_sessions.append(
+                ChatlasProviderSessionRef(
+                    archive_config=provider_config,
+                    agent=agent,
+                    session_ref=session_ref,
+                )
+            )
 
-    return _dedupe_sessions(discovered_sessions)
+    return _dedupe_chatlas_session_refs(discovered_sessions)
 
 
-def _chatlas_session_provider_config(
+def _chatlas_session_agent(
     *,
     raw_root: Path,
     archive_provider_config: ChatlasArchiveConfig,
-) -> SessionProviderConfig | None:
-    provider_family = _provider_family_for_name(archive_provider_config.family)
-    if provider_family is None:
+) -> ConfiguredAgent | None:
+    if _provider_family_for_name(archive_provider_config.family) is None:
         return None
 
-    direct_targets: list[Path] = []
-    grep_targets: list[Path] = []
-    sqlite_db_paths: list[Path] = []
-
-    for home_key, source_home_path in archive_provider_config.homes:
-        raw_home_path = _chatlas_home_destination(
-            raw_root=raw_root,
-            home_path=source_home_path,
+    raw_homes = tuple(
+        (
+            home_key,
+            _chatlas_home_destination(
+                raw_root=raw_root,
+                home_path=source_home_path,
+            ),
         )
-        home_slot = _match_session_home_slot(
-            provider_family.family,
-            source_home_path,
-            slot_key=home_key,
-        )
-        if home_slot is None:
-            continue
-        slot_direct_paths, slot_grep_paths, slot_sqlite_db_paths = home_slot.build_paths(home=raw_home_path)
-        direct_targets.extend(slot_direct_paths)
-        grep_targets.extend(slot_grep_paths or slot_direct_paths)
-        sqlite_db_paths.extend(slot_sqlite_db_paths)
-
-    if not direct_targets and not sqlite_db_paths:
-        return None
-
-    direct_targets_tuple = tuple(direct_targets)
-    grep_targets_tuple = tuple(grep_targets)
-    sqlite_db_paths_tuple = tuple(sqlite_db_paths)
-    instance_summary = archive_provider_config.summary()
-    if direct_targets_tuple:
-        instance_summary["direct_targets"] = [str(path) for path in direct_targets_tuple]
-    if grep_targets_tuple:
-        instance_summary["grep_targets"] = [str(path) for path in grep_targets_tuple]
-    if sqlite_db_paths_tuple:
-        instance_summary["sqlite_db_paths"] = [str(path) for path in sqlite_db_paths_tuple]
-
-    return SessionProviderConfig(
-        provider_identity=SessionProviderIdentity(
-            family=archive_provider_config.family,
-            identity=archive_provider_config.identity_key(),
-            uri_key=archive_provider_config.uri_key,
+        for home_key, source_home_path in archive_provider_config.homes
+    )
+    return agent_from_config(
+        AgentConfig(
+            provider=archive_provider_config.family,
+            instance_id=archive_provider_config.instance_id,
+            label=archive_provider_config.label,
+            homes=raw_homes,
+            is_default=archive_provider_config.is_default,
             fingerprint=archive_provider_config.fingerprint,
-            summary_payload=instance_summary,
+        )
+    )
+
+
+def _dedupe_chatlas_session_refs(
+    sessions: list[ChatlasProviderSessionRef],
+) -> list[ChatlasProviderSessionRef]:
+    deduped: dict[tuple[object, ...], ChatlasProviderSessionRef] = {}
+    for session in sessions:
+        key = _chatlas_session_ref_identity_key(session)
+        existing = deduped.get(key)
+        if existing is None:
+            deduped[key] = session
+            continue
+        deduped[key] = _merge_chatlas_session_ref(existing, session)
+    return sorted(
+        deduped.values(),
+        key=lambda session: (
+            session.archive_config.family,
+            session.archive_config.fingerprint,
+            _session_ref_id(session.session_ref),
         ),
-        provider=archive_provider_config.family,
-        instance_summary=instance_summary,
-        instance_fingerprint=archive_provider_config.fingerprint,
-        direct_targets=direct_targets_tuple,
-        grep_targets=grep_targets_tuple,
-        sqlite_db_paths=sqlite_db_paths_tuple,
     )
 
 
-def _match_session_home_slot(
-    provider_family: str,
-    source_home_path: Path,
-    *,
-    slot_key: str | None = None,
-):
-    provider_family_obj = _provider_family_for_name(provider_family)
-    if provider_family_obj is None:
-        return None
-
-    if slot_key is not None:
-        for home_slot in _session_provider_home_slots(provider_family):
-            if home_slot.key == slot_key:
-                return home_slot
-
-    source_home_name = source_home_path.name
-    home_slots = _session_provider_home_slots(provider_family)
-    for home_slot in home_slots:
-        if Path(home_slot.default_home).expanduser().name == source_home_name:
-            return home_slot
-    if len(home_slots) == 1:
-        return home_slots[0]
-    return None
-
-
-def _session_index_record(session) -> dict[str, Any]:
-    payload = _build_common_session_stats(
-        session,
-        include_artifacts=True,
+def _chatlas_session_ref_identity_key(session: ChatlasProviderSessionRef) -> tuple[object, ...]:
+    return (
+        session.archive_config.family,
+        session.archive_config.identity_key(),
+        _session_ref_id(session.session_ref),
     )
-    payload["instance"] = _chatlas_session_identity_name(session.provider_identity)
-    payload["identity_hash"] = _session_identity_hash(
-        provider=session.provider,
-        provider_session_id=session.session_id,
+
+
+def _merge_chatlas_session_ref(
+    left: ChatlasProviderSessionRef,
+    right: ChatlasProviderSessionRef,
+) -> ChatlasProviderSessionRef:
+    left_ref = left.session_ref
+    right_ref = right.session_ref
+    if hasattr(left_ref, "merge"):
+        merged_ref = left_ref.merge(right_ref)
+    else:
+        merged_ref = left_ref
+    return ChatlasProviderSessionRef(
+        archive_config=left.archive_config,
+        agent=left.agent,
+        session_ref=merged_ref,
     )
-    payload["class"] = "agentos.chatlas.session"
-    payload["schema_version"] = 1
+
+
+def _session_ref_id(session_ref: ProviderSessionRef) -> str:
+    return session_ref.native_session_id
+
+
+def _session_ref_index_record(session: ChatlasProviderSessionRef) -> dict[str, Any]:
+    session_ref = session.session_ref
+    backing_artifacts = _session_ref_backing_artifacts(session_ref)
+    primary_backing_artifact = backing_artifacts[0] if backing_artifacts else None
+    payload = {
+        "provider": session.archive_config.family,
+        "uri": _chatlas_session_ref_uri(session),
+        "provider_instance_fingerprint": session.archive_config.fingerprint,
+        "session_id": _session_ref_id(session_ref),
+        "display_name": _session_ref_display_name(session_ref),
+        "display_name_field": _session_ref_display_name_field(session_ref),
+        "created_at": _format_stats_timestamp(_session_ref_created_timestamp(session_ref)),
+        "updated_at": _format_stats_timestamp(_session_ref_sort_timestamp(session_ref)),
+        "extractable": _chatlas_session_ref_is_probably_extractable(
+            session.archive_config.family,
+            backing_artifacts,
+        ),
+        "backing_artifact_count": len(backing_artifacts),
+        "primary_backing_artifact": (
+            _serialize_session_ref_backing_artifact(session.archive_config.family, primary_backing_artifact)
+            if primary_backing_artifact is not None
+            else None
+        ),
+        "native": _session_ref_native_payload(session_ref),
+        "backing_artifacts": [
+            _serialize_session_ref_backing_artifact(session.archive_config.family, artifact)
+            for artifact in backing_artifacts
+        ],
+        "instance": _chatlas_archive_identity_name(session.archive_config),
+        "identity_hash": _session_identity_hash(
+            provider=session.archive_config.family,
+            provider_session_id=_session_ref_id(session_ref),
+        ),
+        "class": "agentos.chatlas.session",
+        "schema_version": 1,
+    }
     return payload
 
 
-def _session_index_cache_key(session: ChatSession) -> str:
-    provider = _session_fs_component(session.provider)
-    fingerprint = _session_fs_component(session.provider_identity.fingerprint)
-    session_id = _session_fs_component(session.session_id)
+def _chatlas_session_ref_uri(session: ChatlasProviderSessionRef) -> str:
+    return (
+        f"agentos://chat-session/{quote(session.archive_config.family, safe='')}/"
+        f"{session.archive_config.uri_key}/"
+        f"{quote(_session_ref_id(session.session_ref), safe='')}"
+    )
+
+
+def _session_ref_index_cache_key(session: ChatlasProviderSessionRef) -> str:
+    provider = _session_fs_component(session.archive_config.family)
+    fingerprint = _session_fs_component(session.archive_config.fingerprint)
+    session_id = _session_fs_component(_session_ref_id(session.session_ref))
     return f"{provider}/{fingerprint}/{session_id}"
 
 
-def _session_index_source_signature(session: ChatSession) -> dict[str, object]:
-    backing_artifacts = session.backing_artifacts()
-    primary_backing_artifact = session.primary_backing_artifact()
+def _session_ref_index_source_signature(session: ChatlasProviderSessionRef) -> dict[str, object]:
+    session_ref = session.session_ref
+    backing_artifacts = _session_ref_backing_artifacts(session_ref)
+    primary_backing_artifact = backing_artifacts[0] if backing_artifacts else None
+    provider = session.archive_config.family
     return {
-        "provider": session.provider,
-        "instance": _chatlas_session_identity_name(session.provider_identity),
-        "provider_instance_fingerprint": session.provider_identity.fingerprint,
-        "session_id": session.session_id,
-        "display_name": session.display_name(),
-        "display_name_field": session.display_name_field(),
-        "updated_at": _format_stats_timestamp(session.sort_timestamp()),
-        "extractable": _chatlas_session_is_probably_extractable(session, backing_artifacts),
-        "native": _session_index_native_payload(session),
+        "provider": provider,
+        "instance": _chatlas_archive_identity_name(session.archive_config),
+        "provider_instance_fingerprint": session.archive_config.fingerprint,
+        "session_id": _session_ref_id(session_ref),
+        "display_name": _session_ref_display_name(session_ref),
+        "display_name_field": _session_ref_display_name_field(session_ref),
+        "updated_at": _format_stats_timestamp(_session_ref_sort_timestamp(session_ref)),
+        "extractable": _chatlas_session_ref_is_probably_extractable(provider, backing_artifacts),
+        "native": _session_ref_native_payload(session_ref),
         "primary_backing_artifact": (
             None
             if primary_backing_artifact is None
-            else _session_index_backing_artifact_signature(session, primary_backing_artifact)
+            else _session_ref_index_backing_artifact_signature(provider, primary_backing_artifact)
         ),
         "backing_artifacts": [
-            _session_index_backing_artifact_signature(session, artifact)
+            _session_ref_index_backing_artifact_signature(provider, artifact)
             for artifact in backing_artifacts
         ],
         "signature_version": 2,
@@ -1211,15 +1261,286 @@ def _session_index_source_signature(session: ChatSession) -> dict[str, object]:
     }
 
 
-def _session_index_native_payload(session: ChatSession) -> dict[str, Any]:
-    payload = dict(session.native_fields())
-    payload.pop("session_id", None)
+def _session_ref_backing_artifacts(session_ref: ProviderSessionRef) -> tuple[BackingArtifact, ...]:
+    if isinstance(session_ref, ClaudeSessionRef):
+        return tuple(
+            BackingArtifact(
+                role="transcript" if path.suffix == ".jsonl" else "metadata",
+                path=path,
+            )
+            for path in session_ref.artifact_paths
+        )
+    if isinstance(session_ref, CodexSessionRef):
+        artifacts = [
+            BackingArtifact(role="transcript", path=path)
+            for path in session_ref.rollout_paths
+        ]
+        artifacts.extend(
+            BackingArtifact(
+                role="session_index",
+                path=path,
+                locator={
+                    "kind": "jsonl_record_match",
+                    "match": {"id": session_ref.native_session_id},
+                },
+            )
+            for path in session_ref.index_paths
+        )
+        return tuple(artifacts)
+    if isinstance(session_ref, CopilotSessionRef):
+        artifacts = [BackingArtifact(role="transcript", path=session_ref.events_path)]
+        if session_ref.events_path.name == "events.jsonl":
+            artifacts.append(
+                BackingArtifact(
+                    role="session_root",
+                    path=session_ref.events_path.parent,
+                    storage_kind="directory",
+                )
+            )
+        return tuple(artifacts)
+    if isinstance(session_ref, GeminiSessionRef):
+        return tuple(
+            BackingArtifact(role="transcript", path=path)
+            for path in session_ref.artifact_paths
+        )
+    if isinstance(session_ref, PiSessionRef):
+        return tuple(
+            BackingArtifact(role="transcript", path=path)
+            for path in session_ref.artifact_paths
+        )
+    if isinstance(session_ref, OpenclawSessionRef):
+        artifacts: list[BackingArtifact] = []
+        if session_ref.transcript_path is not None:
+            artifacts.append(BackingArtifact(role="transcript", path=session_ref.transcript_path))
+        if session_ref.sessions_index_path is not None:
+            locator: dict[str, Any]
+            if session_ref.session_keys:
+                locator = {
+                    "kind": "json_object_keys",
+                    "keys": list(session_ref.session_keys),
+                }
+            else:
+                locator = {
+                    "kind": "json_object_value_match",
+                    "match": {"sessionId": session_ref.native_session_id},
+                }
+            artifacts.append(
+                BackingArtifact(
+                    role="session_index",
+                    path=session_ref.sessions_index_path,
+                    locator=locator,
+                )
+            )
+        return tuple(artifacts)
+    if isinstance(session_ref, OpencodeSessionRef):
+        artifacts = []
+        if session_ref.diff_path is not None:
+            artifacts.append(BackingArtifact(role="session_diff", path=session_ref.diff_path))
+        if session_ref.sqlite_db_path is not None:
+            artifacts.append(
+                BackingArtifact(
+                    role="sqlite_session_row",
+                    path=session_ref.sqlite_db_path,
+                    storage_kind="sqlite_row",
+                    locator={
+                        "kind": "sqlite_row_match",
+                        "table": "session",
+                        "key": {"id": session_ref.native_session_id},
+                    },
+                )
+            )
+        return tuple(artifacts)
+    return ()
+
+
+def _session_ref_display_name(session_ref: ProviderSessionRef) -> str | None:
+    if isinstance(session_ref, ClaudeSessionRef):
+        return session_ref.title
+    if isinstance(session_ref, CodexSessionRef):
+        return session_ref.thread_name
+    return None
+
+
+def _session_ref_display_name_field(session_ref: ProviderSessionRef) -> str | None:
+    if isinstance(session_ref, ClaudeSessionRef) and session_ref.title is not None:
+        return "title"
+    if isinstance(session_ref, CodexSessionRef) and session_ref.thread_name is not None:
+        return "thread_name"
+    return None
+
+
+def _session_ref_native_payload(session_ref: ProviderSessionRef) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if isinstance(session_ref, ClaudeSessionRef) and session_ref.title is not None:
+        payload["title"] = session_ref.title
+    if isinstance(session_ref, CodexSessionRef) and session_ref.thread_name is not None:
+        payload["thread_name"] = session_ref.thread_name
+    if isinstance(session_ref, PiSessionRef):
+        if session_ref.cwd is not None:
+            payload["cwd"] = session_ref.cwd
+        if session_ref.model_provider is not None:
+            payload["model_provider"] = session_ref.model_provider
+        if session_ref.model_id is not None:
+            payload["model_id"] = session_ref.model_id
+        if session_ref.thinking_level is not None:
+            payload["thinking_level"] = session_ref.thinking_level
+    if isinstance(session_ref, OpenclawSessionRef):
+        if session_ref.session_keys:
+            payload["session_keys"] = list(session_ref.session_keys)
+        if session_ref.agent_id is not None:
+            payload["agent_id"] = session_ref.agent_id
     return payload
 
 
-def _session_index_backing_artifact_signature(
-    session: ChatSession,
-    artifact,
+def _session_ref_created_timestamp(session_ref: ProviderSessionRef) -> float | None:
+    if isinstance(session_ref, PiSessionRef):
+        return session_ref.started_at
+
+    backing_artifacts = _session_ref_backing_artifacts(session_ref)
+    if not backing_artifacts:
+        return None
+    artifact = backing_artifacts[0].path
+    if not artifact.exists():
+        return None
+
+    try:
+        if isinstance(session_ref, CodexSessionRef):
+            from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
+
+            return _created_timestamp_from_turns(extract_dialog_from_codex_rollout(artifact, raw=False))
+        if isinstance(session_ref, ClaudeSessionRef):
+            if artifact.suffix == ".jsonl":
+                from agentos.chat.extractors.claude_code import extract_dialog_from_claude_code_session
+
+                return _created_timestamp_from_turns(extract_dialog_from_claude_code_session(artifact, raw=False))
+            if artifact.suffix == ".json":
+                obj = json.loads(artifact.read_text(encoding="utf-8", errors="ignore"))
+                if isinstance(obj, dict):
+                    return coerce_timestamp(obj.get("createdAt")) or coerce_timestamp(obj.get("lastActivityAt"))
+        if isinstance(session_ref, CopilotSessionRef):
+            from agentos.chat.extractors.copilot_cli import load_copilot_cli_events
+
+            events = load_copilot_cli_events(artifact)
+            first_event_timestamp: float | None = None
+            for event in events:
+                timestamp = coerce_timestamp(event.get("timestamp"))
+                if timestamp is not None and first_event_timestamp is None:
+                    first_event_timestamp = timestamp
+                if event.get("type") == "session.start":
+                    return timestamp
+            return first_event_timestamp
+        if isinstance(session_ref, GeminiSessionRef):
+            from agentos.chat.extractors.gemini_cli import load_gemini_cli_session_data
+
+            session_data = load_gemini_cli_session_data(artifact)
+            if isinstance(session_data, dict):
+                return coerce_timestamp(session_data.get("startTime"))
+        if isinstance(session_ref, OpenclawSessionRef):
+            from agentos.chat.extractors.openclaw import load_openclaw_session_records
+
+            records = load_openclaw_session_records(artifact)
+            if records:
+                return coerce_timestamp(records[0].get("timestamp"))
+        if isinstance(session_ref, OpencodeSessionRef):
+            from agentos.chat.extractors.opencode import load_opencode_session_messages, resolve_opencode_db_path
+
+            db_path = artifact if artifact.name == "opencode.db" else resolve_opencode_db_path(artifact)
+            messages = load_opencode_session_messages(db_path=db_path, session_id=session_ref.native_session_id)
+            if messages:
+                return coerce_timestamp(messages[0].get("time_created"))
+    except (CliError, OSError, json.JSONDecodeError):
+        return None
+    return None
+
+
+def _created_timestamp_from_turns(turns: list[Any]) -> float | None:
+    for turn in turns:
+        timestamp = coerce_timestamp(getattr(turn, "timestamp", None))
+        if timestamp is not None:
+            return timestamp
+    return None
+
+
+def _session_ref_sort_timestamp(session_ref: ProviderSessionRef) -> float | None:
+    if isinstance(session_ref, ClaudeSessionRef):
+        return _latest_timestamp(
+            coerce_timestamp(session_ref.updated_at),
+            *(safe_path_mtime(path) for path in session_ref.artifact_paths),
+        )
+    if isinstance(session_ref, CodexSessionRef):
+        return _latest_timestamp(
+            session_ref.updated_at,
+            *(safe_path_mtime(path) for path in session_ref.rollout_paths),
+        )
+    if isinstance(session_ref, CopilotSessionRef):
+        return _latest_timestamp(
+            session_ref.updated_at,
+            safe_path_mtime(session_ref.events_path),
+            safe_path_mtime(session_ref.events_path.parent),
+        )
+    if isinstance(session_ref, GeminiSessionRef):
+        return _latest_timestamp(
+            session_ref.updated_at,
+            *(safe_path_mtime(path) for path in session_ref.artifact_paths),
+        )
+    if isinstance(session_ref, PiSessionRef):
+        return _latest_timestamp(
+            session_ref.updated_at,
+            session_ref.started_at,
+            *(safe_path_mtime(path) for path in session_ref.artifact_paths),
+        )
+    if isinstance(session_ref, OpenclawSessionRef):
+        return _latest_timestamp(
+            session_ref.updated_at,
+            safe_path_mtime(session_ref.transcript_path),
+            safe_path_mtime(session_ref.sessions_index_path),
+        )
+    if isinstance(session_ref, OpencodeSessionRef):
+        return _latest_timestamp(
+            session_ref.updated_at,
+            safe_path_mtime(session_ref.diff_path),
+            safe_path_mtime(session_ref.sqlite_db_path),
+        )
+    return None
+
+
+def _latest_timestamp(*values: float | None) -> float | None:
+    timestamps = [value for value in values if value is not None]
+    if not timestamps:
+        return None
+    return max(timestamps)
+
+
+def _serialize_session_ref_backing_artifact(
+    provider: str,
+    artifact: BackingArtifact,
+) -> dict[str, Any]:
+    return artifact.summary(
+        extractable=_chatlas_backing_artifact_is_probably_extractable(
+            provider,
+            artifact,
+            source_signature=_chatlas_cache_path_metadata_signature(artifact.path),
+        ),
+    )
+
+
+def _chatlas_session_ref_is_probably_extractable(
+    provider: str,
+    backing_artifacts: tuple[BackingArtifact, ...],
+) -> bool:
+    return any(
+        _chatlas_backing_artifact_is_probably_extractable(
+            provider,
+            artifact,
+            source_signature=_chatlas_cache_path_metadata_signature(artifact.path),
+        )
+        for artifact in backing_artifacts
+    )
+
+
+def _session_ref_index_backing_artifact_signature(
+    provider: str,
+    artifact: BackingArtifact,
 ) -> dict[str, object]:
     source_signature = _chatlas_cache_path_metadata_signature(artifact.path)
     signature = {
@@ -1231,13 +1552,28 @@ def _session_index_backing_artifact_signature(
         "path": str(artifact.path),
         "locator": artifact.locator,
         "extractable": _chatlas_backing_artifact_is_probably_extractable(
-            session,
+            provider,
             artifact,
             source_signature=source_signature,
         ),
     }
     signature["source_signature"] = source_signature
     return signature
+
+
+def _chatlas_archive_identity_name(config: ChatlasArchiveConfig) -> str:
+    summary = config.summary()
+    instance_id = summary.get("instance_id")
+    if isinstance(instance_id, str) and instance_id:
+        return instance_id
+
+    homes = summary.get("homes")
+    if isinstance(homes, dict):
+        derived_name = _derive_chatlas_identity_name(config.family, homes.values())
+        if derived_name is not None:
+            return derived_name
+
+    return config.fingerprint[:12]
 
 
 def _normalized_backing_artifact_storage_kind(
@@ -1256,7 +1592,7 @@ def _normalized_backing_artifact_storage_kind(
 
 
 def _chatlas_backing_artifact_is_probably_extractable(
-    session: ChatSession,
+    provider: str,
     artifact,
     *,
     source_signature: dict[str, object],
@@ -1267,37 +1603,23 @@ def _chatlas_backing_artifact_is_probably_extractable(
         return False
 
     path = artifact.path
-    if session.provider == "claude-code":
+    if provider == "claude-code":
         return artifact.role == "transcript" and path.suffix in {".json", ".jsonl"}
-    if session.provider == "codex":
+    if provider == "codex":
         return artifact.role == "transcript" and path.suffix == ".jsonl" and path.name.startswith("rollout-")
-    if session.provider == "copilot-cli":
+    if provider == "copilot-cli":
         return artifact.role == "transcript" and path.suffix == ".jsonl"
-    if session.provider == "gemini-cli":
+    if provider == "gemini-cli":
         return artifact.role == "transcript" and path.suffix == ".json"
-    if session.provider == "pi":
+    if provider == "pi":
         return artifact.role == "transcript" and path.suffix == ".jsonl"
-    if session.provider == "openclaw":
+    if provider == "openclaw":
         return artifact.role == "transcript" and path.suffix == ".jsonl"
-    if session.provider == "opencode":
+    if provider == "opencode":
         return artifact.role in {"session_diff", "sqlite_session_row"} and (
             path.suffix == ".json" or path.name == "opencode.db"
         )
     return False
-
-
-def _chatlas_session_is_probably_extractable(
-    session: ChatSession,
-    backing_artifacts: tuple[BackingArtifact, ...],
-) -> bool:
-    return any(
-        _chatlas_backing_artifact_is_probably_extractable(
-            session,
-            artifact,
-            source_signature=_chatlas_cache_path_metadata_signature(artifact.path),
-        )
-        for artifact in backing_artifacts
-    )
 
 
 def _session_fs_component(value: str) -> str:
@@ -1382,27 +1704,6 @@ def _load_jsonl_dict_rows(path: Path) -> list[dict[str, Any]]:
         if isinstance(payload, dict):
             rows.append(payload)
     return rows
-
-
-def _iter_chatlas_session_contexts(
-    *,
-    chatlas_root: Path,
-    start_path: Path | str = ".",
-    providers: tuple[str, ...] | None = None,
-):
-    settings = configured_chatlas_settings(start_path=start_path)
-    raw_root = chatlas_root / "raw"
-    requested_providers = None if providers is None else set(providers)
-    for provider_config in settings.provider_configs:
-        if requested_providers is not None and provider_config.family not in requested_providers:
-            continue
-        session_provider_config = _chatlas_session_provider_config(
-            raw_root=raw_root,
-            archive_provider_config=provider_config,
-        )
-        if session_provider_config is None:
-            continue
-        yield _build_provider_context(session_provider_config)
 
 
 def _selected_session_index(
@@ -1600,18 +1901,123 @@ def _chatlas_provider_stats_for_session(
     chatlas_root: Path,
     session: dict[str, Any],
 ) -> dict[str, Any] | None:
-    uri = _string_or_none(session.get("uri"))
+    _ = chatlas_root
+    return _chatlas_provider_stats_from_index_session(session)
+
+
+def _chatlas_provider_stats_from_index_session(session: dict[str, Any]) -> dict[str, Any]:
     provider = _string_or_none(session.get("provider"))
-    if uri is None:
+    payload: dict[str, Any] = {
+        "provider": provider,
+        "session_id": session.get("session_id"),
+        "display_name": session.get("display_name"),
+        "created_at": session.get("created_at"),
+        "updated_at": session.get("updated_at"),
+        "extractable": session.get("extractable"),
+        "backing_artifact_count": session.get("backing_artifact_count", 0),
+    }
+    primary = session.get("primary_backing_artifact")
+    if isinstance(primary, dict):
+        payload["primary_backing_artifact"] = primary.get("path")
+    native = session.get("native")
+    if isinstance(native, dict):
+        payload.update(native)
+    primary_path = _chatlas_primary_artifact_path(session)
+    if provider == "codex":
+        backing_artifacts = _chatlas_backing_artifacts(session)
+        payload["rollout_artifact_count"] = sum(1 for artifact in backing_artifacts if artifact.get("role") == "transcript")
+        payload["session_index_count"] = sum(1 for artifact in backing_artifacts if artifact.get("role") == "session_index")
+        payload["has_rollout_artifact"] = bool(session.get("extractable"))
+        payload["dialog_turn_count"] = _chatlas_dialog_turn_count(
+            provider,
+            primary_path,
+            session_id=_string_or_none(session.get("session_id")),
+        )
+    if provider == "openclaw":
+        session_keys = payload.get("session_keys")
+        payload["session_key_count"] = len(session_keys) if isinstance(session_keys, list) else 0
+        payload["has_transcript"] = primary_path is not None and primary_path.is_file()
+        payload["dialog_turn_count"] = _chatlas_dialog_turn_count(
+            provider,
+            primary_path,
+            session_id=_string_or_none(session.get("session_id")),
+        )
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _chatlas_backing_artifacts(session: dict[str, Any]) -> list[dict[str, Any]]:
+    artifacts = session.get("backing_artifacts")
+    if isinstance(artifacts, list):
+        return [artifact for artifact in artifacts if isinstance(artifact, dict)]
+    primary = session.get("primary_backing_artifact")
+    return [primary] if isinstance(primary, dict) else []
+
+
+def _chatlas_primary_artifact_path(session: dict[str, Any]) -> Path | None:
+    primary = session.get("primary_backing_artifact")
+    if not isinstance(primary, dict):
         return None
-    resolved_sessions = resolve_chatlas_sessions(
-        uri,
-        providers=None if provider is None else (provider,),
-        chatlas_root=chatlas_root,
+    path_text = _string_or_none(primary.get("path"))
+    if path_text is None:
+        return None
+    return Path(path_text)
+
+
+def _chatlas_dialog_turn_count(
+    provider: str,
+    path: Path | None,
+    *,
+    session_id: str | None,
+) -> int | None:
+    if path is None or not path.is_file():
+        return None
+    try:
+        if provider == "codex":
+            from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
+
+            return len(extract_dialog_from_codex_rollout(path, raw=False))
+        if provider == "openclaw":
+            from agentos.chat.extractors.openclaw import (
+                extract_dialog_from_openclaw_session,
+                load_openclaw_session_records,
+            )
+
+            if session_id is None:
+                return None
+            return len(
+                extract_dialog_from_openclaw_session(
+                    records=load_openclaw_session_records(path),
+                    session_id=session_id,
+                    raw=False,
+                )
+            )
+    except (CliError, OSError, json.JSONDecodeError):
+        return None
+    return None
+
+
+def _chatlas_session_with_match(selection: ChatlasSessionSelection) -> dict[str, Any]:
+    session = dict(selection.session)
+    if selection.matched_fields:
+        session["match"] = {
+            "query": selection.matched_fields[0][1],
+            "kind": "exact_identity",
+            "fields": [
+                {
+                    "field": field_name,
+                    "value": value,
+                }
+                for field_name, value in selection.matched_fields
+            ],
+        }
+    return session
+
+
+def _format_chatlas_resolved_session_choices(sessions: list[dict[str, Any]]) -> str:
+    return ", ".join(
+        str(session.get("uri") or session.get("session_id"))
+        for session in sessions[:5]
     )
-    if len(resolved_sessions) != 1:
-        return None
-    return _build_provider_session_stats(resolved_sessions[0])
 
 
 def _select_chatlas_sessions(
@@ -1774,21 +2180,6 @@ def _chatlas_raw_source_content(source: dict[str, object]) -> dict[str, object]:
             "content": base64.b64encode(raw_content).decode("ascii"),
             "content_encoding": "base64",
         }
-
-
-def _chatlas_session_identity_name(provider_identity: SessionProviderIdentity) -> str:
-    summary = provider_identity.summary()
-    instance_id = summary.get("instance_id")
-    if isinstance(instance_id, str) and instance_id:
-        return instance_id
-
-    homes = summary.get("homes")
-    if isinstance(homes, dict):
-        derived_name = _derive_chatlas_identity_name(provider_identity.family, homes.values())
-        if derived_name is not None:
-            return derived_name
-
-    return provider_identity.fingerprint[:12]
 
 
 def _derive_chatlas_identity_name(family: str, home_paths: object) -> str | None:

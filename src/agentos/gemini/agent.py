@@ -5,7 +5,19 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.agent.primitives import AgentConfig, AgentRunRequest, ResolvedAgentRun, resolve_terminal_agent_run
+from agentos.agent.primitives import (
+    AgentConfig,
+    AgentRunRequest,
+    provider_session_paths,
+    ResolvedAgentRun,
+    resolve_terminal_agent_run,
+)
+from agentos.gemini.session import (
+    GeminiSession,
+    GeminiSessionRef,
+    discover_gemini_session_refs,
+    load_gemini_session,
+)
 
 
 GEMINI_PROVIDER = "gemini-cli"
@@ -49,6 +61,13 @@ class GeminiAgent:
 
     def resolve_run(self, request: AgentRunRequest) -> ResolvedAgentRun:
         return resolve_terminal_agent_run(self, request)
+
+    def discover_session_refs(self) -> tuple[GeminiSessionRef, ...]:
+        direct_targets, _ = provider_session_paths(GEMINI_PROVIDER, self.homes)
+        return discover_gemini_session_refs(targets=direct_targets)
+
+    def load_session(self, session_ref: GeminiSessionRef) -> GeminiSession:
+        return load_gemini_session(session_ref)
 
     def summary(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"family": self.provider, "is_default": self.is_default}

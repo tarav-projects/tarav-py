@@ -11,6 +11,8 @@ from urllib.parse import unquote
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
+from agentos.agent.primitives import AgentConfig
+from agentos.agent.providers import ConfiguredAgent, agent_from_config
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
     default_legacy_provider_configs,
@@ -20,53 +22,36 @@ from agentos.chat.providers import (
 from agentos.chat.providers import ProviderFamily
 from agentos.chat.sessions import (
     BackingArtifact,
-    ChatSession,
-    ClaudeCodeSessionRecord,
-    CodexSessionRecord,
-    CopilotCliSessionRecord,
-    GeminiCliSessionRecord,
-    OpenclawSessionRecord,
-    OpencodeSessionRecord,
-    PiSessionRecord,
-    SessionProviderIdentity,
-    ChatSessionRecord,
     coerce_timestamp,
     safe_path_mtime,
 )
 from agentos.codex.session import (
     CodexSession,
-    discover_codex_sessions,
-    find_codex_sessions,
+    CodexSessionRef,
 )
 from agentos.claude.session import (
     ClaudeSession,
-    discover_claude_sessions,
-    find_claude_sessions,
+    ClaudeSessionRef,
 )
 from agentos.copilot.session import (
     CopilotSession,
-    discover_copilot_sessions,
-    find_copilot_sessions,
+    CopilotSessionRef,
 )
 from agentos.pi.session import (
     PiSession,
-    discover_pi_sessions,
-    find_pi_sessions,
+    PiSessionRef,
 )
 from agentos.opencode.session import (
     OpencodeSession,
-    discover_opencode_sessions,
-    find_opencode_sessions,
+    OpencodeSessionRef,
 )
 from agentos.gemini.session import (
     GeminiSession,
-    discover_gemini_sessions,
-    find_gemini_sessions,
+    GeminiSessionRef,
 )
 from agentos.openclaw.session import (
     OpenclawSession,
-    discover_openclaw_sessions,
-    find_openclaw_sessions,
+    OpenclawSessionRef,
 )
 
 TEXT_FILE_SUFFIXES = {
@@ -82,9 +67,21 @@ TEXT_FILE_SUFFIXES = {
 MAX_GREP_FILE_BYTES = 5 * 1024 * 1024
 SESSION_SORT_CHOICES = {"lexical", "newest", "oldest"}
 
+ProviderSessionRef = (
+    ClaudeSessionRef
+    | CodexSessionRef
+    | CopilotSessionRef
+    | GeminiSessionRef
+    | OpenclawSessionRef
+    | OpencodeSessionRef
+    | PiSessionRef
+)
+
+
 @dataclass(frozen=True)
-class SessionProviderContext:
-    provider_identity: SessionProviderIdentity
+class ProviderAgentContext:
+    agent: ConfiguredAgent
+    legacy_config: LegacyProviderConfig
     provider: str
     instance_summary: dict[str, Any]
     instance_fingerprint: str
@@ -100,14 +97,9 @@ class SessionProviderContext:
 
 
 @dataclass(frozen=True)
-class SessionProviderConfig:
-    provider_identity: SessionProviderIdentity
-    provider: str
-    instance_summary: dict[str, Any]
-    instance_fingerprint: str
-    direct_targets: tuple[Path, ...]
-    grep_targets: tuple[Path, ...]
-    sqlite_db_paths: tuple[Path, ...]
+class ProviderSessionRefEntry:
+    context: ProviderAgentContext
+    session_ref: ProviderSessionRef
 
 
 @dataclass(frozen=True)
@@ -149,17 +141,16 @@ def configured_legacy_provider_configs(*, start_path: Path | str = ".") -> tuple
     return _dedupe_legacy_provider_configs(legacy_provider_configs)
 
 
-def configured_session_provider_configs(
+def configured_session_provider_contexts(
     *,
     start_path: Path | str = ".",
-) -> tuple[SessionProviderConfig, ...]:
+) -> tuple[ProviderAgentContext, ...]:
     configured_legacy_configs = configured_legacy_provider_configs(start_path=start_path)
     default_legacy_configs = default_legacy_provider_configs(supports_session_discovery_only=True)
-    provider_configs = tuple(
-        _session_provider_config_from_legacy_config(legacy_provider_config)
-        for legacy_provider_config in configured_legacy_configs + default_legacy_configs
+    legacy_configs = _dedupe_legacy_provider_configs(
+        configured_legacy_configs + default_legacy_configs
     )
-    return _dedupe_session_provider_configs(provider_configs)
+    return tuple(_provider_agent_context_from_legacy_config(config) for config in legacy_configs)
 
 
 def _provider_family_for_name(family_name: str) -> ProviderFamily | None:
@@ -185,17 +176,6 @@ def _dedupe_legacy_provider_configs(
         if key not in unique_instances:
             unique_instances[key] = legacy_provider_config
     return tuple(unique_instances.values())
-
-
-def _dedupe_session_provider_configs(
-    provider_configs: tuple[SessionProviderConfig, ...],
-) -> tuple[SessionProviderConfig, ...]:
-    unique_configs: dict[tuple[object, ...], SessionProviderConfig] = {}
-    for provider_config in provider_configs:
-        key = provider_config.provider_identity.identity_key()
-        if key not in unique_configs:
-            unique_configs[key] = provider_config
-    return tuple(unique_configs.values())
 
 
 def list_chat_sessions(
@@ -605,22 +585,21 @@ def _iter_provider_context_groups(
     providers: tuple[str, ...] | None,
     *,
     start_path: Path | str = ".",
-) -> tuple[tuple[ProviderFamily, tuple[SessionProviderContext, ...]], ...]:
-    provider_configs = configured_session_provider_configs(start_path=start_path)
+) -> tuple[tuple[ProviderFamily, tuple[ProviderAgentContext, ...]], ...]:
+    contexts = configured_session_provider_contexts(start_path=start_path)
     if providers is not None:
         requested_providers = set(providers)
-        provider_configs = tuple(
-            provider_config
-            for provider_config in provider_configs
-            if provider_config.provider in requested_providers
+        contexts = tuple(
+            context
+            for context in contexts
+            if context.provider in requested_providers
         )
 
-    contexts_by_family: dict[str, list[SessionProviderContext]] = {}
-    for provider_config in provider_configs:
-        context = _build_provider_context(provider_config)
-        contexts_by_family.setdefault(provider_config.provider, []).append(context)
+    contexts_by_family: dict[str, list[ProviderAgentContext]] = {}
+    for context in contexts:
+        contexts_by_family.setdefault(context.provider, []).append(context)
 
-    groups: list[tuple[ProviderFamily, tuple[SessionProviderContext, ...]]] = []
+    groups: list[tuple[ProviderFamily, tuple[ProviderAgentContext, ...]]] = []
     for provider_family in supported_provider_families():
         family_contexts = contexts_by_family.get(provider_family.family)
         if not family_contexts:
@@ -629,53 +608,48 @@ def _iter_provider_context_groups(
     return tuple(groups)
 
 
-def _session_provider_config_from_legacy_config(
+def _provider_agent_context_from_legacy_config(
     legacy_provider_config: LegacyProviderConfig,
-) -> SessionProviderConfig:
-    return SessionProviderConfig(
-        provider_identity=_session_provider_identity_from_legacy_config(legacy_provider_config),
+) -> ProviderAgentContext:
+    provider_handler = _provider_family_for_name(legacy_provider_config.family)
+    if provider_handler is None:
+        raise CliError(f"unsupported provider family {legacy_provider_config.family}")
+    direct_targets = legacy_provider_config.direct_targets
+    grep_targets = legacy_provider_config.grep_targets
+    sqlite_db_paths = legacy_provider_config.sqlite_db_paths
+    return ProviderAgentContext(
+        agent=agent_from_config(_agent_config_from_legacy_config(legacy_provider_config)),
+        legacy_config=legacy_provider_config,
         provider=legacy_provider_config.family,
         instance_summary=legacy_provider_config.summary(),
         instance_fingerprint=legacy_provider_config.fingerprint,
         direct_targets=legacy_provider_config.direct_targets,
-        grep_targets=legacy_provider_config.grep_targets,
-        sqlite_db_paths=legacy_provider_config.sqlite_db_paths,
-    )
-
-
-def _build_provider_context(config: SessionProviderConfig) -> SessionProviderContext:
-    provider_handler = _provider_family_for_name(config.provider)
-    if provider_handler is None:
-        raise CliError(f"unsupported provider family {config.provider}")
-
-    direct_targets = config.direct_targets
-    grep_targets = config.grep_targets
-    sqlite_db_paths = config.sqlite_db_paths
-
-    return SessionProviderContext(
-        provider_identity=config.provider_identity,
-        provider=config.provider,
-        instance_summary=config.instance_summary,
-        instance_fingerprint=config.instance_fingerprint,
-        direct_targets=direct_targets,
         direct_existing_targets=tuple(target for target in direct_targets if target.exists()),
         direct_missing_targets=tuple(target for target in direct_targets if not target.exists()),
-        grep_targets=grep_targets,
+        grep_targets=legacy_provider_config.grep_targets,
         grep_existing_targets=tuple(target for target in grep_targets if target.exists()),
         grep_missing_targets=tuple(target for target in grep_targets if not target.exists()),
-        sqlite_db_paths=sqlite_db_paths,
+        sqlite_db_paths=legacy_provider_config.sqlite_db_paths,
         sqlite_existing_db_paths=tuple(path for path in sqlite_db_paths if path.exists()),
         sqlite_missing_db_paths=tuple(path for path in sqlite_db_paths if not path.exists()),
     )
 
 
-def _session_provider_identity_from_legacy_config(legacy_provider_config: LegacyProviderConfig) -> SessionProviderIdentity:
-    return SessionProviderIdentity(
-        family=legacy_provider_config.family,
-        identity=legacy_provider_config.identity_key(),
-        uri_key=legacy_provider_config.uri_component(),
-        fingerprint=legacy_provider_config.fingerprint,
-        summary_payload=legacy_provider_config.summary(),
+def _agent_config_from_legacy_config(instance: LegacyProviderConfig) -> AgentConfig:
+    return AgentConfig(
+        provider=instance.family,
+        instance_id=instance.instance_id,
+        label=instance.label,
+        homes=instance.homes,
+        cli_command=instance.cli_command,
+        run_args=instance.run_args,
+        env=instance.env,
+        timeout_sec=instance.timeout_sec,
+        default_model=instance.default_model,
+        model_flag=instance.model_flag,
+        prompt_flag=instance.prompt_flag,
+        is_default=instance.is_default,
+        fingerprint=instance.fingerprint,
     )
 
 

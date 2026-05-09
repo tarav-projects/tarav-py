@@ -5,7 +5,19 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.agent.primitives import AgentConfig, AgentRunRequest, ResolvedAgentRun, resolve_terminal_agent_run
+from agentos.agent.primitives import (
+    AgentConfig,
+    AgentRunRequest,
+    provider_session_paths,
+    ResolvedAgentRun,
+    resolve_terminal_agent_run,
+)
+from agentos.pi.session import (
+    PiSession,
+    PiSessionRef,
+    discover_pi_session_refs,
+    load_pi_session,
+)
 
 
 PI_PROVIDER = "pi"
@@ -49,6 +61,13 @@ class PiAgent:
 
     def resolve_run(self, request: AgentRunRequest) -> ResolvedAgentRun:
         return resolve_terminal_agent_run(self, request)
+
+    def discover_session_refs(self) -> tuple[PiSessionRef, ...]:
+        direct_targets, _ = provider_session_paths(PI_PROVIDER, self.homes)
+        return discover_pi_session_refs(targets=direct_targets)
+
+    def load_session(self, session_ref: PiSessionRef) -> PiSession:
+        return load_pi_session(session_ref)
 
     def summary(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"family": self.provider, "is_default": self.is_default}

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 from agentos._core.errors import CliError
+from agentos.providers import require_canonical_provider_spec
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,24 @@ class TerminalAgentLike(Protocol):
     env: tuple[tuple[str, str], ...]
 
 
+def provider_session_paths(
+    provider: str,
+    homes: tuple[tuple[str, Path], ...],
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    direct_targets: list[Path] = []
+    sqlite_db_paths: list[Path] = []
+    provider_spec = require_canonical_provider_spec(provider)
+    slots_by_key = {slot.key: slot for slot in provider_spec.home_slots}
+    for key, home in homes:
+        slot = slots_by_key.get(key)
+        if slot is None:
+            continue
+        slot_direct_targets, _, slot_sqlite_db_paths = slot.build_paths(home=home)
+        direct_targets.extend(slot_direct_targets)
+        sqlite_db_paths.extend(slot_sqlite_db_paths)
+    return tuple(direct_targets), tuple(sqlite_db_paths)
+
+
 def resolve_terminal_agent_run(
     agent: TerminalAgentLike,
     request: AgentRunRequest,
@@ -87,6 +106,7 @@ def resolve_terminal_agent_run(
 __all__ = [
     "AgentConfig",
     "AgentRunRequest",
+    "provider_session_paths",
     "resolve_terminal_agent_run",
     "ResolvedAgentRun",
     "TerminalAgentLike",

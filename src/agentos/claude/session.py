@@ -11,6 +11,49 @@ CLAUDE_PROVIDER = "claude-code"
 
 
 @dataclass(frozen=True)
+class ClaudeSessionRef:
+    native_session_id: str
+    artifact_paths: tuple[Path, ...]
+    source_ref_id: str | None = None
+    title: str | None = None
+    source_kind: str = "project"
+    updated_at: float | str | None = None
+
+    @property
+    def provider(self) -> str:
+        return CLAUDE_PROVIDER
+
+    @property
+    def transcript_path(self) -> Path:
+        return self.artifact_paths[0]
+
+    def to_session(self) -> "ClaudeSession":
+        return ClaudeSession(
+            native_session_id=self.native_session_id,
+            artifact_paths=self.artifact_paths,
+            source_ref_id=self.source_ref_id,
+            title=self.title,
+            source_kind=self.source_kind,
+            updated_at=self.updated_at,
+        )
+
+    @classmethod
+    def from_chatlas_session_payload(
+        cls,
+        session: dict[str, Any],
+        *,
+        sources: list[dict[str, object]],
+    ) -> "ClaudeSessionRef | None":
+        claude_session = ClaudeSession.from_chatlas_session_payload(
+            session,
+            sources=sources,
+        )
+        if claude_session is None:
+            return None
+        return _claude_session_ref_from_session(claude_session)
+
+
+@dataclass(frozen=True)
 class ClaudeSession:
     native_session_id: str
     artifact_paths: tuple[Path, ...]
@@ -94,12 +137,23 @@ def discover_claude_sessions(*, targets: tuple[Path, ...]) -> tuple[ClaudeSessio
     return _sort_claude_sessions(tuple(sessions_by_id.values()))
 
 
+def discover_claude_session_refs(*, targets: tuple[Path, ...]) -> tuple[ClaudeSessionRef, ...]:
+    return tuple(
+        _claude_session_ref_from_session(session)
+        for session in discover_claude_sessions(targets=targets)
+    )
+
+
 def find_claude_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[ClaudeSession, ...]:
     sessions_by_id: dict[str, ClaudeSession] = {}
     for session in discover_claude_sessions(targets=targets):
         if session.matches_query(query):
             _merge_claude_session(sessions_by_id, session)
     return _sort_claude_sessions(tuple(sessions_by_id.values()))
+
+
+def load_claude_session(session_ref: ClaudeSessionRef) -> ClaudeSession:
+    return session_ref.to_session()
 
 
 def read_claude_project_session(path: Path) -> ClaudeSession | None:
@@ -143,6 +197,17 @@ def read_claude_desktop_session(path: Path) -> ClaudeSession | None:
             or _coerce_timestamp(obj.get("createdAt"))
             or _safe_path_mtime(path)
         ),
+    )
+
+
+def _claude_session_ref_from_session(session: ClaudeSession) -> ClaudeSessionRef:
+    return ClaudeSessionRef(
+        native_session_id=session.native_session_id,
+        artifact_paths=session.artifact_paths,
+        source_ref_id=session.source_ref_id,
+        title=session.title,
+        source_kind=session.source_kind,
+        updated_at=session.updated_at,
     )
 
 
@@ -314,8 +379,11 @@ def _string_or_none(value: object) -> str | None:
 
 __all__ = [
     "ClaudeSession",
+    "ClaudeSessionRef",
+    "discover_claude_session_refs",
     "discover_claude_sessions",
     "find_claude_sessions",
+    "load_claude_session",
     "read_claude_desktop_session",
     "read_claude_project_session",
 ]

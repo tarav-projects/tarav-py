@@ -168,6 +168,87 @@ def test_configured_codex_agent_uses_provider_native_model(
     assert agents[0].instance_id == "work"
 
 
+def test_codex_agent_discovers_session_refs_and_loads_sessions(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    rollout_path = (
+        work_home
+        / "sessions"
+        / "2026"
+        / "03"
+        / "25"
+        / f"rollout-2026-03-25T01-05-38-{session_id}.jsonl"
+    )
+    index_path = work_home / "session_index.jsonl"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write(
+        rollout_path,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2026-03-08T01:08:59.089Z",
+                        "type": "session_meta",
+                        "payload": {"id": session_id},
+                    }
+                )
+            ]
+        )
+        + "\n",
+    )
+    _write(
+        index_path,
+        json.dumps(
+            {
+                "id": session_id,
+                "thread_name": "codex-session-ref-thread",
+                "updated_at": "2026-03-08T01:09:00Z",
+            }
+        )
+        + "\n",
+    )
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["/opt/homebrew/bin/codex"],
+            }
+        ],
+    )
+
+    from agentos.agent.providers import load_configured_agents
+    from agentos.codex.agent import CodexAgent
+    from agentos.codex.session import CodexSession, CodexSessionRef
+
+    agent = load_configured_agents()[0]
+
+    assert isinstance(agent, CodexAgent)
+    session_refs = agent.discover_session_refs()
+    assert len(session_refs) == 1
+    assert isinstance(session_refs[0], CodexSessionRef)
+    assert session_refs[0].native_session_id == session_id
+    assert session_refs[0].rollout_paths == (rollout_path,)
+    assert session_refs[0].index_paths == (index_path,)
+    assert session_refs[0].thread_name == "codex-session-ref-thread"
+
+    session = agent.load_session(session_refs[0])
+
+    assert isinstance(session, CodexSession)
+    assert session.native_session_id == session_id
+    assert session.rollout_paths == (rollout_path,)
+
+
 def test_configured_provider_agents_use_provider_native_models(
     tmp_path: Path,
     monkeypatch,
@@ -217,6 +298,29 @@ def test_configured_provider_agents_use_provider_native_models(
         "copilot-main",
         "pi-main",
     ]
+
+
+def test_session_capable_provider_agents_expose_session_ref_discovery() -> None:
+    from agentos.claude.agent import ClaudeAgent
+    from agentos.codex.agent import CodexAgent
+    from agentos.copilot.agent import CopilotAgent
+    from agentos.gemini.agent import GeminiAgent
+    from agentos.openclaw.agent import OpenclawAgent
+    from agentos.opencode.agent import OpencodeAgent
+    from agentos.pi.agent import PiAgent
+
+    agents = (
+        ClaudeAgent(),
+        CodexAgent(),
+        CopilotAgent(),
+        GeminiAgent(),
+        OpenclawAgent(),
+        OpencodeAgent(),
+        PiAgent(),
+    )
+
+    for agent in agents:
+        assert agent.discover_session_refs() == ()
 
 
 def test_agent_run_uses_copilot_cli_legacy_provider_config(

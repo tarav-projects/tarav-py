@@ -5,7 +5,18 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.agent.primitives import AgentConfig, AgentRunRequest, ResolvedAgentRun
+from agentos.agent.primitives import (
+    AgentConfig,
+    AgentRunRequest,
+    provider_session_paths,
+    ResolvedAgentRun,
+)
+from agentos.codex.session import (
+    CodexSession,
+    CodexSessionRef,
+    discover_codex_session_refs,
+    load_codex_session,
+)
 
 
 CODEX_PROVIDER = "codex"
@@ -57,6 +68,16 @@ class CodexAgent:
 
     def resolve_run(self, request: AgentRunRequest) -> ResolvedAgentRun:
         return self.runner().resolve(request)
+
+    def discover_session_refs(self) -> tuple[CodexSessionRef, ...]:
+        return discover_codex_session_refs(targets=self.session_discovery_targets())
+
+    def load_session(self, session_ref: CodexSessionRef) -> CodexSession:
+        return load_codex_session(session_ref)
+
+    def session_discovery_targets(self) -> tuple[Path, ...]:
+        direct_targets, sqlite_db_paths = provider_session_paths(CODEX_PROVIDER, self.homes)
+        return direct_targets + sqlite_db_paths
 
     def summary(self) -> dict[str, Any]:
         payload: dict[str, Any] = {

@@ -13,6 +13,34 @@ PI_PROVIDER = "pi"
 
 
 @dataclass(frozen=True)
+class PiSessionRef:
+    native_session_id: str
+    artifact_paths: tuple[Path, ...]
+    cwd: str | None = None
+    model_provider: str | None = None
+    model_id: str | None = None
+    thinking_level: str | None = None
+    started_at: float | None = None
+    updated_at: float | None = None
+
+    @property
+    def provider(self) -> str:
+        return PI_PROVIDER
+
+    def to_session(self) -> "PiSession":
+        return PiSession(
+            native_session_id=self.native_session_id,
+            artifact_paths=self.artifact_paths,
+            cwd=self.cwd,
+            model_provider=self.model_provider,
+            model_id=self.model_id,
+            thinking_level=self.thinking_level,
+            started_at=self.started_at,
+            updated_at=self.updated_at,
+        )
+
+
+@dataclass(frozen=True)
 class PiSession:
     native_session_id: str
     artifact_paths: tuple[Path, ...]
@@ -66,12 +94,23 @@ def discover_pi_sessions(*, targets: tuple[Path, ...]) -> tuple[PiSession, ...]:
     return _sort_pi_sessions(tuple(sessions_by_id.values()))
 
 
+def discover_pi_session_refs(*, targets: tuple[Path, ...]) -> tuple[PiSessionRef, ...]:
+    return tuple(
+        _pi_session_ref_from_session(session)
+        for session in discover_pi_sessions(targets=targets)
+    )
+
+
 def find_pi_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[PiSession, ...]:
     sessions_by_id: dict[str, PiSession] = {}
     for session in discover_pi_sessions(targets=targets):
         if session.matches_query(query):
             _merge_pi_session(sessions_by_id, session)
     return _sort_pi_sessions(tuple(sessions_by_id.values()))
+
+
+def load_pi_session(session_ref: PiSessionRef) -> PiSession:
+    return session_ref.to_session()
 
 
 def read_pi_session(path: Path) -> PiSession | None:
@@ -122,6 +161,19 @@ def read_pi_session(path: Path) -> PiSession | None:
         thinking_level=thinking_level,
         started_at=started_at,
         updated_at=updated_at,
+    )
+
+
+def _pi_session_ref_from_session(session: PiSession) -> PiSessionRef:
+    return PiSessionRef(
+        native_session_id=session.native_session_id,
+        artifact_paths=session.artifact_paths,
+        cwd=session.cwd,
+        model_provider=session.model_provider,
+        model_id=session.model_id,
+        thinking_level=session.thinking_level,
+        started_at=session.started_at,
+        updated_at=session.updated_at,
     )
 
 
@@ -282,7 +334,10 @@ def _string_or_none(value: object) -> str | None:
 
 __all__ = [
     "PiSession",
+    "PiSessionRef",
+    "discover_pi_session_refs",
     "discover_pi_sessions",
     "find_pi_sessions",
+    "load_pi_session",
     "read_pi_session",
 ]
