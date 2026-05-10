@@ -20,14 +20,13 @@ from typing import Any, Iterator
 
 from agentos._core.errors import CliError
 from agentos._core.project import agentos_home_dir
+from agentos.agent.primitives import Agent
+from agentos.agent.providers import ConfiguredAgent, load_configured_agents
 from agentos.chat.providers import (
     ProviderFamily,
-    LegacyProviderConfig,
     load_chat_config_documents,
-    load_legacy_provider_configs,
     load_unique_string_list,
     require_canonical_provider_family,
-    select_legacy_provider_configs,
 )
 from agentos.codex.accounts import CodexAgentAccounts
 from agentos.tara_tapes.core import (
@@ -198,10 +197,10 @@ def configured_account_provider_configs(
     start_path: Path | str = ".",
 ) -> tuple[AccountProviderConfig, ...]:
     supported_families = {provider_family.family for provider_family in supported_account_provider_families()}
-    all_legacy_provider_configs = load_legacy_provider_configs(start_path=start_path)
+    all_agents = load_configured_agents(start_path=start_path)
     selected_instance_ids = load_agent_accounts_instance_ids(start_path=start_path)
-    legacy_provider_configs = select_legacy_provider_configs(
-        all_legacy_provider_configs,
+    selected_agents = _select_configured_agents(
+        all_agents,
         selected_instance_ids=selected_instance_ids,
         supported_families=supported_families,
         selector_field_name="agent.accounts.instance_ids",
@@ -209,8 +208,8 @@ def configured_account_provider_configs(
         default_to_supported_families=True,
     )
     provider_configs = tuple(
-        _account_provider_config_from_legacy_config(legacy_provider_config)
-        for legacy_provider_config in legacy_provider_configs
+        _account_provider_config_from_agent(agent)
+        for agent in selected_agents
     )
     for provider_config in provider_configs:
         if _account_provider_requires_cli_command(provider_config.provider) and not provider_config.cli_command:
@@ -220,6 +219,42 @@ def configured_account_provider_configs(
             )
     _validate_unique_account_instance_ids(provider_configs)
     return provider_configs
+
+
+def _select_configured_agents(
+    agents: tuple[ConfiguredAgent, ...],
+    *,
+    selected_instance_ids: tuple[str, ...] | None,
+    supported_families: set[str],
+    selector_field_name: str,
+    unsupported_instance_label: str,
+    default_to_supported_families: bool,
+) -> tuple[ConfiguredAgent, ...]:
+    supported_agents = tuple(agent for agent in agents if agent.provider in supported_families)
+    if selected_instance_ids is None:
+        if default_to_supported_families:
+            return supported_agents
+        return ()
+
+    agents_by_id = {
+        agent.instance_id: agent
+        for agent in agents
+        if agent.instance_id is not None
+    }
+    selected_agents: list[ConfiguredAgent] = []
+    for instance_id in selected_instance_ids:
+        agent = agents_by_id.get(instance_id)
+        if agent is None:
+            raise CliError(
+                f"{selector_field_name} references unknown agent instance id: {instance_id}"
+            )
+        if agent.provider not in supported_families:
+            raise CliError(
+                f"{unsupported_instance_label} does not support provider "
+                f"{agent.provider} for agent instance id: {instance_id}"
+            )
+        selected_agents.append(agent)
+    return tuple(selected_agents)
 
 
 def chat_account_stats(
@@ -2092,13 +2127,13 @@ def _usage_time_ratio_value(used_percent: int, elapsed_percent: int) -> float:
 def _validate_unique_account_instance_ids(
     provider_configs: tuple[AccountProviderConfig, ...],
 ) -> None:
-    seen_legacy_configs: dict[str, AccountProviderConfig] = {}
+    seen_provider_configs: dict[str, AccountProviderConfig] = {}
     for provider_config in provider_configs:
         if provider_config.instance_id is None:
             raise CliError("agent.instances ids must not be empty")
-        existing = seen_legacy_configs.get(provider_config.instance_id)
+        existing = seen_provider_configs.get(provider_config.instance_id)
         if existing is None:
-            seen_legacy_configs[provider_config.instance_id] = provider_config
+            seen_provider_configs[provider_config.instance_id] = provider_config
             continue
         raise CliError(
             "agent.instances ids must be unique; "
@@ -2111,18 +2146,18 @@ def _account_provider_requires_cli_command(family_name: str) -> bool:
     return family_name in {"codex", "claude-code"}
 
 
-def _account_provider_config_from_legacy_config(
-    legacy_provider_config: LegacyProviderConfig,
+def _account_provider_config_from_agent(
+    agent: Agent,
 ) -> AccountProviderConfig:
     return AccountProviderConfig(
-        provider=legacy_provider_config.family,
-        instance_id=legacy_provider_config.instance_id,
-        label=legacy_provider_config.label,
-        cli_command=legacy_provider_config.cli_command,
-        env=legacy_provider_config.env,
-        timeout_sec=legacy_provider_config.timeout_sec,
-        live_usage_refresh=legacy_provider_config.live_usage_refresh,
-        usage_progression_limit=legacy_provider_config.usage_progression_limit,
+        provider=agent.provider,
+        instance_id=agent.instance_id,
+        label=agent.label,
+        cli_command=agent.cli_command,
+        env=agent.env,
+        timeout_sec=agent.timeout_sec,
+        live_usage_refresh=agent.account_live_usage_refresh,
+        usage_progression_limit=agent.account_usage_progression_limit,
     )
 
 

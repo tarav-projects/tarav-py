@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
 
 from agentos._core.errors import CliError
-from agentos.agent.primitives import AgentConfig, AgentRunRequest, ResolvedAgentRun
+from agentos.agent.primitives import (
+    Agent,
+    AgentConfig,
+)
 from agentos.agents.agent import AgentsAgent
-from agentos.chat.providers import LegacyProviderConfig, load_legacy_provider_configs
+from agentos.chat.providers import load_agent_configs
 from agentos.claude.agent import ClaudeAgent
 from agentos.codex.agent import CodexAgent
 from agentos.copilot.agent import CopilotAgent
@@ -19,22 +21,13 @@ from agentos.pi.agent import PiAgent
 DEFAULT_RUN_PROVIDER_FAMILIES = ("codex", "copilot-cli", "pi")
 
 
-class ConfiguredAgent(Protocol):
-    provider: str
-    instance_id: str | None
-    label: str | None
-    homes: tuple[tuple[str, Path], ...]
-    default_model: str | None
-
-    def summary(self) -> dict[str, object]: ...
-
-    def resolve_run(self, request: AgentRunRequest) -> ResolvedAgentRun: ...
+ConfiguredAgent = Agent
 
 
 def load_configured_agents(*, start_path: Path | str = ".") -> tuple[ConfiguredAgent, ...]:
     return tuple(
-        agent_from_config(_agent_config_from_legacy_config(legacy_provider_config))
-        for legacy_provider_config in load_legacy_provider_configs(start_path=start_path)
+        agent_from_config(agent_config)
+        for agent_config in load_agent_configs(start_path=start_path)
     )
 
 
@@ -60,24 +53,6 @@ def agent_from_config(config: AgentConfig) -> ConfiguredAgent:
     if config.provider == "pi":
         return PiAgent.from_config(config)
     raise CliError(f"unsupported configured agent provider {config.provider}")
-
-
-def _agent_config_from_legacy_config(instance: LegacyProviderConfig) -> AgentConfig:
-    return AgentConfig(
-        provider=instance.family,
-        instance_id=instance.instance_id,
-        label=instance.label,
-        homes=instance.homes,
-        cli_command=instance.cli_command,
-        run_args=instance.run_args,
-        env=instance.env,
-        timeout_sec=instance.timeout_sec,
-        default_model=instance.default_model,
-        model_flag=instance.model_flag,
-        prompt_flag=instance.prompt_flag,
-        is_default=instance.is_default,
-        fingerprint=instance.fingerprint,
-    )
 
 
 def resolve_agent(
@@ -112,11 +87,9 @@ def resolve_agent(
 
 
 __all__ = [
-    "AgentRunRequest",
     "agent_from_config",
     "ConfiguredAgent",
     "load_configured_agents",
-    "ResolvedAgentRun",
     "resolve_agent",
     "supported_default_run_provider_families",
 ]

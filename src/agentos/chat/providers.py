@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-from urllib.parse import quote
 
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.path_validation import validate_string_for_path
+from agentos.agent.primitives import AgentConfig
 from agentos._core.project import (
     agentos_home_dir,
     find_agentos_project_root,
@@ -19,7 +17,7 @@ from agentos._core.project import (
 )
 from agentos.providers import (
     ProviderFamily,
-    ProviderHomeAnchor as LegacyProviderConfigAnchor,
+    ProviderHomeAnchor,
     ProviderHomeSlot,
     canonical_provider_families,
     canonical_provider_family_for_name,
@@ -70,7 +68,7 @@ class ChatProviderSpec:
 _CANONICAL_CHAT_PROVIDER_SPECS: tuple[ChatProviderSpec, ...] = ()
 
 
-def _legacy_provider_default_cli_command(family_name: str) -> tuple[str, ...]:
+def _agent_default_cli_command(family_name: str) -> tuple[str, ...]:
     if family_name == "codex":
         return ("codex",)
     if family_name == "copilot-cli":
@@ -80,7 +78,7 @@ def _legacy_provider_default_cli_command(family_name: str) -> tuple[str, ...]:
     return ()
 
 
-def _legacy_provider_default_run_args(family_name: str) -> tuple[str, ...]:
+def _agent_default_run_args(family_name: str) -> tuple[str, ...]:
     if family_name == "codex":
         return ("exec", "--dangerously-bypass-approvals-and-sandbox")
     if family_name == "copilot-cli":
@@ -90,13 +88,13 @@ def _legacy_provider_default_run_args(family_name: str) -> tuple[str, ...]:
     return ()
 
 
-def _legacy_provider_default_model(family_name: str) -> str | None:
+def _agent_default_model(family_name: str) -> str | None:
     if family_name == "codex":
         return "gpt-5.4"
     return None
 
 
-def _legacy_provider_default_model_flag(family_name: str) -> str | None:
+def _agent_default_model_flag(family_name: str) -> str | None:
     if family_name == "codex":
         return "--model"
     if family_name == "copilot-cli":
@@ -108,7 +106,7 @@ def _legacy_provider_default_model_flag(family_name: str) -> str | None:
     return None
 
 
-def _legacy_provider_default_prompt_flag(family_name: str) -> str | None:
+def _agent_default_prompt_flag(family_name: str) -> str | None:
     if family_name == "copilot-cli":
         return "-p"
     if family_name == "pi":
@@ -191,19 +189,19 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
 
 
 @dataclass(frozen=True)
-class LegacyProviderConfigSource:
+class AgentConfigSource:
     object_path: tuple[str, ...]
     field_prefix: str
 
 
-AGENT_INSTANCE_CONFIG_SOURCE = LegacyProviderConfigSource(
+AGENT_INSTANCE_CONFIG_SOURCE = AgentConfigSource(
     object_path=("agent", "instances"),
     field_prefix="agent.instances",
 )
 
 
 @dataclass(frozen=True)
-class LegacyProviderConfigEntry:
+class AgentConfigEntry:
     field_prefix: str
     index: int
     raw_instance: dict[str, object]
@@ -231,23 +229,23 @@ def load_chat_config_documents(*, start_path: Path | str = ".") -> tuple[dict[st
     return tuple(configs)
 
 
-def legacy_provider_config_entries_from_config(
+def agent_config_entries_from_config(
     config: dict[str, object],
     *,
-    source: LegacyProviderConfigSource,
-) -> tuple[LegacyProviderConfigEntry, ...]:
+    source: AgentConfigSource,
+) -> tuple[AgentConfigEntry, ...]:
     raw_instances = _config_value_at_object_path(config, object_path=source.object_path)
     if raw_instances is None:
         return ()
     if not isinstance(raw_instances, list):
         raise CliError(f"config field {'.'.join(source.object_path)} must be a JSON array")
 
-    entries: list[LegacyProviderConfigEntry] = []
+    entries: list[AgentConfigEntry] = []
     for index, raw_instance in enumerate(raw_instances):
         if not isinstance(raw_instance, dict):
             raise CliError(f"{source.field_prefix}[{index}] must be a JSON object")
         entries.append(
-            LegacyProviderConfigEntry(
+            AgentConfigEntry(
                 field_prefix=source.field_prefix,
                 index=index,
                 raw_instance=raw_instance,
@@ -256,16 +254,16 @@ def legacy_provider_config_entries_from_config(
     return tuple(entries)
 
 
-def load_legacy_provider_config_entries(
+def load_agent_config_entries(
     *,
     start_path: Path | str = ".",
-    sources: tuple[LegacyProviderConfigSource, ...],
-) -> tuple[LegacyProviderConfigEntry, ...]:
-    entries: list[LegacyProviderConfigEntry] = []
+    sources: tuple[AgentConfigSource, ...],
+) -> tuple[AgentConfigEntry, ...]:
+    entries: list[AgentConfigEntry] = []
     for config in load_chat_config_documents(start_path=start_path):
         for source in sources:
             entries.extend(
-                legacy_provider_config_entries_from_config(
+                agent_config_entries_from_config(
                     config,
                     source=source,
                 )
@@ -295,41 +293,41 @@ def _config_value_at_object_path(config: dict[str, object], *, object_path: tupl
     return current.get(object_path[-1])
 
 
-def load_legacy_provider_configs(*, start_path: Path | str = ".") -> tuple["LegacyProviderConfig", ...]:
-    entries = load_legacy_provider_config_entries(
+def load_agent_configs(*, start_path: Path | str = ".") -> tuple["AgentConfig", ...]:
+    entries = load_agent_config_entries(
         start_path=start_path,
         sources=(AGENT_INSTANCE_CONFIG_SOURCE,),
     )
-    legacy_provider_configs = tuple(legacy_provider_config_from_config_entry(entry) for entry in entries)
-    _validate_unique_legacy_provider_config_ids(legacy_provider_configs)
-    return legacy_provider_configs
+    agent_configs = tuple(agent_config_from_config_entry(entry) for entry in entries)
+    _validate_unique_agent_config_ids(agent_configs)
+    return agent_configs
 
 
-def select_legacy_provider_configs(
-    configured_legacy_configs: tuple["LegacyProviderConfig", ...],
+def select_agent_configs(
+    configured_agent_configs: tuple["AgentConfig", ...],
     *,
     selected_instance_ids: tuple[str, ...] | None,
     supported_families: set[str],
     selector_field_name: str,
     unsupported_instance_label: str,
     default_to_supported_families: bool,
-) -> tuple["LegacyProviderConfig", ...]:
+) -> tuple["AgentConfig", ...]:
     if selected_instance_ids is None:
         if not default_to_supported_families:
             return ()
         return tuple(
-            legacy_provider_config
-            for legacy_provider_config in configured_legacy_configs
-            if legacy_provider_config.family in supported_families
+            agent_config
+            for agent_config in configured_agent_configs
+            if agent_config.provider in supported_families
         )
 
-    legacy_configs_by_id = {
-        legacy_provider_config.instance_id: legacy_provider_config
-        for legacy_provider_config in configured_legacy_configs
-        if legacy_provider_config.instance_id is not None
+    agent_configs_by_id = {
+        agent_config.instance_id: agent_config
+        for agent_config in configured_agent_configs
+        if agent_config.instance_id is not None
     }
     missing_ids = [
-        instance_id for instance_id in selected_instance_ids if instance_id not in legacy_configs_by_id
+        instance_id for instance_id in selected_instance_ids if instance_id not in agent_configs_by_id
     ]
     if missing_ids:
         suffix = "s" if len(missing_ids) != 1 else ""
@@ -341,7 +339,7 @@ def select_legacy_provider_configs(
     unsupported_ids = [
         instance_id
         for instance_id in selected_instance_ids
-        if legacy_configs_by_id[instance_id].family not in supported_families
+        if agent_configs_by_id[instance_id].provider not in supported_families
     ]
     if unsupported_ids:
         suffix = "s" if len(unsupported_ids) != 1 else ""
@@ -349,7 +347,7 @@ def select_legacy_provider_configs(
             f"{selector_field_name} references unsupported {unsupported_instance_label} "
             f"instance id{suffix}: {', '.join(unsupported_ids)}"
         )
-    return tuple(legacy_configs_by_id[instance_id] for instance_id in selected_instance_ids)
+    return tuple(agent_configs_by_id[instance_id] for instance_id in selected_instance_ids)
 
 
 def load_unique_string_list(
@@ -381,11 +379,11 @@ def load_unique_string_list(
     return tuple(items)
 
 
-def default_legacy_provider_configs(
+def default_agent_configs(
     *,
     supports_session_discovery_only: bool = False,
-) -> tuple["LegacyProviderConfig", ...]:
-    instances: list[LegacyProviderConfig] = []
+) -> tuple["AgentConfig", ...]:
+    instances: list[AgentConfig] = []
     for provider_spec in canonical_chat_provider_specs():
         if supports_session_discovery_only and not provider_spec.supports_session_discovery:
             continue
@@ -394,7 +392,7 @@ def default_legacy_provider_configs(
         direct_targets: list[Path] = []
         grep_targets: list[Path] = []
         sqlite_db_paths: list[Path] = []
-        anchors: list[LegacyProviderConfigAnchor] = []
+        anchors: list[ProviderHomeAnchor] = []
 
         for slot in provider_spec.home_slots:
             home = Path(slot.default_home).expanduser().resolve()
@@ -406,25 +404,25 @@ def default_legacy_provider_configs(
             anchors.extend(slot.build_anchors(home=home))
 
         instances.append(
-            LegacyProviderConfig(
-                family=provider_spec.family,
+            AgentConfig(
+                provider=provider_spec.family,
                 homes=tuple(homes),
                 direct_targets=_unique_paths(tuple(direct_targets)),
                 grep_targets=_unique_paths(tuple(grep_targets)),
                 sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
-                cli_command=_legacy_provider_default_cli_command(provider_spec.family),
-                run_args=_legacy_provider_default_run_args(provider_spec.family),
-                default_model=_legacy_provider_default_model(provider_spec.family),
-                model_flag=_legacy_provider_default_model_flag(provider_spec.family),
-                prompt_flag=_legacy_provider_default_prompt_flag(provider_spec.family),
-                anchors=tuple(anchors),
+                cli_command=_agent_default_cli_command(provider_spec.family),
+                run_args=_agent_default_run_args(provider_spec.family),
+                default_model=_agent_default_model(provider_spec.family),
+                model_flag=_agent_default_model_flag(provider_spec.family),
+                prompt_flag=_agent_default_prompt_flag(provider_spec.family),
+                identity_anchors=tuple(anchors),
                 is_default=True,
             )
         )
     return tuple(instances)
 
 
-def legacy_provider_config_from_config_entry(entry: LegacyProviderConfigEntry) -> "LegacyProviderConfig":
+def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     raw_instance = entry.raw_instance
     family_name = raw_instance.get("provider")
     if not isinstance(family_name, str) or not family_name:
@@ -503,7 +501,7 @@ def legacy_provider_config_from_config_entry(entry: LegacyProviderConfigEntry) -
             field_name=entry.field_name("cli_command"),
         )
         if raw_cli_command is not None
-        else _legacy_provider_default_cli_command(family_name)
+        else _agent_default_cli_command(family_name)
     )
     run_args = (
         _load_string_argv(
@@ -511,7 +509,7 @@ def legacy_provider_config_from_config_entry(entry: LegacyProviderConfigEntry) -
             field_name=entry.field_name("run_args"),
         )
         if raw_run_args is not None
-        else _legacy_provider_default_run_args(family_name)
+        else _agent_default_run_args(family_name)
     )
     env = _load_string_mapping(
         raw_env,
@@ -524,19 +522,19 @@ def legacy_provider_config_from_config_entry(entry: LegacyProviderConfigEntry) -
     else:
         timeout_sec = raw_timeout_sec
     if raw_default_model is None:
-        default_model = _legacy_provider_default_model(family_name)
+        default_model = _agent_default_model(family_name)
     elif not isinstance(raw_default_model, str) or not raw_default_model.strip():
         raise CliError(f"{entry.field_name('default_model')} must be a non-empty string")
     else:
         default_model = raw_default_model.strip()
     if raw_model_flag is None:
-        model_flag = _legacy_provider_default_model_flag(family_name)
+        model_flag = _agent_default_model_flag(family_name)
     elif not isinstance(raw_model_flag, str) or not raw_model_flag.strip():
         raise CliError(f"{entry.field_name('model_flag')} must be a non-empty string")
     else:
         model_flag = raw_model_flag.strip()
     if raw_prompt_flag is None:
-        prompt_flag = _legacy_provider_default_prompt_flag(family_name)
+        prompt_flag = _agent_default_prompt_flag(family_name)
     elif not isinstance(raw_prompt_flag, str) or not raw_prompt_flag.strip():
         raise CliError(f"{entry.field_name('prompt_flag')} must be a non-empty string")
     else:
@@ -566,7 +564,7 @@ def legacy_provider_config_from_config_entry(entry: LegacyProviderConfigEntry) -
     resolved_direct_targets: tuple[Path, ...] = ()
     resolved_grep_targets: tuple[Path, ...] = ()
     resolved_sqlite_db_paths: tuple[Path, ...] = ()
-    anchors: tuple[LegacyProviderConfigAnchor, ...] = ()
+    anchors: tuple[ProviderHomeAnchor, ...] = ()
 
     if home is not None or homes:
         if provider_spec is None:
@@ -611,7 +609,7 @@ def legacy_provider_config_from_config_entry(entry: LegacyProviderConfigEntry) -
         direct_targets_list: list[Path] = []
         grep_targets_list: list[Path] = []
         sqlite_db_paths_list: list[Path] = []
-        anchors_list: list[LegacyProviderConfigAnchor] = []
+        anchors_list: list[ProviderHomeAnchor] = []
         for slot in provider_spec.home_slots:
             raw_home = resolved_homes.get(slot.key)
             if raw_home is None:
@@ -638,13 +636,13 @@ def legacy_provider_config_from_config_entry(entry: LegacyProviderConfigEntry) -
         resolved_direct_targets = _resolve_raw_paths(direct_paths)
         resolved_grep_targets = _resolve_raw_paths(grep_paths) if grep_paths else resolved_direct_targets
         resolved_sqlite_db_paths = _resolve_raw_paths(sqlite_db_paths)
-        anchors = _build_explicit_legacy_provider_config_anchors(
+        anchors = _build_explicit_agent_config_anchors(
             direct_targets=resolved_direct_targets,
             sqlite_db_paths=resolved_sqlite_db_paths,
         )
 
-    return LegacyProviderConfig(
-        family=provider_family.family,
+    return AgentConfig(
+        provider=provider_family.family,
         instance_id=instance_id,
         label=label,
         homes=tuple(normalized_homes),
@@ -658,46 +656,29 @@ def legacy_provider_config_from_config_entry(entry: LegacyProviderConfigEntry) -
         default_model=default_model,
         model_flag=model_flag,
         prompt_flag=prompt_flag,
-        live_usage_refresh=live_usage_refresh,
-        usage_progression_limit=usage_progression_limit,
-        includes=includes,
-        excludes=excludes,
-        anchors=anchors,
+        account_live_usage_refresh=live_usage_refresh,
+        account_usage_progression_limit=usage_progression_limit,
+        chatlas_includes=includes,
+        chatlas_excludes=excludes,
+        identity_anchors=anchors,
         is_default=False,
     )
 
 
-def _validate_unique_legacy_provider_config_ids(legacy_provider_configs: tuple["LegacyProviderConfig", ...]) -> None:
-    seen_legacy_configs: dict[str, LegacyProviderConfig] = {}
-    for legacy_provider_config in legacy_provider_configs:
-        if legacy_provider_config.instance_id is None:
+def _validate_unique_agent_config_ids(agent_configs: tuple["AgentConfig", ...]) -> None:
+    seen_agent_configs: dict[str, AgentConfig] = {}
+    for agent_config in agent_configs:
+        if agent_config.instance_id is None:
             raise CliError("agent.instances ids must not be empty")
-        existing = seen_legacy_configs.get(legacy_provider_config.instance_id)
+        existing = seen_agent_configs.get(agent_config.instance_id)
         if existing is None:
-            seen_legacy_configs[legacy_provider_config.instance_id] = legacy_provider_config
+            seen_agent_configs[agent_config.instance_id] = agent_config
             continue
         raise CliError(
             "agent.instances ids must be unique; "
-            f"duplicate id {legacy_provider_config.instance_id} for providers "
-            f"{existing.family} and {legacy_provider_config.family}"
+            f"duplicate id {agent_config.instance_id} for providers "
+            f"{existing.provider} and {agent_config.provider}"
         )
-
-
-def _legacy_provider_config_fingerprint(
-    *,
-    family: str,
-    anchors: tuple[LegacyProviderConfigAnchor, ...],
-) -> str:
-    digest = hashlib.sha256()
-    digest.update(family.encode("utf-8"))
-    for anchor in anchors:
-        digest.update(b"\0")
-        digest.update(anchor.role.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update((anchor.slot or "").encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(str(anchor.path).encode("utf-8"))
-    return digest.hexdigest()
 
 
 def _normalize_provider_home(home: object, *, field_name: str) -> str:
@@ -779,148 +760,20 @@ def _resolve_raw_paths(raw_paths: tuple[str, ...]) -> tuple[Path, ...]:
     return _unique_paths(tuple(Path(raw_path).expanduser().resolve() for raw_path in raw_paths))
 
 
-def _build_explicit_legacy_provider_config_anchors(
+def _build_explicit_agent_config_anchors(
     *,
     direct_targets: tuple[Path, ...],
     sqlite_db_paths: tuple[Path, ...],
-) -> tuple["LegacyProviderConfigAnchor", ...]:
+) -> tuple["ProviderHomeAnchor", ...]:
     anchors = [
-        LegacyProviderConfigAnchor(role=f"direct_target_{index + 1}", path=path)
+        ProviderHomeAnchor(role=f"direct_target_{index + 1}", path=path)
         for index, path in enumerate(direct_targets)
     ]
     anchors.extend(
-        LegacyProviderConfigAnchor(role=f"sqlite_db_{index + 1}", path=path)
+        ProviderHomeAnchor(role=f"sqlite_db_{index + 1}", path=path)
         for index, path in enumerate(sqlite_db_paths)
     )
     return tuple(anchors)
-
-
-
-@dataclass(frozen=True)
-class LegacyProviderConfig:
-    family: str
-    instance_id: str | None = None
-    label: str | None = None
-    homes: tuple[tuple[str, Path], ...] = ()
-    direct_targets: tuple[Path, ...] = ()
-    grep_targets: tuple[Path, ...] = ()
-    sqlite_db_paths: tuple[Path, ...] = ()
-    cli_command: tuple[str, ...] = ()
-    run_args: tuple[str, ...] = ()
-    env: tuple[tuple[str, str], ...] = ()
-    timeout_sec: int | None = None
-    default_model: str | None = None
-    model_flag: str | None = None
-    prompt_flag: str | None = None
-    live_usage_refresh: bool | None = None
-    usage_progression_limit: str | None = None
-    includes: tuple[str, ...] = ()
-    excludes: tuple[str, ...] = ()
-    anchors: tuple[LegacyProviderConfigAnchor, ...] = ()
-    is_default: bool = False
-
-    def homes_map(self) -> dict[str, Path]:
-        return {key: path for key, path in self.homes}
-
-    @property
-    def fingerprint(self) -> str:
-        if self.anchors:
-            return _legacy_provider_config_fingerprint(
-                family=self.family,
-                anchors=self.anchors,
-            )
-
-        fallback_anchors = tuple(
-            LegacyProviderConfigAnchor(role=f"direct_target_{index + 1}", path=path)
-            for index, path in enumerate(self.direct_targets)
-        ) + tuple(
-            LegacyProviderConfigAnchor(role=f"sqlite_db_{index + 1}", path=path)
-            for index, path in enumerate(self.sqlite_db_paths)
-        )
-        return _legacy_provider_config_fingerprint(
-            family=self.family,
-            anchors=fallback_anchors,
-        )
-
-    def matches_fingerprint_prefix(self, fingerprint_prefix: str) -> bool:
-        normalized_prefix = fingerprint_prefix.strip().lower()
-        if not normalized_prefix:
-            return False
-        return self.fingerprint.startswith(normalized_prefix)
-
-    def identity_key(self) -> tuple[object, ...]:
-        if self.anchors:
-            return (
-                self.family,
-                tuple(anchor.identity_key() for anchor in self.anchors),
-            )
-        return (
-            self.family,
-            self.instance_id,
-            tuple((key, str(path)) for key, path in self.homes),
-            tuple(str(path) for path in self.direct_targets),
-            tuple(str(path) for path in self.grep_targets),
-            tuple(str(path) for path in self.sqlite_db_paths),
-            self.cli_command,
-            self.run_args,
-            self.env,
-            self.timeout_sec,
-            self.default_model,
-            self.model_flag,
-            self.prompt_flag,
-            self.live_usage_refresh,
-            self.usage_progression_limit,
-            self.includes,
-            self.excludes,
-        )
-
-    def summary(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "family": self.family,
-            "fingerprint": self.fingerprint,
-            "is_default": self.is_default,
-        }
-        if self.instance_id is not None:
-            payload["instance_id"] = self.instance_id
-        if self.label is not None:
-            payload["label"] = self.label
-        if self.anchors:
-            payload["anchors"] = [anchor.summary() for anchor in self.anchors]
-        if self.homes:
-            payload["homes"] = {key: str(path) for key, path in self.homes}
-        if self.direct_targets:
-            payload["direct_targets"] = [str(path) for path in self.direct_targets]
-        if self.grep_targets:
-            payload["grep_targets"] = [str(path) for path in self.grep_targets]
-        if self.sqlite_db_paths:
-            payload["sqlite_db_paths"] = [str(path) for path in self.sqlite_db_paths]
-        if self.cli_command:
-            payload["cli_command"] = list(self.cli_command)
-        if self.run_args:
-            payload["run_args"] = list(self.run_args)
-        if self.env:
-            payload["env"] = {key: value for key, value in self.env}
-        if self.timeout_sec is not None:
-            payload["timeout_sec"] = self.timeout_sec
-        if self.default_model is not None:
-            payload["default_model"] = self.default_model
-        if self.model_flag is not None:
-            payload["model_flag"] = self.model_flag
-        if self.prompt_flag is not None:
-            payload["prompt_flag"] = self.prompt_flag
-        if self.live_usage_refresh is not None:
-            payload["live_usage_refresh"] = self.live_usage_refresh
-        if self.usage_progression_limit is not None:
-            payload["usage_progression_limit"] = self.usage_progression_limit
-        if self.includes:
-            payload["includes"] = list(self.includes)
-        if self.excludes:
-            payload["excludes"] = list(self.excludes)
-        return payload
-
-    def uri_component(self) -> str:
-        return quote(self.fingerprint, safe="")
-
 
 __all__ = [
     "canonical_chat_provider_spec_for_name",
@@ -929,19 +782,19 @@ __all__ = [
     "canonical_provider_family_for_name",
     "ChatProviderSpec",
     "AGENT_INSTANCE_CONFIG_SOURCE",
-    "default_legacy_provider_configs",
+    "default_agent_configs",
     "load_chat_config_documents",
-    "load_legacy_provider_configs",
+    "load_agent_configs",
     "load_unique_string_list",
-    "load_legacy_provider_config_entries",
+    "load_agent_config_entries",
     "ProviderFamily",
     "ProviderHomeSlot",
-    "LegacyProviderConfigEntry",
-    "LegacyProviderConfigSource",
-    "LegacyProviderConfig",
-    "LegacyProviderConfigAnchor",
-    "legacy_provider_config_from_config_entry",
-    "legacy_provider_config_entries_from_config",
+    "AgentConfigEntry",
+    "AgentConfigSource",
+    "AgentConfig",
+    "ProviderHomeAnchor",
+    "agent_config_from_config_entry",
+    "agent_config_entries_from_config",
     "require_canonical_provider_family",
-    "select_legacy_provider_configs",
+    "select_agent_configs",
 ]

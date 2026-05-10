@@ -11,7 +11,6 @@ from pathlib import Path
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
 from agentos.agent.providers import (
-    AgentRunRequest,
     ConfiguredAgent,
     load_configured_agents,
     resolve_agent,
@@ -119,7 +118,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         start_path=config_start_path,
     )
     prompt = _resolve_prompt(args.prompt)
-    resolved_run = agent.resolve_run(AgentRunRequest(prompt=prompt, model=args.model))
+    resolved_run = agent.resolve_run(prompt=prompt, model=args.model)
 
     env = os.environ.copy()
     env.update(resolved_run.env_mapping())

@@ -11,29 +11,28 @@ from urllib.parse import unquote
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
-from agentos.agent.primitives import AgentConfig
-from agentos.agent.providers import ConfiguredAgent, agent_from_config
+from agentos.agent.primitives import agent_fingerprint, agent_identity_key, agent_uri_key
+from agentos.agent.providers import ConfiguredAgent, agent_from_config, load_configured_agents
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
-    default_legacy_provider_configs,
-    LegacyProviderConfig,
-    load_legacy_provider_configs,
+    default_agent_configs,
 )
 from agentos.chat.providers import ProviderFamily
 from agentos.chat.session_primitives import (
     BackingArtifact,
+    ProviderSessionRef,
     _build_path_finding,
-    _coalesce_timestamp,
     coerce_timestamp,
+    session_ref_backing_artifacts as _session_ref_backing_artifacts,
+    session_ref_created_timestamp,
+    session_ref_display_name as _session_ref_display_name,
+    session_ref_display_name_field as _session_ref_display_name_field,
+    session_ref_native_payload as _session_ref_native_payload,
+    session_ref_sort_timestamp as _session_ref_sort_timestamp,
     safe_path_mtime,
 )
 from agentos.codex.session import CodexSessionRef
-from agentos.claude.session import ClaudeSessionRef
-from agentos.copilot.session import CopilotSessionRef
-from agentos.gemini.session import GeminiSessionRef
 from agentos.openclaw.session import OpenclawSessionRef
-from agentos.opencode.session import OpencodeSessionRef
-from agentos.pi.session import PiSessionRef
 
 TEXT_FILE_SUFFIXES = {
     ".json",
@@ -48,24 +47,15 @@ TEXT_FILE_SUFFIXES = {
 MAX_GREP_FILE_BYTES = 5 * 1024 * 1024
 SESSION_SORT_CHOICES = {"lexical", "newest", "oldest"}
 
-ProviderSessionRef = (
-    ClaudeSessionRef
-    | CodexSessionRef
-    | CopilotSessionRef
-    | GeminiSessionRef
-    | OpenclawSessionRef
-    | OpencodeSessionRef
-    | PiSessionRef
-)
-
 
 @dataclass(frozen=True)
 class ProviderAgentContext:
     agent: ConfiguredAgent
-    legacy_config: LegacyProviderConfig
     provider: str
     instance_summary: dict[str, Any]
     instance_fingerprint: str
+    instance_identity_key: tuple[object, ...]
+    instance_uri_key: str
     direct_targets: tuple[Path, ...]
     direct_existing_targets: tuple[Path, ...]
     direct_missing_targets: tuple[Path, ...]
@@ -101,7 +91,7 @@ class ProviderSessionRefEntry:
     def record_identity_key(self) -> tuple[object, ...]:
         return (
             self.provider,
-            self.context.legacy_config.identity_key(),
+            self.context.instance_identity_key,
             self.session_id,
         )
 
@@ -128,9 +118,7 @@ class ProviderSessionRefEntry:
         return primary.path
 
     def created_timestamp(self) -> float | None:
-        if isinstance(self.session_ref, PiSessionRef):
-            return self.session_ref.started_at
-        return None
+        return session_ref_created_timestamp(self.session_ref)
 
     def sort_timestamp(self) -> float | None:
         return _session_ref_sort_timestamp(self.session_ref)
@@ -220,7 +208,7 @@ def _build_session_ref_uri(entry: ProviderSessionRefEntry) -> str:
 
     return (
         f"agentos://chat-session/{quote(entry.provider, safe='')}/"
-        f"{entry.context.legacy_config.uri_component()}/"
+        f"{entry.context.instance_uri_key}/"
         f"{quote(entry.session_id, safe='')}"
     )
 
@@ -253,26 +241,27 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
     return tuple(families)
 
 
-def configured_legacy_provider_configs(*, start_path: Path | str = ".") -> tuple[LegacyProviderConfig, ...]:
+def configured_session_agents(*, start_path: Path | str = ".") -> tuple[ConfiguredAgent, ...]:
     supported_families = {provider_handler.family for provider_handler in supported_provider_families()}
-    legacy_provider_configs = tuple(
-        legacy_provider_config
-        for legacy_provider_config in load_legacy_provider_configs(start_path=start_path)
-        if legacy_provider_config.family in supported_families
+    agents = tuple(
+        agent
+        for agent in load_configured_agents(start_path=start_path)
+        if agent.provider in supported_families
     )
-    return _dedupe_legacy_provider_configs(legacy_provider_configs)
+    return _dedupe_agents(agents)
 
 
 def configured_session_provider_contexts(
     *,
     start_path: Path | str = ".",
 ) -> tuple[ProviderAgentContext, ...]:
-    configured_legacy_configs = configured_legacy_provider_configs(start_path=start_path)
-    default_legacy_configs = default_legacy_provider_configs(supports_session_discovery_only=True)
-    legacy_configs = _dedupe_legacy_provider_configs(
-        configured_legacy_configs + default_legacy_configs
+    configured_agents = configured_session_agents(start_path=start_path)
+    default_agents = tuple(
+        agent_from_config(config)
+        for config in default_agent_configs(supports_session_discovery_only=True)
     )
-    return tuple(_provider_agent_context_from_legacy_config(config) for config in legacy_configs)
+    agents = _dedupe_agents(configured_agents + default_agents)
+    return tuple(_provider_agent_context_from_agent(agent) for agent in agents)
 
 
 def _provider_family_for_name(family_name: str) -> ProviderFamily | None:
@@ -289,14 +278,14 @@ def _session_provider_home_slots(family_name: str):
             return tuple(slot for slot in spec.home_slots if slot.supports_session_discovery())
     return ()
 
-def _dedupe_legacy_provider_configs(
-    legacy_provider_configs: tuple[LegacyProviderConfig, ...],
-) -> tuple[LegacyProviderConfig, ...]:
-    unique_instances: dict[tuple[object, ...], LegacyProviderConfig] = {}
-    for legacy_provider_config in legacy_provider_configs:
-        key = legacy_provider_config.identity_key()
+def _dedupe_agents(
+    agents: tuple[ConfiguredAgent, ...],
+) -> tuple[ConfiguredAgent, ...]:
+    unique_instances: dict[tuple[object, ...], ConfiguredAgent] = {}
+    for agent in agents:
+        key = agent_identity_key(agent)
         if key not in unique_instances:
-            unique_instances[key] = legacy_provider_config
+            unique_instances[key] = agent
     return tuple(unique_instances.values())
 
 
@@ -730,48 +719,31 @@ def _iter_provider_context_groups(
     return tuple(groups)
 
 
-def _provider_agent_context_from_legacy_config(
-    legacy_provider_config: LegacyProviderConfig,
+def _provider_agent_context_from_agent(
+    agent: ConfiguredAgent,
 ) -> ProviderAgentContext:
-    provider_handler = _provider_family_for_name(legacy_provider_config.family)
+    provider_handler = _provider_family_for_name(agent.provider)
     if provider_handler is None:
-        raise CliError(f"unsupported provider family {legacy_provider_config.family}")
-    direct_targets = legacy_provider_config.direct_targets
-    grep_targets = legacy_provider_config.grep_targets
-    sqlite_db_paths = legacy_provider_config.sqlite_db_paths
+        raise CliError(f"unsupported provider family {agent.provider}")
+    direct_targets = agent.direct_targets
+    grep_targets = agent.grep_targets
+    sqlite_db_paths = agent.sqlite_db_paths
     return ProviderAgentContext(
-        agent=agent_from_config(_agent_config_from_legacy_config(legacy_provider_config)),
-        legacy_config=legacy_provider_config,
-        provider=legacy_provider_config.family,
-        instance_summary=legacy_provider_config.summary(),
-        instance_fingerprint=legacy_provider_config.fingerprint,
-        direct_targets=legacy_provider_config.direct_targets,
+        agent=agent,
+        provider=agent.provider,
+        instance_summary=agent.summary(),
+        instance_fingerprint=agent_fingerprint(agent),
+        instance_identity_key=agent_identity_key(agent),
+        instance_uri_key=agent_uri_key(agent),
+        direct_targets=agent.direct_targets,
         direct_existing_targets=tuple(target for target in direct_targets if target.exists()),
         direct_missing_targets=tuple(target for target in direct_targets if not target.exists()),
-        grep_targets=legacy_provider_config.grep_targets,
+        grep_targets=agent.grep_targets,
         grep_existing_targets=tuple(target for target in grep_targets if target.exists()),
         grep_missing_targets=tuple(target for target in grep_targets if not target.exists()),
-        sqlite_db_paths=legacy_provider_config.sqlite_db_paths,
+        sqlite_db_paths=agent.sqlite_db_paths,
         sqlite_existing_db_paths=tuple(path for path in sqlite_db_paths if path.exists()),
         sqlite_missing_db_paths=tuple(path for path in sqlite_db_paths if not path.exists()),
-    )
-
-
-def _agent_config_from_legacy_config(instance: LegacyProviderConfig) -> AgentConfig:
-    return AgentConfig(
-        provider=instance.family,
-        instance_id=instance.instance_id,
-        label=instance.label,
-        homes=instance.homes,
-        cli_command=instance.cli_command,
-        run_args=instance.run_args,
-        env=instance.env,
-        timeout_sec=instance.timeout_sec,
-        default_model=instance.default_model,
-        model_flag=instance.model_flag,
-        prompt_flag=instance.prompt_flag,
-        is_default=instance.is_default,
-        fingerprint=instance.fingerprint,
     )
 
 
@@ -1011,83 +983,8 @@ def _serialize_backing_artifact(
     )
 
 
-def _created_timestamp_from_turns(turns: list[Any]) -> float | None:
-    for turn in turns:
-        timestamp = coerce_timestamp(getattr(turn, "timestamp", None))
-        if timestamp is not None:
-            return timestamp
-    return None
-
-
 def _session_created_timestamp(session: ProviderSessionRefEntry) -> float | None:
-    created_at = session.created_timestamp()
-    if created_at is not None:
-        return created_at
-
-    artifact = session.primary_artifact_path()
-    if artifact is None or not artifact.exists():
-        return None
-
-    try:
-        if session.provider == "codex":
-            from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
-
-            return _created_timestamp_from_turns(extract_dialog_from_codex_rollout(artifact, raw=False))
-
-        if session.provider == "claude-code":
-            if artifact.suffix == ".jsonl":
-                from agentos.chat.extractors.claude_code import extract_dialog_from_claude_code_session
-
-                return _created_timestamp_from_turns(
-                    extract_dialog_from_claude_code_session(artifact, raw=False)
-                )
-            if artifact.suffix == ".json":
-                obj = json.loads(artifact.read_text(encoding="utf-8", errors="ignore"))
-                if isinstance(obj, dict):
-                    return coerce_timestamp(obj.get("createdAt")) or coerce_timestamp(obj.get("lastActivityAt"))
-                return None
-
-        if session.provider == "copilot-cli":
-            from agentos.chat.extractors.copilot_cli import load_copilot_cli_events
-
-            events = load_copilot_cli_events(artifact)
-            first_event_timestamp: float | None = None
-            for event in events:
-                timestamp = coerce_timestamp(event.get("timestamp"))
-                if timestamp is not None and first_event_timestamp is None:
-                    first_event_timestamp = timestamp
-                if event.get("type") == "session.start":
-                    return timestamp
-            return first_event_timestamp
-
-        if session.provider == "gemini-cli":
-            from agentos.chat.extractors.gemini_cli import load_gemini_cli_session_data
-
-            session_data = load_gemini_cli_session_data(artifact)
-            if not isinstance(session_data, dict):
-                return None
-            return coerce_timestamp(session_data.get("startTime"))
-
-        if session.provider == "openclaw":
-            from agentos.chat.extractors.openclaw import load_openclaw_session_records
-
-            records = load_openclaw_session_records(artifact)
-            if not records:
-                return None
-            return coerce_timestamp(records[0].get("timestamp"))
-
-        if session.provider == "opencode":
-            from agentos.chat.extractors.opencode import load_opencode_session_messages, resolve_opencode_db_path
-
-            db_path = artifact if artifact.name == "opencode.db" else resolve_opencode_db_path(artifact)
-            messages = load_opencode_session_messages(db_path=db_path, session_id=session.session_id)
-            if not messages:
-                return None
-            return coerce_timestamp(messages[0].get("time_created"))
-    except (CliError, OSError, json.JSONDecodeError):
-        return None
-
-    return None
+    return session.created_timestamp()
 
 
 def _build_common_session_stats(
@@ -1208,124 +1105,6 @@ def _session_matches_uri_query(
         and session.session_id == uri_query.session_id
         and session.context.instance_fingerprint.startswith(uri_query.instance_fingerprint_prefix)
     )
-
-
-def _session_ref_backing_artifacts(session_ref: ProviderSessionRef) -> tuple[BackingArtifact, ...]:
-    if isinstance(session_ref, ClaudeSessionRef):
-        return tuple(
-            BackingArtifact(role="transcript" if path.suffix == ".jsonl" else "metadata", path=path)
-            for path in session_ref.artifact_paths
-        )
-    if isinstance(session_ref, CodexSessionRef):
-        artifacts = [BackingArtifact(role="transcript", path=path) for path in session_ref.rollout_paths]
-        artifacts.extend(
-            BackingArtifact(
-                role="session_index",
-                path=path,
-                locator={"kind": "jsonl_record_match", "match": {"id": session_ref.native_session_id}},
-            )
-            for path in session_ref.index_paths
-        )
-        return tuple(artifacts)
-    if isinstance(session_ref, CopilotSessionRef):
-        artifacts = [BackingArtifact(role="transcript", path=session_ref.events_path)]
-        if session_ref.events_path.name == "events.jsonl":
-            artifacts.append(
-                BackingArtifact(role="session_root", path=session_ref.events_path.parent, storage_kind="directory")
-            )
-        return tuple(artifacts)
-    if isinstance(session_ref, GeminiSessionRef):
-        return tuple(BackingArtifact(role="transcript", path=path) for path in session_ref.artifact_paths)
-    if isinstance(session_ref, PiSessionRef):
-        return tuple(BackingArtifact(role="transcript", path=path) for path in session_ref.artifact_paths)
-    if isinstance(session_ref, OpenclawSessionRef):
-        artifacts: list[BackingArtifact] = []
-        if session_ref.transcript_path is not None:
-            artifacts.append(BackingArtifact(role="transcript", path=session_ref.transcript_path))
-        if session_ref.sessions_index_path is not None:
-            locator: dict[str, Any]
-            if session_ref.session_keys:
-                locator = {"kind": "json_object_keys", "keys": list(session_ref.session_keys)}
-            else:
-                locator = {"kind": "json_object_value_match", "match": {"sessionId": session_ref.native_session_id}}
-            artifacts.append(BackingArtifact(role="session_index", path=session_ref.sessions_index_path, locator=locator))
-        return tuple(artifacts)
-    if isinstance(session_ref, OpencodeSessionRef):
-        artifacts = []
-        if session_ref.diff_path is not None:
-            artifacts.append(BackingArtifact(role="session_diff", path=session_ref.diff_path))
-        if session_ref.sqlite_db_path is not None:
-            artifacts.append(
-                BackingArtifact(
-                    role="sqlite_session_row",
-                    path=session_ref.sqlite_db_path,
-                    storage_kind="sqlite_row",
-                    locator={
-                        "kind": "sqlite_row_match",
-                        "table": "session",
-                        "key": {"id": session_ref.native_session_id},
-                    },
-                )
-            )
-        return tuple(artifacts)
-    return ()
-
-
-def _session_ref_display_name(session_ref: ProviderSessionRef) -> str | None:
-    if isinstance(session_ref, ClaudeSessionRef):
-        return session_ref.title
-    if isinstance(session_ref, CodexSessionRef):
-        return session_ref.thread_name
-    return None
-
-
-def _session_ref_display_name_field(session_ref: ProviderSessionRef) -> str | None:
-    if isinstance(session_ref, ClaudeSessionRef) and session_ref.title is not None:
-        return "title"
-    if isinstance(session_ref, CodexSessionRef) and session_ref.thread_name is not None:
-        return "thread_name"
-    return None
-
-
-def _session_ref_native_payload(session_ref: ProviderSessionRef) -> dict[str, Any]:
-    payload: dict[str, Any] = {}
-    if isinstance(session_ref, ClaudeSessionRef) and session_ref.title is not None:
-        payload["title"] = session_ref.title
-    if isinstance(session_ref, CodexSessionRef) and session_ref.thread_name is not None:
-        payload["thread_name"] = session_ref.thread_name
-    if isinstance(session_ref, PiSessionRef):
-        if session_ref.cwd is not None:
-            payload["cwd"] = session_ref.cwd
-        if session_ref.model_provider is not None:
-            payload["model_provider"] = session_ref.model_provider
-        if session_ref.model_id is not None:
-            payload["model_id"] = session_ref.model_id
-        if session_ref.thinking_level is not None:
-            payload["thinking_level"] = session_ref.thinking_level
-    if isinstance(session_ref, OpenclawSessionRef):
-        if session_ref.session_keys:
-            payload["session_keys"] = list(session_ref.session_keys)
-        if session_ref.agent_id is not None:
-            payload["agent_id"] = session_ref.agent_id
-    return payload
-
-
-def _session_ref_sort_timestamp(session_ref: ProviderSessionRef) -> float | None:
-    if isinstance(session_ref, ClaudeSessionRef):
-        return _coalesce_timestamp(coerce_timestamp(session_ref.updated_at), *(safe_path_mtime(path) for path in session_ref.artifact_paths))
-    if isinstance(session_ref, CodexSessionRef):
-        return _coalesce_timestamp(session_ref.updated_at, *(safe_path_mtime(path) for path in session_ref.rollout_paths))
-    if isinstance(session_ref, CopilotSessionRef):
-        return _coalesce_timestamp(session_ref.updated_at, safe_path_mtime(session_ref.events_path), safe_path_mtime(session_ref.events_path.parent))
-    if isinstance(session_ref, GeminiSessionRef):
-        return _coalesce_timestamp(session_ref.updated_at, *(safe_path_mtime(path) for path in session_ref.artifact_paths))
-    if isinstance(session_ref, PiSessionRef):
-        return _coalesce_timestamp(session_ref.updated_at, session_ref.started_at, *(safe_path_mtime(path) for path in session_ref.artifact_paths))
-    if isinstance(session_ref, OpenclawSessionRef):
-        return _coalesce_timestamp(session_ref.updated_at, safe_path_mtime(session_ref.transcript_path), safe_path_mtime(session_ref.sessions_index_path))
-    if isinstance(session_ref, OpencodeSessionRef):
-        return _coalesce_timestamp(session_ref.updated_at, safe_path_mtime(session_ref.diff_path), safe_path_mtime(session_ref.sqlite_db_path))
-    return None
 
 
 def _strategies_attempted(
@@ -1758,6 +1537,6 @@ __all__ = [
     "list_chat_sessions",
     "resolve_chat_sessions",
     "configured_session_provider_contexts",
-    "configured_legacy_provider_configs",
+    "configured_session_agents",
     "supported_provider_families",
 ]

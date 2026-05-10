@@ -12,9 +12,8 @@ from agentos._core.project import agentos_home_dir, global_config_path, load_glo
 from agentos.agent.primitives import AgentConfig
 from agentos.chat.providers import (
     AGENT_INSTANCE_CONFIG_SOURCE,
-    LegacyProviderConfig,
-    legacy_provider_config_entries_from_config,
-    legacy_provider_config_from_config_entry,
+    agent_config_entries_from_config,
+    agent_config_from_config_entry,
 )
 from agentos.codex.agent import CodexAgent
 
@@ -73,13 +72,13 @@ def _normalize_string_tuple(value: object, *, field_name: str) -> tuple[str, ...
     return tuple(normalized)
 
 
-def _load_global_agent_instances(config: dict[str, object]) -> tuple[LegacyProviderConfig, ...]:
-    entries = legacy_provider_config_entries_from_config(
+def _load_global_agent_instances(config: dict[str, object]) -> tuple[AgentConfig, ...]:
+    entries = agent_config_entries_from_config(
         config,
         source=AGENT_INSTANCE_CONFIG_SOURCE,
     )
-    instances = tuple(legacy_provider_config_from_config_entry(entry) for entry in entries)
-    seen_ids: dict[str, LegacyProviderConfig] = {}
+    instances = tuple(agent_config_from_config_entry(entry) for entry in entries)
+    seen_ids: dict[str, AgentConfig] = {}
     for instance in instances:
         if instance.instance_id is None:
             raise CliError("agent.instances ids must not be empty")
@@ -90,7 +89,7 @@ def _load_global_agent_instances(config: dict[str, object]) -> tuple[LegacyProvi
         raise CliError(
             "agent.instances ids must be unique; "
             f"duplicate id {instance.instance_id} for providers "
-            f"{existing.family} and {instance.family}"
+            f"{existing.provider} and {instance.provider}"
         )
     return instances
 
@@ -107,39 +106,23 @@ def _resolve_codex_mux_default_instance(
         ),
         field_name="codex.mux.default_instance_id",
     )
-    legacy_configs_by_id = {
+    configs_by_id = {
         instance.instance_id: instance
         for instance in _load_global_agent_instances(config)
         if instance.instance_id is not None
     }
-    instance = legacy_configs_by_id.get(default_instance_id)
+    instance = configs_by_id.get(default_instance_id)
     if instance is None:
         raise CliError(
             "codex.mux.default_instance_id references unknown agent instance id: "
             f"{default_instance_id}"
         )
-    if instance.family != "codex":
+    if instance.provider != "codex":
         raise CliError(
             "codex.mux.default_instance_id must reference an agent.instances codex entry; "
-            f"got {default_instance_id} ({instance.family})"
+            f"got {default_instance_id} ({instance.provider})"
         )
-    return CodexAgent.from_config(
-        AgentConfig(
-            provider=instance.family,
-            instance_id=instance.instance_id,
-            label=instance.label,
-            homes=instance.homes,
-            cli_command=instance.cli_command,
-            run_args=instance.run_args,
-            env=instance.env,
-            timeout_sec=instance.timeout_sec,
-            default_model=instance.default_model,
-            model_flag=instance.model_flag,
-            prompt_flag=instance.prompt_flag,
-            is_default=instance.is_default,
-            fingerprint=instance.fingerprint,
-        )
-    )
+    return CodexAgent.from_config(instance)
 
 
 def _resolve_codex_mux_instance_home(instance: CodexAgent) -> Path:

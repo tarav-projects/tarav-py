@@ -15,10 +15,15 @@ from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_strings
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.scan import normalize_rel
+from agentos.agent.primitives import (
+    Agent,
+    agent_fingerprint,
+    agent_identity_key,
+    agent_uri_key,
+)
 from agentos.chat.providers import (
     canonical_chat_provider_specs,
     ProviderFamily,
-    LegacyProviderConfig,
     canonical_chat_provider_spec_for_name,
 )
 from agentos.codex.chatlas import CodexAgentChatlas
@@ -150,21 +155,21 @@ def _chatlas_provider_spec_for_name(family_name: str):
     return provider_spec
 
 
-def _chatlas_archive_config_from_legacy_config(
-    legacy_provider_config: LegacyProviderConfig,
+def _chatlas_archive_config_from_agent(
+    agent: Agent,
 ) -> ChatlasArchiveConfig:
     return ChatlasArchiveConfig(
-        family=legacy_provider_config.family,
-        instance_id=legacy_provider_config.instance_id,
-        label=legacy_provider_config.label,
-        is_default=legacy_provider_config.is_default,
-        homes=legacy_provider_config.homes,
-        includes=legacy_provider_config.includes,
-        excludes=legacy_provider_config.excludes,
-        identity=legacy_provider_config.identity_key(),
-        uri_key=legacy_provider_config.uri_component(),
-        fingerprint=legacy_provider_config.fingerprint,
-        summary_payload=legacy_provider_config.summary(),
+        family=agent.provider,
+        instance_id=agent.instance_id,
+        label=agent.label,
+        is_default=agent.is_default,
+        homes=agent.homes,
+        includes=agent.chatlas_includes,
+        excludes=agent.chatlas_excludes,
+        identity=agent_identity_key(agent),
+        uri_key=agent_uri_key(agent),
+        fingerprint=agent_fingerprint(agent),
+        summary_payload=agent.summary(),
     )
 
 

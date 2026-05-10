@@ -15,36 +15,38 @@ from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_strings
 from agentos._core.git_ops import git_has_staged_changes, run_git
 from agentos.agent.primitives import AgentConfig
-from agentos.agent.providers import ConfiguredAgent, agent_from_config
+from agentos.agent.providers import ConfiguredAgent, agent_from_config, load_configured_agents
 from agentos.chat.core import (
     _format_stats_timestamp,
     _provider_family_for_name,
 )
 from agentos.chat.providers import (
     load_chat_config_documents,
-    load_legacy_provider_configs,
     load_unique_string_list,
-    select_legacy_provider_configs,
 )
-from agentos.chat.session_primitives import BackingArtifact, coerce_timestamp, safe_path_mtime
+from agentos.chat.session_primitives import (
+    BackingArtifact,
+    ProviderSessionRef,
+    coerce_timestamp,
+    session_ref_backing_artifacts as _session_ref_backing_artifacts,
+    session_ref_created_timestamp as _session_ref_created_timestamp,
+    session_ref_display_name as _session_ref_display_name,
+    session_ref_display_name_field as _session_ref_display_name_field,
+    session_ref_id as _session_ref_id,
+    session_ref_native_payload as _session_ref_native_payload,
+    session_ref_sort_timestamp as _session_ref_sort_timestamp,
+)
 from agentos.chatlas._cache_io import (
     load_chatlas_cache_section,
     write_chatlas_cache_section,
     write_text_if_changed,
 )
 from agentos.chatlas.session_model._hashes import _session_identity_hash
-from agentos.claude.session import ClaudeSessionRef
-from agentos.codex.session import CodexSessionRef
-from agentos.copilot.session import CopilotSessionRef
-from agentos.gemini.session import GeminiSessionRef
-from agentos.openclaw.session import OpenclawSessionRef
-from agentos.opencode.session import OpencodeSessionRef
-from agentos.pi.session import PiSessionRef
 from agentos.chatlas.raw import (
     ChatlasArchiveConfig,
     ChatlasProviderMirrorResult,
     _build_chatlas_provider_context,
-    _chatlas_archive_config_from_legacy_config,
+    _chatlas_archive_config_from_agent,
     _chatlas_home_destination,
     _dedupe_chatlas_archive_configs,
     _load_chatlas_raw_scan_cache,
@@ -63,15 +65,6 @@ _PROGRESS_PREFIX = "[chatlas]"
 _MAX_CHATLAS_ARCHIVE_WORKERS = 4
 _CHATLAS_DOCUMENTS_DIRNAME = "Documents"
 T = TypeVar("T")
-ProviderSessionRef = (
-    ClaudeSessionRef
-    | CodexSessionRef
-    | CopilotSessionRef
-    | GeminiSessionRef
-    | OpenclawSessionRef
-    | OpencodeSessionRef
-    | PiSessionRef
-)
 
 
 @dataclass(frozen=True)
@@ -122,10 +115,10 @@ def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSetti
     supported_families = {
         provider_family.family for provider_family in supported_chatlas_provider_families()
     }
-    all_legacy_provider_configs = load_legacy_provider_configs(start_path=start_path)
+    all_agents = load_configured_agents(start_path=start_path)
     selected_instance_ids = load_chatlas_instance_ids(start_path=start_path)
-    legacy_provider_configs = select_legacy_provider_configs(
-        all_legacy_provider_configs,
+    selected_agents = _select_configured_agents(
+        all_agents,
         selected_instance_ids=selected_instance_ids,
         supported_families=supported_families,
         selector_field_name="chatlas.instance_ids",
@@ -143,8 +136,8 @@ def configured_chatlas_settings(*, start_path: Path | str = ".") -> ChatlasSetti
                 commit_prefix = raw_commit_prefix.strip()
 
     provider_configs = tuple(
-        _chatlas_archive_config_from_legacy_config(legacy_provider_config)
-        for legacy_provider_config in legacy_provider_configs
+        _chatlas_archive_config_from_agent(agent)
+        for agent in selected_agents
     )
     deduped_configs = _dedupe_chatlas_archive_configs(provider_configs)
     _validate_unique_chatlas_destinations(deduped_configs)
@@ -169,6 +162,42 @@ def load_chatlas_instance_ids(
             item_field_name="chatlas.instance_ids",
         )
     return result
+
+
+def _select_configured_agents(
+    agents: tuple[ConfiguredAgent, ...],
+    *,
+    selected_instance_ids: tuple[str, ...] | None,
+    supported_families: set[str],
+    selector_field_name: str,
+    unsupported_instance_label: str,
+    default_to_supported_families: bool,
+) -> tuple[ConfiguredAgent, ...]:
+    supported_agents = tuple(agent for agent in agents if agent.provider in supported_families)
+    if selected_instance_ids is None:
+        if default_to_supported_families:
+            return supported_agents
+        return ()
+
+    agents_by_id = {
+        agent.instance_id: agent
+        for agent in agents
+        if agent.instance_id is not None
+    }
+    selected_agents: list[ConfiguredAgent] = []
+    for instance_id in selected_instance_ids:
+        agent = agents_by_id.get(instance_id)
+        if agent is None:
+            raise CliError(
+                f"{selector_field_name} references unknown agent instance id: {instance_id}"
+            )
+        if agent.provider not in supported_families:
+            raise CliError(
+                f"{unsupported_instance_label} does not support provider "
+                f"{agent.provider} for agent instance id: {instance_id}"
+            )
+        selected_agents.append(agent)
+    return tuple(selected_agents)
 
 
 def chatlas_update(
@@ -1174,10 +1203,6 @@ def _merge_chatlas_session_ref(
     )
 
 
-def _session_ref_id(session_ref: ProviderSessionRef) -> str:
-    return session_ref.native_session_id
-
-
 def _session_ref_index_record(session: ChatlasProviderSessionRef) -> dict[str, Any]:
     session_ref = session.session_ref
     backing_artifacts = _session_ref_backing_artifacts(session_ref)
@@ -1259,256 +1284,6 @@ def _session_ref_index_source_signature(session: ChatlasProviderSessionRef) -> d
         "signature_version": 2,
         "derivation_version": _SESSION_INDEX_DERIVATION_VERSION,
     }
-
-
-def _session_ref_backing_artifacts(session_ref: ProviderSessionRef) -> tuple[BackingArtifact, ...]:
-    if isinstance(session_ref, ClaudeSessionRef):
-        return tuple(
-            BackingArtifact(
-                role="transcript" if path.suffix == ".jsonl" else "metadata",
-                path=path,
-            )
-            for path in session_ref.artifact_paths
-        )
-    if isinstance(session_ref, CodexSessionRef):
-        artifacts = [
-            BackingArtifact(role="transcript", path=path)
-            for path in session_ref.rollout_paths
-        ]
-        artifacts.extend(
-            BackingArtifact(
-                role="session_index",
-                path=path,
-                locator={
-                    "kind": "jsonl_record_match",
-                    "match": {"id": session_ref.native_session_id},
-                },
-            )
-            for path in session_ref.index_paths
-        )
-        return tuple(artifacts)
-    if isinstance(session_ref, CopilotSessionRef):
-        artifacts = [BackingArtifact(role="transcript", path=session_ref.events_path)]
-        if session_ref.events_path.name == "events.jsonl":
-            artifacts.append(
-                BackingArtifact(
-                    role="session_root",
-                    path=session_ref.events_path.parent,
-                    storage_kind="directory",
-                )
-            )
-        return tuple(artifacts)
-    if isinstance(session_ref, GeminiSessionRef):
-        return tuple(
-            BackingArtifact(role="transcript", path=path)
-            for path in session_ref.artifact_paths
-        )
-    if isinstance(session_ref, PiSessionRef):
-        return tuple(
-            BackingArtifact(role="transcript", path=path)
-            for path in session_ref.artifact_paths
-        )
-    if isinstance(session_ref, OpenclawSessionRef):
-        artifacts: list[BackingArtifact] = []
-        if session_ref.transcript_path is not None:
-            artifacts.append(BackingArtifact(role="transcript", path=session_ref.transcript_path))
-        if session_ref.sessions_index_path is not None:
-            locator: dict[str, Any]
-            if session_ref.session_keys:
-                locator = {
-                    "kind": "json_object_keys",
-                    "keys": list(session_ref.session_keys),
-                }
-            else:
-                locator = {
-                    "kind": "json_object_value_match",
-                    "match": {"sessionId": session_ref.native_session_id},
-                }
-            artifacts.append(
-                BackingArtifact(
-                    role="session_index",
-                    path=session_ref.sessions_index_path,
-                    locator=locator,
-                )
-            )
-        return tuple(artifacts)
-    if isinstance(session_ref, OpencodeSessionRef):
-        artifacts = []
-        if session_ref.diff_path is not None:
-            artifacts.append(BackingArtifact(role="session_diff", path=session_ref.diff_path))
-        if session_ref.sqlite_db_path is not None:
-            artifacts.append(
-                BackingArtifact(
-                    role="sqlite_session_row",
-                    path=session_ref.sqlite_db_path,
-                    storage_kind="sqlite_row",
-                    locator={
-                        "kind": "sqlite_row_match",
-                        "table": "session",
-                        "key": {"id": session_ref.native_session_id},
-                    },
-                )
-            )
-        return tuple(artifacts)
-    return ()
-
-
-def _session_ref_display_name(session_ref: ProviderSessionRef) -> str | None:
-    if isinstance(session_ref, ClaudeSessionRef):
-        return session_ref.title
-    if isinstance(session_ref, CodexSessionRef):
-        return session_ref.thread_name
-    return None
-
-
-def _session_ref_display_name_field(session_ref: ProviderSessionRef) -> str | None:
-    if isinstance(session_ref, ClaudeSessionRef) and session_ref.title is not None:
-        return "title"
-    if isinstance(session_ref, CodexSessionRef) and session_ref.thread_name is not None:
-        return "thread_name"
-    return None
-
-
-def _session_ref_native_payload(session_ref: ProviderSessionRef) -> dict[str, Any]:
-    payload: dict[str, Any] = {}
-    if isinstance(session_ref, ClaudeSessionRef) and session_ref.title is not None:
-        payload["title"] = session_ref.title
-    if isinstance(session_ref, CodexSessionRef) and session_ref.thread_name is not None:
-        payload["thread_name"] = session_ref.thread_name
-    if isinstance(session_ref, PiSessionRef):
-        if session_ref.cwd is not None:
-            payload["cwd"] = session_ref.cwd
-        if session_ref.model_provider is not None:
-            payload["model_provider"] = session_ref.model_provider
-        if session_ref.model_id is not None:
-            payload["model_id"] = session_ref.model_id
-        if session_ref.thinking_level is not None:
-            payload["thinking_level"] = session_ref.thinking_level
-    if isinstance(session_ref, OpenclawSessionRef):
-        if session_ref.session_keys:
-            payload["session_keys"] = list(session_ref.session_keys)
-        if session_ref.agent_id is not None:
-            payload["agent_id"] = session_ref.agent_id
-    return payload
-
-
-def _session_ref_created_timestamp(session_ref: ProviderSessionRef) -> float | None:
-    if isinstance(session_ref, PiSessionRef):
-        return session_ref.started_at
-
-    backing_artifacts = _session_ref_backing_artifacts(session_ref)
-    if not backing_artifacts:
-        return None
-    artifact = backing_artifacts[0].path
-    if not artifact.exists():
-        return None
-
-    try:
-        if isinstance(session_ref, CodexSessionRef):
-            from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
-
-            return _created_timestamp_from_turns(extract_dialog_from_codex_rollout(artifact, raw=False))
-        if isinstance(session_ref, ClaudeSessionRef):
-            if artifact.suffix == ".jsonl":
-                from agentos.chat.extractors.claude_code import extract_dialog_from_claude_code_session
-
-                return _created_timestamp_from_turns(extract_dialog_from_claude_code_session(artifact, raw=False))
-            if artifact.suffix == ".json":
-                obj = json.loads(artifact.read_text(encoding="utf-8", errors="ignore"))
-                if isinstance(obj, dict):
-                    return coerce_timestamp(obj.get("createdAt")) or coerce_timestamp(obj.get("lastActivityAt"))
-        if isinstance(session_ref, CopilotSessionRef):
-            from agentos.chat.extractors.copilot_cli import load_copilot_cli_events
-
-            events = load_copilot_cli_events(artifact)
-            first_event_timestamp: float | None = None
-            for event in events:
-                timestamp = coerce_timestamp(event.get("timestamp"))
-                if timestamp is not None and first_event_timestamp is None:
-                    first_event_timestamp = timestamp
-                if event.get("type") == "session.start":
-                    return timestamp
-            return first_event_timestamp
-        if isinstance(session_ref, GeminiSessionRef):
-            from agentos.chat.extractors.gemini_cli import load_gemini_cli_session_data
-
-            session_data = load_gemini_cli_session_data(artifact)
-            if isinstance(session_data, dict):
-                return coerce_timestamp(session_data.get("startTime"))
-        if isinstance(session_ref, OpenclawSessionRef):
-            from agentos.chat.extractors.openclaw import load_openclaw_session_records
-
-            records = load_openclaw_session_records(artifact)
-            if records:
-                return coerce_timestamp(records[0].get("timestamp"))
-        if isinstance(session_ref, OpencodeSessionRef):
-            from agentos.chat.extractors.opencode import load_opencode_session_messages, resolve_opencode_db_path
-
-            db_path = artifact if artifact.name == "opencode.db" else resolve_opencode_db_path(artifact)
-            messages = load_opencode_session_messages(db_path=db_path, session_id=session_ref.native_session_id)
-            if messages:
-                return coerce_timestamp(messages[0].get("time_created"))
-    except (CliError, OSError, json.JSONDecodeError):
-        return None
-    return None
-
-
-def _created_timestamp_from_turns(turns: list[Any]) -> float | None:
-    for turn in turns:
-        timestamp = coerce_timestamp(getattr(turn, "timestamp", None))
-        if timestamp is not None:
-            return timestamp
-    return None
-
-
-def _session_ref_sort_timestamp(session_ref: ProviderSessionRef) -> float | None:
-    if isinstance(session_ref, ClaudeSessionRef):
-        return _latest_timestamp(
-            coerce_timestamp(session_ref.updated_at),
-            *(safe_path_mtime(path) for path in session_ref.artifact_paths),
-        )
-    if isinstance(session_ref, CodexSessionRef):
-        return _latest_timestamp(
-            session_ref.updated_at,
-            *(safe_path_mtime(path) for path in session_ref.rollout_paths),
-        )
-    if isinstance(session_ref, CopilotSessionRef):
-        return _latest_timestamp(
-            session_ref.updated_at,
-            safe_path_mtime(session_ref.events_path),
-            safe_path_mtime(session_ref.events_path.parent),
-        )
-    if isinstance(session_ref, GeminiSessionRef):
-        return _latest_timestamp(
-            session_ref.updated_at,
-            *(safe_path_mtime(path) for path in session_ref.artifact_paths),
-        )
-    if isinstance(session_ref, PiSessionRef):
-        return _latest_timestamp(
-            session_ref.updated_at,
-            session_ref.started_at,
-            *(safe_path_mtime(path) for path in session_ref.artifact_paths),
-        )
-    if isinstance(session_ref, OpenclawSessionRef):
-        return _latest_timestamp(
-            session_ref.updated_at,
-            safe_path_mtime(session_ref.transcript_path),
-            safe_path_mtime(session_ref.sessions_index_path),
-        )
-    if isinstance(session_ref, OpencodeSessionRef):
-        return _latest_timestamp(
-            session_ref.updated_at,
-            safe_path_mtime(session_ref.diff_path),
-            safe_path_mtime(session_ref.sqlite_db_path),
-        )
-    return None
-
-
-def _latest_timestamp(*values: float | None) -> float | None:
-    timestamps = [value for value in values if value is not None]
-    if not timestamps:
-        return None
-    return max(timestamps)
 
 
 def _serialize_session_ref_backing_artifact(
