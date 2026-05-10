@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+
+from agentos.providers import ProviderHomeAnchor
 from typing import Any
 
 from agentos._core.errors import CliError
 from agentos.agent.primitives import (
     AgentConfig,
-    AgentRunRequest,
-    provider_session_paths,
-    ResolvedAgentRun,
+    agent_session_paths,
+    AgentRunCommand,
 )
 from agentos.codex.session import (
     CodexSession,
@@ -36,6 +37,14 @@ class CodexAgent:
     prompt_flag: str | None = None
     is_default: bool = False
     fingerprint: str | None = None
+    direct_targets: tuple[Path, ...] = ()
+    grep_targets: tuple[Path, ...] = ()
+    sqlite_db_paths: tuple[Path, ...] = ()
+    identity_anchors: tuple[ProviderHomeAnchor, ...] = ()
+    chatlas_includes: tuple[str, ...] = ()
+    chatlas_excludes: tuple[str, ...] = ()
+    account_live_usage_refresh: bool | None = None
+    account_usage_progression_limit: str | None = None
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> CodexAgent:
@@ -54,6 +63,14 @@ class CodexAgent:
             prompt_flag=config.prompt_flag,
             is_default=config.is_default,
             fingerprint=config.fingerprint,
+            direct_targets=config.direct_targets,
+            grep_targets=config.grep_targets,
+            sqlite_db_paths=config.sqlite_db_paths,
+            identity_anchors=config.identity_anchors,
+            chatlas_includes=config.chatlas_includes,
+            chatlas_excludes=config.chatlas_excludes,
+            account_live_usage_refresh=config.account_live_usage_refresh,
+            account_usage_progression_limit=config.account_usage_progression_limit,
         )
 
     @property
@@ -66,8 +83,8 @@ class CodexAgent:
     def runner(self) -> CodexAgentRunner:
         return CodexAgentRunner(agent=self)
 
-    def resolve_run(self, request: AgentRunRequest) -> ResolvedAgentRun:
-        return self.runner().resolve(request)
+    def resolve_run(self, *, prompt: str, model: str | None = None) -> AgentRunCommand:
+        return self.runner().resolve(prompt=prompt, model=model)
 
     def discover_session_refs(self) -> tuple[CodexSessionRef, ...]:
         return discover_codex_session_refs(targets=self.session_discovery_targets())
@@ -76,12 +93,12 @@ class CodexAgent:
         return load_codex_session(session_ref)
 
     def session_discovery_targets(self) -> tuple[Path, ...]:
-        direct_targets, sqlite_db_paths = provider_session_paths(CODEX_PROVIDER, self.homes)
+        direct_targets, sqlite_db_paths = agent_session_paths(self)
         return direct_targets + sqlite_db_paths
 
     def summary(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "family": self.provider,
+            "provider": self.provider,
             "is_default": self.is_default,
         }
         if self.fingerprint is not None:
@@ -106,6 +123,22 @@ class CodexAgent:
             payload["model_flag"] = self.model_flag
         if self.prompt_flag is not None:
             payload["prompt_flag"] = self.prompt_flag
+        if self.direct_targets:
+            payload["direct_targets"] = [str(path) for path in self.direct_targets]
+        if self.grep_targets:
+            payload["grep_targets"] = [str(path) for path in self.grep_targets]
+        if self.sqlite_db_paths:
+            payload["sqlite_db_paths"] = [str(path) for path in self.sqlite_db_paths]
+        if self.identity_anchors:
+            payload["identity_anchors"] = [anchor.summary() for anchor in self.identity_anchors]
+        if self.chatlas_includes:
+            payload["chatlas_includes"] = list(self.chatlas_includes)
+        if self.chatlas_excludes:
+            payload["chatlas_excludes"] = list(self.chatlas_excludes)
+        if self.account_live_usage_refresh is not None:
+            payload["account_live_usage_refresh"] = self.account_live_usage_refresh
+        if self.account_usage_progression_limit is not None:
+            payload["account_usage_progression_limit"] = self.account_usage_progression_limit
         return payload
 
 
@@ -113,7 +146,7 @@ class CodexAgent:
 class CodexAgentRunner:
     agent: CodexAgent
 
-    def resolve(self, request: AgentRunRequest) -> ResolvedAgentRun:
+    def resolve(self, *, prompt: str, model: str | None = None) -> AgentRunCommand:
         if not self.agent.cli_command:
             raise CliError(
                 f"agent {self.agent.instance_id or '<default>'} for provider codex has no cli_command"
@@ -121,7 +154,7 @@ class CodexAgentRunner:
 
         command = list(self.agent.cli_command)
         command.extend(self.agent.run_args)
-        effective_model = request.model or self.agent.default_model
+        effective_model = model or self.agent.default_model
         if effective_model is not None:
             if self.agent.model_flag is None:
                 raise CliError(
@@ -130,11 +163,11 @@ class CodexAgentRunner:
             command.extend([self.agent.model_flag, effective_model])
 
         if self.agent.prompt_flag is not None:
-            command.extend([self.agent.prompt_flag, request.prompt])
+            command.extend([self.agent.prompt_flag, prompt])
         else:
-            command.append(request.prompt)
+            command.append(prompt)
 
-        return ResolvedAgentRun(
+        return AgentRunCommand(
             provider=self.agent.provider,
             instance_id=self.agent.instance_id,
             command=tuple(command),
