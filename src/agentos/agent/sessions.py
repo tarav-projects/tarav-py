@@ -13,12 +13,12 @@ from agentos._core.sequences import _unique_paths
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.agent.primitives import agent_fingerprint, agent_identity_key, agent_uri_key
 from agentos.agent.providers import ConfiguredAgent, agent_from_config, load_configured_agents
-from agentos.chat.providers import (
+from agentos.agent.config import (
     canonical_chat_provider_specs,
     default_agent_configs,
 )
-from agentos.chat.providers import ProviderFamily
-from agentos.chat.session_primitives import (
+from agentos.agent.config import ProviderFamily
+from agentos.agent.session_refs import (
     BackingArtifact,
     ProviderSessionRef,
     _build_path_finding,
@@ -941,31 +941,31 @@ def _backing_artifact_is_extractable(
 
     try:
         if session.provider == "claude-code":
-            from agentos.chat.extractors.claude_code import is_claude_code_session_path
+            from agentos.agent.extractors.claude_code import is_claude_code_session_path
 
             return is_claude_code_session_path(path)
         if session.provider == "codex":
-            from agentos.chat.extractors.codex import is_codex_rollout_path
+            from agentos.agent.extractors.codex import is_codex_rollout_path
 
             return is_codex_rollout_path(path)
         if session.provider == "copilot-cli":
-            from agentos.chat.extractors.copilot_cli import is_copilot_cli_session_path
+            from agentos.agent.extractors.copilot_cli import is_copilot_cli_session_path
 
             return is_copilot_cli_session_path(path)
         if session.provider == "gemini-cli":
-            from agentos.chat.extractors.gemini_cli import is_gemini_cli_session_path
+            from agentos.agent.extractors.gemini_cli import is_gemini_cli_session_path
 
             return is_gemini_cli_session_path(path)
         if session.provider == "pi":
-            from agentos.chat.extractors.pi import is_pi_session_path
+            from agentos.agent.extractors.pi import is_pi_session_path
 
             return is_pi_session_path(path)
         if session.provider == "openclaw":
-            from agentos.chat.extractors.openclaw import is_openclaw_session_path
+            from agentos.agent.extractors.openclaw import is_openclaw_session_path
 
             return is_openclaw_session_path(path)
         if session.provider == "opencode":
-            from agentos.chat.extractors.opencode import is_opencode_session_path
+            from agentos.agent.extractors.opencode import is_opencode_session_path
 
             return is_opencode_session_path(path)
     except CliError:
@@ -1058,11 +1058,11 @@ def _provider_dialog_turn_count(session: ProviderSessionRefEntry) -> int | None:
         return None
     try:
         if session.provider == "codex":
-            from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
+            from agentos.agent.extractors.codex import extract_dialog_from_codex_rollout
 
             return len(extract_dialog_from_codex_rollout(path, raw=False))
         if session.provider == "openclaw":
-            from agentos.chat.extractors.openclaw import extract_dialog_from_openclaw_session, load_openclaw_session_records
+            from agentos.agent.extractors.openclaw import extract_dialog_from_openclaw_session, load_openclaw_session_records
 
             return len(
                 extract_dialog_from_openclaw_session(

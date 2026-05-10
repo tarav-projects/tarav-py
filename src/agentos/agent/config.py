@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from agentos._core.errors import CliError
@@ -422,6 +422,24 @@ def default_agent_configs(
     return tuple(instances)
 
 
+def agent_config_with_home_override(config: AgentConfig, *, home: Path | str) -> AgentConfig:
+    provider_spec = canonical_chat_provider_spec_for_name(config.provider)
+    if provider_spec is None or len(provider_spec.home_slots) != 1:
+        raise CliError(f"--home is not supported for provider {config.provider}")
+
+    slot = provider_spec.home_slots[0]
+    normalized_home = Path(home).expanduser().resolve()
+    direct_targets, grep_targets, sqlite_db_paths = slot.build_paths(home=normalized_home)
+    return replace(
+        config,
+        homes=((slot.key, normalized_home),),
+        direct_targets=_unique_paths(tuple(direct_targets)),
+        grep_targets=_unique_paths(tuple(grep_targets or direct_targets)),
+        sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
+        identity_anchors=tuple(slot.build_anchors(home=normalized_home)),
+    )
+
+
 def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     raw_instance = entry.raw_instance
     family_name = raw_instance.get("provider")
@@ -792,6 +810,7 @@ __all__ = [
     "AgentConfigEntry",
     "AgentConfigSource",
     "AgentConfig",
+    "agent_config_with_home_override",
     "ProviderHomeAnchor",
     "agent_config_from_config_entry",
     "agent_config_entries_from_config",

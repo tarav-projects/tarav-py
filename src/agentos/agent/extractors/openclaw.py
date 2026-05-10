@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.chat.extractors.common import (
+from agentos.agent.extractors.common import (
     DialogTurn,
     format_turns_jsonl,
     format_turns_markdown,
 )
-from agentos.chat.extractors.pi import has_pi_session_signature
+from agentos.agent.extractors.pi import has_pi_session_signature
 
 _OPENCLAW_REPLY_PREFIX = "[[reply_to_current]]"
 _OPENCLAW_SENDER_METADATA_RE = re.compile(

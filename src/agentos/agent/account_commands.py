@@ -14,8 +14,8 @@ from typing import Any, Callable, TextIO
 
 from agentos._core.errors import CliError
 from agentos._core.project import normalize_project_target
-from agentos.chat._cli_common import format_json_output, optional_string_tuple
-from agentos.chat.accounts import (
+from agentos.agent._cli_common import format_json_output, optional_string_tuple
+from agentos.agent.accounts import (
     chat_account_stats,
     format_chat_account_stats_markdown,
     format_chat_account_stats_usage,
@@ -266,7 +266,7 @@ class _ChatAccountsStatsRefreshWorker:
         self.events: queue.Queue[_ChatAccountsStatsRefreshEvent] = queue.Queue()
         self.thread = threading.Thread(
             target=self._run,
-            name="agentos-chat-accounts-refresh",
+            name="agentos-agent-accounts-refresh",
             daemon=True,
         )
 

@@ -22,7 +22,7 @@ from agentos._core.errors import CliError
 from agentos._core.project import agentos_home_dir
 from agentos.agent.primitives import Agent
 from agentos.agent.providers import ConfiguredAgent, load_configured_agents
-from agentos.chat.providers import (
+from agentos.agent.config import (
     ProviderFamily,
     load_chat_config_documents,
     load_unique_string_list,
@@ -38,12 +38,12 @@ from agentos.tara_tapes.core import (
 DEFAULT_ACCOUNT_TIMEOUT_SEC = 15
 _CLAUDE_USAGE_REFRESH_PROMPT = "Reply with OK."
 _CLAUDE_USAGE_REFRESH_MODEL = "haiku"
-CHAT_ACCOUNT_STATS_DIRNAME = "chat-account-stats"
+CHAT_ACCOUNT_STATS_DIRNAME = "agent-account-stats"
 CHAT_ACCOUNT_STATS_HISTORY_DIRNAME = "history"
 CHAT_ACCOUNT_STATS_LATEST_FILENAME = "latest.json"
-CHAT_ACCOUNT_STATS_TAPE_NAME = "chat-account-stats"
-CHAT_ACCOUNT_STATS_TAPE_WRITER_ID = "agentos-chat-accounts-stats"
-CHAT_ACCOUNT_STATS_RECORD_CLASS = "agentos.chat.account-stats.snapshot"
+CHAT_ACCOUNT_STATS_TAPE_NAME = "agent-account-stats"
+CHAT_ACCOUNT_STATS_TAPE_WRITER_ID = "agentos-agent-accounts-stats"
+CHAT_ACCOUNT_STATS_RECORD_CLASS = "agentos.agent.account-stats.snapshot"
 MAX_ACCOUNT_COLLECTION_WORKERS = 4
 CLAUDE_REFRESH_WORKSPACE_DIRNAME = "claude-refresh-workspace"
 CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC = 0.75

@@ -264,14 +264,14 @@ def session_ref_created_timestamp(session_ref: ProviderSessionRef) -> float | No
 
     try:
         if isinstance(session_ref, CodexSessionRef):
-            from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
+            from agentos.agent.extractors.codex import extract_dialog_from_codex_rollout
 
             return _created_timestamp_from_turns(
                 extract_dialog_from_codex_rollout(artifact, raw=False)
             )
         if isinstance(session_ref, ClaudeSessionRef):
             if artifact.suffix == ".jsonl":
-                from agentos.chat.extractors.claude_code import (
+                from agentos.agent.extractors.claude_code import (
                     extract_dialog_from_claude_code_session,
                 )
 
@@ -285,7 +285,7 @@ def session_ref_created_timestamp(session_ref: ProviderSessionRef) -> float | No
                         obj.get("lastActivityAt")
                     )
         if isinstance(session_ref, CopilotSessionRef):
-            from agentos.chat.extractors.copilot_cli import load_copilot_cli_events
+            from agentos.agent.extractors.copilot_cli import load_copilot_cli_events
 
             events = load_copilot_cli_events(artifact)
             first_event_timestamp: float | None = None
@@ -297,19 +297,19 @@ def session_ref_created_timestamp(session_ref: ProviderSessionRef) -> float | No
                     return timestamp
             return first_event_timestamp
         if isinstance(session_ref, GeminiSessionRef):
-            from agentos.chat.extractors.gemini_cli import load_gemini_cli_session_data
+            from agentos.agent.extractors.gemini_cli import load_gemini_cli_session_data
 
             session_data = load_gemini_cli_session_data(artifact)
             if isinstance(session_data, dict):
                 return coerce_timestamp(session_data.get("startTime"))
         if isinstance(session_ref, OpenclawSessionRef):
-            from agentos.chat.extractors.openclaw import load_openclaw_session_records
+            from agentos.agent.extractors.openclaw import load_openclaw_session_records
 
             records = load_openclaw_session_records(artifact)
             if records:
                 return coerce_timestamp(records[0].get("timestamp"))
         if isinstance(session_ref, OpencodeSessionRef):
-            from agentos.chat.extractors.opencode import (
+            from agentos.agent.extractors.opencode import (
                 load_opencode_session_messages,
                 resolve_opencode_db_path,
             )

@@ -5,42 +5,42 @@ from pathlib import Path
 from typing import Callable
 
 from agentos._core.errors import CliError
-from agentos.chat.core import resolve_chat_sessions
-from agentos.chat.extractors.claude_code import (
+from agentos.agent.sessions import resolve_chat_sessions
+from agentos.agent.extractors.claude_code import (
     extract_claude_code_chat_session_from_path,
     is_claude_code_session_path,
 )
-from agentos.chat.extractors.copilot_cli import (
+from agentos.agent.extractors.copilot_cli import (
     extract_copilot_cli_chat_session_from_path,
     infer_copilot_cli_session_id_from_path,
     is_copilot_cli_session_path,
 )
-from agentos.chat.extractors.codex import (
+from agentos.agent.extractors.codex import (
     extract_codex_chat_session_from_path,
     is_codex_rollout_path,
 )
-from agentos.chat.extractors.gemini_cli import (
+from agentos.agent.extractors.gemini_cli import (
     extract_gemini_cli_chat_session_from_path,
     infer_gemini_cli_session_id_from_path,
     is_gemini_cli_session_path,
 )
-from agentos.chat.extractors.opencode import (
+from agentos.agent.extractors.opencode import (
     extract_opencode_chat_session_from_path,
     infer_opencode_session_id_from_path,
     is_opencode_session_path,
 )
-from agentos.chat.extractors.pi import (
+from agentos.agent.extractors.pi import (
     extract_pi_chat_session_from_path,
     infer_pi_session_id_from_path,
     is_pi_session_path,
 )
-from agentos.chat.extractors.openclaw import (
+from agentos.agent.extractors.openclaw import (
     extract_openclaw_chat_session_from_path,
     infer_openclaw_session_id_from_path,
     is_openclaw_session_path,
 )
-from agentos.chat.session_primitives import BackingArtifact
-from agentos.chat.core import ProviderSessionRefEntry
+from agentos.agent.session_refs import BackingArtifact
+from agentos.agent.sessions import ProviderSessionRefEntry
 
 
 ProviderSessionExtractor = Callable[..., str]

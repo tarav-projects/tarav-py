@@ -15,8 +15,13 @@ from agentos.agent.providers import (
     load_configured_agents,
     resolve_agent,
 )
-from agentos.chat.accounts import supported_account_provider_families
-from agentos.chat.commands import _cmd_chat_accounts_stats
+from agentos.agent.accounts import supported_account_provider_families
+from agentos.agent.account_commands import _cmd_chat_accounts_stats
+from agentos.codex.commands import (
+    CODEX_HOME_ENV_VAR,
+    _link_codex_auth_for_account,
+    _load_codex_mux_config,
+)
 from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provider_families())
@@ -109,22 +114,72 @@ def _format_agent_run_command(
     return f"{env_prefix} {shlex.join(command)}"
 
 
+def _single_agent_home(agent: ConfiguredAgent) -> Path | None:
+    if not agent.homes:
+        return None
+    for key, home in agent.homes:
+        if key == "home":
+            return home
+    if len(agent.homes) == 1:
+        return agent.homes[0][1]
+    return None
+
+
+def _prepare_account_run(
+    args: argparse.Namespace,
+    *,
+    agent: ConfiguredAgent,
+    env_overrides: dict[str, str],
+) -> list[str]:
+    link_lines: list[str] = []
+    if agent.provider == "codex":
+        codex_home = _single_agent_home(agent)
+        if codex_home is not None:
+            env_overrides[CODEX_HOME_ENV_VAR] = str(codex_home)
+        if args.account is None:
+            return link_lines
+        if codex_home is None:
+            raise CliError("--account for provider codex requires a configured or explicit --home")
+        source_auth, destination_auth = _link_codex_auth_for_account(
+            args.account,
+            codex_home=codex_home,
+            config=_load_codex_mux_config(),
+            mutate=not args.dry_run,
+        )
+        if args.dry_run:
+            link_lines.append(f"link {destination_auth} -> {source_auth}")
+        return link_lines
+
+    if args.account is not None:
+        raise CliError(f"--account is not supported for provider {agent.provider}")
+    return link_lines
+
+
 def _cmd_agent_run(args: argparse.Namespace) -> int:
     config_start_path = _config_start_path(args)
     cwd = Path(args.cwd).expanduser().resolve() if args.cwd else Path.cwd().resolve()
     agent = resolve_agent(
         provider=args.provider,
-        instance_id=args.instance,
+        profile=args.profile,
         start_path=config_start_path,
+        home=args.home,
     )
     prompt = _resolve_prompt(args.prompt)
     resolved_run = agent.resolve_run(prompt=prompt, model=args.model)
+    env_overrides = resolved_run.env_mapping()
+    account_lines = _prepare_account_run(
+        args,
+        agent=agent,
+        env_overrides=env_overrides,
+    )
 
     env = os.environ.copy()
-    env.update(resolved_run.env_mapping())
+    env.update(env_overrides)
 
     if args.dry_run:
-        print(_format_agent_run_command(resolved_run.command, env_overrides=resolved_run.env_mapping()))
+        for line in account_lines:
+            print(line)
+        print(_format_agent_run_command(resolved_run.command, env_overrides=env_overrides))
         return 0
 
     try:
@@ -242,9 +297,19 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Provider family to run.",
     )
     run_parser.add_argument(
-        "--instance",
+        "--profile",
         default=None,
-        help="Configured agent id. Optional when provider resolution is unambiguous.",
+        help="Configured agent profile id. Optional when provider resolution is unambiguous.",
+    )
+    run_parser.add_argument(
+        "--home",
+        default=None,
+        help="Provider home override for this run.",
+    )
+    run_parser.add_argument(
+        "--account",
+        default=None,
+        help="Provider account/auth identity for this run.",
     )
     run_parser.add_argument(
         "--model",

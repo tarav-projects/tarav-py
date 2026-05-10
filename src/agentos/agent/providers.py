@@ -8,7 +8,11 @@ from agentos.agent.primitives import (
     AgentConfig,
 )
 from agentos.agents.agent import AgentsAgent
-from agentos.chat.providers import load_agent_configs
+from agentos.agent.config import (
+    agent_config_with_home_override,
+    default_agent_configs,
+    load_agent_configs,
+)
 from agentos.claude.agent import ClaudeAgent
 from agentos.codex.agent import CodexAgent
 from agentos.copilot.agent import CopilotAgent
@@ -29,6 +33,17 @@ def load_configured_agents(*, start_path: Path | str = ".") -> tuple[ConfiguredA
         agent_from_config(agent_config)
         for agent_config in load_agent_configs(start_path=start_path)
     )
+
+
+def load_agent_configs_with_defaults(*, start_path: Path | str = ".") -> tuple[AgentConfig, ...]:
+    configured = load_agent_configs(start_path=start_path)
+    configured_providers = {config.provider for config in configured}
+    defaults = tuple(
+        config
+        for config in default_agent_configs()
+        if config.provider not in configured_providers
+    )
+    return (*configured, *defaults)
 
 
 def supported_default_run_provider_families() -> tuple[str, ...]:
@@ -58,38 +73,69 @@ def agent_from_config(config: AgentConfig) -> ConfiguredAgent:
 def resolve_agent(
     *,
     provider: str,
-    instance_id: str | None,
+    profile: str | None,
     start_path: Path,
+    home: Path | str | None = None,
 ) -> ConfiguredAgent:
+    return agent_from_config(
+        resolve_agent_config(
+            provider=provider,
+            profile=profile,
+            start_path=start_path,
+            home=home,
+        )
+    )
+
+
+def resolve_agent_config(
+    *,
+    provider: str,
+    profile: str | None,
+    start_path: Path,
+    home: Path | str | None = None,
+) -> AgentConfig:
     matching = [
-        agent
-        for agent in load_configured_agents(start_path=start_path)
-        if agent.provider == provider
+        agent_config
+        for agent_config in load_agent_configs_with_defaults(start_path=start_path)
+        if agent_config.provider == provider
     ]
     if not matching:
-        raise CliError(f"no configured agents found for provider {provider}")
+        raise CliError(f"no agent config found for provider {provider}")
 
-    if instance_id is not None:
-        for agent in matching:
-            if agent.instance_id == instance_id:
-                return agent
+    if profile is not None:
+        for agent_config in matching:
+            if agent_config.instance_id == profile:
+                if home is not None:
+                    return agent_config_with_home_override(agent_config, home=home)
+                return agent_config
         raise CliError(
-            f"no agent {instance_id!r} found for provider {provider}"
+            f"no profile {profile!r} found for provider {provider}"
         )
 
-    if len(matching) == 1:
-        return matching[0]
+    configured_matching = tuple(agent_config for agent_config in matching if not agent_config.is_default)
+    if len(configured_matching) == 1:
+        selected = configured_matching[0]
+    elif len(configured_matching) > 1:
+        available = ", ".join(
+            agent_config.instance_id or "<default>" for agent_config in configured_matching
+        )
+        raise CliError(
+            f"provider {provider} is ambiguous; pass --profile (available: {available})"
+        )
+    else:
+        selected = matching[0]
 
-    available = ", ".join(agent.instance_id or "<default>" for agent in matching)
-    raise CliError(
-        f"provider {provider} is ambiguous; pass --instance (available: {available})"
-    )
+    if home is not None:
+        return agent_config_with_home_override(selected, home=home)
+    return selected
 
 
 __all__ = [
     "agent_from_config",
     "ConfiguredAgent",
     "load_configured_agents",
+    "load_agent_configs_with_defaults",
     "resolve_agent",
+    "resolve_agent_config",
     "supported_default_run_provider_families",
 ]

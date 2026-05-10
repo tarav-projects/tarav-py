@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.chat.extractors.common import (
+from agentos.agent.extractors.common import (
     DialogTurn,
     format_turns_jsonl,
     format_turns_markdown,
