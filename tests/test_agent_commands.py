@@ -392,11 +392,6 @@ def test_configured_provider_agents_use_provider_native_models(
         agentos_home / "config.json",
         provider_instances=[
             {
-                "provider": "agents",
-                "id": "agents-main",
-                "cli_command": ["agents"],
-            },
-            {
                 "provider": "claude-code",
                 "id": "claude-main",
                 "cli_command": ["claude"],
@@ -413,16 +408,14 @@ def test_configured_provider_agents_use_provider_native_models(
     )
 
     from agentos.agent.providers import load_configured_agents
-    from agentos.agents.agent import AgentsAgent
     from agentos.claude.agent import ClaudeAgent
     from agentos.copilot.agent import CopilotAgent
     from agentos.pi.agent import PiAgent
 
     agents = load_configured_agents()
 
-    assert [type(agent) for agent in agents] == [AgentsAgent, ClaudeAgent, CopilotAgent, PiAgent]
+    assert [type(agent) for agent in agents] == [ClaudeAgent, CopilotAgent, PiAgent]
     assert [agent.instance_id for agent in agents] == [
-        "agents-main",
         "claude-main",
         "copilot-main",
         "pi-main",
@@ -723,37 +716,6 @@ def test_agent_list_json_includes_configured_instance_fields(
     ]
     assert configured["default_model"] == "gpt-5.4"
     assert configured["env"]["CODEX_HOME"] == str(work_home)
-
-
-def test_agent_list_accepts_canonical_non_chat_provider_family(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-
-    _write_global_config(
-        agentos_home / "config.json",
-        provider_instances=[
-            {
-                "provider": "agents",
-                "id": "agents-main",
-                "label": "Agents main",
-                "cli_command": ["/usr/local/bin/agents-cli"],
-            }
-        ],
-    )
-
-    assert main(["agent", "list", "--provider", "agents"]) == 0
-
-    output_lines = capsys.readouterr().out.strip().splitlines()
-    assert output_lines == [
-        "agents [id=agents-main; Agents main]"
-    ]
 
 
 def test_provider_capabilities_are_scoped_by_subsystem() -> None:

@@ -181,10 +181,6 @@ _CANONICAL_CHAT_PROVIDER_SPECS = (
         chatlas_default_excludes=OPENCLAW_CHATLAS_DEFAULT_EXCLUDES,
         chatlas_default_includes=OPENCLAW_CHATLAS_DEFAULT_INCLUDES,
     ),
-    _chat_provider_spec(
-        "agents",
-        supports_session_discovery=False,
-    ),
 )
 
 

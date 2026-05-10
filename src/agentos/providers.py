@@ -92,7 +92,6 @@ class ProviderFamilySpec:
 _CANONICAL_PROVIDER_FAMILIES = tuple(
     ProviderFamily(family=family_name)
     for family_name in (
-        "agents",
         "claude-code",
         "codex",
         "copilot-cli",
@@ -209,15 +208,6 @@ _CANONICAL_PROVIDER_SPECS = (
                 default_home="~/.openclaw",
                 direct_relpaths=("agents",),
                 direct_anchor_roles=("agents_root",),
-            ),
-        ),
-    ),
-    ProviderFamilySpec(
-        provider_family=require_canonical_provider_family("agents"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.agents",
             ),
         ),
     ),

@@ -7,7 +7,6 @@ from agentos.agent.primitives import (
     Agent,
     AgentConfig,
 )
-from agentos.agents.agent import AgentsAgent
 from agentos.agent.config import (
     agent_config_with_home_override,
     default_agent_configs,
@@ -51,8 +50,6 @@ def supported_default_run_provider_families() -> tuple[str, ...]:
 
 
 def agent_from_config(config: AgentConfig) -> ConfiguredAgent:
-    if config.provider == "agents":
-        return AgentsAgent.from_config(config)
     if config.provider == "codex":
         return CodexAgent.from_config(config)
     if config.provider == "claude-code":
