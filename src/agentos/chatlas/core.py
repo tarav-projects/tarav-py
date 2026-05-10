@@ -16,15 +16,15 @@ from agentos._core.sequences import _unique_strings
 from agentos._core.git_ops import git_has_staged_changes, run_git
 from agentos.agent.primitives import AgentConfig
 from agentos.agent.providers import ConfiguredAgent, agent_from_config, load_configured_agents
-from agentos.chat.core import (
+from agentos.agent.sessions import (
     _format_stats_timestamp,
     _provider_family_for_name,
 )
-from agentos.chat.providers import (
+from agentos.agent.config import (
     load_chat_config_documents,
     load_unique_string_list,
 )
-from agentos.chat.session_primitives import (
+from agentos.agent.session_refs import (
     BackingArtifact,
     ProviderSessionRef,
     coerce_timestamp,
@@ -1748,11 +1748,11 @@ def _chatlas_dialog_turn_count(
         return None
     try:
         if provider == "codex":
-            from agentos.chat.extractors.codex import extract_dialog_from_codex_rollout
+            from agentos.agent.extractors.codex import extract_dialog_from_codex_rollout
 
             return len(extract_dialog_from_codex_rollout(path, raw=False))
         if provider == "openclaw":
-            from agentos.chat.extractors.openclaw import (
+            from agentos.agent.extractors.openclaw import (
                 extract_dialog_from_openclaw_session,
                 load_openclaw_session_records,
             )

@@ -128,7 +128,7 @@ def query_opencode_sessions(
     *,
     session_id: str | None = None,
 ) -> tuple[OpencodeSession, ...]:
-    from agentos.chat.extractors.opencode import connect_opencode_db
+    from agentos.agent.extractors.opencode import connect_opencode_db
 
     try:
         connection = connect_opencode_db(sqlite_db_path)

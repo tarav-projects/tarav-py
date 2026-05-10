@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from agentos.claude.session import ClaudeSession
-from agentos.chat.extractors.claude_code import is_claude_code_session_path
+from agentos.agent.extractors.claude_code import is_claude_code_session_path
 
 from ._shared import *
 

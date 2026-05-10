@@ -10,7 +10,7 @@ from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir, global_config_path, load_global_config
 from agentos.agent.primitives import AgentConfig
-from agentos.chat.providers import (
+from agentos.agent.config import (
     AGENT_INSTANCE_CONFIG_SOURCE,
     agent_config_entries_from_config,
     agent_config_from_config_entry,

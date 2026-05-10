@@ -21,7 +21,7 @@ from agentos.agent.primitives import (
     agent_identity_key,
     agent_uri_key,
 )
-from agentos.chat.providers import (
+from agentos.agent.config import (
     canonical_chat_provider_specs,
     ProviderFamily,
     canonical_chat_provider_spec_for_name,

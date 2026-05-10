@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from agentos.codex.session import CodexSession
-from agentos.chat.extractors.codex import is_codex_rollout_path
+from agentos.agent.extractors.codex import is_codex_rollout_path
 
 from ._shared import *
 from ._transcript import _experimental_clean_transcript_result

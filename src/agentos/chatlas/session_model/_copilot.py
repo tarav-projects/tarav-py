@@ -7,7 +7,7 @@ from typing import Any
 
 from agentos._core.errors import CliError
 from agentos.copilot.session import CopilotSession
-from agentos.chat.extractors.copilot_cli import is_copilot_cli_session_path
+from agentos.agent.extractors.copilot_cli import is_copilot_cli_session_path
 
 from ._shared import *
 

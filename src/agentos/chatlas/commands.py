@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from agentos.chat._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
+from agentos.agent._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
 from agentos.chatlas.core import (
     chatlas_query,
     chatlas_raw_export,
@@ -203,7 +203,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Restrict query to a provider family. Repeat to include multiple providers.",
     )
     query_parser.add_argument(
-        "--instance",
+        "--profile",
         action="append",
         dest="instances",
         help="Restrict query to a resolved Chatlas instance name. Repeat to include multiple instances.",
