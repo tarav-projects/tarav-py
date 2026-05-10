@@ -41,7 +41,7 @@ Live-note implications:
 - Until the CLI grows project-wide note-number checks, agents should avoid creating duplicate numeric prefixes across the md surface by inspection when relevant.
 
 ## Prefix CLI
-- Tool: `agentos prefix next`
+- Tool: `agentos stdlib prefix next`
 - Agents can call this directly from the terminal.
 - Purpose: print the next ordinary live-note prefix as 3 digits.
 - Empty/no-match behavior: print `500`.
@@ -52,11 +52,11 @@ Live-note implications:
 Run from a repository root:
 
 ```sh
-agentos prefix next --root . --include notes/live --min 500 --width 3
+agentos stdlib prefix next --root . --include notes/live --min 500 --width 3
 ```
 
 Optional target directory argument:
 
 ```sh
-agentos prefix next --root /path/to/repo --include notes/live --min 500 --width 3
+agentos stdlib prefix next --root /path/to/repo --include notes/live --min 500 --width 3
 ```

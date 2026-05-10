@@ -27,9 +27,9 @@ You are part of the **Agentos Index Notes Maintenance System** - a set of agents
 
 ## Block Extraction Protocol
 
-- For markdown block extraction, use `agentos mdblocks blocks` from the terminal.
-- For companion block references, use `agentos mdblocks links`.
-- For deterministic retrieval by query, use `agentos mdblocks find --query ...`.
+- For markdown block extraction, use `agentos stdlib mdblocks blocks` from the terminal.
+- For companion block references, use `agentos stdlib mdblocks links`.
+- For deterministic retrieval by query, use `agentos stdlib mdblocks find --query ...`.
 - Prefer these commands over ad-hoc manual parsing from raw file reads when block-level analysis is the task.
 
 ## Index File Naming

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import unquote
 
 from agentos._core.errors import CliError
@@ -28,6 +27,8 @@ from agentos.agent.session_refs import (
     ProviderSessionRef,
     _build_path_finding,
     backing_artifacts_from_sources,
+)
+from agentos.agent.session_utils import (
     coerce_timestamp,
     safe_path_mtime,
 )
@@ -362,6 +363,21 @@ def list_chat_sessions(
     if full_output:
         payload["provider_diagnostics"] = output_providers
     return payload
+
+
+def _session_matches_list_filters(
+    session: ProviderSessionRefEntry,
+    *,
+    extractable_only: bool,
+    updated_after: float | None,
+) -> bool:
+    if extractable_only and not _session_is_extractable(session):
+        return False
+    if updated_after is not None:
+        timestamp = session.sort_timestamp()
+        if timestamp is None or timestamp < updated_after:
+            return False
+    return True
 
 
 def chat_session_stats(
@@ -1294,16 +1310,6 @@ def _format_provider_stats_label(key: str) -> str:
     return labels.get(key, key.replace("_", " ").capitalize())
 
 
-def _build_dialog_turn_stats(turns: list[Any]) -> dict[str, Any]:
-    return {
-        "dialog_turn_count": len(turns),
-        "user_turn_count": sum(1 for turn in turns if getattr(turn, "role", None) == "user"),
-        "assistant_turn_count": sum(1 for turn in turns if getattr(turn, "role", None) == "assistant"),
-        "first_turn_at": turns[0].timestamp if turns else None,
-        "last_turn_at": turns[-1].timestamp if turns else None,
-    }
-
-
 def _update_time_bounds(
     first_timestamp: float | None,
     last_timestamp: float | None,
@@ -1317,20 +1323,6 @@ def _update_time_bounds(
     if last_timestamp is None or timestamp > last_timestamp:
         last_timestamp = timestamp
     return first_timestamp, last_timestamp
-
-
-def _try_provider_stats_call(callback: Callable[[], Any]) -> Any | None:
-    try:
-        return callback()
-    except (CliError, OSError):
-        return None
-
-
-def _try_build_dialog_turn_stats(callback: Callable[[], list[Any]]) -> dict[str, Any]:
-    turns = _try_provider_stats_call(callback)
-    if not isinstance(turns, list):
-        return {}
-    return _build_dialog_turn_stats(turns)
 
 
 def _format_resolved_session_choices(sessions: list[ProviderSessionRefEntry]) -> str:

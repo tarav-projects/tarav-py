@@ -39,7 +39,7 @@ Rules:
 
 When suggesting or writing a decision document in `notes/live/`, read the
 `agentos-live-note-base` skill from the current available skills surface and follow its
-protocol for path conventions, numbering, and `agentos prefix next` usage.
+protocol for path conventions, numbering, and `agentos stdlib prefix next` usage.
 
 ## Question Templates
 

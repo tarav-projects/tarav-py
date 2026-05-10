@@ -8,6 +8,7 @@ from agentos.agent.primitives import (
     agent_base_kwargs_for_provider,
     agent_session_paths,
 )
+from agentos.agent.account_runtime import AccountStatsRequest
 from agentos.claude.session import (
     ClaudeSession,
     ClaudeSessionRef,
@@ -43,6 +44,10 @@ class ClaudeAgent(AgentBase):
     def load_session(self, session_ref: ClaudeSessionRef) -> ClaudeSession:
         return load_claude_session(session_ref)
 
+    def collect_account_stats(self, request: AccountStatsRequest) -> dict[str, object]:
+        from agentos.claude.accounts import collect_claude_account_stats
+
+        return collect_claude_account_stats(self, request)
 
 
 __all__ = ["ClaudeAgent"]

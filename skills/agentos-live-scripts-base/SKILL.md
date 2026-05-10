@@ -46,7 +46,7 @@ Live-script implications:
 - Archive usage is optional and intentionally outside strict protocol enforcement.
 
 ## Prefix CLI
-- Tool: `agentos prefix next`
+- Tool: `agentos stdlib prefix next`
 - Agents can call this directly from the terminal.
 - Purpose: print the next ordinary live-script prefix as 3 digits.
 - Empty/no-match behavior: print `500`.
@@ -57,11 +57,11 @@ Live-script implications:
 Run from a repository root:
 
 ```sh
-agentos prefix next --root . --include dev/live --min 500 --width 3
+agentos stdlib prefix next --root . --include dev/live --min 500 --width 3
 ```
 
 Optional target directory argument:
 
 ```sh
-agentos prefix next --root /path/to/repo --include dev/live --min 500 --width 3
+agentos stdlib prefix next --root /path/to/repo --include dev/live --min 500 --width 3
 ```

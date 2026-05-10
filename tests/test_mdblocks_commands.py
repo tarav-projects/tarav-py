@@ -24,7 +24,7 @@ def test_blocks_parses_separator_anchored_blocks(tmp_path: Path, capsys) -> None
         ),
     )
 
-    assert main(["mdblocks", "blocks", str(md_path), "--root", str(tmp_path), "--json"]) == 0
+    assert main(["stdlib", "mdblocks", "blocks", str(md_path), "--root", str(tmp_path), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["block_count"] == 2
@@ -46,6 +46,7 @@ def test_blocks_supports_split_tmp_output_mode(tmp_path: Path, capsys) -> None:
     assert (
         main(
             [
+                "stdlib",
                 "mdblocks",
                 "blocks",
                 str(md_path),
@@ -88,6 +89,7 @@ def test_blocks_respects_line_region(tmp_path: Path, capsys) -> None:
     assert (
         main(
             [
+                "stdlib",
                 "mdblocks",
                 "blocks",
                 str(md_path),
@@ -134,6 +136,7 @@ def test_find_respects_line_region(tmp_path: Path, capsys) -> None:
     assert (
         main(
             [
+                "stdlib",
                 "mdblocks",
                 "find",
                 str(md_path),
@@ -170,7 +173,7 @@ def test_lint_reports_separator_outside_semantics_as_error(tmp_path: Path, capsy
         ),
     )
 
-    assert main(["mdblocks", "lint", str(md_path), "--root", str(tmp_path), "--json"]) == 0
+    assert main(["stdlib", "mdblocks", "lint", str(md_path), "--root", str(tmp_path), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["error_count"] >= 1
@@ -183,7 +186,7 @@ def test_lint_enforces_hard_25_line_block_limit(tmp_path: Path, capsys) -> None:
     lines = ["****", "## too-long"] + [f"line {index}" for index in range(1, 26)] + ["****", ""]
     _write(md_path, "\n".join(lines))
 
-    assert main(["mdblocks", "lint", str(md_path), "--root", str(tmp_path), "--json"]) == 0
+    assert main(["stdlib", "mdblocks", "lint", str(md_path), "--root", str(tmp_path), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     issues = [issue for issue in payload["issues"] if issue["code"] == "block_too_long"]

@@ -2,23 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import shlex
-import subprocess
 import sys
 from pathlib import Path
 
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
-from agentos.agent.primitives import Agent
+from agentos.agent.primitives import Agent, AgentRunRequest
 from agentos.agent.providers import load_configured_agents, resolve_agent
 from agentos.agent.accounts import supported_account_provider_families
 from agentos.agent.account_commands import _cmd_chat_accounts_stats
-from agentos.codex.commands import (
-    CODEX_HOME_ENV_VAR,
-    _link_codex_auth_for_account,
-    _load_codex_mux_config,
-)
 from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provider_families())
@@ -96,62 +88,6 @@ def _resolve_prompt(prompt_parts: list[str]) -> str:
     return prompt
 
 
-def _format_agent_run_command(
-    command: tuple[str, ...],
-    *,
-    env_overrides: dict[str, str],
-) -> str:
-    if not env_overrides:
-        return shlex.join(command)
-
-    env_prefix = " ".join(
-        f"{key}={shlex.quote(value)}"
-        for key, value in sorted(env_overrides.items())
-    )
-    return f"{env_prefix} {shlex.join(command)}"
-
-
-def _single_agent_home(agent: Agent) -> Path | None:
-    if not agent.homes:
-        return None
-    for key, home in agent.homes:
-        if key == "home":
-            return home
-    if len(agent.homes) == 1:
-        return agent.homes[0][1]
-    return None
-
-
-def _prepare_account_run(
-    args: argparse.Namespace,
-    *,
-    agent: Agent,
-    env_overrides: dict[str, str],
-) -> list[str]:
-    link_lines: list[str] = []
-    if agent.provider == "codex":
-        codex_home = _single_agent_home(agent)
-        if codex_home is not None:
-            env_overrides[CODEX_HOME_ENV_VAR] = str(codex_home)
-        if args.account is None:
-            return link_lines
-        if codex_home is None:
-            raise CliError("--account for provider codex requires a configured or explicit --home")
-        source_auth, destination_auth = _link_codex_auth_for_account(
-            args.account,
-            codex_home=codex_home,
-            config=_load_codex_mux_config(),
-            mutate=not args.dry_run,
-        )
-        if args.dry_run:
-            link_lines.append(f"link {destination_auth} -> {source_auth}")
-        return link_lines
-
-    if args.account is not None:
-        raise CliError(f"--account is not supported for provider {agent.provider}")
-    return link_lines
-
-
 def _cmd_agent_run(args: argparse.Namespace) -> int:
     config_start_path = _config_start_path(args)
     cwd = Path(args.cwd).expanduser().resolve() if args.cwd else Path.cwd().resolve()
@@ -162,33 +98,21 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         home=args.home,
     )
     prompt = _resolve_prompt(args.prompt)
-    resolved_run = agent.resolve_run(prompt=prompt, model=args.model)
-    env_overrides = resolved_run.env_mapping()
-    account_lines = _prepare_account_run(
-        args,
-        agent=agent,
-        env_overrides=env_overrides,
+    request = AgentRunRequest(
+        prompt=prompt,
+        model=args.model,
+        cwd=cwd,
+        account=args.account,
     )
 
-    env = os.environ.copy()
-    env.update(env_overrides)
-
     if args.dry_run:
-        for line in account_lines:
+        dry_result = agent.run_dry(request)
+        for line in dry_result.lines:
             print(line)
-        print(_format_agent_run_command(resolved_run.command, env_overrides=env_overrides))
         return 0
 
-    try:
-        result = subprocess.run(
-            list(resolved_run.command),
-            cwd=str(cwd),
-            env=env,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise CliError(f"agent executable not found: {exc.filename}") from exc
-    return int(result.returncode)
+    result = agent.run(request)
+    return result.exit_code
 
 
 def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:

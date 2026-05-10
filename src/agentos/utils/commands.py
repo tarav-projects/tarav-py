@@ -45,7 +45,7 @@ def _cmd_utils_tmp_folder_new(args: argparse.Namespace) -> int:
     project = require_explicit_agentos_project(
         project=args.project,
         project_base=args.project_base,
-        command_name="agentos utils tmp-folder new",
+        command_name="agentos stdlib utils tmp-folder new",
     )
     record_project_command_from_args(
         project=project,

@@ -5,6 +5,7 @@ import datetime
 import io
 import json
 import math
+import queue
 import subprocess
 import threading
 import time
@@ -16,11 +17,16 @@ from rich.cells import cell_len
 
 from agentos.agent import accounts as chat_accounts
 from agentos.agent import account_commands as chat_commands
+from agentos.agent import account_loop
+from agentos.agent.account_runtime import AccountStatsRequest
 from agentos.agent.providers import agent_from_config
 from agentos.agent.primitives import AgentConfig
+from agentos.claude import accounts as claude_accounts
 from agentos.cli import main
+from agentos.codex import accounts as codex_accounts
+from agentos.copilot import accounts as copilot_accounts
 from agentos.tara_tapes.core import load_tara_tape_manifest, read_tara_tape_segment_records
-from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
+from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker
 
 
 def _span_tuples(rendered) -> list[tuple[int, int, str]]:  # type: ignore[no-untyped-def]
@@ -44,6 +50,21 @@ def _offset_gradient_runs(
             palette=palette,
         )
     ]
+
+
+class _FakeAccountStatsRefreshWorker:
+    def __init__(self, refresh_id: int, payloads) -> None:  # type: ignore[no-untyped-def]
+        self.refresh_id = refresh_id
+        self.payloads = payloads
+        self.events: queue.Queue[account_loop.AccountStatsRefreshEvent] = queue.Queue()
+        self.started = False
+        self.shutdown_timeout_sec: float | None = None
+
+    def start(self) -> None:
+        self.started = True
+
+    def shutdown(self, *, timeout_sec: float) -> None:
+        self.shutdown_timeout_sec = timeout_sec
 
 
 def _account_instance(
@@ -267,7 +288,7 @@ def test_chat_accounts_stats_summarizes_configured_agents(
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
     monkeypatch.setattr(
-        chat_accounts,
+        codex_accounts,
         "_read_codex_account_rate_limits",
         lambda instance: {
             "rateLimits": {
@@ -425,7 +446,7 @@ def test_chat_accounts_stats_supports_explicit_project_target(
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
     monkeypatch.setattr(
-        chat_accounts,
+        codex_accounts,
         "_read_codex_account_rate_limits",
         lambda instance: {
             "rateLimits": {
@@ -568,7 +589,7 @@ def test_chat_accounts_stats_summarizes_configured_copilot_account(
 
     def fake_urlopen(request, timeout: int):  # type: ignore[no-untyped-def]
         assert timeout == chat_accounts.DEFAULT_ACCOUNT_TIMEOUT_SEC
-        assert request.full_url == chat_accounts.COPILOT_USAGE_API_URL
+        assert request.full_url == copilot_accounts.COPILOT_USAGE_API_URL
         assert request.get_header("Authorization") == "token gho-test-token"
         return FakeCopilotResponse(
             {
@@ -592,7 +613,7 @@ def test_chat_accounts_stats_summarizes_configured_copilot_account(
         )
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
-    monkeypatch.setattr(chat_accounts.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(copilot_accounts.urllib.request, "urlopen", fake_urlopen)
 
     assert main(["agent", "accounts", "stats"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -804,7 +825,7 @@ def test_chat_accounts_stats_refresh_usage_enables_claude_live_usage(
             },
         }
 
-    monkeypatch.setattr(chat_accounts, "_collect_claude_code_live_usage", fake_collect_live_usage)
+    monkeypatch.setattr(claude_accounts, "_collect_claude_code_live_usage", fake_collect_live_usage)
 
     assert main(["agent", "accounts", "stats", "--refresh-usage"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -1104,14 +1125,16 @@ def test_iter_chat_account_stats_refresh_payloads_converts_single_collector_fail
 
 
 def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypatch) -> None:
-    instance = _account_context(
-        provider="claude-code",
-        instance_id="claude-main",
-        label="Claude main",
-        cli_command=("claude",),
-        env=(),
-        timeout_sec=15,
-        live_usage_refresh=False,
+    agent = agent_from_config(
+        _account_instance(
+            provider="claude-code",
+            instance_id="claude-main",
+            label="Claude main",
+            cli_command=("claude",),
+            env=(),
+            timeout_sec=15,
+            live_usage_refresh=False,
+        )
     )
 
     lock = threading.Lock()
@@ -1130,7 +1153,7 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
             in_flight -= 1
 
     def fake_collect_parsed_command_payload(
-        task_instance: chat_accounts.AccountProviderContext,
+        task_agent,
         *,
         extra_args: tuple[str, ...],
         parser,
@@ -1138,7 +1161,7 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
         extra_env: dict[str, str] | None = None,
     ) -> dict[str, object]:
         del parser, cwd, extra_env
-        assert task_instance == instance
+        assert task_agent == agent
         assert extra_args == ("auth", "status", "--json")
         enter_task()
         try:
@@ -1153,7 +1176,7 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
     def fake_collect_live_usage(
         task_instance: chat_accounts.AccountProviderContext,
     ) -> dict[str, object]:
-        assert task_instance == instance
+        assert task_instance.agent == agent
         enter_task()
         try:
             time.sleep(0.05)
@@ -1170,33 +1193,28 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
             exit_task()
 
     monkeypatch.setattr(
-        chat_accounts,
-        "_collect_parsed_command_payload",
+        claude_accounts,
+        "collect_parsed_command_payload",
         fake_collect_parsed_command_payload,
     )
     monkeypatch.setattr(
-        chat_accounts,
+        claude_accounts,
         "_collect_claude_code_live_usage",
         fake_collect_live_usage,
     )
 
-    payload = chat_accounts._collect_claude_code_account_stats(instance, refresh_usage=True)
+    payload = claude_accounts.collect_claude_account_stats(
+        agent,
+        AccountStatsRequest(refresh_usage=True),
+    )
 
     assert max_in_flight >= 2
-    assert payload["check_status"] == "ok"
+    assert payload["logged_in"] is True
     assert payload["usage_status"] == "ok"
     assert payload["usage_source"] == "interactive-statusline"
 
 
-@pytest.mark.parametrize(
-    "scenario",
-    [
-        pytest.param("repeats_until_keyboard_interrupt", id="repeats-until-keyboard-interrupt"),
-        pytest.param("resets_interval_after_enter", id="resets-interval-after-enter"),
-        pytest.param("caps_interval_at_ten_minutes", id="caps-interval-at-ten-minutes"),
-    ],
-)
-def test_loop_chat_accounts_stats_interval_behavior(monkeypatch, scenario: str) -> None:
+def test_loop_chat_accounts_stats_uses_fixed_delay_interval(monkeypatch) -> None:
     args = argparse.Namespace(
         instance_ids=[],
         providers=None,
@@ -1207,97 +1225,37 @@ def test_loop_chat_accounts_stats_interval_behavior(monkeypatch, scenario: str) 
     )
 
     wait_calls: list[float] = []
+    outputs = iter(("snapshot-1", "snapshot-2", "snapshot-3"))
+    monkeypatch.setattr(
+        chat_commands,
+        "_render_chat_accounts_stats_output",
+        lambda loop_args: next(outputs),
+    )
 
-    if scenario == "repeats_until_keyboard_interrupt":
-        outputs = iter(("snapshot-1", "snapshot-2"))
-        monkeypatch.setattr(
-            chat_commands,
-            "_render_chat_accounts_stats_output",
-            lambda loop_args: next(outputs),
-        )
-
-        def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
-            del input_stream
-            wait_calls.append(interval_sec)
-            if len(wait_calls) >= 2:
-                raise KeyboardInterrupt()
-            return False
-
-        output_stream = io.StringIO()
-        exit_code = chat_commands._loop_chat_accounts_stats(
-            args,
-            input_stream=io.StringIO(),
-            output_stream=output_stream,
-            interval_sec=60.0,
-            wait_for_trigger=fake_wait,
-        )
-
-        rendered = output_stream.getvalue()
-        assert exit_code == 0
-        assert wait_calls == [60.0, 61.0]
-        assert "snapshot-1" in rendered
-        assert "snapshot-2" in rendered
-        assert rendered.count(chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE) == 1
-        assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
-        assert "[loop] refreshes every 61s; press Enter to refresh now; Ctrl-C to stop" in rendered
-
-    elif scenario == "resets_interval_after_enter":
-        outputs = iter(("snapshot-1", "snapshot-2", "snapshot-3"))
-        monkeypatch.setattr(
-            chat_commands,
-            "_render_chat_accounts_stats_output",
-            lambda loop_args: next(outputs),
-        )
-
-        def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
-            del input_stream
-            wait_calls.append(interval_sec)
-            if len(wait_calls) == 1:
-                return False
-            if len(wait_calls) == 2:
-                return True
+    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
+        del input_stream
+        wait_calls.append(interval_sec)
+        if len(wait_calls) >= 3:
             raise KeyboardInterrupt()
+        return len(wait_calls) == 2
 
-        output_stream = io.StringIO()
-        exit_code = chat_commands._loop_chat_accounts_stats(
-            args,
-            input_stream=io.StringIO(),
-            output_stream=output_stream,
-            interval_sec=60.0,
-            wait_for_trigger=fake_wait,
-        )
+    output_stream = io.StringIO()
+    exit_code = chat_commands._loop_chat_accounts_stats(
+        args,
+        input_stream=io.StringIO(),
+        output_stream=output_stream,
+        interval_sec=60.0,
+        wait_for_trigger=fake_wait,
+    )
 
-        rendered = output_stream.getvalue()
-        assert exit_code == 0
-        assert wait_calls == [60.0, 61.0, 60.0]
-        assert "[loop] refreshes every 60s; press Enter to refresh now; Ctrl-C to stop" in rendered
-        assert "[loop] refreshes every 61s; press Enter to refresh now; Ctrl-C to stop" in rendered
-
-    elif scenario == "caps_interval_at_ten_minutes":
-        monkeypatch.setattr(
-            chat_commands,
-            "_render_chat_accounts_stats_output",
-            lambda loop_args: "snapshot",
-        )
-
-        def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
-            del input_stream
-            wait_calls.append(interval_sec)
-            if len(wait_calls) >= 3:
-                raise KeyboardInterrupt()
-            return False
-
-        output_stream = io.StringIO()
-        exit_code = chat_commands._loop_chat_accounts_stats(
-            args,
-            input_stream=io.StringIO(),
-            output_stream=output_stream,
-            interval_sec=599.0,
-            wait_for_trigger=fake_wait,
-        )
-
-        assert exit_code == 0
-        assert wait_calls == [599.0, 600.0, 600.0]
+    rendered = output_stream.getvalue()
+    assert exit_code == 0
+    assert wait_calls == [60.0, 60.0, 60.0]
+    assert "snapshot-1" in rendered
+    assert "snapshot-2" in rendered
+    assert "snapshot-3" in rendered
+    assert rendered.count(chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE) == 2
+    assert "[loop] fixed-delay 60s after each refresh; press Enter to refresh now; Ctrl-C to stop" in rendered
 
 
 def test_loop_chat_accounts_stats_continues_after_non_tty_refresh_error(monkeypatch) -> None:
@@ -1348,198 +1306,266 @@ def test_loop_chat_accounts_stats_continues_after_non_tty_refresh_error(monkeypa
     assert wait_calls == 2
 
 
-def test_loop_chat_accounts_stats_fetches_before_clearing_tty(monkeypatch) -> None:
-    args = argparse.Namespace(
-        instance_ids=[],
-        providers=None,
-        refresh_usage=False,
-        full_output=False,
-        output_format="json",
-        loop=True,
+def test_account_stats_loop_controller_uses_fixed_delay_after_completion() -> None:
+    workers: list[_FakeAccountStatsRefreshWorker] = []
+
+    def worker_factory(refresh_id, payloads):  # type: ignore[no-untyped-def]
+        worker = _FakeAccountStatsRefreshWorker(refresh_id, payloads)
+        workers.append(worker)
+        return worker
+
+    controller = account_loop.AccountStatsLoopController(
+        config=account_loop.AccountStatsLoopConfig(interval_sec=60.0, tick_sec=1.0),
+        worker_factory=worker_factory,
     )
 
-    events: list[str] = []
+    controller.start(now_monotonic=10.0, payloads=lambda: iter(()))
+    workers[0].events.put(account_loop.AccountStatsRefreshDoneEvent(refresh_id=1))
+    changed = controller.drain_worker_events(now_monotonic=25.0, payloads=lambda: iter(()))
 
-    def fake_render_progressive(
-        loop_args: argparse.Namespace,
-        *,
-        frame,
-        renderer,
-        interval_sec: float,
-    ) -> None:  # type: ignore[no-untyped-def]
-        del interval_sec
-        assert loop_args is args
-        assert frame is not None
-        assert renderer is not None
-        events.append("render")
+    snapshot = controller.snapshot(now_monotonic=25.0)
+    assert changed is True
+    assert snapshot.state == "idle"
+    assert snapshot.next_refresh_at_monotonic == 85.0
+    assert "next refresh in 01:00" in snapshot.status_text
 
-    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
-        del interval_sec, input_stream
-        raise KeyboardInterrupt()
 
-    class FakeTTYOutput(io.StringIO):
-        def isatty(self) -> bool:
-            return True
+def test_account_stats_loop_controller_starts_manual_refresh_while_idle() -> None:
+    workers: list[_FakeAccountStatsRefreshWorker] = []
 
-        def write(self, text: str) -> int:
-            return super().write(text)
+    def worker_factory(refresh_id, payloads):  # type: ignore[no-untyped-def]
+        worker = _FakeAccountStatsRefreshWorker(refresh_id, payloads)
+        workers.append(worker)
+        return worker
 
-    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_progressive_tty", fake_render_progressive)
-
-    exit_code = chat_commands._loop_chat_accounts_stats(
-        args,
-        input_stream=io.StringIO(),
-        output_stream=FakeTTYOutput(),
-        interval_sec=60.0,
-        wait_for_trigger=fake_wait,
+    controller = account_loop.AccountStatsLoopController(
+        config=account_loop.AccountStatsLoopConfig(interval_sec=60.0, tick_sec=1.0),
+        worker_factory=worker_factory,
     )
 
-    assert exit_code == 0
-    assert events == ["render"]
+    changed = controller.request_refresh(now_monotonic=5.0, payloads=lambda: iter(()))
+
+    snapshot = controller.snapshot(now_monotonic=5.0)
+    assert changed is True
+    assert snapshot.state == "refreshing"
+    assert snapshot.refresh_id == 1
+    assert workers[0].started is True
 
 
-def test_loop_chat_accounts_stats_direct_tty_path_continues_after_refresh_error(monkeypatch) -> None:
-    args = argparse.Namespace(
-        instance_ids=[],
-        providers=None,
-        refresh_usage=False,
-        full_output=False,
-        output_format="usage",
-        loop=True,
+def test_account_stats_loop_controller_queues_one_manual_refresh_while_refreshing() -> None:
+    workers: list[_FakeAccountStatsRefreshWorker] = []
+
+    def worker_factory(refresh_id, payloads):  # type: ignore[no-untyped-def]
+        worker = _FakeAccountStatsRefreshWorker(refresh_id, payloads)
+        workers.append(worker)
+        return worker
+
+    controller = account_loop.AccountStatsLoopController(
+        config=account_loop.AccountStatsLoopConfig(interval_sec=60.0, tick_sec=1.0),
+        worker_factory=worker_factory,
     )
 
-    events: list[str] = []
-    render_calls = 0
-    wait_calls = 0
+    controller.start(now_monotonic=5.0, payloads=lambda: iter(()))
+    first_changed = controller.request_refresh(now_monotonic=6.0, payloads=lambda: iter(()))
+    second_changed = controller.request_refresh(now_monotonic=7.0, payloads=lambda: iter(()))
 
-    def fake_render_progressive(
-        loop_args: argparse.Namespace,
-        *,
-        frame,
-        renderer,
-        interval_sec: float,
-    ) -> None:  # type: ignore[no-untyped-def]
-        nonlocal render_calls
-        del frame, renderer, interval_sec
-        assert loop_args is args
-        render_calls += 1
-        if render_calls == 1:
-            raise RuntimeError("connection lost")
+    snapshot = controller.snapshot(now_monotonic=7.0)
+    assert first_changed is True
+    assert second_changed is False
+    assert snapshot.state == "refresh_queued"
+    assert snapshot.refresh_queued is True
+    assert len(workers) == 1
 
-    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
-        nonlocal wait_calls
-        del interval_sec, input_stream
-        wait_calls += 1
-        if wait_calls >= 2:
-            raise KeyboardInterrupt()
-        return False
 
-    class FakeTTYRenderer:
-        def __init__(self, *, output_stream) -> None:  # type: ignore[no-untyped-def]
-            del output_stream
+def test_account_stats_loop_controller_starts_queued_refresh_on_done() -> None:
+    workers: list[_FakeAccountStatsRefreshWorker] = []
 
-        def start(self) -> None:
-            events.append("renderer:start")
+    def worker_factory(refresh_id, payloads):  # type: ignore[no-untyped-def]
+        worker = _FakeAccountStatsRefreshWorker(refresh_id, payloads)
+        workers.append(worker)
+        return worker
 
-        def stop(self) -> None:
-            events.append("renderer:stop")
-
-        def paint(self, frame) -> None:  # type: ignore[no-untyped-def]
-            events.append(frame.render_text(now_monotonic=0.0))
-
-    class FakeTTYOutput(io.StringIO):
-        def isatty(self) -> bool:
-            return True
-
-    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_progressive_tty", fake_render_progressive)
-    monkeypatch.setattr(chat_commands, "_ChatAccountsStatsLoopTTYRenderer", FakeTTYRenderer)
-
-    exit_code = chat_commands._loop_chat_accounts_stats(
-        args,
-        input_stream=io.StringIO(),
-        output_stream=FakeTTYOutput(),
-        interval_sec=60.0,
-        wait_for_trigger=fake_wait,
+    controller = account_loop.AccountStatsLoopController(
+        config=account_loop.AccountStatsLoopConfig(interval_sec=60.0, tick_sec=1.0),
+        worker_factory=worker_factory,
     )
 
-    rendered = "\n".join(events)
-    assert exit_code == 0
-    assert "[refresh] error: connection lost" in rendered
-    assert render_calls == 2
-    assert wait_calls == 2
-    assert events[-1] == "renderer:stop"
+    controller.start(now_monotonic=5.0, payloads=lambda: iter(()))
+    controller.request_refresh(now_monotonic=6.0, payloads=lambda: iter(()))
+    workers[0].events.put(account_loop.AccountStatsRefreshDoneEvent(refresh_id=1))
+
+    changed = controller.drain_worker_events(now_monotonic=7.0, payloads=lambda: iter(()))
+    snapshot = controller.snapshot(now_monotonic=7.0)
+
+    assert changed is True
+    assert snapshot.state == "refreshing"
+    assert snapshot.refresh_id == 2
+    assert snapshot.refresh_queued is False
+    assert len(workers) == 2
 
 
-def test_loop_chat_accounts_stats_shows_refreshing_feedback_before_next_tty_fetch(monkeypatch) -> None:
-    args = argparse.Namespace(
-        instance_ids=[],
-        providers=None,
-        refresh_usage=False,
-        full_output=False,
-        output_format="json",
-        loop=True,
+def test_account_stats_loop_controller_ignores_stale_refresh_events() -> None:
+    workers: list[_FakeAccountStatsRefreshWorker] = []
+
+    def worker_factory(refresh_id, payloads):  # type: ignore[no-untyped-def]
+        worker = _FakeAccountStatsRefreshWorker(refresh_id, payloads)
+        workers.append(worker)
+        return worker
+
+    controller = account_loop.AccountStatsLoopController(
+        config=account_loop.AccountStatsLoopConfig(interval_sec=60.0, tick_sec=1.0),
+        render_payload=lambda payload: json.dumps(payload, sort_keys=True),
+        worker_factory=worker_factory,
     )
 
-    events: list[str] = []
-    wait_calls = 0
-
-    def fake_render_progressive(
-        loop_args: argparse.Namespace,
-        *,
-        frame,
-        renderer,
-        interval_sec: float,
-    ) -> None:  # type: ignore[no-untyped-def]
-        del interval_sec
-        assert loop_args is args
-        assert frame is not None
-        assert renderer is not None
-        events.append(f"render:{len([event for event in events if event.startswith('render:')]) + 1}")
-
-    def fake_wait(interval_sec: float, input_stream) -> bool:  # type: ignore[no-untyped-def]
-        nonlocal wait_calls
-        del interval_sec, input_stream
-        wait_calls += 1
-        events.append(f"wait:{wait_calls}")
-        if wait_calls >= 2:
-            raise KeyboardInterrupt()
-        return False
-
-    class FakeTTYOutput(io.StringIO):
-        def isatty(self) -> bool:
-            return True
-
-        def write(self, text: str) -> int:
-            return super().write(text)
-
-    monkeypatch.setattr(chat_commands, "_render_chat_accounts_stats_progressive_tty", fake_render_progressive)
-
-    exit_code = chat_commands._loop_chat_accounts_stats(
-        args,
-        input_stream=io.StringIO(),
-        output_stream=FakeTTYOutput(),
-        interval_sec=60.0,
-        wait_for_trigger=fake_wait,
+    controller.start(now_monotonic=1.0, payloads=lambda: iter(()))
+    workers[0].events.put(
+        account_loop.AccountStatsRefreshPayloadEvent(
+            refresh_id=99,
+            payload={"account_count": 1, "providers": [], "stale": True},
+        )
+    )
+    workers[0].events.put(
+        account_loop.AccountStatsRefreshPayloadEvent(
+            refresh_id=1,
+            payload={"account_count": 1, "providers": [], "current": True},
+        )
     )
 
-    assert exit_code == 0
-    assert events == [
-        "render:1",
-        "wait:1",
-        "render:2",
-        "wait:2",
+    changed = controller.drain_worker_events(now_monotonic=2.0, payloads=lambda: iter(()))
+    snapshot = controller.snapshot(now_monotonic=2.0)
+
+    assert changed is True
+    assert "current" in snapshot.body_text
+    assert "stale" not in snapshot.body_text
+
+
+def test_account_stats_loop_controller_records_payload_and_progress() -> None:
+    workers: list[_FakeAccountStatsRefreshWorker] = []
+
+    def worker_factory(refresh_id, payloads):  # type: ignore[no-untyped-def]
+        worker = _FakeAccountStatsRefreshWorker(refresh_id, payloads)
+        workers.append(worker)
+        return worker
+
+    controller = account_loop.AccountStatsLoopController(
+        config=account_loop.AccountStatsLoopConfig(interval_sec=60.0, tick_sec=1.0),
+        render_payload=lambda payload: f"snapshot:{payload['completed_count']}",
+        render_progress=lambda payload: f"progress:{payload['completed_count']}",
+        worker_factory=worker_factory,
+    )
+
+    controller.start(now_monotonic=1.0, payloads=lambda: iter(()))
+    workers[0].events.put(
+        account_loop.AccountStatsRefreshPayloadEvent(
+            refresh_id=1,
+            payload={"account_count": 2, "completed_count": 1, "providers": []},
+        )
+    )
+    controller.drain_worker_events(now_monotonic=2.0, payloads=lambda: iter(()))
+
+    snapshot = controller.snapshot(now_monotonic=2.0)
+    assert snapshot.body_text == "snapshot:1"
+    assert snapshot.refresh_progress_text == "progress:1"
+
+
+def test_account_stats_loop_controller_records_error_and_schedules_next_refresh() -> None:
+    workers: list[_FakeAccountStatsRefreshWorker] = []
+
+    def worker_factory(refresh_id, payloads):  # type: ignore[no-untyped-def]
+        worker = _FakeAccountStatsRefreshWorker(refresh_id, payloads)
+        workers.append(worker)
+        return worker
+
+    controller = account_loop.AccountStatsLoopController(
+        config=account_loop.AccountStatsLoopConfig(interval_sec=60.0, tick_sec=1.0),
+        render_error_status=lambda error: f"status:{error}",
+        render_error_body=lambda error: f"body:{error}",
+        worker_factory=worker_factory,
+    )
+
+    controller.start(now_monotonic=1.0, payloads=lambda: iter(()))
+    workers[0].events.put(account_loop.AccountStatsRefreshErrorEvent(refresh_id=1, error=RuntimeError("lost")))
+    changed = controller.drain_worker_events(now_monotonic=4.0, payloads=lambda: iter(()))
+
+    snapshot = controller.snapshot(now_monotonic=4.0)
+    assert changed is True
+    assert snapshot.state == "idle"
+    assert snapshot.refresh_error_text == "status:lost"
+    assert snapshot.body_text == "body:lost"
+    assert snapshot.next_refresh_at_monotonic == 64.0
+
+
+def test_account_stats_loop_controller_shutdown_requests_worker_shutdown() -> None:
+    workers: list[_FakeAccountStatsRefreshWorker] = []
+
+    def worker_factory(refresh_id, payloads):  # type: ignore[no-untyped-def]
+        worker = _FakeAccountStatsRefreshWorker(refresh_id, payloads)
+        workers.append(worker)
+        return worker
+
+    controller = account_loop.AccountStatsLoopController(
+        config=account_loop.AccountStatsLoopConfig(
+            interval_sec=60.0,
+            tick_sec=1.0,
+            worker_shutdown_timeout_sec=0.25,
+        ),
+        worker_factory=worker_factory,
+    )
+
+    controller.start(now_monotonic=1.0, payloads=lambda: iter(()))
+    controller.shutdown()
+
+    snapshot = controller.snapshot(now_monotonic=2.0)
+    assert workers[0].shutdown_timeout_sec == 0.25
+    assert snapshot.state == "stopping"
+    assert snapshot.refresh_id is None
+
+
+def test_account_stats_refresh_worker_emits_started_and_done_events() -> None:
+    worker = account_loop.AccountStatsRefreshWorker(
+        refresh_id=7,
+        payloads=lambda: iter(({"account_count": 0, "providers": []},)),
+    )
+
+    worker.start()
+    worker.thread.join(timeout=1.0)
+
+    events = [worker.events.get_nowait() for _ in range(worker.events.qsize())]
+    assert [event.__class__ for event in events] == [
+        account_loop.AccountStatsRefreshStartedEvent,
+        account_loop.AccountStatsRefreshPayloadEvent,
+        account_loop.AccountStatsRefreshDoneEvent,
     ]
+    assert [event.refresh_id for event in events] == [7, 7, 7]
 
 
-def test_chat_accounts_stats_loop_frame_renders_progress_body_and_countdown() -> None:
-    frame = chat_commands._ChatAccountsStatsLoopFrame(
+def test_chat_accounts_stats_loop_snapshot_renders_queued_refresh_status() -> None:
+    snapshot = account_loop.AccountStatsLoopSnapshot(
+        state="refresh_queued",
         interval_sec=60.0,
+        status_text="[loop] refreshing... queued another refresh; fixed-delay 60s; Ctrl-C to stop",
+        body_text="snapshot-pending",
+        refresh_queued=True,
+    )
+
+    rendered = snapshot.render_text(now_monotonic=5.0)
+
+    assert "queued another refresh" in rendered
+    assert "snapshot-pending" in rendered
+
+
+def test_chat_accounts_stats_loop_snapshot_renders_progress_body_and_countdown() -> None:
+    snapshot = account_loop.AccountStatsLoopSnapshot(
+        state="idle",
+        interval_sec=60.0,
+        status_text="[loop] fixed-delay 60s after each refresh; next refresh in 01:00; press Enter to refresh now; Ctrl-C to stop",
         body_text="snapshot-final",
         refresh_progress_text="[refresh] 1/2 complete; 1 pending",
         next_refresh_at_monotonic=65.0,
     )
 
-    rendered = frame.render_text(now_monotonic=5.0)
+    rendered = snapshot.render_text(now_monotonic=5.0)
 
     assert "[refresh] 1/2 complete; 1 pending" in rendered
     assert "snapshot-final" in rendered
@@ -1558,8 +1584,10 @@ def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() ->
     second_usage_main = "  usage/time | 25% / 50% = 0.5 | Burst"
     first_reset = "      resets | Mon 04-20 12:01 | 3d 11h 43m"
     second_reset = "      resets | Fri 04-17 22:00 | 10h"
-    frame = chat_commands._ChatAccountsStatsLoopFrame(
+    snapshot = account_loop.AccountStatsLoopSnapshot(
+        state="idle",
         interval_sec=60.0,
+        status_text="[loop] fixed-delay 60s after each refresh; next refresh in 01:00; press Enter to refresh now; Ctrl-C to stop",
         body_text=(
             "# Agent Accounts Usage\n"
             "\n"
@@ -1572,7 +1600,7 @@ def test_loop_rich_text_aligns_usage_time_and_reset_bars_to_shared_geometry() ->
     )
 
     rendered = chat_commands._render_chat_accounts_stats_loop_rich_text(
-        frame,
+        snapshot,
         now_monotonic=5.0,
         width=48,
     )
@@ -1674,8 +1702,10 @@ def test_loop_rich_text_keeps_ratio_bar_only_for_selected_accounts_aggregate() -
     account_usage = "  usage/time | 75% / 50% = 1.5 | Weekly 🔥"
     account_usage_main = "  usage/time | 75% / 50% = 1.5 | Weekly"
     reset = "      resets | Mon 04-20 12:01 | 3d 11h 43m"
-    frame = chat_commands._ChatAccountsStatsLoopFrame(
+    snapshot = account_loop.AccountStatsLoopSnapshot(
+        state="idle",
         interval_sec=60.0,
+        status_text="[loop] fixed-delay 60s after each refresh; next refresh in 01:00; press Enter to refresh now; Ctrl-C to stop",
         body_text=(
             "Selected accounts aggregate:\n"
             f"{aggregate_usage}\n"
@@ -1689,7 +1719,7 @@ def test_loop_rich_text_keeps_ratio_bar_only_for_selected_accounts_aggregate() -
     )
 
     rendered = chat_commands._render_chat_accounts_stats_loop_rich_text(
-        frame,
+        snapshot,
         now_monotonic=5.0,
         width=48,
     )
@@ -1737,144 +1767,6 @@ def test_loop_rich_text_keeps_ratio_bar_only_for_selected_accounts_aggregate() -
     ]
 
 
-def test_render_chat_accounts_stats_progressive_tty_repaints_each_partial_snapshot(monkeypatch) -> None:
-    args = argparse.Namespace(
-        instance_ids=[],
-        providers=None,
-        refresh_usage=False,
-        full_output=False,
-        output_format="json",
-        loop=True,
-    )
-
-    monkeypatch.setattr(
-        chat_commands,
-        "iter_chat_account_stats_refresh_payloads",
-        lambda **kwargs: iter(
-            (
-                {"account_count": 2, "pending_count": 2, "completed_count": 0, "providers": []},
-                {"account_count": 2, "providers": []},
-            )
-        ),
-    )
-
-    def fake_format(loop_args: argparse.Namespace, payload: dict[str, object]) -> str:
-        assert loop_args is args
-        pending_count = payload.get("pending_count")
-        if pending_count is not None:
-            return f"snapshot-pending-{pending_count}"
-        return "snapshot-final"
-
-    class FakeLive:
-        def __init__(self, renderable, **kwargs) -> None:  # type: ignore[no-untyped-def]
-            self.initial_renderable = renderable
-            self.kwargs = kwargs
-            self.started_with_refresh: list[bool] = []
-            self.updated_frames: list[str] = []
-
-        def start(self, *, refresh: bool = False) -> None:
-            self.started_with_refresh.append(refresh)
-
-        def update(self, renderable, *, refresh: bool = False) -> None:  # type: ignore[no-untyped-def]
-            assert refresh is True
-            self.updated_frames.append(renderable.plain)
-
-        def stop(self) -> None:
-            pass
-
-    live_instances: list[FakeLive] = []
-
-    def fake_live_factory(renderable, **kwargs) -> FakeLive:  # type: ignore[no-untyped-def]
-        live = FakeLive(renderable, **kwargs)
-        live_instances.append(live)
-        return live
-
-    monkeypatch.setattr(chat_commands, "_format_chat_accounts_stats_payload_output", fake_format)
-
-    frame = chat_commands._ChatAccountsStatsLoopFrame(interval_sec=60.0)
-    renderer = chat_commands._ChatAccountsStatsLoopTTYRenderer(
-        output_stream=io.StringIO(),
-        now_monotonic=lambda: 0.0,
-        live_factory=fake_live_factory,
-    )
-
-    chat_commands._render_chat_accounts_stats_progressive_tty(
-        args,
-        frame=frame,
-        renderer=renderer,
-        interval_sec=60.0,
-    )
-
-    assert len(live_instances) == 1
-    live = live_instances[0]
-    assert live.kwargs["screen"] is True
-    assert live.kwargs["auto_refresh"] is False
-    assert live.kwargs["transient"] is False
-    assert live.started_with_refresh == [True]
-    rendered_frames = live.updated_frames
-    assert len(rendered_frames) == 3
-    assert rendered_frames[0].startswith(chat_commands._CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE)
-    assert "snapshot-pending-2" in rendered_frames[1]
-    assert "[refresh] 0/2 complete; 2 pending" in rendered_frames[1]
-    assert "snapshot-final" in rendered_frames[2]
-    assert "next refresh in" not in rendered_frames[2]
-
-
-def test_wait_for_chat_accounts_loop_trigger_with_tty_countdown_repaints_full_frame(monkeypatch) -> None:
-    wait_times = iter((0.0, 1.0))
-    renderer_times = iter((1.0, 2.0))
-    monkeypatch.setattr(chat_commands.time, "monotonic", lambda: next(wait_times))
-    monkeypatch.setattr(chat_commands.time, "sleep", lambda seconds: None)
-
-    class FakeLive:
-        def __init__(self, renderable, **kwargs) -> None:  # type: ignore[no-untyped-def]
-            del renderable
-            self.kwargs = kwargs
-            self.updated_frames: list[str] = []
-
-        def start(self, *, refresh: bool = False) -> None:
-            assert refresh is True
-
-        def update(self, renderable, *, refresh: bool = False) -> None:  # type: ignore[no-untyped-def]
-            assert refresh is True
-            self.updated_frames.append(renderable.plain)
-
-        def stop(self) -> None:
-            pass
-
-    live_instances: list[FakeLive] = []
-
-    def fake_live_factory(renderable, **kwargs) -> FakeLive:  # type: ignore[no-untyped-def]
-        live = FakeLive(renderable, **kwargs)
-        live_instances.append(live)
-        return live
-
-    frame = chat_commands._ChatAccountsStatsLoopFrame(
-        interval_sec=2.0,
-        body_text="snapshot-final",
-    )
-    frame.finish_refresh(next_refresh_at_monotonic=2.0)
-    renderer = chat_commands._ChatAccountsStatsLoopTTYRenderer(
-        output_stream=io.StringIO(),
-        now_monotonic=lambda: next(renderer_times),
-        live_factory=fake_live_factory,
-    )
-
-    triggered_by_user = chat_commands._wait_for_chat_accounts_loop_trigger_with_tty_countdown(
-        frame,
-        renderer,
-        io.StringIO(),
-    )
-
-    assert len(live_instances) == 1
-    assert live_instances[0].kwargs["screen"] is True
-    rendered = "\n".join(live_instances[0].updated_frames)
-    assert triggered_by_user is False
-    assert rendered.count("snapshot-final") == 2
-    assert "next refresh in 00:01" in rendered
-    assert "next refresh in 00:00" in rendered
-
-
 def test_loop_chat_accounts_stats_tty_polls_input_while_refresh_runs(monkeypatch) -> None:
     args = argparse.Namespace(
         instance_ids=[],
@@ -1920,7 +1812,7 @@ def test_loop_chat_accounts_stats_tty_polls_input_while_refresh_runs(monkeypatch
 
         def paint(self, frame) -> None:  # type: ignore[no-untyped-def]
             self.frames.append(frame.body_text)
-            events.append(f"paint:{frame.refreshing}:{frame.interval_sec}:{frame.body_text}")
+            events.append(frame.render_text(now_monotonic=0.0))
 
     input_calls = 0
 
@@ -1965,6 +1857,8 @@ def test_loop_chat_accounts_stats_tty_polls_input_while_refresh_runs(monkeypatch
 
     assert exit_code == 0
     assert "input:enter-during-refresh" in events
+    assert events.count("refresh:start") == 2
+    assert "queued another refresh" in "\n".join(events)
     assert "snapshot-final" in "\n".join(events)
     assert events[-1] == "renderer:stop"
 
@@ -2093,6 +1987,13 @@ def test_loop_chat_accounts_stats_tty_stops_renderer_promptly_on_ctrl_c_during_r
     monkeypatch.setattr(chat_commands, "iter_chat_account_stats_refresh_payloads", fake_iter_refresh_payloads)
     monkeypatch.setattr(chat_commands, "_ChatAccountsStatsLoopTTYRenderer", FakeTTYRenderer)
     monkeypatch.setattr(chat_commands, "_chat_accounts_loop_input_triggered", fake_input_triggered)
+    original_shutdown = account_loop.AccountStatsRefreshWorker.shutdown
+
+    def observed_shutdown(self, *, timeout_sec: float) -> None:  # type: ignore[no-untyped-def]
+        events.append(f"worker:shutdown:{timeout_sec}")
+        original_shutdown(self, timeout_sec=timeout_sec)
+
+    monkeypatch.setattr(account_loop.AccountStatsRefreshWorker, "shutdown", observed_shutdown)
 
     start = time.perf_counter()
     try:
@@ -2108,7 +2009,7 @@ def test_loop_chat_accounts_stats_tty_stops_renderer_promptly_on_ctrl_c_during_r
 
     assert exit_code == 0
     assert elapsed < 0.5
-    assert events == ["renderer:start", "paint:True", "renderer:stop"]
+    assert events == ["renderer:start", "paint:True", "worker:shutdown:0.05", "renderer:stop"]
     assert worker_finished.wait(timeout=1.0)
 
 
@@ -2240,7 +2141,7 @@ def test_chat_accounts_stats_supports_compact_usage_output(
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
     monkeypatch.setattr(
-        chat_accounts,
+        codex_accounts,
         "_read_codex_account_rate_limits",
         lambda instance: {
             "rateLimits": {
@@ -2937,7 +2838,7 @@ def test_chat_accounts_stats_usage_compacts_errors(
 
     error_monkeys = {
         "codex_rate_limit_failed": lambda: monkeypatch.setattr(
-            chat_accounts,
+            codex_accounts,
             "_read_codex_account_rate_limits",
             lambda instance: (_ for _ in ()).throw(
                 chat_accounts.AccountCommandError(
@@ -2948,7 +2849,7 @@ def test_chat_accounts_stats_usage_compacts_errors(
             ),
         ),
         "codex_token_expired": lambda: monkeypatch.setattr(
-            chat_accounts,
+            codex_accounts,
             "_read_codex_account_rate_limits",
             lambda instance: (_ for _ in ()).throw(
                 chat_accounts.AccountCommandError(
@@ -2965,7 +2866,7 @@ def test_chat_accounts_stats_usage_compacts_errors(
             ),
         ),
         "claude_auth_failed": lambda: monkeypatch.setattr(
-            chat_accounts,
+            claude_accounts,
             "_collect_claude_code_live_usage",
             lambda instance: (_ for _ in ()).throw(
                 chat_accounts.AccountCommandError(
@@ -3116,7 +3017,7 @@ def test_chat_accounts_stats_usage_shows_top_level_selected_accounts_aggregate(
         }
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
-    monkeypatch.setattr(chat_accounts, "_read_codex_account_rate_limits", fake_codex_usage)
+    monkeypatch.setattr(codex_accounts, "_read_codex_account_rate_limits", fake_codex_usage)
 
     assert main(["agent", "accounts", "stats", "--output", "usage"]) == 0
     output = capsys.readouterr().out
@@ -3166,12 +3067,9 @@ def test_codex_account_stats_uses_provider_native_accounts_model(
 
     observed: dict[str, object] = {}
 
-    def fake_codex_usage(instance) -> dict[str, object]:
-        from agentos.agent.accounts import AccountProviderContext
-
-        observed["instance_type"] = type(instance)
-        assert isinstance(instance, AccountProviderContext)
-        assert instance.instance_id == "codex-main"
+    def fake_codex_usage(agent) -> dict[str, object]:
+        observed["agent_type"] = type(agent)
+        assert agent.instance_id == "codex-main"
         return {
             "rateLimits": {
                 "limitId": "codex",
@@ -3184,12 +3082,12 @@ def test_codex_account_stats_uses_provider_native_accounts_model(
         }
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
-    monkeypatch.setattr(chat_accounts, "_read_codex_account_rate_limits", fake_codex_usage)
+    monkeypatch.setattr(codex_accounts, "_read_codex_account_rate_limits", fake_codex_usage)
 
     assert main(["agent", "accounts", "stats", "--provider", "codex"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert observed["instance_type"].__name__ == "AccountProviderContext"
+    assert observed["agent_type"].__name__ == "CodexAgent"
     providers = {provider["provider"]: provider for provider in payload["providers"]}
     codex_account = providers["codex"]["accounts"][0]
     assert codex_account["id"] == "codex-main"
@@ -3285,7 +3183,7 @@ def test_chat_accounts_stats_usage_formats_account_check_errors_nicely(
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
     monkeypatch.setattr(
-        chat_accounts,
+        codex_accounts,
         "_read_codex_account_rate_limits",
         lambda instance: {
             "rateLimits": {
@@ -3337,7 +3235,7 @@ def test_chat_accounts_stats_history_accumulates_into_month_segment(
 
 
 def test_parse_claude_code_live_usage_output_derives_period_bounds() -> None:
-    payload = chat_accounts._parse_claude_code_live_usage_output(
+    payload = claude_accounts._parse_claude_code_live_usage_output(
         "\n".join(
             [
                 json.dumps(
@@ -3414,7 +3312,7 @@ def test_parse_copilot_usage_response_falls_back_to_monthly_quotas() -> None:
 
 
 def test_parse_claude_code_statusline_usage_output_includes_five_hour_and_seven_day() -> None:
-    payload = chat_accounts._parse_claude_code_statusline_usage_output(
+    payload = claude_accounts._parse_claude_code_statusline_usage_output(
         {
             "session_id": "session-123",
             "transcript_path": "/Users/pereiro/.claude/projects/tmp/session-123.jsonl",
@@ -3467,7 +3365,7 @@ def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -
     )
 
     monkeypatch.setattr(
-        chat_accounts,
+        claude_accounts,
         "_collect_claude_code_live_usage_from_statusline",
         lambda instance: (_ for _ in ()).throw(
             chat_accounts.AccountCommandError(
@@ -3477,7 +3375,7 @@ def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -
         ),
     )
     monkeypatch.setattr(
-        chat_accounts,
+        claude_accounts,
         "_collect_claude_code_live_usage_from_stream_json",
         lambda instance: {
             "usage_status": "ok",
@@ -3486,7 +3384,7 @@ def test_collect_claude_code_live_usage_falls_back_to_stream_json(monkeypatch) -
         },
     )
 
-    payload = chat_accounts._collect_claude_code_live_usage(instance)
+    payload = claude_accounts._collect_claude_code_live_usage(instance)
     assert payload["usage_status"] == "ok"
     assert payload["usage_source"] == "live-refresh"
     assert payload["usage_summary"] == "Weekly 42%"
@@ -3539,12 +3437,12 @@ def test_read_codex_account_rate_limits_ignores_app_server_notifications(monkeyp
     )
 
     monkeypatch.setattr(
-        chat_accounts.subprocess,
+        codex_accounts.subprocess,
         "Popen",
         lambda *args, **kwargs: fake_process,
     )
     monkeypatch.setattr(
-        chat_accounts,
+        codex_accounts,
         "_write_json_line",
         lambda process, payload: observed_requests.append(payload),
     )
@@ -3554,7 +3452,7 @@ def test_read_codex_account_rate_limits_ignores_app_server_notifications(monkeyp
         lambda process, *, timeout_sec: next(response_iter),
     )
 
-    payload = chat_accounts._read_codex_account_rate_limits(instance)
+    payload = codex_accounts._read_codex_account_rate_limits(instance.agent)
 
     assert payload == {"rateLimits": {"limitId": "codex"}}
     assert observed_requests == [
@@ -3626,7 +3524,7 @@ def test_chat_accounts_stats_keeps_per_account_errors_in_payload(
 
     monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
     monkeypatch.setattr(
-        chat_accounts,
+        codex_accounts,
         "_read_codex_account_rate_limits",
         lambda instance: {
             "rateLimits": {

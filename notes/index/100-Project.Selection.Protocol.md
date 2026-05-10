@@ -59,7 +59,7 @@ When both selectors are present:
 Example:
 
 ```sh
-agentos prefix next --project ../agentos-md --project-base agentos-md --target notes/live
+agentos stdlib prefix next --project ../agentos-md --project-base agentos-md --target notes/live
 ```
 
 This is useful when the caller is outside the project tree but still wants an identity check.
@@ -69,15 +69,15 @@ This is useful when the caller is outside the project tree but still wants an id
 For callers already inside the intended project tree:
 
 ```sh
-agentos prefix next --project-base agentos-py --target notes/index
-agentos prefix next --project-base agentos-py --target notes/live
-agentos prefix next --project-base agentos-py --target dev/live
+agentos stdlib prefix next --project-base agentos-py --target notes/index
+agentos stdlib prefix next --project-base agentos-py --target notes/live
+agentos stdlib prefix next --project-base agentos-py --target dev/live
 ```
 
 For callers outside the intended project tree:
 
 ```sh
-agentos prefix next --project /path/to/agentos-py --project-base agentos-py --target notes/index
+agentos stdlib prefix next --project /path/to/agentos-py --project-base agentos-py --target notes/index
 ```
 
 ## Why Not `--project=<name>`

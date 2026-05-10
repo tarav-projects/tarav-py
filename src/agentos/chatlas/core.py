@@ -28,8 +28,8 @@ from agentos.agent.session_refs import (
     BackingArtifact,
     ProviderSessionRef,
     backing_artifacts_from_sources,
-    coerce_timestamp,
 )
+from agentos.agent.session_utils import coerce_timestamp
 from agentos.chatlas._cache_io import (
     load_chatlas_cache_section,
     write_chatlas_cache_section,

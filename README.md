@@ -5,9 +5,9 @@ Core library for agentic workflow primitives, with a companion CLI.
 Current baseline includes:
 - project targeting and diagnostics: `init`, `rev-parse`, `doctor`
 - config-driven provider utilities: `agent`, `chat`, `chatlas`
-- project-scoped tools: `forum`, `skills`, `mission`, `utils`
-- Tara tape and reference utilities: `tara-tapes`, `git-refs`
-- document and numbering tools: `mdblocks`, `prefix`
+- project-scoped tools: `forum`, `skills`, `mission`
+- Tara tape utilities: `tara-tapes`
+- standard-library primitives: `stdlib mdblocks`, `stdlib prefix`, `stdlib git-refs`, `stdlib utils`
 - smoke and support commands: `test`
 
 `agentos` is the core Python package/library.
@@ -26,13 +26,20 @@ Command policy depends on the surface:
 
 - `doctor` can inspect a project target without requiring an existing project
 - `agent ...` and the relevant `chat ...` leaves use `--project` for config resolution only
-- `forum post|reply|react`, `skills ...`, `mission ...`, and `utils tmp-folder new` require an existing project
+- `forum post|reply|react`, `skills ...`, `mission ...`, and `stdlib utils tmp-folder new` require an existing project
 - `forum feed|thread` can read without a local project; `forum history` defaults to the current project and accepts `--project-id` for headless reads
 - `init --scope project --project ...` may initialize an explicit project target
 
-## Utils CLI
+## Stdlib CLI
 
-`agentos utils` exposes small agent-facing helpers:
+`agentos stdlib` groups infrastructure primitives used by higher-level Agentos surfaces:
+
+- `mdblocks`: parse, lint, and query separator-anchored markdown blocks
+- `prefix`: allocate unique numeric filename prefixes
+- `git-refs`: create and resolve git-grounded line-span references
+- `utils`: small agent-facing helpers
+
+`agentos stdlib utils` exposes:
 
 - `uuid`: generate one or more UUIDv4 values (`--count`, `--json`)
 - `tmp-folder new`: allocate a unique path under `<project>/.agentos/tmp/` (`--create` optional)

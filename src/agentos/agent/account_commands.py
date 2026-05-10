@@ -2,17 +2,14 @@ from __future__ import annotations
 
 import argparse
 import math
-import queue
 import re
 import select
 import sys
-import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, TextIO
+from typing import Any, Callable, Iterator, TextIO
 
-from agentos._core.errors import CliError
 from agentos._core.project import normalize_project_target
 from agentos.agent._cli_common import format_json_output, optional_string_tuple
 from agentos.agent.accounts import (
@@ -21,12 +18,14 @@ from agentos.agent.accounts import (
     format_chat_account_stats_usage,
     iter_chat_account_stats_refresh_payloads,
 )
+from agentos.agent.account_loop import (
+    AccountStatsLoopController,
+    AccountStatsLoopConfig,
+    AccountStatsLoopSnapshot,
+)
 
 
 _CHAT_ACCOUNTS_LOOP_INTERVAL_SEC = 60.0
-_CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC = 60.0
-_CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC = 1.0
-_CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC = 600.0
 _CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC = 1.0
 _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE = "[loop] refreshing..."
 _CHAT_ACCOUNTS_INLINE_BAR_GROUP_ID = "chat-accounts-stats"
@@ -116,64 +115,6 @@ class _UsageTimeLineData:
     ratio: float | None
 
 
-@dataclass
-class _ChatAccountsStatsLoopFrame:
-    interval_sec: float
-    body_text: str = ""
-    refresh_progress_text: str | None = None
-    refresh_error_text: str | None = None
-    next_refresh_at_monotonic: float | None = None
-    refreshing: bool = False
-
-    def begin_refresh(self, *, interval_sec: float) -> None:
-        self.interval_sec = interval_sec
-        self.refreshing = True
-        self.next_refresh_at_monotonic = None
-        self.refresh_progress_text = None
-        self.refresh_error_text = None
-        if not self.body_text:
-            self.body_text = _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE
-
-    def apply_payload(self, *, rendered_body_text: str, refresh_progress_text: str | None) -> None:
-        self.body_text = rendered_body_text
-        self.refresh_progress_text = refresh_progress_text
-        self.refresh_error_text = None
-
-    def apply_error(self, error: Exception) -> None:
-        self.refresh_progress_text = None
-        self.refresh_error_text = _format_chat_accounts_loop_error_status(error)
-        if not self.body_text or self.body_text == _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE:
-            self.body_text = _format_chat_accounts_loop_error_body(error)
-
-    def finish_refresh(self, *, next_refresh_at_monotonic: float) -> None:
-        self.refreshing = False
-        self.refresh_progress_text = None
-        self.next_refresh_at_monotonic = next_refresh_at_monotonic
-
-    def remaining_refresh_sec(self, *, now_monotonic: float) -> float:
-        if self.next_refresh_at_monotonic is None:
-            return 0.0
-        return max(0.0, self.next_refresh_at_monotonic - now_monotonic)
-
-    def render_text(self, *, now_monotonic: float) -> str:
-        sections: list[str] = []
-        sections.append(self.footer_text(now_monotonic=now_monotonic))
-        if self.refresh_progress_text is not None:
-            sections.append(self.refresh_progress_text)
-        if self.refresh_error_text is not None:
-            sections.append(self.refresh_error_text)
-        sections.append(self.body_text or _CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE)
-        return "\n\n".join(sections)
-
-    def footer_text(self, *, now_monotonic: float) -> str:
-        if self.refreshing or self.next_refresh_at_monotonic is None:
-            return _format_chat_accounts_loop_refreshing_status(self.interval_sec)
-        return _format_chat_accounts_loop_status(
-            self.interval_sec,
-            remaining_sec=self.remaining_refresh_sec(now_monotonic=now_monotonic),
-        )
-
-
 class _ChatAccountsStatsLoopTTYRenderer:
     def __init__(
         self,
@@ -222,7 +163,7 @@ class _ChatAccountsStatsLoopTTYRenderer:
         self._live = None
         live.stop()
 
-    def paint(self, frame: _ChatAccountsStatsLoopFrame) -> None:
+    def paint(self, view_state: AccountStatsLoopSnapshot) -> None:
         if self._live is None:
             self.start()
 
@@ -230,7 +171,7 @@ class _ChatAccountsStatsLoopTTYRenderer:
         assert self._console is not None
         self._live.update(
             _render_chat_accounts_stats_loop_rich_text(
-                frame,
+                view_state,
                 now_monotonic=self.now_monotonic(),
                 width=self._console.width,
             ),
@@ -238,66 +179,15 @@ class _ChatAccountsStatsLoopTTYRenderer:
         )
 
 
-@dataclass(frozen=True)
-class _ChatAccountsStatsRefreshPayloadEvent:
-    payload: dict[str, object]
-
-
-@dataclass(frozen=True)
-class _ChatAccountsStatsRefreshErrorEvent:
-    error: Exception
-
-
-@dataclass(frozen=True)
-class _ChatAccountsStatsRefreshDoneEvent:
-    pass
-
-
-_ChatAccountsStatsRefreshEvent = (
-    _ChatAccountsStatsRefreshPayloadEvent
-    | _ChatAccountsStatsRefreshErrorEvent
-    | _ChatAccountsStatsRefreshDoneEvent
-)
-
-
-class _ChatAccountsStatsRefreshWorker:
-    def __init__(self, args: argparse.Namespace) -> None:
-        self.args = args
-        self.events: queue.Queue[_ChatAccountsStatsRefreshEvent] = queue.Queue()
-        self.thread = threading.Thread(
-            target=self._run,
-            name="agentos-agent-accounts-refresh",
-            daemon=True,
-        )
-
-    def start(self) -> None:
-        self.thread.start()
-
-    def _run(self) -> None:
-        try:
-            for payload in iter_chat_account_stats_refresh_payloads(
-                instance_ids=optional_string_tuple(self.args.instance_ids),
-                providers=optional_string_tuple(self.args.providers),
-                refresh_usage=self.args.refresh_usage,
-                full_output=self.args.full_output,
-                start_path=_config_start_path(self.args),
-            ):
-                self.events.put(_ChatAccountsStatsRefreshPayloadEvent(payload))
-        except Exception as exc:
-            self.events.put(_ChatAccountsStatsRefreshErrorEvent(exc))
-        finally:
-            self.events.put(_ChatAccountsStatsRefreshDoneEvent())
-
-
 def _render_chat_accounts_stats_loop_rich_text(
-    frame: _ChatAccountsStatsLoopFrame,
+    view_state: AccountStatsLoopSnapshot,
     *,
     now_monotonic: float,
     width: int,
 ) -> Any:
     from rich.text import Text
 
-    rendered_text = frame.render_text(now_monotonic=now_monotonic)
+    rendered_text = view_state.render_text(now_monotonic=now_monotonic)
     lines = rendered_text.splitlines()
     rows = _inline_bar_rows(lines)
     group_geometries = _inline_bar_group_geometries(rows, fallback_width=width)
@@ -839,7 +729,7 @@ def _loop_chat_accounts_stats(
     output_stream = output_stream or sys.stdout
     wait_for_trigger = wait_for_trigger or _wait_for_chat_accounts_loop_trigger
     tty_output = _stream_is_tty(output_stream)
-    if tty_output and wait_for_trigger is _wait_for_chat_accounts_loop_trigger:
+    if tty_output:
         return _loop_chat_accounts_stats_tty(
             args,
             input_stream=input_stream,
@@ -847,71 +737,28 @@ def _loop_chat_accounts_stats(
             interval_sec=interval_sec,
         )
 
-    current_interval_sec = interval_sec
-    tty_frame = _ChatAccountsStatsLoopFrame(interval_sec=current_interval_sec) if tty_output else None
-    tty_renderer = (
-        _ChatAccountsStatsLoopTTYRenderer(output_stream=output_stream) if tty_output else None
-    )
-
     first_iteration = True
-    if tty_renderer is not None:
-        tty_renderer.start()
     try:
         while True:
-            if tty_output:
-                assert tty_frame is not None
-                assert tty_renderer is not None
-                try:
-                    _render_chat_accounts_stats_progressive_tty(
-                        args,
-                        frame=tty_frame,
-                        renderer=tty_renderer,
-                        interval_sec=current_interval_sec,
-                    )
-                except Exception as exc:
-                    tty_frame.apply_error(exc)
-                    tty_renderer.paint(tty_frame)
-                tty_frame.finish_refresh(next_refresh_at_monotonic=time.monotonic() + current_interval_sec)
-                tty_renderer.paint(tty_frame)
-            else:
-                try:
-                    rendered_output = _render_chat_accounts_stats_output(args)
-                except Exception as exc:
-                    rendered_output = _format_chat_accounts_loop_error_body(exc)
-                if not first_iteration:
-                    output_stream.write("\n")
-                output_stream.write(rendered_output)
-                output_stream.write(
-                    f"\n\n[loop] refreshes every {int(current_interval_sec)}s; press Enter to refresh now; Ctrl-C to stop\n"
-                )
-                output_stream.flush()
+            try:
+                rendered_output = _render_chat_accounts_stats_output(args)
+            except Exception as exc:
+                rendered_output = _format_chat_accounts_loop_error_body(exc)
+            if not first_iteration:
+                output_stream.write("\n")
+            output_stream.write(rendered_output)
+            output_stream.write(
+                f"\n\n[loop] fixed-delay {int(interval_sec)}s after each refresh; press Enter to refresh now; Ctrl-C to stop\n"
+            )
+            output_stream.flush()
             first_iteration = False
 
-            if tty_output and wait_for_trigger is _wait_for_chat_accounts_loop_trigger:
-                triggered_by_user = _wait_for_chat_accounts_loop_trigger_with_tty_countdown(
-                    tty_frame,
-                    tty_renderer,
-                    input_stream,
-                )
-            else:
-                triggered_by_user = wait_for_trigger(current_interval_sec, input_stream)
+            wait_for_trigger(interval_sec, input_stream)
 
-            if triggered_by_user:
-                current_interval_sec = _CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC
-            else:
-                current_interval_sec = min(
-                    _CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC,
-                    current_interval_sec + _CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC,
-                )
-
-            if not tty_output:
-                output_stream.write(_CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n")
-                output_stream.flush()
+            output_stream.write(_CHAT_ACCOUNTS_LOOP_REFRESHING_MESSAGE + "\n")
+            output_stream.flush()
     except KeyboardInterrupt:
         return 0
-    finally:
-        if tty_renderer is not None:
-            tty_renderer.stop()
 
 
 def _loop_chat_accounts_stats_tty(
@@ -921,113 +768,55 @@ def _loop_chat_accounts_stats_tty(
     output_stream: TextIO,
     interval_sec: float,
 ) -> int:
-    current_interval_sec = interval_sec
-    frame = _ChatAccountsStatsLoopFrame(interval_sec=current_interval_sec)
+    loop_config = AccountStatsLoopConfig(
+        interval_sec=interval_sec,
+        tick_sec=_CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC,
+    )
+    loop_controller = AccountStatsLoopController(
+        config=loop_config,
+        render_payload=lambda payload: _format_chat_accounts_stats_payload_output(args, payload),
+        render_progress=_format_chat_accounts_refresh_progress,
+        render_error_status=_format_chat_accounts_loop_error_status,
+        render_error_body=_format_chat_accounts_loop_error_body,
+    )
     renderer = _ChatAccountsStatsLoopTTYRenderer(output_stream=output_stream)
-    refresh_worker: _ChatAccountsStatsRefreshWorker | None = None
+
+    def payloads() -> Iterator[dict[str, object]]:
+        return iter_chat_account_stats_refresh_payloads(
+            instance_ids=optional_string_tuple(args.instance_ids),
+            providers=optional_string_tuple(args.providers),
+            refresh_usage=args.refresh_usage,
+            full_output=args.full_output,
+            start_path=_config_start_path(args),
+        )
 
     renderer.start()
     try:
-        refresh_worker = _start_chat_accounts_tty_refresh(
-            args,
-            frame=frame,
-            renderer=renderer,
-            interval_sec=current_interval_sec,
-        )
+        loop_controller.start(now_monotonic=time.monotonic(), payloads=payloads)
+        renderer.paint(loop_controller.snapshot(now_monotonic=time.monotonic()))
         while True:
-            if refresh_worker is not None:
-                refresh_done = _drain_chat_accounts_tty_refresh_events(
-                    args,
-                    frame=frame,
-                    renderer=renderer,
-                    worker=refresh_worker,
-                )
-                if refresh_done:
-                    refresh_worker = None
-                    frame.finish_refresh(next_refresh_at_monotonic=time.monotonic() + current_interval_sec)
-                    renderer.paint(frame)
+            now_monotonic = time.monotonic()
+            if loop_controller.drain_worker_events(now_monotonic=now_monotonic, payloads=payloads):
+                renderer.paint(loop_controller.snapshot(now_monotonic=time.monotonic()))
 
-            if refresh_worker is None:
-                remaining_sec = frame.remaining_refresh_sec(now_monotonic=time.monotonic())
-                if frame.next_refresh_at_monotonic is None or remaining_sec <= 0:
-                    current_interval_sec = min(
-                        _CHAT_ACCOUNTS_LOOP_INTERVAL_MAX_SEC,
-                        current_interval_sec + _CHAT_ACCOUNTS_LOOP_INTERVAL_INCREMENT_SEC,
-                    )
-                    refresh_worker = _start_chat_accounts_tty_refresh(
-                        args,
-                        frame=frame,
-                        renderer=renderer,
-                        interval_sec=current_interval_sec,
-                    )
-                    continue
-                wait_timeout = min(_CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC, remaining_sec)
-            else:
-                wait_timeout = _CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC
-
-            if _chat_accounts_loop_input_triggered(input_stream, wait_timeout):
-                current_interval_sec = _CHAT_ACCOUNTS_LOOP_INTERVAL_RESET_SEC
-                if refresh_worker is None:
-                    refresh_worker = _start_chat_accounts_tty_refresh(
-                        args,
-                        frame=frame,
-                        renderer=renderer,
-                        interval_sec=current_interval_sec,
-                    )
-                else:
-                    frame.interval_sec = current_interval_sec
-                    renderer.paint(frame)
+            now_monotonic = time.monotonic()
+            if loop_controller.tick(now_monotonic=now_monotonic, payloads=payloads):
+                renderer.paint(loop_controller.snapshot(now_monotonic=time.monotonic()))
                 continue
 
-            renderer.paint(frame)
+            wait_timeout = loop_controller.wait_timeout(now_monotonic=time.monotonic())
+
+            if _chat_accounts_loop_input_triggered(input_stream, wait_timeout):
+                loop_controller.request_refresh(now_monotonic=time.monotonic(), payloads=payloads)
+                renderer.paint(loop_controller.snapshot(now_monotonic=time.monotonic()))
+                continue
+
+            renderer.paint(loop_controller.snapshot(now_monotonic=time.monotonic()))
     except KeyboardInterrupt:
         return 0
     finally:
+        loop_controller.shutdown()
         renderer.stop()
-
-
-def _start_chat_accounts_tty_refresh(
-    args: argparse.Namespace,
-    *,
-    frame: _ChatAccountsStatsLoopFrame,
-    renderer: _ChatAccountsStatsLoopTTYRenderer,
-    interval_sec: float,
-) -> _ChatAccountsStatsRefreshWorker:
-    frame.begin_refresh(interval_sec=interval_sec)
-    renderer.paint(frame)
-    worker = _ChatAccountsStatsRefreshWorker(args)
-    worker.start()
-    return worker
-
-
-def _drain_chat_accounts_tty_refresh_events(
-    args: argparse.Namespace,
-    *,
-    frame: _ChatAccountsStatsLoopFrame,
-    renderer: _ChatAccountsStatsLoopTTYRenderer,
-    worker: _ChatAccountsStatsRefreshWorker,
-) -> bool:
-    refresh_done = False
-    while True:
-        try:
-            event = worker.events.get_nowait()
-        except queue.Empty:
-            break
-
-        if isinstance(event, _ChatAccountsStatsRefreshPayloadEvent):
-            frame.apply_payload(
-                rendered_body_text=_format_chat_accounts_stats_payload_output(args, event.payload),
-                refresh_progress_text=_format_chat_accounts_refresh_progress(event.payload),
-            )
-            renderer.paint(frame)
-            continue
-        if isinstance(event, _ChatAccountsStatsRefreshErrorEvent):
-            frame.apply_error(event.error)
-            renderer.paint(frame)
-            refresh_done = True
-            continue
-        refresh_done = True
-    return refresh_done
 
 
 def _format_chat_accounts_loop_error_status(error: Exception) -> str:
@@ -1050,32 +839,6 @@ def _format_chat_accounts_loop_error_message(error: Exception) -> str:
     if message:
         return message
     return error.__class__.__name__
-
-
-def _render_chat_accounts_stats_progressive_tty(
-    args: argparse.Namespace,
-    *,
-    frame: _ChatAccountsStatsLoopFrame | None,
-    renderer: _ChatAccountsStatsLoopTTYRenderer | None,
-    interval_sec: float,
-) -> None:
-    if frame is None or renderer is None:
-        raise CliError("TTY frame rendering requires both a frame and renderer")
-
-    frame.begin_refresh(interval_sec=interval_sec)
-    renderer.paint(frame)
-    for payload in iter_chat_account_stats_refresh_payloads(
-        instance_ids=optional_string_tuple(args.instance_ids),
-        providers=optional_string_tuple(args.providers),
-        refresh_usage=args.refresh_usage,
-        full_output=args.full_output,
-        start_path=_config_start_path(args),
-    ):
-        frame.apply_payload(
-            rendered_body_text=_format_chat_accounts_stats_payload_output(args, payload),
-            refresh_progress_text=_format_chat_accounts_refresh_progress(payload),
-        )
-        renderer.paint(frame)
 
 
 def _format_chat_accounts_refresh_progress(payload: dict[str, object]) -> str | None:
@@ -1109,38 +872,6 @@ def _chat_accounts_loop_input_triggered(input_stream: TextIO, timeout_sec: float
     return _wait_for_chat_accounts_loop_trigger(timeout_sec, input_stream)
 
 
-def _wait_for_chat_accounts_loop_trigger_with_tty_countdown(
-    frame: _ChatAccountsStatsLoopFrame | None,
-    renderer: _ChatAccountsStatsLoopTTYRenderer | None,
-    input_stream: TextIO,
-    *,
-    tick_sec: float = _CHAT_ACCOUNTS_LOOP_COUNTDOWN_TICK_SEC,
-) -> bool:
-    if frame is None or renderer is None:
-        raise CliError("TTY countdown requires both a frame and renderer")
-    if frame.next_refresh_at_monotonic is None:
-        return False
-
-    tty_input = _stream_is_tty(input_stream)
-    while True:
-        remaining_sec = frame.remaining_refresh_sec(now_monotonic=time.monotonic())
-        if remaining_sec <= 0:
-            renderer.paint(frame)
-            return False
-
-        wait_timeout = min(tick_sec, remaining_sec)
-        if tty_input:
-            ready, _, _ = select.select([input_stream], [], [], wait_timeout)
-            if ready:
-                input_stream.readline()
-                return True
-        else:
-            time.sleep(wait_timeout)
-        renderer.paint(frame)
-        if remaining_sec <= tick_sec:
-            return False
-
-
 def _stream_is_tty(stream: TextIO) -> bool:
     isatty = getattr(stream, "isatty", None)
     if isatty is None:
@@ -1149,28 +880,3 @@ def _stream_is_tty(stream: TextIO) -> bool:
         return bool(isatty())
     except OSError:
         return False
-
-
-def _format_chat_accounts_loop_status(interval_sec: float, *, remaining_sec: float | None = None) -> str:
-    interval_text = f"{int(interval_sec)}s"
-    if remaining_sec is None:
-        return f"[loop] refreshes every {interval_text}; press Enter to refresh now; Ctrl-C to stop"
-    remaining_text = _format_chat_accounts_loop_countdown(remaining_sec)
-    return (
-        f"[loop] refreshes every {interval_text}; next refresh in {remaining_text}; "
-        "press Enter to refresh now; Ctrl-C to stop"
-    )
-
-
-def _format_chat_accounts_loop_refreshing_status(interval_sec: float) -> str:
-    interval_text = f"{int(interval_sec)}s"
-    return f"[loop] refreshing... next interval {interval_text}; Ctrl-C to stop"
-
-
-def _format_chat_accounts_loop_countdown(remaining_sec: float) -> str:
-    total_seconds = max(0, math.ceil(remaining_sec))
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    if hours > 0:
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-    return f"{minutes:02d}:{seconds:02d}"

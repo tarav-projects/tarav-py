@@ -23,6 +23,21 @@ from agentos.tara_tapes import register_tara_tapes_commands
 from agentos.utils import register_utils_commands
 
 
+def register_stdlib_commands(subparsers: argparse._SubParsersAction) -> None:
+    stdlib_parser = subparsers.add_parser(
+        "stdlib",
+        help="Standard-library primitives used by higher-level Agentos surfaces.",
+    )
+    stdlib_subparsers = stdlib_parser.add_subparsers(
+        dest="stdlib_command",
+        required=True,
+    )
+    register_mdblocks_commands(stdlib_subparsers)
+    register_prefix_commands(stdlib_subparsers)
+    register_refs_commands(stdlib_subparsers)
+    register_utils_commands(stdlib_subparsers)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agentos",
@@ -43,11 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
     register_chatlas_commands(subparsers)
     register_forum_commands(subparsers)
     register_tara_tapes_commands(subparsers)
-    register_refs_commands(subparsers)
+    register_stdlib_commands(subparsers)
     register_skills_commands(subparsers)
-    register_prefix_commands(subparsers)
-    register_utils_commands(subparsers)
-    register_mdblocks_commands(subparsers)
     register_index_commands(subparsers)
     register_mission_commands(subparsers)
     return parser

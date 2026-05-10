@@ -54,9 +54,9 @@ def test_agent_run_uses_configured_agent(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.commands as agent_commands
+    import agentos.agent.primitives as agent_primitives
 
-    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -126,9 +126,9 @@ def test_agent_run_uses_configured_instance_env(
         observed["codex_home"] = env["CODEX_HOME"]
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.commands as agent_commands
+    import agentos.agent.primitives as agent_primitives
 
-    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
 
     assert main(["agent", "run", "--provider", "codex", "--profile", "work", "--", "hello"]) == 0
 
@@ -176,9 +176,9 @@ def test_agent_run_home_override_updates_provider_home_env(
         observed["codex_home"] = env["CODEX_HOME"]
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.commands as agent_commands
+    import agentos.agent.primitives as agent_primitives
 
-    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -262,6 +262,139 @@ def test_agent_run_codex_account_dry_run_uses_profile_home_override(
         f"link {override_home.resolve() / 'auth.json'} -> {auth_path.resolve()}",
         f"CODEX_HOME={override_home.resolve()} codex exec --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 hello",
     ]
+
+
+def test_agent_run_invokes_provider_native_run(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    cwd = tmp_path / "workspace"
+    home.mkdir()
+    cwd.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    from agentos.agent.primitives import AgentRunRequest, AgentRunResult
+    from agentos.codex.agent import CodexAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
+        observed["provider"] = self.provider
+        observed["request"] = request
+        return AgentRunResult(exit_code=7)
+
+    monkeypatch.setattr(CodexAgent, "run", fake_run)
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--model",
+                "gpt-5.2",
+                "--account",
+                "tk",
+                "--cwd",
+                str(cwd),
+                "--",
+                "hello",
+            ]
+        )
+        == 7
+    )
+
+    request = observed["request"]
+    assert observed["provider"] == "codex"
+    assert request == AgentRunRequest(
+        prompt="hello",
+        model="gpt-5.2",
+        cwd=cwd.resolve(),
+        account="tk",
+    )
+
+
+def test_agent_run_dry_invokes_provider_native_run_dry(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    from agentos.agent.primitives import AgentRunDryResult, AgentRunRequest
+    from agentos.codex.agent import CodexAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run_dry(self: CodexAgent, request: AgentRunRequest) -> AgentRunDryResult:
+        observed["provider"] = self.provider
+        observed["request"] = request
+        return AgentRunDryResult(lines=("provider dry line",))
+
+    monkeypatch.setattr(CodexAgent, "run_dry", fake_run_dry)
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--dry-run",
+                "--",
+                "hello dry",
+            ]
+        )
+        == 0
+    )
+
+    request = observed["request"]
+    assert observed["provider"] == "codex"
+    assert request == AgentRunRequest(
+        prompt="hello dry",
+        model=None,
+        cwd=Path.cwd().resolve(),
+        account=None,
+    )
+    assert capsys.readouterr().out.strip() == "provider dry line"
 
 
 def test_configured_codex_agent_uses_provider_native_model(
@@ -481,9 +614,9 @@ def test_agent_run_uses_copilot_cli_agent_config(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.commands as agent_commands
+    import agentos.agent.primitives as agent_primitives
 
-    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -558,9 +691,9 @@ def test_agent_run_uses_pi_provider_defaults(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.commands as agent_commands
+    import agentos.agent.primitives as agent_primitives
 
-    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -810,9 +943,9 @@ def test_agent_run_uses_explicit_project_target_for_config_resolution(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.commands as agent_commands
+    import agentos.agent.primitives as agent_primitives
 
-    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
 
     assert (
         main(

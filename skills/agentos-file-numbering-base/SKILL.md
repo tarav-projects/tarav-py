@@ -10,7 +10,7 @@ Minimal protocol for Agentos-managed numeric filename workflows.
 ## Scope
 
 - Define shared numbering mechanics, not document body structure.
-- Centralize how `agentos prefix next` relates to numbered artifact protocols.
+- Centralize how `agentos stdlib prefix next` relates to numbered artifact protocols.
 - Define only the base numbering rules that domain-specific `base` skills inherit.
 
 ## Shared Numbering Rules
@@ -28,7 +28,7 @@ Minimal protocol for Agentos-managed numeric filename workflows.
 
 ## Allocator Behavior
 
-- `agentos prefix next` scans files under the requested `--include` paths.
+- `agentos stdlib prefix next` scans files under the requested `--include` paths.
 - It extracts prefixes using the filename regex `^(\d{width})-`.
 - It ignores files that do not begin with a valid zero-padded numeric prefix.
 - It returns:
@@ -53,14 +53,14 @@ Minimal protocol for Agentos-managed numeric filename workflows.
   - numbering source
   - floor or reserved range
   - uniqueness scope
-  - exact `agentos prefix next` command, if allocation is automated
+  - exact `agentos stdlib prefix next` command, if allocation is automated
 - This skill owns only the shared numbering semantics that all those domain skills inherit.
 
 ## Cross-Domain Coordination
 
 - Some systems need numbers to be unique across a broader surface than one folder.
 - Example: Agentos notes are moving toward project-wide md-surface uniqueness, where the same note number should not identify different notes in different note folders.
-- Current `agentos prefix next` behavior is still include-path based. Until a domain has project-wide allocation/checking support, domain skills should document any broader uniqueness expectation and require inspection or deterministic checks when relevant.
+- Current `agentos stdlib prefix next` behavior is still include-path based. Until a domain has project-wide allocation/checking support, domain skills should document any broader uniqueness expectation and require inspection or deterministic checks when relevant.
 
 ## Workflow For A New Numbered Artifact Type
 
@@ -74,7 +74,7 @@ Minimal protocol for Agentos-managed numeric filename workflows.
    - numbering source
    - floor or reserved range
    - uniqueness scope
-   - exact `agentos prefix next` command, if allocation is automated
+   - exact `agentos stdlib prefix next` command, if allocation is automated
    - stability rule: gaps allowed, no renumbering
 6. Ensure the domain protocol stays focused on numbering/location only, unless it intentionally owns broader structure.
 7. Update this skill only if the shared numbering model changes, not merely because a new domain was added.
@@ -88,7 +88,7 @@ Minimal protocol for Agentos-managed numeric filename workflows.
 - Is the human-vs-agent range policy explicit?
 - Is the uniqueness scope explicit?
 - Does the protocol explicitly allow gaps and forbid renumbering?
-- Does the protocol include the exact `agentos prefix next` command when automation exists?
+- Does the protocol include the exact `agentos stdlib prefix next` command when automation exists?
 
 ## Non-goals
 

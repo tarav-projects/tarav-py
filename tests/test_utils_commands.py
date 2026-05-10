@@ -41,14 +41,14 @@ def _cmd_logger_event(
 
 
 def test_utils_uuid_default_outputs_single_uuid(capsys) -> None:
-    assert main(["utils", "uuid"]) == 0
+    assert main(["stdlib", "utils", "uuid"]) == 0
     out = capsys.readouterr().out.strip()
     assert out
     _assert_valid_uuid(out)
 
 
 def test_utils_uuid_count_outputs_multiple_lines(capsys) -> None:
-    assert main(["utils", "uuid", "--count", "3"]) == 0
+    assert main(["stdlib", "utils", "uuid", "--count", "3"]) == 0
     lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
     assert len(lines) == 3
     for line in lines:
@@ -56,7 +56,7 @@ def test_utils_uuid_count_outputs_multiple_lines(capsys) -> None:
 
 
 def test_utils_uuid_json_outputs_payload(capsys) -> None:
-    assert main(["utils", "uuid", "--json"]) == 0
+    assert main(["stdlib", "utils", "uuid", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "ok"
     assert payload["command"] == "utils uuid"
@@ -74,7 +74,7 @@ def test_utils_cmd_logger_path_uses_month(
 ) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
 
-    assert main(["utils", "cmd-logger", "path", "--month", "202605"]) == 0
+    assert main(["stdlib", "utils", "cmd-logger", "path", "--month", "202605"]) == 0
 
     assert capsys.readouterr().out.strip() == str(
         agentos_home / "projects" / "activity" / "202605.jsonl"
@@ -108,6 +108,7 @@ def test_utils_cmd_logger_tail_outputs_recent_events(
     assert (
         main(
             [
+                "stdlib",
                 "utils",
                 "cmd-logger",
                 "tail",
@@ -167,6 +168,7 @@ def test_utils_cmd_logger_query_filters_under_path_and_valid_project(
     assert (
         main(
             [
+                "stdlib",
                 "utils",
                 "cmd-logger",
                 "query",
@@ -217,6 +219,7 @@ def test_utils_cmd_logger_query_filters_missing_project_roots(
     assert (
         main(
             [
+                "stdlib",
                 "utils",
                 "cmd-logger",
                 "query",
@@ -264,6 +267,7 @@ def test_utils_cmd_logger_query_filters_command_and_outputs_json(
     assert (
         main(
             [
+                "stdlib",
                 "utils",
                 "cmd-logger",
                 "query",
@@ -311,6 +315,7 @@ def test_utils_cmd_logger_tail_json_outputs_raw_jsonl(
     assert (
         main(
             [
+                "stdlib",
                 "utils",
                 "cmd-logger",
                 "tail",
@@ -326,12 +331,12 @@ def test_utils_cmd_logger_tail_json_outputs_raw_jsonl(
 
 
 def test_utils_cmd_logger_rejects_invalid_month(capsys) -> None:
-    assert main(["utils", "cmd-logger", "path", "--month", "2026-05"]) == 1
+    assert main(["stdlib", "utils", "cmd-logger", "path", "--month", "2026-05"]) == 1
 
     assert "--month must use YYYYMM format" in capsys.readouterr().err
 
 
 def test_utils_cmd_logger_tail_rejects_invalid_limit(capsys) -> None:
-    assert main(["utils", "cmd-logger", "tail", "--limit", "0"]) == 1
+    assert main(["stdlib", "utils", "cmd-logger", "tail", "--limit", "0"]) == 1
 
     assert "--limit must be >= 1" in capsys.readouterr().err

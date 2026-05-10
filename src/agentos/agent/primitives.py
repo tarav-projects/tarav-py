@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import shlex
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -36,14 +39,21 @@ class SessionSource:
 
 
 @dataclass(frozen=True)
-class AgentRunCommand:
-    provider: str
-    instance_id: str | None
-    command: tuple[str, ...]
-    env: tuple[tuple[str, str], ...]
+class AgentRunRequest:
+    prompt: str
+    model: str | None
+    cwd: Path
+    account: str | None = None
 
-    def env_mapping(self) -> dict[str, str]:
-        return dict(self.env)
+
+@dataclass(frozen=True)
+class AgentRunResult:
+    exit_code: int
+
+
+@dataclass(frozen=True)
+class AgentRunDryResult:
+    lines: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -175,8 +185,15 @@ class AgentBase:
             payload["account_usage_progression_limit"] = self.account_usage_progression_limit
         return payload
 
-    def resolve_run(self, *, prompt: str, model: str | None = None) -> AgentRunCommand:
-        return resolve_terminal_agent_run(self, prompt=prompt, model=model)
+    def run(self, request: AgentRunRequest) -> AgentRunResult:
+        raise CliError(
+            f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
+        )
+
+    def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult:
+        raise CliError(
+            f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
+        )
 
 
 def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
@@ -240,7 +257,9 @@ class Agent(Protocol):
 
     def summary(self) -> dict[str, object]: ...
 
-    def resolve_run(self, *, prompt: str, model: str | None = None) -> AgentRunCommand: ...
+    def run(self, request: AgentRunRequest) -> AgentRunResult: ...
+
+    def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult: ...
 
 
 def provider_session_paths(
@@ -339,45 +358,48 @@ def agent_uri_key(agent: Agent) -> str:
     return quote(agent_fingerprint(agent), safe="")
 
 
-def resolve_terminal_agent_run(
-    agent: Agent,
+def format_agent_run_command(
+    command: tuple[str, ...],
     *,
-    prompt: str,
-    model: str | None = None,
-) -> AgentRunCommand:
-    if not agent.cli_command:
-        raise CliError(
-            f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has no cli_command"
-        )
+    env_overrides: dict[str, str],
+) -> str:
+    if not env_overrides:
+        return shlex.join(command)
 
-    command = list(agent.cli_command)
-    command.extend(agent.run_args)
-    effective_model = model or agent.default_model
-    if effective_model is not None:
-        if agent.model_flag is None:
-            raise CliError(
-                f"agent {agent.instance_id or '<default>'} for provider {agent.provider} does not define model_flag"
-            )
-        command.extend([agent.model_flag, effective_model])
-
-    if agent.prompt_flag is not None:
-        command.extend([agent.prompt_flag, prompt])
-    else:
-        command.append(prompt)
-
-    return AgentRunCommand(
-        provider=agent.provider,
-        instance_id=agent.instance_id,
-        command=tuple(command),
-        env=agent.env,
+    env_prefix = " ".join(
+        f"{key}={shlex.quote(value)}"
+        for key, value in sorted(env_overrides.items())
     )
+    return f"{env_prefix} {shlex.join(command)}"
+
+
+def execute_agent_run_command(
+    command: tuple[str, ...],
+    *,
+    cwd: Path,
+    env_overrides: dict[str, str],
+) -> AgentRunResult:
+    env = os.environ.copy()
+    env.update(env_overrides)
+    try:
+        result = subprocess.run(
+            list(command),
+            cwd=str(cwd),
+            env=env,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise CliError(f"agent executable not found: {exc.filename}") from exc
+    return AgentRunResult(exit_code=int(result.returncode))
 
 
 __all__ = [
     "Agent",
     "AgentBase",
     "AgentConfig",
-    "AgentRunCommand",
+    "AgentRunDryResult",
+    "AgentRunRequest",
+    "AgentRunResult",
     "SessionSource",
     "agent_base_kwargs_for_provider",
     "agent_base_kwargs_from_config",
@@ -386,6 +408,7 @@ __all__ = [
     "agent_identity_key",
     "agent_session_paths",
     "agent_uri_key",
+    "execute_agent_run_command",
+    "format_agent_run_command",
     "provider_session_paths",
-    "resolve_terminal_agent_run",
 ]

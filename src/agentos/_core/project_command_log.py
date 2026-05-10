@@ -55,10 +55,17 @@ def command_payload_from_args(args: object) -> dict[str, object]:
     current = getattr(args, "command", None)
     while isinstance(current, str) and current:
         command_parts.append(current)
-        attr_name = "_".join(
+        current_key = current.replace("-", "_")
+        nested_attr_name = "_".join(
             [part.replace("-", "_") for part in command_parts] + ["command"]
         )
-        current = getattr(args, attr_name, None)
+        local_attr_name = f"{current_key}_command"
+        current = getattr(args, nested_attr_name, getattr(args, local_attr_name, None))
+        if current is None:
+            for attr_name, attr_value in vars(args).items():
+                if attr_name.endswith(f"_{current_key}_command"):
+                    current = attr_value
+                    break
 
     payload: dict[str, object] = {
         "command": " ".join(command_parts),

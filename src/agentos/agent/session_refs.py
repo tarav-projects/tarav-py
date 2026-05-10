@@ -5,8 +5,6 @@ from pathlib import Path
 from typing import Any
 
 from agentos.agent.primitives import SessionSource
-from agentos.agent.session_utils import coalesce_timestamp as _coalesce_timestamp
-from agentos.agent.session_utils import coerce_timestamp, safe_path_mtime
 from agentos.claude.session import ClaudeSessionRef
 from agentos.codex.session import CodexSessionRef
 from agentos.copilot.session import CopilotSessionRef
@@ -84,8 +82,5 @@ __all__ = [
     "BackingArtifact",
     "ProviderSessionRef",
     "_build_path_finding",
-    "_coalesce_timestamp",
     "backing_artifacts_from_sources",
-    "coerce_timestamp",
-    "safe_path_mtime",
 ]

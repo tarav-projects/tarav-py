@@ -18,7 +18,7 @@
 
 ## Markdown Block Scanning Preference
 
-- When a task requires extracting markdown blocks, use `agentos mdblocks blocks` first.
-- Use `agentos mdblocks links` when you need companion `path#Lline` references for those blocks.
-- Use `agentos mdblocks find --query ...` for deterministic block retrieval by text/regex.
+- When a task requires extracting markdown blocks, use `agentos stdlib mdblocks blocks` first.
+- Use `agentos stdlib mdblocks links` when you need companion `path#Lline` references for those blocks.
+- Use `agentos stdlib mdblocks find --query ...` for deterministic block retrieval by text/regex.
 - Prefer these commands over ad-hoc manual block parsing from raw file reads.
