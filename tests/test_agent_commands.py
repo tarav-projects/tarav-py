@@ -65,7 +65,7 @@ def test_agent_run_uses_configured_agent(
                 "run",
                 "--provider",
                 "codex",
-                "--instance",
+                "--profile",
                 "work",
                 "--",
                 "hello from agentos",
@@ -130,9 +130,138 @@ def test_agent_run_uses_configured_instance_env(
 
     monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
 
-    assert main(["agent", "run", "--provider", "codex", "--instance", "work", "--", "hello"]) == 0
+    assert main(["agent", "run", "--provider", "codex", "--profile", "work", "--", "hello"]) == 0
 
     assert observed["codex_home"] == str(work_home)
+
+
+def test_agent_run_home_override_updates_provider_home_env(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    configured_home = tmp_path / "codex-configured"
+    override_home = tmp_path / "codex-override"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(configured_home),
+                "cli_command": ["codex"],
+                "env": {
+                    "CODEX_HOME": str(configured_home),
+                },
+            }
+        ],
+    )
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        cwd: str,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, check
+        observed["command"] = command
+        observed["codex_home"] = env["CODEX_HOME"]
+        return subprocess.CompletedProcess(command, 0)
+
+    import agentos.agent.commands as agent_commands
+
+    monkeypatch.setattr(agent_commands.subprocess, "run", fake_run)
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--home",
+                str(override_home),
+                "--",
+                "hello",
+            ]
+        )
+        == 0
+    )
+
+    assert observed["command"] == [
+        "codex",
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--model",
+        "gpt-5.4",
+        "hello",
+    ]
+    assert observed["codex_home"] == str(override_home.resolve())
+
+
+def test_agent_run_codex_account_dry_run_uses_profile_home_override(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    configured_home = tmp_path / "codex-configured"
+    override_home = tmp_path / "codex-override"
+    auth_path = agentos_home / "accounts" / "codex" / "tk" / "auth.json"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write(auth_path, "{}\n")
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(configured_home),
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--home",
+                str(override_home),
+                "--account",
+                "tk",
+                "--dry-run",
+                "--",
+                "hello",
+            ]
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out.strip().splitlines()
+    assert output == [
+        f"link {override_home.resolve() / 'auth.json'} -> {auth_path.resolve()}",
+        f"CODEX_HOME={override_home.resolve()} codex exec --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 hello",
+    ]
 
 
 def test_configured_codex_agent_uses_provider_native_model(
@@ -370,7 +499,7 @@ def test_agent_run_uses_copilot_cli_agent_config(
                 "run",
                 "--provider",
                 "copilot-cli",
-                "--instance",
+                "--profile",
                 "copilot-main",
                 "--model",
                 "gpt-5.2",
@@ -447,7 +576,7 @@ def test_agent_run_uses_pi_provider_defaults(
                 "run",
                 "--provider",
                 "pi",
-                "--instance",
+                "--profile",
                 "pi-mm",
                 "--",
                 "hello from agentos",
@@ -502,7 +631,7 @@ def test_agent_run_dry_run_prints_instance_env_prefix(
                 "run",
                 "--provider",
                 "pi",
-                "--instance",
+                "--profile",
                 "pi-mm",
                 "--dry-run",
                 "--",
@@ -629,7 +758,7 @@ def test_agent_list_accepts_canonical_non_chat_provider_family(
 
 def test_provider_capabilities_are_scoped_by_subsystem() -> None:
     from agentos.agent.providers import supported_default_run_provider_families
-    from agentos.chat.accounts import supported_account_provider_families
+    from agentos.agent.accounts import supported_account_provider_families
     from agentos.chatlas.raw import supported_chatlas_provider_families
     from agentos.home.providers import supported_home_providers
 
@@ -659,7 +788,7 @@ def test_provider_capabilities_are_scoped_by_subsystem() -> None:
 
 
 def test_chat_provider_specs_reuse_shared_provider_home_topology() -> None:
-    from agentos.chat.providers import canonical_chat_provider_spec_for_name
+    from agentos.agent.config import canonical_chat_provider_spec_for_name
     from agentos.providers import canonical_provider_spec_for_name
 
     provider_spec = canonical_provider_spec_for_name("codex")
@@ -730,7 +859,7 @@ def test_agent_run_uses_explicit_project_target_for_config_resolution(
                 "run",
                 "--provider",
                 "codex",
-                "--instance",
+                "--profile",
                 "project-work",
                 "--project",
                 str(project_root),
@@ -784,7 +913,7 @@ def test_agent_accounts_stats_uses_configured_agent_account_instances(
         account_instance_ids=["claude-main"],
     )
 
-    from agentos.chat import accounts as chat_accounts
+    from agentos.agent import accounts as chat_accounts
 
     monkeypatch.setattr(chat_accounts, "_utc_now_iso", lambda: "2026-03-25T12:00:00Z")
 

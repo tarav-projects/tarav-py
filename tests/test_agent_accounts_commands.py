@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 from rich.cells import cell_len
 
-from agentos.chat import accounts as chat_accounts
-from agentos.chat import commands as chat_commands
+from agentos.agent import accounts as chat_accounts
+from agentos.agent import account_commands as chat_commands
 from agentos.cli import main
 from agentos.tara_tapes.core import load_tara_tape_manifest, read_tara_tape_segment_records
 from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
@@ -293,7 +293,7 @@ def test_chat_accounts_stats_summarizes_configured_agents(
     assert payload["error_count"] == 0
     assert payload["history"]["status"] == "ok"
 
-    history_root = agentos_home / "chat-account-stats"
+    history_root = agentos_home / "agent-account-stats"
     tape_root = history_root / "history"
     latest_path = history_root / "latest.json"
     manifest_path = tape_root / "tape.json"
@@ -306,7 +306,7 @@ def test_chat_accounts_stats_summarizes_configured_agents(
     assert json.loads(latest_path.read_text(encoding="utf-8")) == payload
     assert manifest_path.is_file()
     assert segment_path.is_file()
-    assert load_tara_tape_manifest(tape_root)["tape_name"] == "chat-account-stats"
+    assert load_tara_tape_manifest(tape_root)["tape_name"] == "agent-account-stats"
     assert read_tara_tape_segment_records(tape_root, segment_name="202603.jsonl") == [payload]
 
     providers = {provider["provider"]: provider for provider in payload["providers"]}
@@ -3314,7 +3314,7 @@ def test_chat_accounts_stats_history_accumulates_into_month_segment(
     assert main(["agent", "accounts", "stats", "--full-output"]) == 0
     second_payload = json.loads(capsys.readouterr().out)
 
-    tape_root = agentos_home / "chat-account-stats" / "history"
+    tape_root = agentos_home / "agent-account-stats" / "history"
     records = read_tara_tape_segment_records(tape_root, segment_name="202603.jsonl")
     assert records == [first_payload, second_payload]
 

@@ -1704,7 +1704,7 @@ def test_codex_chatlas_context_uses_provider_native_capability(
 
 def test_provider_session_ref_entry_uses_provider_agent_context(tmp_path: Path) -> None:
     from agentos.agent.primitives import AgentConfig
-    from agentos.chat.core import ProviderAgentContext, ProviderSessionRefEntry
+    from agentos.agent.sessions import ProviderAgentContext, ProviderSessionRefEntry
     from agentos.codex.agent import CodexAgent
     from agentos.codex.session import CodexSessionRef
 
@@ -3185,7 +3185,7 @@ def test_chatlas_query_supports_instance_matching_filtering_and_compact_output(
             "query",
             "--provider",
             "codex",
-            "--instance",
+            "--profile",
             "jp",
             "--compact",
         ]
