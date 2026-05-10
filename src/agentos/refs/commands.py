@@ -590,7 +590,7 @@ def register_refs_commands(subparsers: argparse._SubParsersAction) -> None:
         "git-refs",
         help="Git-grounded line-span reference utilities.",
     )
-    refs_subparsers = refs_parser.add_subparsers(dest="refs_command", required=True)
+    refs_subparsers = refs_parser.add_subparsers(dest="git_refs_command", required=True)
 
     repo_hash_parser = refs_subparsers.add_parser(
         "repo-hash",

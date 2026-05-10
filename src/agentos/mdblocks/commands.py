@@ -338,7 +338,7 @@ def register_mdblocks_commands(subparsers: argparse._SubParsersAction) -> None:
         "mdblocks",
         help="Markdown block utilities for separator-anchored workflows.",
     )
-    md_subparsers = md_parser.add_subparsers(dest="md_command")
+    md_subparsers = md_parser.add_subparsers(dest="mdblocks_command")
 
     md_blocks_parser = md_subparsers.add_parser(
         "blocks",

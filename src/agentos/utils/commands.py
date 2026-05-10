@@ -271,7 +271,7 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Allocate temporary folders under an existing project's .agentos/tmp.",
     )
     tmp_folder_subparsers = tmp_folder_parser.add_subparsers(
-        dest="utils_tmp_folder_command",
+        dest="tmp_folder_command",
         required=True,
     )
 
@@ -299,7 +299,7 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Inspect the rare-use project command activity log.",
     )
     cmd_logger_subparsers = cmd_logger_parser.add_subparsers(
-        dest="utils_cmd_logger_command",
+        dest="cmd_logger_command",
         required=True,
     )
 
