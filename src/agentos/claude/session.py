@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
+
+from agentos._core.errors import CliError
+from agentos.agent.primitives import SessionSource
+from agentos.agent.session_utils import (
+    coerce_timestamp as _coerce_timestamp,
+    created_timestamp_from_turns as _created_timestamp_from_turns,
+    glob_paths as _glob_paths,
+    primary_source_path as _primary_source_path,
+    primary_transcript_artifact as _primary_transcript_artifact,
+    safe_path_mtime as _safe_path_mtime,
+    source_ref_id_for_artifact as _source_ref_id_for_artifact,
+    string_or_none as _string_or_none,
+)
 
 
 CLAUDE_PROVIDER = "claude-code"
@@ -29,6 +41,25 @@ class ClaudeSessionRef:
 
     def matches_query(self, query: str) -> bool:
         return query in {self.native_session_id, self.title}
+
+    def display_name(self) -> str | None:
+        return self.title
+
+    def display_name_field(self) -> str | None:
+        if self.title is None:
+            return None
+        return "title"
+
+    def native_ref_metadata(self) -> dict[str, object]:
+        if self.title is None:
+            return {}
+        return {"title": self.title}
+
+    def sort_timestamp(self) -> float | None:
+        return _coalesce_timestamp(
+            _coerce_timestamp(self.updated_at),
+            *(_safe_path_mtime(path) for path in self.artifact_paths),
+        )
 
     def to_session(self) -> "ClaudeSession":
         return ClaudeSession(
@@ -72,6 +103,39 @@ class ClaudeSession:
     @property
     def transcript_path(self) -> Path:
         return self.artifact_paths[0]
+
+    def sources(self) -> tuple[SessionSource, ...]:
+        return tuple(
+            SessionSource(
+                role="transcript" if path.suffix == ".jsonl" else "metadata",
+                path=path,
+            )
+            for path in self.artifact_paths
+        )
+
+    def created_timestamp(self) -> float | None:
+        artifact = _primary_source_path(self.sources())
+        if artifact is None or not artifact.exists():
+            return None
+
+        try:
+            if artifact.suffix == ".jsonl":
+                from agentos.agent.extractors.claude_code import (
+                    extract_dialog_from_claude_code_session,
+                )
+
+                return _created_timestamp_from_turns(
+                    extract_dialog_from_claude_code_session(artifact, raw=False)
+                )
+            if artifact.suffix == ".json":
+                obj = json.loads(artifact.read_text(encoding="utf-8", errors="ignore"))
+                if isinstance(obj, dict):
+                    return _coerce_timestamp(obj.get("createdAt")) or _coerce_timestamp(
+                        obj.get("lastActivityAt")
+                    )
+        except (CliError, OSError, json.JSONDecodeError):
+            return None
+        return None
 
     @classmethod
     def from_chatlas_session_payload(
@@ -253,17 +317,6 @@ def _read_first_jsonl_object(path: Path) -> dict[str, Any] | None:
     return None
 
 
-def _glob_paths(root: Path, pattern: str) -> tuple[Path, ...]:
-    if root.is_file():
-        return (root,) if root.match(pattern) else ()
-    if not root.is_dir():
-        return ()
-    try:
-        return tuple(sorted(root.glob(pattern)))
-    except OSError:
-        return ()
-
-
 def _merge_claude_session(sessions_by_id: dict[str, ClaudeSession], session: ClaudeSession) -> None:
     existing = sessions_by_id.get(session.native_session_id)
     if existing is None:
@@ -288,46 +341,6 @@ def _coalesce_timestamp(
     return timestamps[0]
 
 
-def _safe_path_mtime(path: Path | None) -> float | None:
-    if path is None:
-        return None
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return None
-
-
-def _coerce_timestamp(value: object) -> float | None:
-    if value is None:
-        return None
-
-    if isinstance(value, (int, float)):
-        timestamp = float(value)
-        if timestamp > 1_000_000_000_000:
-            return timestamp / 1000.0
-        if timestamp > 1_000_000_000:
-            return timestamp
-        return None
-
-    if not isinstance(value, str):
-        return None
-
-    value = value.strip()
-    if not value:
-        return None
-
-    try:
-        return _coerce_timestamp(float(value))
-    except ValueError:
-        pass
-
-    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        return datetime.fromisoformat(normalized).timestamp()
-    except ValueError:
-        return None
-
-
 def _unique_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
     seen: set[str] = set()
     unique: list[Path] = []
@@ -338,44 +351,6 @@ def _unique_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
         seen.add(key)
         unique.append(path)
     return tuple(unique)
-
-
-def _primary_transcript_artifact(session: dict[str, Any]) -> dict[str, Any] | None:
-    primary = session.get("primary_backing_artifact")
-    if isinstance(primary, dict) and primary.get("role") == "transcript":
-        return primary
-    artifacts = session.get("backing_artifacts")
-    if not isinstance(artifacts, list):
-        return None
-    for artifact in artifacts:
-        if isinstance(artifact, dict) and artifact.get("role") == "transcript":
-            return artifact
-    return None
-
-
-def _source_ref_id_for_artifact(
-    artifact: dict[str, Any],
-    *,
-    sources: list[dict[str, object]],
-) -> str | None:
-    role = artifact.get("role")
-    storage_kind = artifact.get("storage_kind")
-    path = artifact.get("path")
-    for source in sources:
-        if (
-            source.get("role") == role
-            and source.get("storage_kind") == storage_kind
-            and source.get("path") == path
-        ):
-            return _string_or_none(source.get("source_ref_id"))
-    return None
-
-
-def _string_or_none(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    return stripped or None
 
 
 __all__ = [

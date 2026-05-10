@@ -23,32 +23,7 @@ from agentos.providers import (
     canonical_provider_family_for_name,
     require_canonical_provider_family,
 )
-from agentos.codex.chatlas import (
-    CODEX_CHATLAS_DEFAULT_EXCLUDES,
-    CODEX_CHATLAS_DEFAULT_INCLUDES,
-)
-from agentos.claude.chatlas import (
-    CLAUDE_CHATLAS_DEFAULT_EXCLUDES,
-    CLAUDE_CHATLAS_DEFAULT_INCLUDES,
-)
-from agentos.copilot.chatlas import (
-    COPILOT_CHATLAS_DEFAULT_EXCLUDES,
-    COPILOT_CHATLAS_DEFAULT_INCLUDES,
-)
-from agentos.gemini.chatlas import GEMINI_CHATLAS_DEFAULT_EXCLUDES
 from agentos.home.providers import home_provider_for_name
-from agentos.openclaw.chatlas import (
-    OPENCLAW_CHATLAS_DEFAULT_EXCLUDES,
-    OPENCLAW_CHATLAS_DEFAULT_INCLUDES,
-)
-from agentos.opencode.chatlas import (
-    OPENCODE_CHATLAS_DEFAULT_EXCLUDES,
-    OPENCODE_CHATLAS_DEFAULT_INCLUDES,
-)
-from agentos.pi.chatlas import (
-    PI_CHATLAS_DEFAULT_EXCLUDES,
-    PI_CHATLAS_DEFAULT_INCLUDES,
-)
 
 
 @dataclass(frozen=True)
@@ -56,9 +31,6 @@ class ChatProviderSpec:
     provider_family: ProviderFamily
     home_slots: tuple[ProviderHomeSlot, ...]
     supports_session_discovery: bool = True
-    supports_chatlas_raw: bool = True
-    chatlas_default_excludes: tuple[str, ...] = ()
-    chatlas_default_includes: tuple[str, ...] = ()
 
     @property
     def family(self) -> str:
@@ -129,9 +101,6 @@ def _chat_provider_spec(
     family_name: str,
     *,
     supports_session_discovery: bool = True,
-    supports_chatlas_raw: bool = True,
-    chatlas_default_excludes: tuple[str, ...] = (),
-    chatlas_default_includes: tuple[str, ...] = (),
 ) -> ChatProviderSpec:
     home_provider = home_provider_for_name(family_name)
     if home_provider is None:
@@ -140,47 +109,17 @@ def _chat_provider_spec(
         provider_family=home_provider.provider_family,
         home_slots=home_provider.home_slots,
         supports_session_discovery=supports_session_discovery,
-        supports_chatlas_raw=supports_chatlas_raw,
-        chatlas_default_excludes=chatlas_default_excludes,
-        chatlas_default_includes=chatlas_default_includes,
     )
 
 
 _CANONICAL_CHAT_PROVIDER_SPECS = (
-    _chat_provider_spec(
-        "copilot-cli",
-        chatlas_default_includes=COPILOT_CHATLAS_DEFAULT_INCLUDES,
-        chatlas_default_excludes=COPILOT_CHATLAS_DEFAULT_EXCLUDES,
-    ),
-    _chat_provider_spec(
-        "gemini-cli",
-        chatlas_default_excludes=GEMINI_CHATLAS_DEFAULT_EXCLUDES,
-    ),
-    _chat_provider_spec(
-        "codex",
-        chatlas_default_includes=CODEX_CHATLAS_DEFAULT_INCLUDES,
-        chatlas_default_excludes=CODEX_CHATLAS_DEFAULT_EXCLUDES,
-    ),
-    _chat_provider_spec(
-        "claude-code",
-        chatlas_default_includes=CLAUDE_CHATLAS_DEFAULT_INCLUDES,
-        chatlas_default_excludes=CLAUDE_CHATLAS_DEFAULT_EXCLUDES,
-    ),
-    _chat_provider_spec(
-        "opencode",
-        chatlas_default_includes=OPENCODE_CHATLAS_DEFAULT_INCLUDES,
-        chatlas_default_excludes=OPENCODE_CHATLAS_DEFAULT_EXCLUDES,
-    ),
-    _chat_provider_spec(
-        "pi",
-        chatlas_default_includes=PI_CHATLAS_DEFAULT_INCLUDES,
-        chatlas_default_excludes=PI_CHATLAS_DEFAULT_EXCLUDES,
-    ),
-    _chat_provider_spec(
-        "openclaw",
-        chatlas_default_excludes=OPENCLAW_CHATLAS_DEFAULT_EXCLUDES,
-        chatlas_default_includes=OPENCLAW_CHATLAS_DEFAULT_INCLUDES,
-    ),
+    _chat_provider_spec("copilot-cli"),
+    _chat_provider_spec("gemini-cli"),
+    _chat_provider_spec("codex"),
+    _chat_provider_spec("claude-code"),
+    _chat_provider_spec("opencode"),
+    _chat_provider_spec("pi"),
+    _chat_provider_spec("openclaw"),
 )
 
 

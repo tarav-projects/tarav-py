@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from agentos._core.errors import CliError
+from agentos.agent.primitives import SessionSource
+from agentos.agent.session_utils import (
+    coalesce_timestamp as _max_timestamp,
+    coerce_timestamp as _coerce_timestamp,
+    primary_transcript_artifact as _primary_transcript_artifact,
+    safe_path_mtime as _safe_path_mtime,
+    source_ref_id_for_artifact as _source_ref_id_for_artifact,
+    string_or_none as _string_or_none,
+)
 
 
 COPILOT_PROVIDER = "copilot-cli"
@@ -19,6 +29,22 @@ class CopilotSessionRef:
     @property
     def provider(self) -> str:
         return COPILOT_PROVIDER
+
+    def display_name(self) -> str | None:
+        return None
+
+    def display_name_field(self) -> str | None:
+        return None
+
+    def native_ref_metadata(self) -> dict[str, object]:
+        return {}
+
+    def sort_timestamp(self) -> float | None:
+        return _max_timestamp(
+            self.updated_at,
+            _safe_path_mtime(self.events_path),
+            _safe_path_mtime(self.events_path.parent),
+        )
 
     def to_session(self) -> "CopilotSession":
         return CopilotSession(
@@ -54,6 +80,37 @@ class CopilotSession:
     @property
     def provider(self) -> str:
         return COPILOT_PROVIDER
+
+    def sources(self) -> tuple[SessionSource, ...]:
+        sources = [SessionSource(role="transcript", path=self.events_path)]
+        if self.events_path.name == "events.jsonl":
+            sources.append(
+                SessionSource(
+                    role="session_root",
+                    path=self.events_path.parent,
+                    storage_kind="directory",
+                )
+            )
+        return tuple(sources)
+
+    def created_timestamp(self) -> float | None:
+        if not self.events_path.exists():
+            return None
+
+        try:
+            from agentos.agent.extractors.copilot_cli import load_copilot_cli_events
+
+            events = load_copilot_cli_events(self.events_path)
+            first_event_timestamp: float | None = None
+            for event in events:
+                timestamp = _coerce_timestamp(event.get("timestamp"))
+                if timestamp is not None and first_event_timestamp is None:
+                    first_event_timestamp = timestamp
+                if event.get("type") == "session.start":
+                    return timestamp
+            return first_event_timestamp
+        except (CliError, OSError):
+            return None
 
     @classmethod
     def from_chatlas_session_payload(
@@ -170,91 +227,6 @@ def _merge_copilot_session(
 
 def _sort_copilot_sessions(sessions: tuple[CopilotSession, ...]) -> tuple[CopilotSession, ...]:
     return tuple(sorted(sessions, key=lambda session: session.native_session_id))
-
-
-def _safe_path_mtime(path: Path | None) -> float | None:
-    if path is None:
-        return None
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return None
-
-
-def _coerce_timestamp(value: object) -> float | None:
-    if value is None:
-        return None
-
-    if isinstance(value, (int, float)):
-        timestamp = float(value)
-        if timestamp > 1_000_000_000_000:
-            return timestamp / 1000.0
-        if timestamp > 1_000_000_000:
-            return timestamp
-        return None
-
-    if not isinstance(value, str):
-        return None
-
-    value = value.strip()
-    if not value:
-        return None
-
-    try:
-        return _coerce_timestamp(float(value))
-    except ValueError:
-        pass
-
-    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        return datetime.fromisoformat(normalized).timestamp()
-    except ValueError:
-        return None
-
-
-def _max_timestamp(*values: float | None) -> float | None:
-    timestamps = [value for value in values if value is not None]
-    if not timestamps:
-        return None
-    return max(timestamps)
-
-
-def _primary_transcript_artifact(session: dict[str, Any]) -> dict[str, Any] | None:
-    primary = session.get("primary_backing_artifact")
-    if isinstance(primary, dict) and primary.get("role") == "transcript":
-        return primary
-    artifacts = session.get("backing_artifacts")
-    if not isinstance(artifacts, list):
-        return None
-    for artifact in artifacts:
-        if isinstance(artifact, dict) and artifact.get("role") == "transcript":
-            return artifact
-    return None
-
-
-def _source_ref_id_for_artifact(
-    artifact: dict[str, Any],
-    *,
-    sources: list[dict[str, object]],
-) -> str | None:
-    role = artifact.get("role")
-    storage_kind = artifact.get("storage_kind")
-    path = artifact.get("path")
-    for source in sources:
-        if (
-            source.get("role") == role
-            and source.get("storage_kind") == storage_kind
-            and source.get("path") == path
-        ):
-            return _string_or_none(source.get("source_ref_id"))
-    return None
-
-
-def _string_or_none(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    return stripped or None
 
 
 __all__ = [

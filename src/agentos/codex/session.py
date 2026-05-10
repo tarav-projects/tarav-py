@@ -1,10 +1,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
+
+from agentos._core.errors import CliError
+from agentos.agent.primitives import SessionSource
+from agentos.agent.session_utils import (
+    artifact_paths_by_role as _artifact_paths_by_role,
+    coalesce_timestamp as _coalesce_timestamp,
+    coerce_timestamp as _coerce_timestamp,
+    created_timestamp_from_turns as _created_timestamp_from_turns,
+    glob_paths as _glob_paths,
+    primary_source_path as _primary_source_path,
+    primary_transcript_artifact as _primary_transcript_artifact,
+    safe_path_mtime as _safe_path_mtime,
+    source_ref_id_for_artifact as _source_ref_id_for_artifact,
+    string_or_none as _string_or_none,
+)
 
 
 CODEX_PROVIDER = "codex"
@@ -35,6 +49,46 @@ class CodexSessionRef:
 
     def matches_query(self, query: str) -> bool:
         return query in {self.native_session_id, self.thread_name}
+
+    def display_name(self) -> str | None:
+        return self.thread_name
+
+    def display_name_field(self) -> str | None:
+        if self.thread_name is None:
+            return None
+        return "thread_name"
+
+    def native_ref_metadata(self) -> dict[str, object]:
+        if self.thread_name is None:
+            return {}
+        return {"thread_name": self.thread_name}
+
+    def supplemental_findings(
+        self,
+        *,
+        provider: str,
+        query: str,
+        matched_field: str,
+    ) -> tuple[dict[str, object], ...]:
+        return tuple(
+            {
+                "provider": provider,
+                "strategy": "index",
+                "match_kind": "exact",
+                "path": str(path),
+                "matched_field": matched_field,
+                "matched_value": query,
+                "session_id": self.native_session_id,
+                "thread_name": self.thread_name,
+            }
+            for path in self.index_paths
+        )
+
+    def sort_timestamp(self) -> float | None:
+        return _coalesce_timestamp(
+            self.updated_at,
+            *(_safe_path_mtime(path) for path in self.rollout_paths),
+        )
 
     def to_session(self) -> "CodexSession":
         return CodexSession(
@@ -116,6 +170,58 @@ class CodexSession:
     @property
     def session_id(self) -> str:
         return self.native_session_id
+
+    def sources(self) -> tuple[SessionSource, ...]:
+        sources = [
+            SessionSource(role="transcript", path=path)
+            for path in self.rollout_paths
+        ]
+        sources.extend(
+            SessionSource(
+                role="session_index",
+                path=path,
+                locator={
+                    "kind": "jsonl_record_match",
+                    "match": {"id": self.native_session_id},
+                },
+            )
+            for path in self.index_paths
+        )
+        return tuple(sources)
+
+    def created_timestamp(self) -> float | None:
+        artifact = _primary_source_path(self.sources())
+        if artifact is None or not artifact.exists():
+            return None
+
+        try:
+            from agentos.agent.extractors.codex import extract_dialog_from_codex_rollout
+
+            return _created_timestamp_from_turns(
+                extract_dialog_from_codex_rollout(artifact, raw=False)
+            )
+        except (CliError, OSError, json.JSONDecodeError):
+            return None
+
+    def dialog_turn_count(self) -> int | None:
+        artifact = _primary_source_path(self.sources())
+        if artifact is None or not artifact.is_file():
+            return None
+
+        try:
+            from agentos.agent.extractors.codex import extract_dialog_from_codex_rollout
+
+            return len(extract_dialog_from_codex_rollout(artifact, raw=False))
+        except (CliError, OSError, json.JSONDecodeError):
+            return None
+
+    def provider_stats(self) -> dict[str, object]:
+        return {
+            "rollout_artifact_count": len(self.rollout_paths),
+            "session_index_count": len(self.index_paths),
+            "has_rollout_artifact": any(path.is_file() for path in self.rollout_paths),
+            "dialog_turn_count": self.dialog_turn_count(),
+        }
 
     def merge(self, other: "CodexSession") -> "CodexSession":
         return CodexSessionRef(
@@ -286,17 +392,6 @@ def _read_codex_session_meta(path: Path) -> dict[str, Any] | None:
     return None
 
 
-def _glob_paths(root: Path, pattern: str) -> tuple[Path, ...]:
-    if root.is_file():
-        return (root,) if root.match(pattern) else ()
-    if not root.is_dir():
-        return ()
-    try:
-        return tuple(sorted(root.glob(pattern)))
-    except OSError:
-        return ()
-
-
 def _merge_codex_session(sessions_by_id: dict[str, CodexSession], session: CodexSession) -> None:
     existing = sessions_by_id.get(session.native_session_id)
     if existing is None:
@@ -326,53 +421,6 @@ def _sort_codex_session_refs(
     return tuple(sorted(session_refs, key=lambda session_ref: session_ref.native_session_id))
 
 
-def _coalesce_timestamp(*values: float | None) -> float | None:
-    timestamps = [value for value in values if value is not None]
-    if not timestamps:
-        return None
-    return max(timestamps)
-
-
-def _safe_path_mtime(path: Path | None) -> float | None:
-    if path is None:
-        return None
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return None
-
-
-def _coerce_timestamp(value: object) -> float | None:
-    if value is None:
-        return None
-
-    if isinstance(value, (int, float)):
-        timestamp = float(value)
-        if timestamp > 1_000_000_000_000:
-            return timestamp / 1000.0
-        if timestamp > 1_000_000_000:
-            return timestamp
-        return None
-
-    if not isinstance(value, str):
-        return None
-
-    value = value.strip()
-    if not value:
-        return None
-
-    try:
-        return _coerce_timestamp(float(value))
-    except ValueError:
-        pass
-
-    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        return datetime.fromisoformat(normalized).timestamp()
-    except ValueError:
-        return None
-
-
 def _unique_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
     seen: set[str] = set()
     unique: list[Path] = []
@@ -383,59 +431,6 @@ def _unique_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
         seen.add(key)
         unique.append(path)
     return tuple(unique)
-
-
-def _primary_transcript_artifact(session: dict[str, Any]) -> dict[str, Any] | None:
-    primary = session.get("primary_backing_artifact")
-    if isinstance(primary, dict) and primary.get("role") == "transcript":
-        return primary
-    artifacts = session.get("backing_artifacts")
-    if not isinstance(artifacts, list):
-        return None
-    for artifact in artifacts:
-        if isinstance(artifact, dict) and artifact.get("role") == "transcript":
-            return artifact
-    return None
-
-
-def _artifact_paths_by_role(session: dict[str, Any], *, role: str) -> tuple[str, ...]:
-    artifacts = session.get("backing_artifacts")
-    if not isinstance(artifacts, list):
-        return ()
-
-    paths: list[str] = []
-    for artifact in artifacts:
-        if not isinstance(artifact, dict) or artifact.get("role") != role:
-            continue
-        path_text = _string_or_none(artifact.get("path"))
-        if path_text is not None:
-            paths.append(path_text)
-    return tuple(paths)
-
-
-def _source_ref_id_for_artifact(
-    artifact: dict[str, Any],
-    *,
-    sources: list[dict[str, object]],
-) -> str | None:
-    role = artifact.get("role")
-    storage_kind = artifact.get("storage_kind")
-    path = artifact.get("path")
-    for source in sources:
-        if (
-            source.get("role") == role
-            and source.get("storage_kind") == storage_kind
-            and source.get("path") == path
-        ):
-            return _string_or_none(source.get("source_ref_id"))
-    return None
-
-
-def _string_or_none(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    return stripped or None
 
 
 __all__ = [

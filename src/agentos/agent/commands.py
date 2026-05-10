@@ -10,11 +10,8 @@ from pathlib import Path
 
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
-from agentos.agent.providers import (
-    ConfiguredAgent,
-    load_configured_agents,
-    resolve_agent,
-)
+from agentos.agent.primitives import Agent
+from agentos.agent.providers import load_configured_agents, resolve_agent
 from agentos.agent.accounts import supported_account_provider_families
 from agentos.agent.account_commands import _cmd_chat_accounts_stats
 from agentos.codex.commands import (
@@ -34,14 +31,14 @@ def _list_configured_agents(
     *,
     provider: str | None,
     start_path: Path,
-) -> tuple[ConfiguredAgent, ...]:
+) -> tuple[Agent, ...]:
     instances = load_configured_agents(start_path=start_path)
     if provider is None:
         return instances
     return tuple(instance for instance in instances if instance.provider == provider)
 
 
-def _format_instance_line(agent: ConfiguredAgent) -> str:
+def _format_instance_line(agent: Agent) -> str:
     instance_id = agent.instance_id or "<default>"
     suffix_parts: list[str] = [f"id={instance_id}"]
     if agent.label is not None and agent.label != agent.instance_id:
@@ -114,7 +111,7 @@ def _format_agent_run_command(
     return f"{env_prefix} {shlex.join(command)}"
 
 
-def _single_agent_home(agent: ConfiguredAgent) -> Path | None:
+def _single_agent_home(agent: Agent) -> Path | None:
     if not agent.homes:
         return None
     for key, home in agent.homes:
@@ -128,7 +125,7 @@ def _single_agent_home(agent: ConfiguredAgent) -> Path | None:
 def _prepare_account_run(
     args: argparse.Namespace,
     *,
-    agent: ConfiguredAgent,
+    agent: Agent,
     env_overrides: dict[str, str],
 ) -> list[str]:
     link_lines: list[str] = []

@@ -11,8 +11,13 @@ from urllib.parse import unquote
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
-from agentos.agent.primitives import agent_fingerprint, agent_identity_key, agent_uri_key
-from agentos.agent.providers import ConfiguredAgent, agent_from_config, load_configured_agents
+from agentos.agent.primitives import (
+    SessionSource,
+    agent_fingerprint,
+    agent_identity_key,
+    agent_uri_key,
+)
+from agentos.agent.providers import Agent, agent_from_config, load_configured_agents
 from agentos.agent.config import (
     canonical_chat_provider_specs,
     default_agent_configs,
@@ -22,17 +27,10 @@ from agentos.agent.session_refs import (
     BackingArtifact,
     ProviderSessionRef,
     _build_path_finding,
+    backing_artifacts_from_sources,
     coerce_timestamp,
-    session_ref_backing_artifacts as _session_ref_backing_artifacts,
-    session_ref_created_timestamp,
-    session_ref_display_name as _session_ref_display_name,
-    session_ref_display_name_field as _session_ref_display_name_field,
-    session_ref_native_payload as _session_ref_native_payload,
-    session_ref_sort_timestamp as _session_ref_sort_timestamp,
     safe_path_mtime,
 )
-from agentos.codex.session import CodexSessionRef
-from agentos.openclaw.session import OpenclawSessionRef
 
 TEXT_FILE_SUFFIXES = {
     ".json",
@@ -50,9 +48,7 @@ SESSION_SORT_CHOICES = {"lexical", "newest", "oldest"}
 
 @dataclass(frozen=True)
 class ProviderAgentContext:
-    agent: ConfiguredAgent
-    provider: str
-    instance_summary: dict[str, Any]
+    agent: Agent
     instance_fingerprint: str
     instance_identity_key: tuple[object, ...]
     instance_uri_key: str
@@ -65,6 +61,14 @@ class ProviderAgentContext:
     sqlite_db_paths: tuple[Path, ...]
     sqlite_existing_db_paths: tuple[Path, ...]
     sqlite_missing_db_paths: tuple[Path, ...]
+
+    @property
+    def provider(self) -> str:
+        return self.agent.provider
+
+    @property
+    def instance_summary(self) -> dict[str, Any]:
+        return self.agent.summary()
 
 
 @dataclass(frozen=True)
@@ -95,8 +99,11 @@ class ProviderSessionRefEntry:
             self.session_id,
         )
 
+    def sources(self) -> tuple[SessionSource, ...]:
+        return self.session_ref.to_session().sources()
+
     def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
-        return _session_ref_backing_artifacts(self.session_ref)
+        return backing_artifacts_from_sources(self.sources())
 
     def primary_backing_artifact(self) -> BackingArtifact | None:
         artifacts = self.backing_artifacts()
@@ -118,10 +125,10 @@ class ProviderSessionRefEntry:
         return primary.path
 
     def created_timestamp(self) -> float | None:
-        return session_ref_created_timestamp(self.session_ref)
+        return self.session_ref.to_session().created_timestamp()
 
     def sort_timestamp(self) -> float | None:
-        return _session_ref_sort_timestamp(self.session_ref)
+        return self.session_ref.sort_timestamp()
 
     def merge(self, other: "ProviderSessionRefEntry") -> "ProviderSessionRefEntry":
         if self.record_identity_key() != other.record_identity_key():
@@ -132,14 +139,14 @@ class ProviderSessionRefEntry:
         return ProviderSessionRefEntry(context=self.context, session_ref=ref)
 
     def display_name(self) -> str | None:
-        return _session_ref_display_name(self.session_ref)
+        return self.session_ref.display_name()
 
     def display_name_field(self) -> str | None:
-        return _session_ref_display_name_field(self.session_ref)
+        return self.session_ref.display_name_field()
 
     def native_fields(self) -> dict[str, Any]:
         payload = {"session_id": self.session_id}
-        payload.update(_session_ref_native_payload(self.session_ref))
+        payload.update(self.session_ref.native_ref_metadata())
         return payload
 
     def query_fields(self) -> tuple[tuple[str, str], ...]:
@@ -152,7 +159,7 @@ class ProviderSessionRefEntry:
         display_name_field = self.display_name_field()
         if display_name is not None:
             fields.append((display_name_field or "display_name", display_name))
-        native = _session_ref_native_payload(self.session_ref)
+        native = self.session_ref.native_ref_metadata()
         for field_name, raw_value in native.items():
             if isinstance(raw_value, str):
                 fields.append((_query_field_name_for_native_field(field_name), raw_value))
@@ -179,20 +186,12 @@ class ProviderSessionRefEntry:
         query: str,
         matched_field: str,
     ) -> tuple[dict[str, Any], ...]:
-        if not isinstance(self.session_ref, CodexSessionRef):
+        if not hasattr(self.session_ref, "supplemental_findings"):
             return ()
-        return tuple(
-            {
-                "provider": self.provider,
-                "strategy": "index",
-                "match_kind": "exact",
-                "path": str(path),
-                "matched_field": matched_field,
-                "matched_value": query,
-                "session_id": self.session_id,
-                "thread_name": self.session_ref.thread_name,
-            }
-            for path in self.session_ref.index_paths
+        return self.session_ref.supplemental_findings(
+            provider=self.provider,
+            query=query,
+            matched_field=matched_field,
         )
 
 
@@ -241,7 +240,7 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
     return tuple(families)
 
 
-def configured_session_agents(*, start_path: Path | str = ".") -> tuple[ConfiguredAgent, ...]:
+def configured_session_agents(*, start_path: Path | str = ".") -> tuple[Agent, ...]:
     supported_families = {provider_handler.family for provider_handler in supported_provider_families()}
     agents = tuple(
         agent
@@ -279,9 +278,9 @@ def _session_provider_home_slots(family_name: str):
     return ()
 
 def _dedupe_agents(
-    agents: tuple[ConfiguredAgent, ...],
-) -> tuple[ConfiguredAgent, ...]:
-    unique_instances: dict[tuple[object, ...], ConfiguredAgent] = {}
+    agents: tuple[Agent, ...],
+) -> tuple[Agent, ...]:
+    unique_instances: dict[tuple[object, ...], Agent] = {}
     for agent in agents:
         key = agent_identity_key(agent)
         if key not in unique_instances:
@@ -720,7 +719,7 @@ def _iter_provider_context_groups(
 
 
 def _provider_agent_context_from_agent(
-    agent: ConfiguredAgent,
+    agent: Agent,
 ) -> ProviderAgentContext:
     provider_handler = _provider_family_for_name(agent.provider)
     if provider_handler is None:
@@ -730,8 +729,6 @@ def _provider_agent_context_from_agent(
     sqlite_db_paths = agent.sqlite_db_paths
     return ProviderAgentContext(
         agent=agent,
-        provider=agent.provider,
-        instance_summary=agent.summary(),
         instance_fingerprint=agent_fingerprint(agent),
         instance_identity_key=agent_identity_key(agent),
         instance_uri_key=agent_uri_key(agent),
@@ -1038,42 +1035,11 @@ def _build_provider_session_stats(session: ProviderSessionRefEntry) -> dict[str,
         payload["primary_backing_artifact"] = str(primary)
     payload.update(_session_native_payload(session))
 
-    if isinstance(session.session_ref, CodexSessionRef):
-        payload["rollout_artifact_count"] = len(session.session_ref.rollout_paths)
-        payload["session_index_count"] = len(session.session_ref.index_paths)
-        payload["has_rollout_artifact"] = _session_is_extractable(session)
-        payload["dialog_turn_count"] = _provider_dialog_turn_count(session)
-    if isinstance(session.session_ref, OpenclawSessionRef):
-        payload["has_transcript"] = session.session_ref.transcript_path is not None and session.session_ref.transcript_path.is_file()
-        payload["has_sessions_index"] = session.session_ref.sessions_index_path is not None and session.session_ref.sessions_index_path.is_file()
-        payload["session_key_count"] = len(session.session_ref.session_keys)
-        payload["dialog_turn_count"] = _provider_dialog_turn_count(session)
+    native_session = session.session_ref.to_session()
+    if hasattr(native_session, "provider_stats"):
+        payload.update(native_session.provider_stats())
 
     return {key: value for key, value in payload.items() if value is not None}
-
-
-def _provider_dialog_turn_count(session: ProviderSessionRefEntry) -> int | None:
-    path = session.primary_artifact_path()
-    if path is None or not path.is_file():
-        return None
-    try:
-        if session.provider == "codex":
-            from agentos.agent.extractors.codex import extract_dialog_from_codex_rollout
-
-            return len(extract_dialog_from_codex_rollout(path, raw=False))
-        if session.provider == "openclaw":
-            from agentos.agent.extractors.openclaw import extract_dialog_from_openclaw_session, load_openclaw_session_records
-
-            return len(
-                extract_dialog_from_openclaw_session(
-                    records=load_openclaw_session_records(path),
-                    session_id=session.session_id,
-                    raw=False,
-                )
-            )
-    except (CliError, OSError, json.JSONDecodeError):
-        return None
-    return None
 
 
 def _parse_chat_session_uri(query: str) -> SessionRefUriQuery | None:

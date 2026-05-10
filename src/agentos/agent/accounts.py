@@ -21,14 +21,13 @@ from typing import Any, Iterator
 from agentos._core.errors import CliError
 from agentos._core.project import agentos_home_dir
 from agentos.agent.primitives import Agent
-from agentos.agent.providers import ConfiguredAgent, load_configured_agents
+from agentos.agent.providers import load_configured_agents
 from agentos.agent.config import (
     ProviderFamily,
     load_chat_config_documents,
     load_unique_string_list,
     require_canonical_provider_family,
 )
-from agentos.codex.accounts import CodexAgentAccounts
 from agentos.tara_tapes.core import (
     append_tara_tape_stage_record,
     bootstrap_tara_tape,
@@ -76,29 +75,44 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 @dataclass(frozen=True)
 class AccountProviderContext:
-    provider: str
-    instance_id: str
-    label: str
-    cli_command: tuple[str, ...]
-    env: tuple[tuple[str, str], ...]
-    timeout_sec: int
-    live_usage_refresh: bool
-    usage_progression_limit: str | None
+    agent: Agent
+
+    @property
+    def provider(self) -> str:
+        return self.agent.provider
+
+    @property
+    def instance_id(self) -> str:
+        if self.agent.instance_id is None:
+            raise CliError("account provider instance is missing instance_id")
+        return self.agent.instance_id
+
+    @property
+    def label(self) -> str:
+        return self.agent.label or self.instance_id
+
+    @property
+    def cli_command(self) -> tuple[str, ...]:
+        return self.agent.cli_command
+
+    @property
+    def env(self) -> tuple[tuple[str, str], ...]:
+        return self.agent.env
+
+    @property
+    def timeout_sec(self) -> int:
+        return self.agent.timeout_sec or DEFAULT_ACCOUNT_TIMEOUT_SEC
+
+    @property
+    def live_usage_refresh(self) -> bool:
+        return bool(self.agent.account_live_usage_refresh)
+
+    @property
+    def usage_progression_limit(self) -> str | None:
+        return self.agent.account_usage_progression_limit
 
     def env_mapping(self) -> dict[str, str]:
         return dict(self.env)
-
-
-@dataclass(frozen=True)
-class AccountProviderConfig:
-    provider: str
-    instance_id: str | None
-    label: str | None
-    cli_command: tuple[str, ...]
-    env: tuple[tuple[str, str], ...]
-    timeout_sec: int | None
-    live_usage_refresh: bool | None
-    usage_progression_limit: str | None
 
 
 @dataclass(frozen=True)
@@ -195,7 +209,7 @@ def supported_account_provider_families() -> tuple[ProviderFamily, ...]:
 def configured_account_provider_configs(
     *,
     start_path: Path | str = ".",
-) -> tuple[AccountProviderConfig, ...]:
+) -> tuple[AccountProviderContext, ...]:
     supported_families = {provider_family.family for provider_family in supported_account_provider_families()}
     all_agents = load_configured_agents(start_path=start_path)
     selected_instance_ids = load_agent_accounts_instance_ids(start_path=start_path)
@@ -207,29 +221,29 @@ def configured_account_provider_configs(
         unsupported_instance_label="account",
         default_to_supported_families=True,
     )
-    provider_configs = tuple(
-        _account_provider_config_from_agent(agent)
+    provider_contexts = tuple(
+        _build_account_provider_context(agent)
         for agent in selected_agents
     )
-    for provider_config in provider_configs:
-        if _account_provider_requires_cli_command(provider_config.provider) and not provider_config.cli_command:
+    for provider_context in provider_contexts:
+        if _account_provider_requires_cli_command(provider_context.provider) and not provider_context.cli_command:
             raise CliError(
-                f"agent.instances entry {provider_config.instance_id!r} for provider "
-                f"{provider_config.provider} must define cli_command"
+                f"agent.instances entry {provider_context.instance_id!r} for provider "
+                f"{provider_context.provider} must define cli_command"
             )
-    _validate_unique_account_instance_ids(provider_configs)
-    return provider_configs
+    _validate_unique_account_instance_ids(provider_contexts)
+    return provider_contexts
 
 
 def _select_configured_agents(
-    agents: tuple[ConfiguredAgent, ...],
+    agents: tuple[Agent, ...],
     *,
     selected_instance_ids: tuple[str, ...] | None,
     supported_families: set[str],
     selector_field_name: str,
     unsupported_instance_label: str,
     default_to_supported_families: bool,
-) -> tuple[ConfiguredAgent, ...]:
+) -> tuple[Agent, ...]:
     supported_agents = tuple(agent for agent in agents if agent.provider in supported_families)
     if selected_instance_ids is None:
         if default_to_supported_families:
@@ -241,7 +255,7 @@ def _select_configured_agents(
         for agent in agents
         if agent.instance_id is not None
     }
-    selected_agents: list[ConfiguredAgent] = []
+    selected_agents: list[Agent] = []
     for instance_id in selected_instance_ids:
         agent = agents_by_id.get(instance_id)
         if agent is None:
@@ -357,10 +371,7 @@ def _resolve_chat_account_stats_request(
             if provider_family.family in allowed_providers
         )
 
-    all_configured_contexts = tuple(
-        _build_account_provider_context(config)
-        for config in configured_account_provider_configs(start_path=start_path)
-    )
+    all_configured_contexts = configured_account_provider_configs(start_path=start_path)
     usage_total_config = load_chat_accounts_usage_total_config(start_path=start_path)
     if usage_total_config is not None:
         available_instance_ids = {context.instance_id for context in all_configured_contexts}
@@ -2125,9 +2136,9 @@ def _usage_time_ratio_value(used_percent: int, elapsed_percent: int) -> float:
 
 
 def _validate_unique_account_instance_ids(
-    provider_configs: tuple[AccountProviderConfig, ...],
+    provider_configs: tuple[AccountProviderContext, ...],
 ) -> None:
-    seen_provider_configs: dict[str, AccountProviderConfig] = {}
+    seen_provider_configs: dict[str, AccountProviderContext] = {}
     for provider_config in provider_configs:
         if provider_config.instance_id is None:
             raise CliError("agent.instances ids must not be empty")
@@ -2146,37 +2157,17 @@ def _account_provider_requires_cli_command(family_name: str) -> bool:
     return family_name in {"codex", "claude-code"}
 
 
-def _account_provider_config_from_agent(
+def _build_account_provider_context(
     agent: Agent,
-) -> AccountProviderConfig:
-    return AccountProviderConfig(
-        provider=agent.provider,
-        instance_id=agent.instance_id,
-        label=agent.label,
-        cli_command=agent.cli_command,
-        env=agent.env,
-        timeout_sec=agent.timeout_sec,
-        live_usage_refresh=agent.account_live_usage_refresh,
-        usage_progression_limit=agent.account_usage_progression_limit,
-    )
-
-
-def _build_account_provider_context(config: AccountProviderConfig) -> AccountProviderContext:
+) -> AccountProviderContext:
     supported_families = {provider_family.family for provider_family in supported_account_provider_families()}
-    if config.provider not in supported_families:
-        raise CliError(f"unsupported account provider family {config.provider}")
-    if config.instance_id is None:
+    if agent.provider not in supported_families:
+        raise CliError(f"unsupported account provider family {agent.provider}")
+    if agent.instance_id is None:
         raise CliError("account provider instance is missing instance_id")
 
     return AccountProviderContext(
-        provider=config.provider,
-        instance_id=config.instance_id,
-        label=config.label or config.instance_id,
-        cli_command=config.cli_command,
-        env=config.env,
-        timeout_sec=config.timeout_sec or DEFAULT_ACCOUNT_TIMEOUT_SEC,
-        live_usage_refresh=bool(config.live_usage_refresh),
-        usage_progression_limit=config.usage_progression_limit,
+        agent=agent,
     )
 
 
@@ -2729,22 +2720,21 @@ def _collect_codex_account_stats(
     refresh_usage: bool,
 ) -> dict[str, Any]:
     del refresh_usage
-    codex_accounts = CodexAgentAccounts.from_account_context(instance)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         auth_future = executor.submit(
             _collect_parsed_command_payload,
-            codex_accounts,
+            instance,
             extra_args=("login", "status"),
             parser=_parse_codex_login_status,
         )
-        usage_future = executor.submit(_collect_codex_usage_payload, codex_accounts)
+        usage_future = executor.submit(_collect_codex_usage_payload, instance)
 
     try:
         auth_payload = auth_future.result()
     except AccountCommandError as exc:
         return _error_account_result(
-            codex_accounts,
+            instance,
             error_type=exc.error_type,
             message=exc.message,
             exit_code=exc.exit_code,
@@ -2755,25 +2745,25 @@ def _collect_codex_account_stats(
         usage_payload = usage_future.result()
     except AccountCommandError as exc:
         usage_payload = _usage_error_payload(
-            provider=codex_accounts.provider,
+            provider=instance.provider,
             error_type=exc.error_type,
             message=exc.message,
             exit_code=exc.exit_code,
         )
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
         usage_payload = _usage_error_payload(
-            provider=codex_accounts.provider,
+            provider=instance.provider,
             error_type="invalid_output",
             message=str(exc),
         )
 
     return _ok_account_result(
-        codex_accounts,
+        instance,
         _merge_account_payloads(auth_payload, usage_payload),
     )
 
 
-def _collect_codex_usage_payload(instance: CodexAgentAccounts) -> dict[str, Any]:
+def _collect_codex_usage_payload(instance: AccountProviderContext) -> dict[str, Any]:
     return _parse_codex_rate_limits(_read_codex_account_rate_limits(instance))
 
 
@@ -2946,7 +2936,7 @@ def _successful_command_output(result: subprocess.CompletedProcess[str]) -> str:
     return success_output
 
 
-def _read_codex_account_rate_limits(instance: CodexAgentAccounts) -> dict[str, Any]:
+def _read_codex_account_rate_limits(instance: AccountProviderContext) -> dict[str, Any]:
     command = [*instance.cli_command, "app-server"]
     env = _account_provider_environment(instance)
 

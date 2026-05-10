@@ -1719,8 +1719,6 @@ def test_provider_session_ref_entry_uses_provider_agent_context(tmp_path: Path) 
     )
     context = ProviderAgentContext(
         agent=agent,
-        provider="codex",
-        instance_summary={"provider": "codex", "fingerprint": "abc123", "instance_id": "codex-main"},
         instance_fingerprint="abc123",
         instance_identity_key=("codex", "codex-main"),
         instance_uri_key="abc123",
@@ -3649,6 +3647,14 @@ def test_codex_session_model_uses_provider_native_session_input(
     assert codex_session.source_ref_id == "source-1"
     assert codex_session.thread_name == "codex-thread"
     assert codex_session.index_paths == (index_path,)
+    assert [(source.role, source.path) for source in codex_session.sources()] == [
+        ("transcript", rollout_path),
+        ("session_index", index_path),
+    ]
+    assert codex_session.sources()[1].locator == {
+        "kind": "jsonl_record_match",
+        "match": {"id": session_id},
+    }
 
 
 def test_codex_session_discovery_uses_provider_native_session_model(
@@ -3681,6 +3687,10 @@ def test_codex_session_discovery_uses_provider_native_session_model(
     assert sessions[0].rollout_paths == (rollout_path,)
     assert sessions[0].index_paths == (index_path,)
     assert sessions[0].thread_name == thread_name
+    assert [(source.role, source.path) for source in sessions[0].sources()] == [
+        ("transcript", rollout_path),
+        ("session_index", index_path),
+    ]
 
 
 def test_claude_session_model_uses_provider_native_session_input(
@@ -3727,6 +3737,9 @@ def test_claude_session_model_uses_provider_native_session_input(
     assert claude_session.transcript_path == transcript_path
     assert claude_session.source_ref_id == "source-1"
     assert claude_session.title == "claude-thread"
+    assert [(source.role, source.path) for source in claude_session.sources()] == [
+        ("transcript", transcript_path)
+    ]
 
 
 def test_claude_session_discovery_uses_provider_native_session_model(
@@ -3751,6 +3764,9 @@ def test_claude_session_discovery_uses_provider_native_session_model(
     assert sessions[0].native_session_id == session_id
     assert sessions[0].artifact_paths == (transcript_path,)
     assert sessions[0].source_kind == "project"
+    assert [(source.role, source.path) for source in sessions[0].sources()] == [
+        ("transcript", transcript_path)
+    ]
 
 
 def test_copilot_session_model_uses_provider_native_session_input(
@@ -3796,6 +3812,11 @@ def test_copilot_session_model_uses_provider_native_session_input(
     assert copilot_session.events_path == events_path
     assert copilot_session.source_ref_id == "source-1"
     assert copilot_session.updated_at is not None
+    assert [(source.role, source.path) for source in copilot_session.sources()] == [
+        ("transcript", events_path),
+        ("session_root", events_path.parent),
+    ]
+    assert copilot_session.sources()[1].storage_kind == "directory"
 
 
 def test_pi_session_discovery_uses_provider_native_session_model(
@@ -3823,6 +3844,9 @@ def test_pi_session_discovery_uses_provider_native_session_model(
     assert sessions[0].model_provider == "openai-codex"
     assert sessions[0].model_id == "gpt-5.4-mini"
     assert sessions[0].thinking_level == "medium"
+    assert [(source.role, source.path) for source in sessions[0].sources()] == [
+        ("transcript", transcript_path)
+    ]
 
 
 def test_opencode_session_discovery_uses_provider_native_session_model(
@@ -3848,6 +3872,16 @@ def test_opencode_session_discovery_uses_provider_native_session_model(
     assert sessions[0].native_session_id == session_id
     assert sessions[0].diff_path == diff_path
     assert sessions[0].sqlite_db_path == db_path
+    assert [(source.role, source.path) for source in sessions[0].sources()] == [
+        ("session_diff", diff_path),
+        ("sqlite_session_row", db_path),
+    ]
+    assert sessions[0].sources()[1].storage_kind == "sqlite_row"
+    assert sessions[0].sources()[1].locator == {
+        "kind": "sqlite_row_match",
+        "table": "session",
+        "key": {"id": session_id},
+    }
 
 
 def test_gemini_session_discovery_uses_provider_native_session_model(
@@ -3876,6 +3910,9 @@ def test_gemini_session_discovery_uses_provider_native_session_model(
     assert sessions[0].native_session_id == session_id
     assert sessions[0].artifact_paths == (transcript_path,)
     assert sessions[0].updated_at is not None
+    assert [(source.role, source.path) for source in sessions[0].sources()] == [
+        ("transcript", transcript_path)
+    ]
 
 
 def test_openclaw_session_discovery_uses_provider_native_session_model(
@@ -3904,6 +3941,14 @@ def test_openclaw_session_discovery_uses_provider_native_session_model(
     assert sessions[0].sessions_index_path == transcript_path.with_name("sessions.json").resolve()
     assert sessions[0].session_keys == (session_key,)
     assert sessions[0].agent_id == "main"
+    assert [(source.role, source.path) for source in sessions[0].sources()] == [
+        ("transcript", transcript_path.resolve()),
+        ("session_index", transcript_path.with_name("sessions.json").resolve()),
+    ]
+    assert sessions[0].sources()[1].locator == {
+        "kind": "json_object_keys",
+        "keys": [session_key],
+    }
     assert matching_sessions == sessions
 
 

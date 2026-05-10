@@ -11,6 +11,7 @@ from agentos.canvas import register_canvas_commands
 from agentos.chatlas import register_chatlas_commands
 from agentos.codex import register_codex_commands
 from agentos.forum import register_forum_commands
+from agentos.index.commands import register_index_commands
 from agentos.mdblocks.commands import register_mdblocks_commands
 from agentos.mission import register_mission_commands
 from agentos.prefix.commands import register_prefix_commands
@@ -47,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_prefix_commands(subparsers)
     register_utils_commands(subparsers)
     register_mdblocks_commands(subparsers)
+    register_index_commands(subparsers)
     register_mission_commands(subparsers)
     return parser
 

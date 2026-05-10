@@ -26,14 +26,48 @@ from agentos.agent.config import (
     ProviderFamily,
     canonical_chat_provider_spec_for_name,
 )
+from agentos.claude.chatlas import (
+    CLAUDE_CHATLAS_DEFAULT_EXCLUDES,
+    CLAUDE_CHATLAS_DEFAULT_INCLUDES,
+)
 from agentos.codex.chatlas import CodexAgentChatlas
+from agentos.codex.chatlas import (
+    CODEX_CHATLAS_DEFAULT_EXCLUDES,
+    CODEX_CHATLAS_DEFAULT_INCLUDES,
+)
+from agentos.copilot.chatlas import (
+    COPILOT_CHATLAS_DEFAULT_EXCLUDES,
+    COPILOT_CHATLAS_DEFAULT_INCLUDES,
+)
+from agentos.gemini.chatlas import GEMINI_CHATLAS_DEFAULT_EXCLUDES
 from agentos.chatlas._cache_io import load_chatlas_cache_section, write_chatlas_cache_section
+from agentos.openclaw.chatlas import (
+    OPENCLAW_CHATLAS_DEFAULT_EXCLUDES,
+    OPENCLAW_CHATLAS_DEFAULT_INCLUDES,
+)
+from agentos.opencode.chatlas import (
+    OPENCODE_CHATLAS_DEFAULT_EXCLUDES,
+    OPENCODE_CHATLAS_DEFAULT_INCLUDES,
+)
+from agentos.pi.chatlas import (
+    PI_CHATLAS_DEFAULT_EXCLUDES,
+    PI_CHATLAS_DEFAULT_INCLUDES,
+)
 
 _CHATLAS_RAW_SCAN_CACHE_RELATIVE_PATH = Path("cache") / "raw-scan-v1.json"
 _CHATLAS_RAW_DETECTION_BATCH_SIZE = 512
 _CHATLAS_RAW_DETECTION_MIN_FILES = 1024
 _CHATLAS_RAW_DETECTION_MAX_WORKERS = 4
 _CHATLAS_RAW_DETECTION_IN_FLIGHT_MULTIPLIER = 2
+_CHATLAS_RAW_DEFAULT_PATTERNS = {
+    "claude-code": (CLAUDE_CHATLAS_DEFAULT_INCLUDES, CLAUDE_CHATLAS_DEFAULT_EXCLUDES),
+    "codex": (CODEX_CHATLAS_DEFAULT_INCLUDES, CODEX_CHATLAS_DEFAULT_EXCLUDES),
+    "copilot-cli": (COPILOT_CHATLAS_DEFAULT_INCLUDES, COPILOT_CHATLAS_DEFAULT_EXCLUDES),
+    "gemini-cli": ((), GEMINI_CHATLAS_DEFAULT_EXCLUDES),
+    "openclaw": (OPENCLAW_CHATLAS_DEFAULT_INCLUDES, OPENCLAW_CHATLAS_DEFAULT_EXCLUDES),
+    "opencode": (OPENCODE_CHATLAS_DEFAULT_INCLUDES, OPENCODE_CHATLAS_DEFAULT_EXCLUDES),
+    "pi": (PI_CHATLAS_DEFAULT_INCLUDES, PI_CHATLAS_DEFAULT_EXCLUDES),
+}
 
 
 ChatlasRawScanCacheEntry = dict[str, int]
@@ -144,15 +178,19 @@ def supported_chatlas_provider_families() -> tuple[ProviderFamily, ...]:
     return tuple(
         provider_spec.provider_family
         for provider_spec in canonical_chat_provider_specs()
-        if provider_spec.supports_chatlas_raw
+        if provider_spec.family in _CHATLAS_RAW_DEFAULT_PATTERNS
     )
 
 
 def _chatlas_provider_spec_for_name(family_name: str):
     provider_spec = canonical_chat_provider_spec_for_name(family_name)
-    if provider_spec is None or not provider_spec.supports_chatlas_raw:
+    if provider_spec is None or family_name not in _CHATLAS_RAW_DEFAULT_PATTERNS:
         return None
     return provider_spec
+
+
+def _chatlas_raw_default_patterns(family_name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    return _CHATLAS_RAW_DEFAULT_PATTERNS.get(family_name, ((), ()))
 
 
 def _chatlas_archive_config_from_agent(
@@ -188,17 +226,17 @@ def _build_chatlas_provider_context(config: ChatlasArchiveConfig) -> ChatlasProv
             effective_excludes=codex_chatlas.excludes,
         )
 
+    default_includes, default_excludes = _chatlas_raw_default_patterns(config.family)
     return ChatlasProviderContext(
         family=config.family,
         resolved_instance_name=_resolve_chatlas_instance_name(config),
         is_default=config.is_default,
         homes=config.homes,
         effective_includes=_unique_strings(
-            provider_spec.chatlas_default_includes + config.includes
+            default_includes + config.includes
         ),
         effective_excludes=_unique_strings(
-            provider_spec.chatlas_default_excludes
-            + config.excludes
+            default_excludes + config.excludes
         ),
     )
 

@@ -9,12 +9,15 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from rich.cells import cell_len
 
 from agentos.agent import accounts as chat_accounts
 from agentos.agent import account_commands as chat_commands
+from agentos.agent.providers import agent_from_config
+from agentos.agent.primitives import AgentConfig
 from agentos.cli import main
 from agentos.tara_tapes.core import load_tara_tape_manifest, read_tara_tape_segment_records
 from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
@@ -52,16 +55,16 @@ def _account_instance(
     env: tuple[tuple[str, str], ...] = (),
     timeout_sec: int = 15,
     live_usage_refresh: bool = False,
-) -> chat_accounts.AccountProviderConfig:
-    return chat_accounts.AccountProviderConfig(
+) -> AgentConfig:
+    return AgentConfig(
         provider=provider,
         instance_id=instance_id,
         label=label,
         cli_command=cli_command,
         env=env,
         timeout_sec=timeout_sec,
-        live_usage_refresh=live_usage_refresh,
-        usage_progression_limit=None,
+        account_live_usage_refresh=live_usage_refresh,
+        account_usage_progression_limit=None,
     )
 
 
@@ -76,20 +79,34 @@ def _account_context(
     live_usage_refresh: bool = False,
 ) -> chat_accounts.AccountProviderContext:
     return chat_accounts._build_account_provider_context(
-        _account_instance(
-            provider=provider,
-            instance_id=instance_id,
-            label=label,
-            cli_command=cli_command,
-            env=env,
-            timeout_sec=timeout_sec,
-            live_usage_refresh=live_usage_refresh,
+        agent_from_config(
+            _account_instance(
+                provider=provider,
+                instance_id=instance_id,
+                label=label,
+                cli_command=cli_command,
+                env=env,
+                timeout_sec=timeout_sec,
+                live_usage_refresh=live_usage_refresh,
+            )
         )
     )
 
 
-def _account_config(instance: chat_accounts.AccountProviderConfig) -> chat_accounts.AccountProviderConfig:
-    return instance
+def _account_config(instance) -> chat_accounts.AccountProviderContext:  # type: ignore[no-untyped-def]
+    if isinstance(instance, chat_accounts.AccountProviderContext):
+        return instance
+    agent = SimpleNamespace(
+        provider=instance.provider,
+        instance_id=instance.instance_id,
+        label=instance.label,
+        cli_command=instance.cli_command,
+        env=instance.env,
+        timeout_sec=instance.timeout_sec,
+        account_live_usage_refresh=instance.account_live_usage_refresh,
+        account_usage_progression_limit=instance.account_usage_progression_limit,
+    )
+    return chat_accounts.AccountProviderContext(agent=agent)
 
 
 def _usage_over_time_limit_payload(
@@ -3150,10 +3167,10 @@ def test_codex_account_stats_uses_provider_native_accounts_model(
     observed: dict[str, object] = {}
 
     def fake_codex_usage(instance) -> dict[str, object]:
-        from agentos.codex.accounts import CodexAgentAccounts
+        from agentos.agent.accounts import AccountProviderContext
 
         observed["instance_type"] = type(instance)
-        assert isinstance(instance, CodexAgentAccounts)
+        assert isinstance(instance, AccountProviderContext)
         assert instance.instance_id == "codex-main"
         return {
             "rateLimits": {
@@ -3172,7 +3189,7 @@ def test_codex_account_stats_uses_provider_native_accounts_model(
     assert main(["agent", "accounts", "stats", "--provider", "codex"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert observed["instance_type"].__name__ == "CodexAgentAccounts"
+    assert observed["instance_type"].__name__ == "AccountProviderContext"
     providers = {provider["provider"]: provider for provider in payload["providers"]}
     codex_account = providers["codex"]["accounts"][0]
     assert codex_account["id"] == "codex-main"

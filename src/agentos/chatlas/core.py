@@ -14,8 +14,8 @@ from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_strings
 from agentos._core.git_ops import git_has_staged_changes, run_git
-from agentos.agent.primitives import AgentConfig
-from agentos.agent.providers import ConfiguredAgent, agent_from_config, load_configured_agents
+from agentos.agent.primitives import AgentConfig, SessionSource
+from agentos.agent.providers import Agent, agent_from_config, load_configured_agents
 from agentos.agent.sessions import (
     _format_stats_timestamp,
     _provider_family_for_name,
@@ -27,14 +27,8 @@ from agentos.agent.config import (
 from agentos.agent.session_refs import (
     BackingArtifact,
     ProviderSessionRef,
+    backing_artifacts_from_sources,
     coerce_timestamp,
-    session_ref_backing_artifacts as _session_ref_backing_artifacts,
-    session_ref_created_timestamp as _session_ref_created_timestamp,
-    session_ref_display_name as _session_ref_display_name,
-    session_ref_display_name_field as _session_ref_display_name_field,
-    session_ref_id as _session_ref_id,
-    session_ref_native_payload as _session_ref_native_payload,
-    session_ref_sort_timestamp as _session_ref_sort_timestamp,
 )
 from agentos.chatlas._cache_io import (
     load_chatlas_cache_section,
@@ -55,6 +49,8 @@ from agentos.chatlas.raw import (
     _write_chatlas_raw_scan_cache,
     supported_chatlas_provider_families,
 )
+from agentos.codex.session import CodexSession
+from agentos.openclaw.session import OpenclawSession
 
 CHATLAS_DIRNAME = "chatlas"
 DEFAULT_CHATLAS_COMMIT_PREFIX = "chatlas update"
@@ -96,8 +92,14 @@ class ChatlasSessionIndexMaterialization:
 @dataclass(frozen=True)
 class ChatlasProviderSessionRef:
     archive_config: ChatlasArchiveConfig
-    agent: ConfiguredAgent
+    agent: Agent
     session_ref: ProviderSessionRef
+
+    def sources(self) -> tuple[SessionSource, ...]:
+        return self.session_ref.to_session().sources()
+
+    def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
+        return backing_artifacts_from_sources(self.sources())
 
 
 @dataclass
@@ -165,14 +167,14 @@ def load_chatlas_instance_ids(
 
 
 def _select_configured_agents(
-    agents: tuple[ConfiguredAgent, ...],
+    agents: tuple[Agent, ...],
     *,
     selected_instance_ids: tuple[str, ...] | None,
     supported_families: set[str],
     selector_field_name: str,
     unsupported_instance_label: str,
     default_to_supported_families: bool,
-) -> tuple[ConfiguredAgent, ...]:
+) -> tuple[Agent, ...]:
     supported_agents = tuple(agent for agent in agents if agent.provider in supported_families)
     if selected_instance_ids is None:
         if default_to_supported_families:
@@ -184,7 +186,7 @@ def _select_configured_agents(
         for agent in agents
         if agent.instance_id is not None
     }
-    selected_agents: list[ConfiguredAgent] = []
+    selected_agents: list[Agent] = []
     for instance_id in selected_instance_ids:
         agent = agents_by_id.get(instance_id)
         if agent is None:
@@ -1131,7 +1133,7 @@ def _chatlas_session_agent(
     *,
     raw_root: Path,
     archive_provider_config: ChatlasArchiveConfig,
-) -> ConfiguredAgent | None:
+) -> Agent | None:
     if _provider_family_for_name(archive_provider_config.family) is None:
         return None
 
@@ -1173,7 +1175,7 @@ def _dedupe_chatlas_session_refs(
         key=lambda session: (
             session.archive_config.family,
             session.archive_config.fingerprint,
-            _session_ref_id(session.session_ref),
+            session.session_ref.native_session_id,
         ),
     )
 
@@ -1182,7 +1184,7 @@ def _chatlas_session_ref_identity_key(session: ChatlasProviderSessionRef) -> tup
     return (
         session.archive_config.family,
         session.archive_config.identity_key(),
-        _session_ref_id(session.session_ref),
+        session.session_ref.native_session_id,
     )
 
 
@@ -1205,17 +1207,17 @@ def _merge_chatlas_session_ref(
 
 def _session_ref_index_record(session: ChatlasProviderSessionRef) -> dict[str, Any]:
     session_ref = session.session_ref
-    backing_artifacts = _session_ref_backing_artifacts(session_ref)
+    backing_artifacts = session.backing_artifacts()
     primary_backing_artifact = backing_artifacts[0] if backing_artifacts else None
     payload = {
         "provider": session.archive_config.family,
         "uri": _chatlas_session_ref_uri(session),
         "provider_instance_fingerprint": session.archive_config.fingerprint,
-        "session_id": _session_ref_id(session_ref),
-        "display_name": _session_ref_display_name(session_ref),
-        "display_name_field": _session_ref_display_name_field(session_ref),
-        "created_at": _format_stats_timestamp(_session_ref_created_timestamp(session_ref)),
-        "updated_at": _format_stats_timestamp(_session_ref_sort_timestamp(session_ref)),
+        "session_id": session_ref.native_session_id,
+        "display_name": session_ref.display_name(),
+        "display_name_field": session_ref.display_name_field(),
+        "created_at": _format_stats_timestamp(session_ref.to_session().created_timestamp()),
+        "updated_at": _format_stats_timestamp(session_ref.sort_timestamp()),
         "extractable": _chatlas_session_ref_is_probably_extractable(
             session.archive_config.family,
             backing_artifacts,
@@ -1226,7 +1228,7 @@ def _session_ref_index_record(session: ChatlasProviderSessionRef) -> dict[str, A
             if primary_backing_artifact is not None
             else None
         ),
-        "native": _session_ref_native_payload(session_ref),
+        "native": dict(session_ref.native_ref_metadata()),
         "backing_artifacts": [
             _serialize_session_ref_backing_artifact(session.archive_config.family, artifact)
             for artifact in backing_artifacts
@@ -1234,7 +1236,7 @@ def _session_ref_index_record(session: ChatlasProviderSessionRef) -> dict[str, A
         "instance": _chatlas_archive_identity_name(session.archive_config),
         "identity_hash": _session_identity_hash(
             provider=session.archive_config.family,
-            provider_session_id=_session_ref_id(session_ref),
+            provider_session_id=session_ref.native_session_id,
         ),
         "class": "agentos.chatlas.session",
         "schema_version": 1,
@@ -1246,32 +1248,32 @@ def _chatlas_session_ref_uri(session: ChatlasProviderSessionRef) -> str:
     return (
         f"agentos://chat-session/{quote(session.archive_config.family, safe='')}/"
         f"{session.archive_config.uri_key}/"
-        f"{quote(_session_ref_id(session.session_ref), safe='')}"
+        f"{quote(session.session_ref.native_session_id, safe='')}"
     )
 
 
 def _session_ref_index_cache_key(session: ChatlasProviderSessionRef) -> str:
     provider = _session_fs_component(session.archive_config.family)
     fingerprint = _session_fs_component(session.archive_config.fingerprint)
-    session_id = _session_fs_component(_session_ref_id(session.session_ref))
+    session_id = _session_fs_component(session.session_ref.native_session_id)
     return f"{provider}/{fingerprint}/{session_id}"
 
 
 def _session_ref_index_source_signature(session: ChatlasProviderSessionRef) -> dict[str, object]:
     session_ref = session.session_ref
-    backing_artifacts = _session_ref_backing_artifacts(session_ref)
+    backing_artifacts = session.backing_artifacts()
     primary_backing_artifact = backing_artifacts[0] if backing_artifacts else None
     provider = session.archive_config.family
     return {
         "provider": provider,
         "instance": _chatlas_archive_identity_name(session.archive_config),
         "provider_instance_fingerprint": session.archive_config.fingerprint,
-        "session_id": _session_ref_id(session_ref),
-        "display_name": _session_ref_display_name(session_ref),
-        "display_name_field": _session_ref_display_name_field(session_ref),
-        "updated_at": _format_stats_timestamp(_session_ref_sort_timestamp(session_ref)),
+        "session_id": session_ref.native_session_id,
+        "display_name": session_ref.display_name(),
+        "display_name_field": session_ref.display_name_field(),
+        "updated_at": _format_stats_timestamp(session_ref.sort_timestamp()),
         "extractable": _chatlas_session_ref_is_probably_extractable(provider, backing_artifacts),
-        "native": _session_ref_native_payload(session_ref),
+        "native": dict(session_ref.native_ref_metadata()),
         "primary_backing_artifact": (
             None
             if primary_backing_artifact is None
@@ -1697,27 +1699,24 @@ def _chatlas_provider_stats_from_index_session(session: dict[str, Any]) -> dict[
     native = session.get("native")
     if isinstance(native, dict):
         payload.update(native)
-    primary_path = _chatlas_primary_artifact_path(session)
-    if provider == "codex":
-        backing_artifacts = _chatlas_backing_artifacts(session)
-        payload["rollout_artifact_count"] = sum(1 for artifact in backing_artifacts if artifact.get("role") == "transcript")
-        payload["session_index_count"] = sum(1 for artifact in backing_artifacts if artifact.get("role") == "session_index")
-        payload["has_rollout_artifact"] = bool(session.get("extractable"))
-        payload["dialog_turn_count"] = _chatlas_dialog_turn_count(
-            provider,
-            primary_path,
-            session_id=_string_or_none(session.get("session_id")),
-        )
-    if provider == "openclaw":
-        session_keys = payload.get("session_keys")
-        payload["session_key_count"] = len(session_keys) if isinstance(session_keys, list) else 0
-        payload["has_transcript"] = primary_path is not None and primary_path.is_file()
-        payload["dialog_turn_count"] = _chatlas_dialog_turn_count(
-            provider,
-            primary_path,
-            session_id=_string_or_none(session.get("session_id")),
-        )
+    payload.update(_provider_stats_from_index_session(session))
     return {key: value for key, value in payload.items() if value is not None}
+
+
+def _provider_stats_from_index_session(session: dict[str, Any]) -> dict[str, object]:
+    provider = _string_or_none(session.get("provider"))
+    if provider == "codex":
+        codex_session = CodexSession.from_chatlas_session_payload(
+            session,
+            sources=_chatlas_backing_artifacts(session),
+        )
+        if codex_session is not None:
+            return codex_session.provider_stats()
+    if provider == "openclaw":
+        openclaw_session = OpenclawSession.from_chatlas_session_payload(session)
+        if openclaw_session is not None:
+            return openclaw_session.provider_stats()
+    return {}
 
 
 def _chatlas_backing_artifacts(session: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1726,49 +1725,6 @@ def _chatlas_backing_artifacts(session: dict[str, Any]) -> list[dict[str, Any]]:
         return [artifact for artifact in artifacts if isinstance(artifact, dict)]
     primary = session.get("primary_backing_artifact")
     return [primary] if isinstance(primary, dict) else []
-
-
-def _chatlas_primary_artifact_path(session: dict[str, Any]) -> Path | None:
-    primary = session.get("primary_backing_artifact")
-    if not isinstance(primary, dict):
-        return None
-    path_text = _string_or_none(primary.get("path"))
-    if path_text is None:
-        return None
-    return Path(path_text)
-
-
-def _chatlas_dialog_turn_count(
-    provider: str,
-    path: Path | None,
-    *,
-    session_id: str | None,
-) -> int | None:
-    if path is None or not path.is_file():
-        return None
-    try:
-        if provider == "codex":
-            from agentos.agent.extractors.codex import extract_dialog_from_codex_rollout
-
-            return len(extract_dialog_from_codex_rollout(path, raw=False))
-        if provider == "openclaw":
-            from agentos.agent.extractors.openclaw import (
-                extract_dialog_from_openclaw_session,
-                load_openclaw_session_records,
-            )
-
-            if session_id is None:
-                return None
-            return len(
-                extract_dialog_from_openclaw_session(
-                    records=load_openclaw_session_records(path),
-                    session_id=session_id,
-                    raw=False,
-                )
-            )
-    except (CliError, OSError, json.JSONDecodeError):
-        return None
-    return None
 
 
 def _chatlas_session_with_match(selection: ChatlasSessionSelection) -> dict[str, Any]:

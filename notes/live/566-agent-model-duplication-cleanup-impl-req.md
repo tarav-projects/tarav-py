@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-This request is ready for implementation planning and execution after the current provider-agent/session model direction is accepted.
+This request is partially implemented; the remaining work should preserve the lightweight `<Provider>.SessionRef` / full `<Provider>.Session` responsibility split before moving more session behavior.
 
 ## User Intent
 
@@ -61,7 +61,7 @@ The implementation should:
 4. Remove the `ConfiguredAgent` alias and use `Agent` / provider agent types directly.
 5. Replace account-specific provider config/context duplication with real Agent objects or clear account capability adapters.
 6. Thin `ProviderAgentContext` so it only contains coordination/cache data that is not already available from the agent, or remove it if call sites can use the agent directly.
-7. Push provider-specific `SessionRef` behavior into provider `SessionRef` classes or provider-local helpers behind a common protocol.
+7. Remove provider-specific session behavior from central Agentos helpers, but place each behavior on the right provider object: lightweight list/query/load-pointer facts on `<Provider>.SessionRef`, full provider-native session/export/normalization facts on `<Provider>.Session`.
 8. Separate Chatlas-specific defaults/config from the core Agent provider/home model.
 9. Consolidate duplicated selection-by-profile/instance logic into one helper where possible.
 
@@ -74,6 +74,9 @@ The implementation should:
 - Provider agents remain the runtime objects used by commands and subsystems.
 - A provider agent may contain provider-specific fields only when they are needed to configure or operate the provider runtime.
 - Session-content facts belong on `<Provider>.Session` or `<Provider>.SessionRef`, not on Agent objects.
+- `<Provider>.SessionRef` is a lightweight identity/lookup handle with minimal metadata needed to list, resolve, dedupe, and load a full session.
+- `<Provider>.Session` is the full provider-native model for one session and owns richer session facts, full native payloads, artifact interpretation, and normalization inputs.
+- `<Provider>.Session.sources()` should expose provider/session source refs directly; Chatlas and other downstream subsystems should consume those refs without requiring a new Agentos-level backing-artifact target object.
 - Querying, registry/indexing, and cross-provider coordination belong above provider session objects.
 - Chatlas-specific backing/mirroring/defaults are Chatlas concerns, not core provider Agent model concerns.
 - Prefer small vertical slices with tests over a broad unverified rewrite.
@@ -93,7 +96,7 @@ The implementation should:
 - `ConfiguredAgent` is gone or reduced to no active use.
 - Account stats code consumes real Agent runtime objects or explicit capability adapters without parallel Agent-like config/context DTOs.
 - Session coordination wraps agents only for non-agent coordination state, or uses agents directly.
-- Provider-specific `SessionRef` facts are no longer centralized primarily through long `isinstance` chains in `agentos.agent.session_refs`.
+- Provider-specific session facts are no longer centralized primarily through long `isinstance` chains in `agentos.agent.session_refs`; lightweight facts live on refs and full session facts live on provider sessions.
 - Chatlas-specific include/exclude defaults are not part of a generic Agent/provider spec object.
 - Tests for `agentos agent list`, `agentos agent run`, `agentos agent accounts stats`, and session listing/querying still pass.
 - New tests or updated tests cover any changed construction/selection behavior.
@@ -130,10 +133,13 @@ Implement in vertical slices. Each slice should leave the CLI runnable and tests
 - Keep only computed/cached coordination data that is genuinely not part of Agent state.
 - Ensure session listing, resolving, and stats still use provider agents to discover/load provider session refs.
 
-### Slice 5. SessionRef Behavior Cleanup
+### Slice 5. SessionRef / Session Behavior Cleanup
 
-- Move provider-specific `SessionRef` behavior closer to each provider session module.
-- Replace central `isinstance` chains with protocol methods or provider-local adapters.
+- Define the explicit split between `<Provider>.SessionRef` and `<Provider>.Session` before moving behavior.
+- Keep `<Provider>.SessionRef` focused on session identity, minimal display/list metadata available without loading, timestamps available from the source, and source pointers needed to load the full session.
+- Move full native payloads, richer source/artifact interpretation, normalization inputs, and content-derived metadata to `<Provider>.Session`.
+- Add a small session source/ref shape only if needed to express `Session.sources()`; do not introduce a new target `BackingArtifact` abstraction for Chatlas.
+- Replace central `isinstance` chains with protocol methods or provider-local adapters, but do not bloat refs into half-session objects.
 - Keep cross-provider query/registry behavior above the provider objects.
 
 ### Slice 6. Provider Spec Boundary Cleanup
@@ -178,7 +184,7 @@ Related design and implementation notes:
 
 - Should the common Agent runtime shape be implemented as a dataclass base class, composition around `AgentConfig`, or a small helper module that preserves independent provider dataclasses?
 - Should account collection become methods/capabilities on each provider agent, or should it remain an Agentos account subsystem that accepts provider agents?
-- How far should the first implementation pass go into `SessionRef` cleanup versus leaving that to the dedicated session-ref impl-req?
+- How far should this implementation pass go into the `SessionRef` / `Session` cleanup versus leaving that to the dedicated session-ref impl-req?
 - Should Chatlas include/exclude config be moved immediately, or only after the Agent class duplication is removed?
 
 ## Related Impl-Reqs
@@ -190,3 +196,8 @@ Related design and implementation notes:
 ## End Log
 
 - 2026-05-10: Created from codebase inspection of duplicated Agent model/state objects after the provider agent/session refactor discussion.
+- 2026-05-10: Partially implemented shared `AgentBase`, provider construction cleanup, account context cleanup, and a first thinning of `ProviderAgentContext`; remaining session cleanup was realigned so lightweight facts stay on `<Provider>.SessionRef` while full provider-native facts belong on `<Provider>.Session`.
+- 2026-05-10: Moved lightweight ref display/query metadata methods onto provider `SessionRef` classes and removed the matching central `isinstance` dispatch from `agentos.agent.session_refs`; backing artifact interpretation and full payload behavior remain out of refs.
+- 2026-05-10: Moved Chatlas raw include/exclude defaults out of the generic agent provider spec and into `agentos.chatlas.raw`; the provider spec now carries provider/home/session-discovery facts only.
+- 2026-05-10: Moved lightweight ref sort timestamp calculation onto provider `SessionRef` classes; central dispatch now remains only for heavier backing-artifact and created-timestamp extraction concerns.
+- 2026-05-10: Clarified that Chatlas should consume `<Provider>.Session.sources()` directly; any existing `BackingArtifact` use is transitional compatibility, not a new target design object.

@@ -24,10 +24,7 @@ from agentos.pi.agent import PiAgent
 DEFAULT_RUN_PROVIDER_FAMILIES = ("codex", "copilot-cli", "pi")
 
 
-ConfiguredAgent = Agent
-
-
-def load_configured_agents(*, start_path: Path | str = ".") -> tuple[ConfiguredAgent, ...]:
+def load_configured_agents(*, start_path: Path | str = ".") -> tuple[Agent, ...]:
     return tuple(
         agent_from_config(agent_config)
         for agent_config in load_agent_configs(start_path=start_path)
@@ -49,7 +46,7 @@ def supported_default_run_provider_families() -> tuple[str, ...]:
     return DEFAULT_RUN_PROVIDER_FAMILIES
 
 
-def agent_from_config(config: AgentConfig) -> ConfiguredAgent:
+def agent_from_config(config: AgentConfig) -> Agent:
     if config.provider == "codex":
         return CodexAgent.from_config(config)
     if config.provider == "claude-code":
@@ -73,7 +70,7 @@ def resolve_agent(
     profile: str | None,
     start_path: Path,
     home: Path | str | None = None,
-) -> ConfiguredAgent:
+) -> Agent:
     return agent_from_config(
         resolve_agent_config(
             provider=provider,
@@ -129,7 +126,6 @@ def resolve_agent_config(
 
 __all__ = [
     "agent_from_config",
-    "ConfiguredAgent",
     "load_configured_agents",
     "load_agent_configs_with_defaults",
     "resolve_agent",

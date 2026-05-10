@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
 
 from agentos._core.sequences import _unique_paths
+from agentos.agent.primitives import SessionSource
+from agentos.agent.session_utils import (
+    coalesce_timestamp as _coalesce_timestamp,
+    coerce_timestamp as _coerce_timestamp,
+    glob_paths as _glob_paths,
+    safe_path_mtime as _safe_path_mtime,
+    string_or_none as _string_or_none,
+)
 
 
 PI_PROVIDER = "pi"
@@ -29,6 +36,31 @@ class PiSessionRef:
 
     def matches_query(self, query: str) -> bool:
         return query == self.native_session_id
+
+    def display_name(self) -> str | None:
+        return None
+
+    def display_name_field(self) -> str | None:
+        return None
+
+    def native_ref_metadata(self) -> dict[str, object]:
+        payload: dict[str, object] = {}
+        if self.cwd is not None:
+            payload["cwd"] = self.cwd
+        if self.model_provider is not None:
+            payload["model_provider"] = self.model_provider
+        if self.model_id is not None:
+            payload["model_id"] = self.model_id
+        if self.thinking_level is not None:
+            payload["thinking_level"] = self.thinking_level
+        return payload
+
+    def sort_timestamp(self) -> float | None:
+        return _coalesce_timestamp(
+            self.updated_at,
+            self.started_at,
+            *(_safe_path_mtime(path) for path in self.artifact_paths),
+        )
 
     def to_session(self) -> "PiSession":
         return PiSession(
@@ -57,6 +89,15 @@ class PiSession:
     @property
     def provider(self) -> str:
         return PI_PROVIDER
+
+    def sources(self) -> tuple[SessionSource, ...]:
+        return tuple(
+            SessionSource(role="transcript", path=path)
+            for path in self.artifact_paths
+        )
+
+    def created_timestamp(self) -> float | None:
+        return self.started_at
 
     def merge(self, other: PiSession) -> PiSession:
         if self.native_session_id != other.native_session_id:
@@ -249,17 +290,6 @@ def _json_line_object(line: str) -> dict[str, Any] | None:
     return obj
 
 
-def _glob_paths(root: Path, pattern: str) -> tuple[Path, ...]:
-    if root.is_file():
-        return (root,) if root.match(pattern) else ()
-    if not root.is_dir():
-        return ()
-    try:
-        return tuple(sorted(root.glob(pattern)))
-    except OSError:
-        return ()
-
-
 def _merge_pi_session(sessions_by_id: dict[str, PiSession], session: PiSession) -> None:
     existing = sessions_by_id.get(session.native_session_id)
     if existing is None:
@@ -272,65 +302,11 @@ def _sort_pi_sessions(sessions: tuple[PiSession, ...]) -> tuple[PiSession, ...]:
     return tuple(sorted(sessions, key=lambda session: session.native_session_id))
 
 
-def _safe_path_mtime(path: Path | None) -> float | None:
-    if path is None:
-        return None
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return None
-
-
-def _coerce_timestamp(value: object) -> float | None:
-    if value is None:
-        return None
-
-    if isinstance(value, (int, float)):
-        timestamp = float(value)
-        if timestamp > 1_000_000_000_000:
-            return timestamp / 1000.0
-        if timestamp > 1_000_000_000:
-            return timestamp
-        return None
-
-    if not isinstance(value, str):
-        return None
-
-    value = value.strip()
-    if not value:
-        return None
-
-    try:
-        return _coerce_timestamp(float(value))
-    except ValueError:
-        pass
-
-    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        return datetime.fromisoformat(normalized).timestamp()
-    except ValueError:
-        return None
-
-
-def _coalesce_timestamp(*values: float | None) -> float | None:
-    timestamps = [value for value in values if value is not None]
-    if not timestamps:
-        return None
-    return max(timestamps)
-
-
 def _earliest_timestamp(*values: float | None) -> float | None:
     timestamps = [value for value in values if value is not None]
     if not timestamps:
         return None
     return min(timestamps)
-
-
-def _string_or_none(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    return stripped or None
 
 
 __all__ = [

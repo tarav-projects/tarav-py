@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
 
+from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_strings
+from agentos.agent.primitives import SessionSource
+from agentos.agent.session_utils import (
+    artifact_paths_by_role as _artifact_paths_by_role,
+    coalesce_timestamp as _coalesce_timestamp,
+    coerce_timestamp as _coerce_timestamp,
+    primary_source_path as _primary_source_path,
+    safe_path_mtime as _safe_path_mtime,
+    string_or_none as _string_or_none,
+)
 
 
 OPENCLAW_PROVIDER = "openclaw"
@@ -27,6 +36,27 @@ class OpenclawSessionRef:
 
     def matches_query(self, query: str) -> bool:
         return query == self.native_session_id or query in self.session_keys
+
+    def display_name(self) -> str | None:
+        return None
+
+    def display_name_field(self) -> str | None:
+        return None
+
+    def native_ref_metadata(self) -> dict[str, object]:
+        payload: dict[str, object] = {}
+        if self.session_keys:
+            payload["session_keys"] = list(self.session_keys)
+        if self.agent_id is not None:
+            payload["agent_id"] = self.agent_id
+        return payload
+
+    def sort_timestamp(self) -> float | None:
+        return _coalesce_timestamp(
+            self.updated_at,
+            _safe_path_mtime(self.transcript_path),
+            _safe_path_mtime(self.sessions_index_path),
+        )
 
     def to_session(self) -> "OpenclawSession":
         return OpenclawSession(
@@ -52,6 +82,75 @@ class OpenclawSession:
     def provider(self) -> str:
         return OPENCLAW_PROVIDER
 
+    def sources(self) -> tuple[SessionSource, ...]:
+        sources: list[SessionSource] = []
+        if self.transcript_path is not None:
+            sources.append(SessionSource(role="transcript", path=self.transcript_path))
+        if self.sessions_index_path is not None:
+            if self.session_keys:
+                locator = {
+                    "kind": "json_object_keys",
+                    "keys": list(self.session_keys),
+                }
+            else:
+                locator = {
+                    "kind": "json_object_value_match",
+                    "match": {"sessionId": self.native_session_id},
+                }
+            sources.append(
+                SessionSource(
+                    role="session_index",
+                    path=self.sessions_index_path,
+                    locator=locator,
+                )
+            )
+        return tuple(sources)
+
+    def created_timestamp(self) -> float | None:
+        artifact = _primary_source_path(self.sources())
+        if artifact is None or not artifact.exists():
+            return None
+
+        try:
+            from agentos.agent.extractors.openclaw import load_openclaw_session_records
+
+            records = load_openclaw_session_records(artifact)
+            if records:
+                return _coerce_timestamp(records[0].get("timestamp"))
+        except (CliError, OSError, json.JSONDecodeError):
+            return None
+        return None
+
+    def dialog_turn_count(self) -> int | None:
+        if self.transcript_path is None or not self.transcript_path.is_file():
+            return None
+
+        try:
+            from agentos.agent.extractors.openclaw import (
+                extract_dialog_from_openclaw_session,
+                load_openclaw_session_records,
+            )
+
+            return len(
+                extract_dialog_from_openclaw_session(
+                    records=load_openclaw_session_records(self.transcript_path),
+                    session_id=self.native_session_id,
+                    raw=False,
+                )
+            )
+        except (CliError, OSError, json.JSONDecodeError):
+            return None
+
+    def provider_stats(self) -> dict[str, object]:
+        return {
+            "has_transcript": self.transcript_path is not None and self.transcript_path.is_file(),
+            "has_sessions_index": (
+                self.sessions_index_path is not None and self.sessions_index_path.is_file()
+            ),
+            "session_key_count": len(self.session_keys),
+            "dialog_turn_count": self.dialog_turn_count(),
+        }
+
     def merge(self, other: OpenclawSession) -> OpenclawSession:
         if self.native_session_id != other.native_session_id:
             raise TypeError(
@@ -64,6 +163,36 @@ class OpenclawSession:
             session_keys=_unique_strings(self.session_keys + other.session_keys),
             agent_id=self.agent_id if self.agent_id == other.agent_id else self.agent_id or other.agent_id,
             updated_at=_coalesce_timestamp(self.updated_at, other.updated_at),
+        )
+
+    @classmethod
+    def from_chatlas_session_payload(cls, session: dict[str, Any]) -> OpenclawSession | None:
+        if session.get("provider") != OPENCLAW_PROVIDER:
+            return None
+        native_session_id = _string_or_none(session.get("session_id"))
+        if native_session_id is None:
+            return None
+
+        transcript_paths = _artifact_paths_by_role(session, role="transcript")
+        index_paths = _artifact_paths_by_role(session, role="session_index")
+        native = session.get("native")
+        session_keys: tuple[str, ...] = ()
+        agent_id = None
+        if isinstance(native, dict):
+            raw_session_keys = native.get("session_keys")
+            if isinstance(raw_session_keys, list):
+                session_keys = tuple(
+                    key for key in raw_session_keys if isinstance(key, str) and key
+                )
+            agent_id = _string_or_none(native.get("agent_id"))
+
+        return cls(
+            native_session_id=native_session_id,
+            transcript_path=Path(transcript_paths[0]) if transcript_paths else None,
+            sessions_index_path=Path(index_paths[0]) if index_paths else None,
+            session_keys=session_keys,
+            agent_id=agent_id,
+            updated_at=_coerce_timestamp(session.get("updated_at")),
         )
 
 
@@ -219,60 +348,6 @@ def _merge_openclaw_session(
 
 def _sort_openclaw_sessions(sessions: tuple[OpenclawSession, ...]) -> tuple[OpenclawSession, ...]:
     return tuple(sorted(sessions, key=lambda session: session.native_session_id))
-
-
-def _safe_path_mtime(path: Path | None) -> float | None:
-    if path is None:
-        return None
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return None
-
-
-def _coerce_timestamp(value: object) -> float | None:
-    if value is None:
-        return None
-
-    if isinstance(value, (int, float)):
-        timestamp = float(value)
-        if timestamp > 1_000_000_000_000:
-            return timestamp / 1000.0
-        if timestamp > 1_000_000_000:
-            return timestamp
-        return None
-
-    if not isinstance(value, str):
-        return None
-
-    value = value.strip()
-    if not value:
-        return None
-
-    try:
-        return _coerce_timestamp(float(value))
-    except ValueError:
-        pass
-
-    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        return datetime.fromisoformat(normalized).timestamp()
-    except ValueError:
-        return None
-
-
-def _coalesce_timestamp(*values: float | None) -> float | None:
-    timestamps = [value for value in values if value is not None]
-    if not timestamps:
-        return None
-    return max(timestamps)
-
-
-def _string_or_none(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    return stripped or None
 
 
 __all__ = [
