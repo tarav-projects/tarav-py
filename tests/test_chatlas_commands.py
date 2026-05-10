@@ -1190,7 +1190,7 @@ def _write_global_config(
     chatlas_instance_ids: list[str] | None | object = _DEFAULT_CHATLAS_INSTANCE_IDS,
 ) -> None:
     home = path.parent.parent / "home"
-    configured_legacy_configs = [
+    configured_agent_configs = [
         {
             "provider": "codex",
             "id": "codex-main",
@@ -1220,14 +1220,14 @@ def _write_global_config(
         "class": "agentos.global.config",
         "schema_version": 1,
         "agent": {
-            "instances": configured_legacy_configs,
+            "instances": configured_agent_configs,
         },
     }
     if chatlas_instance_ids is _DEFAULT_CHATLAS_INSTANCE_IDS:
         payload["chatlas"] = {
             "instance_ids": [
                 instance_id
-                for instance in configured_legacy_configs
+                for instance in configured_agent_configs
                 if isinstance((instance_id := instance.get("id")), str)
             ],
         }
@@ -1705,30 +1705,25 @@ def test_codex_chatlas_context_uses_provider_native_capability(
 def test_provider_session_ref_entry_uses_provider_agent_context(tmp_path: Path) -> None:
     from agentos.agent.primitives import AgentConfig
     from agentos.chat.core import ProviderAgentContext, ProviderSessionRefEntry
-    from agentos.chat.providers import LegacyProviderConfig
     from agentos.codex.agent import CodexAgent
     from agentos.codex.session import CodexSessionRef
 
     rollout_path = tmp_path / "rollout.jsonl"
-    legacy_config = LegacyProviderConfig(
-        family="codex",
-        instance_id="codex-main",
-        homes=(("home", tmp_path),),
-        direct_targets=(rollout_path,),
-    )
     agent = CodexAgent.from_config(
         AgentConfig(
             provider="codex",
             instance_id="codex-main",
             homes=(("home", tmp_path),),
+            direct_targets=(rollout_path,),
         )
     )
     context = ProviderAgentContext(
         agent=agent,
-        legacy_config=legacy_config,
         provider="codex",
-        instance_summary={"family": "codex", "fingerprint": "abc123", "instance_id": "codex-main"},
+        instance_summary={"provider": "codex", "fingerprint": "abc123", "instance_id": "codex-main"},
         instance_fingerprint="abc123",
+        instance_identity_key=("codex", "codex-main"),
+        instance_uri_key="abc123",
         direct_targets=(rollout_path,),
         direct_existing_targets=(),
         direct_missing_targets=(rollout_path,),

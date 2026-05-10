@@ -10,7 +10,7 @@ from agentos.cli import main
 from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
 
 
-def test_agent_run_uses_configured_legacy_provider_config(
+def test_agent_run_uses_configured_agent(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -323,7 +323,7 @@ def test_session_capable_provider_agents_expose_session_ref_discovery() -> None:
         assert agent.discover_session_refs() == ()
 
 
-def test_agent_run_uses_copilot_cli_legacy_provider_config(
+def test_agent_run_uses_copilot_cli_agent_config(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -518,7 +518,7 @@ def test_agent_run_dry_run_prints_instance_env_prefix(
     )
 
 
-def test_agent_list_prints_configured_legacy_configs(
+def test_agent_list_prints_configured_agents(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -588,7 +588,7 @@ def test_agent_list_json_includes_configured_instance_fields(
     payload = json.loads(capsys.readouterr().out)
     assert len(payload["instances"]) == 1
     configured = payload["instances"][0]
-    assert configured["family"] == "codex"
+    assert configured["provider"] == "codex"
     assert configured["cli_command"] == [
         "/opt/homebrew/bin/codex",
     ]

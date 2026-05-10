@@ -52,15 +52,16 @@ def _account_instance(
     env: tuple[tuple[str, str], ...] = (),
     timeout_sec: int = 15,
     live_usage_refresh: bool = False,
-) -> chat_accounts.LegacyProviderConfig:
-    return chat_accounts.LegacyProviderConfig(
-        family=provider,
+) -> chat_accounts.AccountProviderConfig:
+    return chat_accounts.AccountProviderConfig(
+        provider=provider,
         instance_id=instance_id,
         label=label,
         cli_command=cli_command,
         env=env,
         timeout_sec=timeout_sec,
         live_usage_refresh=live_usage_refresh,
+        usage_progression_limit=None,
     )
 
 
@@ -75,22 +76,20 @@ def _account_context(
     live_usage_refresh: bool = False,
 ) -> chat_accounts.AccountProviderContext:
     return chat_accounts._build_account_provider_context(
-        chat_accounts._account_provider_config_from_legacy_config(
-            _account_instance(
-                provider=provider,
-                instance_id=instance_id,
-                label=label,
-                cli_command=cli_command,
-                env=env,
-                timeout_sec=timeout_sec,
-                live_usage_refresh=live_usage_refresh,
-            )
+        _account_instance(
+            provider=provider,
+            instance_id=instance_id,
+            label=label,
+            cli_command=cli_command,
+            env=env,
+            timeout_sec=timeout_sec,
+            live_usage_refresh=live_usage_refresh,
         )
     )
 
 
-def _account_config(instance: chat_accounts.LegacyProviderConfig) -> chat_accounts.AccountProviderConfig:
-    return chat_accounts._account_provider_config_from_legacy_config(instance)
+def _account_config(instance: chat_accounts.AccountProviderConfig) -> chat_accounts.AccountProviderConfig:
+    return instance
 
 
 def _usage_over_time_limit_payload(
@@ -171,7 +170,7 @@ def _usage_stats_payload(
     }
 
 
-def test_chat_accounts_stats_summarizes_configured_legacy_provider_configs(
+def test_chat_accounts_stats_summarizes_configured_agents(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
