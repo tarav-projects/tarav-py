@@ -7,10 +7,11 @@ from pathlib import Path
 
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
-from agentos.agent.primitives import Agent, AgentRunRequest
+from agentos.agent.primitives import Agent
 from agentos.agent.providers import load_configured_agents, resolve_agent
 from agentos.agent.accounts import supported_account_provider_families
 from agentos.agent.account_commands import _cmd_chat_accounts_stats
+from agentos.agent.run_runtime import AgentRunRequest
 from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provider_families())
