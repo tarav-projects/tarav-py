@@ -54,9 +54,9 @@ def test_agent_run_uses_configured_agent(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.primitives as agent_primitives
+    import agentos.agent.run_runtime as agent_run_runtime
 
-    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -126,9 +126,9 @@ def test_agent_run_uses_configured_instance_env(
         observed["codex_home"] = env["CODEX_HOME"]
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.primitives as agent_primitives
+    import agentos.agent.run_runtime as agent_run_runtime
 
-    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
 
     assert main(["agent", "run", "--provider", "codex", "--profile", "work", "--", "hello"]) == 0
 
@@ -176,9 +176,9 @@ def test_agent_run_home_override_updates_provider_home_env(
         observed["codex_home"] = env["CODEX_HOME"]
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.primitives as agent_primitives
+    import agentos.agent.run_runtime as agent_run_runtime
 
-    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -289,7 +289,7 @@ def test_agent_run_invokes_provider_native_run(
         ],
     )
 
-    from agentos.agent.primitives import AgentRunRequest, AgentRunResult
+    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
     from agentos.codex.agent import CodexAgent
 
     observed: dict[str, object] = {}
@@ -357,7 +357,7 @@ def test_agent_run_dry_invokes_provider_native_run_dry(
         ],
     )
 
-    from agentos.agent.primitives import AgentRunDryResult, AgentRunRequest
+    from agentos.agent.run_runtime import AgentRunDryResult, AgentRunRequest
     from agentos.codex.agent import CodexAgent
 
     observed: dict[str, object] = {}
@@ -614,9 +614,9 @@ def test_agent_run_uses_copilot_cli_agent_config(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.primitives as agent_primitives
+    import agentos.agent.run_runtime as agent_run_runtime
 
-    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -691,9 +691,9 @@ def test_agent_run_uses_pi_provider_defaults(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.primitives as agent_primitives
+    import agentos.agent.run_runtime as agent_run_runtime
 
-    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -943,9 +943,9 @@ def test_agent_run_uses_explicit_project_target_for_config_resolution(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.primitives as agent_primitives
+    import agentos.agent.run_runtime as agent_run_runtime
 
-    monkeypatch.setattr(agent_primitives.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
 
     assert (
         main(

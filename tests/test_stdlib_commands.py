@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from agentos._core.project_command_log import command_payload_from_args
 from agentos.cli import build_parser, main
 
 
@@ -33,3 +34,26 @@ def test_moved_top_level_commands_fail_before_dispatch(command: str, capsys) -> 
 
     assert excinfo.value.code == 2
     assert f"invalid choice: '{command}'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected_command"),
+    [
+        (["stdlib", "mdblocks", "lint", "."], "stdlib mdblocks lint"),
+        (["stdlib", "prefix", "next"], "stdlib prefix next"),
+        (["stdlib", "git-refs", "repo-hash"], "stdlib git-refs repo-hash"),
+        (["stdlib", "utils", "tmp-folder", "new"], "stdlib utils tmp-folder new"),
+        (["stdlib", "utils", "cmd-logger", "path"], "stdlib utils cmd-logger path"),
+    ],
+)
+def test_stdlib_command_payload_includes_full_nested_path(
+    argv: list[str],
+    expected_command: str,
+) -> None:
+    args = build_parser().parse_args(argv)
+    args._agentos_argv = argv
+
+    assert command_payload_from_args(args) == {
+        "command": expected_command,
+        "argv": argv,
+    }
