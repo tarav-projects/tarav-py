@@ -38,8 +38,9 @@ Live-script implications:
 
 ## Migration Status
 
-- Current CLI allocation still scans ordinary live scripts with the existing `dev/live/NNN-*` pattern.
-- Until the CLI grows broader project-level checks, agents should avoid obvious duplicate numeric prefixes by inspection when relevant.
+- Current CLI allocation is project-aware through `agentos stdlib prefix next --project --project-name <declared-project-name> --target dev/live`.
+- The default project prefix policy scans numbered Agentos surfaces under `notes` and `dev/live`, then allocates from the rolling `500-999` route for `dev/live`.
+- Full consistency checks for duplicate numeric prefixes, range violations, and reserved-prefix drift are future `prefix doctor` or equivalent work.
 
 ## Archive
 - `dev/live/archive/` may be used as an archive location for rolled scripts.
@@ -50,18 +51,22 @@ Live-script implications:
 - Agents can call this directly from the terminal.
 - Purpose: print the next ordinary live-script prefix as 3 digits.
 - Empty/no-match behavior: print `500`.
-- Minimum output floor: `500`.
-- Current numbering source is only files matching the `NNN-` live-script prefix in `dev/live/`.
+- Allocation route: `500-999`.
+- Target: `dev/live`.
+- Default project scan scope: `notes` and `dev/live`.
+- If `agentos stdlib prefix` fails, stop and ask the user how to resolve the project target. Do not assign a live-script prefix by manual inspection.
 
 ## Usage
-Run from a repository root:
+Preferred project target, when the caller is inside the intended project tree:
 
 ```sh
-agentos stdlib prefix next --root . --include dev/live --min 500 --width 3
+agentos stdlib prefix next --project --project-name <declared-project-name> --target dev/live
 ```
 
-Optional target directory argument:
+Explicit project path target, when the caller is outside the intended project tree:
 
 ```sh
-agentos stdlib prefix next --root /path/to/repo --include dev/live --min 500 --width 3
+agentos stdlib prefix next --project /path/to/project --project-name <declared-project-name> --target dev/live
 ```
+
+In nested workspaces or sibling repositories, do not use `--project .` unless `.` is the actual initialized project root. Use `--project-name` so allocation fails if the wrong project marker was resolved.

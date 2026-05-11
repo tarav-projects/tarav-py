@@ -6,81 +6,27 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.project import (
-    add_explicit_project_arguments,
     load_project_config,
     require_explicit_agentos_project,
 )
 from agentos._core.project_command_log import record_project_command_from_args
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
-from agentos._core.scan import resolve_relative_paths_under_root, resolve_root_dir
+from agentos._core.scan import resolve_relative_paths_under_root
 
 from .core import (
     DEFAULT_PREFIX_WIDTH,
     PrefixPolicy,
-    PrefixScanConfig,
-    collect_prefixes,
     default_prefix_policy,
-    format_prefix,
-    next_prefix_value,
     next_project_prefix,
 )
 
 
 def _cmd_prefix_next(args: argparse.Namespace) -> int:
-    if args.target is not None:
-        if args.project is None and args.project_base is None:
-            raise CliError("prefix target mode requires --project or --project-base")
-        return _cmd_prefix_next_project(args)
-    if args.project is not None or args.project_base is not None:
+    if args.project_base is None:
+        raise CliError("agentos stdlib prefix next requires --project-base")
+    if args.target is None:
         raise CliError("prefix target is required")
-    return _cmd_prefix_next_legacy(args)
-
-
-def _cmd_prefix_next_legacy(args: argparse.Namespace) -> int:
-    root = resolve_root_dir(args.root)
-    if args.min < 0:
-        raise SystemExit("error: --min must be >= 0")
-    if args.width < 1:
-        raise SystemExit("error: --width must be >= 1")
-
-    includes = resolve_relative_paths_under_root(
-        root,
-        args.include,
-        option_name="include",
-    )
-    excludes: tuple[str, ...]
-    if args.no_default_excludes:
-        excludes = tuple(args.exclude)
-    else:
-        excludes = tuple(DEFAULT_SCAN_EXCLUDES) + tuple(args.exclude)
-
-    config = PrefixScanConfig(
-        root=root,
-        includes=includes,
-        excludes=excludes,
-        width=args.width,
-    )
-
-    prefixes = collect_prefixes(config)
-    value = next_prefix_value(prefixes, args.min)
-    prefix = format_prefix(value, args.width)
-
-    if args.json:
-        payload = {
-            "next_prefix": prefix,
-            "next_value": value,
-            "minimum": args.min,
-            "width": args.width,
-            "root": str(root),
-            "includes": list(includes),
-            "excludes": list(excludes),
-            "matched_prefix_count": len(prefixes),
-        }
-        print(json.dumps(payload, indent=2))
-        return 0
-
-    print(prefix)
-    return 0
+    return _cmd_prefix_next_project(args)
 
 
 def _load_prefix_policy(project_config_path: Path) -> PrefixPolicy:
@@ -174,41 +120,31 @@ def register_prefix_commands(subparsers: argparse._SubParsersAction) -> None:
         "next",
         help="Print the next available numeric prefix for a project target.",
     )
-    add_explicit_project_arguments(
-        prefix_next_parser,
-        project_help=(
-            "Required selector for target mode unless --project-base is supplied. "
-            "Bare --project targets current pwd. "
-            "Prefix target mode requires an existing project."
+    prefix_next_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help=(
+            "Optional project selector. Bare --project targets current pwd. "
+            "Requires an existing project."
         ),
+    )
+    prefix_next_parser.add_argument(
+        "--project-base",
+        required=True,
+        help="Required assertion for the resolved project root basename.",
     )
     prefix_next_parser.add_argument(
         "--target",
         help="Project-relative numbered surface target, such as notes/live or notes/index.",
     )
     prefix_next_parser.add_argument(
-        "--root",
-        type=Path,
-        default=Path("."),
-        help="Legacy scanner root for calls without a target (default: current directory).",
-    )
-    prefix_next_parser.add_argument(
-        "--min",
-        type=int,
-        default=500,
-        help="Legacy scanner minimum prefix floor when no existing prefixes are found.",
-    )
-    prefix_next_parser.add_argument(
-        "--width",
-        type=int,
-        default=3,
-        help="Legacy scanner numeric width for both matching and zero-padding output.",
-    )
-    prefix_next_parser.add_argument(
         "--include",
         action="append",
         default=[],
-        help="Relative path to include in scan (repeatable). Target mode overrides policy includes; legacy mode defaults to full root.",
+        help="Relative path to include in scan (repeatable). Overrides policy includes.",
     )
     prefix_next_parser.add_argument(
         "--exclude",

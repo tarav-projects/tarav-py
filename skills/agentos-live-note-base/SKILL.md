@@ -36,27 +36,32 @@ Live-note implications:
 
 ## Migration Status
 
-- Current CLI allocation still scans ordinary live notes with the existing `notes/live/NNN-*.md` pattern.
-- This means reserved names such as `010.TODOS.md` are intentionally outside the ordinary allocator path for now.
-- Until the CLI grows project-wide note-number checks, agents should avoid creating duplicate numeric prefixes across the md surface by inspection when relevant.
+- Current CLI allocation is project-aware through `agentos stdlib prefix next --project --project-name <declared-project-name> --target notes/live`.
+- The default project prefix policy scans numbered Agentos surfaces under `notes` and `dev/live`, then allocates from the rolling `500-999` route for `notes/live`.
+- Reserved names such as `010.TODOS.md` are manually assigned fixed-role prefixes. They are part of the numbering system but not ordinary allocator output.
+- Full consistency checks for duplicate numeric prefixes, range violations, and reserved-prefix drift are future `prefix doctor` or equivalent work.
 
 ## Prefix CLI
 - Tool: `agentos stdlib prefix next`
 - Agents can call this directly from the terminal.
 - Purpose: print the next ordinary live-note prefix as 3 digits.
 - Empty/no-match behavior: print `500`.
-- Minimum output floor: `500`.
-- Current numbering source is only files matching `notes/live/NNN-*.md`.
+- Allocation route: `500-999`.
+- Target: `notes/live`.
+- Default project scan scope: `notes` and `dev/live`.
+- If `agentos stdlib prefix` fails, stop and ask the user how to resolve the project target. Do not assign a live-note prefix by manual inspection.
 
 ## Usage
-Run from a repository root:
+Preferred project target, when the caller is inside the intended project tree:
 
 ```sh
-agentos stdlib prefix next --root . --include notes/live --min 500 --width 3
+agentos stdlib prefix next --project --project-name <declared-project-name> --target notes/live
 ```
 
-Optional target directory argument:
+Explicit project path target, when the caller is outside the intended project tree:
 
 ```sh
-agentos stdlib prefix next --root /path/to/repo --include notes/live --min 500 --width 3
+agentos stdlib prefix next --project /path/to/project --project-name <declared-project-name> --target notes/live
 ```
+
+In nested workspaces or sibling repositories, do not use `--project .` unless `.` is the actual initialized project root. Use `--project-name` so allocation fails if the wrong project marker was resolved.
