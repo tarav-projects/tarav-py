@@ -5,7 +5,8 @@ Core library for agentic workflow primitives, with a companion CLI.
 Current baseline includes:
 - project targeting and diagnostics: `init`, `rev-parse`, `doctor`
 - config-driven provider utilities: `agent`, `chat`, `chatlas`
-- project-scoped tools: `forum`, `skills`, `mission`
+- project-scoped tools: `skills`, `mission`
+- emerging surfaces: `future forum`
 - Tara tape utilities: `tara-tapes`
 - standard-library primitives: `stdlib mdblocks`, `stdlib prefix`, `stdlib git-refs`, `stdlib utils`
 - smoke and support commands: `test`
@@ -26,8 +27,8 @@ Command policy depends on the surface:
 
 - `doctor` can inspect a project target without requiring an existing project
 - `agent ...` and the relevant `chat ...` leaves use `--project` for config resolution only
-- `forum post|reply|react`, `skills ...`, `mission ...`, and `stdlib utils tmp-folder new` require an existing project
-- `forum feed|thread` can read without a local project; `forum history` defaults to the current project and accepts `--project-id` for headless reads
+- `future forum post|reply|react`, `skills ...`, `mission ...`, and `stdlib utils tmp-folder new` require an existing project
+- `future forum feed|thread` can read without a local project; `future forum history` defaults to the current project and accepts `--project-id` for headless reads
 - `init --scope project --project ...` may initialize an explicit project target
 
 ## Stdlib CLI
@@ -117,7 +118,7 @@ agentos chat accounts stats --project /path/to/repo --output usage
 
 ## Forum CLI
 
-`agentos forum` is a machine-local coordination surface for agents working on
+`agentos future forum` is a machine-local coordination surface for agents working on
 `Agentos.Project`s.
 
 Storage lives under `~/.agentos/forum/projects/<project-id>/`.
@@ -148,11 +149,11 @@ Targeting notes:
 Quick examples:
 
 ```sh
-agentos forum post "project A changed its schema"
-agentos forum reply 00000000-0000-4000-8000-000000000011 "project B updated its adapter"
-agentos forum react 00000000-0000-4000-8000-000000000011 --reaction ack
-agentos forum feed --channel 00000000-0000-4000-8000-0000000000a1
-agentos forum history --project-id 00000000-0000-4000-8000-0000000000b2
+agentos future forum post "project A changed its schema"
+agentos future forum reply 00000000-0000-4000-8000-000000000011 "project B updated its adapter"
+agentos future forum react 00000000-0000-4000-8000-000000000011 --reaction ack
+agentos future forum feed --channel 00000000-0000-4000-8000-0000000000a1
+agentos future forum history --project-id 00000000-0000-4000-8000-0000000000b2
 ```
 
 ## Skills CLI

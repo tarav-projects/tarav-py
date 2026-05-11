@@ -16,6 +16,21 @@ def test_top_level_help_shows_stdlib_not_moved_commands() -> None:
     assert "utils" not in help_text
 
 
+def test_top_level_help_shows_future_not_forum() -> None:
+    help_text = build_parser().format_help()
+
+    assert "future" in help_text
+    assert "forum" not in help_text
+
+
+def test_future_help_lists_forum(capsys) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["future", "--help"])
+
+    help_text = capsys.readouterr().out
+    assert "forum" in help_text
+
+
 def test_stdlib_help_lists_grouped_commands(capsys) -> None:
     with pytest.raises(SystemExit, match="0"):
         main(["stdlib", "--help"])
@@ -27,7 +42,9 @@ def test_stdlib_help_lists_grouped_commands(capsys) -> None:
     assert "utils" in help_text
 
 
-@pytest.mark.parametrize("command", ["mdblocks", "prefix", "git-refs", "utils"])
+@pytest.mark.parametrize(
+    "command", ["mdblocks", "prefix", "git-refs", "utils", "forum"]
+)
 def test_moved_top_level_commands_fail_before_dispatch(command: str, capsys) -> None:
     with pytest.raises(SystemExit) as excinfo:
         main([command, "--help"])
@@ -44,6 +61,7 @@ def test_moved_top_level_commands_fail_before_dispatch(command: str, capsys) -> 
         (["stdlib", "git-refs", "repo-hash"], "stdlib git-refs repo-hash"),
         (["stdlib", "utils", "tmp-folder", "new"], "stdlib utils tmp-folder new"),
         (["stdlib", "utils", "cmd-logger", "path"], "stdlib utils cmd-logger path"),
+        (["future", "forum", "feed"], "future forum feed"),
     ],
 )
 def test_stdlib_command_payload_includes_full_nested_path(

@@ -40,11 +40,11 @@ FORUM_DESCRIPTION = dedent(
       target thread's channel
 
     Examples:
-      agentos forum post "project A changed its schema"
-      agentos forum reply <event-id> "project B updated its adapter"
-      agentos forum react <event-id> --reaction ack
-      agentos forum feed --channel <project-id>
-      agentos forum history --project-id <project-id>
+      agentos future forum post "project A changed its schema"
+      agentos future forum reply <event-id> "project B updated its adapter"
+      agentos future forum react <event-id> --reaction ack
+      agentos future forum feed --channel <project-id>
+      agentos future forum history --project-id <project-id>
     """
 )
 
@@ -110,7 +110,7 @@ def _resolve_author_project(args: argparse.Namespace) -> dict[str, object]:
     project = require_explicit_agentos_project(
         project=getattr(args, "project", None),
         project_base=getattr(args, "project_base", None),
-        command_name="agentos forum",
+        command_name="agentos future forum",
     )
     return current_author_project(
         Path.cwd(),
@@ -118,8 +118,12 @@ def _resolve_author_project(args: argparse.Namespace) -> dict[str, object]:
     )
 
 
-def _record_forum_project_command(args: argparse.Namespace, author_project: dict[str, object]) -> None:
-    project = AgentosProjectHandler(Path(str(author_project["project_root"]))).validate()
+def _record_forum_project_command(
+    args: argparse.Namespace, author_project: dict[str, object]
+) -> None:
+    project = AgentosProjectHandler(
+        Path(str(author_project["project_root"]))
+    ).validate()
     record_project_command_from_args(
         project=project,
         args=args,
@@ -260,7 +264,7 @@ def _cmd_forum_post(args: argparse.Namespace) -> int:
         ),
     )
     _record_forum_project_command(args, author_project)
-    return _emit_event_result(args=args, command="forum post", event=event)
+    return _emit_event_result(args=args, command="future forum post", event=event)
 
 
 def _cmd_forum_reply(args: argparse.Namespace) -> int:
@@ -276,7 +280,7 @@ def _cmd_forum_reply(args: argparse.Namespace) -> int:
         ),
     )
     _record_forum_project_command(args, author_project)
-    return _emit_event_result(args=args, command="forum reply", event=event)
+    return _emit_event_result(args=args, command="future forum reply", event=event)
 
 
 def _cmd_forum_react(args: argparse.Namespace) -> int:
@@ -292,7 +296,7 @@ def _cmd_forum_react(args: argparse.Namespace) -> int:
         ),
     )
     _record_forum_project_command(args, author_project)
-    return _emit_event_result(args=args, command="forum react", event=event)
+    return _emit_event_result(args=args, command="future forum react", event=event)
 
 
 def _cmd_forum_feed(args: argparse.Namespace) -> int:
@@ -310,7 +314,7 @@ def _cmd_forum_feed(args: argparse.Namespace) -> int:
     }
     return _emit_located_events_result(
         args=args,
-        command="forum feed",
+        command="future forum feed",
         events=events,
         extra_payload=extra_payload,
     )
@@ -324,7 +328,7 @@ def _cmd_forum_thread(args: argparse.Namespace) -> int:
     }
     return _emit_located_events_result(
         args=args,
-        command="forum thread",
+        command="future forum thread",
         events=events,
         extra_payload=extra_payload,
     )
@@ -337,7 +341,7 @@ def _resolve_history_project_id(args: argparse.Namespace) -> str:
         author_project = _resolve_author_project(args)
     except CliError as exc:
         raise CliError(
-            "forum history requires --project-id, --project, or --project-base"
+            "future forum history requires --project-id, --project, or --project-base"
         ) from exc
     return str(author_project["project_id"])
 
@@ -350,7 +354,7 @@ def _cmd_forum_history(args: argparse.Namespace) -> int:
     }
     return _emit_located_events_result(
         args=args,
-        command="forum history",
+        command="future forum history",
         events=events,
         extra_payload=extra_payload,
     )

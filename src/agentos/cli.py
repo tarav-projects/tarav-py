@@ -9,7 +9,6 @@ from agentos.agent import register_agent_commands
 from agentos._core.errors import CliError
 from agentos.canvas import register_canvas_commands
 from agentos.chatlas import register_chatlas_commands
-from agentos.codex import register_codex_commands
 from agentos.forum import register_forum_commands
 from agentos.index.commands import register_index_commands
 from agentos.mdblocks.commands import register_mdblocks_commands
@@ -38,6 +37,18 @@ def register_stdlib_commands(subparsers: argparse._SubParsersAction) -> None:
     register_utils_commands(stdlib_subparsers)
 
 
+def register_future_commands(subparsers: argparse._SubParsersAction) -> None:
+    future_parser = subparsers.add_parser(
+        "future",
+        help="Emerging Agentos surfaces that are not common-use yet.",
+    )
+    future_subparsers = future_parser.add_subparsers(
+        dest="future_command",
+        required=True,
+    )
+    register_forum_commands(future_subparsers)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agentos",
@@ -52,11 +63,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
     register_agent_commands(subparsers)
     register_canvas_commands(subparsers)
-    register_codex_commands(subparsers)
     register_project_commands(subparsers)
     register_system_commands(subparsers)
     register_chatlas_commands(subparsers)
-    register_forum_commands(subparsers)
+    register_future_commands(subparsers)
     register_tara_tapes_commands(subparsers)
     register_stdlib_commands(subparsers)
     register_skills_commands(subparsers)

@@ -14,7 +14,9 @@ def _assert_valid_uuid(text: str) -> None:
     assert str(parsed) == text
 
 
-def _write_cmd_logger_events(agentos_home: Path, events: list[dict[str, object]]) -> Path:
+def _write_cmd_logger_events(
+    agentos_home: Path, events: list[dict[str, object]]
+) -> Path:
     log_path = agentos_home / "projects" / "activity" / "202605.jsonl"
     log_path.parent.mkdir(parents=True)
     log_path.write_text(
@@ -160,7 +162,7 @@ def test_utils_cmd_logger_query_filters_under_path_and_valid_project(
                 timetag="2026-05-03T00:00:00Z",
                 project_id="outside-id",
                 project_root=outside_project,
-                command="forum post",
+                command="future forum post",
             ),
         ],
     )

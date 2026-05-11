@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import io
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from agentos.cli import main
 from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
+
+
+def _readlink(path: Path) -> Path:
+    target = Path(os.readlink(path))
+    if target.is_absolute():
+        return target
+    return (path.parent / target).resolve()
 
 
 def test_agent_run_uses_configured_agent(
@@ -67,7 +77,7 @@ def test_agent_run_uses_configured_agent(
                 "codex",
                 "--profile",
                 "work",
-                "--",
+                "--prompt",
                 "hello from agentos",
             ]
         )
@@ -130,7 +140,7 @@ def test_agent_run_uses_configured_instance_env(
 
     monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
 
-    assert main(["agent", "run", "--provider", "codex", "--profile", "work", "--", "hello"]) == 0
+    assert main(["agent", "run", "--provider", "codex", "--profile", "work", "--prompt", "hello"]) == 0
 
     assert observed["codex_home"] == str(work_home)
 
@@ -191,7 +201,7 @@ def test_agent_run_home_override_updates_provider_home_env(
                 "work",
                 "--home",
                 str(override_home),
-                "--",
+                "--prompt",
                 "hello",
             ]
         )
@@ -250,7 +260,7 @@ def test_agent_run_codex_account_dry_run_uses_profile_home_override(
                 "--account",
                 "tk",
                 "--dry-run",
-                "--",
+                "--prompt",
                 "hello",
             ]
         )
@@ -262,6 +272,155 @@ def test_agent_run_codex_account_dry_run_uses_profile_home_override(
         f"link {override_home.resolve() / 'auth.json'} -> {auth_path.resolve()}",
         f"CODEX_HOME={override_home.resolve()} codex exec --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 hello",
     ]
+
+
+def test_agent_link_codex_switches_auth_symlink(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    codex_home = tmp_path / "codex-home"
+    auth_path = agentos_home / "accounts" / "codex" / "tk" / "auth.json"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write(auth_path, "{}\n")
+
+    assert (
+        main(
+            [
+                "agent",
+                "link",
+                "--provider",
+                "codex",
+                "--home",
+                str(codex_home),
+                "--account",
+                "tk",
+            ]
+        )
+        == 0
+    )
+
+    assert (codex_home / "auth.json").is_symlink()
+    assert _readlink(codex_home / "auth.json") == auth_path
+
+
+def test_agent_link_codex_dry_run_prints_link_without_mutating(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    accounts_root = tmp_path / "codex-accounts"
+    codex_home = tmp_path / "codex-home"
+    auth_path = accounts_root / "tk" / "auth.json"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write(auth_path, "{}\n")
+    _write(
+        agentos_home / "config.json",
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "schema_version": 1,
+                "codex": {"mux": {"accounts_root": str(accounts_root)}},
+            }
+        ),
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "link",
+                "--provider",
+                "codex",
+                "--home",
+                str(codex_home),
+                "--account",
+                "tk",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out.strip() == f"link {codex_home.resolve() / 'auth.json'} -> {auth_path.resolve()}"
+    assert not (codex_home / "auth.json").exists()
+
+
+def test_agent_link_rejects_unsupported_provider(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    assert (
+        main(
+            [
+                "agent",
+                "link",
+                "--provider",
+                "pi",
+                "--home",
+                str(tmp_path / "pi-home"),
+                "--account",
+                "tk",
+            ]
+        )
+        == 1
+    )
+
+    assert "agent link is not supported for provider pi" in capsys.readouterr().err
+
+
+def test_agent_link_help_has_no_profile(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["agent", "link", "--help"])
+
+    assert exc_info.value.code == 0
+    output = capsys.readouterr().out
+    assert "--provider" in output
+    assert "--home" in output
+    assert "--account" in output
+    assert "--dry-run" in output
+    assert "--profile" not in output
+
+
+@pytest.mark.parametrize(
+    "args, expected_error",
+    [
+        pytest.param(
+            ["agent", "link", "--provider", "codex", "--account", "tk"],
+            "the following arguments are required: --home",
+            id="missing-home",
+        ),
+        pytest.param(
+            ["agent", "link", "--provider", "codex", "--home", "/tmp/codex-home"],
+            "the following arguments are required: --account",
+            id="missing-account",
+        ),
+    ],
+)
+def test_agent_link_requires_home_and_account(
+    args: list[str],
+    expected_error: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(args)
+
+    assert exc_info.value.code == 2
+    assert expected_error in capsys.readouterr().err
 
 
 def test_agent_run_invokes_provider_native_run(
@@ -316,7 +475,7 @@ def test_agent_run_invokes_provider_native_run(
                 "tk",
                 "--cwd",
                 str(cwd),
-                "--",
+                "--prompt",
                 "hello",
             ]
         )
@@ -327,6 +486,7 @@ def test_agent_run_invokes_provider_native_run(
     assert observed["provider"] == "codex"
     assert request == AgentRunRequest(
         prompt="hello",
+        argv=(),
         model="gpt-5.2",
         cwd=cwd.resolve(),
         account="tk",
@@ -379,7 +539,7 @@ def test_agent_run_dry_invokes_provider_native_run_dry(
                 "--profile",
                 "work",
                 "--dry-run",
-                "--",
+                "--prompt",
                 "hello dry",
             ]
         )
@@ -390,11 +550,78 @@ def test_agent_run_dry_invokes_provider_native_run_dry(
     assert observed["provider"] == "codex"
     assert request == AgentRunRequest(
         prompt="hello dry",
+        argv=(),
         model=None,
         cwd=Path.cwd().resolve(),
         account=None,
     )
     assert capsys.readouterr().out.strip() == "provider dry line"
+
+
+def test_agent_run_dry_invokes_provider_native_run_dry_with_raw_argv(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    from agentos.agent.run_runtime import AgentRunDryResult, AgentRunRequest
+    from agentos.codex.agent import CodexAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run_dry(self: CodexAgent, request: AgentRunRequest) -> AgentRunDryResult:
+        observed["provider"] = self.provider
+        observed["request"] = request
+        return AgentRunDryResult(lines=("provider raw dry line",))
+
+    monkeypatch.setattr(CodexAgent, "run_dry", fake_run_dry)
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--dry-run",
+                "--",
+                "exec",
+                "hello",
+            ]
+        )
+        == 0
+    )
+
+    request = observed["request"]
+    assert observed["provider"] == "codex"
+    assert request == AgentRunRequest(
+        prompt=None,
+        argv=("exec", "hello"),
+        model=None,
+        cwd=Path.cwd().resolve(),
+        account=None,
+    )
+    assert capsys.readouterr().out.strip() == "provider raw dry line"
 
 
 def test_configured_codex_agent_uses_provider_native_model(
@@ -629,7 +856,7 @@ def test_agent_run_uses_copilot_cli_agent_config(
                 "copilot-main",
                 "--model",
                 "gpt-5.2",
-                "--",
+                "--prompt",
                 "hello from agentos",
             ]
         )
@@ -704,7 +931,7 @@ def test_agent_run_uses_pi_provider_defaults(
                 "pi",
                 "--profile",
                 "pi-mm",
-                "--",
+                "--prompt",
                 "hello from agentos",
             ]
         )
@@ -760,7 +987,7 @@ def test_agent_run_dry_run_prints_instance_env_prefix(
                 "--profile",
                 "pi-mm",
                 "--dry-run",
-                "--",
+                "--prompt",
                 "hello from agentos",
             ]
         )
@@ -771,6 +998,308 @@ def test_agent_run_dry_run_prints_instance_env_prefix(
         capsys.readouterr().out.strip()
         == f"PI_CODING_AGENT_DIR={pi_home} pi --model gpt-5.4-mini -p 'hello from agentos'"
     )
+
+
+def test_agent_run_codex_raw_argv_dry_run_skips_prompt_run_args(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    codex_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(codex_home),
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--dry-run",
+                "--",
+                "exec",
+                "hello",
+            ]
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out.strip() == f"CODEX_HOME={codex_home} codex exec hello"
+
+
+def test_agent_run_codex_raw_argv_with_account_links_auth(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    codex_home = tmp_path / "codex-home"
+    auth_path = agentos_home / "accounts" / "codex" / "tk" / "auth.json"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    _write(auth_path, "{}\n")
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(codex_home),
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--account",
+                "tk",
+                "--dry-run",
+                "--",
+                "exec",
+                "hello",
+            ]
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out.strip().splitlines()
+    assert output == [
+        f"link {codex_home / 'auth.json'} -> {auth_path.resolve()}",
+        f"CODEX_HOME={codex_home} codex exec hello",
+    ]
+
+
+def test_agent_run_copilot_raw_argv_dry_run(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot-cli",
+                "id": "copilot-main",
+                "cli_command": ["copilot"],
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "copilot-cli",
+                "--profile",
+                "copilot-main",
+                "--dry-run",
+                "--",
+                "auth",
+                "status",
+            ]
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out.strip() == "copilot auth status"
+
+
+def test_agent_run_pi_raw_argv_dry_run(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    pi_home = tmp_path / ".pi" / "profiles" / "codex-mm"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "pi",
+                "id": "pi-mm",
+                "home": str(pi_home),
+                "env": {
+                    "PI_CODING_AGENT_DIR": str(pi_home),
+                },
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "pi",
+                "--profile",
+                "pi-mm",
+                "--dry-run",
+                "--",
+                "status",
+            ]
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out.strip() == f"PI_CODING_AGENT_DIR={pi_home} pi status"
+
+
+def test_agent_run_help_describes_prompt_option_not_positional_prompt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["agent", "run", "--help"])
+
+    assert exc_info.value.code == 0
+    output = capsys.readouterr().out
+    assert "--prompt" in output
+    assert "Prompt to pass after --" not in output
+    assert "Raw provider arguments to pass after --" in output
+
+
+@pytest.mark.parametrize(
+    "args, expected_error",
+    [
+        pytest.param(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--prompt",
+                "hello",
+                "--",
+                "exec",
+                "hello",
+            ],
+            "--prompt cannot be combined with provider arguments after --",
+            id="prompt-and-raw-argv",
+        ),
+        pytest.param(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--model",
+                "gpt-5.4",
+                "--",
+                "exec",
+                "hello",
+            ],
+            "--model is not supported with raw provider arguments after --",
+            id="model-and-raw-argv",
+        ),
+    ],
+)
+def test_agent_run_rejects_invalid_prompt_and_argv_combinations(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+    args: list[str],
+    expected_error: str,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    assert main(args) == 1
+    assert expected_error in capsys.readouterr().err
+
+
+def test_agent_run_rejects_no_prompt_or_raw_argv_on_tty(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class TtyStdin(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    monkeypatch.setattr(sys, "stdin", TtyStdin())
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    assert main(["agent", "run", "--provider", "codex", "--profile", "work"]) == 1
+    assert "run input is required" in capsys.readouterr().err
 
 
 def test_agent_list_prints_configured_agents(
@@ -958,7 +1487,7 @@ def test_agent_run_uses_explicit_project_target_for_config_resolution(
                 "project-work",
                 "--project",
                 str(project_root),
-                "--",
+                "--prompt",
                 "hello from project config",
             ]
         )

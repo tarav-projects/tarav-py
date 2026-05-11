@@ -3571,8 +3571,9 @@ def test_chatlas_export_emits_session_model_json(
         == 0
     )
     zip_payload = json.loads(capsys.readouterr().out)
+    assert zip_payload["class"] == "agentos.chatlas.zip_transcript"
     assert zip_payload["view"] == "zip-transcript"
-    assert set(zip_payload) == {"class", "schema_version", "session", "chat", "view"}
+    assert set(zip_payload) == {"class", "schema_version", "session", "turns", "view"}
     assert set(zip_payload["session"]) == {
         "uri",
         "provider",
@@ -3580,19 +3581,16 @@ def test_chatlas_export_emits_session_model_json(
         "display_name",
         "created_at",
         "updated_at",
-        "identity_hash",
-        "content_hash",
     }
-    assert set(zip_payload["chat"]) == {"messages"}
-    assert [message["role"] for message in zip_payload["chat"]["messages"]] == [
-        "user",
-        "assistant",
-    ]
-    assert [
-        message["event_refs"][0] for message in zip_payload["chat"]["messages"]
-    ] == [
-        "event-2",
-        "event-3",
+    assert zip_payload["turns"] == [
+        {
+            "role": "user",
+            "text": "experimental export user<system-reminder>\nmetadata tail",
+        },
+        {
+            "role": "assistant",
+            "text": "experimental export assistant",
+        },
     ]
 
 
@@ -5172,17 +5170,17 @@ def test_chatlas_export_loads_copilot_raw_events(
     )
     zip_payload = json.loads(capsys.readouterr().out)
     assert zip_payload["view"] == "zip-transcript"
-    assert set(zip_payload) == {"class", "schema_version", "session", "chat", "view"}
-    assert set(zip_payload["chat"]) == {"messages"}
-    assert [message["role"] for message in zip_payload["chat"]["messages"]] == [
-        "user",
-        "assistant",
+    assert set(zip_payload) == {"class", "schema_version", "session", "turns", "view"}
+    assert zip_payload["turns"] == [
+        {
+            "role": "user",
+            "text": "copilot experimental user",
+        },
+        {
+            "role": "assistant",
+            "text": "copilot experimental assistant",
+        },
     ]
-    assert all(
-        block["type"] == "text"
-        for message in zip_payload["chat"]["messages"]
-        for block in message["content"]
-    )
 
 
 def test_chatlas_zip_transcript_filters_non_text_copilot_message_content(
@@ -5234,13 +5232,15 @@ def test_chatlas_zip_transcript_filters_non_text_copilot_message_content(
     )
     payload = json.loads(capsys.readouterr().out)
 
-    assert all(
-        block["type"] == "text"
-        for message in payload["chat"]["messages"]
-        for block in message["content"]
-    )
-    assert payload["chat"]["messages"][1]["content"] == [
-        {"type": "text", "text": "copilot experimental assistant"}
+    assert payload["turns"] == [
+        {
+            "role": "user",
+            "text": "copilot experimental user",
+        },
+        {
+            "role": "assistant",
+            "text": "copilot experimental assistant",
+        },
     ]
     serialized = json.dumps(payload, sort_keys=True)
     assert "reasoningOpaque" not in serialized

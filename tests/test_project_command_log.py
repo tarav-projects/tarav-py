@@ -13,7 +13,9 @@ from agentos._core.project_command_log import (
 from agentos.cli import main
 
 
-def test_project_command_log_path_rolls_by_year_month(monkeypatch, tmp_path: Path) -> None:
+def test_project_command_log_path_rolls_by_year_month(
+    monkeypatch, tmp_path: Path
+) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
 
     assert project_command_log_path(timetag="2026-04-30T12:00:00Z") == (
@@ -44,8 +46,7 @@ def test_record_project_command_appends_event(monkeypatch, tmp_path: Path) -> No
 
     log_path = agentos_home / "projects" / "activity" / "202604.jsonl"
     events = [
-        json.loads(line)
-        for line in log_path.read_text(encoding="utf-8").splitlines()
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
     ]
     assert events == [
         {
@@ -90,38 +91,50 @@ def _read_logged_commands(agentos_home: Path) -> list[dict[str, object]]:
     ]
 
 
-def test_mission_mutation_records_project_command(monkeypatch, tmp_path: Path, capsys) -> None:
+def test_mission_mutation_records_project_command(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     assert main(["init", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
-    assert main(
-        [
-            "mission",
-            "new",
-            "alpha",
-            "--project",
-            str(tmp_path),
-            "--goal",
-            "Alpha",
-            "--validation",
-            "Alpha check",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "mission",
+                "new",
+                "alpha",
+                "--project",
+                str(tmp_path),
+                "--goal",
+                "Alpha",
+                "--validation",
+                "Alpha check",
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()
 
-    commands = [event["agentos_command"]["command"] for event in _read_logged_commands(agentos_home)]
+    commands = [
+        event["agentos_command"]["command"]
+        for event in _read_logged_commands(agentos_home)
+    ]
     assert "mission new" in commands
 
 
-def test_forum_write_records_project_command(monkeypatch, tmp_path: Path, capsys) -> None:
+def test_forum_write_records_project_command(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     assert main(["init", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
 
-    assert main(["forum", "post", "--project", str(tmp_path), "Hello"]) == 0
+    assert main(["future", "forum", "post", "--project", str(tmp_path), "Hello"]) == 0
     capsys.readouterr()
 
-    commands = [event["agentos_command"]["command"] for event in _read_logged_commands(agentos_home)]
-    assert "forum post" in commands
-
+    commands = [
+        event["agentos_command"]["command"]
+        for event in _read_logged_commands(agentos_home)
+    ]
+    assert "future forum post" in commands

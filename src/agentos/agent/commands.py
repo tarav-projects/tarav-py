@@ -11,6 +11,7 @@ from agentos.agent.primitives import Agent
 from agentos.agent.providers import load_configured_agents, resolve_agent
 from agentos.agent.accounts import supported_account_provider_families
 from agentos.agent.account_commands import _cmd_chat_accounts_stats
+from agentos.agent.link_runtime import AgentLinkRequest
 from agentos.agent.run_runtime import AgentRunRequest
 from agentos.providers import canonical_provider_families
 
@@ -76,17 +77,30 @@ def _cmd_agent_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resolve_prompt(prompt_parts: list[str]) -> str:
-    if prompt_parts and prompt_parts[0] == "--":
-        prompt_parts = prompt_parts[1:]
-    if prompt_parts:
-        return " ".join(prompt_parts)
+def _resolve_run_prompt(prompt: str | None, raw_argv: tuple[str, ...]) -> str | None:
+    if prompt is not None and raw_argv:
+        raise CliError("--prompt cannot be combined with provider arguments after --")
+    if raw_argv:
+        return None
+    if prompt is not None:
+        if not prompt.strip():
+            raise CliError("--prompt is empty")
+        return prompt
     if sys.stdin.isatty():
-        raise CliError("prompt is required (pass it after -- or pipe stdin)")
-    prompt = sys.stdin.read()
-    if not prompt.strip():
+        raise CliError("run input is required (pass --prompt, provider args after --, or pipe stdin)")
+    stdin_prompt = sys.stdin.read()
+    if not stdin_prompt.strip():
         raise CliError("prompt is empty")
-    return prompt
+    return stdin_prompt
+
+
+def _resolve_run_argv(argv_parts: list[str], *, model: str | None) -> tuple[str, ...]:
+    if argv_parts and argv_parts[0] == "--":
+        argv_parts = argv_parts[1:]
+    argv = tuple(argv_parts)
+    if argv and model is not None:
+        raise CliError("--model is not supported with raw provider arguments after --")
+    return argv
 
 
 def _cmd_agent_run(args: argparse.Namespace) -> int:
@@ -98,9 +112,11 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         start_path=config_start_path,
         home=args.home,
     )
-    prompt = _resolve_prompt(args.prompt)
+    argv = _resolve_run_argv(args.argv, model=args.model)
+    prompt = _resolve_run_prompt(args.prompt, argv)
     request = AgentRunRequest(
         prompt=prompt,
+        argv=argv,
         model=args.model,
         cwd=cwd,
         account=args.account,
@@ -114,6 +130,27 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
 
     result = agent.run(request)
     return result.exit_code
+
+
+def _cmd_agent_link(args: argparse.Namespace) -> int:
+    request = AgentLinkRequest(
+        provider=args.provider,
+        home=Path(args.home).expanduser().resolve(),
+        account=args.account,
+    )
+
+    if request.provider == "codex":
+        from agentos.codex.linking import link_codex_account, link_codex_account_dry
+
+        if args.dry_run:
+            dry_result = link_codex_account_dry(request)
+            for line in dry_result.lines:
+                print(line)
+            return 0
+        result = link_codex_account(request)
+        return result.exit_code
+
+    raise CliError(f"agent link is not supported for provider {request.provider}")
 
 
 def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
@@ -210,7 +247,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
 
     run_parser = agent_subparsers.add_parser(
         "run",
-        help="Run one configured agent with a prompt.",
+        help="Run one configured agent with a prompt or raw provider arguments.",
     )
     run_parser.add_argument(
         "--provider",
@@ -257,8 +294,40 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Print the resolved command instead of running it.",
     )
     run_parser.add_argument(
-        "prompt",
+        "--prompt",
+        default=None,
+        help="Prompt for normalized provider prompt-run mode.",
+    )
+    run_parser.add_argument(
+        "argv",
         nargs=argparse.REMAINDER,
-        help="Prompt to pass after --, or omit and pipe stdin.",
+        help="Raw provider arguments to pass after --.",
     )
     run_parser.set_defaults(handler=_cmd_agent_run)
+
+    link_parser = agent_subparsers.add_parser(
+        "link",
+        help="Link a managed provider account to an explicit provider home.",
+    )
+    link_parser.add_argument(
+        "--provider",
+        required=True,
+        choices=_AGENT_PROVIDER_CHOICES,
+        help="Provider family to link.",
+    )
+    link_parser.add_argument(
+        "--home",
+        required=True,
+        help="Provider home to link.",
+    )
+    link_parser.add_argument(
+        "--account",
+        required=True,
+        help="Managed provider account id to link.",
+    )
+    link_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the link action without mutating the provider home.",
+    )
+    link_parser.set_defaults(handler=_cmd_agent_link)

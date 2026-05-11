@@ -11,7 +11,8 @@ from agentos._core.errors import CliError
 
 @dataclass(frozen=True)
 class AgentRunRequest:
-    prompt: str
+    prompt: str | None
+    argv: tuple[str, ...]
     model: str | None
     cwd: Path
     account: str | None = None

@@ -24,6 +24,7 @@ from agentos.codex.session import (
     discover_codex_session_refs,
     load_codex_session,
 )
+from agentos.codex.linking import link_codex_auth_for_account, load_codex_mux_config
 
 
 CODEX_PROVIDER = "codex"
@@ -90,6 +91,14 @@ class CodexAgent(AgentBase):
                 f"agent {self.instance_id or '<default>'} for provider {self.provider} has no cli_command"
             )
 
+        if request.argv:
+            if request.model is not None:
+                raise CliError("--model is not supported with raw provider arguments after --")
+            return (*self.cli_command, *request.argv)
+
+        if request.prompt is None:
+            raise CliError("--prompt is required when no raw provider arguments are supplied")
+
         command = [*self.cli_command, *self.run_args]
         effective_model = request.model or self.default_model
         if effective_model is not None:
@@ -114,15 +123,10 @@ class CodexAgent(AgentBase):
         codex_home = self._single_home()
         if codex_home is None:
             raise CliError("--account for provider codex requires a configured or explicit --home")
-        from agentos.codex.commands import (
-            _link_codex_auth_for_account,
-            _load_codex_mux_config,
-        )
-
-        source_auth, destination_auth = _link_codex_auth_for_account(
+        source_auth, destination_auth = link_codex_auth_for_account(
             request.account,
             codex_home=codex_home,
-            config=_load_codex_mux_config(),
+            config=load_codex_mux_config(),
             mutate=mutate,
         )
         if mutate:

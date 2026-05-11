@@ -101,16 +101,15 @@ def _project_session_model_view(
             surface_name="transcript",
             text_only=True,
         )
-        projected["session"] = _minimal_session_payload(
-            projected.get("session"),
-        )
-        projected.pop("agent_instance", None)
-        projected.pop("sources", None)
-        projected.pop("normalization", None)
-        projected["chat"] = {
-            "messages": _messages_from_events(filtered_events),
+        return {
+            "class": "agentos.chatlas.zip_transcript",
+            "schema_version": projected.get("schema_version", 1),
+            "view": view,
+            "session": _zip_transcript_session_payload(
+                projected.get("session"),
+            ),
+            "turns": _turns_from_events(filtered_events),
         }
-        return projected
 
     raise CliError(f"unsupported chatlas export view: {view}")
 
@@ -212,6 +211,31 @@ def _messages_from_events(events: list[dict[str, object]]) -> list[dict[str, obj
     return messages
 
 
+def _turns_from_events(events: list[dict[str, object]]) -> list[dict[str, object]]:
+    turns: list[dict[str, object]] = []
+    for event in events:
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        role = _string_or_none(payload.get("role"))
+        if role is None:
+            continue
+        text = "\n".join(
+            block_text
+            for block in _dict_list(payload.get("content"))
+            if (block_text := _string_or_none(block.get("text"))) is not None
+        )
+        if not text:
+            continue
+        turns.append(
+            {
+                "role": role,
+                "text": text,
+            }
+        )
+    return turns
+
+
 def _minimal_session_payload(session: object) -> dict[str, object]:
     if not isinstance(session, dict):
         return {}
@@ -224,6 +248,24 @@ def _minimal_session_payload(session: object) -> dict[str, object]:
         "updated_at",
         "identity_hash",
         "content_hash",
+    )
+    return {
+        key: deepcopy(value)
+        for key, value in session.items()
+        if key in allowed_fields
+    }
+
+
+def _zip_transcript_session_payload(session: object) -> dict[str, object]:
+    if not isinstance(session, dict):
+        return {}
+    allowed_fields = (
+        "uri",
+        "provider",
+        "session_id",
+        "display_name",
+        "created_at",
+        "updated_at",
     )
     return {
         key: deepcopy(value)

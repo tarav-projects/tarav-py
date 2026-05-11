@@ -1,27 +1,24 @@
 from __future__ import annotations
 
-import argparse
 import os
-import shlex
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir, global_config_path, load_global_config
-from agentos.agent.primitives import AgentConfig
 from agentos.agent.config import (
     AGENT_INSTANCE_CONFIG_SOURCE,
     agent_config_entries_from_config,
     agent_config_from_config_entry,
 )
-from agentos.codex.agent import CodexAgent
+from agentos.agent.link_runtime import AgentLinkDryResult, AgentLinkRequest, AgentLinkResult
+from agentos.agent.primitives import AgentConfig
 
 CODEX_AUTH_FILENAME = "auth.json"
 CODEX_DEFAULT_EXECUTABLE = "/opt/homebrew/bin/codex"
 CODEX_DEFAULT_HOME_DIRNAME = ".codex"
 CODEX_DEFAULT_BASE_ARGS = ("--dangerously-bypass-approvals-and-sandbox",)
-CODEX_HOME_ENV_VAR = "CODEX_HOME"
 CODEX_MUX_CONFIG_PATH = ("codex", "mux")
 CODEX_MANAGED_ACCOUNTS_DIR = ("accounts", "codex")
 
@@ -54,7 +51,7 @@ def _require_non_empty_string(value: object, *, field_name: str) -> str:
     return value.strip()
 
 
-def _normalize_path_value(value: object, *, field_name: str) -> Path:
+def normalize_codex_path_value(value: object, *, field_name: str) -> Path:
     return Path(_require_non_empty_string(value, field_name=field_name)).expanduser().resolve()
 
 
@@ -94,11 +91,13 @@ def _load_global_agent_instances(config: dict[str, object]) -> tuple[AgentConfig
     return instances
 
 
-def _resolve_codex_mux_default_instance(
+def resolve_codex_mux_default_instance(
     raw_default_instance_id: object,
     *,
     config: dict[str, object],
-) -> CodexAgent:
+):
+    from agentos.codex.agent import CodexAgent
+
     default_instance_id = validate_string_for_path(
         _require_non_empty_string(
             raw_default_instance_id,
@@ -125,7 +124,7 @@ def _resolve_codex_mux_default_instance(
     return CodexAgent.from_config(instance)
 
 
-def _resolve_codex_mux_instance_home(instance: CodexAgent) -> Path:
+def _resolve_codex_mux_instance_home(instance) -> Path:
     homes = instance.homes_map()
     home = homes.get("home")
     if home is None and len(instance.homes) == 1:
@@ -138,7 +137,7 @@ def _resolve_codex_mux_instance_home(instance: CodexAgent) -> Path:
     return home
 
 
-def _resolve_codex_mux_instance_executable(instance: CodexAgent) -> str:
+def _resolve_codex_mux_instance_executable(instance) -> str:
     if not instance.cli_command:
         raise CliError(
             f"agent.instances entry {instance.instance_id!r} for provider codex "
@@ -147,12 +146,12 @@ def _resolve_codex_mux_instance_executable(instance: CodexAgent) -> str:
     return instance.cli_command[0]
 
 
-def _resolve_codex_mux_instance_base_args(instance: CodexAgent) -> tuple[str, ...]:
+def _resolve_codex_mux_instance_base_args(instance) -> tuple[str, ...]:
     cli_tail = instance.cli_command[1:] if len(instance.cli_command) > 1 else ()
     return (*cli_tail, *instance.run_args)
 
 
-def _load_codex_mux_config() -> CodexMuxConfig:
+def load_codex_mux_config() -> CodexMuxConfig:
     config_path = global_config_path(agentos_home_dir())
     config: dict[str, object] = {}
     if config_path.exists():
@@ -167,9 +166,9 @@ def _load_codex_mux_config() -> CodexMuxConfig:
         mux_config = raw_mux
 
     raw_default_instance_id = mux_config.get("default_instance_id")
-    default_instance: CodexAgent | None = None
+    default_instance = None
     if raw_default_instance_id is not None:
-        default_instance = _resolve_codex_mux_default_instance(
+        default_instance = resolve_codex_mux_default_instance(
             raw_default_instance_id,
             config=config,
         )
@@ -189,7 +188,7 @@ def _load_codex_mux_config() -> CodexMuxConfig:
             else (Path.home() / CODEX_DEFAULT_HOME_DIRNAME).expanduser().resolve()
         )
     else:
-        default_home = _normalize_path_value(raw_default_home, field_name="codex.mux.default_home")
+        default_home = normalize_codex_path_value(raw_default_home, field_name="codex.mux.default_home")
 
     if raw_executable is None:
         executable = (
@@ -210,16 +209,10 @@ def _load_codex_mux_config() -> CodexMuxConfig:
 
     return CodexMuxConfig(
         default_home=default_home,
-        accounts_root=_normalize_path_value(raw_accounts_root, field_name="codex.mux.accounts_root"),
+        accounts_root=normalize_codex_path_value(raw_accounts_root, field_name="codex.mux.accounts_root"),
         executable=executable,
         base_args=base_args,
     )
-
-
-def _resolve_codex_home(args: argparse.Namespace, *, config: CodexMuxConfig) -> Path:
-    if args.home is not None:
-        return _normalize_path_value(args.home, field_name="home")
-    return config.default_home
 
 
 def _resolve_codex_auth_path(*, codex_home: Path) -> Path:
@@ -252,7 +245,7 @@ def _replace_path_with_symlink(*, path: Path, target: Path) -> None:
             temp_link.unlink()
 
 
-def _link_codex_auth_for_account(
+def link_codex_auth_for_account(
     account: str,
     *,
     codex_home: Path,
@@ -281,107 +274,38 @@ def _link_codex_auth_for_account(
     return (source_auth, destination_auth)
 
 
-def _normalize_codex_passthrough_args(raw_args: list[str]) -> list[str]:
-    if raw_args and raw_args[0] == "--":
-        return raw_args[1:]
-    return raw_args
-
-
-def _build_codex_command(*, config: CodexMuxConfig, codex_args: list[str]) -> list[str]:
-    return [config.executable, *config.base_args, *codex_args]
-
-
-def _format_codex_command(command: list[str], *, env_overrides: dict[str, str]) -> str:
-    env_prefix = " ".join(
-        f"{key}={shlex.quote(value)}"
-        for key, value in sorted(env_overrides.items())
+def link_codex_account(request: AgentLinkRequest) -> AgentLinkResult:
+    link_codex_auth_for_account(
+        request.account,
+        codex_home=request.home,
+        config=load_codex_mux_config(),
+        mutate=True,
     )
-    if not env_prefix:
-        return shlex.join(command)
-    return f"{env_prefix} {shlex.join(command)}"
+    return AgentLinkResult()
 
 
-def _cmd_codex(args: argparse.Namespace) -> int:
-    config = _load_codex_mux_config()
-    codex_home = _resolve_codex_home(args, config=config)
-    codex_args = _normalize_codex_passthrough_args(list(args.codex_args))
-
-    if args.just_link and args.account is None:
-        raise CliError("--just-link requires --account")
-    if args.just_link and codex_args:
-        raise CliError("--just-link does not accept forwarded Codex arguments")
-
-    if args.account is not None:
-        source_auth, destination_auth = _link_codex_auth_for_account(
-            args.account,
-            codex_home=codex_home,
-            config=config,
-            mutate=not args.dry_run,
-        )
-    else:
-        source_auth = None
-        destination_auth = None
-
-    if args.just_link:
-        if args.dry_run and source_auth is not None and destination_auth is not None:
-            print(f"link {destination_auth} -> {source_auth}")
-        return 0
-
-    command = _build_codex_command(
-        config=config,
-        codex_args=codex_args,
+def link_codex_account_dry(request: AgentLinkRequest) -> AgentLinkDryResult:
+    source_auth, destination_auth = link_codex_auth_for_account(
+        request.account,
+        codex_home=request.home,
+        config=load_codex_mux_config(),
+        mutate=False,
     )
-    env = os.environ.copy()
-    env[CODEX_HOME_ENV_VAR] = str(codex_home)
-
-    if args.dry_run:
-        if source_auth is not None and destination_auth is not None:
-            print(f"link {destination_auth} -> {source_auth}")
-        print(_format_codex_command(command, env_overrides={CODEX_HOME_ENV_VAR: str(codex_home)}))
-        return 0
-
-    try:
-        result = subprocess.run(
-            command,
-            env=env,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise CliError(f"codex executable not found: {exc.filename}") from exc
-    return int(result.returncode)
+    return AgentLinkDryResult(lines=(f"link {destination_auth} -> {source_auth}",))
 
 
-def register_codex_commands(subparsers: argparse._SubParsersAction) -> None:
-    codex_parser = subparsers.add_parser(
-        "codex",
-        help="Launch Codex with an explicit CODEX_HOME and optional managed auth.json symlink switching.",
-    )
-    codex_parser.add_argument(
-        "--account",
-        default=None,
-        help="Managed Codex account id under codex.mux.accounts_root/<account>/auth.json.",
-    )
-    codex_parser.add_argument(
-        "--home",
-        default=None,
-        help=(
-            "Raw CODEX_HOME path override. Defaults to codex.mux.default_home, "
-            "codex.mux.default_instance_id, or ~/.codex."
-        ),
-    )
-    codex_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the auth link action and full launched command without mutating or running Codex.",
-    )
-    codex_parser.add_argument(
-        "--just-link",
-        action="store_true",
-        help="Only switch the managed auth.json symlink for the selected account and exit without launching Codex.",
-    )
-    codex_parser.add_argument(
-        "codex_args",
-        nargs=argparse.REMAINDER,
-        help="Arguments forwarded to Codex. Use -- before Codex flags.",
-    )
-    codex_parser.set_defaults(handler=_cmd_codex)
+__all__ = [
+    "CODEX_AUTH_FILENAME",
+    "CODEX_DEFAULT_BASE_ARGS",
+    "CODEX_DEFAULT_EXECUTABLE",
+    "CODEX_DEFAULT_HOME_DIRNAME",
+    "CODEX_MANAGED_ACCOUNTS_DIR",
+    "CODEX_MUX_CONFIG_PATH",
+    "CodexMuxConfig",
+    "link_codex_account",
+    "link_codex_account_dry",
+    "link_codex_auth_for_account",
+    "load_codex_mux_config",
+    "normalize_codex_path_value",
+    "resolve_codex_mux_default_instance",
+]
