@@ -28,6 +28,39 @@ class AgentRunDryResult:
     lines: tuple[str, ...]
 
 
+def build_agent_run_command(
+    request: AgentRunRequest,
+    *,
+    instance_id: str | None,
+    provider: str,
+    cli_command: tuple[str, ...],
+    run_args: tuple[str, ...],
+    default_model: str | None,
+    model_flag: str | None,
+    prompt_flag: str | None,
+) -> tuple[str, ...]:
+    if not cli_command:
+        raise CliError(
+            f"agent {instance_id or '<default>'} for provider {provider} has no cli_command"
+        )
+
+    command = [*cli_command, *run_args]
+    effective_model = request.model or default_model
+    if effective_model is not None:
+        if model_flag is None:
+            raise CliError(
+                f"agent {instance_id or '<default>'} for provider {provider} does not define model_flag"
+            )
+        command.extend([model_flag, effective_model])
+    command.extend(request.argv)
+    if request.prompt is not None:
+        if prompt_flag is None:
+            command.append(request.prompt)
+        else:
+            command.extend([prompt_flag, request.prompt])
+    return tuple(command)
+
+
 def format_agent_run_command(
     command: tuple[str, ...],
     *,
@@ -67,6 +100,7 @@ __all__ = [
     "AgentRunDryResult",
     "AgentRunRequest",
     "AgentRunResult",
+    "build_agent_run_command",
     "execute_agent_run_command",
     "format_agent_run_command",
 ]

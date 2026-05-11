@@ -12,6 +12,7 @@ from agentos.agent.run_runtime import (
     AgentRunDryResult,
     AgentRunRequest,
     AgentRunResult,
+    build_agent_run_command,
     execute_agent_run_command,
     format_agent_run_command,
 )
@@ -69,25 +70,16 @@ class PiAgent(AgentBase):
         )
 
     def _run_command(self, request: AgentRunRequest) -> tuple[str, ...]:
-        if not self.cli_command:
-            raise CliError(
-                f"agent {self.instance_id or '<default>'} for provider {self.provider} has no cli_command"
-            )
-        command = [*self.cli_command, *self.run_args]
-        effective_model = request.model or self.default_model
-        if effective_model is not None:
-            if self.model_flag is None:
-                raise CliError(
-                    f"agent {self.instance_id or '<default>'} for provider {self.provider} does not define model_flag"
-                )
-            command.extend([self.model_flag, effective_model])
-        command.extend(request.argv)
-        if request.prompt is not None:
-            if self.prompt_flag is None:
-                command.append(request.prompt)
-            else:
-                command.extend([self.prompt_flag, request.prompt])
-        return tuple(command)
+        return build_agent_run_command(
+            request,
+            instance_id=self.instance_id,
+            provider=self.provider,
+            cli_command=self.cli_command,
+            run_args=self.run_args,
+            default_model=self.default_model,
+            model_flag=self.model_flag,
+            prompt_flag=self.prompt_flag,
+        )
 
 
 
