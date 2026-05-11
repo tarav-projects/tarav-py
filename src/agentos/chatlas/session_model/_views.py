@@ -15,6 +15,26 @@ _CHATLAS_EXPORT_VIEW_CHOICES = (
     "zip-transcript",
 )
 
+_MINIMAL_SESSION_FIELDS = (
+    "uri",
+    "provider",
+    "session_id",
+    "display_name",
+    "created_at",
+    "updated_at",
+    "identity_hash",
+    "content_hash",
+)
+
+_ZIP_TRANSCRIPT_SESSION_FIELDS = (
+    "uri",
+    "provider",
+    "session_id",
+    "display_name",
+    "created_at",
+    "updated_at",
+)
+
 
 def _project_session_model_view(
     session_model: dict[str, Any],
@@ -105,8 +125,9 @@ def _project_session_model_view(
             "class": "agentos.chatlas.zip_transcript",
             "schema_version": projected.get("schema_version", 1),
             "view": view,
-            "session": _zip_transcript_session_payload(
+            "session": _minimal_session_payload(
                 projected.get("session"),
+                allowed_fields=_ZIP_TRANSCRIPT_SESSION_FIELDS,
             ),
             "turns": _turns_from_events(filtered_events),
         }
@@ -220,11 +241,7 @@ def _turns_from_events(events: list[dict[str, object]]) -> list[dict[str, object
         role = _string_or_none(payload.get("role"))
         if role is None:
             continue
-        text = "\n".join(
-            block_text
-            for block in _dict_list(payload.get("content"))
-            if (block_text := _string_or_none(block.get("text"))) is not None
-        )
+        text = _text_from_content_blocks(payload.get("content"))
         if not text:
             continue
         turns.append(
@@ -236,19 +253,13 @@ def _turns_from_events(events: list[dict[str, object]]) -> list[dict[str, object
     return turns
 
 
-def _minimal_session_payload(session: object) -> dict[str, object]:
+def _minimal_session_payload(
+    session: object,
+    *,
+    allowed_fields: tuple[str, ...] = _MINIMAL_SESSION_FIELDS,
+) -> dict[str, object]:
     if not isinstance(session, dict):
         return {}
-    allowed_fields = (
-        "uri",
-        "provider",
-        "session_id",
-        "display_name",
-        "created_at",
-        "updated_at",
-        "identity_hash",
-        "content_hash",
-    )
     return {
         key: deepcopy(value)
         for key, value in session.items()
@@ -256,22 +267,12 @@ def _minimal_session_payload(session: object) -> dict[str, object]:
     }
 
 
-def _zip_transcript_session_payload(session: object) -> dict[str, object]:
-    if not isinstance(session, dict):
-        return {}
-    allowed_fields = (
-        "uri",
-        "provider",
-        "session_id",
-        "display_name",
-        "created_at",
-        "updated_at",
+def _text_from_content_blocks(value: object) -> str:
+    return "\n".join(
+        block_text
+        for block in _dict_list(value)
+        if (block_text := _string_or_none(block.get("text"))) is not None
     )
-    return {
-        key: deepcopy(value)
-        for key, value in session.items()
-        if key in allowed_fields
-    }
 
 
 def _filtered_model_runs(

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 from agentos._core.project import normalize_project_target
@@ -86,21 +85,13 @@ def _resolve_run_prompt(prompt: str | None, raw_argv: tuple[str, ...]) -> str | 
         if not prompt.strip():
             raise CliError("--prompt is empty")
         return prompt
-    if sys.stdin.isatty():
-        raise CliError("run input is required (pass --prompt, provider args after --, or pipe stdin)")
-    stdin_prompt = sys.stdin.read()
-    if not stdin_prompt.strip():
-        raise CliError("prompt is empty")
-    return stdin_prompt
+    return None
 
 
-def _resolve_run_argv(argv_parts: list[str], *, model: str | None) -> tuple[str, ...]:
+def _resolve_run_argv(argv_parts: list[str]) -> tuple[str, ...]:
     if argv_parts and argv_parts[0] == "--":
         argv_parts = argv_parts[1:]
-    argv = tuple(argv_parts)
-    if argv and model is not None:
-        raise CliError("--model is not supported with raw provider arguments after --")
-    return argv
+    return tuple(argv_parts)
 
 
 def _cmd_agent_run(args: argparse.Namespace) -> int:
@@ -112,7 +103,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         start_path=config_start_path,
         home=args.home,
     )
-    argv = _resolve_run_argv(args.argv, model=args.model)
+    argv = _resolve_run_argv(args.argv)
     prompt = _resolve_run_prompt(args.prompt, argv)
     request = AgentRunRequest(
         prompt=prompt,

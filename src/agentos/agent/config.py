@@ -52,7 +52,7 @@ def _agent_default_cli_command(family_name: str) -> tuple[str, ...]:
 
 def _agent_default_run_args(family_name: str) -> tuple[str, ...]:
     if family_name == "codex":
-        return ("exec", "--dangerously-bypass-approvals-and-sandbox")
+        return ("--dangerously-bypass-approvals-and-sandbox",)
     if family_name == "copilot-cli":
         return ("--allow-all-tools", "--no-ask-user")
     if family_name == "opencode":

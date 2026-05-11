@@ -91,14 +91,6 @@ class CodexAgent(AgentBase):
                 f"agent {self.instance_id or '<default>'} for provider {self.provider} has no cli_command"
             )
 
-        if request.argv:
-            if request.model is not None:
-                raise CliError("--model is not supported with raw provider arguments after --")
-            return (*self.cli_command, *request.argv)
-
-        if request.prompt is None:
-            raise CliError("--prompt is required when no raw provider arguments are supplied")
-
         command = [*self.cli_command, *self.run_args]
         effective_model = request.model or self.default_model
         if effective_model is not None:
@@ -107,7 +99,9 @@ class CodexAgent(AgentBase):
                     f"agent {self.instance_id or '<default>'} for provider {self.provider} does not define model_flag"
                 )
             command.extend([self.model_flag, effective_model])
-        command.append(request.prompt)
+        command.extend(request.argv)
+        if request.prompt is not None:
+            command.append(request.prompt)
         return tuple(command)
 
     def _run_env_overrides(self) -> dict[str, str]:

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -86,7 +84,6 @@ def test_agent_run_uses_configured_agent(
 
     assert observed["command"] == [
         "/opt/homebrew/bin/codex",
-        "exec",
         "--dangerously-bypass-approvals-and-sandbox",
         "--model",
         "gpt-5.4",
@@ -210,7 +207,6 @@ def test_agent_run_home_override_updates_provider_home_env(
 
     assert observed["command"] == [
         "codex",
-        "exec",
         "--dangerously-bypass-approvals-and-sandbox",
         "--model",
         "gpt-5.4",
@@ -270,7 +266,7 @@ def test_agent_run_codex_account_dry_run_uses_profile_home_override(
     output = capsys.readouterr().out.strip().splitlines()
     assert output == [
         f"link {override_home.resolve() / 'auth.json'} -> {auth_path.resolve()}",
-        f"CODEX_HOME={override_home.resolve()} codex exec --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 hello",
+        f"CODEX_HOME={override_home.resolve()} codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 hello",
     ]
 
 
@@ -1000,7 +996,7 @@ def test_agent_run_dry_run_prints_instance_env_prefix(
     )
 
 
-def test_agent_run_codex_raw_argv_dry_run_skips_prompt_run_args(
+def test_agent_run_codex_provider_argv_dry_run_uses_configured_run_args(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -1042,7 +1038,10 @@ def test_agent_run_codex_raw_argv_dry_run_skips_prompt_run_args(
         == 0
     )
 
-    assert capsys.readouterr().out.strip() == f"CODEX_HOME={codex_home} codex exec hello"
+    assert (
+        capsys.readouterr().out.strip()
+        == f"CODEX_HOME={codex_home} codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 exec hello"
+    )
 
 
 def test_agent_run_codex_raw_argv_with_account_links_auth(
@@ -1094,7 +1093,7 @@ def test_agent_run_codex_raw_argv_with_account_links_auth(
     output = capsys.readouterr().out.strip().splitlines()
     assert output == [
         f"link {codex_home / 'auth.json'} -> {auth_path.resolve()}",
-        f"CODEX_HOME={codex_home} codex exec hello",
+        f"CODEX_HOME={codex_home} codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 exec hello",
     ]
 
 
@@ -1138,7 +1137,7 @@ def test_agent_run_copilot_raw_argv_dry_run(
         == 0
     )
 
-    assert capsys.readouterr().out.strip() == "copilot auth status"
+    assert capsys.readouterr().out.strip() == "copilot --allow-all-tools --no-ask-user auth status"
 
 
 def test_agent_run_pi_raw_argv_dry_run(
@@ -1218,24 +1217,7 @@ def test_agent_run_help_describes_prompt_option_not_positional_prompt(
                 "hello",
             ],
             "--prompt cannot be combined with provider arguments after --",
-            id="prompt-and-raw-argv",
-        ),
-        pytest.param(
-            [
-                "agent",
-                "run",
-                "--provider",
-                "codex",
-                "--profile",
-                "work",
-                "--model",
-                "gpt-5.4",
-                "--",
-                "exec",
-                "hello",
-            ],
-            "--model is not supported with raw provider arguments after --",
-            id="model-and-raw-argv",
+            id="prompt-and-provider-argv",
         ),
     ],
 )
@@ -1269,22 +1251,17 @@ def test_agent_run_rejects_invalid_prompt_and_argv_combinations(
     assert expected_error in capsys.readouterr().err
 
 
-def test_agent_run_rejects_no_prompt_or_raw_argv_on_tty(
+def test_agent_run_without_prompt_defaults_to_empty_raw_argv(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    class TtyStdin(io.StringIO):
-        def isatty(self) -> bool:
-            return True
-
     home = tmp_path / "home"
     agentos_home = tmp_path / "agentos-home"
     work_home = tmp_path / "codex-home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    monkeypatch.setattr(sys, "stdin", TtyStdin())
 
     _write_global_config(
         agentos_home / "config.json",
@@ -1298,8 +1275,25 @@ def test_agent_run_rejects_no_prompt_or_raw_argv_on_tty(
         ],
     )
 
-    assert main(["agent", "run", "--provider", "codex", "--profile", "work"]) == 1
-    assert "run input is required" in capsys.readouterr().err
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--dry-run",
+                "--",
+            ]
+        )
+        == 0
+    )
+    assert (
+        capsys.readouterr().out.strip()
+        == f"CODEX_HOME={work_home} codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.4"
+    )
 
 
 def test_agent_list_prints_configured_agents(
@@ -1496,7 +1490,6 @@ def test_agent_run_uses_explicit_project_target_for_config_resolution(
 
     assert observed["command"] == [
         "/opt/homebrew/bin/codex",
-        "exec",
         "--dangerously-bypass-approvals-and-sandbox",
         "--model",
         "gpt-5.4",
