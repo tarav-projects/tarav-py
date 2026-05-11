@@ -21,7 +21,7 @@ from agentos.opencode.agent import OpencodeAgent
 from agentos.pi.agent import PiAgent
 
 
-DEFAULT_RUN_PROVIDER_FAMILIES = ("codex", "copilot-cli", "pi")
+DEFAULT_RUN_PROVIDER_FAMILIES = ("claude-code", "codex", "copilot-cli", "pi")
 
 
 def load_configured_agents(*, start_path: Path | str = ".") -> tuple[Agent, ...]:

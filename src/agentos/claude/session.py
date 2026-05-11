@@ -186,15 +186,8 @@ def discover_claude_sessions(*, targets: tuple[Path, ...]) -> tuple[ClaudeSessio
     sessions_by_id: dict[str, ClaudeSession] = {}
 
     for target in targets:
-        if target.name == "projects":
-            for path in _glob_paths(target, "**/*.jsonl"):
-                session = read_claude_project_session(path)
-                if session is not None:
-                    _merge_claude_session(sessions_by_id, session)
-            continue
-
-        for path in _glob_paths(target, "**/*.json"):
-            session = read_claude_desktop_session(path)
+        for path in _glob_paths(target, "**/*.jsonl"):
+            session = read_claude_project_session(path)
             if session is not None:
                 _merge_claude_session(sessions_by_id, session)
 
@@ -243,28 +236,6 @@ def read_claude_project_session(path: Path) -> ClaudeSession | None:
     )
 
 
-def read_claude_desktop_session(path: Path) -> ClaudeSession | None:
-    obj = _read_json_file(path)
-    if obj is None:
-        return None
-
-    session_id = _string_or_none(obj.get("sessionId"))
-    if session_id is None:
-        return None
-
-    return ClaudeSession(
-        native_session_id=session_id,
-        artifact_paths=(path,),
-        source_kind="desktop",
-        title=_string_or_none(obj.get("title")),
-        updated_at=(
-            _coerce_timestamp(obj.get("lastActivityAt"))
-            or _coerce_timestamp(obj.get("createdAt"))
-            or _safe_path_mtime(path)
-        ),
-    )
-
-
 def _claude_session_ref_from_session(session: ClaudeSession) -> ClaudeSessionRef:
     return ClaudeSessionRef(
         native_session_id=session.native_session_id,
@@ -280,22 +251,6 @@ def _is_claude_project_session_artifact(path: Path) -> bool:
     if path.suffix != ".jsonl":
         return False
     return "subagents" not in path.parts
-
-
-def _read_json_file(path: Path) -> dict[str, Any] | None:
-    try:
-        raw_text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return None
-
-    try:
-        obj = json.loads(raw_text)
-    except json.JSONDecodeError:
-        return None
-
-    if not isinstance(obj, dict):
-        return None
-    return obj
 
 
 def _read_first_jsonl_object(path: Path) -> dict[str, Any] | None:
@@ -360,6 +315,5 @@ __all__ = [
     "discover_claude_sessions",
     "find_claude_sessions",
     "load_claude_session",
-    "read_claude_desktop_session",
     "read_claude_project_session",
 ]

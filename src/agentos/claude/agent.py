@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
+from agentos._core.errors import CliError
 from agentos.agent.primitives import (
     AgentBase,
     AgentConfig,
     agent_base_kwargs_for_provider,
     agent_session_paths,
+)
+from agentos.agent.run_runtime import (
+    AgentRunDryResult,
+    AgentRunRequest,
+    AgentRunResult,
+    build_agent_run_command,
+    execute_agent_run_command,
+    format_agent_run_command,
 )
 from agentos.agent.account_runtime import AccountStatsRequest
 from agentos.claude.session import (
@@ -18,6 +26,7 @@ from agentos.claude.session import (
 
 
 CLAUDE_PROVIDER = "claude-code"
+CLAUDE_CONFIG_DIR_ENV_VAR = "CLAUDE_CONFIG_DIR"
 
 
 @dataclass(frozen=True)
@@ -48,6 +57,42 @@ class ClaudeAgent(AgentBase):
         from agentos.claude.accounts import collect_claude_account_stats
 
         return collect_claude_account_stats(self, request)
+
+    def run(self, request: AgentRunRequest) -> AgentRunResult:
+        if request.account is not None:
+            raise CliError(f"--account is not supported for provider {self.provider}")
+        return execute_agent_run_command(
+            self._run_command(request),
+            cwd=request.cwd,
+            env_overrides=self._run_env_overrides(),
+            capture_output=request.capture_output,
+        )
+
+    def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult:
+        if request.account is not None:
+            raise CliError(f"--account is not supported for provider {self.provider}")
+        command = self._run_command(request)
+        return AgentRunDryResult(
+            lines=(format_agent_run_command(command, env_overrides=self._run_env_overrides()),)
+        )
+
+    def _run_command(self, request: AgentRunRequest) -> tuple[str, ...]:
+        return build_agent_run_command(
+            request,
+            instance_id=self.instance_id,
+            provider=self.provider,
+            cli_command=self.cli_command,
+            run_args=self.run_args,
+            default_model=self.default_model,
+            model_flag=self.model_flag,
+            prompt_flag=self.prompt_flag,
+        )
+
+    def _run_env_overrides(self) -> dict[str, str]:
+        env_overrides = dict(self.env)
+        if self.home is not None:
+            env_overrides[CLAUDE_CONFIG_DIR_ENV_VAR] = str(self.home)
+        return env_overrides
 
 
 __all__ = ["ClaudeAgent"]

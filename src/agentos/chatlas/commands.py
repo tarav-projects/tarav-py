@@ -121,7 +121,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
 
     update_parser = chatlas_subparsers.add_parser(
         "update",
-        help="Refresh the Chatlas raw dataset layer from configured provider homes.",
+        help="Refresh the Chatlas raw dataset layer from configured provider home.",
     )
     update_parser.add_argument(
         "--provider",

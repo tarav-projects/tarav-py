@@ -1203,10 +1203,7 @@ def _write_global_config(
         {
             "provider": "claude-code",
             "id": "claude-main",
-            "homes": {
-                "cli": str(home / ".claude"),
-                "desktop": str(home / "Library" / "Application Support" / "Claude"),
-            },
+            "home": str(home / ".claude"),
             "cli_command": ["/opt/homebrew/bin/claude"],
         },
         {
@@ -1683,7 +1680,7 @@ def test_codex_chatlas_context_uses_provider_native_capability(
         instance_id="codex-main",
         label=None,
         is_default=False,
-        homes=(("home", codex_home),),
+        home=codex_home,
         includes=("custom/**",),
         excludes=("custom-secret.json",),
         identity=("codex", "codex-main", str(codex_home)),
@@ -1713,7 +1710,7 @@ def test_provider_session_ref_entry_uses_provider_agent_context(tmp_path: Path) 
         AgentConfig(
             provider="codex",
             instance_id="codex-main",
-            homes=(("home", tmp_path),),
+            home=tmp_path,
             direct_targets=(rollout_path,),
         )
     )
@@ -1828,7 +1825,6 @@ def test_chatlas_update_supports_configured_pi_provider(
     assert main(_chatlas_update_argv("--provider", "pi")) == 0
 
     payload = json.loads(capsys.readouterr().out)
-    chatlas_root = _default_chatlas_root(home)
     destination_root = _chatlas_home_root(home, pi_home)
 
     assert payload["command"] == "chatlas update"
@@ -1920,7 +1916,6 @@ def test_chatlas_update_copilot_uses_raw_retention_whitelist(
     assert main(_chatlas_update_argv("--provider", "copilot-cli")) == 0
 
     payload = json.loads(capsys.readouterr().out)
-    chatlas_root = _default_chatlas_root(home)
     destination_root = _chatlas_home_root(home, copilot_home)
     instance_payload = payload["instances"][0]
     expected_includes = [
@@ -2044,7 +2039,7 @@ def test_chatlas_update_copilot_replaces_archived_instruction_symlink(
 
     assert main(_chatlas_update_argv("--provider", "copilot-cli")) == 0
     payload = json.loads(capsys.readouterr().out)
-    home_status = payload["instances"][0]["homes_status"][0]
+    home_status = payload["instances"][0]["home_status"]
 
     assert payload["scan_cache_enabled"] is True
     assert payload["changes_detected"] is True
@@ -2068,18 +2063,9 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
     _write_global_config(agentos_home / "config.json")
 
     claude_cli_home = home / ".claude"
-    claude_desktop_home = home / "Library" / "Application Support" / "Claude"
     project_dir = claude_cli_home / "projects" / "-tmp-project"
     archive_dir = claude_cli_home / "archive" / "-"
-    desktop_session_dir = (
-        claude_desktop_home
-        / "claude-code-sessions"
-        / "workspace-a"
-        / "conversation-b"
-        / "session-c"
-    )
     cli_session_id = "11111111-1111-4111-8111-111111111111"
-    desktop_session_id = "22222222-2222-4222-8222-222222222222"
 
     _write_claude_session(
         project_dir / f"{cli_session_id}.jsonl",
@@ -2093,12 +2079,6 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
         session_id="33333333-3333-4333-8333-333333333333",
         user_text="retain claude archive user input",
         assistant_text="retain claude archive assistant output",
-    )
-    _write_claude_session(
-        desktop_session_dir / "desktop-session.json",
-        session_id=desktop_session_id,
-        user_text="retain claude desktop user input",
-        assistant_text="retain claude desktop assistant output",
     )
     _write(
         claude_cli_home / "usage-data" / "session-meta" / "meta-1.json",
@@ -2144,23 +2124,10 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
     _write(claude_cli_home / ".example-claude-statusline.json", '{"demo":true}\n')
     _write(claude_cli_home / "stats-cache.json", '{"dailyActivity":[]}\n')
 
-    _write(
-        claude_desktop_home / "config.json",
-        '{"oauth:tokenCache":"secret","locale":"en-US"}\n',
-    )
-    _write(claude_desktop_home / "claude_desktop_config.json", "{}\n")
-    _write(claude_desktop_home / "git-worktrees.json", "[]\n")
-    _write(claude_desktop_home / "extensions-blocklist.json", "[]\n")
-    _write(claude_desktop_home / "window-state.json", "{}\n")
-    _write(claude_desktop_home / "Cache" / "cache.bin", "noise\n")
-    _write(claude_desktop_home / "vm_bundles" / "vm" / "rootfs.img", "vm\n")
-
     assert main(_chatlas_update_argv("--provider", "claude-code")) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    chatlas_root = _default_chatlas_root(home)
     destination_cli_root = _chatlas_home_root(home, claude_cli_home)
-    destination_desktop_root = _chatlas_home_root(home, claude_desktop_home)
     instance_payload = payload["instances"][0]
     expected_includes = [
         "projects/**/*.jsonl",
@@ -2172,7 +2139,6 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
         "todos/*.json",
         "settings.json",
         "CLAUDE.md",
-        "claude-code-sessions/**/*.json",
     ]
     expected_excludes = [
         "debug/",
@@ -2224,10 +2190,6 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
         ".example-claude-statusline.json",
         "stats-cache.json",
         "config.json",
-        "claude_desktop_config.json",
-        "git-worktrees.json",
-        "extensions-blocklist.json",
-        "window-state.json",
     ]
 
     assert payload["command"] == "chatlas update"
@@ -2236,11 +2198,7 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
     assert payload["synced_instance_count"] == 1
     assert payload["session_index_count"] == 1
     assert instance_payload["instance"] == "claude-main"
-    assert instance_payload["destination_root"] is None
-    assert instance_payload["destination_roots"] == {
-        "cli": str(destination_cli_root),
-        "desktop": str(destination_desktop_root),
-    }
+    assert instance_payload["destination_root"] == str(destination_cli_root)
     assert instance_payload["includes"] == expected_includes
     assert instance_payload["excludes"] == expected_excludes
 
@@ -2253,14 +2211,6 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
     assert (destination_cli_root / "todos" / "todo-1.json").is_file()
     assert (destination_cli_root / "settings.json").is_file()
     assert (destination_cli_root / "CLAUDE.md").is_file()
-    assert (
-        destination_desktop_root
-        / "claude-code-sessions"
-        / "workspace-a"
-        / "conversation-b"
-        / "session-c"
-        / "desktop-session.json"
-    ).is_file()
 
     assert not (destination_cli_root / "file-history").exists()
     assert not (destination_cli_root / "backups").exists()
@@ -2277,13 +2227,6 @@ def test_chatlas_update_claude_uses_raw_retention_whitelist(
     assert not (destination_cli_root / "statusline.dump").exists()
     assert not (destination_cli_root / ".example-claude-statusline.json").exists()
     assert not (destination_cli_root / "stats-cache.json").exists()
-    assert not (destination_desktop_root / "config.json").exists()
-    assert not (destination_desktop_root / "claude_desktop_config.json").exists()
-    assert not (destination_desktop_root / "git-worktrees.json").exists()
-    assert not (destination_desktop_root / "extensions-blocklist.json").exists()
-    assert not (destination_desktop_root / "window-state.json").exists()
-    assert not (destination_desktop_root / "Cache").exists()
-    assert not (destination_desktop_root / "vm_bundles").exists()
 
     normalized_rows = _read_session_index_rows(Path(payload["session_index_root"]))
     normalized_by_session_id = {row["session_id"]: row for row in normalized_rows}
@@ -2364,7 +2307,6 @@ def test_chatlas_update_opencode_uses_raw_retention_policy(
         db_connection.close()
 
     payload = json.loads(capsys.readouterr().out)
-    chatlas_root = _default_chatlas_root(home)
     destination_root = _chatlas_home_root(home, opencode_home)
     instance_payload = payload["instances"][0]
     expected_includes = [
@@ -2678,7 +2620,7 @@ def test_chatlas_update_skips_transient_missing_source_files(
     assert main(_chatlas_update_argv("--provider", "codex")) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    home_status = payload["instances"][0]["homes_status"][0]
+    home_status = payload["instances"][0]["home_status"]
     assert payload["session_index_count"] == 1
     assert home_status["skipped_file_count"] == 0
     assert home_status["skipped_file_examples"] == []
@@ -2922,7 +2864,7 @@ def test_chatlas_update_without_selection_preserves_existing_dataset(
     assert _chatlas_home_root(home, home / ".codex").exists()
 
 
-def test_chatlas_update_uses_shared_claude_code_home_slots(
+def test_chatlas_update_uses_shared_claude_code_home_slot(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -2935,40 +2877,22 @@ def test_chatlas_update_uses_shared_claude_code_home_slots(
     _write_global_config(agentos_home / "config.json")
 
     claude_cli_home = home / ".claude"
-    claude_desktop_home = home / "Library" / "Application Support" / "Claude"
     (claude_cli_home / "projects").mkdir(parents=True, exist_ok=True)
-    (claude_desktop_home / "claude-code-sessions").mkdir(parents=True, exist_ok=True)
-    (claude_desktop_home / "Cache").mkdir(parents=True, exist_ok=True)
-    (claude_desktop_home / "vm_bundles" / "claudevm.bundle").mkdir(parents=True, exist_ok=True)
     _write(claude_cli_home / "README.md", "cli root\n")
-    _write(claude_desktop_home / "desktop-state.json", "{}\n")
-    _write(claude_desktop_home / "Cache" / "cache.bin", "cache\n")
-    _write(claude_desktop_home / "vm_bundles" / "claudevm.bundle" / "rootfs.img", "vm\n")
 
     assert main(_chatlas_update_argv("--provider", "claude-code")) == 0
     payload = json.loads(capsys.readouterr().out)
 
     destination_cli_root = _chatlas_home_root(home, claude_cli_home)
-    destination_desktop_root = _chatlas_home_root(home, claude_desktop_home)
     instance = payload["instances"][0]
 
     assert payload["instance_count"] == 1
     assert payload["synced_instance_count"] == 1
     assert payload["session_index_count"] == 0
     assert instance["instance"] == "claude-main"
-    assert instance["destination_root"] is None
-    assert instance["destination_roots"] == {
-        "cli": str(destination_cli_root),
-        "desktop": str(destination_desktop_root),
-    }
-    assert instance["homes"] == {
-        "cli": str(claude_cli_home),
-        "desktop": str(claude_desktop_home),
-    }
+    assert instance["destination_root"] == str(destination_cli_root)
+    assert instance["home"] == str(claude_cli_home)
     assert not (destination_cli_root / "README.md").exists()
-    assert not (destination_desktop_root / "desktop-state.json").exists()
-    assert not (destination_desktop_root / "Cache").exists()
-    assert not (destination_desktop_root / "vm_bundles").exists()
 
 
 def test_chatlas_stats_reports_normalized_counts(

@@ -570,8 +570,8 @@ def _new_chatlas_archive_stats() -> dict[str, int]:
         "instances": 0,
         "synced_instances": 0,
         "skipped_instances": 0,
-        "homes": 0,
-        "missing_homes": 0,
+        "home": 0,
+        "missing_home": 0,
         "scanned": 0,
         "added": 0,
         "updated": 0,
@@ -591,27 +591,21 @@ def _accumulate_chatlas_archive_payload_stats(
     else:
         stats["skipped_instances"] += 1
 
-    homes_status = instance_payload.get("homes_status")
-    if not isinstance(homes_status, list):
+    home_status = instance_payload.get("home_status")
+    if not isinstance(home_status, dict):
         return
-    stats["homes"] += len(homes_status)
-    stats["missing_homes"] += sum(
-        1
-        for home_status in homes_status
-        if isinstance(home_status, dict) and not bool(home_status.get("exists"))
-    )
-    for home_status in homes_status:
-        if not isinstance(home_status, dict):
-            continue
-        added = _chatlas_archive_stat_count(home_status, "added_file_count")
-        updated = _chatlas_archive_stat_count(home_status, "updated_file_count")
-        unchanged = _chatlas_archive_stat_count(home_status, "unchanged_file_count")
-        skipped = _chatlas_archive_stat_count(home_status, "skipped_file_count")
-        stats["added"] += added
-        stats["updated"] += updated
-        stats["unchanged"] += unchanged
-        stats["skipped"] += skipped
-        stats["scanned"] += added + updated + unchanged + skipped
+    stats["home"] += 1
+    if not bool(home_status.get("exists")):
+        stats["missing_home"] += 1
+    added = _chatlas_archive_stat_count(home_status, "added_file_count")
+    updated = _chatlas_archive_stat_count(home_status, "updated_file_count")
+    unchanged = _chatlas_archive_stat_count(home_status, "unchanged_file_count")
+    skipped = _chatlas_archive_stat_count(home_status, "skipped_file_count")
+    stats["added"] += added
+    stats["updated"] += updated
+    stats["unchanged"] += unchanged
+    stats["skipped"] += skipped
+    stats["scanned"] += added + updated + unchanged + skipped
 
 
 def _chatlas_archive_stat_count(home_status: dict[str, object], key: str) -> int:
@@ -632,8 +626,8 @@ def _format_chatlas_archive_stats(
             f"instances={stats['instances']}",
             f"synced_instances={stats['synced_instances']}",
             f"skipped_instances={stats['skipped_instances']}",
-            f"homes={stats['homes']}",
-            f"missing_homes={stats['missing_homes']}",
+            f"home={stats['home']}",
+            f"missing_home={stats['missing_home']}",
             f"scanned={stats['scanned']}",
             f"added={stats['added']}",
             f"updated={stats['updated']}",
@@ -1137,22 +1131,20 @@ def _chatlas_session_agent(
     if _provider_family_for_name(archive_provider_config.family) is None:
         return None
 
-    raw_homes = tuple(
-        (
-            home_key,
-            _chatlas_home_destination(
-                raw_root=raw_root,
-                home_path=source_home_path,
-            ),
+    raw_home = (
+        _chatlas_home_destination(
+            raw_root=raw_root,
+            home_path=archive_provider_config.home,
         )
-        for home_key, source_home_path in archive_provider_config.homes
+        if archive_provider_config.home is not None
+        else None
     )
     return agent_from_config(
         AgentConfig(
             provider=archive_provider_config.family,
             instance_id=archive_provider_config.instance_id,
             label=archive_provider_config.label,
-            homes=raw_homes,
+            home=raw_home,
             is_default=archive_provider_config.is_default,
             fingerprint=archive_provider_config.fingerprint,
         )
@@ -1344,9 +1336,9 @@ def _chatlas_archive_identity_name(config: ChatlasArchiveConfig) -> str:
     if isinstance(instance_id, str) and instance_id:
         return instance_id
 
-    homes = summary.get("homes")
-    if isinstance(homes, dict):
-        derived_name = _derive_chatlas_identity_name(config.family, homes.values())
+    home = summary.get("home")
+    if isinstance(home, str):
+        derived_name = _derive_chatlas_identity_name(config.family, (home,))
         if derived_name is not None:
             return derived_name
 

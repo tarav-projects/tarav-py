@@ -271,13 +271,6 @@ def _provider_family_for_name(family_name: str) -> ProviderFamily | None:
     return None
 
 
-def _session_provider_home_slots(family_name: str):
-    provider_spec = canonical_chat_provider_specs()
-    for spec in provider_spec:
-        if spec.family == family_name:
-            return tuple(slot for slot in spec.home_slots if slot.supports_session_discovery())
-    return ()
-
 def _dedupe_agents(
     agents: tuple[Agent, ...],
 ) -> tuple[Agent, ...]:

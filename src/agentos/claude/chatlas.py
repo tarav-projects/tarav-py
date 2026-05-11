@@ -11,7 +11,6 @@ CLAUDE_CHATLAS_DEFAULT_INCLUDES = (
     "todos/*.json",
     "settings.json",
     "CLAUDE.md",
-    "claude-code-sessions/**/*.json",
 )
 
 CLAUDE_CHATLAS_DEFAULT_EXCLUDES = (
@@ -64,10 +63,6 @@ CLAUDE_CHATLAS_DEFAULT_EXCLUDES = (
     ".example-claude-statusline.json",
     "stats-cache.json",
     "config.json",
-    "claude_desktop_config.json",
-    "git-worktrees.json",
-    "extensions-blocklist.json",
-    "window-state.json",
 )
 
 

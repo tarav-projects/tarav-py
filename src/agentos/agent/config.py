@@ -18,7 +18,7 @@ from agentos._core.project import (
 from agentos.providers import (
     ProviderFamily,
     ProviderHomeAnchor,
-    ProviderHomeSlot,
+    ProviderHomeSpec,
     canonical_provider_families,
     canonical_provider_family_for_name,
     require_canonical_provider_family,
@@ -29,7 +29,7 @@ from agentos.home.providers import home_provider_for_name
 @dataclass(frozen=True)
 class ChatProviderSpec:
     provider_family: ProviderFamily
-    home_slots: tuple[ProviderHomeSlot, ...]
+    home_spec: ProviderHomeSpec
     supports_session_discovery: bool = True
 
     @property
@@ -41,6 +41,8 @@ _CANONICAL_CHAT_PROVIDER_SPECS: tuple[ChatProviderSpec, ...] = ()
 
 
 def _agent_default_cli_command(family_name: str) -> tuple[str, ...]:
+    if family_name == "claude-code":
+        return ("claude",)
     if family_name == "codex":
         return ("codex",)
     if family_name == "copilot-cli":
@@ -79,6 +81,8 @@ def _agent_default_model_flag(family_name: str) -> str | None:
 
 
 def _agent_default_prompt_flag(family_name: str) -> str | None:
+    if family_name == "claude-code":
+        return "-p"
     if family_name == "copilot-cli":
         return "-p"
     if family_name == "pi":
@@ -107,7 +111,7 @@ def _chat_provider_spec(
         raise ValueError(f"unknown provider family: {family_name}")
     return ChatProviderSpec(
         provider_family=home_provider.provider_family,
-        home_slots=home_provider.home_slots,
+        home_spec=home_provider.home_spec,
         supports_session_discovery=supports_session_discovery,
     )
 
@@ -323,25 +327,23 @@ def default_agent_configs(
         if supports_session_discovery_only and not provider_spec.supports_session_discovery:
             continue
 
-        homes: list[tuple[str, Path]] = []
         direct_targets: list[Path] = []
         grep_targets: list[Path] = []
         sqlite_db_paths: list[Path] = []
         anchors: list[ProviderHomeAnchor] = []
 
-        for slot in provider_spec.home_slots:
-            home = Path(slot.default_home).expanduser().resolve()
-            homes.append((slot.key, home))
-            slot_direct_paths, slot_grep_paths, slot_sqlite_db_paths = slot.build_paths(home=home)
-            direct_targets.extend(slot_direct_paths)
-            grep_targets.extend(slot_grep_paths or slot_direct_paths)
-            sqlite_db_paths.extend(slot_sqlite_db_paths)
-            anchors.extend(slot.build_anchors(home=home))
+        home_spec = provider_spec.home_spec
+        home = Path(home_spec.default_home).expanduser().resolve()
+        home_direct_paths, home_grep_paths, home_sqlite_db_paths = home_spec.build_paths(home=home)
+        direct_targets.extend(home_direct_paths)
+        grep_targets.extend(home_grep_paths or home_direct_paths)
+        sqlite_db_paths.extend(home_sqlite_db_paths)
+        anchors.extend(home_spec.build_anchors(home=home))
 
         instances.append(
             AgentConfig(
                 provider=provider_spec.family,
-                homes=tuple(homes),
+                home=home,
                 direct_targets=_unique_paths(tuple(direct_targets)),
                 grep_targets=_unique_paths(tuple(grep_targets)),
                 sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
@@ -359,19 +361,19 @@ def default_agent_configs(
 
 def agent_config_with_home_override(config: AgentConfig, *, home: Path | str) -> AgentConfig:
     provider_spec = canonical_chat_provider_spec_for_name(config.provider)
-    if provider_spec is None or len(provider_spec.home_slots) != 1:
+    if provider_spec is None:
         raise CliError(f"--home is not supported for provider {config.provider}")
 
-    slot = provider_spec.home_slots[0]
+    home_spec = provider_spec.home_spec
     normalized_home = Path(home).expanduser().resolve()
-    direct_targets, grep_targets, sqlite_db_paths = slot.build_paths(home=normalized_home)
+    direct_targets, grep_targets, sqlite_db_paths = home_spec.build_paths(home=normalized_home)
     return replace(
         config,
-        homes=((slot.key, normalized_home),),
+        home=normalized_home,
         direct_targets=_unique_paths(tuple(direct_targets)),
         grep_targets=_unique_paths(tuple(grep_targets or direct_targets)),
         sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
-        identity_anchors=tuple(slot.build_anchors(home=normalized_home)),
+        identity_anchors=tuple(home_spec.build_anchors(home=normalized_home)),
     )
 
 
@@ -407,7 +409,6 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         label = raw_label.strip()
 
     home = raw_instance.get("home")
-    raw_homes = raw_instance.get("homes")
     raw_direct_paths = raw_instance.get("direct_paths")
     raw_grep_paths = raw_instance.get("grep_paths")
     raw_sqlite_db_paths = raw_instance.get("sqlite_db_paths")
@@ -424,8 +425,6 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     raw_includes = raw_instance.get("includes")
     raw_excludes = raw_instance.get("excludes")
 
-    if home is not None and raw_homes is not None:
-        raise CliError(f"{entry.item_path()} must not define both home and homes")
     if raw_sqlite_db_path is not None and raw_sqlite_db_paths is not None:
         raise CliError(
             f"{entry.item_path()} must not define both sqlite_db_path and sqlite_db_paths"
@@ -443,10 +442,6 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     sqlite_db_paths = _load_optional_string_tuple(
         raw_sqlite_db_paths if raw_sqlite_db_paths is not None else raw_sqlite_db_path,
         field_name=entry.field_name("sqlite_db_paths"),
-    )
-    homes = _load_optional_string_mapping(
-        raw_homes,
-        field_name=entry.field_name("homes"),
     )
     cli_command = (
         _load_string_argv(
@@ -513,78 +508,34 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         field_name=entry.field_name("excludes"),
     )
 
-    normalized_homes: list[tuple[str, Path]] = []
+    normalized_home: Path | None = None
     resolved_direct_targets: tuple[Path, ...] = ()
     resolved_grep_targets: tuple[Path, ...] = ()
     resolved_sqlite_db_paths: tuple[Path, ...] = ()
     anchors: tuple[ProviderHomeAnchor, ...] = ()
 
-    if home is not None or homes:
+    if home is not None:
         if provider_spec is None:
             raise CliError(
                 f"{entry.item_path()} does not support home-based configuration for provider {family_name}"
             )
         if direct_paths or grep_paths or sqlite_db_paths:
             raise CliError(
-                f"{entry.item_path()} must define either home/homes or explicit paths, not both"
+                f"{entry.item_path()} must define either home or explicit paths, not both"
             )
 
-        if home is not None:
-            if len(provider_spec.home_slots) != 1:
-                supported_keys = ", ".join(slot.key for slot in provider_spec.home_slots)
-                raise CliError(
-                    f"{entry.field_name('home')} is only supported for providers with a single home root; "
-                    f"use {entry.field_name('homes')} with keys: {supported_keys}"
-                )
-            resolved_homes = {
-                provider_spec.home_slots[0].key: _normalize_provider_home(
-                    home,
-                    field_name=entry.field_name("home"),
-                )
-            }
-        else:
-            if len(provider_spec.home_slots) == 1:
-                raise CliError(
-                    f"{entry.field_name('homes')} is only supported for providers with multiple home roots; "
-                    f"use {entry.field_name('home')}"
-                )
-            resolved_homes = homes
-
-        supported_slots = {slot.key: slot for slot in provider_spec.home_slots}
-        unsupported_keys = sorted(key for key in resolved_homes if key not in supported_slots)
-        if unsupported_keys:
-            supported_keys = ", ".join(slot.key for slot in provider_spec.home_slots)
-            raise CliError(
-                f"{entry.field_name('homes')} contains unsupported keys for provider {family_name}: "
-                f"{', '.join(unsupported_keys)} (supported: {supported_keys})"
+        home_spec = provider_spec.home_spec
+        normalized_home = Path(
+            _normalize_provider_home(
+                home,
+                field_name=entry.field_name("home"),
             )
-
-        direct_targets_list: list[Path] = []
-        grep_targets_list: list[Path] = []
-        sqlite_db_paths_list: list[Path] = []
-        anchors_list: list[ProviderHomeAnchor] = []
-        for slot in provider_spec.home_slots:
-            raw_home = resolved_homes.get(slot.key)
-            if raw_home is None:
-                continue
-            field_name = entry.field_name("home") if home is not None else f"{entry.field_name('homes')}.{slot.key}"
-            normalized_home = Path(
-                _normalize_provider_home(
-                    raw_home,
-                    field_name=field_name,
-                )
-            ).expanduser().resolve()
-            normalized_homes.append((slot.key, normalized_home))
-            slot_direct_paths, slot_grep_paths, slot_sqlite_db_paths = slot.build_paths(home=normalized_home)
-            direct_targets_list.extend(slot_direct_paths)
-            grep_targets_list.extend(slot_grep_paths or slot_direct_paths)
-            sqlite_db_paths_list.extend(slot_sqlite_db_paths)
-            anchors_list.extend(slot.build_anchors(home=normalized_home))
-
-        resolved_direct_targets = _unique_paths(tuple(direct_targets_list))
-        resolved_grep_targets = _unique_paths(tuple(grep_targets_list))
-        resolved_sqlite_db_paths = _unique_paths(tuple(sqlite_db_paths_list))
-        anchors = tuple(anchors_list)
+        ).expanduser().resolve()
+        home_direct_paths, home_grep_paths, home_sqlite_db_paths = home_spec.build_paths(home=normalized_home)
+        resolved_direct_targets = _unique_paths(tuple(home_direct_paths))
+        resolved_grep_targets = _unique_paths(tuple(home_grep_paths or home_direct_paths))
+        resolved_sqlite_db_paths = _unique_paths(tuple(home_sqlite_db_paths))
+        anchors = tuple(home_spec.build_anchors(home=normalized_home))
     elif direct_paths or sqlite_db_paths:
         resolved_direct_targets = _resolve_raw_paths(direct_paths)
         resolved_grep_targets = _resolve_raw_paths(grep_paths) if grep_paths else resolved_direct_targets
@@ -598,7 +549,7 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         provider=provider_family.family,
         instance_id=instance_id,
         label=label,
-        homes=tuple(normalized_homes),
+        home=normalized_home,
         direct_targets=resolved_direct_targets,
         grep_targets=resolved_grep_targets,
         sqlite_db_paths=resolved_sqlite_db_paths,
@@ -741,7 +692,7 @@ __all__ = [
     "load_unique_string_list",
     "load_agent_config_entries",
     "ProviderFamily",
-    "ProviderHomeSlot",
+    "ProviderHomeSpec",
     "AgentConfigEntry",
     "AgentConfigSource",
     "AgentConfig",

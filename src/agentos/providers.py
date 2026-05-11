@@ -13,24 +13,19 @@ class ProviderFamily:
 class ProviderHomeAnchor:
     role: str
     path: Path
-    slot: str | None = None
 
-    def identity_key(self) -> tuple[str, str | None, str]:
-        return (self.role, self.slot, str(self.path))
+    def identity_key(self) -> tuple[str, str]:
+        return (self.role, str(self.path))
 
     def summary(self) -> dict[str, str]:
-        payload = {
+        return {
             "role": self.role,
             "path": str(self.path),
         }
-        if self.slot is not None:
-            payload["slot"] = self.slot
-        return payload
 
 
 @dataclass(frozen=True)
-class ProviderHomeSlot:
-    key: str
+class ProviderHomeSpec:
     default_home: str
     direct_relpaths: tuple[str, ...] = ()
     grep_relpaths: tuple[str, ...] = ()
@@ -53,15 +48,14 @@ class ProviderHomeSlot:
             f"sqlite_db_{index + 1}" for index, _ in enumerate(self.sqlite_db_relpaths)
         )
         if len(direct_roles) != len(self.direct_relpaths):
-            raise ValueError(f"provider slot {self.key} direct anchor roles must match direct relpaths")
+            raise ValueError("provider home direct anchor roles must match direct relpaths")
         if len(sqlite_roles) != len(self.sqlite_db_relpaths):
-            raise ValueError(f"provider slot {self.key} sqlite anchor roles must match sqlite db relpaths")
+            raise ValueError("provider home sqlite anchor roles must match sqlite db relpaths")
 
         anchors = [
             ProviderHomeAnchor(
                 role=role,
                 path=_join_provider_home(home, relpath),
-                slot=self.key,
             )
             for role, relpath in zip(direct_roles, self.direct_relpaths, strict=True)
         ]
@@ -69,7 +63,6 @@ class ProviderHomeSlot:
             ProviderHomeAnchor(
                 role=role,
                 path=_join_provider_home(home, relpath),
-                slot=self.key,
             )
             for role, relpath in zip(sqlite_roles, self.sqlite_db_relpaths, strict=True)
         )
@@ -82,7 +75,7 @@ class ProviderHomeSlot:
 @dataclass(frozen=True)
 class ProviderFamilySpec:
     provider_family: ProviderFamily
-    home_slots: tuple[ProviderHomeSlot, ...]
+    home_spec: ProviderHomeSpec
 
     @property
     def family(self) -> str:
@@ -125,90 +118,62 @@ def require_canonical_provider_family(family_name: str) -> ProviderFamily:
 _CANONICAL_PROVIDER_SPECS = (
     ProviderFamilySpec(
         provider_family=require_canonical_provider_family("copilot-cli"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.copilot",
-                direct_relpaths=("session-state",),
-                direct_anchor_roles=("session_state_root",),
-            ),
+        home_spec=ProviderHomeSpec(
+            default_home="~/.copilot",
+            direct_relpaths=("session-state",),
+            direct_anchor_roles=("session_state_root",),
         ),
     ),
     ProviderFamilySpec(
         provider_family=require_canonical_provider_family("gemini-cli"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.gemini",
-                direct_relpaths=("tmp", "history"),
-                direct_anchor_roles=("tmp_root", "history_root"),
-            ),
+        home_spec=ProviderHomeSpec(
+            default_home="~/.gemini",
+            direct_relpaths=("tmp", "history"),
+            direct_anchor_roles=("tmp_root", "history_root"),
         ),
     ),
     ProviderFamilySpec(
         provider_family=require_canonical_provider_family("codex"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.codex",
-                direct_relpaths=("sessions", "archived_sessions", "session_index.jsonl"),
-                direct_anchor_roles=("sessions_root", "archive_root", "session_index"),
-            ),
+        home_spec=ProviderHomeSpec(
+            default_home="~/.codex",
+            direct_relpaths=("sessions", "archived_sessions", "session_index.jsonl"),
+            direct_anchor_roles=("sessions_root", "archive_root", "session_index"),
         ),
     ),
     ProviderFamilySpec(
         provider_family=require_canonical_provider_family("claude-code"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="cli",
-                default_home="~/.claude",
-                direct_relpaths=("projects",),
-                grep_relpaths=("",),
-                direct_anchor_roles=("projects_root",),
-            ),
-            ProviderHomeSlot(
-                key="desktop",
-                default_home="~/Library/Application Support/Claude",
-                direct_relpaths=("claude-code-sessions",),
-                grep_relpaths=("claude-code-sessions",),
-                direct_anchor_roles=("desktop_sessions_root",),
-            ),
+        home_spec=ProviderHomeSpec(
+            default_home="~/.claude",
+            direct_relpaths=("projects",),
+            grep_relpaths=("",),
+            direct_anchor_roles=("projects_root",),
         ),
     ),
     ProviderFamilySpec(
         provider_family=require_canonical_provider_family("opencode"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.local/share/opencode",
-                direct_relpaths=("storage/session_diff",),
-                grep_relpaths=("storage", "log"),
-                sqlite_db_relpaths=("opencode.db",),
-                direct_anchor_roles=("session_diff_root",),
-                sqlite_db_anchor_roles=("sqlite_db",),
-            ),
+        home_spec=ProviderHomeSpec(
+            default_home="~/.local/share/opencode",
+            direct_relpaths=("storage/session_diff",),
+            grep_relpaths=("storage", "log"),
+            sqlite_db_relpaths=("opencode.db",),
+            direct_anchor_roles=("session_diff_root",),
+            sqlite_db_anchor_roles=("sqlite_db",),
         ),
     ),
     ProviderFamilySpec(
         provider_family=require_canonical_provider_family("pi"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.pi/agent",
-                direct_relpaths=("sessions",),
-                direct_anchor_roles=("sessions_root",),
-            ),
+        home_spec=ProviderHomeSpec(
+            default_home="~/.pi/agent",
+            direct_relpaths=("sessions",),
+            direct_anchor_roles=("sessions_root",),
         ),
     ),
     ProviderFamilySpec(
         provider_family=require_canonical_provider_family("openclaw"),
-        home_slots=(
-            ProviderHomeSlot(
-                key="home",
-                default_home="~/.openclaw",
-                direct_relpaths=("agents",),
-                direct_anchor_roles=("agents_root",),
-            ),
+        home_spec=ProviderHomeSpec(
+            default_home="~/.openclaw",
+            direct_relpaths=("agents",),
+            direct_anchor_roles=("agents_root",),
         ),
     ),
 )
@@ -247,7 +212,7 @@ __all__ = [
     "ProviderFamily",
     "ProviderFamilySpec",
     "ProviderHomeAnchor",
-    "ProviderHomeSlot",
+    "ProviderHomeSpec",
     "require_canonical_provider_family",
     "require_canonical_provider_spec",
 ]

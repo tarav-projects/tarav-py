@@ -16,11 +16,14 @@ class AgentRunRequest:
     model: str | None
     cwd: Path
     account: str | None = None
+    capture_output: bool = False
 
 
 @dataclass(frozen=True)
 class AgentRunResult:
     exit_code: int
+    stdout: str | None = None
+    stderr: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,19 +84,30 @@ def execute_agent_run_command(
     *,
     cwd: Path,
     env_overrides: dict[str, str],
+    capture_output: bool = False,
 ) -> AgentRunResult:
     env = os.environ.copy()
     env.update(env_overrides)
+    run_kwargs: dict[str, object] = {
+        "cwd": str(cwd),
+        "env": env,
+        "check": False,
+    }
+    if capture_output:
+        run_kwargs["capture_output"] = True
+        run_kwargs["text"] = True
     try:
         result = subprocess.run(
             list(command),
-            cwd=str(cwd),
-            env=env,
-            check=False,
+            **run_kwargs,
         )
     except FileNotFoundError as exc:
         raise CliError(f"agent executable not found: {exc.filename}") from exc
-    return AgentRunResult(exit_code=int(result.returncode))
+    return AgentRunResult(
+        exit_code=int(result.returncode),
+        stdout=result.stdout if capture_output else None,
+        stderr=result.stderr if capture_output else None,
+    )
 
 
 __all__ = [

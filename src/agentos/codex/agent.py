@@ -49,9 +49,6 @@ class CodexAgent(AgentBase):
     def provider(self) -> str:
         return CODEX_PROVIDER
 
-    def homes_map(self) -> dict[str, Path]:
-        return {key: path for key, path in self.homes}
-
     def discover_session_refs(self) -> tuple[CodexSessionRef, ...]:
         return discover_codex_session_refs(targets=self.session_discovery_targets())
 
@@ -75,6 +72,7 @@ class CodexAgent(AgentBase):
             command,
             cwd=request.cwd,
             env_overrides=env_overrides,
+            capture_output=request.capture_output,
         )
 
     def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult:
@@ -100,35 +98,23 @@ class CodexAgent(AgentBase):
 
     def _run_env_overrides(self) -> dict[str, str]:
         env_overrides = dict(self.env)
-        codex_home = self._single_home()
-        if codex_home is not None:
-            env_overrides[CODEX_HOME_ENV_VAR] = str(codex_home)
+        if self.home is not None:
+            env_overrides[CODEX_HOME_ENV_VAR] = str(self.home)
         return env_overrides
 
     def _account_link_lines(self, request: AgentRunRequest, *, mutate: bool) -> tuple[str, ...]:
         if request.account is None:
             return ()
-        codex_home = self._single_home()
-        if codex_home is None:
+        if self.home is None:
             raise CliError("--account for provider codex requires a configured or explicit --home")
         source_auth, destination_auth = link_codex_auth_for_account(
             request.account,
-            codex_home=codex_home,
+            codex_home=self.home,
             config=load_codex_mux_config(),
             mutate=mutate,
         )
         if mutate:
             return ()
         return (f"link {destination_auth} -> {source_auth}",)
-
-    def _single_home(self) -> Path | None:
-        if not self.homes:
-            return None
-        homes = self.homes_map()
-        if "home" in homes:
-            return homes["home"]
-        if len(self.homes) == 1:
-            return self.homes[0][1]
-        return None
 
 __all__ = ["CodexAgent"]

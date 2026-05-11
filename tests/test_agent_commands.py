@@ -142,6 +142,50 @@ def test_agent_run_uses_configured_instance_env(
     assert observed["codex_home"] == str(work_home)
 
 
+def test_agent_run_runtime_captures_output_when_requested(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.run_runtime import execute_agent_run_command
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        observed["command"] = command
+        observed["kwargs"] = kwargs
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="captured stdout",
+            stderr="captured stderr",
+        )
+
+    import agentos.agent.run_runtime as agent_run_runtime
+
+    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+
+    result = execute_agent_run_command(
+        ("agent-cli", "ping"),
+        cwd=tmp_path,
+        env_overrides={"AGENT_HOME": "/tmp/agent-home"},
+        capture_output=True,
+    )
+
+    kwargs = observed["kwargs"]
+    assert observed["command"] == ["agent-cli", "ping"]
+    assert kwargs["cwd"] == str(tmp_path)
+    assert kwargs["capture_output"] is True
+    assert kwargs["text"] is True
+    assert kwargs["check"] is False
+    assert kwargs["env"]["AGENT_HOME"] == "/tmp/agent-home"
+    assert result.exit_code == 0
+    assert result.stdout == "captured stdout"
+    assert result.stderr == "captured stderr"
+
+
 def test_agent_run_home_override_updates_provider_home_env(
     tmp_path: Path,
     monkeypatch,
@@ -213,6 +257,164 @@ def test_agent_run_home_override_updates_provider_home_env(
         "hello",
     ]
     assert observed["codex_home"] == str(override_home.resolve())
+
+
+def test_agent_run_claude_uses_configured_home_env(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    claude_home = tmp_path / "claude-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "claude-code",
+                "id": "claude-main",
+                "home": str(claude_home),
+                "cli_command": ["claude"],
+            }
+        ],
+    )
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        cwd: str,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, check
+        observed["command"] = command
+        observed["claude_config_dir"] = env["CLAUDE_CONFIG_DIR"]
+        return subprocess.CompletedProcess(command, 0)
+
+    import agentos.agent.run_runtime as agent_run_runtime
+
+    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+
+    assert main(["agent", "run", "--provider", "claude-code", "--profile", "claude-main", "--prompt", "hello"]) == 0
+
+    assert observed["command"] == ["claude", "-p", "hello"]
+    assert observed["claude_config_dir"] == str(claude_home)
+
+
+def test_agent_run_claude_home_override_updates_provider_home_env(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    configured_home = tmp_path / "claude-configured"
+    override_home = tmp_path / "claude-override"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "claude-code",
+                "id": "claude-main",
+                "home": str(configured_home),
+                "cli_command": ["claude"],
+                "env": {
+                    "CLAUDE_CONFIG_DIR": str(configured_home),
+                },
+            }
+        ],
+    )
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        cwd: str,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, check
+        observed["command"] = command
+        observed["claude_config_dir"] = env["CLAUDE_CONFIG_DIR"]
+        return subprocess.CompletedProcess(command, 0)
+
+    import agentos.agent.run_runtime as agent_run_runtime
+
+    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "claude-code",
+                "--profile",
+                "claude-main",
+                "--home",
+                str(override_home),
+                "--prompt",
+                "hello",
+            ]
+        )
+        == 0
+    )
+
+    assert observed["command"] == ["claude", "-p", "hello"]
+    assert observed["claude_config_dir"] == str(override_home.resolve())
+
+
+def test_agent_run_claude_dry_run_prints_configured_home_env(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    claude_home = tmp_path / "claude-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "claude-code",
+                "id": "claude-main",
+                "home": str(claude_home),
+                "cli_command": ["claude"],
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "claude-code",
+                "--profile",
+                "claude-main",
+                "--dry-run",
+                "--prompt",
+                "hello",
+            ]
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out.strip() == f"CLAUDE_CONFIG_DIR={claude_home} claude -p hello"
 
 
 def test_agent_run_codex_account_dry_run_uses_profile_home_override(
@@ -487,6 +689,79 @@ def test_agent_run_invokes_provider_native_run(
         cwd=cwd.resolve(),
         account="tk",
     )
+
+
+def test_agent_ping_invokes_provider_native_run_with_capture(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    cwd = tmp_path / "workspace"
+    home.mkdir()
+    cwd.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["codex"],
+            }
+        ],
+    )
+
+    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
+    from agentos.codex.agent import CodexAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
+        observed["provider"] = self.provider
+        observed["request"] = request
+        return AgentRunResult(exit_code=0, stdout="pong\n", stderr="diagnostic\n")
+
+    monkeypatch.setattr(CodexAgent, "run", fake_run)
+
+    assert (
+        main(
+            [
+                "agent",
+                "ping",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--model",
+                "gpt-5.2",
+                "--account",
+                "tk",
+                "--cwd",
+                str(cwd),
+            ]
+        )
+        == 0
+    )
+
+    request = observed["request"]
+    assert observed["provider"] == "codex"
+    assert request == AgentRunRequest(
+        prompt="ping",
+        argv=(),
+        model="gpt-5.2",
+        cwd=cwd.resolve(),
+        account="tk",
+        capture_output=True,
+    )
+    captured = capsys.readouterr()
+    assert captured.out == "pong\n"
+    assert captured.err == "diagnostic\n"
 
 
 def test_agent_run_dry_invokes_provider_native_run_dry(
@@ -1329,7 +1604,7 @@ def test_agent_list_prints_configured_agents(
     assert main(["agent", "list", "--provider", "codex"]) == 0
     output_lines = capsys.readouterr().out.strip().splitlines()
     assert output_lines == [
-        f"codex [id=work; Codex work; model=gpt-5.4; homes=home={work_home}]"
+        f"codex [id=work; Codex work; model=gpt-5.4; home={work_home}]"
     ]
 
 
@@ -1399,7 +1674,7 @@ def test_provider_capabilities_are_scoped_by_subsystem() -> None:
     assert "pi" not in account_providers
     assert "pi" in chatlas_providers
     assert "pi" in home_providers_with_session_layout
-    assert "claude-code" not in default_run_providers
+    assert "claude-code" in default_run_providers
     assert "claude-code" in account_providers
     assert "claude-code" in chatlas_providers
     assert "claude-code" in home_providers_with_session_layout
@@ -1414,7 +1689,7 @@ def test_chat_provider_specs_reuse_shared_provider_home_topology() -> None:
 
     assert provider_spec is not None
     assert chat_provider_spec is not None
-    assert chat_provider_spec.home_slots == provider_spec.home_slots
+    assert chat_provider_spec.home_spec == provider_spec.home_spec
 
 
 def test_agent_run_uses_explicit_project_target_for_config_resolution(

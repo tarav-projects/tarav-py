@@ -2,31 +2,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from agentos.providers import ProviderFamily, ProviderHomeSlot, canonical_provider_specs
+from agentos.providers import ProviderFamily, ProviderHomeSpec, canonical_provider_specs
 
 
 @dataclass(frozen=True)
 class HomeProvider:
     provider_family: ProviderFamily
-    home_slots: tuple[ProviderHomeSlot, ...]
+    home_spec: ProviderHomeSpec
 
     @property
     def family(self) -> str:
         return self.provider_family.family
 
-    def supported_home_keys(self) -> tuple[str, ...]:
-        return tuple(slot.key for slot in self.home_slots)
-
     @property
     def supports_session_discovery(self) -> bool:
-        return any(slot.supports_session_discovery() for slot in self.home_slots)
+        return self.home_spec.supports_session_discovery()
 
 
 def supported_home_providers() -> tuple[HomeProvider, ...]:
     return tuple(
         HomeProvider(
             provider_family=provider_spec.provider_family,
-            home_slots=provider_spec.home_slots,
+            home_spec=provider_spec.home_spec,
         )
         for provider_spec in canonical_provider_specs()
     )

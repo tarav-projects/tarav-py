@@ -30,7 +30,7 @@ CODEX_CHATLAS_DEFAULT_EXCLUDES = (
 @dataclass(frozen=True)
 class CodexAgentChatlas:
     instance_id: str | None
-    homes: tuple[tuple[str, Path], ...]
+    home: Path | None
     includes: tuple[str, ...]
     excludes: tuple[str, ...]
 
@@ -40,20 +40,20 @@ class CodexAgentChatlas:
             raise ValueError(f"cannot build Codex.Agent.Chatlas from provider {config.family}")
         return cls(
             instance_id=config.instance_id,
-            homes=config.homes,
+            home=config.home,
             includes=_unique_strings(CODEX_CHATLAS_DEFAULT_INCLUDES + config.includes),
             excludes=_unique_strings(
                 CODEX_CHATLAS_DEFAULT_EXCLUDES
                 + config.excludes
-                + _derived_codex_chatlas_excludes(config.homes)
+                + _derived_codex_chatlas_excludes(config.home)
             ),
         )
 
 
 def _derived_codex_chatlas_excludes(
-    homes: tuple[tuple[str, Path], ...],
+    home: Path | None,
 ) -> tuple[str, ...]:
-    del homes
+    del home
     return ("_auth*.json",)
 
 

@@ -41,7 +41,7 @@ class AgentConfig:
     provider: str
     instance_id: str | None = None
     label: str | None = None
-    homes: tuple[tuple[str, Path], ...] = ()
+    home: Path | None = None
     cli_command: tuple[str, ...] = ()
     run_args: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
@@ -79,7 +79,7 @@ class AgentConfig:
         return (
             self.provider,
             self.instance_id,
-            tuple((key, str(path)) for key, path in self.homes),
+            str(self.home) if self.home is not None else None,
             tuple(str(path) for path in self.direct_targets),
             tuple(str(path) for path in self.grep_targets),
             tuple(str(path) for path in self.sqlite_db_paths),
@@ -104,7 +104,7 @@ class AgentConfig:
 class AgentBase:
     instance_id: str | None = None
     label: str | None = None
-    homes: tuple[tuple[str, Path], ...] = ()
+    home: Path | None = None
     cli_command: tuple[str, ...] = ()
     run_args: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
@@ -131,8 +131,8 @@ class AgentBase:
             payload["instance_id"] = self.instance_id
         if self.label is not None:
             payload["label"] = self.label
-        if self.homes:
-            payload["homes"] = {key: str(path) for key, path in self.homes}
+        if self.home is not None:
+            payload["home"] = str(self.home)
         if self.cli_command:
             payload["cli_command"] = list(self.cli_command)
         if self.run_args:
@@ -180,7 +180,7 @@ def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
     return {
         "instance_id": config.instance_id,
         "label": config.label,
-        "homes": config.homes,
+        "home": config.home,
         "cli_command": config.cli_command,
         "run_args": config.run_args,
         "env": config.env,
@@ -216,7 +216,7 @@ class Agent(Protocol):
     provider: str
     instance_id: str | None
     label: str | None
-    homes: tuple[tuple[str, Path], ...]
+    home: Path | None
     cli_command: tuple[str, ...]
     run_args: tuple[str, ...]
     env: tuple[tuple[str, str], ...]
@@ -244,24 +244,21 @@ class Agent(Protocol):
 
 def provider_session_paths(
     provider: str,
-    homes: tuple[tuple[str, Path], ...],
+    home: Path | None,
 ) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    if home is None:
+        return (), ()
     direct_targets: list[Path] = []
     sqlite_db_paths: list[Path] = []
-    provider_spec = require_canonical_provider_spec(provider)
-    slots_by_key = {slot.key: slot for slot in provider_spec.home_slots}
-    for key, home in homes:
-        slot = slots_by_key.get(key)
-        if slot is None:
-            continue
-        slot_direct_targets, _, slot_sqlite_db_paths = slot.build_paths(home=home)
-        direct_targets.extend(slot_direct_targets)
-        sqlite_db_paths.extend(slot_sqlite_db_paths)
+    home_spec = require_canonical_provider_spec(provider).home_spec
+    home_direct_targets, _, home_sqlite_db_paths = home_spec.build_paths(home=home)
+    direct_targets.extend(home_direct_targets)
+    sqlite_db_paths.extend(home_sqlite_db_paths)
     return tuple(direct_targets), tuple(sqlite_db_paths)
 
 
 def agent_session_paths(agent: Agent) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
-    direct_targets, sqlite_db_paths = provider_session_paths(agent.provider, agent.homes)
+    direct_targets, sqlite_db_paths = provider_session_paths(agent.provider, agent.home)
     return (
         tuple(dict.fromkeys((*direct_targets, *agent.direct_targets))),
         tuple(dict.fromkeys((*sqlite_db_paths, *agent.sqlite_db_paths))),
@@ -290,8 +287,6 @@ def agent_identity_fingerprint(
         digest.update(b"\0")
         digest.update(anchor.role.encode("utf-8"))
         digest.update(b"\0")
-        digest.update((anchor.slot or "").encode("utf-8"))
-        digest.update(b"\0")
         digest.update(str(anchor.path).encode("utf-8"))
     return digest.hexdigest()
 
@@ -316,7 +311,7 @@ def agent_identity_key(agent: Agent) -> tuple[object, ...]:
     return (
         agent.provider,
         agent.instance_id,
-        tuple((key, str(path)) for key, path in agent.homes),
+        str(agent.home) if agent.home is not None else None,
         tuple(str(path) for path in agent.direct_targets),
         tuple(str(path) for path in agent.grep_targets),
         tuple(str(path) for path in agent.sqlite_db_paths),

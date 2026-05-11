@@ -125,16 +125,12 @@ def resolve_codex_mux_default_instance(
 
 
 def _resolve_codex_mux_instance_home(instance) -> Path:
-    homes = instance.homes_map()
-    home = homes.get("home")
-    if home is None and len(instance.homes) == 1:
-        home = instance.homes[0][1]
-    if home is None:
+    if instance.home is None:
         raise CliError(
             f"agent.instances entry {instance.instance_id!r} for provider codex "
             "must define home for codex.mux.default_instance_id"
         )
-    return home
+    return instance.home
 
 
 def _resolve_codex_mux_instance_executable(instance) -> str:

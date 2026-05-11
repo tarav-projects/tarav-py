@@ -71,8 +71,8 @@ _CHATLAS_RAW_DEFAULT_PATTERNS = {
 
 
 ChatlasRawScanCacheEntry = dict[str, int]
-ChatlasRawScanCacheHome = dict[str, ChatlasRawScanCacheEntry]
-ChatlasRawScanCache = dict[str, ChatlasRawScanCacheHome]
+ChatlasRawScanCacheFiles = dict[str, ChatlasRawScanCacheEntry]
+ChatlasRawScanCache = dict[str, ChatlasRawScanCacheFiles]
 
 
 @dataclass(frozen=True)
@@ -80,38 +80,27 @@ class ChatlasProviderContext:
     family: str
     resolved_instance_name: str
     is_default: bool
-    homes: tuple[tuple[str, Path], ...]
+    home: Path | None
     effective_includes: tuple[str, ...]
     effective_excludes: tuple[str, ...]
 
     def destination_root(self, raw_root: Path) -> Path:
-        if len(self.homes) != 1:
+        if self.home is None:
             return raw_root
-        _, home_path = self.homes[0]
         return _chatlas_home_destination(
             raw_root=raw_root,
-            home_path=home_path,
+            home_path=self.home,
         )
 
     def summary(self, raw_root: Path) -> dict[str, Any]:
-        destination_roots = {
-            key: str(
-                _chatlas_home_destination(
-                    raw_root=raw_root,
-                    home_path=home_path,
-                )
-            )
-            for key, home_path in self.homes
-        }
         return {
             "provider": self.family,
             "instance": self.resolved_instance_name,
             "is_default": self.is_default,
-            "homes": {key: str(path) for key, path in self.homes},
+            "home": str(self.home) if self.home is not None else None,
             "includes": list(self.effective_includes),
             "excludes": list(self.effective_excludes),
-            "destination_root": str(self.destination_root(raw_root)) if len(self.homes) == 1 else None,
-            "destination_roots": destination_roots,
+            "destination_root": str(self.destination_root(raw_root)),
         }
 
 
@@ -121,7 +110,7 @@ class ChatlasArchiveConfig:
     instance_id: str | None
     label: str | None
     is_default: bool
-    homes: tuple[tuple[str, Path], ...]
+    home: Path | None
     includes: tuple[str, ...]
     excludes: tuple[str, ...]
     identity: tuple[object, ...]
@@ -139,7 +128,7 @@ class ChatlasArchiveConfig:
 @dataclass(frozen=True)
 class ChatlasHomeMirrorResult:
     archive_stats: dict[str, object]
-    scan_cache_entries: ChatlasRawScanCacheHome
+    scan_cache_entries: ChatlasRawScanCacheFiles
     elapsed_seconds: float
 
 
@@ -153,7 +142,7 @@ class ChatlasRawCopyCandidate:
 @dataclass(frozen=True)
 class ChatlasRawDetectionBatchResult:
     actionable_files: tuple[ChatlasRawCopyCandidate, ...]
-    cache_updates: ChatlasRawScanCacheHome
+    cache_updates: ChatlasRawScanCacheFiles
     processed_file_count: int
     unchanged_file_count: int
     skipped_file_count: int
@@ -201,7 +190,7 @@ def _chatlas_archive_config_from_agent(
         instance_id=agent.instance_id,
         label=agent.label,
         is_default=agent.is_default,
-        homes=agent.homes,
+        home=agent.home,
         includes=agent.chatlas_includes,
         excludes=agent.chatlas_excludes,
         identity=agent_identity_key(agent),
@@ -221,7 +210,7 @@ def _build_chatlas_provider_context(config: ChatlasArchiveConfig) -> ChatlasProv
             family=config.family,
             resolved_instance_name=_resolve_chatlas_instance_name(config),
             is_default=config.is_default,
-            homes=config.homes,
+            home=config.home,
             effective_includes=codex_chatlas.includes,
             effective_excludes=codex_chatlas.excludes,
         )
@@ -231,7 +220,7 @@ def _build_chatlas_provider_context(config: ChatlasArchiveConfig) -> ChatlasProv
         family=config.family,
         resolved_instance_name=_resolve_chatlas_instance_name(config),
         is_default=config.is_default,
-        homes=config.homes,
+        home=config.home,
         effective_includes=_unique_strings(
             default_includes + config.includes
         ),
@@ -250,19 +239,19 @@ def _mirror_chatlas_provider_context(
     scan_cache_enabled: bool = True,
 ) -> ChatlasProviderMirrorResult:
     started_at = time.perf_counter()
-    home_results: list[dict[str, object]] = []
+    home_payload: dict[str, object] | None = None
     scan_cache_updates: ChatlasRawScanCache = {}
     archived = False
 
-    for home_key, home_path in context.homes:
-        exists = home_path.is_dir()
+    if context.home is not None:
+        exists = context.home.is_dir()
         destination_path = _chatlas_home_destination(
             raw_root=raw_root,
-            home_path=home_path,
+            home_path=context.home,
         )
         home_payload = {
-            "key": home_key,
-            "source_path": str(home_path),
+            "key": "home",
+            "source_path": str(context.home),
             "destination_path": str(destination_path),
             "exists": exists,
             "synced": False,
@@ -270,19 +259,19 @@ def _mirror_chatlas_provider_context(
         if exists:
             _emit_raw_progress(
                 progress,
-                f"{context.family}/{context.resolved_instance_name}:{home_key} archive {home_path}",
+                f"{context.family}/{context.resolved_instance_name}:home archive {context.home}",
             )
             cache_home_key = _chatlas_raw_scan_cache_home_key(
                 raw_root=raw_root,
                 destination_path=destination_path,
             )
             archive_result = _mirror_chatlas_home(
-                source_path=home_path,
+                source_path=context.home,
                 destination_path=destination_path,
                 includes=context.effective_includes,
                 excludes=context.effective_excludes,
                 progress=progress,
-                progress_label=f"{context.family}/{context.resolved_instance_name}:{home_key}",
+                progress_label=f"{context.family}/{context.resolved_instance_name}:home",
                 scan_cache_entries=None if scan_cache is None else scan_cache.get(cache_home_key),
                 scan_cache_enabled=scan_cache_enabled,
             )
@@ -291,20 +280,12 @@ def _mirror_chatlas_provider_context(
             if scan_cache_enabled:
                 scan_cache_updates[cache_home_key] = archive_result.scan_cache_entries
             archived = True
-        home_results.append(home_payload)
-
-    missing_home_keys = [
-        home_result["key"]
-        for home_result in home_results
-        if not bool(home_result["exists"])
-    ]
-
     payload = context.summary(raw_root)
     payload.update(
         {
             "synced": archived,
-            "missing_home_keys": missing_home_keys,
-            "homes_status": home_results,
+            "missing_home": bool(home_payload is not None and not bool(home_payload["exists"])),
+            "home_status": home_payload,
         }
     )
     return ChatlasProviderMirrorResult(
@@ -330,7 +311,7 @@ def _mirror_chatlas_home(
     excludes: tuple[str, ...],
     progress: Callable[[str], None] | None = None,
     progress_label: str | None = None,
-    scan_cache_entries: ChatlasRawScanCacheHome | None = None,
+    scan_cache_entries: ChatlasRawScanCacheFiles | None = None,
     scan_cache_enabled: bool = True,
 ) -> ChatlasHomeMirrorResult:
     started_at = time.perf_counter()
@@ -345,7 +326,7 @@ def _mirror_chatlas_home(
     }
     effective_excludes = (".git",) + excludes
     processed_file_count = 0
-    next_scan_cache_entries: ChatlasRawScanCacheHome = {}
+    next_scan_cache_entries: ChatlasRawScanCacheFiles = {}
     next_progress_report = 250
     actionable_files: list[ChatlasRawCopyCandidate] = []
 
@@ -423,7 +404,7 @@ def _detect_chatlas_archive_candidates(
     *,
     candidate_files: Iterable[tuple[Path, Path]],
     destination_path: Path,
-    scan_cache_entries: ChatlasRawScanCacheHome | None,
+    scan_cache_entries: ChatlasRawScanCacheFiles | None,
     scan_cache_enabled: bool,
 ) -> Iterator[ChatlasRawDetectionBatchResult]:
     batches = _iter_chatlas_archive_detection_batches(candidate_files)
@@ -525,11 +506,11 @@ def _detect_chatlas_archive_batch(
     *,
     batch: tuple[tuple[Path, Path], ...],
     destination_path: Path,
-    scan_cache_entries: ChatlasRawScanCacheHome | None,
+    scan_cache_entries: ChatlasRawScanCacheFiles | None,
     scan_cache_enabled: bool,
 ) -> ChatlasRawDetectionBatchResult:
     actionable_files: list[ChatlasRawCopyCandidate] = []
-    cache_updates: ChatlasRawScanCacheHome = {}
+    cache_updates: ChatlasRawScanCacheFiles = {}
     unchanged_file_count = 0
     skipped_file_count = 0
     skipped_file_examples: list[str] = []
@@ -936,15 +917,15 @@ def _chatlas_raw_scan_cache_path(chatlas_root: Path) -> Path:
 
 
 def _load_chatlas_raw_scan_cache(chatlas_root: Path) -> ChatlasRawScanCache:
-    raw_homes = load_chatlas_cache_section(
+    raw_home_cache = load_chatlas_cache_section(
         _chatlas_raw_scan_cache_path(chatlas_root),
-        entries_key="homes",
+        entries_key="home",
     )
-    homes: ChatlasRawScanCache = {}
-    for home_key, raw_entries in raw_homes.items():
-        if not isinstance(home_key, str) or not home_key.strip() or not isinstance(raw_entries, dict):
+    home_cache: ChatlasRawScanCache = {}
+    for cache_key, raw_entries in raw_home_cache.items():
+        if not isinstance(cache_key, str) or not cache_key.strip() or not isinstance(raw_entries, dict):
             continue
-        home_entries: ChatlasRawScanCacheHome = {}
+        home_entries: ChatlasRawScanCacheFiles = {}
         for rel_path, raw_entry in raw_entries.items():
             if not isinstance(rel_path, str) or not rel_path.strip() or not isinstance(raw_entry, dict):
                 continue
@@ -958,24 +939,24 @@ def _load_chatlas_raw_scan_cache(chatlas_root: Path) -> ChatlasRawScanCache:
                 "mtime_ns": mtime_ns,
                 "size": size,
             }
-        homes[home_key] = home_entries
-    return homes
+        home_cache[cache_key] = home_entries
+    return home_cache
 
 
 def _write_chatlas_raw_scan_cache(chatlas_root: Path, cache: ChatlasRawScanCache) -> None:
     write_chatlas_cache_section(
         _chatlas_raw_scan_cache_path(chatlas_root),
         cache_class="agentos.chatlas.raw_scan_cache",
-        entries_key="homes",
+        entries_key="home",
         entries={
-            home_key: {
+            cache_key: {
                 rel_path: {
                     "mtime_ns": int(entry["mtime_ns"]),
                     "size": int(entry["size"]),
                 }
                 for rel_path, entry in sorted(home_entries.items())
             }
-            for home_key, home_entries in sorted(cache.items())
+            for cache_key, home_entries in sorted(cache.items())
         },
     )
 
@@ -1023,7 +1004,7 @@ def _validate_unique_chatlas_destinations(
             raise CliError(
                 "chatlas provider instances resolve to the same destination "
                 f"{provider_config.family}/{context.resolved_instance_name}: "
-                f"{dict(existing.homes)} and {dict(provider_config.homes)}"
+                f"{existing.home} and {provider_config.home}"
             )
         seen_destinations[key] = provider_config
 
@@ -1031,13 +1012,12 @@ def _validate_unique_chatlas_destinations(
 
 def _derive_chatlas_instance_name(
     family: str,
-    homes: tuple[tuple[str, Path], ...],
+    home: Path | None,
 ) -> str | None:
-    if len(homes) != 1:
+    if home is None:
         return None
 
-    _, home_path = homes[0]
-    basename = home_path.name.lstrip(".")
+    basename = home.name.lstrip(".")
     if not basename or basename == family:
         return None
 
@@ -1054,7 +1034,7 @@ def _derive_chatlas_instance_name(
 def _resolve_chatlas_instance_name(config: ChatlasArchiveConfig) -> str:
     if config.instance_id is not None:
         return config.instance_id
-    derived_name = _derive_chatlas_instance_name(config.family, config.homes)
+    derived_name = _derive_chatlas_instance_name(config.family, config.home)
     if derived_name is not None:
         return derived_name
     return config.fingerprint[:12]
