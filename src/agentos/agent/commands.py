@@ -95,7 +95,14 @@ def _resolve_run_argv(argv_parts: list[str]) -> tuple[str, ...]:
 
 
 def _cmd_agent_run(args: argparse.Namespace) -> int:
-    agent, request = _resolve_agent_run(args, capture_output=False)
+    argv = _resolve_run_argv(args.argv)
+    prompt = _resolve_run_prompt(args.prompt, argv)
+    agent, request = _resolve_agent_run(
+        args,
+        prompt=prompt,
+        argv=argv,
+        capture_output=False,
+    )
 
     if args.dry_run:
         dry_result = agent.run_dry(request)
@@ -110,6 +117,8 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
 def _resolve_agent_run(
     args: argparse.Namespace,
     *,
+    prompt: str | None,
+    argv: tuple[str, ...],
     capture_output: bool,
 ) -> tuple[Agent, AgentRunRequest]:
     config_start_path = _config_start_path(args)
@@ -120,8 +129,6 @@ def _resolve_agent_run(
         start_path=config_start_path,
         home=args.home,
     )
-    argv = _resolve_run_argv(args.argv)
-    prompt = _resolve_run_prompt(args.prompt, argv)
     request = AgentRunRequest(
         prompt=prompt,
         argv=argv,
@@ -134,9 +141,12 @@ def _resolve_agent_run(
 
 
 def _cmd_agent_ping(args: argparse.Namespace) -> int:
-    args.prompt = "ping"
-    args.argv = []
-    agent, request = _resolve_agent_run(args, capture_output=True)
+    agent, request = _resolve_agent_run(
+        args,
+        prompt="ping",
+        argv=(),
+        capture_output=True,
+    )
     result = agent.run(request)
     if result.stdout:
         print(result.stdout, end="")
@@ -164,6 +174,52 @@ def _cmd_agent_link(args: argparse.Namespace) -> int:
         return result.exit_code
 
     raise CliError(f"agent link is not supported for provider {request.provider}")
+
+
+def _add_agent_run_target_args(
+    parser: argparse.ArgumentParser,
+    *,
+    provider_help: str,
+) -> None:
+    parser.add_argument(
+        "--provider",
+        required=True,
+        choices=_AGENT_PROVIDER_CHOICES,
+        help=provider_help,
+    )
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="Configured agent profile id. Optional when provider resolution is unambiguous.",
+    )
+    parser.add_argument(
+        "--home",
+        default=None,
+        help="Provider home override for this run.",
+    )
+    parser.add_argument(
+        "--account",
+        default=None,
+        help="Provider account/auth identity for this run.",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Model override.",
+    )
+    parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Config start path for project-local config discovery. Bare --project uses current pwd. Agent commands do not require an existing project.",
+    )
+    parser.add_argument(
+        "--cwd",
+        default=None,
+        help="Working directory override for the launched agent process (default: current directory).",
+    )
 
 
 def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
@@ -262,45 +318,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "run",
         help="Run one configured agent with a prompt or raw provider arguments.",
     )
-    run_parser.add_argument(
-        "--provider",
-        required=True,
-        choices=_AGENT_PROVIDER_CHOICES,
-        help="Provider family to run.",
-    )
-    run_parser.add_argument(
-        "--profile",
-        default=None,
-        help="Configured agent profile id. Optional when provider resolution is unambiguous.",
-    )
-    run_parser.add_argument(
-        "--home",
-        default=None,
-        help="Provider home override for this run.",
-    )
-    run_parser.add_argument(
-        "--account",
-        default=None,
-        help="Provider account/auth identity for this run.",
-    )
-    run_parser.add_argument(
-        "--model",
-        default=None,
-        help="Model override.",
-    )
-    run_parser.add_argument(
-        "--project",
-        nargs="?",
-        type=Path,
-        const=Path("."),
-        default=None,
-        help="Config start path for project-local config discovery. Bare --project uses current pwd. Agent commands do not require an existing project.",
-    )
-    run_parser.add_argument(
-        "--cwd",
-        default=None,
-        help="Working directory override for the launched agent process (default: current directory).",
-    )
+    _add_agent_run_target_args(run_parser, provider_help="Provider family to run.")
     run_parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -322,45 +340,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "ping",
         help="Run a configured agent with a captured ping prompt.",
     )
-    ping_parser.add_argument(
-        "--provider",
-        required=True,
-        choices=_AGENT_PROVIDER_CHOICES,
-        help="Provider family to ping.",
-    )
-    ping_parser.add_argument(
-        "--profile",
-        default=None,
-        help="Configured agent profile id. Optional when provider resolution is unambiguous.",
-    )
-    ping_parser.add_argument(
-        "--home",
-        default=None,
-        help="Provider home override for this run.",
-    )
-    ping_parser.add_argument(
-        "--account",
-        default=None,
-        help="Provider account/auth identity for this run.",
-    )
-    ping_parser.add_argument(
-        "--model",
-        default=None,
-        help="Model override.",
-    )
-    ping_parser.add_argument(
-        "--project",
-        nargs="?",
-        type=Path,
-        const=Path("."),
-        default=None,
-        help="Config start path for project-local config discovery. Bare --project uses current pwd. Agent commands do not require an existing project.",
-    )
-    ping_parser.add_argument(
-        "--cwd",
-        default=None,
-        help="Working directory override for the launched agent process (default: current directory).",
-    )
+    _add_agent_run_target_args(ping_parser, provider_help="Provider family to ping.")
     ping_parser.set_defaults(handler=_cmd_agent_ping)
 
     link_parser = agent_subparsers.add_parser(
