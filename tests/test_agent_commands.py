@@ -670,6 +670,45 @@ def test_agent_run_invokes_provider_native_run(
     )
 
 
+def _write_codex_ping_config(
+    agentos_home: Path,
+    *,
+    work_home: Path,
+    ping: dict[str, object] | None = None,
+) -> None:
+    instance: dict[str, object] = {
+        "provider": "codex",
+        "id": "work",
+        "home": str(work_home),
+        "cli_command": ["codex"],
+    }
+    if ping is not None:
+        instance["ping"] = ping
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[instance],
+    )
+
+
+def _observe_codex_run(
+    monkeypatch,
+    *,
+    terminal_output: str = "",
+) -> dict[str, object]:
+    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
+    from agentos.codex.agent import CodexAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
+        observed["provider"] = self.provider
+        observed["request"] = request
+        return AgentRunResult(exit_code=0, terminal_output=terminal_output)
+
+    monkeypatch.setattr(CodexAgent, "run", fake_run)
+    return observed
+
+
 def test_agent_ping_invokes_provider_native_run_with_capture(
     tmp_path: Path,
     monkeypatch,
@@ -684,29 +723,10 @@ def test_agent_ping_invokes_provider_native_run_with_capture(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    _write_global_config(
-        agentos_home / "config.json",
-        provider_instances=[
-            {
-                "provider": "codex",
-                "id": "work",
-                "home": str(work_home),
-                "cli_command": ["codex"],
-            }
-        ],
-    )
-
     from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
-    from agentos.codex.agent import CodexAgent
 
-    observed: dict[str, object] = {}
-
-    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
-        observed["provider"] = self.provider
-        observed["request"] = request
-        return AgentRunResult(exit_code=0, terminal_output="pong\ndiagnostic\n")
-
-    monkeypatch.setattr(CodexAgent, "run", fake_run)
+    _write_codex_ping_config(agentos_home, work_home=work_home)
+    observed = _observe_codex_run(monkeypatch, terminal_output="pong\ndiagnostic\n")
 
     assert (
         main(
@@ -754,31 +774,14 @@ def test_agent_ping_uses_configured_prompt(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    _write_global_config(
-        agentos_home / "config.json",
-        provider_instances=[
-            {
-                "provider": "codex",
-                "id": "work",
-                "home": str(work_home),
-                "cli_command": ["codex"],
-                "ping": {
-                    "prompt": "health check",
-                },
-            }
-        ],
+    from agentos.agent.run_runtime import AgentRunRequest
+
+    _write_codex_ping_config(
+        agentos_home,
+        work_home=work_home,
+        ping={"prompt": "health check"},
     )
-
-    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
-    from agentos.codex.agent import CodexAgent
-
-    observed: dict[str, object] = {}
-
-    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
-        observed["request"] = request
-        return AgentRunResult(exit_code=0, terminal_output="")
-
-    monkeypatch.setattr(CodexAgent, "run", fake_run)
+    observed = _observe_codex_run(monkeypatch)
 
     assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 0
 
@@ -800,31 +803,14 @@ def test_agent_ping_uses_configured_argv(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    _write_global_config(
-        agentos_home / "config.json",
-        provider_instances=[
-            {
-                "provider": "codex",
-                "id": "work",
-                "home": str(work_home),
-                "cli_command": ["codex"],
-                "ping": {
-                    "argv": ["status", "--json"],
-                },
-            }
-        ],
+    from agentos.agent.run_runtime import AgentRunRequest
+
+    _write_codex_ping_config(
+        agentos_home,
+        work_home=work_home,
+        ping={"argv": ["status", "--json"]},
     )
-
-    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
-    from agentos.codex.agent import CodexAgent
-
-    observed: dict[str, object] = {}
-
-    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
-        observed["request"] = request
-        return AgentRunResult(exit_code=0, terminal_output="")
-
-    monkeypatch.setattr(CodexAgent, "run", fake_run)
+    observed = _observe_codex_run(monkeypatch)
 
     assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 0
 
@@ -847,19 +833,10 @@ def test_agent_ping_rejects_prompt_and_argv_config(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    _write_global_config(
-        agentos_home / "config.json",
-        provider_instances=[
-            {
-                "provider": "codex",
-                "id": "work",
-                "home": str(work_home),
-                "ping": {
-                    "prompt": "ping",
-                    "argv": ["status"],
-                },
-            }
-        ],
+    _write_codex_ping_config(
+        agentos_home,
+        work_home=work_home,
+        ping={"prompt": "ping", "argv": ["status"]},
     )
 
     assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 1

@@ -100,7 +100,6 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         args,
         prompt=prompt,
         argv=argv,
-        capture_output=False,
     )
 
     if args.dry_run:
@@ -130,18 +129,30 @@ def _resolve_agent_run(
     *,
     prompt: str | None,
     argv: tuple[str, ...],
-    capture_output: bool,
 ) -> tuple[Agent, AgentRunRequest]:
     agent, cwd = _resolve_agent_run_target(args)
-    request = AgentRunRequest(
+    return agent, _agent_run_request(
+        args,
+        prompt=prompt,
+        argv=argv,
+        cwd=cwd,
+    )
+
+
+def _agent_run_request(
+    args: argparse.Namespace,
+    *,
+    prompt: str | None,
+    argv: tuple[str, ...],
+    cwd: Path,
+) -> AgentRunRequest:
+    return AgentRunRequest(
         prompt=prompt,
         argv=argv,
         model=args.model,
         cwd=cwd,
         account=args.account,
-        capture_output=capture_output,
     )
-    return agent, request
 
 
 def _cmd_agent_ping(args: argparse.Namespace) -> int:
@@ -150,17 +161,13 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         raise CliError(
             f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
         )
-    request = AgentRunRequest(
+    request = _agent_run_request(
+        args,
         prompt=agent.ping.prompt,
         argv=agent.ping.argv,
-        model=args.model,
         cwd=cwd,
-        account=args.account,
-        capture_output=True,
     )
     result = agent.run(request)
-    if result.terminal_output:
-        print(result.terminal_output, end="")
     return result.exit_code
 
 
