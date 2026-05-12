@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -141,28 +140,6 @@ def test_agent_run_uses_configured_instance_env(
     assert main(["agent", "run", "--provider", "codex", "--profile", "work", "--prompt", "hello"]) == 0
 
     assert observed["codex_home"] == str(work_home)
-
-
-def test_agent_run_runtime_uses_terminal_capture_when_requested(
-    tmp_path: Path,
-) -> None:
-    from agentos.agent.run_runtime import execute_agent_run_command
-
-    result = execute_agent_run_command(
-        (
-            sys.executable,
-            "-c",
-            "import os, sys; print(sys.stdin.isatty(), sys.stdout.isatty(), sys.stderr.isatty()); print(os.environ['AGENT_HOME'])",
-        ),
-        cwd=tmp_path,
-        env_overrides={"AGENT_HOME": "/tmp/agent-home"},
-        capture_output=True,
-    )
-
-    assert result.exit_code == 0
-    assert result.terminal_output is not None
-    assert "True True True" in result.terminal_output
-    assert "/tmp/agent-home" in result.terminal_output
 
 
 def test_agent_run_home_override_updates_provider_home_env(
@@ -692,8 +669,6 @@ def _write_codex_ping_config(
 
 def _observe_codex_run(
     monkeypatch,
-    *,
-    terminal_output: str = "",
 ) -> dict[str, object]:
     from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
     from agentos.codex.agent import CodexAgent
@@ -703,16 +678,15 @@ def _observe_codex_run(
     def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
         observed["provider"] = self.provider
         observed["request"] = request
-        return AgentRunResult(exit_code=0, terminal_output=terminal_output)
+        return AgentRunResult(exit_code=0)
 
     monkeypatch.setattr(CodexAgent, "run", fake_run)
     return observed
 
 
-def test_agent_ping_invokes_provider_native_run_with_capture(
+def test_agent_ping_invokes_provider_native_run(
     tmp_path: Path,
     monkeypatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     home = tmp_path / "home"
     agentos_home = tmp_path / "agentos-home"
@@ -726,7 +700,7 @@ def test_agent_ping_invokes_provider_native_run_with_capture(
     from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
 
     _write_codex_ping_config(agentos_home, work_home=work_home)
-    observed = _observe_codex_run(monkeypatch, terminal_output="pong\ndiagnostic\n")
+    observed = _observe_codex_run(monkeypatch)
 
     assert (
         main(
@@ -756,11 +730,7 @@ def test_agent_ping_invokes_provider_native_run_with_capture(
         model="gpt-5.2",
         cwd=cwd.resolve(),
         account="tk",
-        capture_output=True,
     )
-    captured = capsys.readouterr()
-    assert captured.out == "pong\ndiagnostic\n"
-    assert captured.err == ""
 
 
 def test_agent_ping_uses_configured_prompt(
@@ -789,7 +759,6 @@ def test_agent_ping_uses_configured_prompt(
     assert isinstance(request, AgentRunRequest)
     assert request.prompt == "health check"
     assert request.argv == ()
-    assert request.capture_output is True
 
 
 def test_agent_ping_uses_configured_argv(
@@ -818,7 +787,6 @@ def test_agent_ping_uses_configured_argv(
     assert isinstance(request, AgentRunRequest)
     assert request.prompt is None
     assert request.argv == ("status", "--json")
-    assert request.capture_output is True
 
 
 def test_agent_ping_rejects_prompt_and_argv_config(
