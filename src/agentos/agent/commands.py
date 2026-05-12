@@ -354,7 +354,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
 
     ping_parser = agent_subparsers.add_parser(
         "ping",
-        help="Run a configured agent with captured ping output.",
+        help="Run a configured agent ping.",
     )
     _add_agent_run_target_args(ping_parser, provider_help="Provider family to ping.")
     ping_parser.set_defaults(handler=_cmd_agent_ping)
