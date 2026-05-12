@@ -15,6 +15,8 @@ from agentos.chatlas.delta_scan import (
 )
 from agentos.chatlas.index_query import run_chatlas_index_query
 from agentos.chatlas.index_query import select_one_chatlas_index_row
+from agentos.chatlas.index_stats import format_chatlas_index_stats_markdown
+from agentos.chatlas.index_stats import run_chatlas_index_stats
 
 
 def chatlas_update(
@@ -128,15 +130,15 @@ def chatlas_stats(
     full_output: bool = False,
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
-    _ = providers
-    _ = full_output
-    _ = chatlas_root
-    raise _chatlas_stub_error("chatlas stats")
+    return run_chatlas_index_stats(
+        providers=providers,
+        full_output=full_output,
+        chatlas_root=chatlas_root,
+    )
 
 
 def format_chatlas_stats_markdown(payload: dict[str, object]) -> str:
-    _ = payload
-    raise _chatlas_stub_error("chatlas stats")
+    return format_chatlas_index_stats_markdown(payload)
 
 
 def chatlas_query(

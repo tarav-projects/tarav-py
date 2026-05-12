@@ -324,6 +324,177 @@ def test_chatlas_index_query_missing_index_returns_zero_matches(
     assert payload["rows"] == []
 
 
+def test_chatlas_stats_missing_index_returns_zero_counts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _isolate_agentos(monkeypatch, tmp_path)
+
+    assert main(["chatlas", "stats", "--format", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chatlas stats"
+    assert payload["stats"]["session_count"] == 0
+    assert payload["stats"]["provider_count"] == 0
+    assert payload["stats"]["instance_count"] == 0
+    assert payload["stats"]["partition_count"] == 0
+    assert payload["stats"]["scanned_row_count"] == 0
+    assert payload["stats"]["skipped_row_count"] == 0
+    assert payload["by_provider"] == {}
+    assert payload["by_instance"] == {}
+
+
+def test_chatlas_stats_summarizes_index_rows_without_raw_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    partition = chatlas_root / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "instance": "codex-work",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-1",
+                        "session_id": "session-1",
+                        "updated_at": "2026-03-08T01:09:01.000Z",
+                        "extractable": True,
+                        "primary_backing_artifact": {
+                            "path": str(chatlas_root / "raw" / "missing-session-1.jsonl"),
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "instance": "codex-work",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-2",
+                        "session_id": "session-2",
+                        "updated_at": "2026-03-09T01:09:01.000Z",
+                        "extractable": False,
+                        "primary_backing_artifact": {
+                            "path": str(chatlas_root / "raw" / "missing-session-2.jsonl"),
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+    )
+
+    assert main(["chatlas", "stats", "--format", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["stats"]["session_count"] == 2
+    assert payload["stats"]["extractable_session_count"] == 1
+    assert payload["stats"]["non_extractable_session_count"] == 1
+    assert payload["stats"]["provider_count"] == 1
+    assert payload["stats"]["instance_count"] == 1
+    assert payload["stats"]["partition_count"] == 1
+    assert payload["stats"]["oldest_updated_at"] == "2026-03-08T01:09:01Z"
+    assert payload["stats"]["latest_updated_at"] == "2026-03-09T01:09:01Z"
+    assert payload["by_provider"]["codex"]["session_count"] == 2
+    assert payload["by_provider"]["codex"]["instance_count"] == 1
+    assert payload["by_instance"]["codex/codex-work"]["session_count"] == 2
+
+
+def test_chatlas_stats_filters_provider_and_keeps_explicit_zero_bucket(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "claude-code" / "fp" / "sessions.index.jsonl"
+    _write(
+        partition,
+        json.dumps(
+            {
+                "provider": "claude-code",
+                "instance": "claude-work",
+                "session_id": "session-1",
+                "updated_at": "2026-03-08T01:09:01Z",
+                "extractable": True,
+            }
+        )
+        + "\n",
+    )
+
+    assert main(["chatlas", "stats", "--provider", "codex", "--full-output", "--format", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["filters"]["providers"] == ["codex"]
+    assert payload["stats"]["session_count"] == 0
+    assert payload["by_provider"]["codex"]["session_count"] == 0
+    assert payload["by_provider"]["codex"]["instance_count"] == 0
+    assert payload["by_instance"] == {}
+
+
+def test_chatlas_stats_default_output_is_markdown_summary(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "fp" / "sessions.index.jsonl"
+    _write(
+        partition,
+        json.dumps(
+            {
+                "provider": "codex",
+                "instance": "codex-work",
+                "session_id": "session-1",
+                "updated_at": "2026-03-08T01:09:01Z",
+                "extractable": True,
+            }
+        )
+        + "\n",
+    )
+
+    assert main(["chatlas", "stats"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Chatlas session index" in output
+    assert "Sessions: 1" in output
+    assert "Extractable: 1" in output
+    assert "Index shards: 1" in output
+    assert "- codex: 1 sessions, 1 instances" in output
+
+
+def test_chatlas_stats_counts_malformed_index_rows(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "fp" / "sessions.index.jsonl"
+    _write(
+        partition,
+        "\n".join(
+            [
+                json.dumps({"provider": "codex", "instance": "codex-work", "session_id": "session-1"}),
+                "",
+                "[1, 2, 3]",
+                "{not-json}",
+            ]
+        )
+        + "\n",
+    )
+
+    assert main(["chatlas", "stats", "--format", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["stats"]["session_count"] == 1
+    assert payload["stats"]["scanned_row_count"] == 4
+    assert payload["stats"]["skipped_row_count"] == 3
+
+
 def test_chatlas_index_query_filters_index_rows_without_raw_artifacts(
     tmp_path: Path,
     monkeypatch,

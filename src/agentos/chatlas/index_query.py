@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.chatlas.delta_scan import SESSION_INDEX_ROOT, default_chatlas_root
+from agentos.chatlas.index_store import load_chatlas_session_index_rows
 
 _DEFAULT_LIMIT = 50
 
@@ -26,9 +25,7 @@ def run_chatlas_index_query(
     limit: int | None = None,
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
-    chatlas_root_path = (chatlas_root or default_chatlas_root()).expanduser().resolve()
-    session_index_root = chatlas_root_path / SESSION_INDEX_ROOT
-    rows, scanned_row_count, skipped_row_count, partition_count = _load_session_index_rows(session_index_root)
+    index = load_chatlas_session_index_rows(chatlas_root=chatlas_root)
     filters = {
         "uri": uri,
         "identity_hash": identity_hash,
@@ -42,7 +39,7 @@ def run_chatlas_index_query(
     }
     matched_rows = [
         row
-        for row in rows
+        for row in index.rows
         if _row_matches(
             row,
             uri=uri,
@@ -62,14 +59,14 @@ def run_chatlas_index_query(
     return {
         "status": "ok",
         "command": "chatlas index query",
-        "chatlas_root": str(chatlas_root_path),
-        "session_index_root": str(session_index_root),
+        "chatlas_root": str(index.chatlas_root),
+        "session_index_root": str(index.session_index_root),
         "filters": filters,
         "sort": sort,
         "limit": effective_limit,
-        "partition_count": partition_count,
-        "scanned_row_count": scanned_row_count,
-        "skipped_row_count": skipped_row_count,
+        "partition_count": index.partition_count,
+        "scanned_row_count": index.scanned_row_count,
+        "skipped_row_count": index.skipped_row_count,
         "matched_row_count": len(matched_rows),
         "returned_row_count": len(limited_rows),
         "rows": limited_rows,
@@ -173,41 +170,6 @@ def _index_candidate_summary(rows: list[object]) -> str:
     if not candidates:
         return "<no valid candidates returned>"
     return ", ".join(candidates)
-
-
-def _load_session_index_rows(session_index_root: Path) -> tuple[list[dict[str, Any]], int, int, int]:
-    if not session_index_root.is_dir():
-        return [], 0, 0, 0
-
-    rows: list[dict[str, Any]] = []
-    scanned_row_count = 0
-    skipped_row_count = 0
-    partition_count = 0
-    for path in sorted(session_index_root.rglob("*.jsonl")):
-        if not path.is_file():
-            continue
-        partition_count += 1
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            skipped_row_count += 1
-            continue
-        for line in lines:
-            scanned_row_count += 1
-            stripped = line.strip()
-            if not stripped:
-                skipped_row_count += 1
-                continue
-            try:
-                payload = json.loads(stripped)
-            except json.JSONDecodeError:
-                skipped_row_count += 1
-                continue
-            if isinstance(payload, dict):
-                rows.append(payload)
-            else:
-                skipped_row_count += 1
-    return rows, scanned_row_count, skipped_row_count, partition_count
 
 
 def _row_matches(
