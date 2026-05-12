@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.chatlas.index_query import run_chatlas_index_query
+from agentos.chatlas.index_query import select_one_chatlas_index_row
 from agentos.claude.session import ClaudeSession
 from agentos.codex.session import CodexSession
 from agentos.copilot.session import CopilotSession
@@ -39,7 +39,8 @@ def chatlas_export_session_model(
     if output_format != "json":
         raise CliError(f"unsupported chatlas export format: {output_format}")
 
-    session = _select_export_index_row(
+    session = select_one_chatlas_index_row(
+        command="chatlas export",
         uri=uri,
         identity_hash=identity_hash,
         providers=providers,
@@ -55,103 +56,6 @@ def chatlas_export_session_model(
     )
     session_model = _build_session_model(session)
     return _project_session_model_view(session_model, view=view)
-
-
-def _select_export_index_row(
-    *,
-    uri: str | None,
-    identity_hash: str | None,
-    providers: tuple[str, ...] | None,
-    instances: tuple[str, ...] | None,
-    provider_instance_fingerprint: str | None,
-    session_id: str | None,
-    display_name: str | None,
-    extractable_only: bool,
-    updated_after: str | None,
-    sort: str,
-    limit: int | None,
-    chatlas_root: Path | None,
-) -> dict[str, Any]:
-    _validate_export_selector(
-        uri=uri,
-        identity_hash=identity_hash,
-        providers=providers,
-        instances=instances,
-        provider_instance_fingerprint=provider_instance_fingerprint,
-        session_id=session_id,
-        display_name=display_name,
-        extractable_only=extractable_only,
-        updated_after=updated_after,
-    )
-    payload = run_chatlas_index_query(
-        uri=uri,
-        identity_hash=identity_hash,
-        providers=providers,
-        instances=instances,
-        provider_instance_fingerprint=provider_instance_fingerprint,
-        session_id=session_id,
-        display_name=display_name,
-        extractable_only=extractable_only,
-        updated_after=updated_after,
-        sort=sort,
-        limit=limit,
-        chatlas_root=chatlas_root,
-    )
-    matched_row_count = payload.get("matched_row_count")
-    rows = payload.get("rows")
-    if not isinstance(rows, list):
-        raise CliError("Chatlas index query returned an invalid rows payload")
-    if matched_row_count == 1 and len(rows) == 1 and isinstance(rows[0], dict):
-        return rows[0]
-    if matched_row_count == 0:
-        raise CliError("no indexed Chatlas session matched the export selector")
-    candidates = _export_candidate_summary(rows)
-    raise CliError(
-        "multiple Chatlas sessions matched the export selector: "
-        f"{candidates}"
-    )
-
-
-def _validate_export_selector(
-    *,
-    uri: str | None,
-    identity_hash: str | None,
-    providers: tuple[str, ...] | None,
-    instances: tuple[str, ...] | None,
-    provider_instance_fingerprint: str | None,
-    session_id: str | None,
-    display_name: str | None,
-    extractable_only: bool,
-    updated_after: str | None,
-) -> None:
-    if any(
-        (
-            uri,
-            identity_hash,
-            providers,
-            instances,
-            provider_instance_fingerprint,
-            session_id,
-            display_name,
-            extractable_only,
-            updated_after,
-        )
-    ):
-        return
-    raise CliError("chatlas export requires at least one index query selector option")
-
-
-def _export_candidate_summary(rows: list[object]) -> str:
-    candidates: list[str] = []
-    for row in rows[:5]:
-        if not isinstance(row, dict):
-            continue
-        identity = _string_or_none(row.get("uri")) or _string_or_none(row.get("session_id"))
-        if identity is not None:
-            candidates.append(identity)
-    if not candidates:
-        return "<no valid candidates returned>"
-    return ", ".join(candidates)
 
 
 def _build_session_model(session: dict[str, Any]) -> dict[str, object]:

@@ -14,6 +14,7 @@ from agentos.chatlas.delta_scan import (
     run_chatlas_index_reset,
 )
 from agentos.chatlas.index_query import run_chatlas_index_query
+from agentos.chatlas.index_query import select_one_chatlas_index_row
 
 
 def chatlas_update(
@@ -183,7 +184,7 @@ def chatlas_raw_paths(
     limit: int | None = None,
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
-    session = _select_one_chatlas_index_row(
+    session = select_one_chatlas_index_row(
         command="chatlas raw path",
         uri=uri,
         identity_hash=identity_hash,
@@ -227,7 +228,7 @@ def chatlas_raw_export(
     limit: int | None = None,
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
-    session = _select_one_chatlas_index_row(
+    session = select_one_chatlas_index_row(
         command="chatlas raw export",
         uri=uri,
         identity_hash=identity_hash,
@@ -250,106 +251,6 @@ def chatlas_raw_export(
         "session": _compact_chatlas_index_row(session),
         "sources": _chatlas_raw_source_payloads(session, include_content=True),
     }
-
-
-def _select_one_chatlas_index_row(
-    *,
-    command: str,
-    uri: str | None,
-    identity_hash: str | None,
-    providers: tuple[str, ...] | None,
-    instances: tuple[str, ...] | None,
-    provider_instance_fingerprint: str | None,
-    session_id: str | None,
-    display_name: str | None,
-    extractable_only: bool,
-    updated_after: str | None,
-    sort: str,
-    limit: int | None,
-    chatlas_root: Path | None,
-) -> dict[str, Any]:
-    _validate_chatlas_index_selector(
-        command=command,
-        uri=uri,
-        identity_hash=identity_hash,
-        providers=providers,
-        instances=instances,
-        provider_instance_fingerprint=provider_instance_fingerprint,
-        session_id=session_id,
-        display_name=display_name,
-        extractable_only=extractable_only,
-        updated_after=updated_after,
-    )
-    payload = run_chatlas_index_query(
-        uri=uri,
-        identity_hash=identity_hash,
-        providers=providers,
-        instances=instances,
-        provider_instance_fingerprint=provider_instance_fingerprint,
-        session_id=session_id,
-        display_name=display_name,
-        extractable_only=extractable_only,
-        updated_after=updated_after,
-        sort=sort,
-        limit=limit,
-        chatlas_root=chatlas_root,
-    )
-    matched_row_count = payload.get("matched_row_count")
-    rows = payload.get("rows")
-    if not isinstance(rows, list):
-        raise CliError("Chatlas index query returned an invalid rows payload")
-    if matched_row_count == 1 and len(rows) == 1 and isinstance(rows[0], dict):
-        return rows[0]
-    if matched_row_count == 0:
-        raise CliError(f"no indexed Chatlas session matched the {command} selector")
-    raise CliError(
-        f"multiple Chatlas sessions matched the {command} selector: "
-        f"{_chatlas_index_candidate_summary(rows)}"
-    )
-
-
-def _validate_chatlas_index_selector(
-    *,
-    command: str,
-    uri: str | None,
-    identity_hash: str | None,
-    providers: tuple[str, ...] | None,
-    instances: tuple[str, ...] | None,
-    provider_instance_fingerprint: str | None,
-    session_id: str | None,
-    display_name: str | None,
-    extractable_only: bool,
-    updated_after: str | None,
-) -> None:
-    if any(
-        (
-            uri,
-            identity_hash,
-            providers,
-            instances,
-            provider_instance_fingerprint,
-            session_id,
-            display_name,
-            extractable_only,
-            updated_after,
-        )
-    ):
-        return
-    raise CliError(f"{command} requires at least one index query selector option")
-
-
-def _chatlas_index_candidate_summary(rows: list[object]) -> str:
-    candidates: list[str] = []
-    for row in rows[:5]:
-        if not isinstance(row, dict):
-            continue
-        identity = _string_or_none(row.get("uri")) or _string_or_none(row.get("session_id"))
-        if identity is not None:
-            candidates.append(identity)
-    if not candidates:
-        return "<no valid candidates returned>"
-    return ", ".join(candidates)
-
 
 def _chatlas_raw_source_payloads(
     session: dict[str, Any],

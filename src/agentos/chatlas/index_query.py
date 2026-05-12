@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agentos._core.errors import CliError
 from agentos.chatlas.delta_scan import SESSION_INDEX_ROOT, default_chatlas_root
 
 _DEFAULT_LIMIT = 50
@@ -73,6 +74,105 @@ def run_chatlas_index_query(
         "returned_row_count": len(limited_rows),
         "rows": limited_rows,
     }
+
+
+def select_one_chatlas_index_row(
+    *,
+    command: str,
+    uri: str | None = None,
+    identity_hash: str | None = None,
+    providers: tuple[str, ...] | None = None,
+    instances: tuple[str, ...] | None = None,
+    provider_instance_fingerprint: str | None = None,
+    session_id: str | None = None,
+    display_name: str | None = None,
+    extractable_only: bool = False,
+    updated_after: str | None = None,
+    sort: str = "lexical",
+    limit: int | None = None,
+    chatlas_root: Path | None = None,
+) -> dict[str, Any]:
+    _validate_index_selector(
+        command=command,
+        uri=uri,
+        identity_hash=identity_hash,
+        providers=providers,
+        instances=instances,
+        provider_instance_fingerprint=provider_instance_fingerprint,
+        session_id=session_id,
+        display_name=display_name,
+        extractable_only=extractable_only,
+        updated_after=updated_after,
+    )
+    payload = run_chatlas_index_query(
+        uri=uri,
+        identity_hash=identity_hash,
+        providers=providers,
+        instances=instances,
+        provider_instance_fingerprint=provider_instance_fingerprint,
+        session_id=session_id,
+        display_name=display_name,
+        extractable_only=extractable_only,
+        updated_after=updated_after,
+        sort=sort,
+        limit=limit,
+        chatlas_root=chatlas_root,
+    )
+    matched_row_count = payload.get("matched_row_count")
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        raise CliError("Chatlas index query returned an invalid rows payload")
+    if matched_row_count == 1 and len(rows) == 1 and isinstance(rows[0], dict):
+        return rows[0]
+    if matched_row_count == 0:
+        raise CliError(f"no indexed Chatlas session matched the {command} selector")
+    raise CliError(
+        f"multiple Chatlas sessions matched the {command} selector: "
+        f"{_index_candidate_summary(rows)}"
+    )
+
+
+def _validate_index_selector(
+    *,
+    command: str,
+    uri: str | None,
+    identity_hash: str | None,
+    providers: tuple[str, ...] | None,
+    instances: tuple[str, ...] | None,
+    provider_instance_fingerprint: str | None,
+    session_id: str | None,
+    display_name: str | None,
+    extractable_only: bool,
+    updated_after: str | None,
+) -> None:
+    if any(
+        (
+            uri,
+            identity_hash,
+            providers,
+            instances,
+            provider_instance_fingerprint,
+            session_id,
+            display_name,
+            extractable_only,
+            updated_after,
+        )
+    ):
+        return
+    raise CliError(f"{command} requires at least one index query selector option")
+
+
+def _index_candidate_summary(rows: list[object]) -> str:
+    candidates: list[str] = []
+    for row in rows[:5]:
+        if not isinstance(row, dict):
+            continue
+        identity = _string_or_none(row.get("uri")) or _string_or_none(row.get("session_id"))
+        if identity is not None:
+            candidates.append(identity)
+    if not candidates:
+        return "<no valid candidates returned>"
+    return ", ".join(candidates)
 
 
 def _load_session_index_rows(session_index_root: Path) -> tuple[list[dict[str, Any]], int, int, int]:
@@ -183,4 +283,10 @@ def _parse_timestamp(value: object) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-__all__ = ["run_chatlas_index_query"]
+def _string_or_none(value: object) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+__all__ = ["run_chatlas_index_query", "select_one_chatlas_index_row"]

@@ -591,7 +591,7 @@ def test_chatlas_export_provider_restricts_index_selection(
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert "no indexed Chatlas session matched the export selector" in captured.err
+    assert "no indexed Chatlas session matched the chatlas export selector" in captured.err
     assert (home / "Documents" / "chatlas" / "raw").exists()
 
 
@@ -639,12 +639,12 @@ def test_chatlas_export_reports_zero_multiple_and_unsupported_matches(
     )
 
     assert main(["chatlas", "export", "--session-id", "missing"]) == 1
-    assert "no indexed Chatlas session matched the export selector" in capsys.readouterr().err
+    assert "no indexed Chatlas session matched the chatlas export selector" in capsys.readouterr().err
 
     assert main(["chatlas", "export", "--display-name", "shared title"]) == 1
     multiple = capsys.readouterr()
     assert multiple.out == ""
-    assert "multiple Chatlas sessions matched the export selector" in multiple.err
+    assert "multiple Chatlas sessions matched the chatlas export selector" in multiple.err
     assert "session-1" in multiple.err
     assert "session-2" in multiple.err
 
