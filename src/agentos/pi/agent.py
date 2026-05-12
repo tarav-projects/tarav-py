@@ -59,7 +59,6 @@ class PiAgent(AgentBase):
             self._run_command(request),
             cwd=request.cwd,
             env_overrides=dict(self.env),
-            capture_output=request.capture_output,
         )
 
     def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult:

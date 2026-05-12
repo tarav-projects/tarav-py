@@ -72,7 +72,6 @@ class CodexAgent(AgentBase):
             command,
             cwd=request.cwd,
             env_overrides=env_overrides,
-            capture_output=request.capture_output,
         )
 
     def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult:

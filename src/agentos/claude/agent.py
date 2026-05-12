@@ -65,7 +65,6 @@ class ClaudeAgent(AgentBase):
             self._run_command(request),
             cwd=request.cwd,
             env_overrides=self._run_env_overrides(),
-            capture_output=request.capture_output,
         )
 
     def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult:
