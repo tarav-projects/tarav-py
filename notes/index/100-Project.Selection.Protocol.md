@@ -20,6 +20,8 @@ A project-aware command must receive at least one explicit project selector:
 
 Commands must not silently operate on an implicitly discovered project when neither selector is present.
 
+Commands may impose a stricter selector contract when their risk profile requires it.
+
 ## Project Path Selector
 
 `--project` is path-shaped.
@@ -48,6 +50,19 @@ Rules:
 
 `--project-base` checks the project root basename, not the marker `project_name`.
 
+## Project Name Assertion
+
+`--project-name <name>` is marker-shaped.
+
+Rules:
+
+- it asserts the declared project name in `.agentos/project.json`
+- it is not a filesystem path
+- it must fail if the marker name differs from `<name>`
+- it must fail if the selected project has no declared marker name
+
+Use `--project-name` when command safety depends on the declared project identity rather than the checkout folder basename.
+
 ## Combined Selection
 
 When both selectors are present:
@@ -59,25 +74,32 @@ When both selectors are present:
 Example:
 
 ```sh
-agentos stdlib prefix next --project ../agentos-md --project-base agentos-md --target notes/live
+agentos <command> --project ../agentos-md --project-base agentos-md
 ```
 
 This is useful when the caller is outside the project tree but still wants an identity check.
 
 ## Canonical Prefix Usage
 
+`agentos stdlib prefix next` has a stricter contract than the general project selector rule.
+
+It requires both:
+
+- `--project`
+- `--project-name`
+
 For callers already inside the intended project tree:
 
 ```sh
-agentos stdlib prefix next --project-base agentos-py --target notes/index
-agentos stdlib prefix next --project-base agentos-py --target notes/live
-agentos stdlib prefix next --project-base agentos-py --target dev/live
+agentos stdlib prefix next --project --project-name agentos-py --target notes/index
+agentos stdlib prefix next --project --project-name agentos-py --target notes/live
+agentos stdlib prefix next --project --project-name agentos-py --target dev/live
 ```
 
 For callers outside the intended project tree:
 
 ```sh
-agentos stdlib prefix next --project /path/to/agentos-py --project-base agentos-py --target notes/index
+agentos stdlib prefix next --project /path/to/agentos-py --project-name agentos-py --target notes/index
 ```
 
 ## Why Not `--project=<name>`
@@ -89,14 +111,11 @@ Using `--project-base` avoids ambiguity:
 - `--project agentos-md` means relative path `./agentos-md`
 - `--project-base agentos-md` means discover from `pwd` and assert root basename `agentos-md`
 
-## Superseded Surface
+## Basename Versus Marker Name
 
-`--project-name` is not the right option for this safety check.
+`--project-base` and `--project-name` are different assertions.
 
-Reasons:
+- `--project-base` checks the filesystem checkout basename
+- `--project-name` checks marker-level logical identity
 
-- it sounds like a marker-level logical name
-- the intended assertion is the filesystem project root basename
-- caller skills need a lightweight checkout safety check, not a marker identity contract
-
-Marker-level project names may remain useful for initialization or metadata, but they are separate from project basename assertion.
+General project-aware commands may use `--project-base` for lightweight checkout safety. Commands that require marker identity, such as `agentos stdlib prefix next`, should use `--project-name`.

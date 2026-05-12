@@ -20,7 +20,7 @@ def _write_codex_rollout(path: Path, *, session_id: str, title: str = "Codex fix
                     {
                         "timestamp": "2026-03-08T01:08:59.089Z",
                         "type": "session_meta",
-                        "payload": {"id": session_id},
+                        "payload": {"id": session_id, "originator": "codex_cli_rs"},
                     }
                 ),
                 json.dumps(
@@ -28,6 +28,28 @@ def _write_codex_rollout(path: Path, *, session_id: str, title: str = "Codex fix
                         "timestamp": "2026-03-08T01:09:01.000Z",
                         "type": "turn_context",
                         "payload": {"cwd": "/tmp", "title": title},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-03-08T01:09:02.000Z",
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": "hello"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-03-08T01:09:03.000Z",
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "hi"}],
+                        },
                     }
                 ),
             ]
@@ -90,6 +112,7 @@ def test_chatlas_update_index_only_empty_selection_json_payload(
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "ok"
     assert payload["command"] == "chatlas update"
+    assert payload["phases"]["index"]["command"] == "chatlas index update"
     assert payload["phase"] == "index-only"
     assert payload["selection"]["providers"] is None
     assert payload["provider_count"] == 0
@@ -199,6 +222,420 @@ def test_chatlas_update_default_progress_prints_final_stats(
     assert "[chatlas] update summary:" in captured.err
     assert "sessions=1 changed=1 cached=0 artifacts=1 cached_artifacts=0 copied=1 indexed=1" in captured.err
     assert "[chatlas] codex/codex-work home=" in captured.err
+
+
+def test_chatlas_index_update_exposes_delta_scan_command(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _, agentos_home, codex_home = _isolate_agentos(monkeypatch, tmp_path)
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    rollout_path = codex_home / "sessions" / "2026" / "03" / "25" / f"rollout-fixture-{session_id}.jsonl"
+    _write_codex_rollout(rollout_path, session_id=session_id)
+    _write_global_config(agentos_home, codex_home=codex_home)
+
+    assert main(["chatlas", "index", "update", "--provider", "codex", "--output-mode", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chatlas index update"
+    assert payload["phase"] == "index-only"
+    assert payload["native_scan"]["session_count"] == 1
+    assert payload["raw_copy"]["copied_file_count"] == 1
+    assert payload["session_index"]["upserted_row_count"] == 1
+
+
+def test_chatlas_index_reset_deletes_index_and_cache_only(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    raw_artifact = chatlas_root / "raw" / "codex" / "fingerprint" / "home" / "sessions" / "rollout.jsonl"
+    index_artifact = chatlas_root / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    cache_artifact = chatlas_root / "cache" / "session-index-derivations-v1" / "codex" / "fingerprint" / "sessions.json"
+    _write(raw_artifact, "{}\n")
+    _write(index_artifact, "{}\n")
+    _write(cache_artifact, "{}\n")
+
+    assert main(["chatlas", "index", "reset", "--output-mode", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chatlas index reset"
+    assert raw_artifact.is_file()
+    assert not (chatlas_root / "index" / "sessions").exists()
+    assert not (chatlas_root / "cache" / "session-index-derivations-v1").exists()
+    assert {Path(row["path"]).name for row in payload["deleted"]} == {"sessions", "session-index-derivations-v1"}
+
+
+def test_chatlas_index_redo_rebuilds_index_from_copied_raw(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, agentos_home, codex_home = _isolate_agentos(monkeypatch, tmp_path)
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    rollout_path = codex_home / "sessions" / "2026" / "03" / "25" / f"rollout-fixture-{session_id}.jsonl"
+    index_path = codex_home / "session_index.jsonl"
+    _write_codex_rollout(rollout_path, session_id=session_id, title="redo source")
+    _write(index_path, json.dumps({"id": session_id, "thread_name": "redo source"}) + "\n")
+    _write_global_config(agentos_home, codex_home=codex_home)
+
+    assert main(["chatlas", "index", "update", "--provider", "codex", "--output-mode", "json"]) == 0
+    capsys.readouterr()
+    rollout_path.unlink()
+    index_path.unlink()
+    assert main(["chatlas", "index", "reset", "--verbose-mode", "quiet"]) == 0
+    capsys.readouterr()
+    stale_index = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "stale" / "sessions.index.jsonl"
+    _write(stale_index, json.dumps({"session_id": "stale"}) + "\n")
+    assert main(["chatlas", "index", "redo", "--provider", "codex", "--output-mode", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    rows = _chatlas_index_rows(home / "Documents" / "chatlas")
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chatlas index redo"
+    assert payload["native_scan"]["session_count"] == 1
+    assert payload["session_index"]["upserted_row_count"] == 1
+    assert [row["session_id"] for row in rows] == [session_id]
+    assert rows[0]["display_name"] == "redo source"
+    assert not stale_index.exists()
+
+
+def test_chatlas_index_query_missing_index_returns_zero_matches(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _isolate_agentos(monkeypatch, tmp_path)
+
+    assert main(["chatlas", "index", "query", "--session-id", "missing", "--format", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chatlas index query"
+    assert payload["partition_count"] == 0
+    assert payload["matched_row_count"] == 0
+    assert payload["rows"] == []
+
+
+def test_chatlas_index_query_filters_index_rows_without_raw_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    partition = chatlas_root / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "instance": "codex-work",
+                        "provider_instance_fingerprint": "fingerprint",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-1",
+                        "session_id": "session-1",
+                        "display_name": "Delta Scan Notes",
+                        "updated_at": "2026-03-08T01:09:01.000Z",
+                        "extractable": True,
+                        "identity_hash": "hash-1",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "instance": "codex-other",
+                        "provider_instance_fingerprint": "fingerprint",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-2",
+                        "session_id": "session-2",
+                        "display_name": "Other Work",
+                        "updated_at": "2026-03-09T01:09:01.000Z",
+                        "extractable": False,
+                        "identity_hash": "hash-2",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+    )
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "index",
+                "query",
+                "--provider",
+                "codex",
+                "--instance",
+                "codex-work",
+                "--display-name",
+                "delta scan",
+                "--extractable",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["matched_row_count"] == 1
+    assert payload["returned_row_count"] == 1
+    assert payload["rows"][0]["session_id"] == "session-1"
+    assert not (chatlas_root / "raw").exists()
+
+
+def test_chatlas_index_query_exact_filters_sort_limit_and_skips_bad_rows(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        "\n".join(
+            [
+                "",
+                "{bad json",
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "instance": "codex-work",
+                        "provider_instance_fingerprint": "fingerprint",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-old",
+                        "session_id": "session-old",
+                        "display_name": "old",
+                        "updated_at": "2026-03-07T01:09:01.000Z",
+                        "extractable": True,
+                        "identity_hash": "hash-old",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "instance": "codex-work",
+                        "provider_instance_fingerprint": "fingerprint",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-new",
+                        "session_id": "session-new",
+                        "display_name": "new",
+                        "updated_at": "2026-03-09T01:09:01.000Z",
+                        "extractable": True,
+                        "identity_hash": "hash-new",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+    )
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "index",
+                "query",
+                "--provider-instance-fingerprint",
+                "fingerprint",
+                "--updated-after",
+                "2026-03-08T00:00:00.000Z",
+                "--sort",
+                "newest",
+                "--limit",
+                "1",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["scanned_row_count"] == 4
+    assert payload["skipped_row_count"] == 2
+    assert payload["matched_row_count"] == 1
+    assert [row["session_id"] for row in payload["rows"]] == ["session-new"]
+
+
+def test_chatlas_index_query_matches_identity_uri_and_session_id(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    uri = "agentos://chat-session/codex/fingerprint/session-1"
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        json.dumps(
+            {
+                "provider": "codex",
+                "instance": "codex-work",
+                "provider_instance_fingerprint": "fingerprint",
+                "uri": uri,
+                "session_id": "session-1",
+                "display_name": "exact lookup",
+                "updated_at": "2026-03-08T01:09:01.000Z",
+                "extractable": True,
+                "identity_hash": "hash-1",
+            }
+        )
+        + "\n",
+    )
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "index",
+                "query",
+                "--uri",
+                uri,
+                "--identity-hash",
+                "hash-1",
+                "--session-id",
+                "session-1",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert [row["session_id"] for row in payload["rows"]] == ["session-1"]
+
+
+def test_chatlas_export_uses_index_selection_and_copied_raw_artifact(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, agentos_home, codex_home = _isolate_agentos(monkeypatch, tmp_path)
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    rollout_path = codex_home / "sessions" / "2026" / "03" / "25" / f"rollout-fixture-{session_id}.jsonl"
+    index_path = codex_home / "session_index.jsonl"
+    _write_codex_rollout(rollout_path, session_id=session_id, title="export source")
+    _write(index_path, json.dumps({"id": session_id, "thread_name": "export source"}) + "\n")
+    _write_global_config(agentos_home, codex_home=codex_home)
+
+    assert main(["chatlas", "index", "update", "--provider", "codex", "--output-mode", "json"]) == 0
+    capsys.readouterr()
+    indexed_row = _chatlas_index_rows(home / "Documents" / "chatlas")[0]
+    rollout_path.unlink()
+    index_path.unlink()
+
+    assert main(["chatlas", "export", session_id, "--view", "full", "--format", "json"]) == 0
+    full_payload = json.loads(capsys.readouterr().out)
+    chatlas_root = home / "Documents" / "chatlas"
+    source_paths = [source["path"] for source in full_payload["sources"]]
+    assert full_payload["class"] == "agentos.chatlas.session_model"
+    assert full_payload["session"]["session_id"] == session_id
+    assert full_payload["session"]["display_name"] == "export source"
+    assert full_payload["normalization"]["provider"] == "codex"
+    assert str(codex_home) not in json.dumps(full_payload)
+    assert any(str(chatlas_root / "raw") in path for path in source_paths)
+
+    assert main(["chatlas", "export", session_id, "--view", "zip-transcript", "--format", "json"]) == 0
+    zip_payload = json.loads(capsys.readouterr().out)
+    assert zip_payload["class"] == "agentos.chatlas.zip_transcript"
+    assert zip_payload["session"]["session_id"] == session_id
+    assert [turn["role"] for turn in zip_payload["turns"]] == ["user", "assistant"]
+
+    assert main(["chatlas", "export", indexed_row["uri"], "--format", "json"]) == 0
+    uri_payload = json.loads(capsys.readouterr().out)
+    assert uri_payload["session"]["session_id"] == session_id
+
+    assert main(["chatlas", "export", indexed_row["identity_hash"], "--format", "json"]) == 0
+    identity_payload = json.loads(capsys.readouterr().out)
+    assert identity_payload["session"]["session_id"] == session_id
+
+
+def test_chatlas_export_provider_restricts_index_selection(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, agentos_home, codex_home = _isolate_agentos(monkeypatch, tmp_path)
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    rollout_path = codex_home / "sessions" / "2026" / "03" / "25" / f"rollout-fixture-{session_id}.jsonl"
+    _write_codex_rollout(rollout_path, session_id=session_id)
+    _write_global_config(agentos_home, codex_home=codex_home)
+
+    assert main(["chatlas", "index", "update", "--provider", "codex", "--output-mode", "json"]) == 0
+    capsys.readouterr()
+    assert main(["chatlas", "export", session_id, "--provider", "claude-code"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert f"no indexed Chatlas session matched query {session_id!r}" in captured.err
+    assert (home / "Documents" / "chatlas" / "raw").exists()
+
+
+def test_chatlas_export_reports_zero_multiple_and_unsupported_matches(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "mixed" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-1",
+                        "session_id": "session-1",
+                        "display_name": "shared title",
+                        "identity_hash": "hash-1",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-2",
+                        "session_id": "session-2",
+                        "display_name": "shared title",
+                        "identity_hash": "hash-2",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "gemini-cli",
+                        "uri": "agentos://chat-session/gemini/fingerprint/session-3",
+                        "session_id": "session-3",
+                        "display_name": "gemini title",
+                        "identity_hash": "hash-3",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+    )
+
+    assert main(["chatlas", "export", "missing"]) == 1
+    assert "no indexed Chatlas session matched query 'missing'" in capsys.readouterr().err
+
+    assert main(["chatlas", "export", "shared title"]) == 1
+    multiple = capsys.readouterr()
+    assert multiple.out == ""
+    assert "multiple Chatlas sessions matched query 'shared title' by display_name" in multiple.err
+    assert "session-1" in multiple.err
+    assert "session-2" in multiple.err
+
+    assert main(["chatlas", "export", "session-3"]) == 1
+    unsupported = capsys.readouterr()
+    assert unsupported.out == ""
+    assert "chatlas export has no provider-specific raw normalizer for provider 'gemini-cli'" in unsupported.err
 
 
 def test_chatlas_update_delta_scan_unchanged_run_uses_derivation_cache(

@@ -5,11 +5,11 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-from shutil import copy2
+from shutil import copy2, rmtree
 import stat
 import time
 from typing import Any, Callable, Literal
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from agentos._core.errors import CliError
 from agentos.agent.config import load_chat_config_documents, load_unique_string_list
@@ -145,6 +145,7 @@ def run_chatlas_delta_scan(
     chatlas_root: Path | None,
     start_path: Path | str,
     cache_enabled: bool,
+    command_name: str = "chatlas index update",
     progress: Callable[[str], None] | None,
 ) -> ChatlasDeltaScanResult:
     started_at = time.perf_counter()
@@ -190,7 +191,7 @@ def run_chatlas_delta_scan(
     report["timing"]["elapsed_seconds"] = _elapsed_seconds(started_at)
     payload = {
         "status": "ok",
-        "command": "chatlas update",
+        "command": command_name,
         "phase": DEFAULT_CHATLAS_PHASE,
         "chatlas_root": str(chatlas_root_path),
         "raw_root": str(raw_root),
@@ -199,6 +200,87 @@ def run_chatlas_delta_scan(
         "selection": selected_payload,
         "instances": instance_payloads,
         "scan_cache_enabled": cache_enabled,
+        **report,
+    }
+    _emit_update_summary(progress, payload)
+    return ChatlasDeltaScanResult(payload=payload)
+
+
+def run_chatlas_index_reset(
+    *,
+    chatlas_root: Path | None,
+    progress: Callable[[str], None] | None,
+) -> ChatlasDeltaScanResult:
+    chatlas_root_path = (chatlas_root or default_chatlas_root()).expanduser().resolve()
+    reset_targets = (
+        chatlas_root_path / SESSION_INDEX_ROOT,
+        chatlas_root_path / SESSION_INDEX_DERIVATIONS_CACHE_DIR,
+    )
+    deleted: list[dict[str, object]] = []
+    for path in reset_targets:
+        existed = path.exists()
+        if existed:
+            rmtree(path)
+        deleted.append({"path": str(path), "existed": existed, "deleted": existed})
+    payload = {
+        "status": "ok",
+        "command": "chatlas index reset",
+        "chatlas_root": str(chatlas_root_path),
+        "deleted": deleted,
+    }
+    _emit(progress, f"[chatlas] index reset: deleted {sum(1 for row in deleted if row['deleted'])} paths")
+    return ChatlasDeltaScanResult(payload=payload)
+
+
+def run_chatlas_index_redo(
+    *,
+    providers: tuple[str, ...] | None,
+    chatlas_root: Path | None,
+    progress: Callable[[str], None] | None,
+) -> ChatlasDeltaScanResult:
+    started_at = time.perf_counter()
+    chatlas_root_path = (chatlas_root or default_chatlas_root()).expanduser().resolve()
+    raw_root = chatlas_root_path / "raw"
+    session_index_root = chatlas_root_path / SESSION_INDEX_ROOT
+    selected_instances = _archived_provider_instances(raw_root=raw_root, providers=providers)
+    _reset_session_index_for_redo(session_index_root, providers=providers)
+
+    report = _empty_report()
+    report["provider_count"] = len({instance.provider for instance in selected_instances})
+    report["instance_count"] = len(selected_instances)
+    instance_payloads: list[dict[str, Any]] = []
+
+    for instance in selected_instances:
+        _emit(progress, f"[chatlas] {instance.provider}/{instance.instance}: raw index redo")
+        instance_report = _redo_provider_instance_index(
+            instance=instance,
+            session_index_root=session_index_root,
+            progress=progress,
+        )
+        _merge_report(report, instance_report)
+        instance_payloads.append(
+            {
+                **_provider_instance_summary(instance, raw_root=raw_root),
+                "stats": _report_stats_payload(instance_report),
+            }
+        )
+
+    report["timing"]["elapsed_seconds"] = _elapsed_seconds(started_at)
+    payload = {
+        "status": "ok",
+        "command": "chatlas index redo",
+        "phase": "index-redo",
+        "chatlas_root": str(chatlas_root_path),
+        "raw_root": str(raw_root),
+        "session_index_root": str(session_index_root),
+        "selection": {
+            "providers": list(providers) if providers is not None else None,
+            "instances": [
+                _provider_instance_summary(instance, raw_root=raw_root)
+                for instance in selected_instances
+            ],
+        },
+        "instances": instance_payloads,
         **report,
     }
     _emit_update_summary(progress, payload)
@@ -372,6 +454,117 @@ def _discover_instance_sessions(instance: ChatlasProviderInstance) -> list[Chatl
         for session_ref in agent.discover_session_refs()
     ]
     return _dedupe_sessions(sessions)
+
+
+def _archived_provider_instances(
+    *,
+    raw_root: Path,
+    providers: tuple[str, ...] | None,
+) -> tuple[ChatlasProviderInstance, ...]:
+    if not raw_root.is_dir():
+        return ()
+    provider_filter = set(providers) if providers is not None else None
+    instances: list[ChatlasProviderInstance] = []
+    for provider_dir in sorted(path for path in raw_root.iterdir() if path.is_dir()):
+        provider = unquote(provider_dir.name)
+        if provider_filter is not None and provider not in provider_filter:
+            continue
+        for partition_dir in sorted(path for path in provider_dir.iterdir() if path.is_dir()):
+            fingerprint = unquote(partition_dir.name)
+            agent = _agent_from_raw_partition(
+                provider=provider,
+                fingerprint=fingerprint,
+                partition_dir=partition_dir,
+            )
+            if agent is None:
+                continue
+            instances.append(ChatlasProviderInstance(agent=agent, fingerprint=fingerprint))
+    return tuple(sorted(instances, key=lambda instance: (instance.provider, instance.instance)))
+
+
+def _agent_from_raw_partition(
+    *,
+    provider: str,
+    fingerprint: str,
+    partition_dir: Path,
+) -> Agent | None:
+    raw_home = partition_dir / "home"
+    raw_paths = partition_dir / "paths"
+    home = raw_home if raw_home.is_dir() else None
+    direct_targets: tuple[Path, ...] = ()
+    if home is None and raw_paths.is_dir():
+        direct_targets = tuple(sorted(path for path in raw_paths.rglob("*") if path.is_file()))
+    if home is None and not direct_targets:
+        return None
+    return agent_from_config(
+        AgentConfig(
+            provider=provider,
+            instance_id=None,
+            label=None,
+            home=home,
+            direct_targets=direct_targets,
+            sqlite_db_paths=(),
+            is_default=False,
+            fingerprint=fingerprint,
+        )
+    )
+
+
+def _reset_session_index_for_redo(
+    session_index_root: Path,
+    *,
+    providers: tuple[str, ...] | None,
+) -> None:
+    if providers is None:
+        if session_index_root.exists():
+            rmtree(session_index_root)
+        return
+    for provider in providers:
+        provider_index_dir = session_index_root / _path_component(provider)
+        if provider_index_dir.exists():
+            rmtree(provider_index_dir)
+
+
+def _redo_provider_instance_index(
+    *,
+    instance: ChatlasProviderInstance,
+    session_index_root: Path,
+    progress: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    started_at = time.perf_counter()
+    report = _empty_report()
+    discovery_started_at = time.perf_counter()
+    sessions = _discover_instance_sessions(instance)
+    report["timing"]["native_scan_seconds"] += _elapsed_seconds(discovery_started_at)
+    report["native_scan"]["session_count"] = len(sessions)
+    report["native_scan"]["changed_session_count"] = len(sessions)
+    for session in sessions:
+        source_count = len(session.sources())
+        report["native_scan"]["source_artifact_count"] += source_count
+        report["native_scan"]["changed_source_artifact_count"] += source_count
+
+    index_started_at = time.perf_counter()
+    rows = [_session_index_row(session) for session in sessions]
+    upserted = _replace_session_index_partition(
+        session_index_root,
+        instance=instance,
+        rows=rows,
+    )
+    report["session_index"]["delta_session_count"] = len(sessions)
+    report["session_index"]["derived_row_count"] = len(rows)
+    report["session_index"]["upserted_row_count"] = upserted
+    report["session_index"]["partition_count"] = _index_partition_count(
+        session_index_root,
+        instance=instance,
+        rows=rows,
+    )
+    report["timing"]["index_seconds"] += _elapsed_seconds(index_started_at)
+    report["timing"]["elapsed_seconds"] = _elapsed_seconds(started_at)
+    _emit(
+        progress,
+        f"[chatlas] {instance.provider}/{instance.instance}: redid {len(rows)} indexed sessions",
+    )
+    return report
 
 
 def _derive_delta_index_rows_from_chatlas_raw(
@@ -648,12 +841,28 @@ def _upsert_session_index_partition(
     }
     for row in rows:
         row_by_session_id[str(row["session_id"])] = row
-    rendered = "".join(
-        json.dumps(row, sort_keys=True) + "\n"
-        for row in sorted(row_by_session_id.values(), key=lambda payload: str(payload.get("session_id", "")))
-    )
+    rendered = _render_session_index_rows(list(row_by_session_id.values()))
     write_text_if_changed(path, rendered)
     return len(rows)
+
+
+def _replace_session_index_partition(
+    session_index_root: Path,
+    *,
+    instance: ChatlasProviderInstance,
+    rows: list[dict[str, Any]],
+) -> int:
+    path = _session_index_partition_path(session_index_root, instance=instance)
+    rendered = _render_session_index_rows(rows)
+    write_text_if_changed(path, rendered)
+    return len(rows)
+
+
+def _render_session_index_rows(rows: list[dict[str, Any]]) -> str:
+    return "".join(
+        json.dumps(row, sort_keys=True) + "\n"
+        for row in sorted(rows, key=lambda payload: str(payload.get("session_id", "")))
+    )
 
 
 def _load_jsonl_rows(path: Path) -> list[dict[str, Any]]:
