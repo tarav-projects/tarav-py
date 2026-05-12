@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import pty
+import select
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -22,8 +24,7 @@ class AgentRunRequest:
 @dataclass(frozen=True)
 class AgentRunResult:
     exit_code: int
-    stdout: str | None = None
-    stderr: str | None = None
+    terminal_output: str | None = None
 
 
 @dataclass(frozen=True)
@@ -88,14 +89,18 @@ def execute_agent_run_command(
 ) -> AgentRunResult:
     env = os.environ.copy()
     env.update(env_overrides)
+    if capture_output:
+        return _execute_agent_run_command_with_terminal_capture(
+            command,
+            cwd=cwd,
+            env=env,
+        )
+
     run_kwargs: dict[str, object] = {
         "cwd": str(cwd),
         "env": env,
         "check": False,
     }
-    if capture_output:
-        run_kwargs["capture_output"] = True
-        run_kwargs["text"] = True
     try:
         result = subprocess.run(
             list(command),
@@ -105,9 +110,76 @@ def execute_agent_run_command(
         raise CliError(f"agent executable not found: {exc.filename}") from exc
     return AgentRunResult(
         exit_code=int(result.returncode),
-        stdout=result.stdout if capture_output else None,
-        stderr=result.stderr if capture_output else None,
     )
+
+
+def _execute_agent_run_command_with_terminal_capture(
+    command: tuple[str, ...],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+) -> AgentRunResult:
+    master_fd: int | None = None
+    slave_fd: int | None = None
+    try:
+        master_fd, slave_fd = pty.openpty()
+        process = subprocess.Popen(
+            list(command),
+            cwd=str(cwd),
+            env=env,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            text=False,
+            close_fds=True,
+        )
+    except FileNotFoundError as exc:
+        if master_fd is not None:
+            os.close(master_fd)
+        raise CliError(f"agent executable not found: {exc.filename}") from exc
+    except Exception:
+        if master_fd is not None:
+            os.close(master_fd)
+        raise
+    finally:
+        if slave_fd is not None:
+            os.close(slave_fd)
+
+    output_chunks: list[bytes] = []
+    os.set_blocking(master_fd, False)
+    try:
+        while process.poll() is None:
+            output_chunks.extend(_read_terminal_chunks(master_fd, timeout_sec=0.1))
+        output_chunks.extend(_read_terminal_chunks(master_fd, timeout_sec=0))
+    finally:
+        os.close(master_fd)
+
+    return AgentRunResult(
+        exit_code=int(process.returncode),
+        terminal_output=b"".join(output_chunks).decode(errors="replace"),
+    )
+
+
+def _read_terminal_chunks(master_fd: int, *, timeout_sec: float) -> list[bytes]:
+    chunks: list[bytes] = []
+    while True:
+        try:
+            ready, _, _ = select.select([master_fd], [], [], timeout_sec)
+        except OSError:
+            break
+        if not ready:
+            break
+        try:
+            chunk = os.read(master_fd, 4096)
+        except BlockingIOError:
+            break
+        except OSError:
+            break
+        if not chunk:
+            break
+        chunks.append(chunk)
+        timeout_sec = 0
+    return chunks
 
 
 __all__ = [

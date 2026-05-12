@@ -6,7 +6,7 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.path_validation import validate_string_for_path
-from agentos.agent.primitives import AgentConfig
+from agentos.agent.primitives import AgentConfig, AgentPingConfig, default_agent_ping_config
 from agentos._core.project import (
     agentos_home_dir,
     find_agentos_project_root,
@@ -420,6 +420,7 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     raw_default_model = raw_instance.get("default_model")
     raw_model_flag = raw_instance.get("model_flag")
     raw_prompt_flag = raw_instance.get("prompt_flag")
+    raw_ping = raw_instance.get("ping")
     raw_live_usage_refresh = raw_instance.get("live_usage_refresh")
     raw_usage_progression_limit = raw_instance.get("usage_progression_limit")
     raw_includes = raw_instance.get("includes")
@@ -487,6 +488,10 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         raise CliError(f"{entry.field_name('prompt_flag')} must be a non-empty string")
     else:
         prompt_flag = raw_prompt_flag.strip()
+    ping = _load_agent_ping_config(
+        raw_ping,
+        field_name=entry.field_name("ping"),
+    )
     if raw_live_usage_refresh is None:
         live_usage_refresh = None
     elif not isinstance(raw_live_usage_refresh, bool):
@@ -560,6 +565,7 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         default_model=default_model,
         model_flag=model_flag,
         prompt_flag=prompt_flag,
+        ping=ping,
         account_live_usage_refresh=live_usage_refresh,
         account_usage_progression_limit=usage_progression_limit,
         chatlas_includes=includes,
@@ -601,6 +607,45 @@ def _load_string_argv(value: object, *, field_name: str) -> tuple[str, ...]:
             raise CliError(f"{field_name}[{index}] must be a non-empty string")
         argv.append(_expand_user_home(item.strip()))
     return tuple(argv)
+
+
+def _load_agent_ping_config(value: object, *, field_name: str) -> AgentPingConfig:
+    if value is None:
+        return default_agent_ping_config()
+    if not isinstance(value, dict):
+        raise CliError(f"{field_name} must be a JSON object")
+
+    raw_enabled = value.get("enabled", True)
+    if not isinstance(raw_enabled, bool):
+        raise CliError(f"{field_name}.enabled must be a boolean")
+
+    raw_prompt = value.get("prompt")
+    raw_argv = value.get("argv")
+    has_prompt = raw_prompt is not None
+    has_argv = raw_argv is not None
+    if has_prompt and has_argv:
+        raise CliError(f"{field_name} must define either prompt or argv, not both")
+
+    if not raw_enabled:
+        if has_prompt or has_argv:
+            raise CliError(f"{field_name} must not define prompt or argv when disabled")
+        return AgentPingConfig(enabled=False, prompt=None)
+
+    if has_prompt:
+        if not isinstance(raw_prompt, str) or not raw_prompt.strip():
+            raise CliError(f"{field_name}.prompt must be a non-empty string")
+        return AgentPingConfig(prompt=raw_prompt.strip())
+
+    if has_argv:
+        argv = _load_string_argv(
+            raw_argv,
+            field_name=f"{field_name}.argv",
+        )
+        if not argv:
+            raise CliError(f"{field_name}.argv must be a non-empty JSON array")
+        return AgentPingConfig(prompt=None, argv=argv)
+
+    return default_agent_ping_config()
 
 
 def _load_string_mapping(value: object, *, field_name: str) -> tuple[tuple[str, str], ...]:

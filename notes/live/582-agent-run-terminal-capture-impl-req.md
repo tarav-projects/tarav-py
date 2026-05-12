@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Request captured: `agentos agent ping` must capture agent output through a provider-neutral terminal runner rather than provider-specific command changes.
+Implemented: `agentos agent ping` captures agent output through a provider-neutral terminal runner rather than provider-specific command changes.
 
 ## User Intent
 
@@ -130,3 +130,4 @@ Do not special-case Codex. Do not rewrite provider commands to non-interactive p
 ## End Log
 
 - 2026-05-12: Created after `agentos agent ping --provider codex --profile codex-tk` exposed that pipe capture is the wrong implementation for terminal-oriented agent commands. The requested fix is provider-neutral PTY terminal capture for all agents.
+- 2026-05-12: Implemented in `src/agentos/agent/run_runtime.py` by routing `capture_output=True` through a PTY-backed terminal capture helper shared by every provider that calls `execute_agent_run_command(...)`. Updated `AgentRunResult` to expose `terminal_output`, updated `agent ping` to print that combined transcript, added focused PTY coverage in `tests/test_agent_commands.py`, and refreshed the installed `agentos` CLI.

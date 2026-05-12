@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -142,48 +143,26 @@ def test_agent_run_uses_configured_instance_env(
     assert observed["codex_home"] == str(work_home)
 
 
-def test_agent_run_runtime_captures_output_when_requested(
+def test_agent_run_runtime_uses_terminal_capture_when_requested(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     from agentos.agent.run_runtime import execute_agent_run_command
 
-    observed: dict[str, object] = {}
-
-    def fake_run(
-        command: list[str],
-        **kwargs: object,
-    ) -> subprocess.CompletedProcess[str]:
-        observed["command"] = command
-        observed["kwargs"] = kwargs
-        return subprocess.CompletedProcess(
-            command,
-            0,
-            stdout="captured stdout",
-            stderr="captured stderr",
-        )
-
-    import agentos.agent.run_runtime as agent_run_runtime
-
-    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
-
     result = execute_agent_run_command(
-        ("agent-cli", "ping"),
+        (
+            sys.executable,
+            "-c",
+            "import os, sys; print(sys.stdin.isatty(), sys.stdout.isatty(), sys.stderr.isatty()); print(os.environ['AGENT_HOME'])",
+        ),
         cwd=tmp_path,
         env_overrides={"AGENT_HOME": "/tmp/agent-home"},
         capture_output=True,
     )
 
-    kwargs = observed["kwargs"]
-    assert observed["command"] == ["agent-cli", "ping"]
-    assert kwargs["cwd"] == str(tmp_path)
-    assert kwargs["capture_output"] is True
-    assert kwargs["text"] is True
-    assert kwargs["check"] is False
-    assert kwargs["env"]["AGENT_HOME"] == "/tmp/agent-home"
     assert result.exit_code == 0
-    assert result.stdout == "captured stdout"
-    assert result.stderr == "captured stderr"
+    assert result.terminal_output is not None
+    assert "True True True" in result.terminal_output
+    assert "/tmp/agent-home" in result.terminal_output
 
 
 def test_agent_run_home_override_updates_provider_home_env(
@@ -725,7 +704,7 @@ def test_agent_ping_invokes_provider_native_run_with_capture(
     def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
         observed["provider"] = self.provider
         observed["request"] = request
-        return AgentRunResult(exit_code=0, stdout="pong\n", stderr="diagnostic\n")
+        return AgentRunResult(exit_code=0, terminal_output="pong\ndiagnostic\n")
 
     monkeypatch.setattr(CodexAgent, "run", fake_run)
 
@@ -760,8 +739,134 @@ def test_agent_ping_invokes_provider_native_run_with_capture(
         capture_output=True,
     )
     captured = capsys.readouterr()
-    assert captured.out == "pong\n"
-    assert captured.err == "diagnostic\n"
+    assert captured.out == "pong\ndiagnostic\n"
+    assert captured.err == ""
+
+
+def test_agent_ping_uses_configured_prompt(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["codex"],
+                "ping": {
+                    "prompt": "health check",
+                },
+            }
+        ],
+    )
+
+    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
+    from agentos.codex.agent import CodexAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
+        observed["request"] = request
+        return AgentRunResult(exit_code=0, terminal_output="")
+
+    monkeypatch.setattr(CodexAgent, "run", fake_run)
+
+    assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 0
+
+    request = observed["request"]
+    assert isinstance(request, AgentRunRequest)
+    assert request.prompt == "health check"
+    assert request.argv == ()
+    assert request.capture_output is True
+
+
+def test_agent_ping_uses_configured_argv(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["codex"],
+                "ping": {
+                    "argv": ["status", "--json"],
+                },
+            }
+        ],
+    )
+
+    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
+    from agentos.codex.agent import CodexAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
+        observed["request"] = request
+        return AgentRunResult(exit_code=0, terminal_output="")
+
+    monkeypatch.setattr(CodexAgent, "run", fake_run)
+
+    assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 0
+
+    request = observed["request"]
+    assert isinstance(request, AgentRunRequest)
+    assert request.prompt is None
+    assert request.argv == ("status", "--json")
+    assert request.capture_output is True
+
+
+def test_agent_ping_rejects_prompt_and_argv_config(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "ping": {
+                    "prompt": "ping",
+                    "argv": ["status"],
+                },
+            }
+        ],
+    )
+
+    assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 1
+    assert (
+        "agent.instances[0].ping must define either prompt or argv, not both"
+        in capsys.readouterr().err
+    )
 
 
 def test_agent_run_dry_invokes_provider_native_run_dry(

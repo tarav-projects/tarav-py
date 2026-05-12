@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import quote
@@ -37,6 +37,25 @@ class SessionSource:
 
 
 @dataclass(frozen=True)
+class AgentPingConfig:
+    enabled: bool = True
+    prompt: str | None = "ping"
+    argv: tuple[str, ...] = ()
+
+    def summary(self) -> dict[str, object]:
+        payload: dict[str, object] = {"enabled": self.enabled}
+        if self.prompt is not None:
+            payload["prompt"] = self.prompt
+        if self.argv:
+            payload["argv"] = list(self.argv)
+        return payload
+
+
+def default_agent_ping_config() -> AgentPingConfig:
+    return AgentPingConfig()
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     provider: str
     instance_id: str | None = None
@@ -49,6 +68,7 @@ class AgentConfig:
     default_model: str | None = None
     model_flag: str | None = None
     prompt_flag: str | None = None
+    ping: AgentPingConfig = field(default_factory=default_agent_ping_config)
     is_default: bool = False
     fingerprint: str | None = None
     direct_targets: tuple[Path, ...] = ()
@@ -90,6 +110,7 @@ class AgentConfig:
             self.default_model,
             self.model_flag,
             self.prompt_flag,
+            self.ping,
             self.chatlas_includes,
             self.chatlas_excludes,
             self.account_live_usage_refresh,
@@ -112,6 +133,7 @@ class AgentBase:
     default_model: str | None = None
     model_flag: str | None = None
     prompt_flag: str | None = None
+    ping: AgentPingConfig = field(default_factory=default_agent_ping_config)
     is_default: bool = False
     fingerprint: str | None = None
     direct_targets: tuple[Path, ...] = ()
@@ -147,6 +169,8 @@ class AgentBase:
             payload["model_flag"] = self.model_flag
         if self.prompt_flag is not None:
             payload["prompt_flag"] = self.prompt_flag
+        if self.ping != default_agent_ping_config():
+            payload["ping"] = self.ping.summary()
         if self.direct_targets:
             payload["direct_targets"] = [str(path) for path in self.direct_targets]
         if self.grep_targets:
@@ -188,6 +212,7 @@ def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
         "default_model": config.default_model,
         "model_flag": config.model_flag,
         "prompt_flag": config.prompt_flag,
+        "ping": config.ping,
         "is_default": config.is_default,
         "fingerprint": config.fingerprint,
         "direct_targets": config.direct_targets,
@@ -224,6 +249,7 @@ class Agent(Protocol):
     default_model: str | None
     model_flag: str | None
     prompt_flag: str | None
+    ping: AgentPingConfig
     is_default: bool
     fingerprint: str | None
     direct_targets: tuple[Path, ...]
@@ -322,6 +348,7 @@ def agent_identity_key(agent: Agent) -> tuple[object, ...]:
         agent.default_model,
         agent.model_flag,
         agent.prompt_flag,
+        agent.ping,
         agent.chatlas_includes,
         agent.chatlas_excludes,
         agent.account_live_usage_refresh,
@@ -337,12 +364,14 @@ __all__ = [
     "Agent",
     "AgentBase",
     "AgentConfig",
+    "AgentPingConfig",
     "SessionSource",
     "agent_base_kwargs_for_provider",
     "agent_base_kwargs_from_config",
     "agent_fingerprint",
     "agent_identity_fingerprint",
     "agent_identity_key",
+    "default_agent_ping_config",
     "agent_session_paths",
     "agent_uri_key",
     "provider_session_paths",

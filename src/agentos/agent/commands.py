@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 from agentos._core.project import normalize_project_target
@@ -114,13 +113,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _resolve_agent_run(
-    args: argparse.Namespace,
-    *,
-    prompt: str | None,
-    argv: tuple[str, ...],
-    capture_output: bool,
-) -> tuple[Agent, AgentRunRequest]:
+def _resolve_agent_run_target(args: argparse.Namespace) -> tuple[Agent, Path]:
     config_start_path = _config_start_path(args)
     cwd = Path(args.cwd).expanduser().resolve() if args.cwd else Path.cwd().resolve()
     agent = resolve_agent(
@@ -129,6 +122,17 @@ def _resolve_agent_run(
         start_path=config_start_path,
         home=args.home,
     )
+    return agent, cwd
+
+
+def _resolve_agent_run(
+    args: argparse.Namespace,
+    *,
+    prompt: str | None,
+    argv: tuple[str, ...],
+    capture_output: bool,
+) -> tuple[Agent, AgentRunRequest]:
+    agent, cwd = _resolve_agent_run_target(args)
     request = AgentRunRequest(
         prompt=prompt,
         argv=argv,
@@ -141,17 +145,22 @@ def _resolve_agent_run(
 
 
 def _cmd_agent_ping(args: argparse.Namespace) -> int:
-    agent, request = _resolve_agent_run(
-        args,
-        prompt="ping",
-        argv=(),
+    agent, cwd = _resolve_agent_run_target(args)
+    if not agent.ping.enabled:
+        raise CliError(
+            f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
+        )
+    request = AgentRunRequest(
+        prompt=agent.ping.prompt,
+        argv=agent.ping.argv,
+        model=args.model,
+        cwd=cwd,
+        account=args.account,
         capture_output=True,
     )
     result = agent.run(request)
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
+    if result.terminal_output:
+        print(result.terminal_output, end="")
     return result.exit_code
 
 
@@ -338,7 +347,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
 
     ping_parser = agent_subparsers.add_parser(
         "ping",
-        help="Run a configured agent with a captured ping prompt.",
+        help="Run a configured agent with captured ping output.",
     )
     _add_agent_run_target_args(ping_parser, provider_help="Provider family to ping.")
     ping_parser.set_defaults(handler=_cmd_agent_ping)
