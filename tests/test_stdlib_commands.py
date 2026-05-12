@@ -57,7 +57,10 @@ def test_moved_top_level_commands_fail_before_dispatch(command: str, capsys) -> 
     ("argv", "expected_command"),
     [
         (["stdlib", "mdblocks", "lint", "."], "stdlib mdblocks lint"),
-        (["stdlib", "prefix", "next", "--project-base", "project"], "stdlib prefix next"),
+        (
+            ["stdlib", "prefix", "next", "--project-base", "project", "--target", "notes/live"],
+            "stdlib prefix next",
+        ),
         (["stdlib", "git-refs", "repo-hash"], "stdlib git-refs repo-hash"),
         (["stdlib", "utils", "tmp-folder", "new"], "stdlib utils tmp-folder new"),
         (["stdlib", "utils", "cmd-logger", "path"], "stdlib utils cmd-logger path"),

@@ -1,0 +1,281 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from agentos._core.errors import CliError
+from agentos.agent.primitives import AgentConfig
+from agentos.agent.providers import agent_from_config
+from agentos.chatlas.core import chatlas_query
+from agentos.claude.session import ClaudeSession, ClaudeSessionRef
+from agentos.codex.session import CodexSession, CodexSessionRef
+from agentos.copilot.session import CopilotSession, CopilotSessionRef
+
+from ._claude import _experimental_normalize_claude_session
+from ._codex import _experimental_normalize_codex_session
+from ._copilot import _experimental_normalize_copilot_session
+from ._hashes import _session_content_hash, _session_identity_hash
+from ._shared import *
+from ._views import _project_session_model_view
+
+def chatlas_export_session_model(
+    *,
+    query: str,
+    providers: tuple[str, ...] | None = None,
+    output_format: str = "json",
+    view: str = "full",
+    chatlas_root: Path | None = None,
+) -> dict[str, object]:
+    if output_format != "json":
+        raise CliError(f"unsupported chatlas export format: {output_format}")
+
+    normalized_query = query.strip()
+    if not normalized_query:
+        raise CliError("query must not be empty")
+
+    payload = chatlas_query(
+        query=normalized_query,
+        providers=providers,
+        chatlas_root=chatlas_root,
+        include_artifacts=True,
+    )
+    sessions = payload.get("sessions")
+    if not isinstance(sessions, list):
+        raise CliError("Chatlas query returned an invalid sessions payload")
+    if not sessions:
+        raise CliError(f"no normalized Chatlas session matched query {query}")
+    if len(sessions) > 1:
+        choices = ", ".join(
+            str(session.get("uri"))
+            for session in sessions[:5]
+            if isinstance(session, dict)
+        )
+        raise CliError(f"multiple Chatlas sessions matched query {query}: {choices}")
+
+    session = sessions[0]
+    if not isinstance(session, dict):
+        raise CliError("Chatlas query returned an invalid session payload")
+
+    session_model = _build_session_model(session)
+    return _project_session_model_view(session_model, view=view)
+
+
+def _build_session_model(session: dict[str, Any]) -> dict[str, object]:
+    provider = _string_or_none(session.get("provider"))
+    sources = _experimental_source_payloads(session)
+    normalization_result = _experimental_normalize_provider_raw(
+        session,
+        sources=sources,
+    )
+    normalization: dict[str, object] = {
+        "provider": provider,
+        "normalizer": normalization_result.normalizer,
+        "version": 1,
+        "source_mode": normalization_result.source_mode,
+        "warnings": normalization_result.warnings,
+        "unsupported_concepts": normalization_result.unsupported_concepts,
+    }
+    normalization.update(normalization_result.metadata)
+    events = normalization_result.events
+    session_payload = _experimental_session_payload(session)
+    session_payload.update(_experimental_session_hashes(session, events=events))
+
+    return {
+        "class": "agentos.chatlas.session_model",
+        "schema_version": 1,
+        "session": session_payload,
+        "agent_instance": _experimental_agent_instance_payload(session),
+        "sources": sources,
+        "chat": {
+            "messages": _standard_records_payload(normalization_result.messages),
+            "model_runs": _standard_records_payload(normalization_result.model_runs),
+            "tool_invocations": _standard_records_payload(
+                normalization_result.tool_invocations
+            ),
+            "events": events,
+            "usage": _standard_records_payload(normalization_result.usage),
+        },
+        "normalization": normalization,
+    }
+
+def _experimental_normalize_provider_raw(
+    session: dict[str, Any],
+    *,
+    sources: list[dict[str, object]],
+) -> _ExperimentalNormalizationResult:
+    provider = _string_or_none(session.get("provider"))
+    if provider is None:
+        raise CliError(
+            "chatlas export requires a provider-specific raw normalizer; "
+            "session provider is missing"
+        )
+    if provider == "codex":
+        codex_session_ref = CodexSessionRef.from_chatlas_session_payload(
+            session,
+            sources=sources,
+        )
+        if codex_session_ref is not None:
+            codex_session = _load_session_from_ref(provider, codex_session_ref)
+            codex_result = _experimental_normalize_codex_session(codex_session)
+        else:
+            codex_result = None
+        if codex_result is not None:
+            return codex_result
+        raise CliError(
+            "chatlas export could not normalize codex raw artifacts"
+        )
+    if provider == "claude-code":
+        claude_session_ref = ClaudeSessionRef.from_chatlas_session_payload(
+            session,
+            sources=sources,
+        )
+        if claude_session_ref is not None:
+            claude_session = _load_session_from_ref(provider, claude_session_ref)
+            claude_result = _experimental_normalize_claude_session(claude_session)
+        else:
+            claude_result = None
+        if claude_result is not None:
+            return claude_result
+        raise CliError(
+            "chatlas export could not normalize claude-code raw artifacts"
+        )
+    if provider == "copilot-cli":
+        copilot_session_ref = CopilotSessionRef.from_chatlas_session_payload(
+            session,
+            sources=sources,
+        )
+        if copilot_session_ref is not None:
+            copilot_session = _load_session_from_ref(provider, copilot_session_ref)
+            copilot_result = _experimental_normalize_copilot_session(copilot_session)
+        else:
+            copilot_result = None
+        if copilot_result is not None:
+            return copilot_result
+        raise CliError(
+            "chatlas export could not normalize copilot-cli raw artifacts"
+        )
+
+    raise CliError(
+        "chatlas export has no provider-specific raw normalizer "
+        f"for provider {provider}"
+    )
+
+
+def _load_session_from_ref(
+    provider: str,
+    session_ref: CodexSessionRef | ClaudeSessionRef | CopilotSessionRef,
+) -> CodexSession | ClaudeSession | CopilotSession:
+    agent = agent_from_config(AgentConfig(provider=provider))
+    return agent.load_session(session_ref)
+
+def _experimental_session_payload(session: dict[str, Any]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for key in (
+        "uri",
+        "provider",
+        "instance",
+        "provider_instance_fingerprint",
+        "session_id",
+        "display_name",
+        "display_name_field",
+        "created_at",
+        "updated_at",
+    ):
+        value = session.get(key)
+        if value is not None:
+            payload[key] = value
+    return payload
+
+def _experimental_session_hashes(
+    session: dict[str, Any],
+    *,
+    events: list[dict[str, object]],
+) -> dict[str, object]:
+    provider = _string_or_none(session.get("provider"))
+    session_id = _string_or_none(session.get("session_id"))
+    if provider is None:
+        raise CliError(
+            "chatlas export requires provider to compute identity_hash"
+        )
+    if session_id is None:
+        raise CliError(
+            "chatlas export requires session_id to compute identity_hash"
+        )
+    return {
+        "identity_hash": _session_identity_hash(
+            provider=provider,
+            provider_session_id=session_id,
+        ),
+        "content_hash": _session_content_hash(events=events),
+    }
+
+def _standard_records_payload(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [
+        cleaned_record
+        for record in records
+        if isinstance((cleaned_record := _standard_record_payload(record)), dict)
+    ]
+
+def _standard_record_payload(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: _standard_record_payload(item)
+            for key, item in value.items()
+            if key != "native"
+        }
+    if isinstance(value, list):
+        return [_standard_record_payload(item) for item in value]
+    return value
+
+def _experimental_agent_instance_payload(session: dict[str, Any]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    provider = _string_or_none(session.get("provider"))
+    instance = _string_or_none(session.get("instance"))
+    fingerprint = _string_or_none(session.get("provider_instance_fingerprint"))
+    if provider is not None:
+        payload["provider_family"] = provider
+    if instance is not None:
+        payload["instance"] = instance
+    if fingerprint is not None:
+        payload["provider_instance_fingerprint"] = fingerprint
+    return payload
+
+def _experimental_source_payloads(session: dict[str, Any]) -> list[dict[str, object]]:
+    artifacts = session.get("backing_artifacts")
+    if not isinstance(artifacts, list):
+        primary = session.get("primary_backing_artifact")
+        artifacts = [primary] if isinstance(primary, dict) else []
+
+    sources: list[dict[str, object]] = []
+    seen: set[tuple[object, ...]] = set()
+    for index, artifact in enumerate(artifacts, start=1):
+        if not isinstance(artifact, dict):
+            continue
+        source = _experimental_source_payload(index=index, artifact=artifact)
+        identity = (
+            source.get("role"),
+            source.get("storage_kind"),
+            source.get("path"),
+            _jsonable_identity(source.get("locator")),
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        sources.append(source)
+    return sources
+
+def _experimental_source_payload(*, index: int, artifact: dict[str, Any]) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "source_ref_id": f"source-{index}",
+    }
+    for key in (
+        "role",
+        "storage_kind",
+        "path",
+        "locator",
+        "extractable",
+    ):
+        value = artifact.get(key)
+        if value is not None:
+            payload[key] = value
+    return payload

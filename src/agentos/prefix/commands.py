@@ -22,10 +22,6 @@ from .core import (
 
 
 def _cmd_prefix_next(args: argparse.Namespace) -> int:
-    if args.project_base is None:
-        raise CliError("agentos stdlib prefix next requires --project-base")
-    if args.target is None:
-        raise CliError("prefix target is required")
     return _cmd_prefix_next_project(args)
 
 
@@ -138,6 +134,7 @@ def register_prefix_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     prefix_next_parser.add_argument(
         "--target",
+        required=True,
         help="Project-relative numbered surface target, such as notes/live or notes/index.",
     )
     prefix_next_parser.add_argument(

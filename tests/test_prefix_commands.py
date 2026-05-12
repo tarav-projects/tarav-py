@@ -176,9 +176,11 @@ def test_prefix_next_explicit_project_without_target_fails(
     project_root.mkdir()
     _init_project(project_root, monkeypatch, capsys)
 
-    assert main(["stdlib", "prefix", "next", "--project", str(project_root), "--project-base", project_root.name]) == 1
+    with pytest.raises(SystemExit) as excinfo:
+        main(["stdlib", "prefix", "next", "--project", str(project_root), "--project-base", project_root.name])
 
-    assert capsys.readouterr().err.strip() == "error: prefix target is required"
+    assert excinfo.value.code == 2
+    assert "the following arguments are required: --target" in capsys.readouterr().err
 
 
 def test_prefix_next_requires_project_base(

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agentos._core.errors import CliError
+
 
 def chatlas_export_session_model(
     *,
@@ -11,14 +13,12 @@ def chatlas_export_session_model(
     view: str = "full",
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
-    from ._model import chatlas_export_session_model as export_session_model
+    _ = query
+    _ = providers
+    _ = output_format
+    _ = view
+    _ = chatlas_root
+    raise CliError("chatlas export is under reimplementation")
 
-    return export_session_model(
-        query=query,
-        providers=providers,
-        output_format=output_format,
-        view=view,
-        chatlas_root=chatlas_root,
-    )
 
 __all__ = ["chatlas_export_session_model"]
