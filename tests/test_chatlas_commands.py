@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from agentos.cli import main
 
 
@@ -532,7 +534,7 @@ def test_chatlas_export_uses_index_selection_and_copied_raw_artifact(
     rollout_path.unlink()
     index_path.unlink()
 
-    assert main(["chatlas", "export", session_id, "--view", "full", "--format", "json"]) == 0
+    assert main(["chatlas", "export", "--session-id", session_id, "--view", "full", "--format", "json"]) == 0
     full_payload = json.loads(capsys.readouterr().out)
     chatlas_root = home / "Documents" / "chatlas"
     source_paths = [source["path"] for source in full_payload["sources"]]
@@ -543,17 +545,31 @@ def test_chatlas_export_uses_index_selection_and_copied_raw_artifact(
     assert str(codex_home) not in json.dumps(full_payload)
     assert any(str(chatlas_root / "raw") in path for path in source_paths)
 
-    assert main(["chatlas", "export", session_id, "--view", "zip-transcript", "--format", "json"]) == 0
+    assert (
+        main(
+            [
+                "chatlas",
+                "export",
+                "--session-id",
+                session_id,
+                "--view",
+                "zip-transcript",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
     zip_payload = json.loads(capsys.readouterr().out)
     assert zip_payload["class"] == "agentos.chatlas.zip_transcript"
     assert zip_payload["session"]["session_id"] == session_id
     assert [turn["role"] for turn in zip_payload["turns"]] == ["user", "assistant"]
 
-    assert main(["chatlas", "export", indexed_row["uri"], "--format", "json"]) == 0
+    assert main(["chatlas", "export", "--uri", indexed_row["uri"], "--format", "json"]) == 0
     uri_payload = json.loads(capsys.readouterr().out)
     assert uri_payload["session"]["session_id"] == session_id
 
-    assert main(["chatlas", "export", indexed_row["identity_hash"], "--format", "json"]) == 0
+    assert main(["chatlas", "export", "--identity-hash", indexed_row["identity_hash"], "--format", "json"]) == 0
     identity_payload = json.loads(capsys.readouterr().out)
     assert identity_payload["session"]["session_id"] == session_id
 
@@ -571,11 +587,11 @@ def test_chatlas_export_provider_restricts_index_selection(
 
     assert main(["chatlas", "index", "update", "--provider", "codex", "--output-mode", "json"]) == 0
     capsys.readouterr()
-    assert main(["chatlas", "export", session_id, "--provider", "claude-code"]) == 1
+    assert main(["chatlas", "export", "--session-id", session_id, "--provider", "claude-code"]) == 1
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert f"no indexed Chatlas session matched query {session_id!r}" in captured.err
+    assert "no indexed Chatlas session matched the export selector" in captured.err
     assert (home / "Documents" / "chatlas" / "raw").exists()
 
 
@@ -622,20 +638,112 @@ def test_chatlas_export_reports_zero_multiple_and_unsupported_matches(
         + "\n",
     )
 
-    assert main(["chatlas", "export", "missing"]) == 1
-    assert "no indexed Chatlas session matched query 'missing'" in capsys.readouterr().err
+    assert main(["chatlas", "export", "--session-id", "missing"]) == 1
+    assert "no indexed Chatlas session matched the export selector" in capsys.readouterr().err
 
-    assert main(["chatlas", "export", "shared title"]) == 1
+    assert main(["chatlas", "export", "--display-name", "shared title"]) == 1
     multiple = capsys.readouterr()
     assert multiple.out == ""
-    assert "multiple Chatlas sessions matched query 'shared title' by display_name" in multiple.err
+    assert "multiple Chatlas sessions matched the export selector" in multiple.err
     assert "session-1" in multiple.err
     assert "session-2" in multiple.err
 
-    assert main(["chatlas", "export", "session-3"]) == 1
+    assert main(["chatlas", "export", "--session-id", "session-3"]) == 1
     unsupported = capsys.readouterr()
     assert unsupported.out == ""
     assert "chatlas export has no provider-specific raw normalizer for provider 'gemini-cli'" in unsupported.err
+
+
+def test_chatlas_export_rejects_positional_and_missing_selector(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _isolate_agentos(monkeypatch, tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["chatlas", "export", "session-1"])
+    assert exc_info.value.code == 2
+    positional = capsys.readouterr()
+    assert positional.out == ""
+    assert "unrecognized arguments: session-1" in positional.err
+
+    assert main(["chatlas", "export"]) == 1
+    missing = capsys.readouterr()
+    assert missing.out == ""
+    assert "chatlas export requires at least one index query selector option" in missing.err
+
+
+def test_chatlas_raw_path_and_export_use_index_selection_and_copied_raw(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, agentos_home, codex_home = _isolate_agentos(monkeypatch, tmp_path)
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    rollout_path = codex_home / "sessions" / "2026" / "03" / "25" / f"rollout-fixture-{session_id}.jsonl"
+    index_path = codex_home / "session_index.jsonl"
+    _write_codex_rollout(rollout_path, session_id=session_id, title="raw source")
+    _write(index_path, json.dumps({"id": session_id, "thread_name": "raw source"}) + "\n")
+    _write_global_config(agentos_home, codex_home=codex_home)
+
+    assert main(["chatlas", "index", "update", "--provider", "codex", "--output-mode", "json"]) == 0
+    capsys.readouterr()
+    rollout_path.unlink()
+    index_path.unlink()
+
+    assert main(["chatlas", "raw", "path", "--session-id", session_id]) == 0
+    raw_path_output = capsys.readouterr().out
+    chatlas_root = home / "Documents" / "chatlas"
+    assert str(chatlas_root / "raw") in raw_path_output
+    assert str(codex_home) not in raw_path_output
+
+    assert main(["chatlas", "raw", "path", "--session-id", session_id, "--format", "json"]) == 0
+    path_payload = json.loads(capsys.readouterr().out)
+    assert path_payload["status"] == "ok"
+    assert path_payload["command"] == "chatlas raw path"
+    assert path_payload["session"]["session_id"] == session_id
+    assert all(str(chatlas_root / "raw") in path for path in path_payload["paths"])
+
+    assert main(["chatlas", "raw", "export", "--session-id", session_id, "--format", "json"]) == 0
+    export_payload = json.loads(capsys.readouterr().out)
+    assert export_payload["status"] == "ok"
+    assert export_payload["class"] == "agentos.chatlas.raw_export"
+    assert export_payload["session"]["session_id"] == session_id
+    assert any("raw source" in source.get("content", "") for source in export_payload["sources"])
+    assert all(str(codex_home) not in source.get("path", "") for source in export_payload["sources"])
+
+
+def test_chatlas_raw_rejects_positional_and_missing_selector(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _isolate_agentos(monkeypatch, tmp_path)
+
+    with pytest.raises(SystemExit) as path_exc_info:
+        main(["chatlas", "raw", "path", "session-1"])
+    assert path_exc_info.value.code == 2
+    positional_path = capsys.readouterr()
+    assert positional_path.out == ""
+    assert "unrecognized arguments: session-1" in positional_path.err
+
+    with pytest.raises(SystemExit) as export_exc_info:
+        main(["chatlas", "raw", "export", "session-1"])
+    assert export_exc_info.value.code == 2
+    positional_export = capsys.readouterr()
+    assert positional_export.out == ""
+    assert "unrecognized arguments: session-1" in positional_export.err
+
+    assert main(["chatlas", "raw", "path"]) == 1
+    missing_path = capsys.readouterr()
+    assert missing_path.out == ""
+    assert "chatlas raw path requires at least one index query selector option" in missing_path.err
+
+    assert main(["chatlas", "raw", "export"]) == 1
+    missing_export = capsys.readouterr()
+    assert missing_export.out == ""
+    assert "chatlas raw export requires at least one index query selector option" in missing_export.err
 
 
 def test_chatlas_update_delta_scan_unchanged_run_uses_derivation_cache(

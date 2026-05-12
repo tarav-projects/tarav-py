@@ -83,19 +83,7 @@ def _cmd_chatlas_index_redo(args: argparse.Namespace) -> int:
 
 
 def _cmd_chatlas_index_query(args: argparse.Namespace) -> int:
-    payload = chatlas_index_query(
-        uri=args.uri,
-        identity_hash=args.identity_hash,
-        providers=optional_string_tuple(args.providers),
-        instances=optional_string_tuple(args.instances),
-        provider_instance_fingerprint=args.provider_instance_fingerprint,
-        session_id=args.session_id,
-        display_name=args.display_name,
-        extractable_only=args.extractable,
-        updated_after=args.updated_after,
-        sort=args.sort,
-        limit=args.limit,
-    )
+    payload = chatlas_index_query(**_chatlas_index_selector_kwargs(args))
     print(format_json_output(payload))
     return 0
 
@@ -132,8 +120,7 @@ def _cmd_chatlas_query(args: argparse.Namespace) -> int:
 
 def _cmd_chatlas_export(args: argparse.Namespace) -> int:
     payload = chatlas_export_session_model(
-        query=args.query,
-        providers=optional_string_tuple(args.providers),
+        **_chatlas_index_selector_kwargs(args),
         output_format=args.output_format,
         view=args.view,
     )
@@ -142,10 +129,7 @@ def _cmd_chatlas_export(args: argparse.Namespace) -> int:
 
 
 def _cmd_chatlas_raw_path(args: argparse.Namespace) -> int:
-    payload = chatlas_raw_paths(
-        query=args.query,
-        providers=optional_string_tuple(args.providers),
-    )
+    payload = chatlas_raw_paths(**_chatlas_index_selector_kwargs(args))
     if args.output_format == "json":
         print(format_json_output(payload))
         return 0
@@ -156,8 +140,7 @@ def _cmd_chatlas_raw_path(args: argparse.Namespace) -> int:
 
 def _cmd_chatlas_raw_export(args: argparse.Namespace) -> int:
     payload = chatlas_raw_export(
-        query=args.query,
-        providers=optional_string_tuple(args.providers),
+        **_chatlas_index_selector_kwargs(args),
     )
     print(format_json_output(payload))
     return 0
@@ -171,6 +154,82 @@ def _add_chatlas_provider_argument(parser: argparse.ArgumentParser, *, help_text
         dest="providers",
         help=help_text,
     )
+
+
+def _add_chatlas_index_selector_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--uri",
+        default=None,
+        help="Match the indexed session URI exactly.",
+    )
+    parser.add_argument(
+        "--identity-hash",
+        default=None,
+        help="Match the indexed identity hash exactly.",
+    )
+    _add_chatlas_provider_argument(
+        parser,
+        help_text="Restrict selection to a provider family. Repeat to include multiple providers.",
+    )
+    parser.add_argument(
+        "--instance",
+        action="append",
+        dest="instances",
+        help="Restrict selection to an indexed provider instance. Repeat to include multiple instances.",
+    )
+    parser.add_argument(
+        "--provider-instance-fingerprint",
+        default=None,
+        help="Match the indexed provider instance fingerprint exactly.",
+    )
+    parser.add_argument(
+        "--session-id",
+        default=None,
+        help="Match the indexed provider session id exactly.",
+    )
+    parser.add_argument(
+        "--display-name",
+        default=None,
+        help="Match indexed display names by case-insensitive substring.",
+    )
+    parser.add_argument(
+        "--extractable",
+        action="store_true",
+        help="Keep only sessions with an extractable primary artifact.",
+    )
+    parser.add_argument(
+        "--updated-after",
+        default=None,
+        help="Keep only sessions whose indexed updated_at is at or after this ISO 8601 timestamp.",
+    )
+    parser.add_argument(
+        "--sort",
+        choices=("lexical", "newest", "oldest"),
+        default="lexical",
+        help="Sort order for selected sessions (default: lexical).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum number of selected index rows to return.",
+    )
+
+
+def _chatlas_index_selector_kwargs(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "uri": args.uri,
+        "identity_hash": args.identity_hash,
+        "providers": optional_string_tuple(args.providers),
+        "instances": optional_string_tuple(args.instances),
+        "provider_instance_fingerprint": args.provider_instance_fingerprint,
+        "session_id": args.session_id,
+        "display_name": args.display_name,
+        "extractable_only": args.extractable,
+        "updated_after": args.updated_after,
+        "sort": args.sort,
+        "limit": args.limit,
+    }
 
 
 def _add_chatlas_progress_arguments(parser: argparse.ArgumentParser) -> None:
@@ -262,63 +321,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "query",
         help="Query Chatlas session index rows.",
     )
-    index_query_parser.add_argument(
-        "--uri",
-        default=None,
-        help="Match the indexed session URI exactly.",
-    )
-    index_query_parser.add_argument(
-        "--identity-hash",
-        default=None,
-        help="Match the indexed identity hash exactly.",
-    )
-    _add_chatlas_provider_argument(
-        index_query_parser,
-        help_text="Restrict query to a provider family. Repeat to include multiple providers.",
-    )
-    index_query_parser.add_argument(
-        "--instance",
-        action="append",
-        dest="instances",
-        help="Restrict query to an indexed provider instance. Repeat to include multiple instances.",
-    )
-    index_query_parser.add_argument(
-        "--provider-instance-fingerprint",
-        default=None,
-        help="Match the indexed provider instance fingerprint exactly.",
-    )
-    index_query_parser.add_argument(
-        "--session-id",
-        default=None,
-        help="Match the indexed provider session id exactly.",
-    )
-    index_query_parser.add_argument(
-        "--display-name",
-        default=None,
-        help="Match indexed display names by case-insensitive substring.",
-    )
-    index_query_parser.add_argument(
-        "--extractable",
-        action="store_true",
-        help="Keep only sessions with an extractable primary artifact.",
-    )
-    index_query_parser.add_argument(
-        "--updated-after",
-        default=None,
-        help="Keep only sessions whose indexed updated_at is at or after this ISO 8601 timestamp.",
-    )
-    index_query_parser.add_argument(
-        "--sort",
-        choices=("lexical", "newest", "oldest"),
-        default="lexical",
-        help="Sort order for returned sessions (default: lexical).",
-    )
-    index_query_parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Maximum number of sessions to return (default: 50).",
-    )
+    _add_chatlas_index_selector_arguments(index_query_parser)
     index_query_parser.add_argument(
         "--format",
         choices=("json",),
@@ -423,17 +426,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "export",
         help="Export one Chatlas session as the standard session model JSON object.",
     )
-    export_parser.add_argument(
-        "query",
-        help="Exact query value matched against URI, identity hash, session id, display name, fingerprint, and native fields.",
-    )
-    export_parser.add_argument(
-        "--provider",
-        choices=_CHATLAS_PROVIDER_CHOICES,
-        action="append",
-        dest="providers",
-        help="Restrict export to a provider family. Repeat to include multiple providers.",
-    )
+    _add_chatlas_index_selector_arguments(export_parser)
     export_parser.add_argument(
         "--format",
         choices=("json",),
@@ -462,17 +455,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "path",
         help="Print backing raw artifact paths for one Chatlas session.",
     )
-    raw_path_parser.add_argument(
-        "query",
-        help="Exact query value matched against URI, identity hash, session id, display name, fingerprint, and native fields.",
-    )
-    raw_path_parser.add_argument(
-        "--provider",
-        choices=_CHATLAS_PROVIDER_CHOICES,
-        action="append",
-        dest="providers",
-        help="Restrict lookup to a provider family. Repeat to include multiple providers.",
-    )
+    _add_chatlas_index_selector_arguments(raw_path_parser)
     raw_path_parser.add_argument(
         "--format",
         choices=("text", "json"),
@@ -486,17 +469,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "export",
         help="Export backing raw artifact contents for one Chatlas session.",
     )
-    raw_export_parser.add_argument(
-        "query",
-        help="Exact query value matched against URI, identity hash, session id, display name, fingerprint, and native fields.",
-    )
-    raw_export_parser.add_argument(
-        "--provider",
-        choices=_CHATLAS_PROVIDER_CHOICES,
-        action="append",
-        dest="providers",
-        help="Restrict lookup to a provider family. Repeat to include multiple providers.",
-    )
+    _add_chatlas_index_selector_arguments(raw_export_parser)
     raw_export_parser.add_argument(
         "--format",
         choices=("json",),

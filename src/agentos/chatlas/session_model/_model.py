@@ -21,8 +21,17 @@ _SUPPORTED_EXPORT_PROVIDERS = ("codex", "claude-code", "copilot-cli")
 
 def chatlas_export_session_model(
     *,
-    query: str,
+    uri: str | None = None,
+    identity_hash: str | None = None,
     providers: tuple[str, ...] | None = None,
+    instances: tuple[str, ...] | None = None,
+    provider_instance_fingerprint: str | None = None,
+    session_id: str | None = None,
+    display_name: str | None = None,
+    extractable_only: bool = False,
+    updated_after: str | None = None,
+    sort: str = "lexical",
+    limit: int | None = None,
     output_format: str = "json",
     view: str = "full",
     chatlas_root: Path | None = None,
@@ -30,13 +39,18 @@ def chatlas_export_session_model(
     if output_format != "json":
         raise CliError(f"unsupported chatlas export format: {output_format}")
 
-    normalized_query = query.strip()
-    if not normalized_query:
-        raise CliError("query must not be empty")
-
     session = _select_export_index_row(
-        query=normalized_query,
+        uri=uri,
+        identity_hash=identity_hash,
         providers=providers,
+        instances=instances,
+        provider_instance_fingerprint=provider_instance_fingerprint,
+        session_id=session_id,
+        display_name=display_name,
+        extractable_only=extractable_only,
+        updated_after=updated_after,
+        sort=sort,
+        limit=limit,
         chatlas_root=chatlas_root,
     )
     session_model = _build_session_model(session)
@@ -45,37 +59,86 @@ def chatlas_export_session_model(
 
 def _select_export_index_row(
     *,
-    query: str,
+    uri: str | None,
+    identity_hash: str | None,
     providers: tuple[str, ...] | None,
+    instances: tuple[str, ...] | None,
+    provider_instance_fingerprint: str | None,
+    session_id: str | None,
+    display_name: str | None,
+    extractable_only: bool,
+    updated_after: str | None,
+    sort: str,
+    limit: int | None,
     chatlas_root: Path | None,
 ) -> dict[str, Any]:
-    attempts = (
-        ("uri", {"uri": query}),
-        ("identity_hash", {"identity_hash": query}),
-        ("session_id", {"session_id": query}),
-        ("display_name", {"display_name": query}),
+    _validate_export_selector(
+        uri=uri,
+        identity_hash=identity_hash,
+        providers=providers,
+        instances=instances,
+        provider_instance_fingerprint=provider_instance_fingerprint,
+        session_id=session_id,
+        display_name=display_name,
+        extractable_only=extractable_only,
+        updated_after=updated_after,
     )
-    for matched_field, filters in attempts:
-        payload = run_chatlas_index_query(
-            providers=providers,
-            limit=2,
-            chatlas_root=chatlas_root,
-            **filters,
-        )
-        matched_row_count = payload.get("matched_row_count")
-        rows = payload.get("rows")
-        if not isinstance(rows, list):
-            raise CliError("Chatlas index query returned an invalid rows payload")
-        if matched_row_count == 0:
-            continue
-        if matched_row_count == 1 and len(rows) == 1 and isinstance(rows[0], dict):
-            return rows[0]
-        candidates = _export_candidate_summary(rows)
-        raise CliError(
-            f"multiple Chatlas sessions matched query {query!r} by {matched_field}: {candidates}"
-        )
+    payload = run_chatlas_index_query(
+        uri=uri,
+        identity_hash=identity_hash,
+        providers=providers,
+        instances=instances,
+        provider_instance_fingerprint=provider_instance_fingerprint,
+        session_id=session_id,
+        display_name=display_name,
+        extractable_only=extractable_only,
+        updated_after=updated_after,
+        sort=sort,
+        limit=limit,
+        chatlas_root=chatlas_root,
+    )
+    matched_row_count = payload.get("matched_row_count")
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        raise CliError("Chatlas index query returned an invalid rows payload")
+    if matched_row_count == 1 and len(rows) == 1 and isinstance(rows[0], dict):
+        return rows[0]
+    if matched_row_count == 0:
+        raise CliError("no indexed Chatlas session matched the export selector")
+    candidates = _export_candidate_summary(rows)
+    raise CliError(
+        "multiple Chatlas sessions matched the export selector: "
+        f"{candidates}"
+    )
 
-    raise CliError(f"no indexed Chatlas session matched query {query!r}")
+
+def _validate_export_selector(
+    *,
+    uri: str | None,
+    identity_hash: str | None,
+    providers: tuple[str, ...] | None,
+    instances: tuple[str, ...] | None,
+    provider_instance_fingerprint: str | None,
+    session_id: str | None,
+    display_name: str | None,
+    extractable_only: bool,
+    updated_after: str | None,
+) -> None:
+    if any(
+        (
+            uri,
+            identity_hash,
+            providers,
+            instances,
+            provider_instance_fingerprint,
+            session_id,
+            display_name,
+            extractable_only,
+            updated_after,
+        )
+    ):
+        return
+    raise CliError("chatlas export requires at least one index query selector option")
 
 
 def _export_candidate_summary(rows: list[object]) -> str:
