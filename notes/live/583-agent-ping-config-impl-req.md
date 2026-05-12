@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Implemented: `agentos agent ping` now uses first-class, provider-neutral ping configuration from `AgentConfig` instead of command-handler hardcoding.
+Implemented and simplified: `agentos agent ping` uses first-class, provider-neutral ping configuration from `AgentConfig`, then runs through the same direct streaming path as normal `agent run`.
 
 ## User Intent
 
@@ -12,7 +12,7 @@ The desired direction is to add ping configuration directly to `AgentConfig` rat
 
 ## Why This Exists
 
-`agentos agent ping` currently runs through the shared agent machinery and now captures output through a PTY-backed terminal runner. That solved the stdio/terminal issue, but the behavior being run is still hardcoded in the CLI command handler:
+`agentos agent ping` should run through the shared agent machinery. The behavior being run was previously hardcoded in the CLI command handler:
 
 - prompt is always `"ping"`
 - argv is always empty
@@ -25,7 +25,7 @@ That is too narrow. Different agents may need a different ping prompt, raw ping 
 Relevant current code surfaces:
 
 - `src/agentos/agent/commands.py`
-  - `_cmd_agent_ping(...)` calls `_resolve_agent_run(..., prompt="ping", argv=(), capture_output=True)`.
+  - `_cmd_agent_ping(...)` used to hardcode a `"ping"` prompt.
 - `src/agentos/agent/primitives.py`
   - `AgentConfig` and `AgentBase` include general run fields such as `cli_command`, `run_args`, `default_model`, `model_flag`, and `prompt_flag`.
   - There are no ping-specific fields.
@@ -34,20 +34,20 @@ Relevant current code surfaces:
   - Provides provider-family defaults for normal run fields.
 - `src/agentos/agent/run_runtime.py`
   - Builds provider commands from `AgentRunRequest`, `cli_command`, `run_args`, model fields, prompt fields, and raw argv.
-  - Capture execution is already shared and provider-neutral.
+  - Runs provider commands directly without Agentos output capture.
 - Provider agents using the common run runtime:
   - `src/agentos/codex/agent.py`
   - `src/agentos/claude/agent.py`
   - `src/agentos/copilot/agent.py`
   - `src/agentos/pi/agent.py`
 
-Observed behavior after terminal capture:
+Observed behavior after the earlier terminal-capture experiment:
 
 ```sh
 agentos agent ping --provider codex --profile codex-mm
 ```
 
-This no longer fails because stdio is not a terminal. It launches the configured Codex command and then enters Codex startup behavior. That confirms the runtime path is now terminal-correct, but it also shows that ping needs configurable command semantics instead of one universal hardcoded `"ping"` prompt.
+That experiment confirmed that ping needs configurable command semantics instead of one universal hardcoded `"ping"` prompt. It was later superseded by the simpler decision that Agentos should not capture ping output at all.
 
 ## Requested Change
 
@@ -58,7 +58,7 @@ The clean target shape is an `AgentConfig`-owned ping configuration, either as a
 - `agent ping` resolves the selected agent.
 - The selected agent/config supplies the ping request details.
 - The command still calls provider `Agent.run(...)`.
-- The resulting `AgentRunRequest` uses `capture_output=True`.
+- The resulting `AgentRunRequest` is a normal streaming run request; Agentos does not capture or replay ping output.
 - The runtime remains provider-neutral and command-agnostic.
 
 Suggested configuration capabilities:
@@ -76,17 +76,17 @@ Only one ping command shape should be active for an instance: prompt-style or ar
 - No provider command rewrite such as switching Codex to a different subcommand.
 - No legacy compatibility aliases or duplicate old/new config paths.
 - `Agent.run(...)` remains the execution path used by `agent ping`.
-- `capture_output=True` remains part of ping execution.
+- Ping execution must not use output capture; provider stdout/stderr should remain attached to the terminal.
 - Ping config belongs on `AgentConfig`, because ping is a general agent capability.
 - Normal `agent run` behavior must remain unchanged.
 - Existing provider config fields for normal run behavior must keep their current meaning.
 - Preserve current config validation style: typed dataclasses, explicit `CliError` messages, and JSON field validation in `agent_config_from_config_entry(...)`.
-- Do not disturb unrelated Chatlas changes or the existing terminal-capture implementation beyond what this request requires.
+- Do not disturb unrelated Chatlas changes.
 
 ## Out Of Scope
 
 - No provider-specific ping protocol.
-- No attempt to determine whether a provider's response means "healthy" beyond process exit code and captured transcript.
+- No attempt to determine whether a provider's response means "healthy" beyond process exit code.
 - No timeout redesign unless the current code already makes it straightforward.
 - No Windows PTY or terminal behavior changes.
 - No broad redesign of agent config, account config, or session discovery.
@@ -99,7 +99,7 @@ Only one ping command shape should be active for an instance: prompt-style or ar
 - A focused test proves a configured ping prompt is used.
 - A focused test proves configured ping argv is used.
 - A validation test proves prompt and argv cannot both be configured for ping.
-- A test proves `agent ping` still invokes provider `Agent.run(...)` with `capture_output=True`.
+- A test proves `agent ping` still invokes provider `Agent.run(...)` with the configured prompt or argv through the normal streaming request path.
 - Normal `agent run` tests continue to pass.
 - No implementation branch checks for `provider == "codex"` or any other provider inside ping execution.
 
@@ -121,7 +121,7 @@ Only one ping command shape should be active for an instance: prompt-style or ar
 
    Behavior slice: `_cmd_agent_ping(...)` resolves the selected agent, reads its ping config, creates an `AgentRunRequest` from it, and calls `agent.run(request)`.
 
-   Check: monkeypatched provider tests assert the request uses the configured prompt or argv and always sets `capture_output=True`.
+   Check: monkeypatched provider tests assert the request uses the configured prompt or argv without any output-capture field.
 
 4. Preserve default behavior deliberately.
 
@@ -165,3 +165,4 @@ Only one ping command shape should be active for an instance: prompt-style or ar
 
 - 2026-05-12: Created after terminal-capture work showed that `agent ping` now runs with terminal-backed stdio but still has hardcoded ping semantics in the command handler. The requested next step is first-class, provider-neutral ping configuration on `AgentConfig`.
 - 2026-05-12: Implemented `AgentPingConfig` on `AgentConfig`/`AgentBase`, nested `agent.instances[].ping` parsing and validation, and config-driven `agent ping` request construction. Added focused tests for default capture, configured prompt, configured argv, and invalid prompt-plus-argv. Verified with focused tests, full test suite, CLI reinstall, and an installed CLI smoke using configured `ping.argv`.
+- 2026-05-12: Updated after the simplicity decision. Kept `AgentPingConfig`, removed output-capture expectations from ping execution, and made `agent ping` use the same direct streaming run path as normal `agent run`.
