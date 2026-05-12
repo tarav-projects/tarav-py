@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 import json
 import os
@@ -7,7 +8,7 @@ from pathlib import Path
 from shutil import copy2
 import stat
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 from urllib.parse import quote
 
 from agentos._core.errors import CliError
@@ -24,6 +25,56 @@ CHATLAS_DIRNAME = "chatlas"
 DEFAULT_CHATLAS_PHASE = "index-only"
 SESSION_INDEX_DERIVATIONS_CACHE_DIR = Path("cache") / "session-index-derivations-v1"
 SESSION_INDEX_ROOT = Path("index") / "sessions"
+CopyResult = Literal["added", "updated", "unchanged", "skipped"]
+
+_REPORT_TEMPLATE: dict[str, Any] = {
+    "provider_count": 0,
+    "instance_count": 0,
+    "native_scan": {
+        "session_count": 0,
+        "source_artifact_count": 0,
+        "changed_session_count": 0,
+        "changed_source_artifact_count": 0,
+        "unchanged_session_count": 0,
+        "cached_source_artifact_count": 0,
+    },
+    "cache": {
+        "hit_count": 0,
+        "miss_count": 0,
+        "removed_entry_count": 0,
+    },
+    "raw_copy": {
+        "scanned_source_count": 0,
+        "copied_session_count": 0,
+        "copied_file_count": 0,
+        "added_file_count": 0,
+        "updated_file_count": 0,
+        "unchanged_file_count": 0,
+        "skipped_source_count": 0,
+    },
+    "session_index": {
+        "delta_session_count": 0,
+        "derived_row_count": 0,
+        "upserted_row_count": 0,
+        "partition_count": 0,
+    },
+    "timing": {
+        "elapsed_seconds": 0.0,
+        "native_scan_seconds": 0.0,
+        "cache_compare_seconds": 0.0,
+        "cache_write_seconds": 0.0,
+        "raw_copy_seconds": 0.0,
+        "index_seconds": 0.0,
+    },
+}
+
+_TRANSCRIPT_EXTRACTABLE_SUFFIXES = {
+    "claude-code": {".json", ".jsonl"},
+    "copilot-cli": {".jsonl"},
+    "gemini-cli": {".json"},
+    "openclaw": {".jsonl"},
+    "pi": {".jsonl"},
+}
 
 
 @dataclass(frozen=True)
@@ -67,6 +118,16 @@ class ChatlasDiscoveredSession:
 
     def backing_artifacts(self) -> tuple[BackingArtifact, ...]:
         return backing_artifacts_from_sources(self.sources())
+
+
+@dataclass(frozen=True)
+class ChatlasDeltaSession:
+    session: ChatlasDiscoveredSession
+    sources: tuple[SessionSource, ...]
+
+    @property
+    def session_id(self) -> str:
+        return self.session.session_id
 
 
 @dataclass(frozen=True)
@@ -222,7 +283,7 @@ def _process_provider_instance(
     progress: Callable[[str], None] | None,
 ) -> dict[str, Any]:
     started_at = time.perf_counter()
-    report = _empty_instance_report()
+    report = _empty_report()
     discovery_started_at = time.perf_counter()
     native_sessions = _discover_instance_sessions(instance)
     report["timing"]["native_scan_seconds"] += _elapsed_seconds(discovery_started_at)
@@ -231,12 +292,13 @@ def _process_provider_instance(
     cache_compare_started_at = time.perf_counter()
     old_cache = _load_derivation_cache_partition(cache_root, instance=instance) if cache_enabled else {}
     next_cache: dict[str, dict[str, object]] = {}
-    delta_sessions: list[ChatlasDiscoveredSession] = []
+    delta_sessions: list[ChatlasDeltaSession] = []
 
     for session in native_sessions:
-        source_count = len(session.sources())
+        sources = session.sources()
+        source_count = len(sources)
         report["native_scan"]["source_artifact_count"] += source_count
-        signature = _native_derivation_signature(session)
+        signature = _native_derivation_signature(session, sources=sources)
         next_cache[session.cache_key] = signature
         cached_signature = old_cache.get(session.cache_key)
         if cache_enabled and cached_signature == signature:
@@ -247,7 +309,7 @@ def _process_provider_instance(
         report["cache"]["miss_count"] += 1
         report["native_scan"]["changed_session_count"] += 1
         report["native_scan"]["changed_source_artifact_count"] += source_count
-        delta_sessions.append(session)
+        delta_sessions.append(ChatlasDeltaSession(session=session, sources=sources))
 
     report["cache"]["removed_entry_count"] = len(set(old_cache) - set(next_cache))
     report["timing"]["cache_compare_seconds"] += _elapsed_seconds(cache_compare_started_at)
@@ -258,13 +320,13 @@ def _process_provider_instance(
 
     raw_copy_started_at = time.perf_counter()
     copied_session_ids: set[str] = set()
-    for session in delta_sessions:
+    for delta_session in delta_sessions:
         copied = _copy_delta_session_sources(
-            session,
+            delta_session,
             raw_root=raw_root,
         )
         if copied["copied_file_count"] > 0:
-            copied_session_ids.add(session.session_id)
+            copied_session_ids.add(delta_session.session_id)
         _merge_nested_counter(report["raw_copy"], copied)
     report["timing"]["raw_copy_seconds"] += _elapsed_seconds(raw_copy_started_at)
 
@@ -276,7 +338,7 @@ def _process_provider_instance(
     indexed_rows = _derive_delta_index_rows_from_chatlas_raw(
         instance=instance,
         raw_root=raw_root,
-        delta_session_ids={session.session_id for session in delta_sessions},
+        delta_sessions=tuple(delta_sessions),
     )
     upserted = _upsert_session_index_partition(
         session_index_root,
@@ -286,7 +348,11 @@ def _process_provider_instance(
     report["session_index"]["delta_session_count"] = len(delta_sessions)
     report["session_index"]["derived_row_count"] = len(indexed_rows)
     report["session_index"]["upserted_row_count"] = upserted
-    report["session_index"]["partition_count"] = 1 if indexed_rows or _session_index_partition_path(session_index_root, instance=instance).exists() else 0
+    report["session_index"]["partition_count"] = _index_partition_count(
+        session_index_root,
+        instance=instance,
+        rows=indexed_rows,
+    )
     report["raw_copy"]["copied_session_count"] = len(copied_session_ids)
     report["timing"]["index_seconds"] += _elapsed_seconds(index_started_at)
     report["timing"]["elapsed_seconds"] = _elapsed_seconds(started_at)
@@ -312,11 +378,16 @@ def _derive_delta_index_rows_from_chatlas_raw(
     *,
     instance: ChatlasProviderInstance,
     raw_root: Path,
-    delta_session_ids: set[str],
+    delta_sessions: tuple[ChatlasDeltaSession, ...],
 ) -> list[dict[str, Any]]:
-    archived_agent = _archived_provider_agent(instance, raw_root=raw_root)
+    archived_agent = _archived_provider_agent(
+        instance,
+        raw_root=raw_root,
+        delta_sessions=delta_sessions,
+    )
     if archived_agent is None or not hasattr(archived_agent, "discover_session_refs"):
         return []
+    delta_session_ids = {delta_session.session_id for delta_session in delta_sessions}
     archived_instance = ChatlasProviderInstance(agent=archived_agent, fingerprint=instance.fingerprint)
     archived_sessions = _dedupe_sessions(
         [
@@ -331,7 +402,12 @@ def _derive_delta_index_rows_from_chatlas_raw(
     ]
 
 
-def _archived_provider_agent(instance: ChatlasProviderInstance, *, raw_root: Path) -> Agent | None:
+def _archived_provider_agent(
+    instance: ChatlasProviderInstance,
+    *,
+    raw_root: Path,
+    delta_sessions: tuple[ChatlasDeltaSession, ...],
+) -> Agent | None:
     raw_home = instance.raw_home(raw_root)
     direct_targets: tuple[Path, ...] = ()
     sqlite_db_paths: tuple[Path, ...] = ()
@@ -339,10 +415,14 @@ def _archived_provider_agent(instance: ChatlasProviderInstance, *, raw_root: Pat
         direct_targets = tuple(
             sorted(
                 {
-                    _copied_source_path(instance, raw_root=raw_root, source_path=source.path)
-                    for session in _discover_instance_sessions(instance)
-                    for source in session.sources()
-                    if _copied_source_path(instance, raw_root=raw_root, source_path=source.path).exists()
+                    copied_path
+                    for delta_session in delta_sessions
+                    for copied_path in _copied_paths_for_sources(
+                        instance,
+                        raw_root=raw_root,
+                        sources=delta_session.sources,
+                    )
+                    if copied_path.exists()
                 }
             )
         )
@@ -360,7 +440,11 @@ def _archived_provider_agent(instance: ChatlasProviderInstance, *, raw_root: Pat
     )
 
 
-def _native_derivation_signature(session: ChatlasDiscoveredSession) -> dict[str, object]:
+def _native_derivation_signature(
+    session: ChatlasDiscoveredSession,
+    *,
+    sources: tuple[SessionSource, ...],
+) -> dict[str, object]:
     return {
         "class": "agentos.chatlas.session_index_derivation",
         "schema_version": 1,
@@ -373,7 +457,7 @@ def _native_derivation_signature(session: ChatlasDiscoveredSession) -> dict[str,
         "native": dict(session.session_ref.native_ref_metadata()),
         "sources": [
             _source_signature(source)
-            for source in session.sources()
+            for source in sources
         ],
     }
 
@@ -391,25 +475,21 @@ def _source_signature(source: SessionSource) -> dict[str, object]:
 
 
 def _copy_delta_session_sources(
-    session: ChatlasDiscoveredSession,
+    delta_session: ChatlasDeltaSession,
     *,
     raw_root: Path,
 ) -> dict[str, int]:
-    report = {
-        "scanned_source_count": 0,
-        "copied_file_count": 0,
-        "added_file_count": 0,
-        "updated_file_count": 0,
-        "unchanged_file_count": 0,
-        "skipped_source_count": 0,
-        "copied_session_count": 0,
-    }
-    for source in session.sources():
+    report = _empty_raw_copy_report()
+    for source in delta_session.sources:
         report["scanned_source_count"] += 1
         if source.path.is_dir():
             report["skipped_source_count"] += 1
             continue
-        destination = _copied_source_path(session.provider_instance, raw_root=raw_root, source_path=source.path)
+        destination = _copied_source_path(
+            delta_session.session.provider_instance,
+            raw_root=raw_root,
+            source_path=source.path,
+        )
         copy_result = _copy_file_if_changed(source.path, destination)
         if copy_result == "added":
             report["copied_file_count"] += 1
@@ -422,6 +502,18 @@ def _copy_delta_session_sources(
         else:
             report["skipped_source_count"] += 1
     return report
+
+
+def _copied_paths_for_sources(
+    instance: ChatlasProviderInstance,
+    *,
+    raw_root: Path,
+    sources: tuple[SessionSource, ...],
+) -> tuple[Path, ...]:
+    return tuple(
+        _copied_source_path(instance, raw_root=raw_root, source_path=source.path)
+        for source in sources
+    )
 
 
 def _copied_source_path(
@@ -450,7 +542,7 @@ def _absolute_path_relpath(path: Path) -> Path:
     return resolved
 
 
-def _copy_file_if_changed(source_path: Path, destination_path: Path) -> str:
+def _copy_file_if_changed(source_path: Path, destination_path: Path) -> CopyResult:
     try:
         if not source_path.is_file():
             return "skipped"
@@ -532,16 +624,8 @@ def _backing_artifact_is_extractable(provider: str, artifact: BackingArtifact) -
         return False
     if provider == "codex":
         return artifact.role == "transcript" and artifact.path.name.startswith("rollout-") and artifact.path.suffix == ".jsonl"
-    if provider == "claude-code":
-        return artifact.role == "transcript" and artifact.path.suffix in {".json", ".jsonl"}
-    if provider == "copilot-cli":
-        return artifact.role == "transcript" and artifact.path.suffix == ".jsonl"
-    if provider == "gemini-cli":
-        return artifact.role == "transcript" and artifact.path.suffix == ".json"
-    if provider == "pi":
-        return artifact.role == "transcript" and artifact.path.suffix == ".jsonl"
-    if provider == "openclaw":
-        return artifact.role == "transcript" and artifact.path.suffix == ".jsonl"
+    if provider in _TRANSCRIPT_EXTRACTABLE_SUFFIXES:
+        return artifact.role == "transcript" and artifact.path.suffix in _TRANSCRIPT_EXTRACTABLE_SUFFIXES[provider]
     if provider == "opencode":
         return artifact.role in {"session_diff", "sqlite_session_row"} and (
             artifact.path.suffix == ".json" or artifact.path.name == "opencode.db"
@@ -591,6 +675,17 @@ def _load_jsonl_rows(path: Path) -> list[dict[str, Any]]:
 
 def _session_index_partition_path(session_index_root: Path, *, instance: ChatlasProviderInstance) -> Path:
     return session_index_root / instance.partition_key / "sessions.index.jsonl"
+
+
+def _index_partition_count(
+    session_index_root: Path,
+    *,
+    instance: ChatlasProviderInstance,
+    rows: list[dict[str, Any]],
+) -> int:
+    if rows or _session_index_partition_path(session_index_root, instance=instance).exists():
+        return 1
+    return 0
 
 
 def _load_derivation_cache_partition(
@@ -705,50 +800,14 @@ def _provider_instance_summary(instance: ChatlasProviderInstance, *, raw_root: P
 
 
 def _empty_report() -> dict[str, Any]:
+    return deepcopy(_REPORT_TEMPLATE)
+
+
+def _empty_raw_copy_report() -> dict[str, int]:
     return {
-        "provider_count": 0,
-        "instance_count": 0,
-        "native_scan": {
-            "session_count": 0,
-            "source_artifact_count": 0,
-            "changed_session_count": 0,
-            "changed_source_artifact_count": 0,
-            "unchanged_session_count": 0,
-            "cached_source_artifact_count": 0,
-        },
-        "cache": {
-            "hit_count": 0,
-            "miss_count": 0,
-            "removed_entry_count": 0,
-        },
-        "raw_copy": {
-            "scanned_source_count": 0,
-            "copied_session_count": 0,
-            "copied_file_count": 0,
-            "added_file_count": 0,
-            "updated_file_count": 0,
-            "unchanged_file_count": 0,
-            "skipped_source_count": 0,
-        },
-        "session_index": {
-            "delta_session_count": 0,
-            "derived_row_count": 0,
-            "upserted_row_count": 0,
-            "partition_count": 0,
-        },
-        "timing": {
-            "elapsed_seconds": 0.0,
-            "native_scan_seconds": 0.0,
-            "cache_compare_seconds": 0.0,
-            "cache_write_seconds": 0.0,
-            "raw_copy_seconds": 0.0,
-            "index_seconds": 0.0,
-        },
+        key: int(value)
+        for key, value in _REPORT_TEMPLATE["raw_copy"].items()
     }
-
-
-def _empty_instance_report() -> dict[str, Any]:
-    return _empty_report()
 
 
 def _merge_report(target: dict[str, Any], source: dict[str, Any]) -> None:
