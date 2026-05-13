@@ -10,7 +10,6 @@ from agentos.agent.primitives import Agent
 from agentos.agent.providers import load_configured_agents, resolve_agent
 from agentos.agent.accounts import supported_account_provider_families
 from agentos.agent.account_commands import _cmd_chat_accounts_stats
-from agentos.agent.link_runtime import AgentLinkRequest
 from agentos.agent.run_runtime import AgentRunRequest
 from agentos.providers import canonical_provider_families
 
@@ -18,6 +17,7 @@ _AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provid
 _AGENT_ACCOUNTS_PROVIDER_CHOICES = tuple(
     provider.family for provider in supported_account_provider_families()
 )
+_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES = ("codex",)
 
 
 def _list_configured_agents(
@@ -171,25 +171,57 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _cmd_agent_link(args: argparse.Namespace) -> int:
-    request = AgentLinkRequest(
-        provider=args.provider,
-        home=Path(args.home).expanduser().resolve(),
-        account=args.account,
-    )
+def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
+    if args.provider == "codex":
+        from agentos.codex.account_registry import register_codex_account_from_home
 
-    if request.provider == "codex":
-        from agentos.codex.linking import link_codex_account, link_codex_account_dry
+        print(
+            json.dumps(
+                register_codex_account_from_home(
+                    home=Path(args.home),
+                    account=args.account,
+                    argv=getattr(args, "_agentos_argv", []),
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    raise CliError(f"agent accounts register is not supported for provider {args.provider}")
 
-        if args.dry_run:
-            dry_result = link_codex_account_dry(request)
-            for line in dry_result.lines:
-                print(line)
-            return 0
-        result = link_codex_account(request)
-        return result.exit_code
 
-    raise CliError(f"agent link is not supported for provider {request.provider}")
+def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
+    if args.provider == "codex":
+        from agentos.codex.account_registry import link_codex_account_to_home
+
+        print(
+            json.dumps(
+                link_codex_account_to_home(
+                    home=Path(args.home),
+                    account=args.account,
+                    argv=getattr(args, "_agentos_argv", []),
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    raise CliError(f"agent accounts link is not supported for provider {args.provider}")
+
+
+def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
+    if args.provider == "codex":
+        from agentos.codex.account_registry import inspect_codex_account_home
+
+        print(
+            json.dumps(
+                inspect_codex_account_home(home=Path(args.home)),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    raise CliError(f"agent accounts status is not supported for provider {args.provider}")
 
 
 def _add_agent_run_target_args(
@@ -330,6 +362,67 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     accounts_stats_parser.set_defaults(handler=_cmd_chat_accounts_stats)
 
+    accounts_register_parser = accounts_subparsers.add_parser(
+        "register",
+        help="Register a provider home auth file in managed account storage.",
+    )
+    accounts_register_parser.add_argument(
+        "--provider",
+        required=True,
+        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family to register.",
+    )
+    accounts_register_parser.add_argument(
+        "--home",
+        required=True,
+        help="Provider home containing auth.json.",
+    )
+    accounts_register_parser.add_argument(
+        "--account",
+        required=True,
+        help="Local AgentOS account alias to register.",
+    )
+    accounts_register_parser.set_defaults(handler=_cmd_agent_accounts_register)
+
+    accounts_link_parser = accounts_subparsers.add_parser(
+        "link",
+        help="Copy a managed provider account auth snapshot to a provider home.",
+    )
+    accounts_link_parser.add_argument(
+        "--provider",
+        required=True,
+        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family to link.",
+    )
+    accounts_link_parser.add_argument(
+        "--home",
+        required=True,
+        help="Provider home to receive auth.json.",
+    )
+    accounts_link_parser.add_argument(
+        "--account",
+        required=True,
+        help="Local AgentOS account alias to link.",
+    )
+    accounts_link_parser.set_defaults(handler=_cmd_agent_accounts_link)
+
+    accounts_status_parser = accounts_subparsers.add_parser(
+        "status",
+        help="Inspect provider home auth state against managed account storage.",
+    )
+    accounts_status_parser.add_argument(
+        "--provider",
+        required=True,
+        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family to inspect.",
+    )
+    accounts_status_parser.add_argument(
+        "--home",
+        required=True,
+        help="Provider home to inspect.",
+    )
+    accounts_status_parser.set_defaults(handler=_cmd_agent_accounts_status)
+
     run_parser = agent_subparsers.add_parser(
         "run",
         help="Run one configured agent with a prompt or raw provider arguments.",
@@ -358,30 +451,3 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_agent_run_target_args(ping_parser, provider_help="Provider family to ping.")
     ping_parser.set_defaults(handler=_cmd_agent_ping)
-
-    link_parser = agent_subparsers.add_parser(
-        "link",
-        help="Link a managed provider account to an explicit provider home.",
-    )
-    link_parser.add_argument(
-        "--provider",
-        required=True,
-        choices=_AGENT_PROVIDER_CHOICES,
-        help="Provider family to link.",
-    )
-    link_parser.add_argument(
-        "--home",
-        required=True,
-        help="Provider home to link.",
-    )
-    link_parser.add_argument(
-        "--account",
-        required=True,
-        help="Managed provider account id to link.",
-    )
-    link_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the link action without mutating the provider home.",
-    )
-    link_parser.set_defaults(handler=_cmd_agent_link)

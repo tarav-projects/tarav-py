@@ -108,6 +108,7 @@ def _cmd_utils_cmd_logger_query(args: argparse.Namespace) -> int:
                 "exists": args.exists,
                 "valid_project": args.valid_project,
                 "project_id": args.project_id,
+                "event_type": args.event_type,
                 "command": args.command,
                 "limit": limit,
             },
@@ -155,7 +156,7 @@ def _format_cmd_logger_event_row(
     command = _event_command(event)
     fields = [
         str(event.get("timetag", "")),
-        str(event.get("project_id", "")),
+        str(_event_project_id(event) or ""),
     ]
     if include_status:
         fields.extend(
@@ -164,7 +165,7 @@ def _format_cmd_logger_event_row(
                 _format_bool_field(event.get("valid_project")),
             ]
         )
-    fields.extend([command, str(event.get("project_root", ""))])
+    fields.extend([command, str(_event_project_root_text(event) or "")])
     return "\t".join(fields)
 
 
@@ -177,23 +178,60 @@ def _format_bool_field(value: object) -> str:
 
 
 def _event_command(event: dict[str, object]) -> str:
+    command = event.get("command")
+    if isinstance(command, str):
+        return command
     command_payload = event.get("agentos_command", {})
+    if not isinstance(command_payload, dict):
+        command_payload = _event_payload(event).get("agentos_command", {})
     if not isinstance(command_payload, dict):
         return ""
     return str(command_payload.get("command", ""))
 
 
+def _event_payload(event: dict[str, object]) -> dict[str, object]:
+    payload = event.get("payload")
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _event_project_id(event: dict[str, object]) -> str | None:
+    project_id = event.get("project_id")
+    if isinstance(project_id, str):
+        return project_id
+    payload_project_id = _event_payload(event).get("project_id")
+    if isinstance(payload_project_id, str):
+        return payload_project_id
+    return None
+
+
 def _annotate_cmd_logger_event(event: dict[str, object]) -> dict[str, object]:
     annotated = dict(event)
-    root = _event_project_root(event)
-    project_exists = root.exists()
+    root_text = _event_project_root_text(event)
+    project_exists = False if root_text is None else _event_project_root(event).exists()
     annotated["project_exists"] = project_exists
-    annotated["valid_project"] = _valid_agentos_project(root) if project_exists else False
+    annotated["valid_project"] = (
+        _valid_agentos_project(_event_project_root(event))
+        if project_exists
+        else False
+    )
     return annotated
 
 
 def _event_project_root(event: dict[str, object]) -> Path:
-    return Path(str(event.get("project_root", ""))).expanduser().resolve()
+    root_text = _event_project_root_text(event)
+    return Path(root_text or "").expanduser().resolve()
+
+
+def _event_project_root_text(event: dict[str, object]) -> str | None:
+    project_root = event.get("project_root")
+    if isinstance(project_root, str) and project_root:
+        return project_root
+    payload_project_root = _event_payload(event).get("project_root")
+    if isinstance(payload_project_root, str) and payload_project_root:
+        return payload_project_root
+    return None
 
 
 def _valid_agentos_project(root: Path) -> bool:
@@ -208,7 +246,9 @@ def _cmd_logger_event_matches_query(
     event: dict[str, object],
     args: argparse.Namespace,
 ) -> bool:
-    if args.project_id is not None and event.get("project_id") != args.project_id:
+    if args.project_id is not None and _event_project_id(event) != args.project_id:
+        return False
+    if args.event_type is not None and event.get("event_type") != args.event_type:
         return False
     if args.command is not None and args.command not in _event_command(event):
         return False
@@ -296,7 +336,7 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
 
     cmd_logger_parser = utils_subparsers.add_parser(
         "cmd-logger",
-        help="Inspect the rare-use project command activity log.",
+        help="Inspect the rare-use AgentOS activity log.",
     )
     cmd_logger_subparsers = cmd_logger_parser.add_subparsers(
         dest="cmd_logger_command",
@@ -305,7 +345,7 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
 
     cmd_logger_path_parser = cmd_logger_subparsers.add_parser(
         "path",
-        help="Print the project command activity log path for a month.",
+        help="Print the AgentOS activity log path for a month.",
     )
     cmd_logger_path_parser.add_argument(
         "--month",
@@ -315,7 +355,7 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
 
     cmd_logger_tail_parser = cmd_logger_subparsers.add_parser(
         "tail",
-        help="Print recent project command activity events.",
+        help="Print recent AgentOS activity events.",
     )
     cmd_logger_tail_parser.add_argument(
         "--month",
@@ -336,7 +376,7 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
 
     cmd_logger_query_parser = cmd_logger_subparsers.add_parser(
         "query",
-        help="Filter project command activity events.",
+        help="Filter AgentOS activity events.",
     )
     cmd_logger_query_parser.add_argument(
         "--month",
@@ -362,6 +402,10 @@ def register_utils_commands(subparsers: argparse._SubParsersAction) -> None:
     cmd_logger_query_parser.add_argument(
         "--project-id",
         help="Keep events with this exact logged project id.",
+    )
+    cmd_logger_query_parser.add_argument(
+        "--event-type",
+        help="Keep events with this exact activity event type.",
     )
     cmd_logger_query_parser.add_argument(
         "--command",

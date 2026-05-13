@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 import subprocess
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from agentos._core.errors import CliError
@@ -16,6 +17,19 @@ DEFAULT_ACCOUNT_TIMEOUT_SEC = 15
 @dataclass(frozen=True)
 class AccountStatsRequest:
     refresh_usage: bool = False
+    config: Mapping[str, object] = field(default_factory=dict)
+
+
+def account_stats_config_for_provider(
+    request: AccountStatsRequest,
+    provider: str,
+) -> Mapping[str, object]:
+    provider_config = request.config.get(provider, {})
+    if provider_config is None:
+        return {}
+    if not isinstance(provider_config, Mapping):
+        raise CliError(f"account stats config for provider {provider} must be a JSON object")
+    return provider_config
 
 
 class AccountCommandError(Exception):

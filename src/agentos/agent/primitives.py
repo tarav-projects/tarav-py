@@ -3,13 +3,16 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from urllib.parse import quote
 
 from agentos._core.errors import CliError
 from agentos.agent.run_runtime import AgentRunDryResult, AgentRunRequest, AgentRunResult
 from agentos.providers import ProviderHomeAnchor
 from agentos.providers import require_canonical_provider_spec
+
+if TYPE_CHECKING:
+    from agentos.agent.account_runtime import AccountStatsRequest
 
 
 @dataclass(frozen=True)
@@ -199,6 +202,12 @@ class AgentBase:
             f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
         )
 
+    def account_stats(self, request: AccountStatsRequest) -> dict[str, object]:
+        del request
+        raise CliError(
+            f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support account stats"
+        )
+
 
 def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
     return {
@@ -266,6 +275,8 @@ class Agent(Protocol):
     def run(self, request: AgentRunRequest) -> AgentRunResult: ...
 
     def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult: ...
+
+    def account_stats(self, request: AccountStatsRequest) -> dict[str, object]: ...
 
 
 def provider_session_paths(

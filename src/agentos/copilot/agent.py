@@ -16,7 +16,7 @@ from agentos.agent.run_runtime import (
     execute_agent_run_command,
     format_agent_run_command,
 )
-from agentos.agent.account_runtime import AccountStatsRequest
+from agentos.agent.account_runtime import AccountStatsRequest, account_stats_config_for_provider
 from agentos._core.errors import CliError
 from agentos.copilot.session import (
     CopilotSession,
@@ -53,10 +53,16 @@ class CopilotAgent(AgentBase):
     def load_session(self, session_ref: CopilotSessionRef) -> CopilotSession:
         return load_copilot_session(session_ref)
 
-    def collect_account_stats(self, request: AccountStatsRequest) -> dict[str, object]:
-        from agentos.copilot.accounts import collect_copilot_account_stats
+    def account_stats(self, request: AccountStatsRequest) -> dict[str, object]:
+        from agentos.copilot.accounts import copilot_account_stats
 
-        return collect_copilot_account_stats(self, request)
+        return copilot_account_stats(
+            self,
+            AccountStatsRequest(
+                refresh_usage=request.refresh_usage,
+                config=account_stats_config_for_provider(request, self.provider),
+            ),
+        )
 
     def run(self, request: AgentRunRequest) -> AgentRunResult:
         if request.account is not None:

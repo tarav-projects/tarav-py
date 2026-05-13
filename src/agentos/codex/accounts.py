@@ -24,7 +24,7 @@ from agentos.agent.accounts import (
 )
 
 
-def collect_codex_account_stats(agent: Agent, request: AccountStatsRequest) -> dict[str, Any]:
+def codex_account_stats(agent: Agent, request: AccountStatsRequest) -> dict[str, Any]:
     del request
 
     auth_payload = collect_parsed_command_payload(

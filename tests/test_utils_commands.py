@@ -17,7 +17,7 @@ def _assert_valid_uuid(text: str) -> None:
 def _write_cmd_logger_events(
     agentos_home: Path, events: list[dict[str, object]]
 ) -> Path:
-    log_path = agentos_home / "projects" / "activity" / "202605.jsonl"
+    log_path = agentos_home / "activity" / "202605.jsonl"
     log_path.parent.mkdir(parents=True)
     log_path.write_text(
         "\n".join(json.dumps(event) for event in events) + "\n",
@@ -79,7 +79,7 @@ def test_utils_cmd_logger_path_uses_month(
     assert main(["stdlib", "utils", "cmd-logger", "path", "--month", "202605"]) == 0
 
     assert capsys.readouterr().out.strip() == str(
-        agentos_home / "projects" / "activity" / "202605.jsonl"
+        agentos_home / "activity" / "202605.jsonl"
     )
 
 
@@ -297,13 +297,68 @@ def test_utils_cmd_logger_query_filters_command_and_outputs_json(
     assert payload["events"][0]["valid_project"] is True
 
 
+def test_utils_cmd_logger_query_filters_global_activity_event_type(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    _write_cmd_logger_events(
+        agentos_home,
+        [
+            {
+                "schema_version": 2,
+                "timetag": "2026-05-01T00:00:00Z",
+                "event_type": "agent.accounts.register",
+                "command": "agent accounts register",
+                "argv": [],
+                "status": "ok",
+                "payload": {"provider": "codex", "account": "br"},
+            },
+            {
+                "schema_version": 2,
+                "timetag": "2026-05-02T00:00:00Z",
+                "event_type": "agent.accounts.link",
+                "command": "agent accounts link",
+                "argv": [],
+                "status": "ok",
+                "payload": {"provider": "codex", "account": "br"},
+            },
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "stdlib",
+                "utils",
+                "cmd-logger",
+                "query",
+                "--month",
+                "202605",
+                "--event-type",
+                "agent.accounts.link",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["filters"]["event_type"] == "agent.accounts.link"
+    assert payload["count"] == 1
+    assert payload["events"][0]["event_type"] == "agent.accounts.link"
+    assert payload["events"][0]["project_exists"] is False
+    assert payload["events"][0]["valid_project"] is False
+
+
 def test_utils_cmd_logger_tail_json_outputs_raw_jsonl(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    log_path = agentos_home / "projects" / "activity" / "202605.jsonl"
+    log_path = agentos_home / "activity" / "202605.jsonl"
     log_path.parent.mkdir(parents=True)
     event = {
         "schema_version": 1,

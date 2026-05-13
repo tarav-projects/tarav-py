@@ -355,18 +355,24 @@ def test_prefix_next_records_project_command(
     assert main(command_argv) == 0
     capsys.readouterr()
 
-    log_path = tmp_path / "agentos-home" / ".agentos" / "projects" / "activity" / "202605.jsonl"
+    log_path = tmp_path / "agentos-home" / ".agentos" / "activity" / "202605.jsonl"
     events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
     project_marker = json.loads((tmp_path / ".agentos" / "project.json").read_text(encoding="utf-8"))
     assert events == [
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "timetag": "2026-05-04T10:00:00Z",
-            "project_id": project_marker["project_id"],
-            "project_root": str(tmp_path),
-            "agentos_command": {
-                "command": "stdlib prefix next",
-                "argv": command_argv,
+            "event_type": "project.command",
+            "command": "stdlib prefix next",
+            "argv": command_argv,
+            "status": "ok",
+            "payload": {
+                "project_id": project_marker["project_id"],
+                "project_root": str(tmp_path),
+                "agentos_command": {
+                    "command": "stdlib prefix next",
+                    "argv": command_argv,
+                },
             },
         }
     ]

@@ -578,7 +578,7 @@ def _claude_rate_limit_duration_mins(rate_limit_type: str | None) -> int | None:
     return None
 
 
-def collect_claude_account_stats(agent: Agent, request: AccountStatsRequest) -> dict[str, Any]:
+def claude_account_stats(agent: Agent, request: AccountStatsRequest) -> dict[str, Any]:
     should_refresh_usage = request.refresh_usage or bool(agent.account_live_usage_refresh)
 
     if should_refresh_usage:

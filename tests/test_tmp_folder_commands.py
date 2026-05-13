@@ -27,13 +27,15 @@ def test_tmp_folder_new_returns_path_without_creating_directory(
     assert not generated_path.exists()
     assert expected_parent.is_dir()
 
-    log_paths = sorted((agentos_home / "projects" / "activity").glob("*.jsonl"))
+    log_paths = sorted((agentos_home / "activity").glob("*.jsonl"))
     assert len(log_paths) == 1
     event = json.loads(log_paths[0].read_text(encoding="utf-8").splitlines()[0])
     marker = json.loads((tmp_path / ".agentos" / "project.json").read_text(encoding="utf-8"))
-    assert event["project_id"] == marker["project_id"]
-    assert event["project_root"] == str(tmp_path.resolve())
-    assert event["agentos_command"] == {
+    assert event["event_type"] == "project.command"
+    assert event["command"] == "stdlib utils tmp-folder new"
+    assert event["payload"]["project_id"] == marker["project_id"]
+    assert event["payload"]["project_root"] == str(tmp_path.resolve())
+    assert event["payload"]["agentos_command"] == {
         "command": "stdlib utils tmp-folder new",
         "argv": ["stdlib", "utils", "tmp-folder", "new", "--project"],
     }

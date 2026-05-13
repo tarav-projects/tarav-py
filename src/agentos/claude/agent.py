@@ -16,7 +16,7 @@ from agentos.agent.run_runtime import (
     execute_agent_run_command,
     format_agent_run_command,
 )
-from agentos.agent.account_runtime import AccountStatsRequest
+from agentos.agent.account_runtime import AccountStatsRequest, account_stats_config_for_provider
 from agentos.claude.session import (
     ClaudeSession,
     ClaudeSessionRef,
@@ -53,10 +53,16 @@ class ClaudeAgent(AgentBase):
     def load_session(self, session_ref: ClaudeSessionRef) -> ClaudeSession:
         return load_claude_session(session_ref)
 
-    def collect_account_stats(self, request: AccountStatsRequest) -> dict[str, object]:
-        from agentos.claude.accounts import collect_claude_account_stats
+    def account_stats(self, request: AccountStatsRequest) -> dict[str, object]:
+        from agentos.claude.accounts import claude_account_stats
 
-        return collect_claude_account_stats(self, request)
+        return claude_account_stats(
+            self,
+            AccountStatsRequest(
+                refresh_usage=request.refresh_usage,
+                config=account_stats_config_for_provider(request, self.provider),
+            ),
+        )
 
     def run(self, request: AgentRunRequest) -> AgentRunResult:
         if request.account is not None:

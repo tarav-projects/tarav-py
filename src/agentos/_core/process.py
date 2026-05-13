@@ -53,7 +53,7 @@ def run_process(
         )
 
     env = _process_environment(env_overrides)
-    cwd_value = None if cwd is None else str(cwd)
+    cwd_value = _process_cwd(cwd)
 
     if mode == "terminal":
         return _run_terminal(argv, cwd=cwd_value, env=env, timeout_sec=timeout_sec)
@@ -71,6 +71,68 @@ def _process_environment(env_overrides: Mapping[str, str] | None) -> dict[str, s
     return env
 
 
+def _process_cwd(cwd: Path | str | None) -> str | None:
+    return None if cwd is None else str(cwd)
+
+
+def _subprocess_run_kwargs(
+    *,
+    cwd: str | None,
+    env: dict[str, str],
+    timeout_sec: int | None,
+    capture: bool,
+) -> dict[str, object]:
+    run_kwargs: dict[str, object] = {
+        "env": env,
+        "check": False,
+    }
+    if capture:
+        run_kwargs.update(
+            {
+                "text": True,
+                "capture_output": True,
+            }
+        )
+    if timeout_sec is not None:
+        run_kwargs["timeout"] = timeout_sec
+    if cwd is not None:
+        run_kwargs["cwd"] = cwd
+    return run_kwargs
+
+
+def _process_error_from_exception(exc: BaseException, *, timeout_sec: int | None) -> ProcessError:
+    if isinstance(exc, FileNotFoundError):
+        return ProcessError(
+            error_type="command_not_found",
+            message=f"process executable not found: {exc.filename}",
+        )
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return ProcessError(
+            error_type="timeout",
+            message=f"process timed out after {timeout_sec} seconds",
+        )
+    if isinstance(exc, OSError):
+        return ProcessError(error_type="command_failed", message=str(exc))
+    raise TypeError(f"unsupported process exception: {type(exc).__name__}")
+
+
+def _run_subprocess(
+    argv: Sequence[str],
+    *,
+    cwd: str | None,
+    env: dict[str, str],
+    timeout_sec: int | None,
+    capture: bool,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            list(argv),
+            **_subprocess_run_kwargs(cwd=cwd, env=env, timeout_sec=timeout_sec, capture=capture),
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        raise _process_error_from_exception(exc, timeout_sec=timeout_sec) from exc
+
+
 def _run_terminal(
     argv: Sequence[str],
     *,
@@ -78,28 +140,13 @@ def _run_terminal(
     env: dict[str, str],
     timeout_sec: int | None,
 ) -> ProcessResult:
-    try:
-        run_kwargs: dict[str, object] = {
-            "env": env,
-            "check": False,
-        }
-        if timeout_sec is not None:
-            run_kwargs["timeout"] = timeout_sec
-        if cwd is not None:
-            run_kwargs["cwd"] = cwd
-        result = subprocess.run(list(argv), **run_kwargs)
-    except FileNotFoundError as exc:
-        raise ProcessError(
-            error_type="command_not_found",
-            message=f"process executable not found: {exc.filename}",
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise ProcessError(
-            error_type="timeout",
-            message=f"process timed out after {timeout_sec} seconds",
-        ) from exc
-    except OSError as exc:
-        raise ProcessError(error_type="command_failed", message=str(exc)) from exc
+    result = _run_subprocess(
+        argv,
+        cwd=cwd,
+        env=env,
+        timeout_sec=timeout_sec,
+        capture=False,
+    )
     return ProcessResult(exit_code=int(result.returncode))
 
 
@@ -110,29 +157,13 @@ def _run_capture(
     env: dict[str, str],
     timeout_sec: int | None,
 ) -> ProcessResult:
-    try:
-        run_kwargs: dict[str, object] = {
-            "env": env,
-            "text": True,
-            "capture_output": True,
-            "timeout": timeout_sec,
-            "check": False,
-        }
-        if cwd is not None:
-            run_kwargs["cwd"] = cwd
-        result = subprocess.run(list(argv), **run_kwargs)
-    except FileNotFoundError as exc:
-        raise ProcessError(
-            error_type="command_not_found",
-            message=f"process executable not found: {exc.filename}",
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise ProcessError(
-            error_type="timeout",
-            message=f"process timed out after {timeout_sec} seconds",
-        ) from exc
-    except OSError as exc:
-        raise ProcessError(error_type="command_failed", message=str(exc)) from exc
+    result = _run_subprocess(
+        argv,
+        cwd=cwd,
+        env=env,
+        timeout_sec=timeout_sec,
+        capture=True,
+    )
     return ProcessResult(
         exit_code=int(result.returncode),
         stdout=result.stdout,
@@ -158,13 +189,8 @@ def _run_stream(
             stderr=subprocess.PIPE,
             text=True,
         )
-    except FileNotFoundError as exc:
-        raise ProcessError(
-            error_type="command_not_found",
-            message=f"process executable not found: {exc.filename}",
-        ) from exc
-    except OSError as exc:
-        raise ProcessError(error_type="command_failed", message=str(exc)) from exc
+    except (FileNotFoundError, OSError) as exc:
+        raise _process_error_from_exception(exc, timeout_sec=timeout_sec) from exc
 
     output_queue: Queue[ProcessOutputEvent] = Queue()
     stdout_parts: list[str] = []

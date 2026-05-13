@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from pathlib import Path
 
@@ -9,13 +8,6 @@ import pytest
 
 from agentos.cli import main
 from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
-
-
-def _readlink(path: Path) -> Path:
-    target = Path(os.readlink(path))
-    if target.is_absolute():
-        return target
-    return (path.parent / target).resolve()
 
 
 def test_agent_run_uses_configured_agent(
@@ -428,153 +420,12 @@ def test_agent_run_codex_account_dry_run_uses_profile_home_override(
     ]
 
 
-def test_agent_link_codex_switches_auth_symlink(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    codex_home = tmp_path / "codex-home"
-    auth_path = agentos_home / "accounts" / "codex" / "tk" / "auth.json"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write(auth_path, "{}\n")
-
-    assert (
-        main(
-            [
-                "agent",
-                "link",
-                "--provider",
-                "codex",
-                "--home",
-                str(codex_home),
-                "--account",
-                "tk",
-            ]
-        )
-        == 0
-    )
-
-    assert (codex_home / "auth.json").is_symlink()
-    assert _readlink(codex_home / "auth.json") == auth_path
-
-
-def test_agent_link_codex_dry_run_prints_link_without_mutating(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    accounts_root = tmp_path / "codex-accounts"
-    codex_home = tmp_path / "codex-home"
-    auth_path = accounts_root / "tk" / "auth.json"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write(auth_path, "{}\n")
-    _write(
-        agentos_home / "config.json",
-        json.dumps(
-            {
-                "class": "agentos.global.config",
-                "schema_version": 1,
-                "codex": {"mux": {"accounts_root": str(accounts_root)}},
-            }
-        ),
-    )
-
-    assert (
-        main(
-            [
-                "agent",
-                "link",
-                "--provider",
-                "codex",
-                "--home",
-                str(codex_home),
-                "--account",
-                "tk",
-                "--dry-run",
-            ]
-        )
-        == 0
-    )
-
-    assert capsys.readouterr().out.strip() == f"link {codex_home.resolve() / 'auth.json'} -> {auth_path.resolve()}"
-    assert not (codex_home / "auth.json").exists()
-
-
-def test_agent_link_rejects_unsupported_provider(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-
-    assert (
-        main(
-            [
-                "agent",
-                "link",
-                "--provider",
-                "pi",
-                "--home",
-                str(tmp_path / "pi-home"),
-                "--account",
-                "tk",
-            ]
-        )
-        == 1
-    )
-
-    assert "agent link is not supported for provider pi" in capsys.readouterr().err
-
-
-def test_agent_link_help_has_no_profile(capsys: pytest.CaptureFixture[str]) -> None:
+def test_legacy_agent_link_command_is_removed(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(["agent", "link", "--help"])
 
-    assert exc_info.value.code == 0
-    output = capsys.readouterr().out
-    assert "--provider" in output
-    assert "--home" in output
-    assert "--account" in output
-    assert "--dry-run" in output
-    assert "--profile" not in output
-
-
-@pytest.mark.parametrize(
-    "args, expected_error",
-    [
-        pytest.param(
-            ["agent", "link", "--provider", "codex", "--account", "tk"],
-            "the following arguments are required: --home",
-            id="missing-home",
-        ),
-        pytest.param(
-            ["agent", "link", "--provider", "codex", "--home", "/tmp/codex-home"],
-            "the following arguments are required: --account",
-            id="missing-account",
-        ),
-    ],
-)
-def test_agent_link_requires_home_and_account(
-    args: list[str],
-    expected_error: str,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(SystemExit) as exc_info:
-        main(args)
-
     assert exc_info.value.code == 2
-    assert expected_error in capsys.readouterr().err
+    assert "invalid choice: 'link'" in capsys.readouterr().err
 
 
 def test_agent_run_invokes_provider_native_run(

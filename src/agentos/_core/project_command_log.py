@@ -6,14 +6,46 @@ from pathlib import Path
 from agentos._core.clock import utc_now_iso
 from agentos._core.project import AgentosProjectHandler, agentos_home_dir
 
-PROJECT_COMMAND_LOG_SCHEMA_VERSION = 1
-PROJECT_COMMAND_LOG_DIR = ("projects", "activity")
+ACTIVITY_LOG_SCHEMA_VERSION = 2
+ACTIVITY_LOG_DIR = ("activity",)
+
+
+def activity_log_path(*, timetag: str | None = None) -> Path:
+    effective_timetag = utc_now_iso() if timetag is None else timetag
+    year_month = effective_timetag[:4] + effective_timetag[5:7]
+    return agentos_home_dir().joinpath(*ACTIVITY_LOG_DIR, f"{year_month}.jsonl")
 
 
 def project_command_log_path(*, timetag: str | None = None) -> Path:
-    effective_timetag = utc_now_iso() if timetag is None else timetag
-    year_month = effective_timetag[:4] + effective_timetag[5:7]
-    return agentos_home_dir().joinpath(*PROJECT_COMMAND_LOG_DIR, f"{year_month}.jsonl")
+    return activity_log_path(timetag=timetag)
+
+
+def record_activity_event(
+    *,
+    event_type: str,
+    command: str,
+    argv: list[str] | tuple[str, ...],
+    status: str,
+    payload: dict[str, object],
+) -> None:
+    timetag = utc_now_iso()
+    event = {
+        "schema_version": ACTIVITY_LOG_SCHEMA_VERSION,
+        "timetag": timetag,
+        "event_type": event_type,
+        "command": command,
+        "argv": list(argv),
+        "status": status,
+        "payload": payload,
+    }
+
+    path = activity_log_path(timetag=timetag)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as file:
+            file.write(json.dumps(event, sort_keys=True) + "\n")
+    except OSError:
+        return
 
 
 def record_project_command(
@@ -21,22 +53,18 @@ def record_project_command(
     project: AgentosProjectHandler,
     agentos_command: dict[str, object],
 ) -> None:
-    timetag = utc_now_iso()
-    event = {
-        "schema_version": PROJECT_COMMAND_LOG_SCHEMA_VERSION,
-        "timetag": timetag,
+    payload = {
         "project_id": project.project_id,
         "project_root": str(project.root),
         "agentos_command": agentos_command,
     }
-
-    path = project_command_log_path(timetag=timetag)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(event, sort_keys=True) + "\n")
-    except OSError:
-        return
+    record_activity_event(
+        event_type="project.command",
+        command=str(agentos_command.get("command", "")),
+        argv=list(agentos_command.get("argv", [])),
+        status="ok",
+        payload=payload,
+    )
 
 
 def record_project_command_from_args(
@@ -67,3 +95,13 @@ def command_payload_from_args(args: object) -> dict[str, object]:
         "argv": list(getattr(args, "_agentos_argv", [])),
     }
     return payload
+
+
+__all__ = [
+    "activity_log_path",
+    "command_payload_from_args",
+    "project_command_log_path",
+    "record_activity_event",
+    "record_project_command",
+    "record_project_command_from_args",
+]

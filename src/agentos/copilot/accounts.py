@@ -32,7 +32,7 @@ COPILOT_USER_AGENT = "GitHubCopilotChat/0.26.7"
 COPILOT_GITHUB_API_VERSION = "2025-04-01"
 
 
-def collect_copilot_account_stats(agent: Agent, request: AccountStatsRequest) -> dict[str, Any]:
+def copilot_account_stats(agent: Agent, request: AccountStatsRequest) -> dict[str, Any]:
     del request
 
     auth_payload = collect_parsed_command_payload(

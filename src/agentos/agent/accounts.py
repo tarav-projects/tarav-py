@@ -11,7 +11,7 @@ import textwrap
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Mapping
 
 from agentos._core.errors import CliError
 from agentos._core.project import agentos_home_dir
@@ -238,6 +238,7 @@ def chat_account_stats(
     instance_ids: tuple[str, ...] | None = None,
     providers: tuple[str, ...] | None = None,
     refresh_usage: bool = False,
+    account_config: Mapping[str, object] | None = None,
     full_output: bool = False,
     start_path: Path | str = ".",
 ) -> dict[str, object]:
@@ -246,6 +247,7 @@ def chat_account_stats(
             instance_ids=instance_ids,
             providers=providers,
             refresh_usage=refresh_usage,
+            account_config=account_config,
             full_output=full_output,
             start_path=start_path,
         )
@@ -260,6 +262,7 @@ def iter_chat_account_stats_refresh_payloads(
     instance_ids: tuple[str, ...] | None = None,
     providers: tuple[str, ...] | None = None,
     refresh_usage: bool = False,
+    account_config: Mapping[str, object] | None = None,
     full_output: bool = False,
     start_path: Path | str = ".",
 ) -> tuple[dict[str, object], ...]:
@@ -268,6 +271,7 @@ def iter_chat_account_stats_refresh_payloads(
         providers=providers,
         start_path=start_path,
     )
+    request_config = {} if account_config is None else account_config
     ordered_results: list[AccountCollectionResult | None] = [None] * len(configured_contexts)
 
     if configured_contexts:
@@ -286,6 +290,7 @@ def iter_chat_account_stats_refresh_payloads(
     for collected_result in _iter_account_collection_results(
         configured_contexts=configured_contexts,
         refresh_usage=refresh_usage,
+        account_config=request_config,
     ):
         ordered_results[collected_result.index] = collected_result
         completed_count += 1
@@ -473,11 +478,13 @@ def _collect_account_results(
     *,
     configured_contexts: tuple[AccountProviderContext, ...],
     refresh_usage: bool,
+    account_config: Mapping[str, object] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     ordered_results: list[tuple[str, dict[str, Any]] | None] = [None] * len(configured_contexts)
     for collected_result in _iter_account_collection_results(
         configured_contexts=configured_contexts,
         refresh_usage=refresh_usage,
+        account_config={} if account_config is None else account_config,
     ):
         ordered_results[collected_result.index] = (
             collected_result.provider_name,
@@ -490,6 +497,7 @@ def _iter_account_collection_results(
     *,
     configured_contexts: tuple[AccountProviderContext, ...],
     refresh_usage: bool,
+    account_config: Mapping[str, object],
 ) -> tuple[AccountCollectionResult, ...]:
     if not configured_contexts:
         return
@@ -500,6 +508,7 @@ def _iter_account_collection_results(
             index=0,
             context=context,
             refresh_usage=refresh_usage,
+            account_config=account_config,
         )
         return
 
@@ -513,6 +522,7 @@ def _iter_account_collection_results(
                     index=index,
                     context=context,
                     refresh_usage=refresh_usage,
+                    account_config=account_config,
                 )
             )
 
@@ -525,9 +535,10 @@ def _collect_account_result(
     index: int,
     context: AccountProviderContext,
     refresh_usage: bool,
+    account_config: Mapping[str, object],
 ) -> AccountCollectionResult:
     try:
-        provider_payload = _collect_account_payload(context, refresh_usage)
+        provider_payload = _collect_account_payload(context, refresh_usage, account_config)
         if not isinstance(provider_payload, dict):
             raise CliError("account provider collector must return a JSON object payload")
         account_payload = _ok_account_result(context, provider_payload)
@@ -543,11 +554,14 @@ def _collect_account_result(
 def _collect_account_payload(
     context: AccountProviderContext,
     refresh_usage: bool,
+    account_config: Mapping[str, object],
 ) -> dict[str, Any]:
-    collector = getattr(context.agent, "collect_account_stats", None)
-    if collector is None:
-        raise CliError(f"unsupported account provider family {context.provider}")
-    return collector(AccountStatsRequest(refresh_usage=refresh_usage))
+    return context.agent.account_stats(
+        AccountStatsRequest(
+            refresh_usage=refresh_usage,
+            config=account_config,
+        )
+    )
 
 
 def _account_collection_error_payload(

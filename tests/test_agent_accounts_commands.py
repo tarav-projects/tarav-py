@@ -876,7 +876,12 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
     in_flight = 0
     max_in_flight = 0
 
-    def collect(instance: chat_accounts.AccountProviderContext, refresh_usage: bool) -> dict[str, object]:
+    def collect(
+        instance: chat_accounts.AccountProviderContext,
+        refresh_usage: bool,
+        account_config,
+    ) -> dict[str, object]:
+        assert account_config == {}
         nonlocal in_flight, max_in_flight
         assert refresh_usage is False
         with lock:
@@ -918,6 +923,54 @@ def test_chat_account_stats_collects_instances_in_parallel_and_preserves_order(m
     assert [account["id"] for account in payload["providers"][1]["accounts"]] == ["beta-1"]
 
 
+def test_chat_account_stats_calls_provider_agent_capability_with_request_config(monkeypatch) -> None:
+    observed_requests: list[AccountStatsRequest] = []
+    account_config = {
+        "alpha": {"usage_strategy": "native"},
+        "beta": {"usage_strategy": "ignored"},
+    }
+
+    def account_stats(request: AccountStatsRequest) -> dict[str, object]:
+        observed_requests.append(request)
+        return {
+            "id": "alpha-1",
+            "label": "Alpha 1",
+            "provider": "alpha",
+            "check_status": "ok",
+        }
+
+    agent = SimpleNamespace(
+        provider="alpha",
+        instance_id="alpha-1",
+        label="Alpha 1",
+        cli_command=("alpha",),
+        env=(),
+        timeout_sec=15,
+        account_live_usage_refresh=True,
+        account_usage_progression_limit=None,
+        account_stats=account_stats,
+    )
+
+    monkeypatch.setattr(
+        chat_accounts,
+        "supported_account_provider_families",
+        lambda: (chat_accounts.ProviderFamily(family="alpha"),),
+    )
+    monkeypatch.setattr(
+        chat_accounts,
+        "configured_account_provider_configs",
+        lambda start_path=".": (chat_accounts.AccountProviderContext(agent=agent),),
+    )
+    monkeypatch.setattr(chat_accounts, "load_chat_accounts_usage_total_config", lambda start_path=".": None)
+    monkeypatch.setattr(chat_accounts, "_persist_chat_account_stats_payload", lambda payload: {"status": "ok"})
+
+    payload = chat_accounts.chat_account_stats(refresh_usage=True, account_config=account_config)
+
+    assert payload["ok_count"] == 1
+    assert len(observed_requests) == 1
+    assert observed_requests[0] == AccountStatsRequest(refresh_usage=True, config=account_config)
+
+
 def test_iter_chat_account_stats_refresh_payloads_yields_partial_updates_as_accounts_finish(
     monkeypatch,
 ) -> None:
@@ -944,7 +997,12 @@ def test_iter_chat_account_stats_refresh_payloads_yields_partial_updates_as_acco
 
     release_alpha = threading.Event()
 
-    def collect(instance: chat_accounts.AccountProviderContext, refresh_usage: bool) -> dict[str, object]:
+    def collect(
+        instance: chat_accounts.AccountProviderContext,
+        refresh_usage: bool,
+        account_config,
+    ) -> dict[str, object]:
+        assert account_config == {}
         assert refresh_usage is False
         if instance.instance_id == "alpha-1":
             assert release_alpha.wait(timeout=1.0)
@@ -1032,7 +1090,12 @@ def test_iter_chat_account_stats_refresh_payloads_converts_collector_failure_to_
         ),
     )
 
-    def collect(instance: chat_accounts.AccountProviderContext, refresh_usage: bool) -> dict[str, object]:
+    def collect(
+        instance: chat_accounts.AccountProviderContext,
+        refresh_usage: bool,
+        account_config,
+    ) -> dict[str, object]:
+        assert account_config == {}
         assert refresh_usage is False
         if instance.instance_id == "alpha-1":
             raise RuntimeError("connection lost")
@@ -1090,8 +1153,12 @@ def test_iter_chat_account_stats_refresh_payloads_converts_single_collector_fail
         live_usage_refresh=False,
     )
 
-    def collect(instance: chat_accounts.AccountProviderContext, refresh_usage: bool) -> dict[str, object]:
-        del instance, refresh_usage
+    def collect(
+        instance: chat_accounts.AccountProviderContext,
+        refresh_usage: bool,
+        account_config,
+    ) -> dict[str, object]:
+        del instance, refresh_usage, account_config
         raise RuntimeError("connection lost")
 
     monkeypatch.setattr(
@@ -1124,7 +1191,7 @@ def test_iter_chat_account_stats_refresh_payloads_converts_single_collector_fail
     assert "pending_count" not in final_payload
 
 
-def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypatch) -> None:
+def test_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypatch) -> None:
     agent = agent_from_config(
         _account_instance(
             provider="claude-code",
@@ -1203,7 +1270,7 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
         fake_collect_live_usage,
     )
 
-    payload = claude_accounts.collect_claude_account_stats(
+    payload = claude_accounts.claude_account_stats(
         agent,
         AccountStatsRequest(refresh_usage=True),
     )
@@ -1212,6 +1279,42 @@ def test_collect_claude_code_account_stats_overlaps_auth_and_live_usage(monkeypa
     assert payload["logged_in"] is True
     assert payload["usage_status"] == "ok"
     assert payload["usage_source"] == "interactive-statusline"
+
+
+def test_provider_agent_account_stats_narrows_config_to_provider_section(monkeypatch) -> None:
+    agent = agent_from_config(
+        _account_instance(
+            provider="codex",
+            instance_id="codex-main",
+            label="Codex main",
+            cli_command=("codex",),
+        )
+    )
+    observed_request: AccountStatsRequest | None = None
+
+    def fake_codex_account_stats(task_agent, request: AccountStatsRequest) -> dict[str, object]:
+        nonlocal observed_request
+        assert task_agent == agent
+        observed_request = request
+        return {"check_status": "ok"}
+
+    monkeypatch.setattr(codex_accounts, "codex_account_stats", fake_codex_account_stats)
+
+    payload = agent.account_stats(
+        AccountStatsRequest(
+            refresh_usage=True,
+            config={
+                "codex": {"usage_strategy": "app-server"},
+                "claude-code": {"usage_strategy": "statusline"},
+            },
+        )
+    )
+
+    assert payload == {"check_status": "ok"}
+    assert observed_request == AccountStatsRequest(
+        refresh_usage=True,
+        config={"usage_strategy": "app-server"},
+    )
 
 
 def test_loop_chat_accounts_stats_uses_fixed_delay_interval(monkeypatch) -> None:
