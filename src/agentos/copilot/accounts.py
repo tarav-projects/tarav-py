@@ -9,7 +9,6 @@ from agentos._core.errors import CliError
 from agentos.agent.account_runtime import (
     AccountCommandError,
     AccountStatsRequest,
-    account_provider_environment,
     account_timeout_sec,
     collect_parsed_command_payload,
     run_captured_command,
@@ -126,7 +125,7 @@ def _read_copilot_account_usage(agent: Agent) -> dict[str, Any]:
 def _read_github_cli_auth_token(agent: Agent) -> str:
     result = run_captured_command(
         ["gh", "auth", "token"],
-        env=account_provider_environment(agent),
+        env_overrides=dict(agent.env),
         timeout_sec=account_timeout_sec(agent),
     )
     token = successful_command_output(result).strip()

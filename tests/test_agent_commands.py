@@ -62,9 +62,9 @@ def test_agent_run_uses_configured_agent(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.run_runtime as agent_run_runtime
+    import agentos._core.process as process_runner
 
-    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -133,9 +133,9 @@ def test_agent_run_uses_configured_instance_env(
         observed["codex_home"] = env["CODEX_HOME"]
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.run_runtime as agent_run_runtime
+    import agentos._core.process as process_runner
 
-    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
     assert main(["agent", "run", "--provider", "codex", "--profile", "work", "--prompt", "hello"]) == 0
 
@@ -183,9 +183,9 @@ def test_agent_run_home_override_updates_provider_home_env(
         observed["codex_home"] = env["CODEX_HOME"]
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.run_runtime as agent_run_runtime
+    import agentos._core.process as process_runner
 
-    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -252,9 +252,9 @@ def test_agent_run_claude_uses_configured_home_env(
         observed["claude_config_dir"] = env["CLAUDE_CONFIG_DIR"]
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.run_runtime as agent_run_runtime
+    import agentos._core.process as process_runner
 
-    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
     assert main(["agent", "run", "--provider", "claude-code", "--profile", "claude-main", "--prompt", "hello"]) == 0
 
@@ -303,9 +303,9 @@ def test_agent_run_claude_home_override_updates_provider_home_env(
         observed["claude_config_dir"] = env["CLAUDE_CONFIG_DIR"]
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.run_runtime as agent_run_runtime
+    import agentos._core.process as process_runner
 
-    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -697,7 +697,7 @@ def test_agent_ping_invokes_provider_native_run(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
+    from agentos.agent.run_runtime import AgentRunRequest
 
     _write_codex_ping_config(agentos_home, work_home=work_home)
     observed = _observe_codex_run(monkeypatch)
@@ -1162,9 +1162,9 @@ def test_agent_run_uses_copilot_cli_agent_config(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.run_runtime as agent_run_runtime
+    import agentos._core.process as process_runner
 
-    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -1239,9 +1239,9 @@ def test_agent_run_uses_pi_provider_defaults(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.run_runtime as agent_run_runtime
+    import agentos._core.process as process_runner
 
-    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
     assert (
         main(
@@ -1791,9 +1791,9 @@ def test_agent_run_uses_explicit_project_target_for_config_resolution(
         observed["check"] = check
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos.agent.run_runtime as agent_run_runtime
+    import agentos._core.process as process_runner
 
-    monkeypatch.setattr(agent_run_runtime.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
     assert (
         main(

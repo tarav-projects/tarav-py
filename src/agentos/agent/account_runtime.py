@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from agentos._core.errors import CliError
+from agentos._core.process import ProcessError, run_process
 from agentos.agent.primitives import Agent
 
 
@@ -80,13 +81,13 @@ def run_account_command(
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [*agent.cli_command, *extra_args]
-    env = account_provider_environment(agent)
+    env_overrides = dict(agent.env)
     if extra_env is not None:
-        env.update(extra_env)
+        env_overrides.update(extra_env)
 
     return run_captured_command(
         command,
-        env=env,
+        env_overrides=env_overrides,
         timeout_sec=account_timeout_sec(agent),
         cwd=cwd,
     )
@@ -95,37 +96,37 @@ def run_account_command(
 def run_captured_command(
     command: list[str],
     *,
-    env: dict[str, str],
+    env_overrides: dict[str, str],
     timeout_sec: int,
     cwd: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    run_kwargs: dict[str, Any] = {
-        "env": env,
-        "text": True,
-        "capture_output": True,
-        "timeout": timeout_sec,
-        "check": False,
-    }
-    if cwd is not None:
-        run_kwargs["cwd"] = cwd
-
     try:
-        return subprocess.run(command, **run_kwargs)
-    except FileNotFoundError as exc:
+        result = run_process(
+            command,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            mode="capture",
+            timeout_sec=timeout_sec,
+        )
+    except ProcessError as exc:
+        if exc.error_type not in {"command_not_found", "timeout"}:
+            error_type = "command_failed"
+        else:
+            error_type = exc.error_type
         raise AccountCommandError(
-            error_type="command_not_found",
-            message=str(exc),
+            error_type=error_type,
+            message=(
+                f"provider command timed out after {timeout_sec} seconds"
+                if exc.error_type == "timeout"
+                else exc.message
+            ),
         ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise AccountCommandError(
-            error_type="timeout",
-            message=f"provider command timed out after {timeout_sec} seconds",
-        ) from exc
-    except OSError as exc:
-        raise AccountCommandError(
-            error_type="command_failed",
-            message=str(exc),
-        ) from exc
+    return subprocess.CompletedProcess(
+        command,
+        result.exit_code,
+        stdout=result.stdout or "",
+        stderr=result.stderr or "",
+    )
 
 
 def successful_command_output(result: subprocess.CompletedProcess[str]) -> str:

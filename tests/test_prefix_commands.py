@@ -55,6 +55,21 @@ def test_prefix_next_allocates_index_prefix_from_index_range(
     assert capsys.readouterr().out.strip() == "101"
 
 
+def test_prefix_next_allocates_appendix_prefix_from_index_range(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _init_project(tmp_path, monkeypatch, capsys)
+    write_text_file(tmp_path / "notes" / "index" / "100-Agentos.Index.Notes.md", "")
+    write_text_file(tmp_path / "notes" / "appendix" / "101-Agentos.Index.Notes.md", "")
+    write_text_file(tmp_path / "notes" / "live" / "500-session.md", "")
+
+    assert main(_prefix_next_args(None, tmp_path.name, "notes/appendix")) == 0
+
+    assert capsys.readouterr().out.strip() == "102"
+
+
 def test_prefix_next_uses_longest_prefix_route_for_descendants(
     tmp_path: Path,
     monkeypatch,

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
 from agentos.chatlas.index_store import load_chatlas_session_index_rows
+from agentos.chatlas.index_time import chatlas_index_timestamp_sort_value
+from agentos.chatlas.index_time import parse_chatlas_index_timestamp
 
 _DEFAULT_LIMIT = 50
 
@@ -211,38 +212,16 @@ def _row_matches(
 
 def _sort_rows(rows: list[dict[str, Any]], *, sort: str) -> list[dict[str, Any]]:
     if sort == "newest":
-        return sorted(rows, key=lambda row: _timestamp_sort_value(row.get("updated_at")), reverse=True)
+        return sorted(rows, key=lambda row: chatlas_index_timestamp_sort_value(row.get("updated_at")), reverse=True)
     if sort == "oldest":
-        return sorted(rows, key=lambda row: _timestamp_sort_value(row.get("updated_at")))
+        return sorted(rows, key=lambda row: chatlas_index_timestamp_sort_value(row.get("updated_at")))
     return sorted(rows, key=lambda row: str(row.get("uri") or row.get("session_id") or ""))
 
 
 def _updated_at_is_after(value: object, updated_after: str) -> bool:
-    timestamp = _parse_timestamp(value)
-    threshold = _parse_timestamp(updated_after)
+    timestamp = parse_chatlas_index_timestamp(value)
+    threshold = parse_chatlas_index_timestamp(updated_after)
     return timestamp is not None and threshold is not None and timestamp >= threshold
-
-
-def _timestamp_sort_value(value: object) -> float:
-    timestamp = _parse_timestamp(value)
-    if timestamp is None:
-        return 0.0
-    return timestamp.timestamp()
-
-
-def _parse_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    normalized = value.strip()
-    if normalized.endswith("Z"):
-        normalized = normalized[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
 
 
 def _string_or_none(value: object) -> str | None:

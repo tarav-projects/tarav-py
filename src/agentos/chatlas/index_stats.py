@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from agentos.chatlas.index_store import load_chatlas_session_index_rows
+from agentos.chatlas.index_time import format_chatlas_index_timestamp
+from agentos.chatlas.index_time import parse_chatlas_index_timestamp
 
 
 def run_chatlas_index_stats(
@@ -111,7 +112,7 @@ def _stats_totals(rows: list[dict[str, Any]]) -> dict[str, object]:
     timestamps = sorted(
         timestamp
         for row in rows
-        if (timestamp := _parse_timestamp(row.get("updated_at"))) is not None
+        if (timestamp := parse_chatlas_index_timestamp(row.get("updated_at"))) is not None
     )
     session_count = len(rows)
     extractable_session_count = sum(1 for row in rows if row.get("extractable") is True)
@@ -119,8 +120,8 @@ def _stats_totals(rows: list[dict[str, Any]]) -> dict[str, object]:
         "session_count": session_count,
         "extractable_session_count": extractable_session_count,
         "non_extractable_session_count": session_count - extractable_session_count,
-        "oldest_updated_at": _format_timestamp(timestamps[0]) if timestamps else None,
-        "latest_updated_at": _format_timestamp(timestamps[-1]) if timestamps else None,
+        "oldest_updated_at": format_chatlas_index_timestamp(timestamps[0]) if timestamps else None,
+        "latest_updated_at": format_chatlas_index_timestamp(timestamps[-1]) if timestamps else None,
     }
 
 
@@ -161,12 +162,12 @@ def _update_session_counts(bucket: dict[str, Any], row: dict[str, Any]) -> None:
 
 
 def _update_timestamp_range(bucket: dict[str, Any], value: object) -> None:
-    timestamp = _parse_timestamp(value)
+    timestamp = parse_chatlas_index_timestamp(value)
     if timestamp is None:
         return
-    formatted = _format_timestamp(timestamp)
-    oldest = _parse_timestamp(bucket.get("oldest_updated_at"))
-    latest = _parse_timestamp(bucket.get("latest_updated_at"))
+    formatted = format_chatlas_index_timestamp(timestamp)
+    oldest = parse_chatlas_index_timestamp(bucket.get("oldest_updated_at"))
+    latest = parse_chatlas_index_timestamp(bucket.get("latest_updated_at"))
     if oldest is None or timestamp < oldest:
         bucket["oldest_updated_at"] = formatted
     if latest is None or timestamp > latest:
@@ -179,25 +180,6 @@ def _format_updated_range(stats: dict[object, object]) -> str:
     if oldest is None and latest is None:
         return "<none>"
     return f"{oldest or '<none>'} .. {latest or '<none>'}"
-
-
-def _parse_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    normalized = value.strip()
-    if normalized.endswith("Z"):
-        normalized = normalized[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def _format_timestamp(timestamp: datetime) -> str:
-    return timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _string_or_none(value: object) -> str | None:

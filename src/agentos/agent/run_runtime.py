@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 import shlex
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from agentos._core.errors import CliError
+from agentos._core.process import ProcessError, run_process
 
 
 @dataclass(frozen=True)
@@ -82,19 +81,20 @@ def execute_agent_run_command(
     cwd: Path,
     env_overrides: dict[str, str],
 ) -> AgentRunResult:
-    env = os.environ.copy()
-    env.update(env_overrides)
     try:
-        result = subprocess.run(
-            list(command),
-            cwd=str(cwd),
-            env=env,
-            check=False,
+        result = run_process(
+            command,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            mode="terminal",
         )
-    except FileNotFoundError as exc:
-        raise CliError(f"agent executable not found: {exc.filename}") from exc
+    except ProcessError as exc:
+        if exc.error_type == "command_not_found":
+            executable = command[0] if command else "<empty>"
+            raise CliError(f"agent executable not found: {executable}") from exc
+        raise
     return AgentRunResult(
-        exit_code=int(result.returncode),
+        exit_code=result.exit_code,
     )
 
 

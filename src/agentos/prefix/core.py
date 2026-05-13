@@ -50,6 +50,7 @@ def default_prefix_policy() -> PrefixPolicy:
         excludes=(),
         routes=(
             PrefixRoute(name="notes/index", minimum=100, maximum=499),
+            PrefixRoute(name="notes/appendix", minimum=100, maximum=499),
             PrefixRoute(name="*", minimum=500, maximum=999),
         ),
         reserved={
