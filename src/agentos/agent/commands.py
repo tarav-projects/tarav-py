@@ -173,13 +173,14 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
 
 def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
     if args.provider == "codex":
-        from agentos.codex.account_registry import register_codex_account_from_home
+        from agentos.codex.account_registry import register_codex_account_from_auth_file
 
         print(
             json.dumps(
-                register_codex_account_from_home(
-                    home=Path(args.home),
+                register_codex_account_from_auth_file(
+                    auth_file=Path(args.auth_file),
                     account=args.account,
+                    email=args.email,
                     argv=getattr(args, "_agentos_argv", []),
                 ),
                 indent=2,
@@ -364,7 +365,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
 
     accounts_register_parser = accounts_subparsers.add_parser(
         "register",
-        help="Register a provider home auth file in managed account storage.",
+        help="Register a provider auth file in managed account storage.",
     )
     accounts_register_parser.add_argument(
         "--provider",
@@ -373,20 +374,25 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Provider family to register.",
     )
     accounts_register_parser.add_argument(
-        "--home",
+        "--auth-file",
         required=True,
-        help="Provider home containing auth.json.",
+        help="Provider auth file to register.",
     )
     accounts_register_parser.add_argument(
         "--account",
         required=True,
         help="Local AgentOS account alias to register.",
     )
+    accounts_register_parser.add_argument(
+        "--email",
+        default=None,
+        help="Codex account email metadata when it cannot be parsed from the auth file.",
+    )
     accounts_register_parser.set_defaults(handler=_cmd_agent_accounts_register)
 
     accounts_link_parser = accounts_subparsers.add_parser(
         "link",
-        help="Copy a managed provider account auth snapshot to a provider home.",
+        help="Copy a managed provider account auth file to a provider home.",
     )
     accounts_link_parser.add_argument(
         "--provider",

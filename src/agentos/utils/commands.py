@@ -12,7 +12,7 @@ from agentos._core.project import (
     require_explicit_agentos_project,
 )
 from agentos._core.project_command_log import (
-    project_command_log_path,
+    activity_log_path,
     record_project_command_from_args,
 )
 from agentos.utils.tmp_folder import allocate_project_tmp_folder
@@ -60,7 +60,7 @@ def _cmd_utils_tmp_folder_new(args: argparse.Namespace) -> int:
 
 
 def _cmd_utils_cmd_logger_path(args: argparse.Namespace) -> int:
-    print(str(project_command_log_path(timetag=_timetag_from_month(args.month))))
+    print(str(activity_log_path(timetag=_timetag_from_month(args.month))))
     return 0
 
 
@@ -69,7 +69,7 @@ def _cmd_utils_cmd_logger_tail(args: argparse.Namespace) -> int:
     if limit < 1:
         raise CliError("--limit must be >= 1")
 
-    path = project_command_log_path(timetag=_timetag_from_month(args.month))
+    path = activity_log_path(timetag=_timetag_from_month(args.month))
     for line in _read_cmd_logger_lines(path)[-limit:]:
         if args.json:
             print(line)
@@ -84,7 +84,7 @@ def _cmd_utils_cmd_logger_query(args: argparse.Namespace) -> int:
     if limit < 1:
         raise CliError("--limit must be >= 1")
 
-    path = project_command_log_path(timetag=_timetag_from_month(args.month))
+    path = activity_log_path(timetag=_timetag_from_month(args.month))
     events = [
         _annotate_cmd_logger_event(json.loads(line))
         for line in _read_cmd_logger_lines(path)
@@ -135,7 +135,7 @@ def _timetag_from_month(month: str | None) -> str | None:
 def _month_label(month: str | None) -> str:
     timetag = _timetag_from_month(month)
     if timetag is None:
-        path = project_command_log_path()
+        path = activity_log_path()
         return path.stem
     return timetag[:4] + timetag[5:7]
 

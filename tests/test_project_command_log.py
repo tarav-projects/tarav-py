@@ -8,14 +8,13 @@ from _helpers import write_project_marker as _write_project_marker
 from agentos._core.project import AgentosProjectHandler
 from agentos._core.project_command_log import (
     activity_log_path,
-    project_command_log_path,
     record_activity_event,
     record_project_command,
 )
 from agentos.cli import main
 
 
-def test_project_command_log_path_rolls_by_year_month(
+def test_activity_log_path_rolls_by_year_month(
     monkeypatch, tmp_path: Path
 ) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
@@ -23,7 +22,7 @@ def test_project_command_log_path_rolls_by_year_month(
     assert activity_log_path(timetag="2026-04-30T12:00:00Z") == (
         agentos_home / "activity" / "202604.jsonl"
     )
-    assert project_command_log_path(timetag="2026-05-01T00:00:00Z") == (
+    assert activity_log_path(timetag="2026-05-01T00:00:00Z") == (
         agentos_home / "activity" / "202605.jsonl"
     )
 

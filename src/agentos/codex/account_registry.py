@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 import base64
-import datetime
 import hashlib
 import json
 import os
 import shutil
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 
 from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos._core.project import agentos_home_dir, global_config_path, load_global_config
+from agentos._core.project import agentos_home_dir
 from agentos._core.project_command_log import record_activity_event
 
 CODEX_AUTH_FILENAME = "auth.json"
 CODEX_PROVIDER = "codex"
-ACCOUNT_REGISTRY_PATH = ("agent", "account_registry")
 
 
 @dataclass(frozen=True)
@@ -49,39 +48,47 @@ class CodexAuthInfo:
         return payload
 
 
-def register_codex_account_from_home(
+def register_codex_account_from_auth_file(
     *,
-    home: Path,
+    auth_file: Path,
     account: str,
+    email: str | None = None,
     argv: list[str] | tuple[str, ...] = (),
 ) -> dict[str, object]:
-    normalized_home = home.expanduser().resolve()
     normalized_account = validate_string_for_path(account, field_name="account")
-    auth_path = _home_auth_path(normalized_home)
-    info = read_codex_auth_info(auth_path)
-    storage = _account_storage_path(normalized_account)
-    snapshot = _store_snapshot(
-        info,
-        account=normalized_account,
-        storage=storage,
-        source_home=normalized_home,
-    )
-    registry_entry = _upsert_account_registry_entry(
+    info = read_codex_auth_info(auth_file.expanduser())
+    info = _apply_manual_metadata(info, email=email)
+    provider_root = _provider_root()
+    account_dir = _account_dir(normalized_account)
+    manifest_path = account_dir / "manifest.json"
+    _validate_account_identity(manifest_path, account=normalized_account, info=info)
+    preserved_pointer = _preserve_existing_account_pointer(account_dir, normalized_account, info.account_id)
+    stored_file = _store_provider_file(info)
+    registry_entry, appended = _append_registry_entry(
         account=normalized_account,
         info=info,
-        storage=storage,
+        source_auth_file=info.path,
     )
+    manifest = _write_account_manifest(
+        account=normalized_account,
+        info=info,
+    )
+    _replace_account_pointer(account_dir, info.sha256)
     result = {
         "status": "ok",
         "command": "agent accounts register",
         "provider": CODEX_PROVIDER,
         "account": normalized_account,
-        "home": str(normalized_home),
+        "auth_file": str(info.path),
         "auth": info.safe_payload(),
-        "registry_key": _registry_key(normalized_account),
+        "provider_root": str(provider_root),
+        "stored_file": str(stored_file),
         "registry_entry": registry_entry,
-        "snapshot": snapshot,
+        "registry_appended": appended,
+        "manifest": manifest,
     }
+    if preserved_pointer is not None:
+        result["preserved_previous_pointer"] = preserved_pointer
     _record_account_event(
         event_type="agent.accounts.register",
         command="agent accounts register",
@@ -92,11 +99,10 @@ def register_codex_account_from_home(
             "account": normalized_account,
             "account_id": info.account_id,
             "email": info.email,
-            "home": str(normalized_home),
-            "auth_path": str(auth_path),
+            "auth_file": str(info.path),
             "auth_sha256": info.sha256,
-            "snapshot_path": snapshot["path"],
-            "snapshot_sha256": snapshot["sha256"],
+            "stored_file": _registry_file(info.sha256),
+            "registry_appended": appended,
         },
     )
     return result
@@ -111,11 +117,10 @@ def link_codex_account_to_home(
     normalized_home = home.expanduser().resolve()
     normalized_account = validate_string_for_path(account, field_name="account")
     auth_path = _home_auth_path(normalized_home)
-    registry_entry = _load_account_registry_entry(normalized_account)
-    account_id = _require_registry_string(registry_entry, "account_id")
-    storage = Path(_require_registry_string(registry_entry, "storage")).expanduser().resolve()
-
+    manifest = _load_account_manifest(normalized_account)
+    account_id = _require_manifest_string(manifest, "account_id")
     previous_auth: dict[str, object] | None = None
+
     try:
         if auth_path.exists() or auth_path.is_symlink():
             existing_info = read_codex_auth_info(auth_path)
@@ -132,35 +137,31 @@ def link_codex_account_to_home(
                     auth_path=auth_path,
                     message=message,
                     payload={
-                        "provider": CODEX_PROVIDER,
-                        "account": normalized_account,
                         "account_id": account_id,
-                        "home": str(normalized_home),
-                        "auth_path": str(auth_path),
                         "previous_home_account_id": existing_info.account_id,
                         "previous_home_auth_sha256": existing_info.sha256,
                     },
                 )
                 raise CliError(message)
-            _store_snapshot(
-                existing_info,
+            register_codex_account_from_auth_file(
+                auth_file=auth_path,
                 account=normalized_account,
-                storage=storage,
-                source_home=normalized_home,
+                argv=argv,
             )
+            manifest = _load_account_manifest(normalized_account)
 
-        selected = _selected_snapshot(storage)
-        destination = _copy_snapshot_to_home(Path(str(selected["path"])), auth_path)
+        source_auth = _active_auth_path(manifest, normalized_account)
+        destination = _copy_auth_to_home(source_auth, auth_path)
         copied_info = read_codex_auth_info(destination)
         payload = {
             "provider": CODEX_PROVIDER,
             "account": normalized_account,
             "account_id": account_id,
-            "email": registry_entry.get("email"),
+            "email": manifest.get("email"),
             "home": str(normalized_home),
             "auth_path": str(auth_path),
-            "source_snapshot": selected["path"],
-            "source_sha256": selected["sha256"],
+            "source_auth_file": str(source_auth),
+            "source_sha256": copied_info.sha256,
             "copied_sha256": copied_info.sha256,
             "previous_home_auth": previous_auth,
             "action": "copied",
@@ -179,7 +180,7 @@ def link_codex_account_to_home(
             "account": normalized_account,
             "home": str(normalized_home),
             "auth_path": str(auth_path),
-            "source_snapshot": selected,
+            "source_auth_file": str(source_auth),
             "copied_auth": copied_info.safe_payload(),
             "previous_home_auth": previous_auth,
         }
@@ -191,13 +192,7 @@ def link_codex_account_to_home(
                 home=normalized_home,
                 auth_path=auth_path,
                 message=str(exc),
-                payload={
-                    "provider": CODEX_PROVIDER,
-                    "account": normalized_account,
-                    "home": str(normalized_home),
-                    "auth_path": str(auth_path),
-                    "message": str(exc),
-                },
+                payload={"message": str(exc)},
             )
         raise
 
@@ -228,27 +223,25 @@ def inspect_codex_account_home(*, home: Path) -> dict[str, object]:
         base["error"] = str(exc)
         return base
 
-    matches = _registry_entries_for_account_id(info.account_id)
-    snapshot_match = _snapshot_for_sha(info.sha256, matches)
+    entries = _registry_entries()
+    hash_matches = [entry for entry in entries if entry.get("sha256") == info.sha256]
+    account_matches = [entry for entry in entries if entry.get("account_id") == info.account_id]
+    active_matches = [
+        entry
+        for entry in hash_matches
+        if _manifest_active_sha(_string_or_none(entry.get("account"))) == info.sha256
+    ]
     base["auth"] = info.safe_payload()
-    base["registry_matches"] = matches
-    base["registered_snapshot"] = snapshot_match
-
-    if path_kind == "symlink":
-        base["classification"] = "legacy-symlink"
-        base["symlink_target"] = str(_read_symlink_target(auth_path))
-    elif snapshot_match is not None:
+    base["registry_matches"] = hash_matches
+    base["account_registry_matches"] = account_matches
+    if active_matches:
+        base["classification"] = "matching-active"
+    elif hash_matches:
         base["classification"] = "registered"
-    elif matches:
-        base["classification"] = "unregistered-known-account"
+    elif account_matches:
+        base["classification"] = "known-account-new-hash"
     else:
-        base["classification"] = "unregistered-unknown-account"
-
-    latest_payload = latest_link.get("payload") if isinstance(latest_link, dict) else None
-    if isinstance(latest_payload, dict):
-        latest_account_id = latest_payload.get("account_id")
-        if isinstance(latest_account_id, str) and latest_account_id != info.account_id:
-            base["classification"] = "different-account"
+        base["classification"] = "unknown"
     return base
 
 
@@ -283,82 +276,202 @@ def read_codex_auth_info(path: Path) -> CodexAuthInfo:
     )
 
 
-def _store_snapshot(
-    info: CodexAuthInfo,
+def _apply_manual_metadata(info: CodexAuthInfo, *, email: str | None) -> CodexAuthInfo:
+    normalized_email = _string_or_none(email)
+    if normalized_email is None:
+        return info
+    return replace(info, email=normalized_email)
+
+
+def _validate_account_identity(manifest_path: Path, *, account: str, info: CodexAuthInfo) -> None:
+    if not manifest_path.exists():
+        return
+    manifest = _load_json_object(manifest_path, description="codex account manifest")
+    existing_account_id = _string_or_none(manifest.get("account_id"))
+    if existing_account_id is not None and existing_account_id != info.account_id:
+        raise CliError(
+            f"codex account alias {account} is already registered for account_id "
+            f"{existing_account_id}; refusing auth for {info.account_id}"
+        )
+
+
+def _preserve_existing_account_pointer(
+    account_dir: Path,
+    account: str,
+    expected_account_id: str,
+) -> dict[str, object] | None:
+    pointer = account_dir / CODEX_AUTH_FILENAME
+    if not pointer.exists() or pointer.is_symlink():
+        return None
+    info = read_codex_auth_info(pointer)
+    manifest_path = account_dir / "manifest.json"
+    if manifest_path.exists():
+        manifest = _load_json_object(manifest_path, description="codex account manifest")
+        account_id = _string_or_none(manifest.get("account_id"))
+        if account_id is not None and account_id != info.account_id:
+            raise CliError(
+                f"existing codex account auth pointer for {account} has account_id "
+                f"{info.account_id}, expected {account_id}"
+            )
+    elif info.account_id != expected_account_id:
+        raise CliError(
+            f"existing codex account auth pointer for {account} has account_id "
+            f"{info.account_id}, expected {expected_account_id}"
+        )
+    stored_file = _store_provider_file(info)
+    registry_entry, appended = _append_registry_entry(
+        account=account,
+        info=info,
+        source_auth_file=pointer.resolve(),
+    )
+    return {
+        "sha256": info.sha256,
+        "stored_file": str(stored_file),
+        "registry_entry": registry_entry,
+        "registry_appended": appended,
+    }
+
+
+def _store_provider_file(info: CodexAuthInfo) -> Path:
+    files_dir = _provider_root() / "files"
+    files_dir.mkdir(parents=True, exist_ok=True)
+    destination = files_dir / f"{info.sha256}.auth.json"
+    if destination.exists():
+        return destination
+    temp_path = files_dir / f".{destination.name}.agentos-tmp-{os.getpid()}"
+    if temp_path.exists() or temp_path.is_symlink():
+        temp_path.unlink()
+    try:
+        shutil.copy2(info.path, temp_path)
+        os.replace(temp_path, destination)
+    finally:
+        if temp_path.exists() or temp_path.is_symlink():
+            temp_path.unlink()
+    return destination
+
+
+def _append_registry_entry(
     *,
     account: str,
-    storage: Path,
-    source_home: Path,
+    info: CodexAuthInfo,
+    source_auth_file: Path,
+) -> tuple[dict[str, object], bool]:
+    entries = _registry_entries()
+    existing = _matching_registry_entry(entries, account=account, sha256=info.sha256)
+    if existing is not None:
+        return existing, False
+
+    entry = _registry_entry(account=account, info=info, source_auth_file=source_auth_file)
+    registry_path = _registry_path()
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    with registry_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, sort_keys=True, separators=(",", ":")) + "\n")
+    return entry, True
+
+
+def _matching_registry_entry(
+    entries: list[dict[str, object]],
+    *,
+    account: str,
+    sha256: str,
+) -> dict[str, object] | None:
+    for entry in entries:
+        if (
+            entry.get("provider") == CODEX_PROVIDER
+            and entry.get("account") == account
+            and entry.get("sha256") == sha256
+        ):
+            return entry
+    return None
+
+
+def _registry_entry(
+    *,
+    account: str,
+    info: CodexAuthInfo,
+    source_auth_file: Path,
 ) -> dict[str, object]:
-    snapshots_dir = storage / "snapshots"
-    snapshots_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = storage / "manifest.json"
-    manifest = _load_manifest(manifest_path)
-    filename = _snapshot_filename(info)
-    snapshot_path = snapshots_dir / filename
-    if not snapshot_path.exists():
-        shutil.copy2(info.path, snapshot_path)
-
-    snapshot_record = {
-        "sha256": info.sha256,
-        "path": str(snapshot_path),
-        "account_id": info.account_id,
-        "auth_mode": info.auth_mode,
-        "email": info.email,
-        "last_refresh": info.last_refresh,
-        "jwt_iat": info.jwt_iat,
-        "mtime": info.mtime,
-        "source_home": str(source_home),
+    entry: dict[str, object] = {
         "registered_at": utc_now_iso(),
+        "provider": CODEX_PROVIDER,
+        "account": account,
+        "account_id": info.account_id,
+        "sha256": info.sha256,
+        "file": _registry_file(info.sha256),
+        "source_auth_file": str(source_auth_file),
     }
-    snapshots = [
-        item
-        for item in manifest.get("snapshots", [])
-        if isinstance(item, dict) and item.get("sha256") != info.sha256
-    ]
-    snapshots.append(snapshot_record)
-    snapshots.sort(key=_snapshot_sort_key, reverse=True)
-    selected = snapshots[0]
-    manifest.update(
-        {
-            "schema_version": 1,
-            "provider": CODEX_PROVIDER,
-            "account": account,
-            "account_id": info.account_id,
-            "email": info.email,
-            "selected_sha256": selected["sha256"],
-            "selected_snapshot": selected["path"],
-            "updated_at": utc_now_iso(),
-            "snapshots": snapshots,
-        }
-    )
-    _write_json_file(manifest_path, manifest)
-    return snapshot_record
+    if info.auth_mode is not None:
+        entry["auth_mode"] = info.auth_mode
+    if info.email is not None:
+        entry["email"] = info.email
+    if info.last_refresh is not None:
+        entry["last_refresh"] = info.last_refresh
+    if info.jwt_iat is not None:
+        entry["jwt_iat"] = info.jwt_iat
+    return entry
 
 
-def _selected_snapshot(storage: Path) -> dict[str, object]:
-    manifest = _load_manifest(storage / "manifest.json")
-    snapshots = [item for item in manifest.get("snapshots", []) if isinstance(item, dict)]
-    if not snapshots:
-        raise CliError(f"codex account has no registered auth snapshots: {storage}")
-    snapshots.sort(key=_snapshot_sort_key, reverse=True)
-    selected = snapshots[0]
-    path = _string_or_none(selected.get("path"))
-    if path is None:
-        raise CliError(f"codex account selected snapshot path is missing: {storage}")
-    snapshot_path = Path(path).expanduser().resolve()
-    if not snapshot_path.is_file():
-        raise CliError(f"codex account selected snapshot does not exist: {snapshot_path}")
-    return {**selected, "path": str(snapshot_path)}
+def _write_account_manifest(*, account: str, info: CodexAuthInfo) -> dict[str, object]:
+    updated_at = utc_now_iso()
+    manifest: dict[str, object] = {
+        "schema_version": 1,
+        "provider": CODEX_PROVIDER,
+        "account": account,
+        "account_id": info.account_id,
+        "active_sha256": info.sha256,
+        "active_file": _account_relative_file(info.sha256),
+        "updated_at": updated_at,
+    }
+    if info.email is not None:
+        manifest["email"] = info.email
+    if info.auth_mode is not None:
+        manifest["auth_mode"] = info.auth_mode
+    if info.last_refresh is not None:
+        manifest["last_refresh"] = info.last_refresh
+    if info.jwt_iat is not None:
+        manifest["jwt_iat"] = info.jwt_iat
+    _write_json_file(_account_dir(account) / "manifest.json", manifest)
+    return manifest
 
 
-def _copy_snapshot_to_home(snapshot_path: Path, auth_path: Path) -> Path:
+def _replace_account_pointer(account_dir: Path, sha256: str) -> None:
+    account_dir.mkdir(parents=True, exist_ok=True)
+    pointer = account_dir / CODEX_AUTH_FILENAME
+    temp_pointer = account_dir / f".{CODEX_AUTH_FILENAME}.agentos-tmp-{os.getpid()}"
+    if temp_pointer.exists() or temp_pointer.is_symlink():
+        temp_pointer.unlink()
+    os.symlink(_account_relative_file(sha256), temp_pointer)
+    os.replace(temp_pointer, pointer)
+
+
+def _load_account_manifest(account: str) -> dict[str, object]:
+    manifest_path = _account_dir(account) / "manifest.json"
+    if not manifest_path.exists():
+        raise CliError(f"agent account is not registered: codex.{account}")
+    manifest = _load_json_object(manifest_path, description="codex account manifest")
+    if manifest.get("provider") != CODEX_PROVIDER or manifest.get("account") != account:
+        raise CliError(f"codex account manifest does not match account: {manifest_path}")
+    return manifest
+
+
+def _active_auth_path(manifest: dict[str, object], account: str) -> Path:
+    sha256 = _require_manifest_string(manifest, "active_sha256")
+    path = _provider_root() / "files" / f"{sha256}.auth.json"
+    if not path.is_file():
+        raise CliError(f"codex account active auth file does not exist: {path}")
+    pointer = _account_dir(account) / CODEX_AUTH_FILENAME
+    if pointer.is_symlink() and _read_symlink_target(pointer) == path:
+        return path
+    return path
+
+
+def _copy_auth_to_home(source_auth: Path, auth_path: Path) -> Path:
     auth_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = auth_path.parent / f".{auth_path.name}.agentos-tmp-{os.getpid()}"
     if temp_path.exists() or temp_path.is_symlink():
         temp_path.unlink()
     try:
-        shutil.copy2(snapshot_path, temp_path)
+        shutil.copy2(source_auth, temp_path)
         os.replace(temp_path, auth_path)
     finally:
         if temp_path.exists() or temp_path.is_symlink():
@@ -366,100 +479,41 @@ def _copy_snapshot_to_home(snapshot_path: Path, auth_path: Path) -> Path:
     return auth_path
 
 
-def _load_account_registry_entry(account: str) -> dict[str, object]:
-    registry = _load_account_registry()
-    entry = registry.get(_registry_key(account))
-    if not isinstance(entry, dict):
-        raise CliError(f"agent account is not registered: codex.{account}")
-    return entry
-
-
-def _upsert_account_registry_entry(
-    *,
-    account: str,
-    info: CodexAuthInfo,
-    storage: Path,
-) -> dict[str, object]:
-    config_path = global_config_path(agentos_home_dir())
-    config = _load_or_create_global_config(config_path)
-    agent = config.get("agent")
-    if agent is None:
-        agent = {}
-        config["agent"] = agent
-    if not isinstance(agent, dict):
-        raise CliError("global config field agent must be a JSON object")
-    registry = agent.get("account_registry")
-    if registry is None:
-        registry = {}
-        agent["account_registry"] = registry
-    if not isinstance(registry, dict):
-        raise CliError("global config field agent.account_registry must be a JSON object")
-
-    entry = {
-        "provider": CODEX_PROVIDER,
-        "account": account,
-        "account_id": info.account_id,
-        "storage": str(storage),
-    }
-    if info.email is not None:
-        entry["email"] = info.email
-    registry[_registry_key(account)] = entry
-    _write_json_file(config_path, config)
-    return entry
-
-
-def _load_account_registry() -> dict[str, dict[str, object]]:
-    config_path = global_config_path(agentos_home_dir())
-    if not config_path.exists():
-        return {}
-    config = load_global_config(config_path)
-    current: object = config
-    for part in ACCOUNT_REGISTRY_PATH:
-        if not isinstance(current, dict):
-            raise CliError(f"global config field {'.'.join(ACCOUNT_REGISTRY_PATH)} must be a JSON object")
-        current = current.get(part)
-        if current is None:
-            return {}
-    if not isinstance(current, dict):
-        raise CliError("global config field agent.account_registry must be a JSON object")
-    return {key: value for key, value in current.items() if isinstance(value, dict)}
-
-
-def _registry_entries_for_account_id(account_id: str) -> list[dict[str, object]]:
-    matches: list[dict[str, object]] = []
-    for key, entry in sorted(_load_account_registry().items()):
-        if entry.get("provider") == CODEX_PROVIDER and entry.get("account_id") == account_id:
-            matches.append({"key": key, **entry})
-    return matches
-
-
-def _snapshot_for_sha(sha256: str, registry_matches: list[dict[str, object]]) -> dict[str, object] | None:
-    for entry in registry_matches:
-        storage = entry.get("storage")
-        if not isinstance(storage, str):
+def _registry_entries() -> list[dict[str, object]]:
+    registry_path = _registry_path()
+    if not registry_path.exists():
+        return []
+    entries: list[dict[str, object]] = []
+    for line_number, line in enumerate(registry_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
             continue
-        manifest = _load_manifest(Path(storage).expanduser().resolve() / "manifest.json")
-        for snapshot in manifest.get("snapshots", []):
-            if isinstance(snapshot, dict) and snapshot.get("sha256") == sha256:
-                return snapshot
-    return None
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise CliError(f"invalid codex registry JSONL at {registry_path}:{line_number}") from exc
+        if not isinstance(payload, dict):
+            raise CliError(f"codex registry entry must be a JSON object: {registry_path}:{line_number}")
+        entries.append(payload)
+    return entries
 
 
-def _load_or_create_global_config(config_path: Path) -> dict[str, object]:
-    if config_path.exists():
-        return load_global_config(config_path)
-    return {"class": "agentos.global.config", "schema_version": 1}
+def _manifest_active_sha(account: str | None) -> str | None:
+    if account is None:
+        return None
+    try:
+        manifest = _load_account_manifest(account)
+    except CliError:
+        return None
+    return _string_or_none(manifest.get("active_sha256"))
 
 
-def _load_manifest(path: Path) -> dict[str, object]:
-    if not path.exists():
-        return {"schema_version": 1, "provider": CODEX_PROVIDER, "snapshots": []}
+def _load_json_object(path: Path, *, description: str) -> dict[str, object]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise CliError(f"invalid codex account manifest JSON: {path}") from exc
+        raise CliError(f"invalid {description} JSON: {path}") from exc
     if not isinstance(payload, dict):
-        raise CliError(f"codex account manifest must be a JSON object: {path}")
+        raise CliError(f"{description} must be a JSON object: {path}")
     return payload
 
 
@@ -552,22 +606,34 @@ def _safe_activity_event(event: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _provider_root() -> Path:
+    return agentos_home_dir() / "accounts" / CODEX_PROVIDER
+
+
+def _registry_path() -> Path:
+    return _provider_root() / "registry.jsonl"
+
+
+def _account_dir(account: str) -> Path:
+    return _provider_root() / "accounts" / account
+
+
 def _home_auth_path(home: Path) -> Path:
     return home / CODEX_AUTH_FILENAME
 
 
-def _account_storage_path(account: str) -> Path:
-    return agentos_home_dir() / "accounts" / CODEX_PROVIDER / account
+def _registry_file(sha256: str) -> str:
+    return f"files/{sha256}.auth.json"
 
 
-def _registry_key(account: str) -> str:
-    return f"{CODEX_PROVIDER}.{account}"
+def _account_relative_file(sha256: str) -> str:
+    return f"../../files/{sha256}.auth.json"
 
 
-def _require_registry_string(entry: dict[str, object], field: str) -> str:
-    value = entry.get(field)
+def _require_manifest_string(manifest: dict[str, object], field: str) -> str:
+    value = manifest.get(field)
     if not isinstance(value, str) or not value.strip():
-        raise CliError(f"registered codex account field {field} must be a non-empty string")
+        raise CliError(f"codex account manifest field {field} must be a non-empty string")
     return value
 
 
@@ -615,45 +681,6 @@ def _string_or_none(value: object) -> str | None:
     return None
 
 
-def _snapshot_filename(info: CodexAuthInfo) -> str:
-    return f"{_snapshot_timetag(info)}-{info.sha256[:12]}.json"
-
-
-def _snapshot_timetag(info: CodexAuthInfo) -> str:
-    if info.last_refresh is not None:
-        parsed = _parse_iso_datetime(info.last_refresh)
-        if parsed is not None:
-            return parsed.strftime("%Y%m%dT%H%M%SZ")
-    if info.jwt_iat is not None:
-        return datetime.datetime.fromtimestamp(info.jwt_iat, tz=datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return datetime.datetime.fromtimestamp(info.mtime, tz=datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-
-def _parse_iso_datetime(value: str) -> datetime.datetime | None:
-    try:
-        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed.astimezone(datetime.timezone.utc)
-
-
-def _snapshot_sort_key(snapshot: object) -> tuple[int, float, str]:
-    if not isinstance(snapshot, dict):
-        return (0, 0.0, "")
-    last_refresh = _string_or_none(snapshot.get("last_refresh"))
-    if last_refresh is not None:
-        parsed = _parse_iso_datetime(last_refresh)
-        if parsed is not None:
-            return (3, parsed.timestamp(), str(snapshot.get("sha256", "")))
-    jwt_iat = snapshot.get("jwt_iat")
-    if isinstance(jwt_iat, int):
-        return (2, float(jwt_iat), str(snapshot.get("sha256", "")))
-    mtime = snapshot.get("mtime")
-    if isinstance(mtime, (int, float)):
-        return (1, float(mtime), str(snapshot.get("sha256", "")))
-    return (0, 0.0, str(snapshot.get("sha256", "")))
-
-
 def _path_kind(path: Path) -> str:
     if path.is_symlink():
         return "symlink"
@@ -676,5 +703,5 @@ __all__ = [
     "inspect_codex_account_home",
     "link_codex_account_to_home",
     "read_codex_auth_info",
-    "register_codex_account_from_home",
+    "register_codex_account_from_auth_file",
 ]

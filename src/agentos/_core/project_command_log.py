@@ -16,10 +16,6 @@ def activity_log_path(*, timetag: str | None = None) -> Path:
     return agentos_home_dir().joinpath(*ACTIVITY_LOG_DIR, f"{year_month}.jsonl")
 
 
-def project_command_log_path(*, timetag: str | None = None) -> Path:
-    return activity_log_path(timetag=timetag)
-
-
 def record_activity_event(
     *,
     event_type: str,
@@ -100,7 +96,6 @@ def command_payload_from_args(args: object) -> dict[str, object]:
 __all__ = [
     "activity_log_path",
     "command_payload_from_args",
-    "project_command_log_path",
     "record_activity_event",
     "record_project_command",
     "record_project_command_from_args",
