@@ -5,8 +5,7 @@ import hashlib
 import json
 import os
 import shutil
-from dataclasses import dataclass
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from agentos._core.clock import utc_now_iso
@@ -30,13 +29,8 @@ class CodexAuthInfo:
     jwt_iat: int | None
     mtime: float
 
-    def safe_payload(self) -> dict[str, object]:
-        payload: dict[str, object] = {
-            "path": str(self.path),
-            "sha256": self.sha256,
-            "account_id": self.account_id,
-            "mtime": self.mtime,
-        }
+    def metadata_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {}
         if self.auth_mode is not None:
             payload["auth_mode"] = self.auth_mode
         if self.email is not None:
@@ -45,6 +39,16 @@ class CodexAuthInfo:
             payload["last_refresh"] = self.last_refresh
         if self.jwt_iat is not None:
             payload["jwt_iat"] = self.jwt_iat
+        return payload
+
+    def safe_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "path": str(self.path),
+            "sha256": self.sha256,
+            "account_id": self.account_id,
+            "mtime": self.mtime,
+        }
+        payload.update(self.metadata_payload())
         return payload
 
 
@@ -150,7 +154,7 @@ def link_codex_account_to_home(
             )
             manifest = _load_account_manifest(normalized_account)
 
-        source_auth = _active_auth_path(manifest, normalized_account)
+        source_auth = _active_auth_path(manifest)
         destination = _copy_auth_to_home(source_auth, auth_path)
         copied_info = read_codex_auth_info(destination)
         payload = {
@@ -338,15 +342,7 @@ def _store_provider_file(info: CodexAuthInfo) -> Path:
     destination = files_dir / f"{info.sha256}.auth.json"
     if destination.exists():
         return destination
-    temp_path = files_dir / f".{destination.name}.agentos-tmp-{os.getpid()}"
-    if temp_path.exists() or temp_path.is_symlink():
-        temp_path.unlink()
-    try:
-        shutil.copy2(info.path, temp_path)
-        os.replace(temp_path, destination)
-    finally:
-        if temp_path.exists() or temp_path.is_symlink():
-            temp_path.unlink()
+    _copy_file_atomic(info.path, destination)
     return destination
 
 
@@ -400,14 +396,7 @@ def _registry_entry(
         "file": _registry_file(info.sha256),
         "source_auth_file": str(source_auth_file),
     }
-    if info.auth_mode is not None:
-        entry["auth_mode"] = info.auth_mode
-    if info.email is not None:
-        entry["email"] = info.email
-    if info.last_refresh is not None:
-        entry["last_refresh"] = info.last_refresh
-    if info.jwt_iat is not None:
-        entry["jwt_iat"] = info.jwt_iat
+    entry.update(info.metadata_payload())
     return entry
 
 
@@ -422,14 +411,7 @@ def _write_account_manifest(*, account: str, info: CodexAuthInfo) -> dict[str, o
         "active_file": _account_relative_file(info.sha256),
         "updated_at": updated_at,
     }
-    if info.email is not None:
-        manifest["email"] = info.email
-    if info.auth_mode is not None:
-        manifest["auth_mode"] = info.auth_mode
-    if info.last_refresh is not None:
-        manifest["last_refresh"] = info.last_refresh
-    if info.jwt_iat is not None:
-        manifest["jwt_iat"] = info.jwt_iat
+    manifest.update(info.metadata_payload())
     _write_json_file(_account_dir(account) / "manifest.json", manifest)
     return manifest
 
@@ -454,29 +436,30 @@ def _load_account_manifest(account: str) -> dict[str, object]:
     return manifest
 
 
-def _active_auth_path(manifest: dict[str, object], account: str) -> Path:
+def _active_auth_path(manifest: dict[str, object]) -> Path:
     sha256 = _require_manifest_string(manifest, "active_sha256")
     path = _provider_root() / "files" / f"{sha256}.auth.json"
     if not path.is_file():
         raise CliError(f"codex account active auth file does not exist: {path}")
-    pointer = _account_dir(account) / CODEX_AUTH_FILENAME
-    if pointer.is_symlink() and _read_symlink_target(pointer) == path:
-        return path
     return path
 
 
 def _copy_auth_to_home(source_auth: Path, auth_path: Path) -> Path:
-    auth_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = auth_path.parent / f".{auth_path.name}.agentos-tmp-{os.getpid()}"
+    _copy_file_atomic(source_auth, auth_path)
+    return auth_path
+
+
+def _copy_file_atomic(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = destination.parent / f".{destination.name}.agentos-tmp-{os.getpid()}"
     if temp_path.exists() or temp_path.is_symlink():
         temp_path.unlink()
     try:
-        shutil.copy2(source_auth, temp_path)
-        os.replace(temp_path, auth_path)
+        shutil.copy2(source, temp_path)
+        os.replace(temp_path, destination)
     finally:
         if temp_path.exists() or temp_path.is_symlink():
             temp_path.unlink()
-    return auth_path
 
 
 def _registry_entries() -> list[dict[str, object]]:
@@ -689,14 +672,6 @@ def _path_kind(path: Path) -> str:
     if path.exists():
         return "other"
     return "missing"
-
-
-def _read_symlink_target(path: Path) -> Path:
-    raw_target = os.readlink(path)
-    target = Path(raw_target)
-    if target.is_absolute():
-        return target
-    return (path.parent / target).resolve()
 
 
 __all__ = [
