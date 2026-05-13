@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Ready for implementation: restore `agentos chatlas stats` as an index-only command over the new Chatlas session index.
+Implemented: `agentos chatlas stats` now reports index-only stats over the new Chatlas session index.
 
 ## User Intent
 
@@ -286,3 +286,4 @@ Design assumption validated:
 ## End Log
 
 - 2026-05-12: Created from the accepted plan to restore `agentos chatlas stats` as an index-only command over `index/sessions/**/*.jsonl`, with no native/raw/cache reads and no deprecated runtime fallback.
+- 2026-05-12: Implemented the request. Added a shared session-index row loader, restored `chatlas_stats(...)` and markdown formatting as index-only consumers, added provider/instance aggregate stats, added focused CLI tests for zero indexes, provider filtering, explicit zero buckets, malformed rows, markdown output, and index-only operation without raw artifacts. Verification passed with touched-file Ruff, focused Chatlas command tests, full pytest, diff whitespace checks, `_DEPRECATED` runtime import scan, editable CLI reinstall, and an isolated `agentos chatlas stats --format json` smoke test.
