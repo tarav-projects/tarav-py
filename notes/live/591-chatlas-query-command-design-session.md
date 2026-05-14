@@ -149,17 +149,24 @@ Without this split, a query such as `--limit 20 --raw-contains chatlas` could mi
 
 ### Match.Provenance
 
-- Query results should report why each returned session matched.
-- Match provenance should distinguish at least index metadata matches, raw artifact matches, and standard-model matches.
-- Provenance is required for trust when a query mixes coarse raw grep and semantic filters.
+- First-cut query results should stay low-resolution.
+- The query result should return normalized session rows only.
+- Raw, index, or standard-model hits decide whether a session matches, but do not need detailed match provenance in the first implementation.
+- `--include-match` can be deferred until there is a concrete need for diagnostic match details.
 
 #### appendix
 
-Provenance does not need to expose full transcript excerpts by default. Compact output can report which layer and field matched. Expanded output can include match snippets, artifact paths, or standard-model event references.
+The first query system should prioritize stable row typing over explanatory diagnostics:
+
+```text
+filter hit -> session matches -> normalized session row returned
+```
+
+Raw artifacts, index fields, and standard-model events are filter substrates, not primary query result types.
 
 #### meta
 
-- status: accepted as a core output requirement
+- status: accepted low-resolution first cut
 
 ### Simple.Query.Composition
 
@@ -199,6 +206,7 @@ AND user-visible standard model text contains "query command"
 - Minimal rows should include the canonical session URI plus enough identity metadata to scan and pipe results.
 - `session_id` alone is not a sufficient default handle because the canonical session handle is the `uri`.
 - Minimal rows should include practical session context when known, including provider home and project path.
+- If `home` or `project_path` is unknown, return `null`.
 - Additional data should be added through opt-in expansion flags rather than separate overlapping output modes.
 
 #### appendix
@@ -235,7 +243,6 @@ Candidate expansion flags:
 
 ### Open Questions
 
-- Multi-session export: should `agentos chatlas export` and `agentos chatlas raw` continue to require single-session selectors, or should multi-session behavior be generalized separately?
 - Cost controls: should candidate bounds be named `--scan-limit`, `--candidate-limit`, or something else?
 
 ### References
@@ -246,6 +253,11 @@ Candidate expansion flags:
 - `agentos-py/notes/live/581-chatlas-export-index-selection-impl-req.md` - current export selection behavior context.
 - `agentos-py/notes/live/587-chatlas-views-cache-redesign-design-session.md` - related current Chatlas view/export architecture context.
 
+### Scope Boundaries
+
+- `agentos chatlas query` is independent from `agentos chatlas export` and `agentos chatlas raw` command behavior.
+- This design does not change whether export or raw commands accept one session or many sessions.
+
 ## Session.Log
 
 - 2026-05-14: Created session artifact for `agentos chatlas query` layered command design.
@@ -253,3 +265,6 @@ Candidate expansion flags:
 - 2026-05-14: Settled simple AND composition across all supplied query filter flags for the first query system.
 - 2026-05-14: Settled minimal JSON rows as the default query projection, with opt-in expansion flags for full index rows, artifacts, matches, and provider stats.
 - 2026-05-14: Refined minimal query rows to include `uri`, `provider`, `session_id`, `updated_at`, `home`, and `project_path` when known.
+- 2026-05-14: Settled a low-resolution first cut where filters return session rows without detailed match provenance.
+- 2026-05-14: Settled that missing `home` and `project_path` values should be returned as `null`.
+- 2026-05-14: Settled that `agentos chatlas query` design is independent from export/raw command behavior.

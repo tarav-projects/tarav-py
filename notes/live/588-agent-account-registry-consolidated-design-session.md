@@ -332,11 +332,43 @@ Core invariants:
 - status: closed; carried into `590-agent-account-registry-consolidation-impl-req.md` and implemented.
 - promotion target: durable registry invariants should eventually be promoted out of this live-note into the relevant index surface.
 
+### Agentos.Agent.System.Home
+
+`Agentos.Agent.System.Home` is the Agentos-managed provider home for a registered account.
+
+It is a system-owned execution home, analogous to system Python: Agentos applications can use it for provider operations without polluting user homes. The home is not owned by a single app. `agentos agent accounts monitor` is the first consumer.
+
+#### appendix
+
+Default shape:
+
+```text
+~/.agentos/agent/homes/<provider>/<account>
+```
+
+Example:
+
+```text
+~/.agentos/agent/homes/codex/jp
+```
+
+Each registered account should have one Agentos agent system home. The home must contain whatever provider-specific auth/config state is required for that provider account to run.
+
+Agentos applications should validate the home before using it. If the home is missing or unusable, they should fail the target with setup guidance rather than silently falling back to user homes.
+
+#### meta
+
+- status: active design target.
+- settled: system homes live under `~/.agentos/agent/homes/<provider>/<account>`.
+- settled: system homes are Agentos-owned and app-shared, not monitor-specific.
+- settled: applications validate system homes and report setup guidance when missing or unusable.
+- open: exact setup helper command or workflow for creating a system home from a registered account.
+
 ### Account.Monitor
 
 `agentos agent accounts monitor` is the account-monitoring loop for registered Agentos accounts.
 
-The monitor is registered-account-first. Monitor configuration names registered accounts, and provider homes are execution context for those accounts. Monitor-owned homes are preferred so monitoring work does not pollute user homes.
+The monitor is registered-account-first. Monitor configuration names registered accounts, and Agentos agent system homes are execution context for those accounts.
 
 The first installed workflow is `limits-tracking`, which reproduces the useful account usage and limits behavior from the deprecated stats command while moving it behind a general monitor loop.
 
@@ -355,7 +387,7 @@ Config shape:
             {
               "provider": "codex",
               "account": "jp",
-              "home": "~/.agentos/monitor/homes/codex/jp"
+              "home": "~/.agentos/agent/homes/codex/jp"
             },
             {
               "provider": "codex",
@@ -387,11 +419,13 @@ Config shape:
 
 `agent.accounts.monitor` is an ordered vector of workflow configs. Workflow order is config order.
 
-Targets reference registered accounts by `{provider, account}`. `home` is optional. If omitted, the provider implementation derives a monitor-owned home, with this default shape:
+Targets reference registered accounts by `{provider, account}`. `home` is optional. If omitted, the provider implementation derives the Agentos agent system home, with this default shape:
 
 ```text
-~/.agentos/monitor/homes/<provider>/<account>
+~/.agentos/agent/homes/<provider>/<account>
 ```
+
+Monitor does not prepare Agentos agent system homes. It validates each target home and reports setup guidance when the home is missing or unusable.
 
 CLI filters narrow configured targets. When multiple filters are supplied, composition is AND across filter dimensions.
 
@@ -452,17 +486,17 @@ write display data into MonitorFrame
 - settled: workflows mutate `MonitorState` and `MonitorFrame` in place.
 - settled: `MonitorState` is persistent in-memory loop state.
 - settled: `MonitorFrame` is the per-tick TUI/render frame.
-- settled: monitor-owned homes are preferred to avoid polluting user homes.
-- open: exact monitor-owned home preparation flow for artifact-backed accounts.
-- open: claimed/browser-login account support in monitor-owned homes.
+- settled: monitor uses Agentos agent system homes as target execution context.
+- settled: monitor validates target system homes and reports setup guidance instead of preparing them automatically.
+- open: claimed/browser-login account support in Agentos agent system homes.
 - open: exact provider capability surface for fetching usage data from registered accounts.
 
 ## Session.Notes
 
 ### Open Questions
 
-- Monitor-owned home preparation - decide whether artifact-backed accounts automatically install their active artifact into the monitor home before the first workflow tick.
-- Claimed/browser-login monitor support - decide how metadata-only accounts run in monitor-owned homes without relying on user-home ambient login state.
+- Agentos agent system home setup - decide the helper command or workflow for creating `~/.agentos/agent/homes/<provider>/<account>` from a registered account.
+- Claimed/browser-login monitor support - decide how metadata-only accounts run in Agentos agent system homes without relying on user-home ambient login state.
 - Usage capability surface - decide whether the old `Agent.account_stats(AccountStatsRequest)` returns as-is or becomes a narrower account usage capability for monitor workflows.
 - Monitor history - decide whether `limits-tracking` persists latest/history snapshots during the first implementation or only renders the live TUI.
 - Monitor CLI filters - decide which filters are needed initially beyond `--provider` and `--account`.
@@ -491,6 +525,8 @@ write display data into MonitorFrame
 - Monitor targets are registered-account references.
 - `MonitorLoop`, `MonitorState`, `MonitorFrame`, and `MonitorWorkflow` are the core monitor abstractions.
 - `limits-tracking` is the first installed monitor workflow.
+- `Agentos.Agent.System.Home` is the app-shared Agentos-managed provider home for a registered account.
+- Monitor validates Agentos agent system homes and reports setup guidance instead of preparing them automatically.
 
 ### References
 
@@ -516,4 +552,5 @@ write display data into MonitorFrame
 - 2026-05-14: Rejected a separate provider capabilities registry. Provider support is explicit in code: account registry data feeds the provider engine, and unsupported paths fail from the provider implementation.
 - 2026-05-14: Produced implementation request `590-agent-account-registry-consolidation-impl-req.md`.
 - 2026-05-14: Refreshed session after `590` implementation. Marked base registry, register, link, status reconciliation, invariants, and event logging decisions as closed; carried monitor integration, current-home preservation helpers, migration/cleanup, status UX, status logging, and registry repair forward as follow-up design threads.
-- 2026-05-14: Added `Account.Monitor` design with ordered workflow config, monitor-owned homes, monitor loop abstractions, and `limits-tracking` as the first installed workflow.
+- 2026-05-14: Added `Account.Monitor` design with ordered workflow config, agent system homes, monitor loop abstractions, and `limits-tracking` as the first installed workflow.
+- 2026-05-14: Added `Agentos.Agent.System.Home` and revised monitor homes to `~/.agentos/agent/homes/<provider>/<account>` with validate-and-report behavior.
