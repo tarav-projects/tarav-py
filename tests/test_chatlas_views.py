@@ -259,16 +259,50 @@ def test_chatlas_views_external_summary_stage_commit_and_stale_retention(
     stage_payload = json.loads(capsys.readouterr().out)
     stage_id = stage_payload["stage"]["stage_id"]
 
+    assert stage_payload["view"]["production"]["required_artifacts"] == ["summary.json"]
+
     assert main(["chatlas", "views", "commit", "--stage-id", stage_id]) == 1
     assert "missing staged Chatlas view artifact" in capsys.readouterr().err
 
     stage_path = Path(stage_payload["stage"]["path"])
-    _write(stage_path / "summary.md", "# Summary\n\nShort summary.\n")
+    _write(stage_path / "summary.json", "{invalid json}\n")
+    assert main(["chatlas", "views", "commit", "--stage-id", stage_id]) == 1
+    assert "invalid Chatlas zip-transcript-agent-summary artifact JSON" in capsys.readouterr().err
+
+    _write(
+        stage_path / "summary.json",
+        json.dumps(
+            {
+                "class": "agentos.chatlas.zip_transcript_agent_summary",
+                "schema_version": 1,
+                "view": "zip-transcript-agent-summary",
+                "source_view": "zip-transcript",
+                "session": {
+                    "session_id": session_id,
+                },
+                "turns": [
+                    {
+                        "role": "user",
+                        "text": "hello",
+                    },
+                    {
+                        "role": "assistant",
+                        "text": "acknowledged",
+                    },
+                ],
+            }
+        )
+        + "\n",
+    )
     assert main(["chatlas", "views", "commit", "--stage-id", stage_id]) == 0
     commit_payload = json.loads(capsys.readouterr().out)
     summary_path = Path(commit_payload["view"]["artifact"]["primary_path"])
     assert commit_payload["view"]["state"] == "fresh"
-    assert summary_path.read_text(encoding="utf-8").startswith("# Summary")
+    assert summary_path.name == "summary.json"
+    assert commit_payload["view"]["artifact"]["content_type"] == "application/json"
+    summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary_payload["class"] == "agentos.chatlas.zip_transcript_agent_summary"
+    assert [turn["role"] for turn in summary_payload["turns"]] == ["user", "assistant"]
 
     index_row = _chatlas_index_rows(summary_path.parents[3])[0]
     index_row["display_name"] = "changed source"
