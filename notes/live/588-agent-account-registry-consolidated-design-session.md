@@ -3,10 +3,11 @@
 ## Session.Abstract
 
 - intent: design the next `agentos agent accounts` registry model around explicit account, artifact, and link registries.
-- active focus: converge the persistent registry shape before implementation.
+- active focus: continue account lifecycle design after the consolidated registry implementation.
 - references: current implementation under `src/agentos/*/account_registry.py`, `src/agentos/agent/commands.py`, and tests in `tests/test_agent_account_registry_commands.py`.
-- state: converging.
-- next: decide the command migration path and consistency/reporting details.
+- implementation: `590-agent-account-registry-consolidation-impl-req.md` completed the base registry consolidation.
+- state: implemented; continuing follow-up design.
+- next: converge remaining account lifecycle threads, especially monitor integration, explicit current-home preservation helpers, migration/repair policy, and status UX cleanup.
 
 ## Design.Index
 
@@ -61,7 +62,7 @@ Metadata-only/browser-login account:
 
 #### meta
 
-- status: converging.
+- status: closed; implemented by `590-agent-account-registry-consolidation-impl-req.md`.
 - settled: `active_artifact_id` is account metadata, not a separate manifest.
 
 ### Artifact.Registry
@@ -96,7 +97,7 @@ Codex `auth.json` is the current reference artifact. Browser-login providers may
 
 #### meta
 
-- status: converging.
+- status: closed; implemented by `590-agent-account-registry-consolidation-impl-req.md`.
 - settled: artifacts are durable evidence and backup material, not per-account active files.
 
 ### Link.Registry
@@ -155,7 +156,7 @@ Claude Code browser login is not special. Codex or another provider can also hav
 
 #### meta
 
-- status: converging.
+- status: closed; implemented by `590-agent-account-registry-consolidation-impl-req.md`.
 - settled: use `links.json`, not `links.jsonl`, because this registry is current state keyed by home.
 
 ### Provider.Storage.Shape
@@ -195,8 +196,9 @@ Provider-specific account-local files can be introduced later only when a provid
 
 #### meta
 
-- status: converging.
-- implementation pressure: migration should not preserve legacy slop in new code paths.
+- status: closed for new writes; implemented by `590-agent-account-registry-consolidation-impl-req.md`.
+- settled: new command paths use the compact provider-scoped shape and do not recreate legacy per-account manifests or duplicated per-account auth files.
+- open follow-up: decide whether existing local legacy data needs an explicit migration or cleanup command.
 
 ### Register.Command
 
@@ -204,7 +206,7 @@ Provider-specific account-local files can be introduced later only when a provid
 
 For artifact-backed providers, registration validates the incoming artifact, stores it durably, records it idempotently, and updates the account metadata with the active artifact pointer.
 
-For metadata-only providers, registration validates required metadata and writes account metadata. It may also create a claimed link when the command explicitly receives a home to link.
+For metadata-only providers, registration validates required metadata and writes account metadata. Home association belongs to `link`; `register --home` is deprecated.
 
 #### appendix
 
@@ -225,7 +227,7 @@ Metadata-only registration flow:
 
 #### meta
 
-- status: converging.
+- status: closed; implemented by `590-agent-account-registry-consolidation-impl-req.md`.
 - settled: `register` does not create home links. Home association belongs to `link`.
 
 ### Link.Command
@@ -272,7 +274,7 @@ agentos agent accounts link --provider claude-code --account jp-browser --home ~
 
 #### meta
 
-- status: converging.
+- status: closed; implemented by `590-agent-account-registry-consolidation-impl-req.md`.
 - settled: `link` owns home association for all account types.
 - settled: current home auth files are never deleted as part of link.
 - settled: claimed links are created through `link`, not `register --home`, and do not require a `--kind` flag.
@@ -305,8 +307,9 @@ Consistency checks:
 
 #### meta
 
-- status: active design target.
-- open pressure: decide default human output phrasing for claimed vs verified links.
+- status: closed for base reconciliation; implemented by `590-agent-account-registry-consolidation-impl-req.md`.
+- settled: status reconciles the three registries and reports claimed links as claimed/unverified rather than artifact-verified.
+- open follow-up: review and tighten default human output phrasing for claimed, verified, stale, missing, broken, and mismatched home states.
 
 ### Registry.Invariants
 
@@ -326,20 +329,168 @@ Core invariants:
 
 #### meta
 
-- status: converging.
-- promotion target: these invariants should be carried into the implementation request.
+- status: closed; carried into `590-agent-account-registry-consolidation-impl-req.md` and implemented.
+- promotion target: durable registry invariants should eventually be promoted out of this live-note into the relevant index surface.
+
+### Account.Monitor
+
+`agentos agent accounts monitor` is the account-monitoring loop for registered Agentos accounts.
+
+The monitor is registered-account-first. Monitor configuration names registered accounts, and provider homes are execution context for those accounts. Monitor-owned homes are preferred so monitoring work does not pollute user homes.
+
+The first installed workflow is `limits-tracking`, which reproduces the useful account usage and limits behavior from the deprecated stats command while moving it behind a general monitor loop.
+
+#### appendix
+
+Config shape:
+
+```json
+{
+  "agent": {
+    "accounts": {
+      "monitor": [
+        {
+          "workflow": "limits-tracking",
+          "targets": [
+            {
+              "provider": "codex",
+              "account": "jp",
+              "home": "~/.agentos/monitor/homes/codex/jp"
+            },
+            {
+              "provider": "codex",
+              "account": "mm"
+            }
+          ],
+          "refresh_interval_sec": 60,
+          "usage_total": {
+            "label": "Selected accounts aggregate",
+            "targets": [
+              {
+                "provider": "codex",
+                "account": "jp"
+              },
+              {
+                "provider": "codex",
+                "account": "mm"
+              }
+            ],
+            "limit_class": "usage_over_time",
+            "limit_name": "weekly"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+`agent.accounts.monitor` is an ordered vector of workflow configs. Workflow order is config order.
+
+Targets reference registered accounts by `{provider, account}`. `home` is optional. If omitted, the provider implementation derives a monitor-owned home, with this default shape:
+
+```text
+~/.agentos/monitor/homes/<provider>/<account>
+```
+
+CLI filters narrow configured targets. When multiple filters are supplied, composition is AND across filter dimensions.
+
+Loop model:
+
+```text
+MonitorLoop
+    owns loop cadence and workflow ordering
+    holds MonitorState
+    holds MonitorFrame
+    calls workflows once per tick
+    renders the current MonitorFrame
+
+MonitorState
+    persistent in-memory state across loop ticks
+    owns loop metadata
+    exposes public workflow data space
+
+MonitorFrame
+    per-tick render/work frame
+    receives display blocks, warnings, errors, and status lines
+
+MonitorWorkflow
+    mutates MonitorState and MonitorFrame in place
+    throttles its own slow work
+```
+
+Workflow interface:
+
+```python
+class MonitorWorkflow(Protocol):
+    name: str
+
+    def run(self, state: MonitorState, frame: MonitorFrame) -> None:
+        ...
+```
+
+`MonitorLoop` attempts one tick per second. Workflows are responsible for deciding whether slow work is due. A workflow may update the frame from cached state, fetch fresh data, or return without modifying the frame.
+
+`LimitsTrackingWorkflow` owns its refresh throttle:
+
+```python
+if now - last_refresh_at < refresh_interval_sec:
+    return
+
+fetch provider usage
+store latest model data in MonitorState
+write display data into MonitorFrame
+```
+
+#### meta
+
+- status: active design target.
+- settled: monitor is registered-account-first.
+- settled: `agent.accounts.monitor` is an ordered vector of workflow configs.
+- settled: first installed workflow is `limits-tracking`.
+- settled: `MonitorLoop` runs once per second and workflow throttling is workflow-owned.
+- settled: workflows mutate `MonitorState` and `MonitorFrame` in place.
+- settled: `MonitorState` is persistent in-memory loop state.
+- settled: `MonitorFrame` is the per-tick TUI/render frame.
+- settled: monitor-owned homes are preferred to avoid polluting user homes.
+- open: exact monitor-owned home preparation flow for artifact-backed accounts.
+- open: claimed/browser-login account support in monitor-owned homes.
+- open: exact provider capability surface for fetching usage data from registered accounts.
 
 ## Session.Notes
 
 ### Open Questions
 
-- Migration path: should implementation migrate old files eagerly on first account command, lazily per provider, or with a separate migration helper?
-- Command logger: how should account register/link/status events use the generalized command logger without coupling registry state to command history?
-- Monitor integration: how should future `agentos agent accounts monitor` select accounts independently from registry existence while still using registry links for local context?
-- Register-current helper: should we later add an explicit `--register-current` or separate helper command for preserving an unknown target-home auth before link?
-- Claimed-link conflict details: which suspicious transitions should fail without `--force`?
-- Link event log shape: what exact payload should generalized command logging store for link events?
-- Registry corruption policy: how should invalid `accounts.json`, `links.json`, or malformed `artifacts.jsonl` be reported and repaired?
+- Monitor-owned home preparation - decide whether artifact-backed accounts automatically install their active artifact into the monitor home before the first workflow tick.
+- Claimed/browser-login monitor support - decide how metadata-only accounts run in monitor-owned homes without relying on user-home ambient login state.
+- Usage capability surface - decide whether the old `Agent.account_stats(AccountStatsRequest)` returns as-is or becomes a narrower account usage capability for monitor workflows.
+- Monitor history - decide whether `limits-tracking` persists latest/history snapshots during the first implementation or only renders the live TUI.
+- Monitor CLI filters - decide which filters are needed initially beyond `--provider` and `--account`.
+- Register-current helper - decide whether to add an explicit `--register-current` or separate helper command for preserving an unknown target-home auth before link.
+- Migration/cleanup policy - decide whether existing local legacy registry files need an explicit migrate/cleanup command, or whether "new writes only" is sufficient.
+- Status UX wording - decide default human output for claimed, verified, stale, missing, broken, and mismatched home states.
+- Status command logging - decide whether `status` emits command-log events or remains read-only and unlogged.
+- Registry repair policy - decide whether Agentos provides a repair command for invalid `accounts.json`, `links.json`, and malformed `artifacts.jsonl`, or only reports the problem.
+
+### Closed Questions
+
+- Registry storage shape is closed: provider-scoped `accounts.json`, `artifacts.jsonl`, `links.json`, and `artifacts/`.
+- Account metadata owns `active_artifact_id`.
+- Artifact files are durable evidence and backup material, not per-account active files.
+- `links.json` is current state keyed by provider/home.
+- `register` does not create home links; `register --home` is deprecated.
+- `link` owns home association for artifact-backed and claimed accounts.
+- Claimed links use `link` without a `--kind` flag.
+- Valid re-linking does not require `--force`.
+- Unknown or broken target-home auth fails without `--force`.
+- `--force` is the caller-responsibility overwrite path for unknown or broken target-home state.
+- Known target-home auth is registered before switching.
+- Register/link events use generalized command logging as observability, not as registry source of truth.
+- A separate provider capabilities registry was rejected.
+- Monitor configuration lives under `agent.accounts.monitor` as an ordered vector of workflow configs.
+- Monitor targets are registered-account references.
+- `MonitorLoop`, `MonitorState`, `MonitorFrame`, and `MonitorWorkflow` are the core monitor abstractions.
+- `limits-tracking` is the first installed monitor workflow.
 
 ### References
 
@@ -364,3 +515,5 @@ Core invariants:
 - 2026-05-14: Clarified that valid target-home auth from a known account is not an unknown-account conflict. `link` should register the new artifact for that known account before switching.
 - 2026-05-14: Rejected a separate provider capabilities registry. Provider support is explicit in code: account registry data feeds the provider engine, and unsupported paths fail from the provider implementation.
 - 2026-05-14: Produced implementation request `590-agent-account-registry-consolidation-impl-req.md`.
+- 2026-05-14: Refreshed session after `590` implementation. Marked base registry, register, link, status reconciliation, invariants, and event logging decisions as closed; carried monitor integration, current-home preservation helpers, migration/cleanup, status UX, status logging, and registry repair forward as follow-up design threads.
+- 2026-05-14: Added `Account.Monitor` design with ordered workflow config, monitor-owned homes, monitor loop abstractions, and `limits-tracking` as the first installed workflow.
