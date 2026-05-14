@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from agentos.agent._cli_common import format_json_output, normalize_updated_since, optional_string_tuple
+from agentos.agent._cli_common import format_json_output, optional_string_tuple
 from agentos.chatlas.core import (
     chatlas_index_query,
     chatlas_index_redo,
@@ -110,17 +110,20 @@ def _cmd_chatlas_stats(args: argparse.Namespace) -> int:
 
 def _cmd_chatlas_query(args: argparse.Namespace) -> int:
     payload = chatlas_query(
-        query=args.query,
+        uri=args.uri,
+        identity_hash=args.identity_hash,
         providers=optional_string_tuple(args.providers),
-        instances=optional_string_tuple(args.instances),
+        session_id=args.session_id,
+        display_name=args.display_name,
         sort=args.sort,
         limit=args.limit,
+        scan_limit=args.scan_limit,
         extractable_only=args.extractable,
-        updated_after=normalize_updated_since(args.updated_since),
-        include_match=args.include_match,
-        include_artifacts=args.include_artifacts,
-        include_provider_stats=args.include_provider_stats,
-        compact=args.compact,
+        updated_after=args.updated_after,
+        raw_contains=optional_string_tuple(args.raw_contains),
+        user_contains=optional_string_tuple(args.user_contains),
+        assistant_contains=optional_string_tuple(args.assistant_contains),
+        message_contains=optional_string_tuple(args.message_contains),
     )
     print(format_json_output(payload))
     return 0
@@ -440,12 +443,17 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
 
     query_parser = chatlas_subparsers.add_parser(
         "query",
-        help="Query Chatlas sessions by session index metadata.",
+        help="Query Chatlas sessions with layered index, raw, and standard-model filters.",
     )
     query_parser.add_argument(
-        "query",
-        nargs="?",
-        help="Exact query value matched against URI, identity hash, instance, session id, display name, fingerprint, and native fields.",
+        "--uri",
+        default=None,
+        help="Match the indexed session URI exactly.",
+    )
+    query_parser.add_argument(
+        "--identity-hash",
+        default=None,
+        help="Match the indexed identity hash exactly.",
     )
     query_parser.add_argument(
         "--provider",
@@ -455,10 +463,24 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Restrict query to a provider family. Repeat to include multiple providers.",
     )
     query_parser.add_argument(
-        "--profile",
-        action="append",
-        dest="instances",
-        help="Restrict query to a resolved Chatlas instance name. Repeat to include multiple instances.",
+        "--session-id",
+        default=None,
+        help="Match the indexed provider session id exactly.",
+    )
+    query_parser.add_argument(
+        "--display-name",
+        default=None,
+        help="Match indexed display names by case-insensitive substring.",
+    )
+    query_parser.add_argument(
+        "--extractable",
+        action="store_true",
+        help="Keep only sessions with an extractable primary artifact.",
+    )
+    query_parser.add_argument(
+        "--updated-after",
+        default=None,
+        help="Keep only sessions whose indexed updated_at is at or after this ISO 8601 timestamp.",
     )
     query_parser.add_argument(
         "--sort",
@@ -467,40 +489,40 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Sort order for returned sessions (default: lexical).",
     )
     query_parser.add_argument(
+        "--scan-limit",
+        type=int,
+        default=None,
+        help="Maximum number of index candidates to scan before raw and standard-model filters.",
+    )
+    query_parser.add_argument(
         "--limit",
         type=int,
         default=None,
         help="Maximum number of sessions to return.",
     )
     query_parser.add_argument(
-        "--extractable",
-        action="store_true",
-        help="Keep only sessions with an extractable primary artifact.",
-    )
-    query_parser.add_argument(
-        "--updated-since",
+        "--raw-contains",
+        action="append",
         default=None,
-        help="Keep only sessions updated within the given lookback, e.g. 72h or 3d.",
+        help="Keep only sessions whose backing artifacts contain this literal text. Repeat for AND matching.",
     )
     query_parser.add_argument(
-        "--compact",
-        action="store_true",
-        help="Return compact identifier-oriented session rows instead of the full session index payload.",
+        "--user-contains",
+        action="append",
+        default=None,
+        help="Keep only sessions whose visible user message text contains this literal text. Repeat for AND matching.",
     )
     query_parser.add_argument(
-        "--include-match",
-        action="store_true",
-        help="Include exact-match details for identity queries.",
+        "--assistant-contains",
+        action="append",
+        default=None,
+        help="Keep only sessions whose visible assistant message text contains this literal text. Repeat for AND matching.",
     )
     query_parser.add_argument(
-        "--include-artifacts",
-        action="store_true",
-        help="Include full backing_artifacts rows in session output.",
-    )
-    query_parser.add_argument(
-        "--include-provider-stats",
-        action="store_true",
-        help="Include provider-specific stats for each matched session.",
+        "--message-contains",
+        action="append",
+        default=None,
+        help="Keep only sessions whose visible user or assistant message text contains this literal text. Repeat for AND matching.",
     )
     query_parser.set_defaults(handler=_cmd_chatlas_query)
 

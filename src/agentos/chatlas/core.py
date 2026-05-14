@@ -17,6 +17,7 @@ from agentos.chatlas.index_query import run_chatlas_index_query
 from agentos.chatlas.index_query import select_one_chatlas_index_row
 from agentos.chatlas.index_stats import format_chatlas_index_stats_markdown
 from agentos.chatlas.index_stats import run_chatlas_index_stats
+from agentos.chatlas.query import run_chatlas_query
 
 
 def chatlas_update(
@@ -143,32 +144,39 @@ def format_chatlas_stats_markdown(payload: dict[str, object]) -> str:
 
 def chatlas_query(
     *,
-    query: str | None = None,
+    uri: str | None = None,
+    identity_hash: str | None = None,
     providers: tuple[str, ...] | None = None,
-    instances: tuple[str, ...] | None = None,
+    session_id: str | None = None,
+    display_name: str | None = None,
     sort: str = "lexical",
     limit: int | None = None,
+    scan_limit: int | None = None,
     extractable_only: bool = False,
-    updated_after: object = None,
-    include_match: bool = False,
-    include_artifacts: bool = False,
-    include_provider_stats: bool = False,
-    compact: bool = False,
+    updated_after: str | None = None,
+    raw_contains: tuple[str, ...] | None = None,
+    user_contains: tuple[str, ...] | None = None,
+    assistant_contains: tuple[str, ...] | None = None,
+    message_contains: tuple[str, ...] | None = None,
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
-    _ = query
-    _ = providers
-    _ = instances
-    _ = sort
-    _ = limit
-    _ = extractable_only
-    _ = updated_after
-    _ = include_match
-    _ = include_artifacts
-    _ = include_provider_stats
-    _ = compact
-    _ = chatlas_root
-    raise _chatlas_stub_error("chatlas query")
+    return run_chatlas_query(
+        uri=uri,
+        identity_hash=identity_hash,
+        providers=providers,
+        session_id=session_id,
+        display_name=display_name,
+        extractable_only=extractable_only,
+        updated_after=updated_after,
+        sort=sort,
+        scan_limit=scan_limit,
+        limit=limit,
+        raw_contains=raw_contains,
+        user_contains=user_contains,
+        assistant_contains=assistant_contains,
+        message_contains=message_contains,
+        chatlas_root=chatlas_root,
+    )
 
 
 def chatlas_raw_paths(
