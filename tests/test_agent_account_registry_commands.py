@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -55,7 +54,7 @@ def _read_json(path: Path) -> dict[str, object]:
     return payload
 
 
-def _read_registry(path: Path) -> list[dict[str, object]]:
+def _read_jsonl(path: Path) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         payload = json.loads(line)
@@ -78,8 +77,8 @@ def _register_args(auth_file: Path, *, account: str = "br") -> list[str]:
     ]
 
 
-def _link_args(home: Path, *, account: str = "br") -> list[str]:
-    return [
+def _link_args(home: Path, *, account: str = "br", force: bool = False) -> list[str]:
+    args = [
         "agent",
         "accounts",
         "link",
@@ -90,15 +89,18 @@ def _link_args(home: Path, *, account: str = "br") -> list[str]:
         "--home",
         str(home),
     ]
+    if force:
+        args.append("--force")
+    return args
 
 
-def _status_args(home: Path, *, json_output: bool = True) -> list[str]:
+def _status_args(home: Path, *, json_output: bool = True, provider: str = "codex") -> list[str]:
     args = [
         "agent",
         "accounts",
         "status",
         "--provider",
-        "codex",
+        provider,
         "--home",
         str(home),
     ]
@@ -117,7 +119,6 @@ def _registry_status_args(*, provider: str | None = None, json_output: bool = Tr
 
 
 def _claude_register_args(
-    home: Path,
     *,
     account: str = "main",
     email: str | None = "person@example.com",
@@ -131,8 +132,6 @@ def _claude_register_args(
         "claude-code",
         "--account",
         account,
-        "--home",
-        str(home),
     ]
     if email is not None:
         args.extend(["--email", email])
@@ -141,122 +140,46 @@ def _claude_register_args(
     return args
 
 
-def test_agent_accounts_register_uses_auth_file_and_flat_registry(
+def _assert_no_old_codex_layout(provider_root: Path) -> None:
+    assert not (provider_root / "registry.jsonl").exists()
+    assert not (provider_root / "files").exists()
+    assert not (provider_root / "accounts" / "br" / "manifest.json").exists()
+    assert not (provider_root / "accounts" / "br" / "auth.json").exists()
+
+
+def test_agent_accounts_register_codex_writes_consolidated_registry(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source_auth = tmp_path / "named-anything.json"
-    target_home = tmp_path / "codex"
     auth_text = _auth_json()
     auth_sha = _sha(auth_text)
     _write(source_auth, auth_text)
 
     assert main(_register_args(source_auth)) == 0
-    register_payload = json.loads(capsys.readouterr().out)
-    assert register_payload["auth"]["account_id"] == "acc_123"
-    assert register_payload["auth"]["email"] == "person@example.com"
-    assert register_payload["registry_appended"] is True
-    assert "secret-refresh-token" not in json.dumps(register_payload)
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["artifact_appended"] is True
+    assert payload["account_record"]["active_artifact_id"] == auth_sha
+    assert "secret-refresh-token" not in json.dumps(payload)
 
     provider_root = agentos_home / "accounts" / "codex"
-    stored_file = provider_root / "files" / f"{auth_sha}.auth.json"
-    registry_path = provider_root / "registry.jsonl"
-    manifest_path = provider_root / "accounts" / "br" / "manifest.json"
-    pointer_path = provider_root / "accounts" / "br" / "auth.json"
-    assert stored_file.read_text(encoding="utf-8") == auth_text
-
-    registry_entries = _read_registry(registry_path)
-    assert len(registry_entries) == 1
-    assert registry_entries[0]["provider"] == "codex"
-    assert registry_entries[0]["account"] == "br"
-    assert registry_entries[0]["account_id"] == "acc_123"
-    assert registry_entries[0]["sha256"] == auth_sha
-    assert registry_entries[0]["file"] == f"files/{auth_sha}.auth.json"
-    assert "secret-refresh-token" not in json.dumps(registry_entries)
-
-    manifest = _read_json(manifest_path)
-    assert manifest["provider"] == "codex"
-    assert manifest["account"] == "br"
-    assert manifest["auth_kind"] == "auth-json"
-    assert manifest["capabilities"]["link"] is True
-    assert manifest["capabilities"]["monitor"] is True
-    assert isinstance(manifest["created_at"], str)
-    assert manifest["account_id"] == "acc_123"
-    assert manifest["active_sha256"] == auth_sha
-    assert manifest["active_file"] == f"../../files/{auth_sha}.auth.json"
-    assert "secret-refresh-token" not in json.dumps(manifest)
-    assert pointer_path.is_symlink()
-    assert os.readlink(pointer_path) == f"../../files/{auth_sha}.auth.json"
-    assert pointer_path.resolve() == stored_file
-
-    assert main(_link_args(target_home)) == 0
-    link_payload = json.loads(capsys.readouterr().out)
-    target_auth = target_home / "auth.json"
-    assert target_auth.is_file()
-    assert not target_auth.is_symlink()
-    assert target_auth.read_text(encoding="utf-8") == auth_text
-    assert link_payload["copied_auth"]["sha256"] == auth_sha
-    assert "secret-refresh-token" not in json.dumps(link_payload)
-
-    assert main(_status_args(target_home)) == 0
-    status_payload = json.loads(capsys.readouterr().out)
-    assert status_payload["classification"] == "matching-active"
-    assert status_payload["auth"]["account_id"] == "acc_123"
-    assert status_payload["registry_matches"][0]["sha256"] == auth_sha
-    assert status_payload["latest_link_event"]["event_type"] == "agent.accounts.link"
-    assert "registry" not in status_payload
-
-    assert (
-        main(
-            [
-                "stdlib",
-                "utils",
-                "cmd-logger",
-                "query",
-                "--event-type",
-                "agent.accounts.link",
-                "--json",
-            ]
-        )
-        == 0
-    )
-    log_payload = json.loads(capsys.readouterr().out)
-    assert log_payload["count"] == 1
-    assert log_payload["events"][0]["payload"]["account"] == "br"
-    assert "secret-refresh-token" not in json.dumps(log_payload)
+    assert (provider_root / "artifacts" / f"{auth_sha}.auth.json").read_text(encoding="utf-8") == auth_text
+    accounts = _read_json(provider_root / "accounts.json")
+    assert accounts["accounts"]["br"]["provider"] == "codex"
+    assert accounts["accounts"]["br"]["account_id"] == "acc_123"
+    assert accounts["accounts"]["br"]["email"] == "person@example.com"
+    assert accounts["accounts"]["br"]["active_artifact_id"] == auth_sha
+    artifacts = _read_jsonl(provider_root / "artifacts.jsonl")
+    assert len(artifacts) == 1
+    assert artifacts[0]["account"] == "br"
+    assert artifacts[0]["artifact_id"] == auth_sha
+    assert artifacts[0]["file"] == f"artifacts/{auth_sha}.auth.json"
+    _assert_no_old_codex_layout(provider_root)
 
 
-def test_agent_accounts_register_rejects_old_home_input(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-) -> None:
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    source_home = tmp_path / "codex-br"
-    _write(source_home / "auth.json", _auth_json())
-
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "register",
-                "--provider",
-                "codex",
-                "--home",
-                str(source_home),
-                "--account",
-                "br",
-            ]
-        )
-        == 1
-    )
-    assert "requires --auth-file" in capsys.readouterr().err
-
-
-def test_agent_accounts_register_same_hash_is_noop(
+def test_agent_accounts_register_same_artifact_is_noop(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -267,37 +190,15 @@ def test_agent_accounts_register_same_hash_is_noop(
     _write(source_auth, auth_text)
 
     assert main(_register_args(source_auth)) == 0
-    first_payload = json.loads(capsys.readouterr().out)
-    assert first_payload["registry_appended"] is True
+    assert json.loads(capsys.readouterr().out)["artifact_appended"] is True
     assert main(_register_args(source_auth)) == 0
-    second_payload = json.loads(capsys.readouterr().out)
-    assert second_payload["registry_appended"] is False
+    assert json.loads(capsys.readouterr().out)["artifact_appended"] is False
 
-    registry_entries = _read_registry(agentos_home / "accounts" / "codex" / "registry.jsonl")
-    assert len(registry_entries) == 1
-    assert registry_entries[0]["sha256"] == _sha(auth_text)
+    artifacts = _read_jsonl(agentos_home / "accounts" / "codex" / "artifacts.jsonl")
+    assert [entry["artifact_id"] for entry in artifacts] == [_sha(auth_text)]
 
 
-def test_agent_accounts_register_accepts_manual_email_metadata(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-) -> None:
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    source_auth = tmp_path / "auth.json"
-    _write(source_auth, '{"tokens":{"account_id":"acc_123"}}\n')
-
-    assert main([*_register_args(source_auth), "--email", "manual@example.com"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["auth"]["email"] == "manual@example.com"
-
-    manifest = _read_json(agentos_home / "accounts" / "codex" / "accounts" / "br" / "manifest.json")
-    assert manifest["email"] == "manual@example.com"
-    registry_entries = _read_registry(agentos_home / "accounts" / "codex" / "registry.jsonl")
-    assert registry_entries[0]["email"] == "manual@example.com"
-
-
-def test_agent_accounts_register_new_hash_updates_manifest_and_pointer(
+def test_agent_accounts_register_new_hash_updates_active_artifact(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -316,15 +217,12 @@ def test_agent_accounts_register_new_hash_updates_manifest_and_pointer(
     capsys.readouterr()
 
     provider_root = agentos_home / "accounts" / "codex"
-    registry_entries = _read_registry(provider_root / "registry.jsonl")
-    assert [entry["sha256"] for entry in registry_entries] == [_sha(first_text), _sha(second_text)]
-    manifest = _read_json(provider_root / "accounts" / "br" / "manifest.json")
-    assert manifest["active_sha256"] == _sha(second_text)
-    assert os.readlink(provider_root / "accounts" / "br" / "auth.json") == (
-        f"../../files/{_sha(second_text)}.auth.json"
-    )
-    assert (provider_root / "files" / f"{_sha(first_text)}.auth.json").read_text(encoding="utf-8") == first_text
-    assert (provider_root / "files" / f"{_sha(second_text)}.auth.json").read_text(encoding="utf-8") == second_text
+    artifacts = _read_jsonl(provider_root / "artifacts.jsonl")
+    assert [entry["artifact_id"] for entry in artifacts] == [_sha(first_text), _sha(second_text)]
+    accounts = _read_json(provider_root / "accounts.json")
+    assert accounts["accounts"]["br"]["active_artifact_id"] == _sha(second_text)
+    assert (provider_root / "artifacts" / f"{_sha(first_text)}.auth.json").read_text(encoding="utf-8") == first_text
+    assert (provider_root / "artifacts" / f"{_sha(second_text)}.auth.json").read_text(encoding="utf-8") == second_text
 
 
 def test_agent_accounts_register_refuses_account_id_mismatch_without_touching_current(
@@ -346,43 +244,15 @@ def test_agent_accounts_register_refuses_account_id_mismatch_without_touching_cu
     assert "is already registered for account_id acc_123" in capsys.readouterr().err
 
     provider_root = agentos_home / "accounts" / "codex"
-    manifest = _read_json(provider_root / "accounts" / "br" / "manifest.json")
-    assert manifest["active_sha256"] == _sha(first_text)
-    assert os.readlink(provider_root / "accounts" / "br" / "auth.json") == (
-        f"../../files/{_sha(first_text)}.auth.json"
-    )
-    registry_entries = _read_registry(provider_root / "registry.jsonl")
-    assert len(registry_entries) == 1
-    assert registry_entries[0]["sha256"] == _sha(first_text)
-    assert not (provider_root / "files" / f"{_sha(second_text)}.auth.json").exists()
+    accounts = _read_json(provider_root / "accounts.json")
+    assert accounts["accounts"]["br"]["active_artifact_id"] == _sha(first_text)
+    artifacts = _read_jsonl(provider_root / "artifacts.jsonl")
+    assert len(artifacts) == 1
+    assert artifacts[0]["artifact_id"] == _sha(first_text)
+    assert not (provider_root / "artifacts" / f"{_sha(second_text)}.auth.json").exists()
 
 
-def test_agent_accounts_register_preserves_existing_regular_account_pointer(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-) -> None:
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    provider_root = agentos_home / "accounts" / "codex"
-    account_dir = provider_root / "accounts" / "br"
-    existing_text = _auth_json(last_refresh="2026-05-01T00:00:00Z", iat=1_775_000_000)
-    new_text = _auth_json(last_refresh="2026-05-12T00:00:00Z", iat=1_776_000_000)
-    _write(account_dir / "auth.json", existing_text)
-    _write(tmp_path / "new.json", new_text)
-
-    assert main(_register_args(tmp_path / "new.json")) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["preserved_previous_pointer"]["sha256"] == _sha(existing_text)
-
-    assert (provider_root / "files" / f"{_sha(existing_text)}.auth.json").read_text(encoding="utf-8") == existing_text
-    assert (provider_root / "files" / f"{_sha(new_text)}.auth.json").read_text(encoding="utf-8") == new_text
-    assert (account_dir / "auth.json").is_symlink()
-    assert os.readlink(account_dir / "auth.json") == f"../../files/{_sha(new_text)}.auth.json"
-    registry_entries = _read_registry(provider_root / "registry.jsonl")
-    assert {entry["sha256"] for entry in registry_entries} == {_sha(existing_text), _sha(new_text)}
-
-
-def test_agent_accounts_link_registers_same_account_auth_before_copy(
+def test_agent_accounts_link_writes_home_auth_and_link_registry(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -390,26 +260,38 @@ def test_agent_accounts_link_registers_same_account_auth_before_copy(
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source_auth = tmp_path / "source.json"
     target_home = tmp_path / "codex"
-    old_auth = _auth_json(last_refresh="2026-05-01T00:00:00Z", iat=1_775_000_000)
-    refreshed_auth = _auth_json(last_refresh="2026-05-12T00:00:00Z", iat=1_776_000_000)
-    _write(source_auth, old_auth)
-    _write(target_home / "auth.json", refreshed_auth)
+    auth_text = _auth_json()
+    auth_sha = _sha(auth_text)
+    _write(source_auth, auth_text)
 
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
     assert main(_link_args(target_home)) == 0
-    link_payload = json.loads(capsys.readouterr().out)
-    assert link_payload["copied_auth"]["sha256"] == _sha(refreshed_auth)
-    assert (target_home / "auth.json").read_text(encoding="utf-8") == refreshed_auth
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["kind"] == "artifact"
+    assert payload["copied_auth"]["artifact_id"] == auth_sha
+    assert (target_home / "auth.json").read_text(encoding="utf-8") == auth_text
 
-    provider_root = agentos_home / "accounts" / "codex"
-    registry_entries = _read_registry(provider_root / "registry.jsonl")
-    assert {entry["sha256"] for entry in registry_entries} == {_sha(old_auth), _sha(refreshed_auth)}
-    manifest = _read_json(provider_root / "accounts" / "br" / "manifest.json")
-    assert manifest["active_sha256"] == _sha(refreshed_auth)
+    links = _read_json(agentos_home / "accounts" / "codex" / "links.json")
+    link = links["links"][str(target_home.resolve())]
+    assert link["account"] == "br"
+    assert link["kind"] == "artifact"
+    assert link["artifact_id"] == auth_sha
+
+    assert main(["stdlib", "utils", "cmd-logger", "query", "--event-type", "agent.accounts.link", "--json"]) == 0
+    log_payload = json.loads(capsys.readouterr().out)
+    assert log_payload["count"] == 1
+    event_payload = log_payload["events"][0]["payload"]
+    assert event_payload["provider"] == "codex"
+    assert event_payload["account"] == "br"
+    assert event_payload["home"] == str(target_home.resolve())
+    assert event_payload["kind"] == "artifact"
+    assert event_payload["force"] is False
+    assert event_payload["artifact_id"] == auth_sha
+    assert event_payload["previous_link"] is None
 
 
-def test_agent_accounts_link_preserves_known_different_account_then_switches(
+def test_agent_accounts_link_registers_known_current_auth_before_switching(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -430,43 +312,24 @@ def test_agent_accounts_link_preserves_known_different_account_then_switches(
     assert main(_register_args(jp_source_auth, account="jp")) == 0
     capsys.readouterr()
     assert main(_link_args(target_home, account="jp")) == 0
-    link_payload = json.loads(capsys.readouterr().out)
-    assert link_payload["preserved_home_account"] == "br"
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["target_before_link"]["account"] == "br"
+    assert payload["target_before_link"]["action"] == "registered"
     assert (target_home / "auth.json").read_text(encoding="utf-8") == jp_auth
 
     provider_root = agentos_home / "accounts" / "codex"
-    br_manifest = _read_json(provider_root / "accounts" / "br" / "manifest.json")
-    jp_manifest = _read_json(provider_root / "accounts" / "jp" / "manifest.json")
-    assert br_manifest["active_sha256"] == _sha(current_br_auth)
-    assert jp_manifest["active_sha256"] == _sha(jp_auth)
-    registry_entries = _read_registry(provider_root / "registry.jsonl")
-    assert {entry["sha256"] for entry in registry_entries} == {
+    accounts = _read_json(provider_root / "accounts.json")
+    assert accounts["accounts"]["br"]["active_artifact_id"] == _sha(current_br_auth)
+    assert accounts["accounts"]["jp"]["active_artifact_id"] == _sha(jp_auth)
+    artifacts = _read_jsonl(provider_root / "artifacts.jsonl")
+    assert {entry["artifact_id"] for entry in artifacts} == {
         _sha(old_br_auth),
         _sha(current_br_auth),
         _sha(jp_auth),
     }
 
-    assert (
-        main(
-            [
-                "stdlib",
-                "utils",
-                "cmd-logger",
-                "query",
-                "--event-type",
-                "agent.accounts.link",
-                "--json",
-            ]
-        )
-        == 0
-    )
-    log_payload = json.loads(capsys.readouterr().out)
-    assert log_payload["count"] == 1
-    assert log_payload["events"][0]["status"] == "ok"
-    assert log_payload["events"][0]["payload"]["preserved_home_account"] == "br"
 
-
-def test_agent_accounts_link_refuses_unknown_current_auth_without_deleting_it(
+def test_agent_accounts_link_refuses_unknown_current_auth_without_force(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -487,7 +350,31 @@ def test_agent_accounts_link_refuses_unknown_current_auth_without_deleting_it(
     assert (target_home / "auth.json").read_text(encoding="utf-8") == unknown_auth
 
 
-def test_agent_accounts_link_refuses_broken_current_auth_without_deleting_it(
+def test_agent_accounts_link_force_overwrites_unknown_and_broken_auth(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    unknown_home = tmp_path / "codex-unknown"
+    broken_home = tmp_path / "codex-broken"
+    auth_text = _auth_json(account_id="acc_123")
+    _write(source_auth, auth_text)
+    _write(unknown_home / "auth.json", _auth_json(account_id="acc_unknown"))
+    _write(broken_home / "auth.json", "{not-json\n")
+
+    assert main(_register_args(source_auth)) == 0
+    capsys.readouterr()
+    assert main(_link_args(unknown_home, force=True)) == 0
+    assert json.loads(capsys.readouterr().out)["target_before_link"]["classification"] == "unknown"
+    assert (unknown_home / "auth.json").read_text(encoding="utf-8") == auth_text
+    assert main(_link_args(broken_home, force=True)) == 0
+    assert json.loads(capsys.readouterr().out)["target_before_link"]["classification"] == "broken"
+    assert (broken_home / "auth.json").read_text(encoding="utf-8") == auth_text
+
+
+def test_agent_accounts_link_refuses_broken_current_auth_without_force(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -505,12 +392,8 @@ def test_agent_accounts_link_refuses_broken_current_auth_without_deleting_it(
     assert "invalid codex auth JSON" in capsys.readouterr().err
     assert (target_home / "auth.json").read_text(encoding="utf-8") == broken_auth
 
-    assert main(_status_args(target_home)) == 0
-    status_payload = json.loads(capsys.readouterr().out)
-    assert status_payload["classification"] == "broken"
 
-
-def test_agent_accounts_status_reports_known_account_new_hash(
+def test_agent_accounts_status_reports_home_and_registry_state(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -518,42 +401,30 @@ def test_agent_accounts_status_reports_known_account_new_hash(
     _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source_auth = tmp_path / "source.json"
     target_home = tmp_path / "codex"
-    _write(source_auth, _auth_json(last_refresh="2026-05-01T00:00:00Z", iat=1_775_000_000))
-    _write(target_home / "auth.json", _auth_json(last_refresh="2026-05-12T00:00:00Z", iat=1_776_000_000))
-
-    assert main(_register_args(source_auth)) == 0
-    capsys.readouterr()
-    assert main(_status_args(target_home)) == 0
-    status_payload = json.loads(capsys.readouterr().out)
-    assert status_payload["classification"] == "known-account-new-hash"
-    assert status_payload["auth"]["account_id"] == "acc_123"
-    assert len(status_payload["account_registry_matches"]) == 1
-
-
-def test_agent_accounts_status_defaults_to_human_output(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-) -> None:
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    source_auth = tmp_path / "source.json"
-    target_home = tmp_path / "codex"
-    _write(source_auth, _auth_json(email="person@example.com"))
+    auth_text = _auth_json(email="person@example.com")
+    _write(source_auth, auth_text)
 
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
     assert main(_link_args(target_home)) == 0
     capsys.readouterr()
-    assert main(_status_args(target_home, json_output=False)) == 0
 
-    output = capsys.readouterr().out
-    assert output.startswith("Provider: codex\n")
-    assert "Status: matching-active\n" in output
-    assert "Email: person@example.com\n" in output
-    assert "Registered hash matches: 1\n" in output
-    assert "\nRegistry:\n" not in output
+    assert main(_status_args(target_home)) == 0
+    status_payload = json.loads(capsys.readouterr().out)
+    assert status_payload["classification"] == "matching-active"
+    assert status_payload["link_consistency"] == "verified"
+    assert status_payload["auth"]["account_id"] == "acc_123"
+    assert status_payload["artifact_registry_matches"][0]["artifact_id"] == _sha(auth_text)
+    assert "providers" not in status_payload
+
+    assert main(_status_args(target_home, json_output=False)) == 0
+    human_output = capsys.readouterr().out
+    assert human_output.startswith("Provider: codex\n")
+    assert "Status: matching-active\n" in human_output
+    assert "Link: verified\n" in human_output
+    assert "Registered artifact matches: 1\n" in human_output
     with pytest.raises(json.JSONDecodeError):
-        json.loads(output)
+        json.loads(human_output)
 
 
 def test_agent_accounts_status_defaults_to_general_registry_view(
@@ -564,7 +435,6 @@ def test_agent_accounts_status_defaults_to_general_registry_view(
     _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source_auth = tmp_path / "source.json"
     auth_text = _auth_json(email="person@example.com")
-    auth_sha = _sha(auth_text)
     _write(source_auth, auth_text)
 
     assert main(_register_args(source_auth)) == 0
@@ -575,6 +445,8 @@ def test_agent_accounts_status_defaults_to_general_registry_view(
     assert output.startswith("Agent accounts\n")
     assert "Providers: 1\n" in output
     assert "Accounts: 1\n" in output
+    assert "Artifacts: 1\n" in output
+    assert "Links: 0\n" in output
     assert "Registered accounts:\n" in output
     assert "  - codex/br <person@example.com> auth=auth-json active=" in output
     with pytest.raises(json.JSONDecodeError):
@@ -585,12 +457,28 @@ def test_agent_accounts_status_defaults_to_general_registry_view(
     assert payload["provider"] is None
     assert payload["provider_count"] == 1
     assert payload["account_count"] == 1
+    assert payload["artifact_count"] == 1
+    assert payload["link_count"] == 0
     assert payload["accounts"][0]["provider"] == "codex"
-    assert payload["accounts"][0]["account"] == "br"
-    assert payload["accounts"][0]["active_sha256"] == auth_sha
+    assert payload["accounts"][0]["active_artifact_id"] == _sha(auth_text)
 
 
-def test_agent_accounts_register_claude_metadata_manifest_only(
+def test_agent_accounts_status_reports_malformed_registry_path(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    provider_root = agentos_home / "accounts" / "codex"
+    _write(provider_root / "accounts.json", "{not-json\n")
+
+    assert main(_registry_status_args(provider="codex")) == 1
+    error = capsys.readouterr().err
+    assert "invalid account registry JSON" in error
+    assert str(provider_root / "accounts.json") in error
+
+
+def test_agent_accounts_register_claude_metadata_only_and_link_claimed(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -598,109 +486,50 @@ def test_agent_accounts_register_claude_metadata_manifest_only(
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     claude_home = tmp_path / "claude-home"
 
-    assert main(_claude_register_args(claude_home, label="Claude main")) == 0
+    assert main(_claude_register_args(label="Claude main")) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["provider"] == "claude-code"
     assert payload["account"] == "main"
 
     provider_root = agentos_home / "accounts" / "claude-code"
-    manifest_path = provider_root / "accounts" / "main" / "manifest.json"
-    manifest = _read_json(manifest_path)
-    assert manifest["provider"] == "claude-code"
-    assert manifest["account"] == "main"
-    assert manifest["label"] == "Claude main"
-    assert manifest["email"] == "person@example.com"
-    assert manifest["home"] == str(claude_home.resolve())
-    assert manifest["auth_kind"] == "ambient-browser-login"
-    assert manifest["capabilities"] == {
-        "link": False,
-        "monitor": True,
-        "register": True,
-        "status": True,
-    }
-    assert isinstance(manifest["created_at"], str)
-    assert isinstance(manifest["updated_at"], str)
-    assert not (provider_root / "files").exists()
-    assert not (provider_root / "registry.jsonl").exists()
-    assert not (provider_root / "accounts" / "main" / "auth.json").exists()
+    accounts = _read_json(provider_root / "accounts.json")
+    assert accounts["accounts"]["main"]["label"] == "Claude main"
+    assert accounts["accounts"]["main"]["email"] == "person@example.com"
+    assert accounts["accounts"]["main"]["auth_kinds"] == ["ambient-browser-login"]
+    assert accounts["accounts"]["main"]["active_artifact_id"] is None
+    assert not (provider_root / "artifacts").exists()
+    assert not (provider_root / "artifacts.jsonl").exists()
+    assert not (provider_root / "accounts" / "main" / "manifest.json").exists()
+
+    assert main(["agent", "accounts", "link", "--provider", "claude-code", "--account", "main", "--home", str(claude_home)]) == 0
+    link_payload = json.loads(capsys.readouterr().out)
+    assert link_payload["kind"] == "claimed"
+    links = _read_json(provider_root / "links.json")
+    assert links["links"][str(claude_home.resolve())]["kind"] == "claimed"
+    assert links["links"][str(claude_home.resolve())]["account"] == "main"
+
+    assert main(["stdlib", "utils", "cmd-logger", "query", "--event-type", "agent.accounts.link", "--json"]) == 0
+    log_payload = json.loads(capsys.readouterr().out)
+    assert log_payload["count"] == 1
+    event_payload = log_payload["events"][0]["payload"]
+    assert event_payload["provider"] == "claude-code"
+    assert event_payload["account"] == "main"
+    assert event_payload["home"] == str(claude_home.resolve())
+    assert event_payload["kind"] == "claimed"
+    assert event_payload["force"] is False
+
+    assert main(_status_args(claude_home, provider="claude-code")) == 0
+    status_payload = json.loads(capsys.readouterr().out)
+    assert status_payload["classification"] == "claimed"
+    assert status_payload["link_consistency"] == "claimed-unverified"
 
 
-def test_agent_accounts_register_claude_requires_email_and_home(
+def test_agent_accounts_register_claude_requires_email(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     _set_fake_agentos_home(monkeypatch, tmp_path / "home")
 
-    assert main(_claude_register_args(tmp_path / "claude-home", email=None)) == 1
+    assert main(_claude_register_args(email=None)) == 1
     assert "requires --email" in capsys.readouterr().err
-
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "register",
-                "--provider",
-                "claude-code",
-                "--account",
-                "main",
-                "--email",
-                "person@example.com",
-            ]
-        )
-        == 1
-    )
-    assert "requires --home" in capsys.readouterr().err
-
-
-def test_agent_accounts_link_claude_is_unsupported(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-) -> None:
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "link",
-                "--provider",
-                "claude-code",
-                "--account",
-                "main",
-                "--home",
-                str(tmp_path / "claude-home"),
-            ]
-        )
-        == 1
-    )
-    assert "agent accounts link is not supported for provider claude-code" in capsys.readouterr().err
-
-
-def test_agent_accounts_status_includes_claude_metadata_accounts(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-) -> None:
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    claude_home = tmp_path / "claude-home"
-
-    assert main(_claude_register_args(claude_home, label="Claude main")) == 0
-    capsys.readouterr()
-
-    assert main(_registry_status_args(json_output=False)) == 0
-    output = capsys.readouterr().out
-    assert "  - claude-code/main <person@example.com> Claude main auth=ambient-browser-login" in output
-    assert "link=unsupported" in output
-
-    assert main(_registry_status_args(provider="claude-code", json_output=True)) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["provider"] == "claude-code"
-    assert payload["provider_count"] == 1
-    assert payload["account_count"] == 1
-    assert payload["accounts"][0]["provider"] == "claude-code"
-    assert payload["accounts"][0]["account"] == "main"
-    assert payload["accounts"][0]["capabilities"]["link"] is False

@@ -18,6 +18,14 @@ from agentos.chatlas.core import (
 )
 from agentos.chatlas.session_model import chatlas_export_session_model
 from agentos.chatlas.raw import supported_chatlas_provider_families
+from agentos.chatlas.views import (
+    chatlas_views_commit,
+    chatlas_views_get,
+    chatlas_views_list,
+    chatlas_views_path,
+    chatlas_views_stage,
+    chatlas_views_status,
+)
 
 _CHATLAS_PROVIDER_CHOICES = tuple(
     provider_family.family for provider_family in supported_chatlas_provider_families()
@@ -146,6 +154,62 @@ def _cmd_chatlas_raw_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_chatlas_views_list(args: argparse.Namespace) -> int:
+    payload = chatlas_views_list()
+    print(format_json_output(payload))
+    return 0
+
+
+def _cmd_chatlas_views_get(args: argparse.Namespace) -> int:
+    payload = chatlas_views_get(
+        view=args.view,
+        explain=args.explain,
+        **_chatlas_index_selector_kwargs(args),
+    )
+    print(format_json_output(payload))
+    return 0
+
+
+def _cmd_chatlas_views_status(args: argparse.Namespace) -> int:
+    payload = chatlas_views_status(
+        view=args.view,
+        explain=args.explain,
+        **_chatlas_index_selector_kwargs(args),
+    )
+    print(format_json_output(payload))
+    return 0
+
+
+def _cmd_chatlas_views_path(args: argparse.Namespace) -> int:
+    payload = chatlas_views_path(
+        view=args.view,
+        explain=args.explain,
+        **_chatlas_index_selector_kwargs(args),
+    )
+    if args.output_format == "json":
+        print(format_json_output(payload))
+        return 0
+    path = payload.get("path")
+    if isinstance(path, str):
+        print(path)
+    return 0
+
+
+def _cmd_chatlas_views_stage(args: argparse.Namespace) -> int:
+    payload = chatlas_views_stage(
+        view=args.view,
+        **_chatlas_index_selector_kwargs(args),
+    )
+    print(format_json_output(payload))
+    return 0
+
+
+def _cmd_chatlas_views_commit(args: argparse.Namespace) -> int:
+    payload = chatlas_views_commit(stage_id=args.stage_id)
+    print(format_json_output(payload))
+    return 0
+
+
 def _add_chatlas_provider_argument(parser: argparse.ArgumentParser, *, help_text: str) -> None:
     parser.add_argument(
         "--provider",
@@ -269,6 +333,24 @@ def _add_chatlas_index_update_arguments(parser: argparse.ArgumentParser) -> None
         choices=("true", "false"),
         default="true",
         help="Use the local session index cache during session index materialization (default: true).",
+    )
+
+
+def _add_chatlas_view_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--view",
+        required=True,
+        help="Registered Chatlas view name.",
+    )
+
+
+def _add_chatlas_view_consumer_arguments(parser: argparse.ArgumentParser) -> None:
+    _add_chatlas_view_argument(parser)
+    _add_chatlas_index_selector_arguments(parser)
+    parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="Include recursive freshness diagnostics.",
     )
 
 
@@ -478,3 +560,65 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Output format. Raw export supports json only.",
     )
     raw_export_parser.set_defaults(handler=_cmd_chatlas_raw_export)
+
+    views_parser = chatlas_subparsers.add_parser(
+        "views",
+        help="Materialize and consume cached Chatlas views.",
+    )
+    views_subparsers = views_parser.add_subparsers(
+        dest="chatlas_views_command",
+        required=True,
+    )
+
+    views_list_parser = views_subparsers.add_parser(
+        "list",
+        help="List registered Chatlas views.",
+    )
+    views_list_parser.set_defaults(handler=_cmd_chatlas_views_list)
+
+    views_get_parser = views_subparsers.add_parser(
+        "get",
+        help="Get a materialized Chatlas view artifact result.",
+    )
+    _add_chatlas_view_consumer_arguments(views_get_parser)
+    views_get_parser.set_defaults(handler=_cmd_chatlas_views_get)
+
+    views_status_parser = views_subparsers.add_parser(
+        "status",
+        help="Report materialized Chatlas view freshness.",
+    )
+    _add_chatlas_view_consumer_arguments(views_status_parser)
+    views_status_parser.set_defaults(handler=_cmd_chatlas_views_status)
+
+    views_path_parser = views_subparsers.add_parser(
+        "path",
+        help="Print a materialized Chatlas view primary artifact path.",
+    )
+    _add_chatlas_view_consumer_arguments(views_path_parser)
+    views_path_parser.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        dest="output_format",
+        help="Output format (default: text).",
+    )
+    views_path_parser.set_defaults(handler=_cmd_chatlas_views_path)
+
+    views_stage_parser = views_subparsers.add_parser(
+        "stage",
+        help="Create a staging directory for an externally produced Chatlas view.",
+    )
+    _add_chatlas_view_argument(views_stage_parser)
+    _add_chatlas_index_selector_arguments(views_stage_parser)
+    views_stage_parser.set_defaults(handler=_cmd_chatlas_views_stage)
+
+    views_commit_parser = views_subparsers.add_parser(
+        "commit",
+        help="Commit a staged externally produced Chatlas view.",
+    )
+    views_commit_parser.add_argument(
+        "--stage-id",
+        required=True,
+        help="Stage id returned by `agentos chatlas views stage`.",
+    )
+    views_commit_parser.set_defaults(handler=_cmd_chatlas_views_commit)

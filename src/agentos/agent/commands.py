@@ -186,17 +186,15 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
         )
         return 0
     if args.provider == "claude-code":
-        if args.home is None:
-            raise CliError("agent accounts register --provider claude-code requires --home")
         from agentos.claude.account_registry import register_claude_account
 
         print(
             json.dumps(
                 register_claude_account(
                     account=args.account,
-                    home=Path(args.home),
                     email=args.email,
                     label=args.label,
+                    argv=getattr(args, "_agentos_argv", []),
                 ),
                 indent=2,
                 sort_keys=True,
@@ -215,6 +213,23 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
                 link_codex_account_to_home(
                     home=Path(args.home),
                     account=args.account,
+                    force=args.force,
+                    argv=getattr(args, "_agentos_argv", []),
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.provider == "claude-code":
+        from agentos.claude.account_registry import link_claude_account_to_home
+
+        print(
+            json.dumps(
+                link_claude_account_to_home(
+                    home=Path(args.home),
+                    account=args.account,
+                    force=args.force,
                     argv=getattr(args, "_agentos_argv", []),
                 ),
                 indent=2,
@@ -242,8 +257,30 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
             print(_format_agent_accounts_status(payload))
         return 0
     if args.home is not None:
-        raise CliError(f"agent accounts status --home is not supported for provider {args.provider}")
+        payload = _inspect_claimed_account_home(provider=args.provider, home=Path(args.home))
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(_format_agent_accounts_status(payload))
+        return 0
     return _cmd_agent_accounts_registry_status(args, provider=args.provider)
+
+
+def _inspect_claimed_account_home(*, provider: str, home: Path) -> dict[str, object]:
+    from agentos.agent.account_registry import load_links
+
+    normalized_home = str(home.expanduser().resolve())
+    links = load_links(provider).get("links")
+    link = links.get(normalized_home) if isinstance(links, dict) else None
+    return {
+        "status": "ok",
+        "command": "agent accounts status",
+        "provider": provider,
+        "home": normalized_home,
+        "classification": "claimed" if isinstance(link, dict) and link.get("kind") == "claimed" else "unlinked",
+        "link_consistency": "claimed-unverified" if isinstance(link, dict) and link.get("kind") == "claimed" else "unlinked",
+        "link": link if isinstance(link, dict) else None,
+    }
 
 
 def _cmd_agent_accounts_registry_status(args: argparse.Namespace, *, provider: str | None) -> int:
@@ -261,9 +298,14 @@ def _format_agent_accounts_status(payload: dict[str, object]) -> str:
     lines = [
         f"Provider: {payload.get('provider', '<unknown>')}",
         f"Home: {payload.get('home', '<unknown>')}",
-        f"Auth file: {payload.get('auth_path', '<unknown>')}",
         f"Status: {payload.get('classification', '<unknown>')}",
     ]
+    auth_path = payload.get("auth_path")
+    if isinstance(auth_path, str):
+        lines.insert(2, f"Auth file: {auth_path}")
+    link_consistency = payload.get("link_consistency")
+    if isinstance(link_consistency, str):
+        lines.append(f"Link: {link_consistency}")
     auth = payload.get("auth")
     if isinstance(auth, dict):
         lines.append(f"Account ID: {auth.get('account_id', '<unknown>')}")
@@ -276,9 +318,9 @@ def _format_agent_accounts_status(payload: dict[str, object]) -> str:
     error = payload.get("error")
     if isinstance(error, str):
         lines.append(f"Error: {error}")
-    registry_matches = payload.get("registry_matches")
+    registry_matches = payload.get("artifact_registry_matches")
     if isinstance(registry_matches, list):
-        lines.append(f"Registered hash matches: {len(registry_matches)}")
+        lines.append(f"Registered artifact matches: {len(registry_matches)}")
     account_matches = payload.get("account_registry_matches")
     if isinstance(account_matches, list):
         accounts = sorted(
@@ -290,12 +332,12 @@ def _format_agent_accounts_status(payload: dict[str, object]) -> str:
         )
         if accounts:
             lines.append(f"Known account aliases: {', '.join(accounts)}")
-    latest_link = payload.get("latest_link_event")
-    if isinstance(latest_link, dict):
-        status = latest_link.get("status")
-        timetag = latest_link.get("timetag")
-        if isinstance(status, str) and isinstance(timetag, str):
-            lines.append(f"Latest link: {status} at {timetag}")
+    link = payload.get("link")
+    if isinstance(link, dict):
+        account = link.get("account")
+        kind = link.get("kind")
+        if isinstance(account, str) and isinstance(kind, str):
+            lines.append(f"Linked account: {account} ({kind})")
     return "\n".join(lines)
 
 
@@ -313,6 +355,12 @@ def _format_agent_accounts_registry_overview(payload: dict[str, object]) -> str:
             if not isinstance(item, dict):
                 continue
             lines.append(_format_agent_account_manifest_line(item))
+    links = payload.get("link_count")
+    artifacts = payload.get("artifact_count")
+    if isinstance(artifacts, int):
+        lines.insert(4, f"Artifacts: {artifacts}")
+    if isinstance(links, int):
+        lines.insert(5, f"Links: {links}")
     return "\n".join(lines)
 
 
@@ -326,18 +374,14 @@ def _format_agent_account_manifest_line(item: dict[str, object]) -> str:
     display_label = item.get("label")
     if isinstance(display_label, str):
         label += f" {display_label}"
-    auth_kind = item.get("auth_kind")
-    if isinstance(auth_kind, str):
-        label += f" auth={auth_kind}"
-    home = item.get("home")
-    if isinstance(home, str):
-        label += f" home={home}"
-    capabilities = item.get("capabilities")
-    if isinstance(capabilities, dict) and capabilities.get("link") is False:
-        label += " link=unsupported"
-    active_sha = item.get("active_sha256")
+    auth_kinds = item.get("auth_kinds")
+    if isinstance(auth_kinds, list) and auth_kinds:
+        label += f" auth={','.join(str(kind) for kind in auth_kinds)}"
+    active_sha = item.get("active_artifact_id")
     if isinstance(active_sha, str):
         label += f" active={active_sha[:12]}"
+    elif active_sha is None:
+        label += " active=<none>"
     return label
 
 
@@ -451,7 +495,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     accounts_register_parser.add_argument(
         "--home",
         default=None,
-        help="Provider home/context for metadata-only account providers. Required for claude-code.",
+        help="Deprecated for account registration; use accounts link to associate a home.",
     )
     accounts_register_parser.add_argument(
         "--email",
@@ -484,6 +528,11 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "--account",
         required=True,
         help="Local AgentOS account alias to link.",
+    )
+    accounts_link_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite unknown or broken target-home auth state.",
     )
     accounts_link_parser.set_defaults(handler=_cmd_agent_accounts_link)
 

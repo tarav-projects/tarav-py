@@ -58,6 +58,18 @@ def chatlas_export_session_model(
     return _project_session_model_view(session_model, view=view)
 
 
+def build_chatlas_session_model_from_index_row(session: dict[str, Any]) -> dict[str, object]:
+    return _build_session_model(session)
+
+
+def project_chatlas_session_model_view(
+    session_model: dict[str, Any],
+    *,
+    view: str,
+) -> dict[str, object]:
+    return _project_session_model_view(session_model, view=view)
+
+
 def _build_session_model(session: dict[str, Any]) -> dict[str, object]:
     provider = _string_or_none(session.get("provider"))
     sources = _experimental_source_payloads(session)

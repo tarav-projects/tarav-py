@@ -8,15 +8,24 @@ import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos._core.project import agentos_home_dir
 from agentos._core.project_command_log import record_activity_event
-from agentos.agent.account_registry import account_dir, account_provider_root, write_account_manifest
+from agentos.agent.account_registry import (
+    account_provider_root,
+    append_artifact,
+    artifacts_dir,
+    load_account,
+    load_accounts,
+    load_links,
+    read_artifacts,
+    upsert_account,
+    upsert_link,
+)
 
 CODEX_AUTH_FILENAME = "auth.json"
 CODEX_PROVIDER = "codex"
+CODEX_AUTH_KIND = "auth-json"
 
 
 @dataclass(frozen=True)
@@ -46,6 +55,7 @@ class CodexAuthInfo:
         payload: dict[str, object] = {
             "path": str(self.path),
             "sha256": self.sha256,
+            "artifact_id": self.sha256,
             "account_id": self.account_id,
             "mtime": self.mtime,
         }
@@ -61,24 +71,19 @@ def register_codex_account_from_auth_file(
     argv: list[str] | tuple[str, ...] = (),
 ) -> dict[str, object]:
     normalized_account = validate_string_for_path(account, field_name="account")
-    info = read_codex_auth_info(auth_file.expanduser())
-    info = _apply_manual_metadata(info, email=email)
-    provider_root = _provider_root()
-    account_dir = _account_dir(normalized_account)
-    manifest_path = account_dir / "manifest.json"
-    _validate_account_identity(manifest_path, account=normalized_account, info=info)
-    preserved_pointer = _preserve_existing_account_pointer(account_dir, normalized_account, info.account_id)
-    stored_file = _store_provider_file(info)
-    registry_entry, appended = _append_registry_entry(
+    info = _apply_manual_metadata(read_codex_auth_info(auth_file.expanduser()), email=email)
+    existing = _load_account_or_none(normalized_account)
+    _validate_account_identity(existing, account=normalized_account, info=info)
+    stored_file = _store_artifact(info)
+    artifact_entry, artifact_appended = _append_artifact_entry(
         account=normalized_account,
         info=info,
         source_auth_file=info.path,
     )
-    manifest = _write_account_manifest(
+    account_record = _write_account(
         account=normalized_account,
         info=info,
     )
-    _replace_account_pointer(account_dir, info.sha256)
     result = {
         "status": "ok",
         "command": "agent accounts register",
@@ -86,14 +91,12 @@ def register_codex_account_from_auth_file(
         "account": normalized_account,
         "auth_file": str(info.path),
         "auth": info.safe_payload(),
-        "provider_root": str(provider_root),
+        "provider_root": str(_provider_root()),
         "stored_file": str(stored_file),
-        "registry_entry": registry_entry,
-        "registry_appended": appended,
-        "manifest": manifest,
+        "artifact_entry": artifact_entry,
+        "artifact_appended": artifact_appended,
+        "account_record": account_record,
     }
-    if preserved_pointer is not None:
-        result["preserved_previous_pointer"] = preserved_pointer
     _record_account_event(
         event_type="agent.accounts.register",
         command="agent accounts register",
@@ -105,9 +108,9 @@ def register_codex_account_from_auth_file(
             "account_id": info.account_id,
             "email": info.email,
             "auth_file": str(info.path),
-            "auth_sha256": info.sha256,
-            "stored_file": _registry_file(info.sha256),
-            "registry_appended": appended,
+            "artifact_id": info.sha256,
+            "stored_file": _artifact_relative_file(info.sha256),
+            "artifact_appended": artifact_appended,
         },
     )
     return result
@@ -117,40 +120,52 @@ def link_codex_account_to_home(
     *,
     home: Path,
     account: str,
+    force: bool = False,
     argv: list[str] | tuple[str, ...] = (),
 ) -> dict[str, object]:
     normalized_home = home.expanduser().resolve()
     normalized_account = validate_string_for_path(account, field_name="account")
     auth_path = _home_auth_path(normalized_home)
-    manifest = _load_account_manifest(normalized_account)
-    account_id = _require_manifest_string(manifest, "account_id")
+    account_record = load_account(CODEX_PROVIDER, normalized_account)
+    active_artifact_id = _require_account_string(account_record, "active_artifact_id")
+    account_id = _require_account_string(account_record, "account_id")
+    source_auth = _artifact_path(active_artifact_id)
+    if not source_auth.is_file():
+        raise CliError(f"codex account active artifact file does not exist: {source_auth}")
 
     try:
-        previous_auth, preserved_account = _preserve_home_auth_before_link(
+        target_state = _inspect_target_before_link(
             auth_path,
             requested_account=normalized_account,
-            requested_account_id=account_id,
+            force=force,
             argv=argv,
         )
-        if preserved_account is not None:
-            manifest = _load_account_manifest(normalized_account)
-
-        source_auth = _active_auth_path(manifest)
-        destination = _copy_auth_to_home(source_auth, auth_path)
-        copied_info = read_codex_auth_info(destination)
+        _copy_auth_to_home(source_auth, auth_path)
+        copied_info = read_codex_auth_info(auth_path)
+        previous_link, link_record = upsert_link(
+            CODEX_PROVIDER,
+            normalized_home,
+            {
+                "kind": "artifact",
+                "account": normalized_account,
+                "account_id": account_id,
+                "artifact_id": active_artifact_id,
+                "auth_path": str(auth_path),
+            },
+        )
         payload = {
             "provider": CODEX_PROVIDER,
             "account": normalized_account,
             "account_id": account_id,
-            "email": manifest.get("email"),
             "home": str(normalized_home),
             "auth_path": str(auth_path),
-            "source_auth_file": str(source_auth),
-            "source_sha256": copied_info.sha256,
-            "copied_sha256": copied_info.sha256,
-            "previous_home_auth": previous_auth,
-            "preserved_home_account": preserved_account,
-            "action": "copied",
+            "kind": "artifact",
+            "force": force,
+            "artifact_id": active_artifact_id,
+            "copied_artifact_id": copied_info.sha256,
+            "target_before_link": target_state,
+            "previous_link": previous_link,
+            "link": link_record,
         }
         _record_account_event(
             event_type="agent.accounts.link",
@@ -166,10 +181,13 @@ def link_codex_account_to_home(
             "account": normalized_account,
             "home": str(normalized_home),
             "auth_path": str(auth_path),
+            "kind": "artifact",
+            "force": force,
             "source_auth_file": str(source_auth),
             "copied_auth": copied_info.safe_payload(),
-            "previous_home_auth": previous_auth,
-            "preserved_home_account": preserved_account,
+            "target_before_link": target_state,
+            "previous_link": previous_link,
+            "link": link_record,
         }
     except CliError as exc:
         _record_link_failure(
@@ -178,7 +196,7 @@ def link_codex_account_to_home(
             home=normalized_home,
             auth_path=auth_path,
             message=str(exc),
-            payload={"message": str(exc)},
+            payload={"force": force},
         )
         raise
 
@@ -186,39 +204,38 @@ def link_codex_account_to_home(
 def inspect_codex_account_home(*, home: Path) -> dict[str, object]:
     normalized_home = home.expanduser().resolve()
     auth_path = _home_auth_path(normalized_home)
-    path_kind = _path_kind(auth_path)
+    link = _link_for_home(normalized_home)
     base: dict[str, object] = {
         "status": "ok",
         "command": "agent accounts status",
         "provider": CODEX_PROVIDER,
         "home": str(normalized_home),
         "auth_path": str(auth_path),
-        "path_kind": path_kind,
+        "path_kind": _path_kind(auth_path),
+        "link": link,
     }
-    latest_link = _latest_link_event_for_home(normalized_home)
-    if latest_link is not None:
-        base["latest_link_event"] = latest_link
-    if path_kind == "missing":
+    if not auth_path.exists() and not auth_path.is_symlink():
         base["classification"] = "missing"
+        base["link_consistency"] = "missing" if link is not None else "unlinked"
         return base
 
     try:
         info = read_codex_auth_info(auth_path)
     except CliError as exc:
         base["classification"] = "broken"
+        base["link_consistency"] = "broken" if link is not None else "unlinked-broken"
         base["error"] = str(exc)
         return base
 
-    entries = _registry_entries()
-    hash_matches = [entry for entry in entries if entry.get("sha256") == info.sha256]
-    account_matches = [entry for entry in entries if entry.get("account_id") == info.account_id]
+    hash_matches = _artifact_matches(artifact_id=info.sha256)
+    account_matches = _accounts_for_account_id(info.account_id)
     active_matches = [
-        entry
-        for entry in hash_matches
-        if _manifest_active_sha(_string_or_none(entry.get("account"))) == info.sha256
+        account_record
+        for account_record in account_matches
+        if account_record.get("active_artifact_id") == info.sha256
     ]
     base["auth"] = info.safe_payload()
-    base["registry_matches"] = hash_matches
+    base["artifact_registry_matches"] = hash_matches
     base["account_registry_matches"] = account_matches
     if active_matches:
         base["classification"] = "matching-active"
@@ -228,16 +245,8 @@ def inspect_codex_account_home(*, home: Path) -> dict[str, object]:
         base["classification"] = "known-account-new-hash"
     else:
         base["classification"] = "unknown"
+    base["link_consistency"] = _codex_link_consistency(link, info)
     return base
-
-
-def inspect_codex_account_registry() -> dict[str, object]:
-    return {
-        "status": "ok",
-        "command": "agent accounts status",
-        "provider": CODEX_PROVIDER,
-        "registry": _registry_summary(_registry_entries()),
-    }
 
 
 def read_codex_auth_info(path: Path) -> CodexAuthInfo:
@@ -271,173 +280,87 @@ def read_codex_auth_info(path: Path) -> CodexAuthInfo:
     )
 
 
-def _apply_manual_metadata(info: CodexAuthInfo, *, email: str | None) -> CodexAuthInfo:
-    normalized_email = _string_or_none(email)
-    if normalized_email is None:
-        return info
-    return replace(info, email=normalized_email)
-
-
-def _validate_account_identity(manifest_path: Path, *, account: str, info: CodexAuthInfo) -> None:
-    if not manifest_path.exists():
-        return
-    manifest = _load_json_object(manifest_path, description="codex account manifest")
-    existing_account_id = _string_or_none(manifest.get("account_id"))
-    if existing_account_id is not None and existing_account_id != info.account_id:
-        raise CliError(
-            f"codex account alias {account} is already registered for account_id "
-            f"{existing_account_id}; refusing auth for {info.account_id}"
-        )
-
-
-def _preserve_existing_account_pointer(
-    account_dir: Path,
-    account: str,
-    expected_account_id: str,
+def _inspect_target_before_link(
+    auth_path: Path,
+    *,
+    requested_account: str,
+    force: bool,
+    argv: list[str] | tuple[str, ...],
 ) -> dict[str, object] | None:
-    pointer = account_dir / CODEX_AUTH_FILENAME
-    if not pointer.exists() or pointer.is_symlink():
+    if not auth_path.exists() and not auth_path.is_symlink():
         return None
-    info = read_codex_auth_info(pointer)
-    manifest_path = account_dir / "manifest.json"
-    if manifest_path.exists():
-        manifest = _load_json_object(manifest_path, description="codex account manifest")
-        account_id = _string_or_none(manifest.get("account_id"))
-        if account_id is not None and account_id != info.account_id:
-            raise CliError(
-                f"existing codex account auth pointer for {account} has account_id "
-                f"{info.account_id}, expected {account_id}"
-            )
-    elif info.account_id != expected_account_id:
+    try:
+        info = read_codex_auth_info(auth_path)
+    except CliError:
+        if force:
+            return {"classification": "broken", "action": "overwritten-by-force"}
+        raise
+
+    account = _single_account_for_account_id(info.account_id)
+    if account is None:
+        if force:
+            return {
+                "classification": "unknown",
+                "action": "overwritten-by-force",
+                "auth": info.safe_payload(),
+            }
         raise CliError(
-            f"existing codex account auth pointer for {account} has account_id "
-            f"{info.account_id}, expected {expected_account_id}"
+            "refusing to replace unregistered codex auth: "
+            f"{info.path} belongs to account_id {info.account_id}, which is not in the registry. "
+            "Register it first with: "
+            f"agentos agent accounts register --provider codex --account <alias> --auth-file {info.path}"
         )
-    stored_file = _store_provider_file(info)
-    registry_entry, appended = _append_registry_entry(
-        account=account,
-        info=info,
-        source_auth_file=pointer.resolve(),
-    )
+
+    artifact_known = bool(_artifact_matches(artifact_id=info.sha256))
+    if not artifact_known:
+        register_codex_account_from_auth_file(auth_file=auth_path, account=account, argv=argv)
+    classification = "requested-account" if account == requested_account else "known-different-account"
     return {
-        "sha256": info.sha256,
-        "stored_file": str(stored_file),
-        "registry_entry": registry_entry,
-        "registry_appended": appended,
-    }
-
-
-def _store_provider_file(info: CodexAuthInfo) -> Path:
-    files_dir = _provider_root() / "files"
-    files_dir.mkdir(parents=True, exist_ok=True)
-    destination = files_dir / f"{info.sha256}.auth.json"
-    if destination.exists():
-        return destination
-    _copy_file_atomic(info.path, destination)
-    return destination
-
-
-def _append_registry_entry(
-    *,
-    account: str,
-    info: CodexAuthInfo,
-    source_auth_file: Path,
-) -> tuple[dict[str, object], bool]:
-    entries = _registry_entries()
-    existing = _matching_registry_entry(entries, account=account, sha256=info.sha256)
-    if existing is not None:
-        return existing, False
-
-    entry = _registry_entry(account=account, info=info, source_auth_file=source_auth_file)
-    registry_path = _registry_path()
-    registry_path.parent.mkdir(parents=True, exist_ok=True)
-    with registry_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(entry, sort_keys=True, separators=(",", ":")) + "\n")
-    return entry, True
-
-
-def _matching_registry_entry(
-    entries: list[dict[str, object]],
-    *,
-    account: str,
-    sha256: str,
-) -> dict[str, object] | None:
-    for entry in entries:
-        if (
-            entry.get("provider") == CODEX_PROVIDER
-            and entry.get("account") == account
-            and entry.get("sha256") == sha256
-        ):
-            return entry
-    return None
-
-
-def _registry_entry(
-    *,
-    account: str,
-    info: CodexAuthInfo,
-    source_auth_file: Path,
-) -> dict[str, object]:
-    entry: dict[str, object] = {
-        "registered_at": utc_now_iso(),
-        "provider": CODEX_PROVIDER,
+        "classification": classification,
+        "action": "registered" if not artifact_known else "already-registered",
         "account": account,
-        "account_id": info.account_id,
-        "sha256": info.sha256,
-        "file": _registry_file(info.sha256),
-        "source_auth_file": str(source_auth_file),
+        "auth": info.safe_payload(),
     }
-    entry.update(info.metadata_payload())
-    return entry
 
 
-def _write_account_manifest(*, account: str, info: CodexAuthInfo) -> dict[str, object]:
-    return write_account_manifest(
-        provider=CODEX_PROVIDER,
-        account=account,
-        auth_kind="auth-json",
-        capabilities={
-            "register": True,
-            "link": True,
-            "status": True,
-            "monitor": True,
-        },
-        email=info.email,
-        extra={
+def _write_account(*, account: str, info: CodexAuthInfo) -> dict[str, object]:
+    return upsert_account(
+        CODEX_PROVIDER,
+        account,
+        {
+            "auth_kinds": [CODEX_AUTH_KIND],
+            "active_artifact_id": info.sha256,
             "account_id": info.account_id,
-            "active_sha256": info.sha256,
-            "active_file": _account_relative_file(info.sha256),
+            "email": info.email,
+            "artifact_file": _artifact_relative_file(info.sha256),
             **info.metadata_payload(),
         },
     )
 
 
-def _replace_account_pointer(account_dir: Path, sha256: str) -> None:
-    account_dir.mkdir(parents=True, exist_ok=True)
-    pointer = account_dir / CODEX_AUTH_FILENAME
-    temp_pointer = account_dir / f".{CODEX_AUTH_FILENAME}.agentos-tmp-{os.getpid()}"
-    if temp_pointer.exists() or temp_pointer.is_symlink():
-        temp_pointer.unlink()
-    os.symlink(_account_relative_file(sha256), temp_pointer)
-    os.replace(temp_pointer, pointer)
+def _append_artifact_entry(
+    *,
+    account: str,
+    info: CodexAuthInfo,
+    source_auth_file: Path,
+) -> tuple[dict[str, object], bool]:
+    entry: dict[str, object] = {
+        "account": account,
+        "artifact_id": info.sha256,
+        "account_id": info.account_id,
+        "file": _artifact_relative_file(info.sha256),
+        "source_auth_file": str(source_auth_file),
+    }
+    entry.update(info.metadata_payload())
+    return append_artifact(CODEX_PROVIDER, entry)
 
 
-def _load_account_manifest(account: str) -> dict[str, object]:
-    manifest_path = _account_dir(account) / "manifest.json"
-    if not manifest_path.exists():
-        raise CliError(f"agent account is not registered: codex.{account}")
-    manifest = _load_json_object(manifest_path, description="codex account manifest")
-    if manifest.get("provider") != CODEX_PROVIDER or manifest.get("account") != account:
-        raise CliError(f"codex account manifest does not match account: {manifest_path}")
-    return manifest
-
-
-def _active_auth_path(manifest: dict[str, object]) -> Path:
-    sha256 = _require_manifest_string(manifest, "active_sha256")
-    path = _provider_root() / "files" / f"{sha256}.auth.json"
-    if not path.is_file():
-        raise CliError(f"codex account active auth file does not exist: {path}")
-    return path
+def _store_artifact(info: CodexAuthInfo) -> Path:
+    destination = _artifact_path(info.sha256)
+    if destination.exists():
+        return destination
+    _copy_file_atomic(info.path, destination)
+    return destination
 
 
 def _copy_auth_to_home(source_auth: Path, auth_path: Path) -> Path:
@@ -458,91 +381,109 @@ def _copy_file_atomic(source: Path, destination: Path) -> None:
             temp_path.unlink()
 
 
-def _registry_entries() -> list[dict[str, object]]:
-    registry_path = _registry_path()
-    if not registry_path.exists():
+def _validate_account_identity(
+    existing: dict[str, object] | None,
+    *,
+    account: str,
+    info: CodexAuthInfo,
+) -> None:
+    if existing is None:
+        return
+    existing_account_id = _string_or_none(existing.get("account_id"))
+    if existing_account_id is not None and existing_account_id != info.account_id:
+        raise CliError(
+            f"codex account alias {account} is already registered for account_id "
+            f"{existing_account_id}; refusing auth for {info.account_id}"
+        )
+
+
+def _load_account_or_none(account: str) -> dict[str, object] | None:
+    try:
+        return load_account(CODEX_PROVIDER, account)
+    except CliError as exc:
+        if str(exc) == f"agent account is not registered: {CODEX_PROVIDER}.{account}":
+            return None
+        raise
+
+
+def _artifact_matches(*, artifact_id: str) -> list[dict[str, object]]:
+    return [entry for entry in read_artifacts(CODEX_PROVIDER) if entry.get("artifact_id") == artifact_id]
+
+
+def _accounts_for_account_id(account_id: str) -> list[dict[str, object]]:
+    registry = load_accounts(CODEX_PROVIDER)
+    accounts = registry.get("accounts")
+    if not isinstance(accounts, dict):
         return []
-    entries: list[dict[str, object]] = []
-    for line_number, line in enumerate(registry_path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise CliError(f"invalid codex registry JSONL at {registry_path}:{line_number}") from exc
-        if not isinstance(payload, dict):
-            raise CliError(f"codex registry entry must be a JSON object: {registry_path}:{line_number}")
-        entries.append(payload)
-    return entries
+    matches = [
+        record
+        for record in accounts.values()
+        if isinstance(record, dict) and record.get("account_id") == account_id
+    ]
+    return sorted(matches, key=lambda record: str(record.get("account", "")))
 
 
-def _registry_summary(entries: list[dict[str, object]]) -> dict[str, object]:
-    accounts: list[dict[str, object]] = []
-    account_names = sorted(
+def _single_account_for_account_id(account_id: str) -> str | None:
+    matches = _accounts_for_account_id(account_id)
+    accounts = sorted(
         {
             account
-            for entry in entries
-            if entry.get("provider") == CODEX_PROVIDER
-            and (account := _string_or_none(entry.get("account"))) is not None
+            for record in matches
+            if (account := _string_or_none(record.get("account"))) is not None
         }
     )
-    for account in account_names:
-        account_entries = [entry for entry in entries if entry.get("provider") == CODEX_PROVIDER and entry.get("account") == account]
-        account_summary: dict[str, object] = {
-            "account": account,
-            "registered_hashes": len({entry.get("sha256") for entry in account_entries if isinstance(entry.get("sha256"), str)}),
-        }
-        latest_entry = account_entries[-1] if account_entries else None
-        if isinstance(latest_entry, dict):
-            for field in ("account_id", "email"):
-                value = latest_entry.get(field)
-                if isinstance(value, str):
-                    account_summary[field] = value
+    if not accounts:
+        return None
+    if len(accounts) > 1:
+        raise CliError(
+            "refusing to replace codex auth with ambiguous registered account aliases: "
+            f"account_id {account_id} is registered as {', '.join(accounts)}"
+        )
+    return accounts[0]
+
+
+def _link_for_home(home: Path) -> dict[str, object] | None:
+    links = load_links(CODEX_PROVIDER).get("links")
+    if not isinstance(links, dict):
+        return None
+    link = links.get(str(home.expanduser().resolve()))
+    return link if isinstance(link, dict) else None
+
+
+def _codex_link_consistency(link: dict[str, object] | None, info: CodexAuthInfo) -> str:
+    if link is None:
+        return "unlinked"
+    if link.get("kind") != "artifact":
+        return "mismatched-kind"
+    artifact_id = _string_or_none(link.get("artifact_id"))
+    account = _string_or_none(link.get("account"))
+    if artifact_id == info.sha256:
+        return "verified"
+    if account is not None:
         try:
-            manifest = _load_account_manifest(account)
+            account_record = load_account(CODEX_PROVIDER, account)
         except CliError:
-            manifest = None
-        if isinstance(manifest, dict):
-            for source, target in (("active_sha256", "active_sha256"), ("active_file", "active_file")):
-                value = manifest.get(source)
-                if isinstance(value, str):
-                    account_summary[target] = value
-        accounts.append(account_summary)
-
-    return {
-        "root": str(_provider_root()),
-        "registry_path": str(_registry_path()),
-        "entry_count": len(entries),
-        "account_count": len(accounts),
-        "accounts": accounts,
-    }
+            return "stale"
+        if account_record.get("account_id") == info.account_id:
+            return "stale"
+    return "mismatched"
 
 
-def _manifest_active_sha(account: str | None) -> str | None:
-    if account is None:
-        return None
-    try:
-        manifest = _load_account_manifest(account)
-    except CliError:
-        return None
-    return _string_or_none(manifest.get("active_sha256"))
+def _path_kind(path: Path) -> str:
+    if path.is_symlink():
+        return "symlink"
+    if path.is_file():
+        return "file"
+    if path.exists():
+        return "other"
+    return "missing"
 
 
-def _load_json_object(path: Path, *, description: str) -> dict[str, object]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise CliError(f"invalid {description} JSON: {path}") from exc
-    if not isinstance(payload, dict):
-        raise CliError(f"{description} must be a JSON object: {path}")
-    return payload
-
-
-def _write_json_file(path: Path, payload: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.parent / f".{path.name}.agentos-tmp-{os.getpid()}"
-    temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(temp_path, path)
+def _apply_manual_metadata(info: CodexAuthInfo, *, email: str | None) -> CodexAuthInfo:
+    normalized_email = _string_or_none(email)
+    if normalized_email is None:
+        return info
+    return replace(info, email=normalized_email)
 
 
 def _record_account_event(
@@ -558,7 +499,7 @@ def _record_account_event(
         command=command,
         argv=argv,
         status=status,
-        payload={key: value for key, value in payload.items() if value is not None},
+        payload=payload,
     )
 
 
@@ -587,131 +528,27 @@ def _record_link_failure(
     )
 
 
-def _preserve_home_auth_before_link(
-    auth_path: Path,
-    *,
-    requested_account: str,
-    requested_account_id: str,
-    argv: list[str] | tuple[str, ...],
-) -> tuple[dict[str, object] | None, str | None]:
-    if not auth_path.exists() and not auth_path.is_symlink():
-        return None, None
-
-    info = read_codex_auth_info(auth_path)
-    account = _account_for_home_auth(
-        info,
-        requested_account=requested_account,
-        requested_account_id=requested_account_id,
-    )
-    register_codex_account_from_auth_file(
-        auth_file=auth_path,
-        account=account,
-        argv=argv,
-    )
-    return info.safe_payload(), account
-
-
-def _account_for_home_auth(
-    info: CodexAuthInfo,
-    *,
-    requested_account: str,
-    requested_account_id: str,
-) -> str:
-    if requested_account_id == info.account_id:
-        return requested_account
-
-    accounts = _registry_accounts_for_account_id(info.account_id)
-    if not accounts:
-        raise CliError(
-            "refusing to replace unregistered codex auth: "
-            f"{info.path} belongs to account_id {info.account_id}, which is not in the registry. "
-            "Register it first with: "
-            f"agentos agent accounts register --provider codex --account <alias> --auth-file {info.path}"
-        )
-    if len(accounts) > 1:
-        raise CliError(
-            "refusing to replace codex auth with ambiguous registered account aliases: "
-            f"{info.path} belongs to account_id {info.account_id}, registered as {', '.join(accounts)}"
-        )
-    return accounts[0]
-
-
-def _registry_accounts_for_account_id(account_id: str) -> list[str]:
-    accounts = {
-        account
-        for entry in _registry_entries()
-        if entry.get("provider") == CODEX_PROVIDER
-        and entry.get("account_id") == account_id
-        and (account := _string_or_none(entry.get("account"))) is not None
-    }
-    return sorted(accounts)
-
-
-def _latest_link_event_for_home(home: Path) -> dict[str, object] | None:
-    activity_root = agentos_home_dir() / "activity"
-    if not activity_root.exists():
-        return None
-    latest: dict[str, object] | None = None
-    for path in sorted(activity_root.glob("*.jsonl")):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(event, dict):
-                continue
-            if event.get("event_type") != "agent.accounts.link":
-                continue
-            payload = event.get("payload")
-            if not isinstance(payload, dict):
-                continue
-            if payload.get("provider") != CODEX_PROVIDER:
-                continue
-            if payload.get("home") != str(home):
-                continue
-            latest = _safe_activity_event(event)
-    return latest
-
-
-def _safe_activity_event(event: dict[str, object]) -> dict[str, object]:
-    return {
-        key: value
-        for key, value in event.items()
-        if key in {"schema_version", "timetag", "event_type", "command", "argv", "status", "payload"}
-    }
-
-
 def _provider_root() -> Path:
     return account_provider_root(CODEX_PROVIDER)
 
 
-def _registry_path() -> Path:
-    return _provider_root() / "registry.jsonl"
+def _artifact_path(artifact_id: str) -> Path:
+    return artifacts_dir(CODEX_PROVIDER) / f"{artifact_id}.auth.json"
 
 
-def _account_dir(account: str) -> Path:
-    return account_dir(CODEX_PROVIDER, account)
+def _artifact_relative_file(artifact_id: str) -> str:
+    return f"artifacts/{artifact_id}.auth.json"
 
 
 def _home_auth_path(home: Path) -> Path:
     return home / CODEX_AUTH_FILENAME
 
 
-def _registry_file(sha256: str) -> str:
-    return f"files/{sha256}.auth.json"
-
-
-def _account_relative_file(sha256: str) -> str:
-    return f"../../files/{sha256}.auth.json"
-
-
-def _require_manifest_string(manifest: dict[str, object], field: str) -> str:
-    value = manifest.get(field)
+def _require_account_string(account: dict[str, object], field: str) -> str:
+    value = account.get(field)
     if not isinstance(value, str) or not value.strip():
-        raise CliError(f"codex account manifest field {field} must be a non-empty string")
-    return value
+        raise CliError(f"codex account field {field} must be a non-empty string")
+    return value.strip()
 
 
 def _jwt_claims(tokens: dict[str, object]) -> dict[str, object]:
@@ -758,20 +595,9 @@ def _string_or_none(value: object) -> str | None:
     return None
 
 
-def _path_kind(path: Path) -> str:
-    if path.is_symlink():
-        return "symlink"
-    if path.is_file():
-        return "file"
-    if path.exists():
-        return "other"
-    return "missing"
-
-
 __all__ = [
-    "inspect_codex_account_registry",
-    "inspect_codex_account_home",
     "link_codex_account_to_home",
     "read_codex_auth_info",
     "register_codex_account_from_auth_file",
+    "inspect_codex_account_home",
 ]

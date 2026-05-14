@@ -15,7 +15,7 @@ This session should migrate the fundamental design intent from those artifacts w
 index selection -> copied Chatlas raw artifacts -> session model/export views -> cached derived views
 ```
 
-The first motivating use case remains an agent-produced compressed transcript summary view that other agents can reuse without repeating the computation.
+The first motivating use case remains an agent-produced compressed transcript view that other agents can reuse without repeating the computation. This view is a lower-token replacement for `zip-transcript` while preserving turn alignment.
 
 ## Design.Index
 
@@ -83,7 +83,7 @@ The `parameters[]` vector remains the base model. Multi-session views are simply
 
 ### Chatlas.Views.Storage
 
-Committed view artifacts should live under Chatlas-owned storage, not project-local `notes/live/`, so artifacts can be reused across projects and future sessions.
+Committed view artifacts should live under Chatlas-owned storage so artifacts can be reused across projects and future sessions.
 
 Every Chatlas view is materialized as file artifacts when available.
 
@@ -94,7 +94,7 @@ Initial committed storage shape:
 ~/Documents/chatlas/views/<view-name>/<cache-key>/<artifact-files>
 ```
 
-The earlier design used `artifact.md` as the first markdown artifact file. This remains a good first default, but the artifact contract belongs to each view workflow.
+The artifact contract belongs to each view workflow. For example, `zip-transcript-agent-summary` uses a JSON primary artifact because agents need a machine-readable, turn-aligned replacement for `zip-transcript`.
 
 For each `view.name + parameters[]` cache slot, Chatlas keeps one current committed artifact set. When a new valid artifact is committed for the same slot, it replaces the current artifact atomically by default.
 
@@ -181,7 +181,7 @@ Initial result shape:
 {
   "status": "ok",
   "view": {
-    "name": "agents-summary-zip-transcripts",
+    "name": "zip-transcript-agent-summary",
     "cache_key": "...",
     "state": "fresh",
     "workflow_type": "external",
@@ -195,7 +195,7 @@ Initial result shape:
   ],
   "artifact": {
     "path": "...",
-    "content_type": "text/markdown",
+    "content_type": "application/json",
     "sha256": "..."
   },
   "freshness": {
@@ -219,11 +219,48 @@ For example, `zip-transcript-agent-summary(parameters=[session])` can internally
 
 Generic Chatlas code may read, write, and validate the base fields. Only the registered view workflow owns the meaning and validation of `fields`.
 
-### AgentsSummaryZipTranscripts
+### ZipTranscriptAgentSummary
 
-The first motivating view is `agents-summary-zip-transcripts`.
+The first motivating external view is `zip-transcript-agent-summary`.
 
-It is an agent-produced markdown artifact derived from a selected Chatlas session and the materialized `zip-transcript` view.
+It is an agent-produced JSON artifact derived from a selected Chatlas session and the materialized `zip-transcript` view.
+
+The point of this view is to replace `zip-transcript` as the lower-token artifact that agents consume when they need context from another chat session. It must preserve turn alignment with the source transcript:
+
+- user turns are copied verbatim, in full, and in chronological order
+- assistant turns remain in place but are summarized aggressively
+- the produced JSON keeps the same `session` and ordered `turns` shape as `zip-transcript`
+- the summarizer must preserve enough assistant context for later user references such as "nice", "this", quoted text, corrections, or "the previous idea" to remain intelligible
+- assistant summaries preserve decisions, accepted plans, constraints, commands, paths, identifiers, test results, failures, warnings, and unresolved issues
+- assistant summaries remove progress chatter, repeated framing, obvious restatement, speculative narration, apology/filler, and verbose output that does not change state
+
+Primary artifact:
+
+```text
+summary.json
+```
+
+Initial artifact shape:
+
+```json
+{
+  "class": "agentos.chatlas.zip_transcript_agent_summary",
+  "schema_version": 1,
+  "view": "zip-transcript-agent-summary",
+  "source_view": "zip-transcript",
+  "session": {},
+  "turns": [
+    {
+      "role": "user",
+      "text": "verbatim user turn"
+    },
+    {
+      "role": "assistant",
+      "text": "compressed assistant turn"
+    }
+  ]
+}
+```
 
 It should be reusable across future sessions and report stale when at least one of these changes:
 
