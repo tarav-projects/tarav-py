@@ -78,6 +78,35 @@ def _register_args(auth_file: Path, *, account: str = "br") -> list[str]:
     ]
 
 
+def _link_args(home: Path, *, account: str = "br") -> list[str]:
+    return [
+        "agent",
+        "accounts",
+        "link",
+        "--provider",
+        "codex",
+        "--account",
+        account,
+        "--home",
+        str(home),
+    ]
+
+
+def _status_args(home: Path, *, json_output: bool = True) -> list[str]:
+    args = [
+        "agent",
+        "accounts",
+        "status",
+        "--provider",
+        "codex",
+        "--home",
+        str(home),
+    ]
+    if json_output:
+        args.append("--json")
+    return args
+
+
 def test_agent_accounts_register_uses_auth_file_and_flat_registry(
     tmp_path: Path,
     monkeypatch,
@@ -124,22 +153,7 @@ def test_agent_accounts_register_uses_auth_file_and_flat_registry(
     assert os.readlink(pointer_path) == f"../../files/{auth_sha}.auth.json"
     assert pointer_path.resolve() == stored_file
 
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "link",
-                "--provider",
-                "codex",
-                "--account",
-                "br",
-                "--home",
-                str(target_home),
-            ]
-        )
-        == 0
-    )
+    assert main(_link_args(target_home)) == 0
     link_payload = json.loads(capsys.readouterr().out)
     target_auth = target_home / "auth.json"
     assert target_auth.is_file()
@@ -148,20 +162,7 @@ def test_agent_accounts_register_uses_auth_file_and_flat_registry(
     assert link_payload["copied_auth"]["sha256"] == auth_sha
     assert "secret-refresh-token" not in json.dumps(link_payload)
 
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "status",
-                "--provider",
-                "codex",
-                "--home",
-                str(target_home),
-            ]
-        )
-        == 0
-    )
+    assert main(_status_args(target_home)) == 0
     status_payload = json.loads(capsys.readouterr().out)
     assert status_payload["classification"] == "matching-active"
     assert status_payload["auth"]["account_id"] == "acc_123"
@@ -353,22 +354,7 @@ def test_agent_accounts_link_registers_same_account_auth_before_copy(
 
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "link",
-                "--provider",
-                "codex",
-                "--account",
-                "br",
-                "--home",
-                str(target_home),
-            ]
-        )
-        == 0
-    )
+    assert main(_link_args(target_home)) == 0
     link_payload = json.loads(capsys.readouterr().out)
     assert link_payload["copied_auth"]["sha256"] == _sha(refreshed_auth)
     assert (target_home / "auth.json").read_text(encoding="utf-8") == refreshed_auth
@@ -400,22 +386,7 @@ def test_agent_accounts_link_preserves_known_different_account_then_switches(
     capsys.readouterr()
     assert main(_register_args(jp_source_auth, account="jp")) == 0
     capsys.readouterr()
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "link",
-                "--provider",
-                "codex",
-                "--account",
-                "jp",
-                "--home",
-                str(target_home),
-            ]
-        )
-        == 0
-    )
+    assert main(_link_args(target_home, account="jp")) == 0
     link_payload = json.loads(capsys.readouterr().out)
     assert link_payload["preserved_home_account"] == "br"
     assert (target_home / "auth.json").read_text(encoding="utf-8") == jp_auth
@@ -466,22 +437,7 @@ def test_agent_accounts_link_refuses_unknown_current_auth_without_deleting_it(
 
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "link",
-                "--provider",
-                "codex",
-                "--account",
-                "br",
-                "--home",
-                str(target_home),
-            ]
-        )
-        == 1
-    )
+    assert main(_link_args(target_home)) == 1
     error_output = capsys.readouterr().err
     assert "refusing to replace unregistered codex auth" in error_output
     assert "--auth-file" in error_output
@@ -502,39 +458,11 @@ def test_agent_accounts_link_refuses_broken_current_auth_without_deleting_it(
 
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "link",
-                "--provider",
-                "codex",
-                "--account",
-                "br",
-                "--home",
-                str(target_home),
-            ]
-        )
-        == 1
-    )
+    assert main(_link_args(target_home)) == 1
     assert "invalid codex auth JSON" in capsys.readouterr().err
     assert (target_home / "auth.json").read_text(encoding="utf-8") == broken_auth
 
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "status",
-                "--provider",
-                "codex",
-                "--home",
-                str(target_home),
-            ]
-        )
-        == 0
-    )
+    assert main(_status_args(target_home)) == 0
     status_payload = json.loads(capsys.readouterr().out)
     assert status_payload["classification"] == "broken"
 
@@ -552,21 +480,33 @@ def test_agent_accounts_status_reports_known_account_new_hash(
 
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "status",
-                "--provider",
-                "codex",
-                "--home",
-                str(target_home),
-            ]
-        )
-        == 0
-    )
+    assert main(_status_args(target_home)) == 0
     status_payload = json.loads(capsys.readouterr().out)
     assert status_payload["classification"] == "known-account-new-hash"
     assert status_payload["auth"]["account_id"] == "acc_123"
     assert len(status_payload["account_registry_matches"]) == 1
+
+
+def test_agent_accounts_status_defaults_to_human_output(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    target_home = tmp_path / "codex"
+    _write(source_auth, _auth_json(email="person@example.com"))
+
+    assert main(_register_args(source_auth)) == 0
+    capsys.readouterr()
+    assert main(_link_args(target_home)) == 0
+    capsys.readouterr()
+    assert main(_status_args(target_home, json_output=False)) == 0
+
+    output = capsys.readouterr().out
+    assert output.startswith("Provider: codex\n")
+    assert "Status: matching-active\n" in output
+    assert "Email: person@example.com\n" in output
+    assert "Registered hash matches: 1\n" in output
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(output)

@@ -123,19 +123,15 @@ def link_codex_account_to_home(
     auth_path = _home_auth_path(normalized_home)
     manifest = _load_account_manifest(normalized_account)
     account_id = _require_manifest_string(manifest, "account_id")
-    previous_auth: dict[str, object] | None = None
-    preserved_account: str | None = None
 
     try:
-        if auth_path.exists() or auth_path.is_symlink():
-            existing_info = read_codex_auth_info(auth_path)
-            previous_auth = existing_info.safe_payload()
-            preserved_account = _account_for_home_auth(existing_info, requested_account=normalized_account)
-            register_codex_account_from_auth_file(
-                auth_file=auth_path,
-                account=preserved_account,
-                argv=argv,
-            )
+        previous_auth, preserved_account = _preserve_home_auth_before_link(
+            auth_path,
+            requested_account=normalized_account,
+            requested_account_id=account_id,
+            argv=argv,
+        )
+        if preserved_account is not None:
             manifest = _load_account_manifest(normalized_account)
 
         source_auth = _active_auth_path(manifest)
@@ -534,9 +530,37 @@ def _record_link_failure(
     )
 
 
-def _account_for_home_auth(info: CodexAuthInfo, *, requested_account: str) -> str:
-    requested_manifest = _load_account_manifest(requested_account)
-    if requested_manifest.get("account_id") == info.account_id:
+def _preserve_home_auth_before_link(
+    auth_path: Path,
+    *,
+    requested_account: str,
+    requested_account_id: str,
+    argv: list[str] | tuple[str, ...],
+) -> tuple[dict[str, object] | None, str | None]:
+    if not auth_path.exists() and not auth_path.is_symlink():
+        return None, None
+
+    info = read_codex_auth_info(auth_path)
+    account = _account_for_home_auth(
+        info,
+        requested_account=requested_account,
+        requested_account_id=requested_account_id,
+    )
+    register_codex_account_from_auth_file(
+        auth_file=auth_path,
+        account=account,
+        argv=argv,
+    )
+    return info.safe_payload(), account
+
+
+def _account_for_home_auth(
+    info: CodexAuthInfo,
+    *,
+    requested_account: str,
+    requested_account_id: str,
+) -> str:
+    if requested_account_id == info.account_id:
         return requested_account
 
     accounts = _registry_accounts_for_account_id(info.account_id)

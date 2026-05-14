@@ -214,15 +214,55 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
     if args.provider == "codex":
         from agentos.codex.account_registry import inspect_codex_account_home
 
-        print(
-            json.dumps(
-                inspect_codex_account_home(home=Path(args.home)),
-                indent=2,
-                sort_keys=True,
-            )
-        )
+        payload = inspect_codex_account_home(home=Path(args.home))
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(_format_agent_accounts_status(payload))
         return 0
     raise CliError(f"agent accounts status is not supported for provider {args.provider}")
+
+
+def _format_agent_accounts_status(payload: dict[str, object]) -> str:
+    lines = [
+        f"Provider: {payload.get('provider', '<unknown>')}",
+        f"Home: {payload.get('home', '<unknown>')}",
+        f"Auth file: {payload.get('auth_path', '<unknown>')}",
+        f"Status: {payload.get('classification', '<unknown>')}",
+    ]
+    auth = payload.get("auth")
+    if isinstance(auth, dict):
+        lines.append(f"Account ID: {auth.get('account_id', '<unknown>')}")
+        email = auth.get("email")
+        if isinstance(email, str):
+            lines.append(f"Email: {email}")
+        sha256 = auth.get("sha256")
+        if isinstance(sha256, str):
+            lines.append(f"SHA256: {sha256}")
+    error = payload.get("error")
+    if isinstance(error, str):
+        lines.append(f"Error: {error}")
+    registry_matches = payload.get("registry_matches")
+    if isinstance(registry_matches, list):
+        lines.append(f"Registered hash matches: {len(registry_matches)}")
+    account_matches = payload.get("account_registry_matches")
+    if isinstance(account_matches, list):
+        accounts = sorted(
+            {
+                account
+                for item in account_matches
+                if isinstance(item, dict) and isinstance((account := item.get("account")), str)
+            }
+        )
+        if accounts:
+            lines.append(f"Known account aliases: {', '.join(accounts)}")
+    latest_link = payload.get("latest_link_event")
+    if isinstance(latest_link, dict):
+        status = latest_link.get("status")
+        timetag = latest_link.get("timetag")
+        if isinstance(status, str) and isinstance(timetag, str):
+            lines.append(f"Latest link: {status} at {timetag}")
+    return "\n".join(lines)
 
 
 def _add_agent_run_target_args(
@@ -426,6 +466,11 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "--home",
         required=True,
         help="Provider home to inspect.",
+    )
+    accounts_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print raw status payload as JSON.",
     )
     accounts_status_parser.set_defaults(handler=_cmd_agent_accounts_status)
 
