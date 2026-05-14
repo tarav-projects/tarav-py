@@ -1552,15 +1552,10 @@ def test_agent_list_json_includes_configured_instance_fields(
 
 def test_provider_capabilities_are_scoped_by_subsystem() -> None:
     from agentos.agent.providers import supported_default_run_provider_families
-    from agentos.agent.accounts import supported_account_provider_families
     from agentos.chatlas.raw import supported_chatlas_provider_families
     from agentos.home.providers import supported_home_providers
 
     default_run_providers = set(supported_default_run_provider_families())
-    account_providers = {
-        provider.family
-        for provider in supported_account_provider_families()
-    }
     chatlas_providers = {
         provider.family
         for provider in supported_chatlas_provider_families()
@@ -1572,11 +1567,9 @@ def test_provider_capabilities_are_scoped_by_subsystem() -> None:
     }
 
     assert "pi" in default_run_providers
-    assert "pi" not in account_providers
     assert "pi" in chatlas_providers
     assert "pi" in home_providers_with_session_layout
     assert "claude-code" in default_run_providers
-    assert "claude-code" in account_providers
     assert "claude-code" in chatlas_providers
     assert "claude-code" in home_providers_with_session_layout
 
@@ -1675,77 +1668,3 @@ def test_agent_run_uses_explicit_project_target_for_config_resolution(
     assert observed["codex_home"] == str(work_home)
     assert observed["check"] is False
 
-
-def test_agent_accounts_stats_uses_configured_agent_account_instances(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    agentos_home = tmp_path / "agentos-home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-
-    _write_global_config(
-        agentos_home / "config.json",
-        provider_instances=[
-            {
-                "provider": "codex",
-                "id": "codex-main",
-                "label": "Codex main",
-                "cli_command": ["codex"],
-            },
-            {
-                "provider": "claude-code",
-                "id": "claude-main",
-                "label": "Claude main",
-                "cli_command": ["claude"],
-            },
-        ],
-        account_instance_ids=["claude-main"],
-    )
-
-    from agentos.agent import accounts as chat_accounts
-
-    monkeypatch.setattr(chat_accounts, "_utc_now_iso", lambda: "2026-03-25T12:00:00Z")
-
-    observed_calls: list[list[str]] = []
-
-    def fake_run(
-        command: list[str],
-        *,
-        capture_output: bool,
-        text: bool,
-        check: bool,
-        env: dict[str, str],
-        timeout: int,
-    ) -> subprocess.CompletedProcess[str]:
-        del capture_output, text, check, env, timeout
-        observed_calls.append(command)
-        if command == ["claude", "auth", "status", "--json"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=json.dumps(
-                    {
-                        "loggedIn": True,
-                        "authMethod": "claude.ai",
-                        "subscriptionType": "pro",
-                    }
-                ),
-                stderr="",
-            )
-        raise AssertionError(f"unexpected command: {command}")
-
-    monkeypatch.setattr(chat_accounts.subprocess, "run", fake_run)
-
-    assert main(["agent", "accounts", "stats"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-
-    assert observed_calls == [["claude", "auth", "status", "--json"]]
-    assert payload["command"] == "agent accounts stats"
-    assert payload["provider_count"] == 1
-    assert payload["account_count"] == 1
-    assert [provider["provider"] for provider in payload["providers"]] == ["claude-code"]
-    assert payload["providers"][0]["accounts"][0]["id"] == "claude-main"

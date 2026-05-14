@@ -421,8 +421,6 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     raw_model_flag = raw_instance.get("model_flag")
     raw_prompt_flag = raw_instance.get("prompt_flag")
     raw_ping = raw_instance.get("ping")
-    raw_live_usage_refresh = raw_instance.get("live_usage_refresh")
-    raw_usage_progression_limit = raw_instance.get("usage_progression_limit")
     raw_includes = raw_instance.get("includes")
     raw_excludes = raw_instance.get("excludes")
 
@@ -492,18 +490,6 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         raw_ping,
         field_name=entry.field_name("ping"),
     )
-    if raw_live_usage_refresh is None:
-        live_usage_refresh = None
-    elif not isinstance(raw_live_usage_refresh, bool):
-        raise CliError(f"{entry.field_name('live_usage_refresh')} must be a boolean")
-    else:
-        live_usage_refresh = raw_live_usage_refresh
-    if raw_usage_progression_limit is None:
-        usage_progression_limit = None
-    elif not isinstance(raw_usage_progression_limit, str) or not raw_usage_progression_limit.strip():
-        raise CliError(f"{entry.field_name('usage_progression_limit')} must be a non-empty string")
-    else:
-        usage_progression_limit = raw_usage_progression_limit.strip()
     includes = _load_optional_string_tuple(
         raw_includes,
         field_name=entry.field_name("includes"),
@@ -566,8 +552,6 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         model_flag=model_flag,
         prompt_flag=prompt_flag,
         ping=ping,
-        account_live_usage_refresh=live_usage_refresh,
-        account_usage_progression_limit=usage_progression_limit,
         chatlas_includes=includes,
         chatlas_excludes=excludes,
         identity_anchors=anchors,

@@ -17,7 +17,6 @@ from agentos.agent.run_runtime import (
     execute_agent_run_command,
     format_agent_run_command,
 )
-from agentos.agent.account_runtime import AccountStatsRequest, account_stats_config_for_provider
 from agentos._core.errors import CliError
 from agentos.codex.session import (
     CodexSession,
@@ -58,17 +57,6 @@ class CodexAgent(AgentBase):
     def session_discovery_targets(self) -> tuple[Path, ...]:
         direct_targets, sqlite_db_paths = agent_session_paths(self)
         return direct_targets + sqlite_db_paths
-
-    def account_stats(self, request: AccountStatsRequest) -> dict[str, object]:
-        from agentos.codex.accounts import codex_account_stats
-
-        return codex_account_stats(
-            self,
-            AccountStatsRequest(
-                refresh_usage=request.refresh_usage,
-                config=account_stats_config_for_provider(request, self.provider),
-            ),
-        )
 
     def run(self, request: AgentRunRequest) -> AgentRunResult:
         command = self._run_command(request)

@@ -3,16 +3,13 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 from urllib.parse import quote
 
 from agentos._core.errors import CliError
 from agentos.agent.run_runtime import AgentRunDryResult, AgentRunRequest, AgentRunResult
 from agentos.providers import ProviderHomeAnchor
 from agentos.providers import require_canonical_provider_spec
-
-if TYPE_CHECKING:
-    from agentos.agent.account_runtime import AccountStatsRequest
 
 
 @dataclass(frozen=True)
@@ -80,8 +77,6 @@ class AgentConfig:
     identity_anchors: tuple[ProviderHomeAnchor, ...] = ()
     chatlas_includes: tuple[str, ...] = ()
     chatlas_excludes: tuple[str, ...] = ()
-    account_live_usage_refresh: bool | None = None
-    account_usage_progression_limit: str | None = None
 
     def computed_fingerprint(self) -> str:
         if self.fingerprint is not None:
@@ -116,8 +111,6 @@ class AgentConfig:
             self.ping,
             self.chatlas_includes,
             self.chatlas_excludes,
-            self.account_live_usage_refresh,
-            self.account_usage_progression_limit,
         )
 
     def uri_key(self) -> str:
@@ -145,8 +138,6 @@ class AgentBase:
     identity_anchors: tuple[ProviderHomeAnchor, ...] = ()
     chatlas_includes: tuple[str, ...] = ()
     chatlas_excludes: tuple[str, ...] = ()
-    account_live_usage_refresh: bool | None = None
-    account_usage_progression_limit: str | None = None
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {"provider": self.provider, "is_default": self.is_default}
@@ -186,10 +177,6 @@ class AgentBase:
             payload["chatlas_includes"] = list(self.chatlas_includes)
         if self.chatlas_excludes:
             payload["chatlas_excludes"] = list(self.chatlas_excludes)
-        if self.account_live_usage_refresh is not None:
-            payload["account_live_usage_refresh"] = self.account_live_usage_refresh
-        if self.account_usage_progression_limit is not None:
-            payload["account_usage_progression_limit"] = self.account_usage_progression_limit
         return payload
 
     def run(self, request: AgentRunRequest) -> AgentRunResult:
@@ -201,13 +188,6 @@ class AgentBase:
         raise CliError(
             f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
         )
-
-    def account_stats(self, request: AccountStatsRequest) -> dict[str, object]:
-        del request
-        raise CliError(
-            f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support account stats"
-        )
-
 
 def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
     return {
@@ -230,8 +210,6 @@ def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
         "identity_anchors": config.identity_anchors,
         "chatlas_includes": config.chatlas_includes,
         "chatlas_excludes": config.chatlas_excludes,
-        "account_live_usage_refresh": config.account_live_usage_refresh,
-        "account_usage_progression_limit": config.account_usage_progression_limit,
     }
 
 
@@ -267,16 +245,12 @@ class Agent(Protocol):
     identity_anchors: tuple[ProviderHomeAnchor, ...]
     chatlas_includes: tuple[str, ...]
     chatlas_excludes: tuple[str, ...]
-    account_live_usage_refresh: bool | None
-    account_usage_progression_limit: str | None
 
     def summary(self) -> dict[str, object]: ...
 
     def run(self, request: AgentRunRequest) -> AgentRunResult: ...
 
     def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult: ...
-
-    def account_stats(self, request: AccountStatsRequest) -> dict[str, object]: ...
 
 
 def provider_session_paths(
@@ -362,8 +336,6 @@ def agent_identity_key(agent: Agent) -> tuple[object, ...]:
         agent.ping,
         agent.chatlas_includes,
         agent.chatlas_excludes,
-        agent.account_live_usage_refresh,
-        agent.account_usage_progression_limit,
     )
 
 

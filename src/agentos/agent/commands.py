@@ -8,15 +8,10 @@ from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
 from agentos.agent.primitives import Agent
 from agentos.agent.providers import load_configured_agents, resolve_agent
-from agentos.agent.accounts import supported_account_provider_families
-from agentos.agent.account_commands import _cmd_chat_accounts_stats
 from agentos.agent.run_runtime import AgentRunRequest
 from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provider_families())
-_AGENT_ACCOUNTS_PROVIDER_CHOICES = tuple(
-    provider.family for provider in supported_account_provider_families()
-)
 _AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES = ("codex",)
 
 
@@ -410,57 +405,6 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="agent_accounts_command",
         required=True,
     )
-
-    accounts_stats_parser = accounts_subparsers.add_parser(
-        "stats",
-        help="Aggregate configured account status and usage checks across supported providers.",
-    )
-    accounts_stats_parser.add_argument(
-        "instance_ids",
-        nargs="*",
-        help="Optional configured account instance ids to query. Defaults to configured agent.accounts.instance_ids or all supported instances.",
-    )
-    accounts_stats_parser.add_argument(
-        "--provider",
-        choices=_AGENT_ACCOUNTS_PROVIDER_CHOICES,
-        action="append",
-        dest="providers",
-        help="Restrict checks to a provider. Repeat to include multiple providers.",
-    )
-    accounts_stats_parser.add_argument(
-        "--output",
-        choices=("json", "markdown", "usage"),
-        default="json",
-        dest="output_format",
-        help="Output format (default: json).",
-    )
-    accounts_stats_parser.add_argument(
-        "--full-output",
-        action="store_true",
-        help="Keep zero-account provider diagnostics in the providers array.",
-    )
-    accounts_stats_parser.add_argument(
-        "--refresh-usage",
-        action="store_true",
-        help=(
-            "Allow provider adapters to issue live refresh requests for usage data when needed "
-            "(for example Claude Code)."
-        ),
-    )
-    accounts_stats_parser.add_argument(
-        "--loop",
-        action="store_true",
-        help="Refresh forever every 60 seconds; press Enter to refresh immediately.",
-    )
-    accounts_stats_parser.add_argument(
-        "--project",
-        nargs="?",
-        type=Path,
-        const=Path("."),
-        default=None,
-        help="Config start path for project-local config discovery. Bare --project uses current pwd. Agent commands do not require an existing project.",
-    )
-    accounts_stats_parser.set_defaults(handler=_cmd_chat_accounts_stats)
 
     accounts_register_parser = accounts_subparsers.add_parser(
         "register",
