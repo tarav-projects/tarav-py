@@ -211,9 +211,15 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
-    if args.provider == "codex":
-        from agentos.codex.account_registry import inspect_codex_account_home
+    if args.provider is None:
+        if args.home is not None:
+            raise CliError("agent accounts status --home requires --provider")
+        return _cmd_agent_accounts_registry_status(args, provider="codex")
 
+    if args.provider == "codex":
+        if args.home is None:
+            return _cmd_agent_accounts_registry_status(args, provider=args.provider)
+        from agentos.codex.account_registry import inspect_codex_account_home
         payload = inspect_codex_account_home(home=Path(args.home))
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
@@ -221,6 +227,19 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
             print(_format_agent_accounts_status(payload))
         return 0
     raise CliError(f"agent accounts status is not supported for provider {args.provider}")
+
+
+def _cmd_agent_accounts_registry_status(args: argparse.Namespace, *, provider: str) -> int:
+    if provider == "codex":
+        from agentos.codex.account_registry import inspect_codex_account_registry
+
+        payload = inspect_codex_account_registry()
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(_format_agent_accounts_registry_overview(payload))
+        return 0
+    raise CliError(f"agent accounts status is not supported for provider {provider}")
 
 
 def _format_agent_accounts_status(payload: dict[str, object]) -> str:
@@ -263,6 +282,46 @@ def _format_agent_accounts_status(payload: dict[str, object]) -> str:
         if isinstance(status, str) and isinstance(timetag, str):
             lines.append(f"Latest link: {status} at {timetag}")
     return "\n".join(lines)
+
+
+def _format_agent_accounts_registry_overview(payload: dict[str, object]) -> str:
+    lines = [
+        f"Provider: {payload.get('provider', '<unknown>')}",
+        "Status: registry",
+    ]
+    registry = payload.get("registry")
+    if isinstance(registry, dict):
+        lines.extend(_format_agent_accounts_registry_status(registry))
+    return "\n".join(lines)
+
+
+def _format_agent_accounts_registry_status(registry: dict[str, object]) -> list[str]:
+    lines = [
+        "Registry:",
+        f"  Root: {registry.get('root', '<unknown>')}",
+        f"  Index: {registry.get('registry_path', '<unknown>')}",
+        f"  Entries: {registry.get('entry_count', 0)}",
+        f"  Accounts: {registry.get('account_count', 0)}",
+    ]
+    accounts = registry.get("accounts")
+    if isinstance(accounts, list) and accounts:
+        lines.append("  Registered accounts:")
+        for item in accounts:
+            if not isinstance(item, dict):
+                continue
+            account = item.get("account", "<unknown>")
+            email = item.get("email")
+            label = f"    - {account}"
+            if isinstance(email, str):
+                label += f" <{email}>"
+            active_sha = item.get("active_sha256")
+            if isinstance(active_sha, str):
+                label += f" active={active_sha[:12]}"
+            registered_hashes = item.get("registered_hashes")
+            if isinstance(registered_hashes, int):
+                label += f" versions={registered_hashes}"
+            lines.append(label)
+    return lines
 
 
 def _add_agent_run_target_args(
@@ -458,14 +517,14 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     accounts_status_parser.add_argument(
         "--provider",
-        required=True,
+        default=None,
         choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
-        help="Provider family to inspect.",
+        help="Provider family to inspect. Omit with no --home to show all account registry status.",
     )
     accounts_status_parser.add_argument(
         "--home",
-        required=True,
-        help="Provider home to inspect.",
+        default=None,
+        help="Provider home to inspect. Requires --provider.",
     )
     accounts_status_parser.add_argument(
         "--json",

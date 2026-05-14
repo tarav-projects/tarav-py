@@ -230,6 +230,15 @@ def inspect_codex_account_home(*, home: Path) -> dict[str, object]:
     return base
 
 
+def inspect_codex_account_registry() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "command": "agent accounts status",
+        "provider": CODEX_PROVIDER,
+        "registry": _registry_summary(_registry_entries()),
+    }
+
+
 def read_codex_auth_info(path: Path) -> CodexAuthInfo:
     if not path.exists():
         raise CliError(f"codex auth file does not exist: {path}")
@@ -459,6 +468,48 @@ def _registry_entries() -> list[dict[str, object]]:
             raise CliError(f"codex registry entry must be a JSON object: {registry_path}:{line_number}")
         entries.append(payload)
     return entries
+
+
+def _registry_summary(entries: list[dict[str, object]]) -> dict[str, object]:
+    accounts: list[dict[str, object]] = []
+    account_names = sorted(
+        {
+            account
+            for entry in entries
+            if entry.get("provider") == CODEX_PROVIDER
+            and (account := _string_or_none(entry.get("account"))) is not None
+        }
+    )
+    for account in account_names:
+        account_entries = [entry for entry in entries if entry.get("provider") == CODEX_PROVIDER and entry.get("account") == account]
+        account_summary: dict[str, object] = {
+            "account": account,
+            "registered_hashes": len({entry.get("sha256") for entry in account_entries if isinstance(entry.get("sha256"), str)}),
+        }
+        latest_entry = account_entries[-1] if account_entries else None
+        if isinstance(latest_entry, dict):
+            for field in ("account_id", "email"):
+                value = latest_entry.get(field)
+                if isinstance(value, str):
+                    account_summary[field] = value
+        try:
+            manifest = _load_account_manifest(account)
+        except CliError:
+            manifest = None
+        if isinstance(manifest, dict):
+            for source, target in (("active_sha256", "active_sha256"), ("active_file", "active_file")):
+                value = manifest.get(source)
+                if isinstance(value, str):
+                    account_summary[target] = value
+        accounts.append(account_summary)
+
+    return {
+        "root": str(_provider_root()),
+        "registry_path": str(_registry_path()),
+        "entry_count": len(entries),
+        "account_count": len(accounts),
+        "accounts": accounts,
+    }
 
 
 def _manifest_active_sha(account: str | None) -> str | None:
@@ -712,6 +763,7 @@ def _path_kind(path: Path) -> str:
 
 
 __all__ = [
+    "inspect_codex_account_registry",
     "inspect_codex_account_home",
     "link_codex_account_to_home",
     "read_codex_auth_info",

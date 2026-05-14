@@ -107,6 +107,15 @@ def _status_args(home: Path, *, json_output: bool = True) -> list[str]:
     return args
 
 
+def _registry_status_args(*, provider: str | None = None, json_output: bool = True) -> list[str]:
+    args = ["agent", "accounts", "status"]
+    if provider is not None:
+        args.extend(["--provider", provider])
+    if json_output:
+        args.append("--json")
+    return args
+
+
 def test_agent_accounts_register_uses_auth_file_and_flat_registry(
     tmp_path: Path,
     monkeypatch,
@@ -168,6 +177,7 @@ def test_agent_accounts_register_uses_auth_file_and_flat_registry(
     assert status_payload["auth"]["account_id"] == "acc_123"
     assert status_payload["registry_matches"][0]["sha256"] == auth_sha
     assert status_payload["latest_link_event"]["event_type"] == "agent.accounts.link"
+    assert "registry" not in status_payload
 
     assert (
         main(
@@ -508,5 +518,40 @@ def test_agent_accounts_status_defaults_to_human_output(
     assert "Status: matching-active\n" in output
     assert "Email: person@example.com\n" in output
     assert "Registered hash matches: 1\n" in output
+    assert "\nRegistry:\n" not in output
     with pytest.raises(json.JSONDecodeError):
         json.loads(output)
+
+
+def test_agent_accounts_status_defaults_to_general_registry_view(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    auth_text = _auth_json(email="person@example.com")
+    auth_sha = _sha(auth_text)
+    _write(source_auth, auth_text)
+
+    assert main(_register_args(source_auth)) == 0
+    capsys.readouterr()
+    assert main(_registry_status_args(json_output=False)) == 0
+
+    output = capsys.readouterr().out
+    assert output.startswith("Provider: codex\n")
+    assert "Status: registry\n" in output
+    assert "Registry:\n" in output
+    assert "  Entries: 1\n" in output
+    assert "  Accounts: 1\n" in output
+    assert "  Registered accounts:\n" in output
+    assert "    - br <person@example.com> active=" in output
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(output)
+
+    assert main(_registry_status_args(json_output=True)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["registry"]["entry_count"] == 1
+    assert payload["registry"]["account_count"] == 1
+    assert payload["registry"]["accounts"][0]["account"] == "br"
+    assert payload["registry"]["accounts"][0]["active_sha256"] == auth_sha
