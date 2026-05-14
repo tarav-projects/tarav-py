@@ -240,7 +240,11 @@ def chatlas_views_commit(
     if context.cache_key != cache_key:
         raise CliError("Chatlas view stage target does not match cache key")
 
-    artifact_files = _validate_required_stage_artifacts(stage_path, workflow.artifact_contract)
+    artifact_files = _validate_required_stage_artifacts(
+        stage_path,
+        workflow.artifact_contract,
+        context=context,
+    )
     observed_dependencies = _observed_dependencies_for_commit(workflow, context)
     artifacts = _artifact_payloads(
         context.slot_path,
@@ -710,13 +714,19 @@ def _replace_directory(*, temp_path: Path, target_path: Path) -> None:
 def _validate_required_stage_artifacts(
     stage_path: Path,
     contract: ChatlasViewArtifactContract,
+    *,
+    context: ChatlasViewContext,
 ) -> list[Path]:
     artifact_paths: list[Path] = []
     for artifact_name in contract.required_artifacts:
         artifact_path = stage_path / artifact_name
         if not artifact_path.is_file():
             raise CliError(f"missing staged Chatlas view artifact: {artifact_path}")
-        _validate_stage_artifact_payload(artifact_path, contract=contract)
+        _validate_stage_artifact_payload(
+            artifact_path,
+            contract=contract,
+            context=context,
+        )
         artifact_paths.append(artifact_path)
     return artifact_paths
 
@@ -750,6 +760,7 @@ def _validate_stage_artifact_payload(
     artifact_path: Path,
     *,
     contract: ChatlasViewArtifactContract,
+    context: ChatlasViewContext,
 ) -> None:
     if contract.primary_artifact != _SUMMARY_ARTIFACT or artifact_path.name != _SUMMARY_ARTIFACT:
         return
@@ -782,6 +793,66 @@ def _validate_stage_artifact_payload(
             "Chatlas zip-transcript-agent-summary artifact field turns must be "
             f"a JSON array: {artifact_path}"
         )
+    _lint_zip_transcript_agent_summary_commit(
+        payload,
+        source_payload=_zip_transcript_payload(context.source_rows[0]),
+        artifact_path=artifact_path,
+    )
+
+
+def _lint_zip_transcript_agent_summary_commit(
+    payload: dict[str, Any],
+    *,
+    source_payload: dict[str, object],
+    artifact_path: Path,
+) -> None:
+    source_session = source_payload.get("session")
+    if payload.get("session") != source_session:
+        raise CliError(
+            "Chatlas zip-transcript-agent-summary Commit.Linter failed: "
+            f"session must match source zip-transcript session: {artifact_path}"
+        )
+    source_turns = _dict_list(source_payload.get("turns"))
+    summary_turns = _dict_list(payload.get("turns"))
+    if len(summary_turns) != len(source_turns):
+        raise CliError(
+            "Chatlas zip-transcript-agent-summary Commit.Linter failed: "
+            f"turn count must match source zip-transcript "
+            f"({len(summary_turns)} != {len(source_turns)}): {artifact_path}"
+        )
+    if len(summary_turns) != len(payload.get("turns", [])):
+        raise CliError(
+            "Chatlas zip-transcript-agent-summary Commit.Linter failed: "
+            f"each turn must be a JSON object: {artifact_path}"
+        )
+
+    for index, (source_turn, summary_turn) in enumerate(zip(source_turns, summary_turns, strict=True)):
+        source_role = source_turn.get("role")
+        summary_role = summary_turn.get("role")
+        if summary_role != source_role:
+            raise CliError(
+                "Chatlas zip-transcript-agent-summary Commit.Linter failed: "
+                f"turn {index} role must match source zip-transcript "
+                f"({summary_role!r} != {source_role!r}): {artifact_path}"
+            )
+        source_text = source_turn.get("text")
+        summary_text = summary_turn.get("text")
+        if not isinstance(summary_text, str):
+            raise CliError(
+                "Chatlas zip-transcript-agent-summary Commit.Linter failed: "
+                f"turn {index} text must be a string: {artifact_path}"
+            )
+        if source_role == "user" and summary_text != source_text:
+            raise CliError(
+                "Chatlas zip-transcript-agent-summary Commit.Linter failed: "
+                f"turn {index} user text must match source zip-transcript verbatim: "
+                f"{artifact_path}"
+            )
+        if source_role == "assistant" and not summary_text.strip():
+            raise CliError(
+                "Chatlas zip-transcript-agent-summary Commit.Linter failed: "
+                f"turn {index} assistant text must not be blank: {artifact_path}"
+            )
 
 
 def _primary_artifact_from_manifest(
@@ -881,6 +952,12 @@ def _dependency_summary(status: ChatlasViewStatus, *, explain: bool) -> dict[str
 
 def _without_index_row(parameter: dict[str, object]) -> dict[str, object]:
     return {key: value for key, value in parameter.items() if key != "index_row"}
+
+
+def _dict_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
 
 
 def _chatlas_root(chatlas_root: Path | None) -> Path:

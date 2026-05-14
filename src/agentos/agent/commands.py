@@ -178,6 +178,7 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
                     auth_file=Path(args.auth_file),
                     account=args.account,
                     email=args.email,
+                    register_only=args.register_only,
                     argv=getattr(args, "_agentos_argv", []),
                 ),
                 indent=2,
@@ -354,7 +355,7 @@ def _format_agent_accounts_registry_overview(payload: dict[str, object]) -> str:
         for item in accounts:
             if not isinstance(item, dict):
                 continue
-            lines.append(_format_agent_account_manifest_line(item))
+            lines.append(_format_agent_account_line(item))
     links = payload.get("link_count")
     artifacts = payload.get("artifact_count")
     if isinstance(artifacts, int):
@@ -364,7 +365,7 @@ def _format_agent_accounts_registry_overview(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
-def _format_agent_account_manifest_line(item: dict[str, object]) -> str:
+def _format_agent_account_line(item: dict[str, object]) -> str:
     provider = item.get("provider", "<unknown>")
     account = item.get("account", "<unknown>")
     label = f"  - {provider}/{account}"
@@ -506,6 +507,11 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "--label",
         default=None,
         help="Human label for the account.",
+    )
+    accounts_register_parser.add_argument(
+        "--register-only",
+        action="store_true",
+        help="Register the auth artifact without making it the account's active artifact. Codex only.",
     )
     accounts_register_parser.set_defaults(handler=_cmd_agent_accounts_register)
 

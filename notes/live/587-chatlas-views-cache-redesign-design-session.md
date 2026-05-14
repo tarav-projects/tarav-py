@@ -132,6 +132,24 @@ The external producer stages the view through Chatlas, writes the expected artif
 
 Stage creation records the intended `view + parameters` identity. The cache key can be generated from that identity. Staging metadata should contain enough information for commit to validate and move the candidate into the correct canonical storage slot.
 
+### Commit.Linter
+
+`Commit.Linter` is the workflow-owned validation step that runs before a staged external view artifact is committed.
+
+Generic Chatlas commit validates the common lifecycle contract: stage identity, cache key, required files, artifact readability, hashes, and atomic replacement. The registered workflow owns deeper artifact semantics and may reject a staged candidate before it becomes the current committed artifact.
+
+For `zip-transcript-agent-summary`, `Commit.Linter` validates `summary.json` against the materialized source `zip-transcript` view:
+
+- `session` exactly matches source `zip-transcript.session`
+- `turns` count exactly matches source `zip-transcript.turns`
+- every turn is a JSON object
+- every turn `role` exactly matches the source turn role at the same index
+- every turn has string `text`
+- every user turn `text` exactly matches the source turn text
+- every assistant turn `text` is non-blank
+
+`Commit.Linter` does not judge summarization quality beyond structural invariants. Quality remains the producer's responsibility, guided by the view's producer reference and compression rules.
+
 ### View.Internal.Workflow
 
 Internal views are deterministic views that Chatlas can produce programmatically from Chatlas-owned data and registered dependencies.

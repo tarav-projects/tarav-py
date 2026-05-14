@@ -1,5 +1,14 @@
 # Chatlas Update Index - design-session
 
+> [!WARNING]
+> This design-session artifact uses the stale `Session.Index` / `Session.Docs`
+> section format. New or updated design-session artifacts should follow the
+> current `Artifact.Design.Session` format defined by the
+> `hugentics-designer` skill:
+> `/Users/pereiro/projects/agentos-project/agentos-md/skills/hugentics-designer/SKILL.md`.
+> Current sections are `Session.Abstract`, `Design.Index`, `Session.Notes`,
+> and `Session.Log`.
+
 ## Session.Abstract
 
 Design session for the new `agentos chatlas update` system, starting with the first phase: `index-only`.
@@ -7,6 +16,12 @@ Design session for the new `agentos chatlas update` system, starting with the fi
 The current design target is a clean first pipeline step that copies provider raw session sources into Chatlas-controlled storage and produces/updates the session index from that copied substrate. The phase is designed from scratch, using v1 as reference only.
 
 ## Session.Index
+
+> [!WARNING]
+> `Session.Index` is a stale design-session section name. Current
+> design-session artifacts should use `Design.Index` with H3
+> `Design.Index.Block` concept blocks, as defined by the
+> `hugentics-designer` skill.
 
 ### Chatlas.Update.IndexOnly
 
@@ -43,6 +58,13 @@ Implementation request: [579-chatlas-delta-scan-impl-req.md](579-chatlas-delta-s
 Core invariant: delta detection is native-based; index derivation is Chatlas-raw-based.
 
 ## Session.Docs
+
+> [!WARNING]
+> `Session.Docs` is a stale design-session section. Current design-session
+> artifacts should place compact concept fundamentals in `Design.Index`,
+> extended rationale/tradeoffs in each concept block's `appendix`, and loose
+> unsettled working material in `Session.Notes`, as defined by the
+> `hugentics-designer` skill.
 
 The copied raw sources are a real Chatlas-owned source substrate, not merely a hidden cache. The session index is the only productized/queryable artifact promised by the first phase.
 

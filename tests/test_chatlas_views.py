@@ -269,6 +269,48 @@ def test_chatlas_views_external_summary_stage_commit_and_stale_retention(
     assert main(["chatlas", "views", "commit", "--stage-id", stage_id]) == 1
     assert "invalid Chatlas zip-transcript-agent-summary artifact JSON" in capsys.readouterr().err
 
+    invalid_summary_payload = {
+        "class": "agentos.chatlas.zip_transcript_agent_summary",
+        "schema_version": 1,
+        "view": "zip-transcript-agent-summary",
+        "source_view": "zip-transcript",
+        "session": {
+            "session_id": session_id,
+        },
+        "turns": [
+            {
+                "role": "user",
+                "text": "changed user text",
+            },
+            {
+                "role": "assistant",
+                "text": "acknowledged",
+            },
+        ],
+    }
+    _write(stage_path / "summary.json", json.dumps(invalid_summary_payload) + "\n")
+    assert main(["chatlas", "views", "commit", "--stage-id", stage_id]) == 1
+    assert "Commit.Linter failed: session must match source zip-transcript session" in capsys.readouterr().err
+
+    assert main(["chatlas", "views", "path", "--view", "zip-transcript", "--session-id", session_id, "--format", "json"]) == 0
+    zip_path_payload = json.loads(capsys.readouterr().out)
+    zip_payload = json.loads(Path(zip_path_payload["path"]).read_text(encoding="utf-8"))
+    invalid_summary_payload["session"] = zip_payload["session"]
+    _write(stage_path / "summary.json", json.dumps(invalid_summary_payload) + "\n")
+    assert main(["chatlas", "views", "commit", "--stage-id", stage_id]) == 1
+    assert "user text must match source zip-transcript verbatim" in capsys.readouterr().err
+
+    summary_turns = []
+    for turn in zip_payload["turns"]:
+        if turn["role"] == "user":
+            summary_turns.append(turn)
+        else:
+            summary_turns.append(
+                {
+                    "role": turn["role"],
+                    "text": "summarized assistant turn",
+                }
+            )
     _write(
         stage_path / "summary.json",
         json.dumps(
@@ -277,19 +319,8 @@ def test_chatlas_views_external_summary_stage_commit_and_stale_retention(
                 "schema_version": 1,
                 "view": "zip-transcript-agent-summary",
                 "source_view": "zip-transcript",
-                "session": {
-                    "session_id": session_id,
-                },
-                "turns": [
-                    {
-                        "role": "user",
-                        "text": "hello",
-                    },
-                    {
-                        "role": "assistant",
-                        "text": "acknowledged",
-                    },
-                ],
+                "session": zip_payload["session"],
+                "turns": summary_turns,
             }
         )
         + "\n",
@@ -302,7 +333,16 @@ def test_chatlas_views_external_summary_stage_commit_and_stale_retention(
     assert commit_payload["view"]["artifact"]["content_type"] == "application/json"
     summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary_payload["class"] == "agentos.chatlas.zip_transcript_agent_summary"
-    assert [turn["role"] for turn in summary_payload["turns"]] == ["user", "assistant"]
+    assert [turn["role"] for turn in summary_payload["turns"]] == [turn["role"] for turn in zip_payload["turns"]]
+    assert [
+        turn["text"]
+        for turn in summary_payload["turns"]
+        if turn["role"] == "user"
+    ] == [
+        turn["text"]
+        for turn in zip_payload["turns"]
+        if turn["role"] == "user"
+    ]
 
     index_row = _chatlas_index_rows(summary_path.parents[3])[0]
     index_row["display_name"] = "changed source"

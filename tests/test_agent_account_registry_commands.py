@@ -63,8 +63,8 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
     return entries
 
 
-def _register_args(auth_file: Path, *, account: str = "br") -> list[str]:
-    return [
+def _register_args(auth_file: Path, *, account: str = "br", register_only: bool = False) -> list[str]:
+    args = [
         "agent",
         "accounts",
         "register",
@@ -75,6 +75,9 @@ def _register_args(auth_file: Path, *, account: str = "br") -> list[str]:
         "--auth-file",
         str(auth_file),
     ]
+    if register_only:
+        args.append("--register-only")
+    return args
 
 
 def _link_args(home: Path, *, account: str = "br", force: bool = False) -> list[str]:
@@ -223,6 +226,58 @@ def test_agent_accounts_register_new_hash_updates_active_artifact(
     assert accounts["accounts"]["br"]["active_artifact_id"] == _sha(second_text)
     assert (provider_root / "artifacts" / f"{_sha(first_text)}.auth.json").read_text(encoding="utf-8") == first_text
     assert (provider_root / "artifacts" / f"{_sha(second_text)}.auth.json").read_text(encoding="utf-8") == second_text
+
+
+def test_agent_accounts_register_only_preserves_active_artifact(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    active_auth = tmp_path / "active.json"
+    archived_auth = tmp_path / "archived.json"
+    active_text = _auth_json(last_refresh="2026-05-12T00:00:00Z", iat=1_776_000_000)
+    archived_text = _auth_json(last_refresh="2026-05-01T00:00:00Z", iat=1_775_000_000)
+    _write(active_auth, active_text)
+    _write(archived_auth, archived_text)
+
+    assert main(_register_args(active_auth)) == 0
+    capsys.readouterr()
+    assert main(_register_args(archived_auth, register_only=True)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["register_only"] is True
+    assert payload["artifact_appended"] is True
+
+    provider_root = agentos_home / "accounts" / "codex"
+    artifacts = _read_jsonl(provider_root / "artifacts.jsonl")
+    assert [entry["artifact_id"] for entry in artifacts] == [_sha(active_text), _sha(archived_text)]
+    accounts = _read_json(provider_root / "accounts.json")
+    assert accounts["accounts"]["br"]["active_artifact_id"] == _sha(active_text)
+    assert accounts["accounts"]["br"]["artifact_file"] == f"artifacts/{_sha(active_text)}.auth.json"
+    assert (provider_root / "artifacts" / f"{_sha(archived_text)}.auth.json").read_text(encoding="utf-8") == archived_text
+
+
+def test_agent_accounts_register_only_new_account_has_no_active_artifact(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    auth_text = _auth_json()
+    _write(source_auth, auth_text)
+
+    assert main(_register_args(source_auth, register_only=True)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["register_only"] is True
+    assert payload["account_record"]["active_artifact_id"] is None
+
+    provider_root = agentos_home / "accounts" / "codex"
+    accounts = _read_json(provider_root / "accounts.json")
+    assert accounts["accounts"]["br"]["active_artifact_id"] is None
+    assert "artifact_file" not in accounts["accounts"]["br"]
+    artifacts = _read_jsonl(provider_root / "artifacts.jsonl")
+    assert artifacts[0]["artifact_id"] == _sha(auth_text)
 
 
 def test_agent_accounts_register_refuses_account_id_mismatch_without_touching_current(

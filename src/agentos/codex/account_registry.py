@@ -10,7 +10,6 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos._core.project_command_log import record_activity_event
 from agentos.agent.account_registry import (
     account_provider_root,
     append_artifact,
@@ -18,6 +17,7 @@ from agentos.agent.account_registry import (
     load_account,
     load_accounts,
     load_links,
+    record_account_event,
     read_artifacts,
     upsert_account,
     upsert_link,
@@ -68,6 +68,7 @@ def register_codex_account_from_auth_file(
     auth_file: Path,
     account: str,
     email: str | None = None,
+    register_only: bool = False,
     argv: list[str] | tuple[str, ...] = (),
 ) -> dict[str, object]:
     normalized_account = validate_string_for_path(account, field_name="account")
@@ -83,6 +84,8 @@ def register_codex_account_from_auth_file(
     account_record = _write_account(
         account=normalized_account,
         info=info,
+        activate=not register_only,
+        existing=existing,
     )
     result = {
         "status": "ok",
@@ -95,9 +98,10 @@ def register_codex_account_from_auth_file(
         "stored_file": str(stored_file),
         "artifact_entry": artifact_entry,
         "artifact_appended": artifact_appended,
+        "register_only": register_only,
         "account_record": account_record,
     }
-    _record_account_event(
+    record_account_event(
         event_type="agent.accounts.register",
         command="agent accounts register",
         argv=argv,
@@ -111,6 +115,8 @@ def register_codex_account_from_auth_file(
             "artifact_id": info.sha256,
             "stored_file": _artifact_relative_file(info.sha256),
             "artifact_appended": artifact_appended,
+            "register_only": register_only,
+            "active_updated": not register_only,
         },
     )
     return result
@@ -167,7 +173,7 @@ def link_codex_account_to_home(
             "previous_link": previous_link,
             "link": link_record,
         }
-        _record_account_event(
+        record_account_event(
             event_type="agent.accounts.link",
             command="agent accounts link",
             argv=argv,
@@ -323,18 +329,28 @@ def _inspect_target_before_link(
     }
 
 
-def _write_account(*, account: str, info: CodexAuthInfo) -> dict[str, object]:
+def _write_account(
+    *,
+    account: str,
+    info: CodexAuthInfo,
+    activate: bool,
+    existing: dict[str, object] | None,
+) -> dict[str, object]:
+    updates: dict[str, object] = {
+        "auth_kinds": [CODEX_AUTH_KIND],
+        "account_id": info.account_id,
+        "email": info.email,
+        **info.metadata_payload(),
+    }
+    if activate:
+        updates["active_artifact_id"] = info.sha256
+        updates["artifact_file"] = _artifact_relative_file(info.sha256)
+    elif existing is None:
+        updates["active_artifact_id"] = None
     return upsert_account(
         CODEX_PROVIDER,
         account,
-        {
-            "auth_kinds": [CODEX_AUTH_KIND],
-            "active_artifact_id": info.sha256,
-            "account_id": info.account_id,
-            "email": info.email,
-            "artifact_file": _artifact_relative_file(info.sha256),
-            **info.metadata_payload(),
-        },
+        updates,
     )
 
 
@@ -486,23 +502,6 @@ def _apply_manual_metadata(info: CodexAuthInfo, *, email: str | None) -> CodexAu
     return replace(info, email=normalized_email)
 
 
-def _record_account_event(
-    *,
-    event_type: str,
-    command: str,
-    argv: list[str] | tuple[str, ...],
-    status: str,
-    payload: dict[str, object],
-) -> None:
-    record_activity_event(
-        event_type=event_type,
-        command=command,
-        argv=argv,
-        status=status,
-        payload=payload,
-    )
-
-
 def _record_link_failure(
     *,
     argv: list[str] | tuple[str, ...],
@@ -512,7 +511,7 @@ def _record_link_failure(
     message: str,
     payload: dict[str, object],
 ) -> None:
-    _record_account_event(
+    record_account_event(
         event_type="agent.accounts.link",
         command="agent accounts link",
         argv=argv,

@@ -4,8 +4,7 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos._core.project_command_log import record_activity_event
-from agentos.agent.account_registry import load_account, upsert_account, upsert_link
+from agentos.agent.account_registry import load_account, record_account_event, upsert_account, upsert_link
 
 CLAUDE_PROVIDER = "claude-code"
 CLAUDE_AUTH_KIND = "ambient-browser-login"
@@ -32,7 +31,7 @@ def register_claude_account(
             "label": _string_or_none(label),
         },
     )
-    _record_account_event(
+    record_account_event(
         event_type="agent.accounts.register",
         command="agent accounts register",
         argv=argv,
@@ -75,7 +74,7 @@ def link_claude_account_to_home(
             "auth_kind": CLAUDE_AUTH_KIND,
         },
     )
-    _record_account_event(
+    record_account_event(
         event_type="agent.accounts.link",
         command="agent accounts link",
         argv=argv,
@@ -101,23 +100,6 @@ def link_claude_account_to_home(
         "previous_link": previous_link,
         "link": link_record,
     }
-
-
-def _record_account_event(
-    *,
-    event_type: str,
-    command: str,
-    argv: list[str] | tuple[str, ...],
-    status: str,
-    payload: dict[str, object],
-) -> None:
-    record_activity_event(
-        event_type=event_type,
-        command=command,
-        argv=argv,
-        status=status,
-        payload=payload,
-    )
 
 
 def _string_or_none(value: object) -> str | None:

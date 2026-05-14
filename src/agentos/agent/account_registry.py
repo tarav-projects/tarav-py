@@ -8,6 +8,7 @@ from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
+from agentos._core.project_command_log import record_activity_event
 
 ACCOUNT_REGISTRY_SCHEMA_VERSION = 1
 LINK_REGISTRY_SCHEMA_VERSION = 1
@@ -224,6 +225,23 @@ def inspect_account_registry(provider: str | None = None) -> dict[str, object]:
     }
 
 
+def record_account_event(
+    *,
+    event_type: str,
+    command: str,
+    argv: list[str] | tuple[str, ...],
+    status: str,
+    payload: dict[str, object],
+) -> None:
+    record_activity_event(
+        event_type=event_type,
+        command=command,
+        argv=argv,
+        status=status,
+        payload=payload,
+    )
+
+
 def _account_records(payload: dict[str, object]) -> list[dict[str, object]]:
     accounts = payload.get("accounts")
     if not isinstance(accounts, dict):
@@ -312,6 +330,7 @@ __all__ = [
     "load_account",
     "load_accounts",
     "load_links",
+    "record_account_event",
     "read_artifacts",
     "upsert_account",
     "upsert_link",
