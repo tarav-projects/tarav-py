@@ -476,6 +476,66 @@ store latest model data in MonitorState
 write display data into MonitorFrame
 ```
 
+First implementation slice:
+
+```text
+agentos agent accounts monitor
+    load agent.accounts.monitor[]
+    validate workflow config shape
+    validate configured targets as registered accounts
+    resolve workflow order
+    initialize MonitorState
+    run MonitorLoop
+    create one MonitorFrame per tick
+    call workflows once per tick
+    render frame output
+```
+
+The first slice proves monitor loop mechanics before provider usage fetching. `limits-tracking` is installed but only writes placeholder output and mock state/frame data.
+
+Placeholder output:
+
+```text
+Agent accounts monitor
+
+limits-tracking
+  status: under construction
+  tick: 1
+  targets: 2
+```
+
+Test-friendly command controls:
+
+```bash
+agentos agent accounts monitor --once
+agentos agent accounts monitor --max-ticks 3
+agentos agent accounts monitor --interval-sec 0
+agentos agent accounts monitor --json
+```
+
+`--once` means `--max-ticks 1`. `--max-ticks` and `--interval-sec` keep loop tests deterministic without running an infinite monitor.
+
+First-slice acceptance signals:
+
+- `agentos agent accounts monitor --once` prints under-construction output.
+- config order controls workflow execution order.
+- `MonitorState` persists across ticks.
+- `MonitorFrame` is recreated each tick.
+- workflows mutate both state and frame in tests.
+- `--max-ticks 3 --json` shows tick count and workflow run count.
+- unknown workflow fails clearly.
+- invalid monitor config fails clearly.
+- missing registered account targets fail clearly.
+
+First-slice non-goals:
+
+- no real provider usage fetching.
+- no rich TUI.
+- no system-home validation beyond target home resolution.
+- no system-home creation or repair.
+- no claimed/browser-login monitor behavior.
+- no monitor history persistence.
+
 #### meta
 
 - status: active design target.
@@ -488,6 +548,7 @@ write display data into MonitorFrame
 - settled: `MonitorFrame` is the per-tick TUI/render frame.
 - settled: monitor uses Agentos agent system homes as target execution context.
 - settled: monitor validates target system homes and reports setup guidance instead of preparing them automatically.
+- settled: first monitor implementation slice should prove loop mechanics with under-construction placeholder workflow output before provider usage fetching.
 - open: claimed/browser-login account support in Agentos agent system homes.
 - open: exact provider capability surface for fetching usage data from registered accounts.
 
@@ -554,3 +615,4 @@ write display data into MonitorFrame
 - 2026-05-14: Refreshed session after `590` implementation. Marked base registry, register, link, status reconciliation, invariants, and event logging decisions as closed; carried monitor integration, current-home preservation helpers, migration/cleanup, status UX, status logging, and registry repair forward as follow-up design threads.
 - 2026-05-14: Added `Account.Monitor` design with ordered workflow config, agent system homes, monitor loop abstractions, and `limits-tracking` as the first installed workflow.
 - 2026-05-14: Added `Agentos.Agent.System.Home` and revised monitor homes to `~/.agentos/agent/homes/<provider>/<account>` with validate-and-report behavior.
+- 2026-05-14: Scoped first monitor implementation slice to loop mechanics, placeholder `limits-tracking` output, state/frame dataflow, and deterministic loop test controls.
