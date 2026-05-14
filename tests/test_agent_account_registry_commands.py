@@ -64,7 +64,7 @@ def _read_registry(path: Path) -> list[dict[str, object]]:
     return entries
 
 
-def _register_args(auth_file: Path) -> list[str]:
+def _register_args(auth_file: Path, *, account: str = "br") -> list[str]:
     return [
         "agent",
         "accounts",
@@ -72,7 +72,7 @@ def _register_args(auth_file: Path) -> list[str]:
         "--provider",
         "codex",
         "--account",
-        "br",
+        account,
         "--auth-file",
         str(auth_file),
     ]
@@ -380,7 +380,79 @@ def test_agent_accounts_link_registers_same_account_auth_before_copy(
     assert manifest["active_sha256"] == _sha(refreshed_auth)
 
 
-def test_agent_accounts_link_refuses_different_account_and_logs_error(
+def test_agent_accounts_link_preserves_known_different_account_then_switches(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    br_source_auth = tmp_path / "br-source.json"
+    jp_source_auth = tmp_path / "jp-source.json"
+    target_home = tmp_path / "codex"
+    old_br_auth = _auth_json(account_id="acc_br", email="br@example.com", last_refresh="2026-05-01T00:00:00Z")
+    current_br_auth = _auth_json(account_id="acc_br", email="br@example.com", last_refresh="2026-05-02T00:00:00Z")
+    jp_auth = _auth_json(account_id="acc_jp", email="jp@example.com", last_refresh="2026-05-03T00:00:00Z")
+    _write(br_source_auth, old_br_auth)
+    _write(jp_source_auth, jp_auth)
+    _write(target_home / "auth.json", current_br_auth)
+
+    assert main(_register_args(br_source_auth, account="br")) == 0
+    capsys.readouterr()
+    assert main(_register_args(jp_source_auth, account="jp")) == 0
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "link",
+                "--provider",
+                "codex",
+                "--account",
+                "jp",
+                "--home",
+                str(target_home),
+            ]
+        )
+        == 0
+    )
+    link_payload = json.loads(capsys.readouterr().out)
+    assert link_payload["preserved_home_account"] == "br"
+    assert (target_home / "auth.json").read_text(encoding="utf-8") == jp_auth
+
+    provider_root = agentos_home / "accounts" / "codex"
+    br_manifest = _read_json(provider_root / "accounts" / "br" / "manifest.json")
+    jp_manifest = _read_json(provider_root / "accounts" / "jp" / "manifest.json")
+    assert br_manifest["active_sha256"] == _sha(current_br_auth)
+    assert jp_manifest["active_sha256"] == _sha(jp_auth)
+    registry_entries = _read_registry(provider_root / "registry.jsonl")
+    assert {entry["sha256"] for entry in registry_entries} == {
+        _sha(old_br_auth),
+        _sha(current_br_auth),
+        _sha(jp_auth),
+    }
+
+    assert (
+        main(
+            [
+                "stdlib",
+                "utils",
+                "cmd-logger",
+                "query",
+                "--event-type",
+                "agent.accounts.link",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    log_payload = json.loads(capsys.readouterr().out)
+    assert log_payload["count"] == 1
+    assert log_payload["events"][0]["status"] == "ok"
+    assert log_payload["events"][0]["payload"]["preserved_home_account"] == "br"
+
+
+def test_agent_accounts_link_refuses_unknown_current_auth_without_deleting_it(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -388,9 +460,9 @@ def test_agent_accounts_link_refuses_different_account_and_logs_error(
     _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source_auth = tmp_path / "source.json"
     target_home = tmp_path / "codex"
-    target_auth = _auth_json(account_id="acc_999")
+    unknown_auth = _auth_json(account_id="acc_unknown")
     _write(source_auth, _auth_json(account_id="acc_123"))
-    _write(target_home / "auth.json", target_auth)
+    _write(target_home / "auth.json", unknown_auth)
 
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
@@ -410,27 +482,10 @@ def test_agent_accounts_link_refuses_different_account_and_logs_error(
         )
         == 1
     )
-    assert "refusing to replace codex auth for a different account" in capsys.readouterr().err
-    assert (target_home / "auth.json").read_text(encoding="utf-8") == target_auth
-
-    assert (
-        main(
-            [
-                "stdlib",
-                "utils",
-                "cmd-logger",
-                "query",
-                "--event-type",
-                "agent.accounts.link",
-                "--json",
-            ]
-        )
-        == 0
-    )
-    log_payload = json.loads(capsys.readouterr().out)
-    assert log_payload["count"] == 1
-    assert log_payload["events"][0]["status"] == "error"
-    assert log_payload["events"][0]["payload"]["previous_home_account_id"] == "acc_999"
+    error_output = capsys.readouterr().err
+    assert "refusing to replace unregistered codex auth" in error_output
+    assert "--auth-file" in error_output
+    assert (target_home / "auth.json").read_text(encoding="utf-8") == unknown_auth
 
 
 def test_agent_accounts_link_refuses_broken_current_auth_without_deleting_it(

@@ -124,32 +124,16 @@ def link_codex_account_to_home(
     manifest = _load_account_manifest(normalized_account)
     account_id = _require_manifest_string(manifest, "account_id")
     previous_auth: dict[str, object] | None = None
+    preserved_account: str | None = None
 
     try:
         if auth_path.exists() or auth_path.is_symlink():
             existing_info = read_codex_auth_info(auth_path)
             previous_auth = existing_info.safe_payload()
-            if existing_info.account_id != account_id:
-                message = (
-                    "refusing to replace codex auth for a different account: "
-                    f"{auth_path} has {existing_info.account_id}, expected {account_id}"
-                )
-                _record_link_failure(
-                    argv=argv,
-                    account=normalized_account,
-                    home=normalized_home,
-                    auth_path=auth_path,
-                    message=message,
-                    payload={
-                        "account_id": account_id,
-                        "previous_home_account_id": existing_info.account_id,
-                        "previous_home_auth_sha256": existing_info.sha256,
-                    },
-                )
-                raise CliError(message)
+            preserved_account = _account_for_home_auth(existing_info, requested_account=normalized_account)
             register_codex_account_from_auth_file(
                 auth_file=auth_path,
-                account=normalized_account,
+                account=preserved_account,
                 argv=argv,
             )
             manifest = _load_account_manifest(normalized_account)
@@ -168,6 +152,7 @@ def link_codex_account_to_home(
             "source_sha256": copied_info.sha256,
             "copied_sha256": copied_info.sha256,
             "previous_home_auth": previous_auth,
+            "preserved_home_account": preserved_account,
             "action": "copied",
         }
         _record_account_event(
@@ -187,17 +172,17 @@ def link_codex_account_to_home(
             "source_auth_file": str(source_auth),
             "copied_auth": copied_info.safe_payload(),
             "previous_home_auth": previous_auth,
+            "preserved_home_account": preserved_account,
         }
     except CliError as exc:
-        if not _link_failure_already_logged(exc):
-            _record_link_failure(
-                argv=argv,
-                account=normalized_account,
-                home=normalized_home,
-                auth_path=auth_path,
-                message=str(exc),
-                payload={"message": str(exc)},
-            )
+        _record_link_failure(
+            argv=argv,
+            account=normalized_account,
+            home=normalized_home,
+            auth_path=auth_path,
+            message=str(exc),
+            payload={"message": str(exc)},
+        )
         raise
 
 
@@ -549,8 +534,36 @@ def _record_link_failure(
     )
 
 
-def _link_failure_already_logged(exc: CliError) -> bool:
-    return str(exc).startswith("refusing to replace codex auth for a different account:")
+def _account_for_home_auth(info: CodexAuthInfo, *, requested_account: str) -> str:
+    requested_manifest = _load_account_manifest(requested_account)
+    if requested_manifest.get("account_id") == info.account_id:
+        return requested_account
+
+    accounts = _registry_accounts_for_account_id(info.account_id)
+    if not accounts:
+        raise CliError(
+            "refusing to replace unregistered codex auth: "
+            f"{info.path} belongs to account_id {info.account_id}, which is not in the registry. "
+            "Register it first with: "
+            f"agentos agent accounts register --provider codex --account <alias> --auth-file {info.path}"
+        )
+    if len(accounts) > 1:
+        raise CliError(
+            "refusing to replace codex auth with ambiguous registered account aliases: "
+            f"{info.path} belongs to account_id {info.account_id}, registered as {', '.join(accounts)}"
+        )
+    return accounts[0]
+
+
+def _registry_accounts_for_account_id(account_id: str) -> list[str]:
+    accounts = {
+        account
+        for entry in _registry_entries()
+        if entry.get("provider") == CODEX_PROVIDER
+        and entry.get("account_id") == account_id
+        and (account := _string_or_none(entry.get("account"))) is not None
+    }
+    return sorted(accounts)
 
 
 def _latest_link_event_for_home(home: Path) -> dict[str, object] | None:
