@@ -268,34 +268,32 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_accounts_monitor(args: argparse.Namespace) -> int:
-    from agentos.agent.monitor import dumps_monitor_json, format_monitor_frame, iter_monitor, run_monitor
+    from agentos.agent.monitor import RichMonitorRenderer, build_monitor_loop, dumps_monitor_json
 
     max_ticks = 1 if args.once else args.max_ticks
-    if max_ticks is None:
-        try:
-            for frame, state in iter_monitor(
-                start_path=_config_start_path(args),
-                interval_sec=args.interval_sec,
-                max_ticks=max_ticks,
-            ):
-                if args.json:
-                    print(dumps_monitor_json(frame, state), flush=True)
-                else:
-                    print(format_monitor_frame(frame), flush=True)
-        except KeyboardInterrupt:
-            return 130
-        return 0
-
-    frame, state = run_monitor(
+    loop = build_monitor_loop(
         start_path=_config_start_path(args),
         interval_sec=args.interval_sec,
         max_ticks=max_ticks,
     )
-    if args.json:
-        print(dumps_monitor_json(frame, state))
-    else:
-        print(format_monitor_frame(frame))
-    return 0
+    try:
+        if args.json:
+            if max_ticks is None:
+                def print_json_tick(frame, state) -> None:
+                    print(dumps_monitor_json(frame, state), flush=True)
+
+                loop.run(on_tick=print_json_tick)
+                return 0
+
+            frame, state = loop.run()
+            print(dumps_monitor_json(frame, state))
+            return 0
+
+        with RichMonitorRenderer() as renderer:
+            loop.run(on_tick=renderer.render)
+        return 0
+    except KeyboardInterrupt:
+        return 130
 
 
 def _inspect_claimed_account_home(*, provider: str, home: Path) -> dict[str, object]:

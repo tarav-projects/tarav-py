@@ -633,17 +633,14 @@ def test_agent_accounts_monitor_once_prints_under_construction(
 
     assert main(["agent", "accounts", "monitor", "--once"]) == 0
     output = capsys.readouterr().out
-    assert output == (
-        "Agent accounts monitor\n"
-        "\n"
-        "limits-tracking\n"
-        "  status: under construction\n"
-        "  tick: 1\n"
-        "  targets: 1\n"
-    )
+    assert "Agent accounts monitor" in output
+    assert "Tick: 1" in output
+    assert "limits-tracking" in output
+    assert "status: under construction" in output
+    assert "targets: 1" in output
 
 
-def test_agent_accounts_monitor_json_preserves_state_across_ticks_and_recreates_frame(
+def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -691,17 +688,49 @@ def test_agent_accounts_monitor_json_preserves_state_across_ticks_and_recreates_
     assert payload["frame"]["blocks"][0]["data"]["targets"][1]["home"] == str((tmp_path / "jp-home").resolve())
 
 
-def test_agent_accounts_monitor_unbounded_stream_yields_first_frame(
+def test_agent_accounts_monitor_loop_keeps_same_frame_and_state_objects() -> None:
+    from agentos.agent.monitor import MonitorFrame, MonitorLoop, MonitorState
+
+    seen_frames: list[int] = []
+    seen_states: list[int] = []
+
+    class RecordingWorkflow:
+        name = "recording"
+
+        def run(self, state: MonitorState, frame: MonitorFrame) -> None:
+            seen_frames.append(id(frame))
+            seen_states.append(id(state))
+            state.data["recording"] = state.data.get("recording", 0) + 1
+            if not frame.blocks:
+                frame.add_block("recording", ["created"])
+
+    loop = MonitorLoop(
+        workflows=(RecordingWorkflow(),),
+        interval_sec=0,
+        max_ticks=3,
+    )
+    frame, state = loop.run()
+
+    assert frame is loop.frame
+    assert state is loop.state
+    assert len(set(seen_frames)) == 1
+    assert len(set(seen_states)) == 1
+    assert frame.tick == 3
+    assert state.tick == 3
+    assert state.data["recording"] == 3
+
+
+def test_agent_accounts_monitor_once_uses_loop_max_ticks(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ) -> None:
-    from agentos.agent.monitor import iter_monitor
-
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source_auth = tmp_path / "source.json"
     _write(source_auth, _auth_json())
 
     assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
     _write_monitor_config(
         agentos_home,
         [
@@ -712,19 +741,37 @@ def test_agent_accounts_monitor_unbounded_stream_yields_first_frame(
         ],
     )
 
-    stream = iter_monitor(start_path=".", interval_sec=0, max_ticks=None)
-    try:
-        frame, state = next(stream)
-    finally:
-        stream.close()
+    assert main(["agent", "accounts", "monitor", "--once", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["tick"] == 1
+    assert payload["workflow_run_counts"] == {"limits-tracking": 1}
 
-    assert frame.tick == 1
-    assert frame.blocks[0]["lines"] == [
-        "status: under construction",
-        "tick: 1",
-        "targets: 1",
-    ]
-    assert state.workflow_run_counts == {"limits-tracking": 1}
+
+def test_agent_accounts_monitor_max_ticks_uses_same_loop_path(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+        ],
+    )
+
+    assert main(["agent", "accounts", "monitor", "--max-ticks", "2", "--interval-sec", "0", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["tick"] == 2
+    assert payload["workflow_run_counts"] == {"limits-tracking": 2}
 
 
 def test_agent_accounts_monitor_workflow_error_goes_to_state_and_frame() -> None:
@@ -740,25 +787,35 @@ def test_agent_accounts_monitor_workflow_error_goes_to_state_and_frame() -> None
         name = "passing"
 
         def run(self, state: MonitorState, frame: MonitorFrame) -> None:
-            frame.add_block("passing", ["status: ok"])
+            frame.add_block("passing", [f"status: ok at {frame.tick}"])
 
     loop = MonitorLoop(
         workflows=(FailingWorkflow(), PassingWorkflow()),
         interval_sec=0,
-        max_ticks=1,
+        max_ticks=2,
     )
 
-    frames = loop.run()
+    frame, state = loop.run()
 
-    assert frames[0].errors == ["failing: RuntimeError: boom"]
-    assert frames[0].blocks[0]["title"] == "passing"
-    assert loop.state.data["workflow_errors"] == [
+    assert frame.errors == [
+        "unexpected workflow error: failing: RuntimeError: boom",
+        "unexpected workflow error: failing: RuntimeError: boom",
+    ]
+    assert frame.blocks[0]["title"] == "passing"
+    assert frame.blocks[1]["title"] == "passing"
+    assert state.data["workflow_errors"] == [
         {
             "tick": 1,
             "workflow": "failing",
             "error_type": "RuntimeError",
             "message": "boom",
-        }
+        },
+        {
+            "tick": 2,
+            "workflow": "failing",
+            "error_type": "RuntimeError",
+            "message": "boom",
+        },
     ]
 
 

@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agentos.chatlas.index_query import _row_matches, _sort_rows
+from agentos.chatlas.index_query import chatlas_index_row_matches
+from agentos.chatlas.index_query import sort_chatlas_index_rows
 from agentos.chatlas.index_store import load_chatlas_session_index_rows
 from agentos.chatlas.session_model import build_chatlas_session_model_from_index_row
 
@@ -46,7 +47,7 @@ def run_chatlas_query(
     index_matched_rows = [
         row
         for row in index.rows
-        if _row_matches(
+        if chatlas_index_row_matches(
             row,
             uri=uri,
             identity_hash=identity_hash,
@@ -59,7 +60,7 @@ def run_chatlas_query(
             updated_after=updated_after,
         )
     ]
-    sorted_rows = _sort_rows(index_matched_rows, sort=sort)
+    sorted_rows = sort_chatlas_index_rows(index_matched_rows, sort=sort)
     effective_scan_limit = _DEFAULT_SCAN_LIMIT if scan_limit is None else scan_limit
     scanned_candidates = sorted_rows[:effective_scan_limit]
     filtered_rows = [

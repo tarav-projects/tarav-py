@@ -41,7 +41,7 @@ def run_chatlas_index_query(
     matched_rows = [
         row
         for row in index.rows
-        if _row_matches(
+        if chatlas_index_row_matches(
             row,
             uri=uri,
             identity_hash=identity_hash,
@@ -54,7 +54,7 @@ def run_chatlas_index_query(
             updated_after=updated_after,
         )
     ]
-    sorted_rows = _sort_rows(matched_rows, sort=sort)
+    sorted_rows = sort_chatlas_index_rows(matched_rows, sort=sort)
     effective_limit = _DEFAULT_LIMIT if limit is None else limit
     limited_rows = sorted_rows[:effective_limit]
     return {
@@ -173,7 +173,7 @@ def _index_candidate_summary(rows: list[object]) -> str:
     return ", ".join(candidates)
 
 
-def _row_matches(
+def chatlas_index_row_matches(
     row: dict[str, Any],
     *,
     uri: str | None,
@@ -210,7 +210,7 @@ def _row_matches(
     return True
 
 
-def _sort_rows(rows: list[dict[str, Any]], *, sort: str) -> list[dict[str, Any]]:
+def sort_chatlas_index_rows(rows: list[dict[str, Any]], *, sort: str) -> list[dict[str, Any]]:
     if sort == "newest":
         return sorted(rows, key=lambda row: chatlas_index_timestamp_sort_value(row.get("updated_at")), reverse=True)
     if sort == "oldest":
@@ -230,4 +230,9 @@ def _string_or_none(value: object) -> str | None:
     return None
 
 
-__all__ = ["run_chatlas_index_query", "select_one_chatlas_index_row"]
+__all__ = [
+    "chatlas_index_row_matches",
+    "run_chatlas_index_query",
+    "select_one_chatlas_index_row",
+    "sort_chatlas_index_rows",
+]
