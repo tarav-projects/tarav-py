@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from agentos._core.errors import CliError
+from agentos.agent.account_registry import load_account
+from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.primitives import (
     Agent,
     AgentConfig,
@@ -62,6 +65,27 @@ def agent_from_config(config: AgentConfig) -> Agent:
     if config.provider == "pi":
         return PiAgent.from_config(config)
     raise CliError(f"unsupported configured agent provider {config.provider}")
+
+
+def build_registered_account_agent(
+    *,
+    provider: str,
+    account: str,
+    home: Path | str,
+    start_path: Path | str = ".",
+) -> Agent:
+    account_record = load_account(provider, account)
+    account_context = AgentAccountContext(
+        provider=str(account_record["provider"]),
+        account=str(account_record["account"]),
+    )
+    config = resolve_agent_config(
+        provider=account_context.provider,
+        profile=None,
+        start_path=Path(start_path),
+        home=home,
+    )
+    return agent_from_config(replace(config, account=account_context))
 
 
 def resolve_agent(
@@ -126,6 +150,7 @@ def resolve_agent_config(
 
 __all__ = [
     "agent_from_config",
+    "build_registered_account_agent",
     "load_configured_agents",
     "load_agent_configs_with_defaults",
     "resolve_agent",

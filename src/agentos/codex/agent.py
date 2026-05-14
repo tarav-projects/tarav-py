@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
 
+from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
     AgentBase,
     AgentConfig,
@@ -25,6 +27,7 @@ from agentos.codex.session import (
     load_codex_session,
 )
 from agentos.codex.linking import link_codex_auth_for_account, load_codex_mux_config
+from agentos.codex.account_status import codex_account_status
 
 
 CODEX_PROVIDER = "codex"
@@ -76,6 +79,20 @@ class CodexAgent(AgentBase):
             format_agent_run_command(command, env_overrides=env_overrides),
         ]
         return AgentRunDryResult(lines=tuple(lines))
+
+    def account_status(
+        self,
+        *,
+        refresh_usage: bool = False,
+        methods: tuple[str, ...] | None = None,
+        config: Mapping[str, object] | None = None,
+    ) -> AccountStatus:
+        return codex_account_status(
+            self,
+            refresh_usage=refresh_usage,
+            methods=methods,
+            config=config,
+        )
 
     def _run_command(self, request: AgentRunRequest) -> tuple[str, ...]:
         return build_agent_run_command(

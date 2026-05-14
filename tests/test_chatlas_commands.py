@@ -18,6 +18,7 @@ def _write_codex_rollout(
     *,
     session_id: str,
     title: str = "Codex fixture",
+    cwd: str = "/tmp",
     user_text: str = "hello",
     assistant_text: str = "hi",
 ) -> None:
@@ -29,14 +30,14 @@ def _write_codex_rollout(
                     {
                         "timestamp": "2026-03-08T01:08:59.089Z",
                         "type": "session_meta",
-                        "payload": {"id": session_id, "originator": "codex_cli_rs"},
+                        "payload": {"id": session_id, "originator": "codex_cli_rs", "cwd": cwd},
                     }
                 ),
                 json.dumps(
                     {
                         "timestamp": "2026-03-08T01:09:01.000Z",
                         "type": "turn_context",
-                        "payload": {"cwd": "/tmp", "title": title},
+                        "payload": {"cwd": cwd, "title": title},
                     }
                 ),
                 json.dumps(
@@ -110,6 +111,21 @@ def _chatlas_index_rows(chatlas_root: Path) -> list[dict[str, object]]:
     return rows
 
 
+def _assert_chatlas_query_counts(
+    payload: dict[str, object],
+    *,
+    index_matched: int,
+    candidate: int,
+    query_matched: int,
+    returned: int,
+) -> None:
+    assert payload["index_matched_row_count"] == index_matched
+    assert payload["candidate_row_count"] == candidate
+    assert payload["query_matched_row_count"] == query_matched
+    assert payload["returned_row_count"] == returned
+    assert "matched_row_count" not in payload
+
+
 def test_chatlas_update_index_only_empty_selection_json_payload(
     tmp_path: Path,
     monkeypatch,
@@ -181,7 +197,8 @@ def test_chatlas_update_delta_scan_copies_and_indexes_codex_raw(
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     rollout_path = codex_home / "sessions" / "2026" / "03" / "25" / f"rollout-fixture-{session_id}.jsonl"
     index_path = codex_home / "session_index.jsonl"
-    _write_codex_rollout(rollout_path, session_id=session_id)
+    project_path = tmp_path / "workspace"
+    _write_codex_rollout(rollout_path, session_id=session_id, cwd=str(project_path))
     _write(index_path, json.dumps({"id": session_id, "thread_name": "delta scan"}) + "\n")
     _write_global_config(agentos_home, codex_home=codex_home)
 
@@ -209,8 +226,24 @@ def test_chatlas_update_delta_scan_copies_and_indexes_codex_raw(
     assert rows[0]["provider"] == "codex"
     assert rows[0]["session_id"] == session_id
     assert rows[0]["display_name"] == "delta scan"
+    assert rows[0]["home"] == str(codex_home)
+    assert rows[0]["project_path"] == str(project_path)
+    assert rows[0]["native"]["cwd"] == str(project_path)
     assert str(codex_home) not in rows[0]["primary_backing_artifact"]["path"]
     assert str(chatlas_root / "raw") in rows[0]["primary_backing_artifact"]["path"]
+
+    assert main(["chatlas", "query", "--session-id", session_id]) == 0
+    query_payload = json.loads(capsys.readouterr().out)
+    assert query_payload["rows"] == [
+        {
+            "uri": rows[0]["uri"],
+            "provider": "codex",
+            "session_id": session_id,
+            "updated_at": rows[0]["updated_at"],
+            "home": str(codex_home),
+            "project_path": str(project_path),
+        }
+    ]
 
 
 def test_chatlas_update_default_progress_prints_final_stats(
@@ -327,10 +360,7 @@ def test_chatlas_index_query_missing_index_returns_zero_matches(
     assert payload["status"] == "ok"
     assert payload["command"] == "chatlas index query"
     assert payload["partition_count"] == 0
-    assert payload["index_matched_row_count"] == 0
-    assert payload["candidate_row_count"] == 0
-    assert payload["query_matched_row_count"] == 0
-    assert "matched_row_count" not in payload
+    _assert_chatlas_query_counts(payload, index_matched=0, candidate=0, query_matched=0, returned=0)
     assert payload["rows"] == []
 
 
@@ -569,11 +599,7 @@ def test_chatlas_index_query_filters_index_rows_without_raw_artifacts(
     )
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["index_matched_row_count"] == 1
-    assert payload["candidate_row_count"] == 1
-    assert payload["query_matched_row_count"] == 1
-    assert payload["returned_row_count"] == 1
-    assert "matched_row_count" not in payload
+    _assert_chatlas_query_counts(payload, index_matched=1, candidate=1, query_matched=1, returned=1)
     assert payload["rows"][0]["session_id"] == "session-1"
     assert not (chatlas_root / "raw").exists()
 
@@ -646,10 +672,7 @@ def test_chatlas_index_query_exact_filters_sort_limit_and_skips_bad_rows(
     payload = json.loads(capsys.readouterr().out)
     assert payload["scanned_row_count"] == 4
     assert payload["skipped_row_count"] == 2
-    assert payload["index_matched_row_count"] == 1
-    assert payload["candidate_row_count"] == 1
-    assert payload["query_matched_row_count"] == 1
-    assert "matched_row_count" not in payload
+    _assert_chatlas_query_counts(payload, index_matched=1, candidate=1, query_matched=1, returned=1)
     assert [row["session_id"] for row in payload["rows"]] == ["session-new"]
 
 
@@ -1028,11 +1051,7 @@ def test_chatlas_query_missing_index_returns_empty_normalized_rows(
     assert payload["command"] == "chatlas query"
     assert payload["scan_limit"] == 5000
     assert payload["limit"] == 50
-    assert payload["index_matched_row_count"] == 0
-    assert payload["candidate_row_count"] == 0
-    assert payload["query_matched_row_count"] == 0
-    assert payload["returned_row_count"] == 0
-    assert "matched_row_count" not in payload
+    _assert_chatlas_query_counts(payload, index_matched=0, candidate=0, query_matched=0, returned=0)
     assert payload["rows"] == []
 
 
@@ -1095,11 +1114,7 @@ def test_chatlas_query_filters_index_rows_and_returns_minimal_shape(
     )
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["index_matched_row_count"] == 1
-    assert payload["candidate_row_count"] == 1
-    assert payload["query_matched_row_count"] == 1
-    assert payload["returned_row_count"] == 1
-    assert "matched_row_count" not in payload
+    _assert_chatlas_query_counts(payload, index_matched=1, candidate=1, query_matched=1, returned=1)
     assert payload["rows"] == [
         {
             "uri": "agentos://chat-session/codex/fingerprint/session-1",
@@ -1198,10 +1213,7 @@ def test_chatlas_query_raw_contains_runs_after_scan_limit(
         == 0
     )
     limited_payload = json.loads(capsys.readouterr().out)
-    assert limited_payload["index_matched_row_count"] == 2
-    assert limited_payload["candidate_row_count"] == 1
-    assert limited_payload["query_matched_row_count"] == 0
-    assert "matched_row_count" not in limited_payload
+    _assert_chatlas_query_counts(limited_payload, index_matched=2, candidate=1, query_matched=0, returned=0)
     assert limited_payload["rows"] == []
 
     assert (
@@ -1220,10 +1232,7 @@ def test_chatlas_query_raw_contains_runs_after_scan_limit(
         == 0
     )
     payload = json.loads(capsys.readouterr().out)
-    assert payload["index_matched_row_count"] == 2
-    assert payload["candidate_row_count"] == 2
-    assert payload["query_matched_row_count"] == 1
-    assert "matched_row_count" not in payload
+    _assert_chatlas_query_counts(payload, index_matched=2, candidate=2, query_matched=1, returned=1)
     assert [row["session_id"] for row in payload["rows"]] == ["session-old"]
 
 
@@ -1250,7 +1259,7 @@ def test_chatlas_query_standard_model_contains_filters_visible_roles(
     assert main(["chatlas", "query", "--user-contains", "ALPHA", "--assistant-contains", "beta"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert [row["session_id"] for row in payload["rows"]] == [session_id]
-    assert str(codex_home) not in json.dumps(payload)
+    assert payload["rows"][0]["home"] == str(codex_home)
     assert str(home / "Documents" / "chatlas" / "raw") not in json.dumps(payload)
 
     assert main(["chatlas", "query", "--user-contains", "beta"]) == 0

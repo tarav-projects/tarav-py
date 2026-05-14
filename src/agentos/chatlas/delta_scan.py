@@ -590,7 +590,7 @@ def _derive_delta_index_rows_from_chatlas_raw(
         ]
     )
     return [
-        _session_index_row(session)
+        _session_index_row(session, provider_home=_provider_instance_home(instance))
         for session in archived_sessions
     ]
 
@@ -643,6 +643,7 @@ def _native_derivation_signature(
         "schema_version": 1,
         "provider": session.provider_instance.provider,
         "provider_instance_fingerprint": session.provider_instance.fingerprint,
+        "home": _provider_instance_home(session.provider_instance),
         "session_id": session.session_id,
         "display_name": session.session_ref.display_name(),
         "display_name_field": session.session_ref.display_name_field(),
@@ -763,16 +764,29 @@ def _file_metadata_matches(left: Path, right: Path) -> bool:
     )
 
 
-def _session_index_row(session: ChatlasDiscoveredSession) -> dict[str, Any]:
+_USE_PROVIDER_INSTANCE_HOME = object()
+
+
+def _session_index_row(
+    session: ChatlasDiscoveredSession,
+    *,
+    provider_home: str | None | object = _USE_PROVIDER_INSTANCE_HOME,
+) -> dict[str, Any]:
     session_ref = session.session_ref
+    native = dict(session_ref.native_ref_metadata())
     backing_artifacts = session.backing_artifacts()
     primary_backing_artifact = backing_artifacts[0] if backing_artifacts else None
+    if provider_home is _USE_PROVIDER_INSTANCE_HOME:
+        provider_home = _provider_instance_home(session.provider_instance)
+    home_value = provider_home if isinstance(provider_home, str) else None
     return {
         "class": "agentos.chatlas.session",
         "schema_version": 1,
         "provider": session.provider_instance.provider,
         "instance": session.provider_instance.instance,
         "provider_instance_fingerprint": session.provider_instance.fingerprint,
+        "home": home_value,
+        "project_path": _session_project_path(native),
         "uri": _session_uri(session),
         "session_id": session.session_id,
         "display_name": session_ref.display_name(),
@@ -790,12 +804,28 @@ def _session_index_row(session: ChatlasDiscoveredSession) -> dict[str, Any]:
             _serialize_backing_artifact(session.provider_instance.provider, artifact)
             for artifact in backing_artifacts
         ],
-        "native": dict(session_ref.native_ref_metadata()),
+        "native": native,
         "identity_hash": _session_identity_hash(
             provider=session.provider_instance.provider,
             provider_session_id=session.session_id,
         ),
     }
+
+
+def _provider_instance_home(instance: ChatlasProviderInstance) -> str | None:
+    if instance.agent.home is None:
+        return None
+    return str(instance.agent.home)
+
+
+def _session_project_path(native: dict[str, object]) -> str | None:
+    project_path = native.get("project_path")
+    if isinstance(project_path, str) and project_path:
+        return project_path
+    cwd = native.get("cwd")
+    if isinstance(cwd, str) and cwd:
+        return cwd
+    return None
 
 
 def _session_uri(session: ChatlasDiscoveredSession) -> str:

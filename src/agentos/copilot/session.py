@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ class CopilotSessionRef:
     native_session_id: str
     events_path: Path
     source_ref_id: str | None = None
+    project_path: str | None = None
     updated_at: float | None = None
 
     @property
@@ -37,7 +39,9 @@ class CopilotSessionRef:
         return None
 
     def native_ref_metadata(self) -> dict[str, object]:
-        return {}
+        if self.project_path is None:
+            return {}
+        return {"project_path": self.project_path}
 
     def sort_timestamp(self) -> float | None:
         return _max_timestamp(
@@ -51,6 +55,7 @@ class CopilotSessionRef:
             native_session_id=self.native_session_id,
             events_path=self.events_path,
             source_ref_id=self.source_ref_id,
+            project_path=self.project_path,
             updated_at=self.updated_at,
         )
 
@@ -75,6 +80,7 @@ class CopilotSession:
     native_session_id: str
     events_path: Path
     source_ref_id: str | None = None
+    project_path: str | None = None
     updated_at: float | None = None
 
     @property
@@ -137,6 +143,7 @@ class CopilotSession:
             native_session_id=native_session_id,
             events_path=Path(events_path_text),
             source_ref_id=_source_ref_id_for_artifact(primary_artifact, sources=sources),
+            project_path=_string_or_none(_native_payload(session).get("project_path")),
             updated_at=_coerce_timestamp(session.get("updated_at")),
         )
 
@@ -187,6 +194,7 @@ def read_copilot_session(path: Path) -> CopilotSession | None:
         return CopilotSession(
             native_session_id=path.name,
             events_path=events_path,
+            project_path=_read_copilot_project_path(events_path),
             updated_at=_safe_path_mtime(events_path) or _safe_path_mtime(path),
         )
 
@@ -194,6 +202,7 @@ def read_copilot_session(path: Path) -> CopilotSession | None:
         return CopilotSession(
             native_session_id=path.stem,
             events_path=path,
+            project_path=_read_copilot_project_path(path),
             updated_at=_safe_path_mtime(path),
         )
 
@@ -205,8 +214,38 @@ def _copilot_session_ref_from_session(session: CopilotSession) -> CopilotSession
         native_session_id=session.native_session_id,
         events_path=session.events_path,
         source_ref_id=session.source_ref_id,
+        project_path=session.project_path,
         updated_at=session.updated_at,
     )
+
+
+def _native_payload(session: dict[str, Any]) -> dict[str, object]:
+    native = session.get("native")
+    if isinstance(native, dict):
+        return native
+    return {}
+
+
+def _read_copilot_project_path(events_path: Path) -> str | None:
+    try:
+        with events_path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict) or obj.get("type") != "session.start":
+                    continue
+                data = obj.get("data")
+                if not isinstance(data, dict):
+                    return None
+                context = data.get("context")
+                if not isinstance(context, dict):
+                    return None
+                return _string_or_none(context.get("gitRoot")) or _string_or_none(context.get("cwd"))
+    except OSError:
+        return None
+    return None
 
 
 def _merge_copilot_session(
@@ -221,6 +260,7 @@ def _merge_copilot_session(
         native_session_id=session.native_session_id,
         events_path=existing.events_path,
         source_ref_id=existing.source_ref_id or session.source_ref_id,
+        project_path=existing.project_path or session.project_path,
         updated_at=_max_timestamp(existing.updated_at, session.updated_at),
     )
 

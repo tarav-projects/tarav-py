@@ -30,6 +30,7 @@ class CodexSessionRef:
     rollout_paths: tuple[Path, ...] = ()
     source_ref_id: str | None = None
     thread_name: str | None = None
+    cwd: str | None = None
     index_paths: tuple[Path, ...] = ()
     updated_at: float | None = None
 
@@ -59,9 +60,12 @@ class CodexSessionRef:
         return "thread_name"
 
     def native_ref_metadata(self) -> dict[str, object]:
-        if self.thread_name is None:
-            return {}
-        return {"thread_name": self.thread_name}
+        payload: dict[str, object] = {}
+        if self.thread_name is not None:
+            payload["thread_name"] = self.thread_name
+        if self.cwd is not None:
+            payload["cwd"] = self.cwd
+        return payload
 
     def supplemental_findings(
         self,
@@ -96,6 +100,7 @@ class CodexSessionRef:
             rollout_paths=self.rollout_paths,
             source_ref_id=self.source_ref_id,
             thread_name=self.thread_name,
+            cwd=self.cwd,
             index_paths=self.index_paths,
             updated_at=self.updated_at,
         )
@@ -110,6 +115,7 @@ class CodexSessionRef:
             rollout_paths=_unique_paths(self.rollout_paths + other.rollout_paths),
             source_ref_id=self.source_ref_id or other.source_ref_id,
             thread_name=self.thread_name or other.thread_name,
+            cwd=self.cwd or other.cwd,
             index_paths=_unique_paths(self.index_paths + other.index_paths),
             updated_at=_coalesce_timestamp(self.updated_at, other.updated_at),
         )
@@ -140,6 +146,7 @@ class CodexSessionRef:
             rollout_paths=(Path(rollout_path_text),),
             source_ref_id=_source_ref_id_for_artifact(primary_artifact, sources=sources),
             thread_name=_string_or_none(session.get("display_name")),
+            cwd=_string_or_none(_native_payload(session).get("cwd")),
             index_paths=tuple(
                 Path(path_text)
                 for path_text in _artifact_paths_by_role(session, role="session_index")
@@ -154,6 +161,7 @@ class CodexSession:
     rollout_paths: tuple[Path, ...] = ()
     source_ref_id: str | None = None
     thread_name: str | None = None
+    cwd: str | None = None
     index_paths: tuple[Path, ...] = ()
     updated_at: float | None = None
 
@@ -229,6 +237,7 @@ class CodexSession:
             rollout_paths=self.rollout_paths,
             source_ref_id=self.source_ref_id,
             thread_name=self.thread_name,
+            cwd=self.cwd,
             index_paths=self.index_paths,
             updated_at=self.updated_at,
         ).merge(
@@ -237,6 +246,7 @@ class CodexSession:
                 rollout_paths=other.rollout_paths,
                 source_ref_id=other.source_ref_id,
                 thread_name=other.thread_name,
+                cwd=other.cwd,
                 index_paths=other.index_paths,
                 updated_at=other.updated_at,
             )
@@ -306,6 +316,7 @@ def read_codex_rollout_session_ref(path: Path) -> CodexSessionRef | None:
     return CodexSessionRef(
         native_session_id=session_id,
         rollout_paths=(path,),
+        cwd=_string_or_none(payload.get("cwd")),
         updated_at=_coalesce_timestamp(
             _safe_path_mtime(path),
             _coerce_timestamp(meta_obj.get("timestamp")),
@@ -390,6 +401,13 @@ def _read_codex_session_meta(path: Path) -> dict[str, Any] | None:
         return None
 
     return None
+
+
+def _native_payload(session: dict[str, Any]) -> dict[str, object]:
+    native = session.get("native")
+    if isinstance(native, dict):
+        return native
+    return {}
 
 
 def _merge_codex_session(sessions_by_id: dict[str, CodexSession], session: CodexSession) -> None:

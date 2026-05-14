@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import quote
 
 from agentos._core.errors import CliError
+from agentos.agent.account_status import AccountStatus, AgentAccountContext
 from agentos.agent.run_runtime import AgentRunDryResult, AgentRunRequest, AgentRunResult
 from agentos.providers import ProviderHomeAnchor
 from agentos.providers import require_canonical_provider_spec
@@ -64,6 +66,7 @@ class AgentConfig:
     cli_command: tuple[str, ...] = ()
     run_args: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
+    account: AgentAccountContext | None = None
     timeout_sec: int | None = None
     default_model: str | None = None
     model_flag: str | None = None
@@ -104,6 +107,7 @@ class AgentConfig:
             self.cli_command,
             self.run_args,
             self.env,
+            self.account,
             self.timeout_sec,
             self.default_model,
             self.model_flag,
@@ -125,6 +129,7 @@ class AgentBase:
     cli_command: tuple[str, ...] = ()
     run_args: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
+    account: AgentAccountContext | None = None
     timeout_sec: int | None = None
     default_model: str | None = None
     model_flag: str | None = None
@@ -155,6 +160,8 @@ class AgentBase:
             payload["run_args"] = list(self.run_args)
         if self.env:
             payload["env"] = {key: value for key, value in self.env}
+        if self.account is not None:
+            payload["account"] = self.account.summary()
         if self.timeout_sec is not None:
             payload["timeout_sec"] = self.timeout_sec
         if self.default_model is not None:
@@ -189,6 +196,19 @@ class AgentBase:
             f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
         )
 
+    def account_status(
+        self,
+        *,
+        refresh_usage: bool = False,
+        methods: tuple[str, ...] | None = None,
+        config: Mapping[str, object] | None = None,
+    ) -> AccountStatus:
+        del refresh_usage, methods, config
+        raise CliError(
+            f"agent {self.instance_id or '<default>'} for provider {self.provider} "
+            "does not support account_status"
+        )
+
 def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
     return {
         "instance_id": config.instance_id,
@@ -197,6 +217,7 @@ def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
         "cli_command": config.cli_command,
         "run_args": config.run_args,
         "env": config.env,
+        "account": config.account,
         "timeout_sec": config.timeout_sec,
         "default_model": config.default_model,
         "model_flag": config.model_flag,
@@ -232,6 +253,7 @@ class Agent(Protocol):
     cli_command: tuple[str, ...]
     run_args: tuple[str, ...]
     env: tuple[tuple[str, str], ...]
+    account: AgentAccountContext | None
     timeout_sec: int | None
     default_model: str | None
     model_flag: str | None
@@ -251,6 +273,14 @@ class Agent(Protocol):
     def run(self, request: AgentRunRequest) -> AgentRunResult: ...
 
     def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult: ...
+
+    def account_status(
+        self,
+        *,
+        refresh_usage: bool = False,
+        methods: tuple[str, ...] | None = None,
+        config: Mapping[str, object] | None = None,
+    ) -> AccountStatus: ...
 
 
 def provider_session_paths(
@@ -329,6 +359,7 @@ def agent_identity_key(agent: Agent) -> tuple[object, ...]:
         agent.cli_command,
         agent.run_args,
         agent.env,
+        agent.account,
         agent.timeout_sec,
         agent.default_model,
         agent.model_flag,
@@ -345,6 +376,7 @@ def agent_uri_key(agent: Agent) -> str:
 
 __all__ = [
     "Agent",
+    "AgentAccountContext",
     "AgentBase",
     "AgentConfig",
     "AgentPingConfig",

@@ -28,6 +28,7 @@ class ClaudeSessionRef:
     artifact_paths: tuple[Path, ...]
     source_ref_id: str | None = None
     title: str | None = None
+    cwd: str | None = None
     source_kind: str = "project"
     updated_at: float | str | None = None
 
@@ -51,9 +52,12 @@ class ClaudeSessionRef:
         return "title"
 
     def native_ref_metadata(self) -> dict[str, object]:
-        if self.title is None:
-            return {}
-        return {"title": self.title}
+        payload: dict[str, object] = {}
+        if self.title is not None:
+            payload["title"] = self.title
+        if self.cwd is not None:
+            payload["cwd"] = self.cwd
+        return payload
 
     def sort_timestamp(self) -> float | None:
         return _coalesce_timestamp(
@@ -67,6 +71,7 @@ class ClaudeSessionRef:
             artifact_paths=self.artifact_paths,
             source_ref_id=self.source_ref_id,
             title=self.title,
+            cwd=self.cwd,
             source_kind=self.source_kind,
             updated_at=self.updated_at,
         )
@@ -93,6 +98,7 @@ class ClaudeSession:
     artifact_paths: tuple[Path, ...]
     source_ref_id: str | None = None
     title: str | None = None
+    cwd: str | None = None
     source_kind: str = "project"
     updated_at: float | str | None = None
 
@@ -163,6 +169,7 @@ class ClaudeSession:
             artifact_paths=(Path(transcript_path_text),),
             source_ref_id=_source_ref_id_for_artifact(primary_artifact, sources=sources),
             title=_string_or_none(session.get("display_name")),
+            cwd=_string_or_none(_native_payload(session).get("cwd")),
             updated_at=_string_or_none(session.get("updated_at")),
         )
 
@@ -177,6 +184,7 @@ class ClaudeSession:
             artifact_paths=_unique_paths(self.artifact_paths + other.artifact_paths),
             source_ref_id=self.source_ref_id or other.source_ref_id,
             title=self.title or other.title,
+            cwd=self.cwd or other.cwd,
             source_kind=source_kind,
             updated_at=_coalesce_timestamp(self.updated_at, other.updated_at),
         )
@@ -231,6 +239,7 @@ def read_claude_project_session(path: Path) -> ClaudeSession | None:
     return ClaudeSession(
         native_session_id=session_id,
         artifact_paths=(path,),
+        cwd=_string_or_none(first_obj.get("cwd")) if first_obj is not None else None,
         source_kind="project",
         updated_at=updated_at,
     )
@@ -242,9 +251,17 @@ def _claude_session_ref_from_session(session: ClaudeSession) -> ClaudeSessionRef
         artifact_paths=session.artifact_paths,
         source_ref_id=session.source_ref_id,
         title=session.title,
+        cwd=session.cwd,
         source_kind=session.source_kind,
         updated_at=session.updated_at,
     )
+
+
+def _native_payload(session: dict[str, Any]) -> dict[str, object]:
+    native = session.get("native")
+    if isinstance(native, dict):
+        return native
+    return {}
 
 
 def _is_claude_project_session_artifact(path: Path) -> bool:
