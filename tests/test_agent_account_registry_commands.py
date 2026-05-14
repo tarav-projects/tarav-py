@@ -143,6 +143,26 @@ def _claude_register_args(
     return args
 
 
+def _write_monitor_config(agentos_home: Path, monitor: list[dict[str, object]]) -> None:
+    _write(
+        agentos_home / "config.json",
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "schema_version": 1,
+                "agent": {
+                    "accounts": {
+                        "monitor": monitor,
+                    },
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+    )
+
+
 def _assert_no_old_codex_layout(provider_root: Path) -> None:
     assert not (provider_root / "registry.jsonl").exists()
     assert not (provider_root / "files").exists()
@@ -588,3 +608,239 @@ def test_agent_accounts_register_claude_requires_email(
 
     assert main(_claude_register_args(email=None)) == 1
     assert "requires --email" in capsys.readouterr().err
+
+
+def test_agent_accounts_monitor_once_prints_under_construction(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+        ],
+    )
+
+    assert main(["agent", "accounts", "monitor", "--once"]) == 0
+    output = capsys.readouterr().out
+    assert output == (
+        "Agent accounts monitor\n"
+        "\n"
+        "limits-tracking\n"
+        "  status: under construction\n"
+        "  tick: 1\n"
+        "  targets: 1\n"
+    )
+
+
+def test_agent_accounts_monitor_json_preserves_state_across_ticks_and_recreates_frame(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    first_auth = tmp_path / "first.json"
+    second_auth = tmp_path / "second.json"
+    _write(first_auth, _auth_json(account_id="acc_br", email="br@example.com"))
+    _write(second_auth, _auth_json(account_id="acc_jp", email="jp@example.com"))
+
+    assert main(_register_args(first_auth, account="br")) == 0
+    capsys.readouterr()
+    assert main(_register_args(second_auth, account="jp")) == 0
+    capsys.readouterr()
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "targets": [
+                    {"provider": "codex", "account": "br"},
+                    {"provider": "codex", "account": "jp", "home": str(tmp_path / "jp-home")},
+                ],
+            },
+        ],
+    )
+
+    assert main(["agent", "accounts", "monitor", "--max-ticks", "3", "--interval-sec", "0", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["tick"] == 3
+    assert payload["workflow_run_counts"] == {"limits-tracking": 3}
+    assert payload["state"]["limits-tracking"]["last_tick"] == 3
+    assert payload["state"]["limits-tracking"]["run_count"] == 3
+    assert payload["frame"]["tick"] == 3
+    assert len(payload["frame"]["blocks"]) == 1
+    assert payload["frame"]["blocks"][0]["lines"] == [
+        "status: under construction",
+        "tick: 3",
+        "targets: 2",
+    ]
+    assert payload["frame"]["blocks"][0]["data"]["run_count"] == 3
+    assert payload["frame"]["blocks"][0]["data"]["targets"][0]["home"] == str(
+        agentos_home / "agent" / "homes" / "codex" / "br"
+    )
+    assert payload["frame"]["blocks"][0]["data"]["targets"][1]["home"] == str((tmp_path / "jp-home").resolve())
+
+
+def test_agent_accounts_monitor_unbounded_stream_yields_first_frame(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.monitor import iter_monitor
+
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+        ],
+    )
+
+    stream = iter_monitor(start_path=".", interval_sec=0, max_ticks=None)
+    try:
+        frame, state = next(stream)
+    finally:
+        stream.close()
+
+    assert frame.tick == 1
+    assert frame.blocks[0]["lines"] == [
+        "status: under construction",
+        "tick: 1",
+        "targets: 1",
+    ]
+    assert state.workflow_run_counts == {"limits-tracking": 1}
+
+
+def test_agent_accounts_monitor_workflow_error_goes_to_state_and_frame() -> None:
+    from agentos.agent.monitor import MonitorFrame, MonitorLoop, MonitorState
+
+    class FailingWorkflow:
+        name = "failing"
+
+        def run(self, state: MonitorState, frame: MonitorFrame) -> None:
+            raise RuntimeError("boom")
+
+    class PassingWorkflow:
+        name = "passing"
+
+        def run(self, state: MonitorState, frame: MonitorFrame) -> None:
+            frame.add_block("passing", ["status: ok"])
+
+    loop = MonitorLoop(
+        workflows=(FailingWorkflow(), PassingWorkflow()),
+        interval_sec=0,
+        max_ticks=1,
+    )
+
+    frames = loop.run()
+
+    assert frames[0].errors == ["failing: RuntimeError: boom"]
+    assert frames[0].blocks[0]["title"] == "passing"
+    assert loop.state.data["workflow_errors"] == [
+        {
+            "tick": 1,
+            "workflow": "failing",
+            "error_type": "RuntimeError",
+            "message": "boom",
+        }
+    ]
+
+
+def test_agent_accounts_monitor_runs_workflows_in_config_order(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+            {
+                "workflow": "limits-tracking",
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+        ],
+    )
+
+    assert main(["agent", "accounts", "monitor", "--once", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [block["title"] for block in payload["frame"]["blocks"]] == ["limits-tracking", "limits-tracking"]
+    assert [block["data"]["run_count"] for block in payload["frame"]["blocks"]] == [1, 2]
+    assert payload["workflow_run_counts"] == {"limits-tracking": 2}
+
+
+def test_agent_accounts_monitor_reports_unknown_workflow(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "future-workflow",
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+        ],
+    )
+
+    assert main(["agent", "accounts", "monitor", "--once"]) == 1
+    assert "unknown monitor workflow 'future-workflow'" in capsys.readouterr().err
+
+
+def test_agent_accounts_monitor_reports_invalid_config(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    _write_monitor_config(agentos_home, [{"workflow": "limits-tracking", "targets": []}])
+
+    assert main(["agent", "accounts", "monitor", "--once"]) == 1
+    assert "agent.accounts.monitor[0].targets must not be empty" in capsys.readouterr().err
+
+
+def test_agent_accounts_monitor_reports_missing_registered_account(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "targets": [{"provider": "codex", "account": "missing"}],
+            },
+        ],
+    )
+
+    assert main(["agent", "accounts", "monitor", "--once"]) == 1
+    assert "agent account is not registered: codex.missing" in capsys.readouterr().err

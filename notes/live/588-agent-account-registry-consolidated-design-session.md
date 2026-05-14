@@ -453,6 +453,8 @@ MonitorWorkflow
     throttles its own slow work
 ```
 
+The monitor loop owns the workflow fault boundary. A workflow exception must not escape the running loop. The loop catches workflow exceptions, records a user-visible message in the current `MonitorFrame`, records structured error data in `MonitorState`, and continues with later workflows and later ticks.
+
 Workflow interface:
 
 ```python
@@ -522,6 +524,7 @@ First-slice acceptance signals:
 - `MonitorState` persists across ticks.
 - `MonitorFrame` is recreated each tick.
 - workflows mutate both state and frame in tests.
+- workflow exceptions are captured in `MonitorState` and `MonitorFrame` without stopping the loop.
 - `--max-ticks 3 --json` shows tick count and workflow run count.
 - unknown workflow fails clearly.
 - invalid monitor config fails clearly.
@@ -536,6 +539,30 @@ First-slice non-goals:
 - no claimed/browser-login monitor behavior.
 - no monitor history persistence.
 
+Phase 2 TUI direction:
+
+```text
+MonitorLoop
+    always the monitor execution engine
+    owns cadence, state, frame creation, workflow ordering, and workflow fault boundary
+    calls renderer once per tick
+
+MonitorFrame
+    single canonical per-tick render model
+
+MonitorRenderer
+    render(frame, state) -> None
+
+RichMonitorRenderer
+    canonical monitor UI renderer
+    consumes MonitorFrame
+    renders MonitorFrame with Rich Live/Text/Layout
+```
+
+The monitor is loop-only. `--once` and `--max-ticks` do not select a different execution path; they only stop `MonitorLoop` earlier. A single pass is still one monitor tick through the normal loop, workflow, frame, and renderer path.
+
+`--json` is not a renderer. It is a diagnostic/test output mode that serializes raw `MonitorFrame` and `MonitorState` objects so tests and debugging can inspect loop products without treating JSON as monitor UI.
+
 #### meta
 
 - status: active design target.
@@ -544,11 +571,15 @@ First-slice non-goals:
 - settled: first installed workflow is `limits-tracking`.
 - settled: `MonitorLoop` runs once per second and workflow throttling is workflow-owned.
 - settled: workflows mutate `MonitorState` and `MonitorFrame` in place.
+- settled: workflow execution errors are captured into `MonitorState` and `MonitorFrame`; they do not escape or stop `MonitorLoop`.
 - settled: `MonitorState` is persistent in-memory loop state.
 - settled: `MonitorFrame` is the per-tick TUI/render frame.
 - settled: monitor uses Agentos agent system homes as target execution context.
 - settled: monitor validates target system homes and reports setup guidance instead of preparing them automatically.
 - settled: first monitor implementation slice should prove loop mechanics with under-construction placeholder workflow output before provider usage fetching.
+- settled: monitor execution is loop-only; bounded modes stop the same loop early rather than using a different engine.
+- settled: `MonitorFrame` is the single canonical renderer model.
+- settled: `--json` is raw diagnostic/test serialization, not a monitor renderer.
 - open: claimed/browser-login account support in Agentos agent system homes.
 - open: exact provider capability surface for fetching usage data from registered accounts.
 
@@ -616,3 +647,7 @@ First-slice non-goals:
 - 2026-05-14: Added `Account.Monitor` design with ordered workflow config, agent system homes, monitor loop abstractions, and `limits-tracking` as the first installed workflow.
 - 2026-05-14: Added `Agentos.Agent.System.Home` and revised monitor homes to `~/.agentos/agent/homes/<provider>/<account>` with validate-and-report behavior.
 - 2026-05-14: Scoped first monitor implementation slice to loop mechanics, placeholder `limits-tracking` output, state/frame dataflow, and deterministic loop test controls.
+- 2026-05-14: Implemented the first monitor slice in `agentos-py`: `agent accounts monitor`, config loading from `agent.accounts.monitor[]`, registered-account target validation, monitor loop/state/frame mechanics, placeholder `limits-tracking` output, JSON output, and deterministic loop controls.
+- 2026-05-14: Fixed continuous monitor rendering so unbounded `agent accounts monitor` streams each tick instead of waiting for the loop to end.
+- 2026-05-14: Hardened monitor loop workflow execution so workflow exceptions are captured in `MonitorState` and `MonitorFrame` instead of escaping the loop.
+- 2026-05-14: Captured phase 2 TUI direction: monitor is loop-only, `MonitorFrame` is the single renderer model, Rich is the canonical UI renderer, and `--json` is diagnostic serialization rather than a renderer.

@@ -267,6 +267,37 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
     return _cmd_agent_accounts_registry_status(args, provider=args.provider)
 
 
+def _cmd_agent_accounts_monitor(args: argparse.Namespace) -> int:
+    from agentos.agent.monitor import dumps_monitor_json, format_monitor_frame, iter_monitor, run_monitor
+
+    max_ticks = 1 if args.once else args.max_ticks
+    if max_ticks is None:
+        try:
+            for frame, state in iter_monitor(
+                start_path=_config_start_path(args),
+                interval_sec=args.interval_sec,
+                max_ticks=max_ticks,
+            ):
+                if args.json:
+                    print(dumps_monitor_json(frame, state), flush=True)
+                else:
+                    print(format_monitor_frame(frame), flush=True)
+        except KeyboardInterrupt:
+            return 130
+        return 0
+
+    frame, state = run_monitor(
+        start_path=_config_start_path(args),
+        interval_sec=args.interval_sec,
+        max_ticks=max_ticks,
+    )
+    if args.json:
+        print(dumps_monitor_json(frame, state))
+    else:
+        print(format_monitor_frame(frame))
+    return 0
+
+
 def _inspect_claimed_account_home(*, provider: str, home: Path) -> dict[str, object]:
     from agentos.agent.account_registry import load_links
 
@@ -563,6 +594,42 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Print raw status payload as JSON.",
     )
     accounts_status_parser.set_defaults(handler=_cmd_agent_accounts_status)
+
+    accounts_monitor_parser = accounts_subparsers.add_parser(
+        "monitor",
+        help="Run configured account monitor workflows.",
+    )
+    accounts_monitor_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Config start path for project-local config discovery. Bare --project uses current pwd. Agent commands do not require an existing project.",
+    )
+    accounts_monitor_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run exactly one monitor tick.",
+    )
+    accounts_monitor_parser.add_argument(
+        "--max-ticks",
+        type=int,
+        default=None,
+        help="Maximum monitor ticks to run. Omit for a continuous monitor loop.",
+    )
+    accounts_monitor_parser.add_argument(
+        "--interval-sec",
+        type=float,
+        default=1.0,
+        help="Target seconds between monitor ticks.",
+    )
+    accounts_monitor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print monitor state and frame as JSON.",
+    )
+    accounts_monitor_parser.set_defaults(handler=_cmd_agent_accounts_monitor)
 
     run_parser = agent_subparsers.add_parser(
         "run",
