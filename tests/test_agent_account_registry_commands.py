@@ -116,6 +116,31 @@ def _registry_status_args(*, provider: str | None = None, json_output: bool = Tr
     return args
 
 
+def _claude_register_args(
+    home: Path,
+    *,
+    account: str = "main",
+    email: str | None = "person@example.com",
+    label: str | None = None,
+) -> list[str]:
+    args = [
+        "agent",
+        "accounts",
+        "register",
+        "--provider",
+        "claude-code",
+        "--account",
+        account,
+        "--home",
+        str(home),
+    ]
+    if email is not None:
+        args.extend(["--email", email])
+    if label is not None:
+        args.extend(["--label", label])
+    return args
+
+
 def test_agent_accounts_register_uses_auth_file_and_flat_registry(
     tmp_path: Path,
     monkeypatch,
@@ -154,6 +179,10 @@ def test_agent_accounts_register_uses_auth_file_and_flat_registry(
     manifest = _read_json(manifest_path)
     assert manifest["provider"] == "codex"
     assert manifest["account"] == "br"
+    assert manifest["auth_kind"] == "auth-json"
+    assert manifest["capabilities"]["link"] is True
+    assert manifest["capabilities"]["monitor"] is True
+    assert isinstance(manifest["created_at"], str)
     assert manifest["account_id"] == "acc_123"
     assert manifest["active_sha256"] == auth_sha
     assert manifest["active_file"] == f"../../files/{auth_sha}.auth.json"
@@ -202,12 +231,13 @@ def test_agent_accounts_register_uses_auth_file_and_flat_registry(
 def test_agent_accounts_register_rejects_old_home_input(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ) -> None:
     _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source_home = tmp_path / "codex-br"
     _write(source_home / "auth.json", _auth_json())
 
-    with pytest.raises(SystemExit):
+    assert (
         main(
             [
                 "agent",
@@ -221,6 +251,9 @@ def test_agent_accounts_register_rejects_old_home_input(
                 "br",
             ]
         )
+        == 1
+    )
+    assert "requires --auth-file" in capsys.readouterr().err
 
 
 def test_agent_accounts_register_same_hash_is_noop(
@@ -539,19 +572,135 @@ def test_agent_accounts_status_defaults_to_general_registry_view(
     assert main(_registry_status_args(json_output=False)) == 0
 
     output = capsys.readouterr().out
-    assert output.startswith("Provider: codex\n")
-    assert "Status: registry\n" in output
-    assert "Registry:\n" in output
-    assert "  Entries: 1\n" in output
-    assert "  Accounts: 1\n" in output
-    assert "  Registered accounts:\n" in output
-    assert "    - br <person@example.com> active=" in output
+    assert output.startswith("Agent accounts\n")
+    assert "Providers: 1\n" in output
+    assert "Accounts: 1\n" in output
+    assert "Registered accounts:\n" in output
+    assert "  - codex/br <person@example.com> auth=auth-json active=" in output
     with pytest.raises(json.JSONDecodeError):
         json.loads(output)
 
     assert main(_registry_status_args(json_output=True)) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["registry"]["entry_count"] == 1
-    assert payload["registry"]["account_count"] == 1
-    assert payload["registry"]["accounts"][0]["account"] == "br"
-    assert payload["registry"]["accounts"][0]["active_sha256"] == auth_sha
+    assert payload["provider"] is None
+    assert payload["provider_count"] == 1
+    assert payload["account_count"] == 1
+    assert payload["accounts"][0]["provider"] == "codex"
+    assert payload["accounts"][0]["account"] == "br"
+    assert payload["accounts"][0]["active_sha256"] == auth_sha
+
+
+def test_agent_accounts_register_claude_metadata_manifest_only(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    claude_home = tmp_path / "claude-home"
+
+    assert main(_claude_register_args(claude_home, label="Claude main")) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider"] == "claude-code"
+    assert payload["account"] == "main"
+
+    provider_root = agentos_home / "accounts" / "claude-code"
+    manifest_path = provider_root / "accounts" / "main" / "manifest.json"
+    manifest = _read_json(manifest_path)
+    assert manifest["provider"] == "claude-code"
+    assert manifest["account"] == "main"
+    assert manifest["label"] == "Claude main"
+    assert manifest["email"] == "person@example.com"
+    assert manifest["home"] == str(claude_home.resolve())
+    assert manifest["auth_kind"] == "ambient-browser-login"
+    assert manifest["capabilities"] == {
+        "link": False,
+        "monitor": True,
+        "register": True,
+        "status": True,
+    }
+    assert isinstance(manifest["created_at"], str)
+    assert isinstance(manifest["updated_at"], str)
+    assert not (provider_root / "files").exists()
+    assert not (provider_root / "registry.jsonl").exists()
+    assert not (provider_root / "accounts" / "main" / "auth.json").exists()
+
+
+def test_agent_accounts_register_claude_requires_email_and_home(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+
+    assert main(_claude_register_args(tmp_path / "claude-home", email=None)) == 1
+    assert "requires --email" in capsys.readouterr().err
+
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "register",
+                "--provider",
+                "claude-code",
+                "--account",
+                "main",
+                "--email",
+                "person@example.com",
+            ]
+        )
+        == 1
+    )
+    assert "requires --home" in capsys.readouterr().err
+
+
+def test_agent_accounts_link_claude_is_unsupported(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "link",
+                "--provider",
+                "claude-code",
+                "--account",
+                "main",
+                "--home",
+                str(tmp_path / "claude-home"),
+            ]
+        )
+        == 1
+    )
+    assert "agent accounts link is not supported for provider claude-code" in capsys.readouterr().err
+
+
+def test_agent_accounts_status_includes_claude_metadata_accounts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    claude_home = tmp_path / "claude-home"
+
+    assert main(_claude_register_args(claude_home, label="Claude main")) == 0
+    capsys.readouterr()
+
+    assert main(_registry_status_args(json_output=False)) == 0
+    output = capsys.readouterr().out
+    assert "  - claude-code/main <person@example.com> Claude main auth=ambient-browser-login" in output
+    assert "link=unsupported" in output
+
+    assert main(_registry_status_args(provider="claude-code", json_output=True)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider"] == "claude-code"
+    assert payload["provider_count"] == 1
+    assert payload["account_count"] == 1
+    assert payload["accounts"][0]["provider"] == "claude-code"
+    assert payload["accounts"][0]["account"] == "main"
+    assert payload["accounts"][0]["capabilities"]["link"] is False

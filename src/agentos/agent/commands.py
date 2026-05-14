@@ -12,7 +12,7 @@ from agentos.agent.run_runtime import AgentRunRequest
 from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provider_families())
-_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES = ("codex",)
+_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES = ("codex", "claude-code")
 
 
 def _list_configured_agents(
@@ -168,6 +168,8 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
 
 def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
     if args.provider == "codex":
+        if args.auth_file is None:
+            raise CliError("agent accounts register --provider codex requires --auth-file")
         from agentos.codex.account_registry import register_codex_account_from_auth_file
 
         print(
@@ -177,6 +179,24 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
                     account=args.account,
                     email=args.email,
                     argv=getattr(args, "_agentos_argv", []),
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.provider == "claude-code":
+        if args.home is None:
+            raise CliError("agent accounts register --provider claude-code requires --home")
+        from agentos.claude.account_registry import register_claude_account
+
+        print(
+            json.dumps(
+                register_claude_account(
+                    account=args.account,
+                    home=Path(args.home),
+                    email=args.email,
+                    label=args.label,
                 ),
                 indent=2,
                 sort_keys=True,
@@ -209,7 +229,7 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
     if args.provider is None:
         if args.home is not None:
             raise CliError("agent accounts status --home requires --provider")
-        return _cmd_agent_accounts_registry_status(args, provider="codex")
+        return _cmd_agent_accounts_registry_status(args, provider=None)
 
     if args.provider == "codex":
         if args.home is None:
@@ -221,20 +241,20 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
         else:
             print(_format_agent_accounts_status(payload))
         return 0
-    raise CliError(f"agent accounts status is not supported for provider {args.provider}")
+    if args.home is not None:
+        raise CliError(f"agent accounts status --home is not supported for provider {args.provider}")
+    return _cmd_agent_accounts_registry_status(args, provider=args.provider)
 
 
-def _cmd_agent_accounts_registry_status(args: argparse.Namespace, *, provider: str) -> int:
-    if provider == "codex":
-        from agentos.codex.account_registry import inspect_codex_account_registry
+def _cmd_agent_accounts_registry_status(args: argparse.Namespace, *, provider: str | None) -> int:
+    from agentos.agent.account_registry import inspect_account_registry
 
-        payload = inspect_codex_account_registry()
-        if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
-        else:
-            print(_format_agent_accounts_registry_overview(payload))
-        return 0
-    raise CliError(f"agent accounts status is not supported for provider {provider}")
+    payload = inspect_account_registry(provider)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(_format_agent_accounts_registry_overview(payload))
+    return 0
 
 
 def _format_agent_accounts_status(payload: dict[str, object]) -> str:
@@ -281,42 +301,44 @@ def _format_agent_accounts_status(payload: dict[str, object]) -> str:
 
 def _format_agent_accounts_registry_overview(payload: dict[str, object]) -> str:
     lines = [
-        f"Provider: {payload.get('provider', '<unknown>')}",
-        "Status: registry",
+        "Agent accounts",
+        f"Root: {payload.get('root', '<unknown>')}",
+        f"Providers: {payload.get('provider_count', 0)}",
+        f"Accounts: {payload.get('account_count', 0)}",
     ]
-    registry = payload.get("registry")
-    if isinstance(registry, dict):
-        lines.extend(_format_agent_accounts_registry_status(registry))
-    return "\n".join(lines)
-
-
-def _format_agent_accounts_registry_status(registry: dict[str, object]) -> list[str]:
-    lines = [
-        "Registry:",
-        f"  Root: {registry.get('root', '<unknown>')}",
-        f"  Index: {registry.get('registry_path', '<unknown>')}",
-        f"  Entries: {registry.get('entry_count', 0)}",
-        f"  Accounts: {registry.get('account_count', 0)}",
-    ]
-    accounts = registry.get("accounts")
+    accounts = payload.get("accounts")
     if isinstance(accounts, list) and accounts:
-        lines.append("  Registered accounts:")
+        lines.append("Registered accounts:")
         for item in accounts:
             if not isinstance(item, dict):
                 continue
-            account = item.get("account", "<unknown>")
-            email = item.get("email")
-            label = f"    - {account}"
-            if isinstance(email, str):
-                label += f" <{email}>"
-            active_sha = item.get("active_sha256")
-            if isinstance(active_sha, str):
-                label += f" active={active_sha[:12]}"
-            registered_hashes = item.get("registered_hashes")
-            if isinstance(registered_hashes, int):
-                label += f" versions={registered_hashes}"
-            lines.append(label)
-    return lines
+            lines.append(_format_agent_account_manifest_line(item))
+    return "\n".join(lines)
+
+
+def _format_agent_account_manifest_line(item: dict[str, object]) -> str:
+    provider = item.get("provider", "<unknown>")
+    account = item.get("account", "<unknown>")
+    label = f"  - {provider}/{account}"
+    email = item.get("email")
+    if isinstance(email, str):
+        label += f" <{email}>"
+    display_label = item.get("label")
+    if isinstance(display_label, str):
+        label += f" {display_label}"
+    auth_kind = item.get("auth_kind")
+    if isinstance(auth_kind, str):
+        label += f" auth={auth_kind}"
+    home = item.get("home")
+    if isinstance(home, str):
+        label += f" home={home}"
+    capabilities = item.get("capabilities")
+    if isinstance(capabilities, dict) and capabilities.get("link") is False:
+        label += " link=unsupported"
+    active_sha = item.get("active_sha256")
+    if isinstance(active_sha, str):
+        label += f" active={active_sha[:12]}"
+    return label
 
 
 def _add_agent_run_target_args(
@@ -408,7 +430,7 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
 
     accounts_register_parser = accounts_subparsers.add_parser(
         "register",
-        help="Register a provider auth file in managed account storage.",
+        help="Register a provider account in managed account storage.",
     )
     accounts_register_parser.add_argument(
         "--provider",
@@ -418,8 +440,8 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     accounts_register_parser.add_argument(
         "--auth-file",
-        required=True,
-        help="Provider auth file to register.",
+        default=None,
+        help="Provider auth file to register. Required for codex.",
     )
     accounts_register_parser.add_argument(
         "--account",
@@ -427,9 +449,19 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Local AgentOS account alias to register.",
     )
     accounts_register_parser.add_argument(
+        "--home",
+        default=None,
+        help="Provider home/context for metadata-only account providers. Required for claude-code.",
+    )
+    accounts_register_parser.add_argument(
         "--email",
         default=None,
-        help="Codex account email metadata when it cannot be parsed from the auth file.",
+        help="Account email metadata. Required for claude-code; optional fallback for codex.",
+    )
+    accounts_register_parser.add_argument(
+        "--label",
+        default=None,
+        help="Human label for the account.",
     )
     accounts_register_parser.set_defaults(handler=_cmd_agent_accounts_register)
 

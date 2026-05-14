@@ -88,6 +88,26 @@ agentos agent run --provider codex --instance work -- "inspect this repo"
 agentos agent run --provider codex --instance work --project /path/to/repo --cwd /tmp/work -- "do the task"
 ```
 
+### Agent Accounts
+
+`agentos agent accounts` registers local provider accounts under
+`~/.agentos/accounts/<provider>/accounts/<account>/manifest.json`.
+
+Codex accounts are file-backed:
+
+```sh
+agentos agent accounts register --provider codex --account br --auth-file ~/.codex-br/auth.json
+agentos agent accounts link --provider codex --account br --home ~/.codex
+agentos agent accounts status --provider codex --home ~/.codex
+```
+
+Claude accounts are metadata-only because Claude uses ambient browser login:
+
+```sh
+agentos agent accounts register --provider claude-code --account main --home ~/.claude --email person@example.com --label "Claude main"
+agentos agent accounts status
+```
+
 ## Chat CLI
 
 `agentos chat` is the provider-facing live surface, distinct from `agentos chatlas`.
@@ -97,7 +117,6 @@ Current public surface:
 - `debug list`: inventory live provider sessions directly from configured homes
 - `debug find`: resolve a provider-agnostic session query against live provider data
 - `debug extract`: extract dialog from a live session query or explicit artifact path
-- `accounts stats`: query configured account status and usage across supported providers
 - `--project [path]`: use that project target for config resolution; bare `--project` means current `pwd`
 
 Resolution notes:
@@ -113,7 +132,6 @@ agentos chat debug list --provider codex --output json
 agentos chat debug list --project /path/to/repo --provider codex
 agentos chat debug find 019ccafa-7835-7fc3-ac17-0e0a0f675fd5 --project
 agentos chat debug extract 019ccafa-7835-7fc3-ac17-0e0a0f675fd5 --project /path/to/repo
-agentos chat accounts stats --project /path/to/repo --output usage
 ```
 
 ## Forum CLI

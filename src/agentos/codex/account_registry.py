@@ -13,6 +13,7 @@ from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
 from agentos._core.project_command_log import record_activity_event
+from agentos.agent.account_registry import account_dir, account_provider_root, write_account_manifest
 
 CODEX_AUTH_FILENAME = "auth.json"
 CODEX_PROVIDER = "codex"
@@ -391,19 +392,24 @@ def _registry_entry(
 
 
 def _write_account_manifest(*, account: str, info: CodexAuthInfo) -> dict[str, object]:
-    updated_at = utc_now_iso()
-    manifest: dict[str, object] = {
-        "schema_version": 1,
-        "provider": CODEX_PROVIDER,
-        "account": account,
-        "account_id": info.account_id,
-        "active_sha256": info.sha256,
-        "active_file": _account_relative_file(info.sha256),
-        "updated_at": updated_at,
-    }
-    manifest.update(info.metadata_payload())
-    _write_json_file(_account_dir(account) / "manifest.json", manifest)
-    return manifest
+    return write_account_manifest(
+        provider=CODEX_PROVIDER,
+        account=account,
+        auth_kind="auth-json",
+        capabilities={
+            "register": True,
+            "link": True,
+            "status": True,
+            "monitor": True,
+        },
+        email=info.email,
+        extra={
+            "account_id": info.account_id,
+            "active_sha256": info.sha256,
+            "active_file": _account_relative_file(info.sha256),
+            **info.metadata_payload(),
+        },
+    )
 
 
 def _replace_account_pointer(account_dir: Path, sha256: str) -> None:
@@ -678,7 +684,7 @@ def _safe_activity_event(event: dict[str, object]) -> dict[str, object]:
 
 
 def _provider_root() -> Path:
-    return agentos_home_dir() / "accounts" / CODEX_PROVIDER
+    return account_provider_root(CODEX_PROVIDER)
 
 
 def _registry_path() -> Path:
@@ -686,7 +692,7 @@ def _registry_path() -> Path:
 
 
 def _account_dir(account: str) -> Path:
-    return _provider_root() / "accounts" / account
+    return account_dir(CODEX_PROVIDER, account)
 
 
 def _home_auth_path(home: Path) -> Path:
