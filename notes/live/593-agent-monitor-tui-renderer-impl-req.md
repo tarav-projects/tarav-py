@@ -45,7 +45,7 @@ The implementation must remove stale per-tick frame recreation. A workflow that 
 
 #### evidence
 
-- Pre-implementation code created `MonitorFrame(tick=tick)` inside `MonitorLoop.iter_frames()` in `src/agentos/agent/monitor.py`.
+- Pre-implementation code created `MonitorFrame(tick=tick)` inside `MonitorLoop.iter_frames()` in the old `src/agentos/agent/monitor.py` module.
 - Corrected design says `MonitorFrame` is the persistent canonical renderer model.
 
 #### meta
@@ -108,7 +108,7 @@ The diagnostic output must come from the same `MonitorLoop` state/frame mechanic
 
 Status: completed.
 
-Change `src/agentos/agent/monitor.py` so `MonitorLoop` owns one `MonitorState` and one `MonitorFrame`.
+Change the monitor runtime so `MonitorLoop` owns one `MonitorState` and one `MonitorFrame`.
 
 Expected shape:
 
@@ -222,7 +222,7 @@ Implementation requirements:
 
 Validation:
 
-- `uv run ruff check src/agentos/agent/monitor.py src/agentos/agent/commands.py tests/test_agent_account_registry_commands.py`
+- `uv run ruff check src/agentos/agent/monitor src/agentos/agent/commands.py tests/test_agent_account_registry_commands.py`
 - `uv run pytest tests/test_agent_account_registry_commands.py`
 - `uv run pytest`
 - `agentos agent accounts monitor --once`
@@ -233,3 +233,4 @@ Validation:
 
 - 2026-05-14: Created Impl.Req from corrected phase 2 monitor TUI design. The request explicitly removes stale per-tick `MonitorFrame` assumptions, keeps the monitor loop-only, keeps `--json` diagnostic-only, and scopes Rich rendering to simple mechanics.
 - 2026-05-14: Implemented phase 2. `MonitorLoop` now owns one persistent `MonitorState` and one persistent `MonitorFrame`, bounded and unbounded modes use the same loop path, workflows mutate the shared frame in place, unexpected workflow exceptions are recorded without stopping later workflows, normal UI uses a simple Rich Live renderer, and `--json` remains raw diagnostic serialization. Validated with ruff, focused monitor tests, full pytest, installed CLI refresh, bounded monitor CLI runs, JSON CLI output, and Ctrl-C clean shutdown.
+- 2026-05-14: Reorganized monitor code from the old single `src/agentos/agent/monitor.py` module into the `src/agentos/agent/monitor/` package. Public imports from `agentos.agent.monitor` are preserved through the package exports; internals are split into `models`, `loop`, `config`, `workflows`, and `render`.

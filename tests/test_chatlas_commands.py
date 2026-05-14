@@ -327,7 +327,10 @@ def test_chatlas_index_query_missing_index_returns_zero_matches(
     assert payload["status"] == "ok"
     assert payload["command"] == "chatlas index query"
     assert payload["partition_count"] == 0
-    assert payload["matched_row_count"] == 0
+    assert payload["index_matched_row_count"] == 0
+    assert payload["candidate_row_count"] == 0
+    assert payload["query_matched_row_count"] == 0
+    assert "matched_row_count" not in payload
     assert payload["rows"] == []
 
 
@@ -566,8 +569,11 @@ def test_chatlas_index_query_filters_index_rows_without_raw_artifacts(
     )
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["matched_row_count"] == 1
+    assert payload["index_matched_row_count"] == 1
+    assert payload["candidate_row_count"] == 1
+    assert payload["query_matched_row_count"] == 1
     assert payload["returned_row_count"] == 1
+    assert "matched_row_count" not in payload
     assert payload["rows"][0]["session_id"] == "session-1"
     assert not (chatlas_root / "raw").exists()
 
@@ -640,7 +646,10 @@ def test_chatlas_index_query_exact_filters_sort_limit_and_skips_bad_rows(
     payload = json.loads(capsys.readouterr().out)
     assert payload["scanned_row_count"] == 4
     assert payload["skipped_row_count"] == 2
-    assert payload["matched_row_count"] == 1
+    assert payload["index_matched_row_count"] == 1
+    assert payload["candidate_row_count"] == 1
+    assert payload["query_matched_row_count"] == 1
+    assert "matched_row_count" not in payload
     assert [row["session_id"] for row in payload["rows"]] == ["session-new"]
 
 
@@ -1019,9 +1028,11 @@ def test_chatlas_query_missing_index_returns_empty_normalized_rows(
     assert payload["command"] == "chatlas query"
     assert payload["scan_limit"] == 5000
     assert payload["limit"] == 50
+    assert payload["index_matched_row_count"] == 0
     assert payload["candidate_row_count"] == 0
-    assert payload["matched_row_count"] == 0
+    assert payload["query_matched_row_count"] == 0
     assert payload["returned_row_count"] == 0
+    assert "matched_row_count" not in payload
     assert payload["rows"] == []
 
 
@@ -1084,9 +1095,11 @@ def test_chatlas_query_filters_index_rows_and_returns_minimal_shape(
     )
 
     payload = json.loads(capsys.readouterr().out)
+    assert payload["index_matched_row_count"] == 1
     assert payload["candidate_row_count"] == 1
-    assert payload["matched_row_count"] == 1
+    assert payload["query_matched_row_count"] == 1
     assert payload["returned_row_count"] == 1
+    assert "matched_row_count" not in payload
     assert payload["rows"] == [
         {
             "uri": "agentos://chat-session/codex/fingerprint/session-1",
@@ -1185,7 +1198,10 @@ def test_chatlas_query_raw_contains_runs_after_scan_limit(
         == 0
     )
     limited_payload = json.loads(capsys.readouterr().out)
+    assert limited_payload["index_matched_row_count"] == 2
     assert limited_payload["candidate_row_count"] == 1
+    assert limited_payload["query_matched_row_count"] == 0
+    assert "matched_row_count" not in limited_payload
     assert limited_payload["rows"] == []
 
     assert (
@@ -1204,7 +1220,10 @@ def test_chatlas_query_raw_contains_runs_after_scan_limit(
         == 0
     )
     payload = json.loads(capsys.readouterr().out)
+    assert payload["index_matched_row_count"] == 2
     assert payload["candidate_row_count"] == 2
+    assert payload["query_matched_row_count"] == 1
+    assert "matched_row_count" not in payload
     assert [row["session_id"] for row in payload["rows"]] == ["session-old"]
 
 

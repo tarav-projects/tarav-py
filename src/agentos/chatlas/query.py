@@ -90,7 +90,7 @@ def run_chatlas_query(
         "skipped_row_count": index.skipped_row_count,
         "index_matched_row_count": len(index_matched_rows),
         "candidate_row_count": len(scanned_candidates),
-        "matched_row_count": len(filtered_rows),
+        "query_matched_row_count": len(filtered_rows),
         "returned_row_count": len(returned_rows),
         "rows": [_normalized_session_row(row) for row in returned_rows],
     }

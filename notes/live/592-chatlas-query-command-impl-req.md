@@ -145,8 +145,9 @@ Candidate payload shape:
   "scan_limit": 5000,
   "limit": 50,
   "scanned_row_count": 123,
+  "index_matched_row_count": 50,
   "candidate_row_count": 50,
-  "matched_row_count": 3,
+  "query_matched_row_count": 3,
   "returned_row_count": 3,
   "rows": []
 }
@@ -173,6 +174,65 @@ The minimal query command is a discovery surface. It should favor robust scannin
 #### meta
 
 - status: accepted first-cut policy
+
+### Query.Envelope.Normalization
+
+- `agentos chatlas query` should read as an extension of `agentos chatlas index query`.
+- Both commands should share the same top-level response envelope where practical.
+- Row payloads may differ:
+  - `agentos chatlas index query` returns full index rows.
+  - `agentos chatlas query` returns normalized session rows by default.
+  - A later `chatlas query` projection option may allow full index rows.
+- Normalize count fields around explicit query phases instead of relying on ambiguous `matched_row_count`.
+- Preferred shared count fields:
+  - `scanned_row_count`
+  - `skipped_row_count`
+  - `index_matched_row_count`
+  - `candidate_row_count`
+  - `query_matched_row_count`
+  - `returned_row_count`
+- For `agentos chatlas index query`, the phase counts collapse:
+  - `index_matched_row_count` is rows matching index filters before limit.
+  - `candidate_row_count` equals `index_matched_row_count` unless index query later adds a scan-limit phase.
+  - `query_matched_row_count` equals `index_matched_row_count`.
+  - `returned_row_count` is rows after limit.
+- For `agentos chatlas query`, the phase counts remain layered:
+  - `index_matched_row_count` is rows matching index filters before scan-limit.
+  - `candidate_row_count` is rows entering raw/model filtering after scan-limit.
+  - `query_matched_row_count` is rows surviving all query filters before final limit.
+  - `returned_row_count` is rows after final limit.
+- Avoid adding raw/model-specific count fields in the minimal version unless diagnostics require them.
+
+#### appendix
+
+Normalized envelope sketch:
+
+```json
+{
+  "status": "ok",
+  "command": "chatlas query",
+  "chatlas_root": "...",
+  "session_index_root": "...",
+  "filters": {},
+  "sort": "lexical",
+  "scan_limit": 5000,
+  "limit": 50,
+  "partition_count": 0,
+  "scanned_row_count": 0,
+  "skipped_row_count": 0,
+  "index_matched_row_count": 0,
+  "candidate_row_count": 0,
+  "query_matched_row_count": 0,
+  "returned_row_count": 0,
+  "rows": []
+}
+```
+
+`agentos chatlas index query` may omit `scan_limit` until it has a scan-limit phase, but should otherwise use the same count vocabulary.
+
+#### meta
+
+- status: follow-up accepted
 
 ## Execution.Plan
 
@@ -260,8 +320,28 @@ The minimal query command is a discovery surface. It should favor robust scannin
   - `agentos chatlas query --help`
 - status: implemented
 
+### Slice 6 - Normalize query envelopes
+
+- update `agentos chatlas index query` to emit explicit phase counts:
+  - `index_matched_row_count`
+  - `candidate_row_count`
+  - `query_matched_row_count`
+  - `returned_row_count`
+- update `agentos chatlas query` to use `query_matched_row_count` for rows surviving all query layers before final limit.
+- remove or de-emphasize ambiguous `matched_row_count` from both command payloads unless a compatibility decision is made separately.
+- keep row projection differences intact:
+  - index query rows are full index rows.
+  - chatlas query rows are normalized session rows by default.
+- path: index query service -> chatlas query service -> command tests
+- observable: both command payloads use the same count vocabulary while preserving their row shapes.
+- check: focused tests for `chatlas index query` and `chatlas query` envelope fields and count semantics.
+- status: implemented
+
 ## Impl.Log
 
 - 2026-05-14: Created implementation request from `591-chatlas-query-command-design-session.md` after user accepted the minimal first-cut query design.
 - 2026-05-14: Implemented `agentos chatlas query` as a layered explicit-flag command. Added `src/agentos/chatlas/query.py`, wired `core.py` and `commands.py`, removed the query positional argument and deferred expansion flags, added raw and standard-model contains filters, and replaced the stub test with focused behavior coverage.
 - 2026-05-14: Verified with `uv run python -m pytest tests/test_chatlas_commands.py -q` (32 passed), `uv run python -m pytest -q` (281 passed), `uv tool install --reinstall --editable .`, `agentos chatlas query --help`, and `agentos chatlas query --sort newest --limit 2` against the local Chatlas dataset.
+- 2026-05-14: Captured follow-up decision to normalize `chatlas index query` and `chatlas query` envelopes around explicit phase counts while allowing their `rows` projections to differ.
+- 2026-05-14: Implemented Slice 6 envelope normalization. `agentos chatlas index query` now emits explicit phase counts, `agentos chatlas query` reports `query_matched_row_count`, and the ambiguous `matched_row_count` field was removed from both payloads.
+- 2026-05-14: Verified Slice 6 with `uv run python -m pytest tests/test_chatlas_commands.py -q` (32 passed), `uv run python -m pytest -q` (283 passed), `uv tool install --reinstall --editable .`, `agentos chatlas index query --session-id 2434a1a6-34b2-4054-8525-64c27a30e1c5 --format json`, and `agentos chatlas query --session-id 2434a1a6-34b2-4054-8525-64c27a30e1c5`.

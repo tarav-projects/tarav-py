@@ -57,6 +57,7 @@ def run_chatlas_index_query(
     sorted_rows = sort_chatlas_index_rows(matched_rows, sort=sort)
     effective_limit = _DEFAULT_LIMIT if limit is None else limit
     limited_rows = sorted_rows[:effective_limit]
+    index_matched_row_count = len(matched_rows)
     return {
         "status": "ok",
         "command": "chatlas index query",
@@ -68,7 +69,9 @@ def run_chatlas_index_query(
         "partition_count": index.partition_count,
         "scanned_row_count": index.scanned_row_count,
         "skipped_row_count": index.skipped_row_count,
-        "matched_row_count": len(matched_rows),
+        "index_matched_row_count": index_matched_row_count,
+        "candidate_row_count": index_matched_row_count,
+        "query_matched_row_count": index_matched_row_count,
         "returned_row_count": len(limited_rows),
         "rows": limited_rows,
     }
@@ -116,13 +119,13 @@ def select_one_chatlas_index_row(
         limit=limit,
         chatlas_root=chatlas_root,
     )
-    matched_row_count = payload.get("matched_row_count")
+    index_matched_row_count = payload.get("index_matched_row_count")
     rows = payload.get("rows")
     if not isinstance(rows, list):
         raise CliError("Chatlas index query returned an invalid rows payload")
-    if matched_row_count == 1 and len(rows) == 1 and isinstance(rows[0], dict):
+    if index_matched_row_count == 1 and len(rows) == 1 and isinstance(rows[0], dict):
         return rows[0]
-    if matched_row_count == 0:
+    if index_matched_row_count == 0:
         raise CliError(f"no indexed Chatlas session matched the {command} selector")
     raise CliError(
         f"multiple Chatlas sessions matched the {command} selector: "
