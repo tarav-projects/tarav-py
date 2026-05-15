@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 from agentos._core.errors import CliError
+from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
     AgentBase,
     AgentConfig,
@@ -18,6 +20,7 @@ from agentos.claude.session import (
     discover_claude_session_refs,
     load_claude_session,
 )
+from agentos.claude.account_status import claude_account_status
 
 
 CLAUDE_PROVIDER = "claude-code"
@@ -54,6 +57,20 @@ class ClaudeAgent(AgentBase):
         return self._build_command_with_env(
             command_config,
             env_overrides=self._run_env_overrides(),
+        )
+
+    def account_status(
+        self,
+        *,
+        refresh_usage: bool = False,
+        methods: tuple[str, ...] | None = None,
+        config: Mapping[str, object] | None = None,
+    ) -> AccountStatus:
+        return claude_account_status(
+            self,
+            refresh_usage=refresh_usage,
+            methods=methods,
+            config=config,
         )
 
     def _run_env_overrides(self) -> dict[str, str]:

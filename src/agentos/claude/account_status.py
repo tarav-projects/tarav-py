@@ -1,0 +1,720 @@
+from __future__ import annotations
+
+import datetime
+import json
+import os
+import pty
+import re
+import select
+import subprocess
+import tempfile
+import time
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from agentos._core.errors import CliError
+from agentos._core.process import ProcessError
+from agentos.agent.account_registry import load_account, load_links
+from agentos.agent.account_status import (
+    AccountIdentity,
+    AccountIdentityMatch,
+    AccountLimit,
+    AccountStatus,
+    AccountStatusError,
+    UsageOverTimeLimitData,
+)
+from agentos.agent.primitives import Agent
+from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, execute_agent_command
+
+
+DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
+DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
+CLAUDE_STATUS_PROMPT = "What is 423 + 322? Reply with only the number."
+CLAUDE_STATUS_EXPECTED_NUMBER = "745"
+CLAUDE_STATUS_MODEL = "haiku"
+CLAUDE_USAGE_REFRESH_PROMPT = "Reply with OK."
+CLAUDE_USAGE_REFRESH_MODEL = "haiku"
+CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC = 0.75
+CLAUDE_REFRESH_TRUST_CONFIRM_RETRY_SEC = 0.75
+CLAUDE_REFRESH_PROMPT_FALLBACK_DELAY_SEC = 2.5
+CLAUDE_REFRESH_INTERRUPT_SETTLE_SEC = 0.05
+CLAUDE_REFRESH_TERMINATE_WAIT_SEC = 0.5
+
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def claude_account_status(
+    agent: Agent,
+    *,
+    refresh_usage: bool = False,
+    methods: tuple[str, ...] | None = None,
+    config: Mapping[str, object] | None = None,
+) -> AccountStatus:
+    del config
+    _validate_methods(methods)
+    if agent.account is None:
+        raise CliError("claude-code account_status requires an agent account context")
+    if agent.home is None:
+        raise CliError("claude-code account_status requires an agent home")
+
+    account_record = load_account(agent.provider, agent.account.account)
+    expected_identity = _expected_identity(account_record)
+    home_config = _load_home_config(agent.home)
+    fetched_identity = _fetched_identity_from_home_config(home_config)
+    link = _linked_home_record(agent)
+    link_state = _link_state(link=link, agent=agent)
+    errors = list(_setup_errors(agent=agent, link_state=link_state, link=link))
+    identity_match = _identity_match(expected_identity, fetched_identity)
+    if identity_match == "mismatched":
+        errors.append(
+            AccountStatusError(
+                error_type="identity_mismatch",
+                message=(
+                    "claude-code home identity does not match registered account "
+                    f"{agent.account.account}"
+                ),
+                detail={
+                    "expected_identity": expected_identity.summary(),
+                    "fetched_identity": (
+                        fetched_identity.summary() if fetched_identity is not None else None
+                    ),
+                },
+            )
+        )
+
+    auth_summary: str | None = None
+    if not errors:
+        auth_summary, auth_error = _claude_auth_status(agent)
+        if auth_error is not None:
+            errors.append(auth_error)
+
+    should_fetch_usage = refresh_usage or (methods is not None and "limits" in methods)
+    check_status = "error" if errors else "ok"
+    if check_status == "error" or not should_fetch_usage:
+        usage_status = "unavailable"
+        usage_summary = None if should_fetch_usage else "usage refresh not requested"
+        limits: tuple[AccountLimit, ...] = ()
+        usage_errors: tuple[AccountStatusError, ...] = ()
+        statusline_payload: dict[str, Any] | None = None
+    else:
+        limits, usage_errors, statusline_payload = _claude_usage_limits(agent)
+        usage_status = "error" if usage_errors else "ok"
+        usage_summary = _limits_summary(limits) if limits else None
+
+    return AccountStatus(
+        provider=agent.provider,
+        account=agent.account.account,
+        home=agent.home,
+        check_status=check_status,
+        usage_status=usage_status,
+        link_state=link_state,
+        expected_identity=expected_identity,
+        fetched_identity=fetched_identity,
+        identity_match=identity_match,
+        auth_summary=auth_summary,
+        usage_summary=usage_summary,
+        limits=limits,
+        errors=tuple(errors),
+        usage_errors=tuple(usage_errors),
+        raw={
+            "link": link,
+            "oauth_account": (
+                home_config.get("oauthAccount")
+                if isinstance(home_config, dict)
+                else None
+            ),
+            "statusline": statusline_payload,
+        },
+    )
+
+
+def _validate_methods(methods: tuple[str, ...] | None) -> None:
+    if methods is None:
+        return
+    supported = {"auth", "limits"}
+    unknown = [method for method in methods if method not in supported]
+    if unknown:
+        raise CliError(
+            f"unsupported claude-code account_status methods: {', '.join(unknown)}"
+        )
+
+
+def _expected_identity(account_record: dict[str, object]) -> AccountIdentity:
+    return AccountIdentity(
+        email=_string_or_none(account_record.get("email")),
+        label=_string_or_none(account_record.get("label")),
+        raw=account_record,
+    )
+
+
+def _load_home_config(home: Path) -> dict[str, object] | None:
+    path = home / ".claude.json"
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _fetched_identity_from_home_config(
+    home_config: Mapping[str, object] | None,
+) -> AccountIdentity | None:
+    if home_config is None:
+        return None
+    oauth_account = home_config.get("oauthAccount")
+    if not isinstance(oauth_account, dict):
+        return None
+    return AccountIdentity(
+        provider_account_id=_string_or_none(oauth_account.get("accountUuid")),
+        email=_string_or_none(oauth_account.get("emailAddress")),
+        label=_string_or_none(oauth_account.get("displayName")),
+        raw=oauth_account,
+    )
+
+
+def _identity_match(
+    expected_identity: AccountIdentity,
+    fetched_identity: AccountIdentity | None,
+) -> AccountIdentityMatch:
+    if fetched_identity is None:
+        return "unavailable"
+    if expected_identity.email is None or fetched_identity.email is None:
+        return "unknown"
+    if expected_identity.email == fetched_identity.email:
+        return "verified"
+    return "mismatched"
+
+
+def _linked_home_record(agent: Agent) -> dict[str, object] | None:
+    assert agent.home is not None
+    links = load_links(agent.provider).get("links")
+    if not isinstance(links, dict):
+        return None
+    link = links.get(str(agent.home.expanduser().resolve()))
+    return link if isinstance(link, dict) else None
+
+
+def _link_state(*, link: dict[str, object] | None, agent: Agent) -> str:
+    if link is None:
+        return "unlinked"
+    if link.get("kind") != "claimed":
+        return "unsupported-link"
+    if agent.account is None or link.get("account") != agent.account.account:
+        return "mismatched"
+    return "claimed-unverified"
+
+
+def _setup_errors(
+    *,
+    agent: Agent,
+    link_state: str,
+    link: dict[str, object] | None,
+) -> tuple[AccountStatusError, ...]:
+    errors: list[AccountStatusError] = []
+    if agent.home is None:
+        errors.append(
+            AccountStatusError(
+                error_type="home_missing",
+                message="claude-code account_status requires an agent home",
+            )
+        )
+        return tuple(errors)
+    if not agent.home.exists():
+        errors.append(
+            AccountStatusError(
+                error_type="home_missing",
+                message=f"claude-code account home does not exist: {agent.home}",
+            )
+        )
+    if link_state != "claimed-unverified":
+        errors.append(
+            AccountStatusError(
+                error_type="home_link_unusable",
+                message=f"claude-code account home link is not usable: {link_state}",
+                detail={
+                    "link_state": link_state,
+                    "home": str(agent.home),
+                    "link": link,
+                },
+            )
+        )
+    return tuple(errors)
+
+
+def _claude_auth_status(agent: Agent) -> tuple[str | None, AccountStatusError | None]:
+    try:
+        result = execute_agent_command(
+            agent.build_command(
+                AgentCommandConfig(
+                    prompt=CLAUDE_STATUS_PROMPT,
+                    model=agent.ping.model or CLAUDE_STATUS_MODEL,
+                    interaction_mode="non_interactive",
+                )
+            ),
+            run_config=AgentRunConfig(
+                cwd=Path.cwd().resolve(),
+                process_mode="capture",
+                timeout_sec=agent.timeout_sec or DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC,
+            ),
+        )
+    except ProcessError as exc:
+        return None, AccountStatusError(error_type=exc.error_type, message=exc.message)
+    except CliError as exc:
+        return None, AccountStatusError(error_type="command_failed", message=str(exc))
+
+    stdout = (result.stdout or "").strip()
+    stderr = (result.stderr or "").strip()
+    output = stdout or stderr
+    if result.exit_code != 0:
+        return None, AccountStatusError(
+            error_type="command_failed",
+            message=output or f"provider command exited with code {result.exit_code}",
+            exit_code=result.exit_code,
+        )
+    if _looks_logged_out(output):
+        return None, AccountStatusError(
+            error_type="not_logged_in",
+            message=output or "claude-code home is not logged in",
+        )
+    if CLAUDE_STATUS_EXPECTED_NUMBER not in output:
+        return None, AccountStatusError(
+            error_type="invalid_output",
+            message="provider command did not return the expected status response",
+            detail={"output": output},
+        )
+    return "Claude command completed", None
+
+
+def _looks_logged_out(output: str) -> bool:
+    lowered = output.lower()
+    return "not logged in" in lowered or "please run /login" in lowered
+
+
+def _claude_usage_limits(
+    agent: Agent,
+) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...], dict[str, Any] | None]:
+    try:
+        payload = _collect_claude_statusline_payload(agent)
+        return _parse_claude_statusline_rate_limits(payload), (), payload
+    except AccountStatusError as exc:
+        return (), (exc,), None
+    except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None
+
+
+def _collect_claude_statusline_payload(agent: Agent) -> dict[str, Any]:
+    timeout_sec = max(agent.timeout_sec or DEFAULT_USAGE_STATUS_TIMEOUT_SEC, DEFAULT_USAGE_STATUS_TIMEOUT_SEC)
+    with tempfile.TemporaryDirectory(prefix="agentos-claude-usage-") as temp_dir:
+        temp_root = Path(temp_dir)
+        capture_path = temp_root / "statusline.json"
+        settings_path = temp_root / "settings.json"
+        script_path = temp_root / "capture-statusline.sh"
+        workspace_root = temp_root / "workspace"
+        workspace_root.mkdir()
+
+        script_path.write_text(
+            "#!/bin/sh\n"
+            f"cat > {json.dumps(str(capture_path))}\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        script_path.chmod(0o700)
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "statusLine": {
+                        "type": "command",
+                        "command": str(script_path),
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        payload = _run_claude_statusline_refresh_session(
+            agent,
+            cwd=workspace_root,
+            capture_path=capture_path,
+            settings_path=settings_path,
+            timeout_sec=timeout_sec,
+        )
+    _cleanup_claude_statusline_transcript(agent=agent, statusline_payload=payload)
+    return payload
+
+
+def _run_claude_statusline_refresh_session(
+    agent: Agent,
+    *,
+    cwd: Path,
+    capture_path: Path,
+    settings_path: Path,
+    timeout_sec: int,
+) -> dict[str, Any]:
+    command = agent.build_command(
+        AgentCommandConfig(
+            argv=(
+                "--disable-slash-commands",
+                "--setting-sources",
+                "local",
+                "--settings",
+                str(settings_path),
+            ),
+            model=agent.ping.model or CLAUDE_USAGE_REFRESH_MODEL,
+            interaction_mode="interactive",
+        )
+    )
+    env = _process_environment(command.env_overrides)
+    env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+
+    try:
+        master_fd, slave_fd = pty.openpty()
+        process = subprocess.Popen(
+            command.argv,
+            cwd=str(cwd),
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            env=env,
+            text=False,
+            close_fds=True,
+        )
+    except FileNotFoundError as exc:
+        raise AccountStatusError(error_type="command_not_found", message=str(exc)) from exc
+    except OSError as exc:
+        raise AccountStatusError(error_type="command_failed", message=str(exc)) from exc
+    finally:
+        if "slave_fd" in locals():
+            os.close(slave_fd)
+
+    os.set_blocking(master_fd, False)
+    start = time.monotonic()
+    next_trust_confirm_at = start + CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC
+    prompt_fallback_at = start + CLAUDE_REFRESH_PROMPT_FALLBACK_DELAY_SEC
+    prompt_sent = False
+    trust_prompt_seen = False
+    trust_confirm_sent = False
+    transcript_chunks: list[bytes] = []
+    statusline_payload: dict[str, Any] | None = None
+
+    try:
+        while True:
+            now = time.monotonic()
+            if now - start >= timeout_sec:
+                raise AccountStatusError(
+                    error_type="timeout",
+                    message=f"provider command timed out after {timeout_sec} seconds",
+                )
+
+            transcript_chunks.extend(_read_pty_chunks(master_fd, timeout_sec=0.25))
+            transcript_text = _normalize_terminal_output(transcript_chunks)
+
+            if not prompt_sent and _claude_refresh_trust_prompt_visible(transcript_text):
+                trust_prompt_seen = True
+                if now >= next_trust_confirm_at:
+                    _write_pty(master_fd, b"\r")
+                    trust_confirm_sent = True
+                    next_trust_confirm_at = now + CLAUDE_REFRESH_TRUST_CONFIRM_RETRY_SEC
+
+            if not prompt_sent and _claude_refresh_main_prompt_visible(transcript_text):
+                _write_pty(master_fd, (CLAUDE_USAGE_REFRESH_PROMPT + "\r").encode("utf-8"))
+                prompt_sent = True
+
+            if (
+                not prompt_sent
+                and not _claude_refresh_trust_prompt_visible(transcript_text)
+                and ((not trust_prompt_seen and now >= prompt_fallback_at) or trust_confirm_sent)
+            ):
+                _write_pty(master_fd, (CLAUDE_USAGE_REFRESH_PROMPT + "\r").encode("utf-8"))
+                prompt_sent = True
+
+            statusline_payload = _load_claude_statusline_capture(capture_path)
+            if statusline_payload is not None:
+                break
+
+            if process.poll() is not None:
+                break
+    finally:
+        _terminate_pty_process(process, master_fd)
+
+    if statusline_payload is not None:
+        return statusline_payload
+
+    transcript = b"".join(transcript_chunks).decode("utf-8", errors="ignore").strip()
+    if process.returncode not in (0, None):
+        raise AccountStatusError(
+            error_type="command_failed",
+            message=transcript or f"provider command exited with code {process.returncode}",
+            exit_code=process.returncode,
+        )
+    raise AccountStatusError(
+        error_type="invalid_output",
+        message="provider command did not emit a statusLine payload with rate_limits",
+    )
+
+
+def _load_claude_statusline_capture(capture_path: Path) -> dict[str, Any] | None:
+    if not capture_path.exists():
+        return None
+    try:
+        payload = json.loads(capture_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    rate_limits = payload.get("rate_limits")
+    if not isinstance(rate_limits, dict) or not rate_limits:
+        return None
+    return payload
+
+
+def _parse_claude_statusline_rate_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:
+    raw_rate_limits = payload.get("rate_limits")
+    if not isinstance(raw_rate_limits, dict) or not raw_rate_limits:
+        raise CliError("claude statusLine payload is missing rate_limits")
+
+    limits: list[AccountLimit] = []
+    for limit_type in ("five_hour", "seven_day"):
+        raw_limit = raw_rate_limits.get(limit_type)
+        if raw_limit is None:
+            continue
+        if not isinstance(raw_limit, dict):
+            raise CliError(f"claude {limit_type} rate limit payload must be an object")
+        limits.append(_parse_claude_statusline_limit(limit_type, raw_limit))
+    if not limits:
+        raise CliError("claude statusLine payload has no supported rate_limits")
+    return tuple(limits)
+
+
+def _parse_claude_statusline_limit(
+    limit_type: str,
+    raw_limit: Mapping[str, Any],
+) -> AccountLimit:
+    used_percentage = _optional_float(
+        raw_limit.get("used_percentage"),
+        field_name=f"claude {limit_type} used_percentage",
+    )
+    used_percent = round(used_percentage) if used_percentage is not None else None
+    resets_at_epoch = _optional_int(
+        raw_limit.get("resets_at"),
+        field_name=f"claude {limit_type} resets_at",
+    )
+    period_duration_mins = _claude_rate_limit_duration_mins(limit_type)
+    period_started_at, period_ends_at = _period_bounds_from_reset(
+        resets_at_epoch=resets_at_epoch,
+        period_duration_mins=period_duration_mins,
+    )
+    return AccountLimit(
+        limit_class="usage_over_time",
+        limit_name=_claude_rate_limit_name(limit_type),
+        limit_label=_claude_rate_limit_label(limit_type),
+        usage_over_time=UsageOverTimeLimitData(
+            used_percent=used_percent,
+            period_started_at=period_started_at,
+            period_ends_at=period_ends_at,
+            period_duration_mins=period_duration_mins,
+            resets_at=_iso_from_epoch_seconds(resets_at_epoch),
+        ),
+        provider_limit={
+            "limit_type": limit_type,
+        },
+    )
+
+
+def _claude_rate_limit_name(limit_type: str) -> str:
+    if limit_type == "five_hour":
+        return "burst"
+    if limit_type == "seven_day":
+        return "weekly"
+    return limit_type
+
+
+def _claude_rate_limit_label(limit_type: str) -> str:
+    if limit_type == "five_hour":
+        return "Burst"
+    if limit_type == "seven_day":
+        return "Weekly"
+    return limit_type
+
+
+def _claude_rate_limit_duration_mins(limit_type: str) -> int | None:
+    if limit_type == "five_hour":
+        return 300
+    if limit_type == "seven_day":
+        return 10_080
+    return None
+
+
+def _limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:
+    parts: list[str] = []
+    for limit in limits:
+        usage = limit.usage_over_time
+        if usage is None:
+            continue
+        if usage.used_percent is None:
+            if limit.limit_label is not None:
+                parts.append(limit.limit_label)
+            continue
+        label = limit.limit_label or limit.limit_name
+        parts.append(f"{label} {usage.used_percent}%")
+    return ", ".join(parts) or None
+
+
+def _period_bounds_from_reset(
+    *,
+    resets_at_epoch: int | None,
+    period_duration_mins: int | None,
+) -> tuple[str | None, str | None]:
+    if resets_at_epoch is None or period_duration_mins is None:
+        return (None, None)
+    period_started_at_epoch = resets_at_epoch - (period_duration_mins * 60)
+    return (
+        _iso_from_epoch_seconds(period_started_at_epoch),
+        _iso_from_epoch_seconds(resets_at_epoch),
+    )
+
+
+def _iso_from_epoch_seconds(epoch_seconds: int | None) -> str | None:
+    if epoch_seconds is None:
+        return None
+    return datetime.datetime.fromtimestamp(
+        epoch_seconds,
+        tz=datetime.timezone.utc,
+    ).isoformat().replace("+00:00", "Z")
+
+
+def _optional_int(value: object, *, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CliError(f"{field_name} must be an integer")
+    return value
+
+
+def _optional_float(value: object, *, field_name: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise CliError(f"{field_name} must be a number")
+    return float(value)
+
+
+def _read_pty_chunks(master_fd: int, *, timeout_sec: float) -> list[bytes]:
+    chunks: list[bytes] = []
+    deadline = time.monotonic() + timeout_sec
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return chunks
+        ready, _, _ = select.select([master_fd], [], [], remaining)
+        if not ready:
+            return chunks
+        try:
+            chunk = os.read(master_fd, 65_536)
+        except (BlockingIOError, OSError):
+            return chunks
+        if not chunk:
+            return chunks
+        chunks.append(chunk)
+
+
+def _normalize_terminal_output(chunks: list[bytes], *, tail_bytes: int = 32_768) -> str:
+    if not chunks:
+        return ""
+    tail = b"".join(chunks)[-tail_bytes:]
+    text = tail.decode("utf-8", errors="ignore")
+    text = _ANSI_OSC_RE.sub(" ", text)
+    text = _ANSI_CSI_RE.sub(" ", text)
+    text = _CONTROL_CHARS_RE.sub(" ", text)
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _claude_refresh_trust_prompt_visible(text: str) -> bool:
+    return "quick safety check" in text or "yes, i trust this folder" in text
+
+
+def _claude_refresh_main_prompt_visible(text: str) -> bool:
+    return (
+        "welcome back" in text
+        or "claude code v" in text
+        or "no recent activity" in text
+        or "haiku" in text
+    )
+
+
+def _write_pty(master_fd: int, payload: bytes) -> None:
+    try:
+        os.write(master_fd, payload)
+    except OSError:
+        return
+
+
+def _terminate_pty_process(process: subprocess.Popen[bytes], master_fd: int) -> None:
+    try:
+        _write_pty(master_fd, b"\x03")
+        time.sleep(CLAUDE_REFRESH_INTERRUPT_SETTLE_SEC)
+        _write_pty(master_fd, b"\x03")
+        if process.poll() is None:
+            process.terminate()
+    finally:
+        try:
+            process.wait(timeout=CLAUDE_REFRESH_TERMINATE_WAIT_SEC)
+        except subprocess.TimeoutExpired:
+            if process.poll() is None:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+            try:
+                process.wait(timeout=CLAUDE_REFRESH_TERMINATE_WAIT_SEC)
+            except subprocess.TimeoutExpired:
+                pass
+        try:
+            os.close(master_fd)
+        except OSError:
+            pass
+
+
+def _cleanup_claude_statusline_transcript(
+    *, agent: Agent, statusline_payload: Mapping[str, Any]
+) -> None:
+    if agent.home is None:
+        return
+    transcript_path_value = _string_or_none(statusline_payload.get("transcript_path"))
+    if transcript_path_value is None:
+        return
+    transcript_path = Path(transcript_path_value)
+    claude_projects_root = agent.home / "projects"
+    try:
+        transcript_path.relative_to(claude_projects_root)
+    except ValueError:
+        return
+
+    try:
+        transcript_path.unlink(missing_ok=True)
+        parent = transcript_path.parent
+        while parent != claude_projects_root:
+            parent.rmdir()
+            parent = parent.parent
+    except OSError:
+        return
+
+
+def _process_environment(env_overrides: Mapping[str, str]) -> dict[str, str]:
+    env = os.environ.copy()
+    env.update(env_overrides)
+    return env
+
+
+def _string_or_none(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+__all__ = ["claude_account_status"]

@@ -21,6 +21,7 @@ from agentos.agent.account_status import (
     UsageOverTimeLimitData,
 )
 from agentos.agent.providers import build_registered_account_agent
+from agentos.agent.run_runtime import AgentRunResult
 from agentos.cli import main
 
 
@@ -1195,6 +1196,134 @@ def test_agent_accounts_register_claude_requires_email(
 
     assert main(_claude_register_args(email=None)) == 1
     assert "requires --email" in capsys.readouterr().err
+
+
+def test_claude_statusline_parser_maps_subscription_limits() -> None:
+    import agentos.claude.account_status as claude_account_status
+
+    limits = claude_account_status._parse_claude_statusline_rate_limits(
+        {
+            "rate_limits": {
+                "five_hour": {
+                    "used_percentage": 12.4,
+                    "resets_at": 1_776_000_000,
+                },
+                "seven_day": {
+                    "used_percentage": 44,
+                    "resets_at": 1_776_604_800,
+                },
+                "overage": {
+                    "used_percentage": 0,
+                    "resets_at": 1_776_000_000,
+                },
+            }
+        }
+    )
+
+    assert [limit.limit_name for limit in limits] == ["burst", "weekly"]
+    assert [limit.limit_label for limit in limits] == ["Burst", "Weekly"]
+    assert [
+        limit.usage_over_time.used_percent
+        for limit in limits
+        if limit.usage_over_time
+    ] == [12, 44]
+    assert [
+        limit.usage_over_time.period_duration_mins
+        for limit in limits
+        if limit.usage_over_time
+    ] == [300, 10_080]
+    assert limits[0].usage_over_time is not None
+    assert limits[0].usage_over_time.resets_at == "2026-04-12T13:20:00Z"
+    assert limits[0].usage_over_time.period_started_at == "2026-04-12T08:20:00Z"
+    assert limits[0].provider_limit == {"limit_type": "five_hour"}
+
+
+def test_claude_account_status_refresh_usage_uses_statusline_limits(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    claude_home = tmp_path / "claude-home"
+    claude_home.mkdir()
+    _write(
+        claude_home / ".claude.json",
+        json.dumps(
+            {
+                "oauthAccount": {
+                    "accountUuid": "claude-account-id",
+                    "emailAddress": "person@example.com",
+                    "displayName": "Claude Person",
+                }
+            }
+        )
+        + "\n",
+    )
+    assert main(_claude_register_args(label="Claude main")) == 0
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "link",
+                "--provider",
+                "claude-code",
+                "--account",
+                "main",
+                "--home",
+                str(claude_home),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    def fake_execute_agent_command(command, *, run_config):
+        del command, run_config
+        return AgentRunResult(exit_code=0, stdout="745\n", stderr="")
+
+    def fake_collect_statusline_payload(agent):
+        assert agent.home == claude_home.resolve()
+        return {
+            "rate_limits": {
+                "five_hour": {
+                    "used_percentage": 20,
+                    "resets_at": 1_776_000_000,
+                },
+                "seven_day": {
+                    "used_percentage": 94,
+                    "resets_at": 1_776_604_800,
+                },
+            }
+        }
+
+    monkeypatch.setattr(
+        claude_account_status, "execute_agent_command", fake_execute_agent_command
+    )
+    monkeypatch.setattr(
+        claude_account_status,
+        "_collect_claude_statusline_payload",
+        fake_collect_statusline_payload,
+    )
+    agent = build_registered_account_agent(
+        provider="claude-code", account="main", home=claude_home
+    )
+
+    status = agent.account_status(refresh_usage=True)
+
+    assert status.check_status == "ok"
+    assert status.usage_status == "ok"
+    assert status.usage_errors == ()
+    assert status.usage_summary == "Burst 20%, Weekly 94%"
+    assert [limit.limit_name for limit in status.limits] == ["burst", "weekly"]
+    assert [
+        limit.usage_over_time.used_percent
+        for limit in status.limits
+        if limit.usage_over_time
+    ] == [20, 94]
 
 
 def test_agent_accounts_monitor_once_prints_account_status(
