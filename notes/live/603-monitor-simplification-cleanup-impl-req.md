@@ -3,18 +3,18 @@
 ## Impl.Abstract
 
 - **scope:** simplify the `agentos agent accounts monitor` implementation by removing dead code, reducing untyped dict usage in favor of existing patterns, and clarifying the thread-safety contract — all without introducing new abstractions or expanding the API surface.
-- **status:** draft.
+- **status:** implemented.
 - **source:** code review of the monitor package (`src/agentos/agent/monitor/`) after the background frame swap implementation (600-impl-req).
 - **goal:** reduce cognitive load and maintenance surface. The monitor works correctly today; this is a cleanup pass focused on removing unnecessary complexity, not adding features.
 
 ## Impl.Index
 
-### Current.State.Evidence
+### Pre.Implementation.Evidence
 
 - Monitor package lives at `src/agentos/agent/monitor/` with 6 files: `__init__.py`, `models.py`, `loop.py`, `config.py`, `workflows.py`, `render.py`.
 - `LimitsTrackingWorkflow` manages its internal state as nested `dict[str, object]` bags (`_workflow_state`, `_target_state`, `_target_states`). Keys like `"last_refresh_at_monotonic"`, `"refresh_count"`, `"status"` are accessed by string convention.
 - `MonitorFrame.blocks` is `list[dict[str, object]]` — blocks are constructed by `monitor_block()` and consumed by convention-based key access (`block.get("title")`, `block.get("rows")`, etc.).
-- `_format_seconds` at `workflows.py:487-490` is defined but never called anywhere in the codebase.
+- `_format_seconds` was defined but never called anywhere in the codebase.
 - `format_monitor_frame` (plain-text path) and `_monitor_render_rows` (Rich path) both walk the same frame/blocks/rows structure with near-identical traversal logic.
 - `LimitsTrackingWorkflow._frame_block_index` caches a block position across frame swaps, guarded by a bounds check that falls through to `add_block`. The workflow runs once per frame, so `replace_block` is never actually needed.
 - The frame-swap thread-safety invariant in `loop.py` is correct (Event-based handshake ensures exclusive access) but undocumented — the reasoning requires reading the full Event lifecycle across `_run_workflow_loop`, `_publish_working_frame_if_ready`, and `_start_workflow_cycle`.
@@ -41,7 +41,7 @@
 
 ### Slice 1 - Remove Dead Code
 
-Status: pending.
+Status: completed.
 
 - Delete `_format_seconds` from `workflows.py`.
 - Delete `replace_block` from `MonitorFrame` in `models.py`.
@@ -52,7 +52,7 @@ Status: pending.
 
 ### Slice 2 - Tighten Workflow Target State Helpers
 
-Status: pending.
+Status: completed.
 
 - Keep `MonitorState.data` JSON-native. Do not store dataclass instances inside `state.data`, because `monitor_result_payload()` emits state directly through `json.dumps(...)`.
 - Do not introduce `_TargetRefreshState` in this cleanup pass unless it is strictly local and converted back to plain dict before being stored.
@@ -68,7 +68,7 @@ Status: pending.
 
 ### Slice 3 - Deduplicate Frame Walking
 
-Status: pending.
+Status: completed.
 
 - Make `format_monitor_frame` (plain-text) use `_monitor_render_rows` from `render.py` internally, extracting `.text` from each render row.
 - This removes the duplicated block/row traversal in `format_monitor_frame`.
@@ -78,7 +78,7 @@ Status: pending.
 
 ### Slice 4 - Document Thread Safety Contract
 
-Status: pending.
+Status: completed.
 
 - Add a concise docstring or comment block to `MonitorLoop` class body (not per-method) explaining:
   - The workflow thread exclusively owns `working_frame` between `working_frame_available.set()` and `working_frame_ready.set()`.
@@ -91,7 +91,7 @@ Status: pending.
 
 ### Slice 5 - Validation
 
-Status: pending.
+Status: completed.
 
 - Run focused tests:
 
@@ -122,3 +122,5 @@ agentos agent accounts monitor --once --json
 
 - 2026-05-15: Drafted from code review discussion. Priority-ordered findings: thread-safety documentation gap, untyped workflow state dicts, untyped frame blocks (deferred — out of scope), duplicated frame walking, dead `_frame_block_index`/`replace_block` complexity, dead `_format_seconds`, minor readability items.
 - 2026-05-15: Updated Slice 2 after review: do not store dataclasses in `MonitorState.data`, because monitor JSON serializes state directly. Cleanup should keep state JSON-native and only tighten helper boundaries.
+- 2026-05-15: Implemented cleanup. Removed dead `_format_seconds`, `MonitorFrame.replace_block`, and `LimitsTrackingWorkflow._frame_block_index`; `LimitsTrackingWorkflow` now always appends its block to the prepared frame. Added JSON-native target state helper functions without changing `MonitorState.data` shape. `format_monitor_frame` now reuses the shared monitor render-row traversal. Added a concise Event ownership comment to `MonitorLoop`.
+- 2026-05-15: Validation completed: `uv run pytest tests/test_agent_account_registry_commands.py -q`, `uv run pytest -q`, `uv run ruff check src/agentos/agent/monitor tests/test_agent_account_registry_commands.py`, `git diff --check`, `uv tool install --reinstall --editable .`, `agentos agent accounts monitor --once`, and `agentos agent accounts monitor --once --json`.

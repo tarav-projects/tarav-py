@@ -24,7 +24,6 @@ class LimitsTrackingWorkflow:
 
     def __init__(self, config: MonitorWorkflowConfig) -> None:
         self.config = config
-        self._frame_block_index: int | None = None
 
     def run(self, state: MonitorState, frame: MonitorFrame) -> None:
         run_count = state.workflow_run_counts.get(self.name, 0) + 1
@@ -82,13 +81,7 @@ class LimitsTrackingWorkflow:
         existing = target_states.get(target_key)
         if isinstance(existing, dict):
             return existing
-        target_state: dict[str, object] = {
-            "provider": target.provider,
-            "account": target.account,
-            "home": str(target.home),
-            "status": "pending",
-            "refresh_count": 0,
-        }
+        target_state = _new_target_state(target)
         target_states[target_key] = target_state
         return target_state
 
@@ -111,7 +104,7 @@ class LimitsTrackingWorkflow:
                     "status": "error",
                     "last_refresh_at_monotonic": now,
                     "last_refresh_tick": tick,
-                    "refresh_count": _refresh_count(target_state) + 1,
+                    "refresh_count": _target_refresh_count(target_state) + 1,
                     "account_status": None,
                     "error": {
                         "type": type(exc).__name__,
@@ -125,7 +118,7 @@ class LimitsTrackingWorkflow:
                 "status": "ok",
                 "last_refresh_at_monotonic": now,
                 "last_refresh_tick": tick,
-                "refresh_count": _refresh_count(target_state) + 1,
+                "refresh_count": _target_refresh_count(target_state) + 1,
                 "account_status": account_status.summary(),
                 "error": None,
             }
@@ -145,23 +138,14 @@ class LimitsTrackingWorkflow:
             target_state = (
                 raw_target_state if isinstance(raw_target_state, dict) else {}
             )
-            target_summaries.append(dict(target_state))
+            target_summaries.append(_target_state_summary(target_state))
             rows.extend(_target_rows(target=target, target_state=target_state))
         data = {
             "refresh_interval_sec": self.config.refresh_interval_sec,
             "run_count": workflow_state.get("run_count"),
             "targets": target_summaries,
         }
-        if (
-            self._frame_block_index is None
-            or self._frame_block_index >= len(frame.blocks)
-        ):
-            self._frame_block_index = len(frame.blocks)
-            frame.add_block(self.name, rows=rows, data=data)
-            return
-        frame.replace_block(
-            self._frame_block_index, title=self.name, rows=rows, data=data
-        )
+        frame.add_block(self.name, rows=rows, data=data)
 
 
 def build_monitor_workflows(
@@ -217,11 +201,25 @@ def _target_key(target: MonitorTarget) -> str:
     return f"{target.provider}/{target.account}@{target.home}"
 
 
-def _refresh_count(target_state: dict[str, object]) -> int:
+def _new_target_state(target: MonitorTarget) -> dict[str, object]:
+    return {
+        "provider": target.provider,
+        "account": target.account,
+        "home": str(target.home),
+        "status": "pending",
+        "refresh_count": 0,
+    }
+
+
+def _target_refresh_count(target_state: dict[str, object]) -> int:
     count = target_state.get("refresh_count", 0)
     if isinstance(count, int):
         return count
     return 0
+
+
+def _target_state_summary(target_state: dict[str, object]) -> dict[str, object]:
+    return dict(target_state)
 
 
 def _target_rows(
@@ -482,9 +480,3 @@ def _string_value(value: object) -> str | None:
     if isinstance(value, str) and value:
         return value
     return None
-
-
-def _format_seconds(value: float) -> str:
-    if value.is_integer():
-        return str(int(value))
-    return str(value)

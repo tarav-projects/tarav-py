@@ -61,18 +61,7 @@ def monitor_result_payload(
 
 
 def format_monitor_frame(frame: MonitorFrame) -> str:
-    lines = ["Agent accounts monitor", f"Tick: {frame.tick}"]
-    if frame.status_lines:
-        lines.extend(f"Status: {line}" for line in frame.status_lines)
-    if frame.errors:
-        lines.extend(["", "Errors"])
-        lines.extend(f"  {error}" for error in frame.errors)
-    for block in frame.blocks:
-        title = block.get("title")
-        if isinstance(title, str):
-            lines.extend(["", title])
-        lines.extend(_format_monitor_row_text(row) for row in monitor_block_rows(block))
-    return "\n".join(lines)
+    return "\n".join(row.text for row in _monitor_render_rows(frame))
 
 
 def dumps_monitor_json(frame: MonitorFrame, state: MonitorState) -> str:

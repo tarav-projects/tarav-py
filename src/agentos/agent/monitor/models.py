@@ -113,19 +113,6 @@ class MonitorFrame:
     def add_error(self, message: str) -> None:
         self.errors.append(message)
 
-    def replace_block(
-        self,
-        index: int,
-        *,
-        title: str,
-        lines: list[str] | None = None,
-        data: dict[str, object] | None = None,
-        rows: list[MonitorRow] | None = None,
-    ) -> None:
-        self.blocks[index] = monitor_block(
-            title=title, lines=lines, data=data, rows=rows
-        )
-
 
 def monitor_block(
     *,
