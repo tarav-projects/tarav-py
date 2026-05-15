@@ -19,7 +19,6 @@ from typing import Any
 
 from agentos._core.errors import CliError
 from agentos._core.process import run_process
-from agentos._core.project import agentos_home_dir
 from agentos.agent.account_registry import load_account, load_links
 from agentos.agent.account_status import (
     AccountIdentity,
@@ -31,13 +30,11 @@ from agentos.agent.account_status import (
 )
 from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
-from agentos.agent.usage_registry import append_usage_record
+from agentos.agent.usage_registry import append_usage_record, latest_usage_record
 
 
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
 DEFAULT_USAGE_GET_TIMEOUT_SEC = 5
-CLAUDE_USAGE_GET_CACHE_MAX_AGE_SEC = 300
-CLAUDE_USAGE_GET_STALE_FALLBACK_MAX_AGE_SEC = 3600
 CLAUDE_USAGE_API_URL = "https://api.anthropic.com/api/oauth/usage"
 CLAUDE_USAGE_GET_SOURCE = "oauth_usage_get"
 CLAUDE_OAUTH_BETA_HEADER = "oauth-2025-04-20"
@@ -61,6 +58,7 @@ def _claude_account_status_impl(
     agent: Agent,
     *,
     record_usage: bool = True,
+    fallback_to_usage_registry: bool = True,
 ) -> AccountStatus:
     if agent.account is None:
         raise CliError("claude-code account_status requires an agent account context")
@@ -101,10 +99,19 @@ def _claude_account_status_impl(
         usage_errors: tuple[AccountStatusError, ...] = ()
         usage_payload: dict[str, Any] | None = None
     else:
-        limits, usage_errors, usage_payload, usage_record_payload = _account_usage_GET(agent)
+        (
+            limits,
+            usage_errors,
+            usage_payload,
+            usage_record_payload,
+            usage_record_metadata,
+        ) = _account_usage_GET(
+            agent,
+            fallback_to_usage_registry=fallback_to_usage_registry,
+        )
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
-        auth_summary = "Claude usage API read" if usage_status == "ok" else None
+        auth_summary = _usage_auth_summary(usage_record_metadata, usage_status=usage_status)
         if record_usage and usage_status == "ok" and limits and usage_record_payload is not None:
             append_usage_record(
                 provider=agent.provider,
@@ -137,6 +144,7 @@ def _claude_account_status_impl(
                 else None
             ),
             "usage": usage_payload,
+            "usage_record": usage_record_metadata,
         },
     )
 
@@ -249,39 +257,80 @@ def _setup_errors(
 # isolated while we evaluate which one should become the long-term capability.
 def _account_usage_GET(
     agent: Agent,
+    *,
+    fallback_to_usage_registry: bool = True,
 ) -> tuple[
     tuple[AccountLimit, ...],
     tuple[AccountStatusError, ...],
     dict[str, Any] | None,
     dict[str, Any] | None,
+    dict[str, Any] | None,
 ]:
-    cached_payload = _load_cached_claude_usage_get_payload(
-        agent,
-        max_age_sec=CLAUDE_USAGE_GET_CACHE_MAX_AGE_SEC,
-    )
-    if cached_payload is not None:
-        return _parse_claude_usage_get_limits(cached_payload), (), cached_payload, None
-
     try:
         payload = _fetch_claude_usage_payload(agent)
-        _write_cached_claude_usage_get_payload(agent, payload)
         return (
             _parse_claude_usage_get_limits(payload),
             (),
-            _with_usage_get_cache_metadata(payload, cache_status="live"),
             payload,
+            payload,
+            _fresh_usage_record_metadata(),
         )
     except AccountStatusError as exc:
-        cached_payload = _load_cached_claude_usage_get_payload(
+        return _account_usage_registry_fallback(
             agent,
-            max_age_sec=CLAUDE_USAGE_GET_STALE_FALLBACK_MAX_AGE_SEC,
-            stale_error=exc,
+            live_error=exc,
+            fallback_to_usage_registry=fallback_to_usage_registry,
         )
-        if cached_payload is not None:
-            return _parse_claude_usage_get_limits(cached_payload), (), cached_payload, None
-        return (), (exc,), None, None
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None, None
+        return _account_usage_registry_fallback(
+            agent,
+            live_error=AccountStatusError(error_type="invalid_output", message=str(exc)),
+            fallback_to_usage_registry=fallback_to_usage_registry,
+        )
+
+
+def _account_usage_registry_fallback(
+    agent: Agent,
+    *,
+    live_error: AccountStatusError,
+    fallback_to_usage_registry: bool,
+) -> tuple[
+    tuple[AccountLimit, ...],
+    tuple[AccountStatusError, ...],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
+    if not fallback_to_usage_registry:
+        return (), (live_error,), None, None, None
+    if agent.home is None:
+        return (), (live_error,), None, None, None
+    record = latest_usage_record(
+        provider=agent.provider,
+        account=_account_name(agent),
+        home=agent.home,
+        source=CLAUDE_USAGE_GET_SOURCE,
+    )
+    if record is None:
+        return (), (live_error,), None, None, None
+    payload = record.get("payload")
+    if not isinstance(payload, dict):
+        return (), (live_error,), None, None, None
+    try:
+        limits = _parse_claude_usage_get_limits(payload)
+    except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        fallback_error = AccountStatusError(
+            error_type="invalid_registry_payload",
+            message=str(exc),
+        )
+        return (), (live_error, fallback_error), None, None, None
+    return (
+        limits,
+        (),
+        payload,
+        None,
+        _registry_fallback_usage_record_metadata(record, live_error=live_error),
+    )
 
 
 def _account_usage_statusline(
@@ -347,89 +396,55 @@ def _fetch_claude_usage_payload(agent: Agent) -> dict[str, Any]:
     return payload
 
 
-def _load_cached_claude_usage_get_payload(
-    agent: Agent,
+def _fresh_usage_record_metadata() -> dict[str, Any]:
+    return {
+        "status": "fresh",
+        "recorded_at": None,
+        "source": CLAUDE_USAGE_GET_SOURCE,
+    }
+
+
+def _registry_fallback_usage_record_metadata(
+    record: Mapping[str, Any],
     *,
-    max_age_sec: int,
-    stale_error: AccountStatusError | None = None,
-) -> dict[str, Any] | None:
-    cache_path = _claude_usage_get_cache_path(agent)
-    if not cache_path.is_file():
+    live_error: AccountStatusError,
+) -> dict[str, Any]:
+    recorded_at = _string_or_none(record.get("recorded_at"))
+    return {
+        "status": "registry_fallback",
+        "recorded_at": recorded_at,
+        "age_sec": _usage_record_age_sec(recorded_at),
+        "source": CLAUDE_USAGE_GET_SOURCE,
+        "live_error": live_error.summary(),
+    }
+
+
+def _usage_record_age_sec(recorded_at: str | None) -> int | None:
+    if recorded_at is None:
         return None
     try:
-        cache = json.loads(cache_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        normalized = recorded_at[:-1] + "+00:00" if recorded_at.endswith("Z") else recorded_at
+        parsed = datetime.datetime.fromisoformat(normalized)
+    except ValueError:
         return None
-    if not isinstance(cache, dict):
-        return None
-    captured_at = cache.get("captured_at_epoch")
-    payload = cache.get("payload")
-    if not isinstance(captured_at, int | float) or not isinstance(payload, dict):
-        return None
-    age_sec = time.time() - float(captured_at)
-    if age_sec < 0 or age_sec > max_age_sec:
-        return None
-    cache_status = "stale_fallback" if stale_error is not None else "fresh"
-    return _with_usage_get_cache_metadata(
-        payload,
-        cache_status=cache_status,
-        captured_at_epoch=float(captured_at),
-        age_sec=age_sec,
-        stale_error=stale_error,
-    )
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.UTC)
+    return max(0, round((datetime.datetime.now(tz=datetime.UTC) - parsed).total_seconds()))
 
 
-def _write_cached_claude_usage_get_payload(agent: Agent, payload: dict[str, Any]) -> None:
-    cache_path = _claude_usage_get_cache_path(agent)
-    now = time.time()
-    cache = {
-        "schema_version": 1,
-        "provider": agent.provider,
-        "account": _account_name(agent),
-        "method": CLAUDE_USAGE_GET_SOURCE,
-        "captured_at_epoch": now,
-        "captured_at": _iso_from_epoch_seconds(int(now)),
-        "payload": payload,
-    }
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = cache_path.parent / f".{cache_path.name}.agentos-tmp-{os.getpid()}"
-    temp_path.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(temp_path, cache_path)
-
-
-def _claude_usage_get_cache_path(agent: Agent) -> Path:
-    return (
-        agentos_home_dir()
-        / "cache"
-        / "account-status"
-        / agent.provider
-        / _account_name(agent)
-        / "oauth_usage_get.json"
-    )
-
-
-def _with_usage_get_cache_metadata(
-    payload: Mapping[str, Any],
+def _usage_auth_summary(
+    usage_record_metadata: Mapping[str, Any] | None,
     *,
-    cache_status: str,
-    captured_at_epoch: float | None = None,
-    age_sec: float | None = None,
-    stale_error: AccountStatusError | None = None,
-) -> dict[str, Any]:
-    payload_with_metadata = dict(payload)
-    metadata: dict[str, object] = {
-        "method": CLAUDE_USAGE_GET_SOURCE,
-        "status": cache_status,
-    }
-    if captured_at_epoch is not None:
-        metadata["captured_at_epoch"] = captured_at_epoch
-        metadata["captured_at"] = _iso_from_epoch_seconds(int(captured_at_epoch))
-    if age_sec is not None:
-        metadata["age_sec"] = round(age_sec, 3)
-    if stale_error is not None:
-        metadata["live_error"] = stale_error.summary()
-    payload_with_metadata["agentos_cache"] = metadata
-    return payload_with_metadata
+    usage_status: str,
+) -> str | None:
+    if usage_status != "ok":
+        return None
+    if (
+        isinstance(usage_record_metadata, Mapping)
+        and usage_record_metadata.get("status") == "registry_fallback"
+    ):
+        return "Claude usage registry fallback"
+    return "Claude usage API read"
 
 
 def _account_name(agent: Agent) -> str:

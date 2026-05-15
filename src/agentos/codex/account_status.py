@@ -33,7 +33,9 @@ def _codex_account_status_impl(
     agent: Agent,
     *,
     record_usage: bool = True,
+    fallback_to_usage_registry: bool = True,
 ) -> AccountStatus:
+    del fallback_to_usage_registry
     if agent.account is None:
         raise CliError("codex account_status requires an agent account context")
     if agent.home is None:
@@ -71,11 +73,21 @@ def _codex_account_status_impl(
         limits: tuple[AccountLimit, ...] = ()
         usage_errors: tuple[AccountStatusError, ...] = ()
         usage_payload: dict[str, Any] | None = None
+        usage_record_metadata: dict[str, Any] | None = None
     else:
         limits, usage_errors, usage_payload = _account_usage_app_server(agent)
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
         auth_summary = "Codex rate limits read" if usage_status == "ok" else None
+        usage_record_metadata = (
+            {
+                "status": "fresh",
+                "recorded_at": None,
+                "source": CODEX_APP_SERVER_USAGE_SOURCE,
+            }
+            if usage_status == "ok"
+            else None
+        )
         if record_usage and usage_status == "ok" and limits and usage_payload is not None:
             append_usage_record(
                 provider=agent.provider,
@@ -103,6 +115,7 @@ def _codex_account_status_impl(
         raw={
             "home_status": home_status,
             "usage": usage_payload,
+            "usage_record": usage_record_metadata,
         },
     )
 

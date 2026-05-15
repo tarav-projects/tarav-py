@@ -266,7 +266,11 @@ def _registered_linked_claude_home(
 
 
 def _monitor_account_status(
-    *, provider: str, account: str, home: Path
+    *,
+    provider: str,
+    account: str,
+    home: Path,
+    usage_record: dict[str, object] | None = None,
 ) -> AccountStatus:
     burst_started_at, burst_ends_at = _usage_period(
         duration_mins=300, elapsed_percent=37
@@ -285,6 +289,15 @@ def _monitor_account_status(
         fetched_identity=AccountIdentity(provider_account_id=f"acc_{account}"),
         identity_match="verified",
         usage_summary="5 hours 3%, 168 hours 1%",
+        raw={
+            "usage_record": usage_record
+            if usage_record is not None
+            else {
+                "status": "fresh",
+                "recorded_at": None,
+                "source": "app_server",
+            }
+        },
         limits=(
             AccountLimit(
                 limit_class="usage_over_time",
@@ -328,12 +341,16 @@ def _iso_z(value: datetime.datetime) -> str:
 
 
 def _stub_monitor_account_status(
-    monkeypatch, *, failures: set[str] | None = None
+    monkeypatch,
+    *,
+    failures: set[str] | None = None,
+    usage_records: dict[str, dict[str, object]] | None = None,
 ) -> list[str]:
     import agentos.agent.monitor.workflows as monitor_workflows
 
     calls: list[str] = []
     failed_targets = set() if failures is None else failures
+    usage_record_by_target = {} if usage_records is None else usage_records
 
     class FakeAgent:
         def __init__(self, *, provider: str, account: str, home: Path) -> None:
@@ -341,13 +358,22 @@ def _stub_monitor_account_status(
             self.account = account
             self.home = home
 
-        def account_status(self) -> AccountStatus:
+        def account_status(
+            self,
+            *,
+            record_usage: bool = True,
+            fallback_to_usage_registry: bool = True,
+        ) -> AccountStatus:
+            del record_usage, fallback_to_usage_registry
             key = f"{self.provider}/{self.account}@{self.home}"
             calls.append(key)
             if key in failed_targets:
                 raise RuntimeError(f"cannot refresh {self.account}")
             return _monitor_account_status(
-                provider=self.provider, account=self.account, home=self.home
+                provider=self.provider,
+                account=self.account,
+                home=self.home,
+                usage_record=usage_record_by_target.get(key),
             )
 
     def fake_build_registered_account_agent(
@@ -1011,6 +1037,68 @@ def test_agent_usage_registry_appends_monthly_jsonl(
     assert entries[0]["payload"] == {"raw": {"used": 25}}
 
 
+def test_agent_usage_registry_latest_record_reads_newest_matching_record(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.usage_registry import append_usage_record, latest_usage_record
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    codex_home = tmp_path / "codex-home"
+    claude_home = tmp_path / "claude-home"
+    append_usage_record(
+        provider="codex",
+        account="br",
+        home=codex_home,
+        source="app_server",
+        payload={"used": 10},
+    )
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=claude_home,
+        source="statusline",
+        payload={"used": 20},
+    )
+    append_usage_record(
+        provider="claude-code",
+        account="other",
+        home=claude_home,
+        source="oauth_usage_get",
+        payload={"used": 30},
+    )
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=claude_home,
+        source="oauth_usage_get",
+        payload={"used": 40},
+    )
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=claude_home,
+        source="oauth_usage_get",
+        payload={"used": 50},
+    )
+
+    record = latest_usage_record(
+        provider="claude-code",
+        account="main",
+        home=claude_home,
+        source="oauth_usage_get",
+    )
+
+    assert record is not None
+    assert record["payload"] == {"used": 50}
+    assert latest_usage_record(
+        provider="claude-code",
+        account="main",
+        home=tmp_path / "missing-home",
+        source="oauth_usage_get",
+    ) is None
+
+
 def test_codex_account_status_reports_identity_mismatch_as_status_error(
     tmp_path: Path,
     monkeypatch,
@@ -1435,60 +1523,61 @@ def test_claude_usage_get_parser_maps_subscription_limits() -> None:
     assert limits[0].provider_limit == {"limit_type": "five_hour"}
 
 
-def test_claude_usage_get_uses_fresh_account_cache(
+def test_claude_usage_get_fetches_provider_before_registry_fallback(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     import agentos.claude.account_status as claude_account_status
+    from agentos.agent.usage_registry import append_usage_record
     from agentos.claude.agent import ClaudeAgent
 
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     agent = ClaudeAgent(
         home=tmp_path / "claude-home",
         account=AgentAccountContext(provider="claude-code", account="main"),
     )
-    cache_path = (
-        agentos_home
-        / "cache"
-        / "account-status"
-        / "claude-code"
-        / "main"
-        / "oauth_usage_get.json"
-    )
-    _write(
-        cache_path,
-        json.dumps(
-            {
-                "captured_at_epoch": 100.0,
-                "payload": {
-                    "five_hour": {
-                        "utilization": 20,
-                        "resets_at": "2026-05-15T20:29:59Z",
-                    }
-                },
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=agent.home,
+        source="oauth_usage_get",
+        payload={
+            "five_hour": {
+                "utilization": 20,
+                "resets_at": "2026-05-15T20:29:59Z",
             }
-        )
-        + "\n",
+        },
     )
-    monkeypatch.setattr(claude_account_status.time, "time", lambda: 120.0)
+    monkeypatch.setattr(
+        claude_account_status,
+        "_fetch_claude_usage_payload",
+        lambda agent: {
+            "five_hour": {
+                "utilization": 44,
+                "resets_at": "2026-05-15T20:29:59Z",
+            }
+        },
+    )
 
-    def fail_fetch(agent):
-        del agent
-        raise AssertionError("fresh account cache should skip provider fetch")
-
-    monkeypatch.setattr(claude_account_status, "_fetch_claude_usage_payload", fail_fetch)
-
-    limits, errors, payload, record_payload = claude_account_status._account_usage_GET(agent)
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_GET(agent)
+    )
 
     assert errors == ()
     assert [limit.limit_name for limit in limits] == ["burst"]
+    assert [limit.usage_over_time.used_percent for limit in limits if limit.usage_over_time] == [
+        44
+    ]
     assert payload is not None
-    assert record_payload is None
-    assert payload["agentos_cache"]["status"] == "fresh"
-    assert payload["agentos_cache"]["age_sec"] == 20.0
+    assert record_payload == payload
+    assert usage_record == {
+        "status": "fresh",
+        "recorded_at": None,
+        "source": "oauth_usage_get",
+    }
 
 
-def test_claude_usage_get_writes_account_cache(
+def test_claude_usage_get_fresh_fetch_does_not_write_account_cache(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1500,7 +1589,6 @@ def test_claude_usage_get_writes_account_cache(
         home=tmp_path / "claude-home",
         account=AgentAccountContext(provider="claude-code", account="main"),
     )
-    monkeypatch.setattr(claude_account_status.time, "time", lambda: 100.0)
     monkeypatch.setattr(
         claude_account_status,
         "_fetch_claude_usage_payload",
@@ -1512,7 +1600,9 @@ def test_claude_usage_get_writes_account_cache(
         },
     )
 
-    limits, errors, payload, record_payload = claude_account_status._account_usage_GET(agent)
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_GET(agent)
+    )
 
     assert errors == ()
     assert [limit.usage_over_time.used_percent for limit in limits if limit.usage_over_time] == [
@@ -1525,58 +1615,35 @@ def test_claude_usage_get_writes_account_cache(
             "resets_at": "2026-05-15T20:29:59Z",
         }
     }
-    assert payload["agentos_cache"]["status"] == "live"
-    cache_payload = json.loads(
-        (
-            agentos_home
-            / "cache"
-            / "account-status"
-            / "claude-code"
-            / "main"
-            / "oauth_usage_get.json"
-        ).read_text(encoding="utf-8")
-    )
-    assert cache_payload["provider"] == "claude-code"
-    assert cache_payload["account"] == "main"
-    assert cache_payload["payload"]["five_hour"]["utilization"] == 33
+    assert usage_record["status"] == "fresh"
+    assert not (agentos_home / "cache" / "account-status").exists()
 
 
-def test_claude_usage_get_uses_stale_account_cache_when_refresh_fails(
+def test_claude_usage_get_uses_latest_registry_record_when_refresh_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     import agentos.claude.account_status as claude_account_status
+    from agentos.agent.usage_registry import append_usage_record
     from agentos.claude.agent import ClaudeAgent
 
-    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     agent = ClaudeAgent(
         home=tmp_path / "claude-home",
         account=AgentAccountContext(provider="claude-code", account="main"),
     )
-    cache_path = (
-        agentos_home
-        / "cache"
-        / "account-status"
-        / "claude-code"
-        / "main"
-        / "oauth_usage_get.json"
-    )
-    _write(
-        cache_path,
-        json.dumps(
-            {
-                "captured_at_epoch": 100.0,
-                "payload": {
-                    "five_hour": {
-                        "utilization": 20,
-                        "resets_at": "2026-05-15T20:29:59Z",
-                    }
-                },
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=agent.home,
+        source="oauth_usage_get",
+        payload={
+            "five_hour": {
+                "utilization": 20,
+                "resets_at": "2026-05-15T20:29:59Z",
             }
-        )
-        + "\n",
+        },
     )
-    monkeypatch.setattr(claude_account_status.time, "time", lambda: 500.0)
 
     def fail_fetch(agent):
         del agent
@@ -1588,14 +1655,105 @@ def test_claude_usage_get_uses_stale_account_cache_when_refresh_fails(
 
     monkeypatch.setattr(claude_account_status, "_fetch_claude_usage_payload", fail_fetch)
 
-    limits, errors, payload, record_payload = claude_account_status._account_usage_GET(agent)
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_GET(agent)
+    )
 
     assert errors == ()
     assert [limit.limit_name for limit in limits] == ["burst"]
     assert payload is not None
     assert record_payload is None
-    assert payload["agentos_cache"]["status"] == "stale_fallback"
-    assert payload["agentos_cache"]["live_error"]["type"] == "usage_api_http_error"
+    assert payload["five_hour"]["utilization"] == 20
+    assert usage_record is not None
+    assert usage_record["status"] == "registry_fallback"
+    assert usage_record["source"] == "oauth_usage_get"
+    assert usage_record["live_error"]["type"] == "usage_api_http_error"
+
+
+def test_claude_usage_get_refresh_failure_can_disable_registry_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.agent.usage_registry import append_usage_record
+    from agentos.claude.agent import ClaudeAgent
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=agent.home,
+        source="oauth_usage_get",
+        payload={
+            "five_hour": {
+                "utilization": 20,
+                "resets_at": "2026-05-15T20:29:59Z",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        claude_account_status,
+        "_fetch_claude_usage_payload",
+        lambda agent: (_ for _ in ()).throw(
+            AccountStatusError(
+                error_type="usage_api_http_error",
+                message="claude usage API returned HTTP 429",
+                exit_code=429,
+            )
+        ),
+    )
+
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_GET(
+            agent,
+            fallback_to_usage_registry=False,
+        )
+    )
+
+    assert limits == ()
+    assert [error.error_type for error in errors] == ["usage_api_http_error"]
+    assert payload is None
+    assert record_payload is None
+    assert usage_record is None
+
+
+def test_claude_usage_get_refresh_failure_without_registry_record_returns_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    monkeypatch.setattr(
+        claude_account_status,
+        "_fetch_claude_usage_payload",
+        lambda agent: (_ for _ in ()).throw(
+            AccountStatusError(
+                error_type="usage_api_http_error",
+                message="claude usage API returned HTTP 429",
+                exit_code=429,
+            )
+        ),
+    )
+
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_GET(agent)
+    )
+
+    assert limits == ()
+    assert [error.error_type for error in errors] == ["usage_api_http_error"]
+    assert payload is None
+    assert record_payload is None
+    assert usage_record is None
 
 
 def test_claude_statusline_uses_stable_system_home_workspace(tmp_path: Path) -> None:
@@ -1788,39 +1946,39 @@ def test_claude_account_status_record_usage_false_skips_usage_registry(
     assert _usage_registry_entries(tmp_path / "home" / ".agentos") == []
 
 
-def test_claude_account_status_fresh_cache_skips_usage_registry(
+def test_claude_account_status_registry_fallback_returns_status_without_append(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     import agentos.claude.account_status as claude_account_status
+    from agentos.agent.usage_registry import append_usage_record
 
     agentos_home = tmp_path / "home" / ".agentos"
     claude_home = _registered_linked_claude_home(tmp_path, monkeypatch, capsys)
-    cache_path = (
-        agentos_home
-        / "cache"
-        / "account-status"
-        / "claude-code"
-        / "main"
-        / "oauth_usage_get.json"
-    )
-    _write(
-        cache_path,
-        json.dumps(
-            {
-                "captured_at_epoch": 100.0,
-                "payload": {
-                    "five_hour": {
-                        "utilization": 20,
-                        "resets_at": "2026-04-12T13:20:00Z",
-                    }
-                },
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=claude_home,
+        source="oauth_usage_get",
+        payload={
+            "five_hour": {
+                "utilization": 20,
+                "resets_at": "2026-04-12T13:20:00Z",
             }
-        )
-        + "\n",
+        },
     )
-    monkeypatch.setattr(claude_account_status.time, "time", lambda: 120.0)
+    monkeypatch.setattr(
+        claude_account_status,
+        "_fetch_claude_usage_payload",
+        lambda agent: (_ for _ in ()).throw(
+            AccountStatusError(
+                error_type="usage_api_http_error",
+                message="claude usage API returned HTTP 429",
+                exit_code=429,
+            )
+        ),
+    )
     agent = build_registered_account_agent(
         provider="claude-code", account="main", home=claude_home
     )
@@ -1828,7 +1986,10 @@ def test_claude_account_status_fresh_cache_skips_usage_registry(
     status = agent.account_status()
 
     assert status.usage_status == "ok"
-    assert _usage_registry_entries(agentos_home) == []
+    assert status.auth_summary == "Claude usage registry fallback"
+    assert status.raw["usage_record"]["status"] == "registry_fallback"
+    assert status.raw["usage"]["five_hour"]["utilization"] == 20
+    assert len(_usage_registry_entries(agentos_home)) == 1
 
 
 def test_agent_accounts_monitor_once_prints_account_status(
@@ -1860,10 +2021,50 @@ def test_agent_accounts_monitor_once_prints_account_status(
     assert "limits-tracking" in output
     assert "refresh_interval_sec: 60" not in output
     assert "    ⬢ codex/br:" in output
+    assert "      refreshed | now" in output
     assert "      usage/time |  3% / 37% = 0.1 | Burst" in output
     assert "          resets | " in output
     assert "      usage/time |  1% / 18% = 0.1 | Weekly" in output
     assert "under construction" not in output
+
+
+def test_agent_accounts_monitor_once_prints_registry_fallback_refresh_time(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+        ],
+    )
+    target_key = f"codex/br@{agentos_home / 'agent' / 'homes' / 'codex' / 'br'}"
+    _stub_monitor_account_status(
+        monkeypatch,
+        usage_records={
+            target_key: {
+                "status": "registry_fallback",
+                "recorded_at": "2026-05-15T15:03:00Z",
+                "age_sec": 12 * 60,
+                "source": "app_server",
+            }
+        },
+    )
+
+    assert main(["agent", "accounts", "monitor", "--once"]) == 0
+    output = capsys.readouterr().out
+    assert "      refreshed | " in output
+    assert " | 12m ago" in output
 
 
 def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
@@ -1925,9 +2126,14 @@ def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
     assert payload["frame"]["tick"] == 3
     assert len(payload["frame"]["blocks"]) == 1
     assert payload["frame"]["blocks"][0]["lines"][0] == "  ⬢ codex/br:"
+    assert payload["frame"]["blocks"][0]["lines"][1] == "    refreshed | now"
     assert payload["frame"]["blocks"][0]["rows"][0] == {
         "kind": "text",
         "text": "  ⬢ codex/br:",
+    }
+    assert payload["frame"]["blocks"][0]["rows"][1] == {
+        "kind": "text",
+        "text": "    refreshed | now",
     }
     assert any(
         row["kind"] == "usage_time" for row in payload["frame"]["blocks"][0]["rows"]

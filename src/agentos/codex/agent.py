@@ -65,8 +65,13 @@ class CodexAgent(AgentBase):
         self,
         *,
         record_usage: bool = True,
+        fallback_to_usage_registry: bool = True,
     ) -> AccountStatus:
-        return _codex_account_status_impl(self, record_usage=record_usage)
+        return _codex_account_status_impl(
+            self,
+            record_usage=record_usage,
+            fallback_to_usage_registry=fallback_to_usage_registry,
+        )
 
     def _codex_command_config(self, command_config: AgentCommandConfig) -> AgentCommandConfig:
         if command_config.interaction_mode != "non_interactive":

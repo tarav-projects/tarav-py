@@ -231,6 +231,9 @@ def _target_rows(
         return rows
     account_status = target_state.get("account_status")
     if isinstance(account_status, dict):
+        refresh_line = _usage_refresh_line(account_status)
+        if refresh_line is not None:
+            rows.append(MonitorTextRow(refresh_line))
         limit_rows = _account_limit_rows(account_status)
         if limit_rows:
             rows.extend(limit_rows)
@@ -301,6 +304,28 @@ def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
                 )
             )
     return rows
+
+
+def _usage_refresh_line(account_status: dict[str, Any]) -> str | None:
+    raw = account_status.get("raw")
+    if not isinstance(raw, dict):
+        return None
+    usage_record = raw.get("usage_record")
+    if not isinstance(usage_record, dict):
+        return None
+    status = usage_record.get("status")
+    if status == "fresh":
+        return "    refreshed | now"
+    if status != "registry_fallback":
+        return None
+    recorded_at = _parse_datetime(_string_value(usage_record.get("recorded_at")))
+    if recorded_at is None:
+        return None
+    age_sec = _int_value(usage_record.get("age_sec"))
+    if age_sec is None:
+        age_sec = int((datetime.datetime.now(tz=datetime.UTC) - recorded_at).total_seconds())
+    recorded_display = recorded_at.astimezone().strftime("%a %m-%d %H:%M")
+    return f"    refreshed | {recorded_display} | {_format_age_duration(age_sec)} ago"
 
 
 def _usage_time_line(
@@ -449,6 +474,10 @@ def _format_remaining_duration(diff_seconds: int) -> str:
     if minutes > 0:
         parts.append(f"{minutes}m")
     return " ".join(parts) or "0m"
+
+
+def _format_age_duration(diff_seconds: int) -> str:
+    return _format_remaining_duration(max(0, diff_seconds))
 
 
 def _parse_datetime(value: str | None) -> datetime.datetime | None:

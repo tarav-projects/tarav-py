@@ -62,8 +62,13 @@ class ClaudeAgent(AgentBase):
         self,
         *,
         record_usage: bool = True,
+        fallback_to_usage_registry: bool = True,
     ) -> AccountStatus:
-        return _claude_account_status_impl(self, record_usage=record_usage)
+        return _claude_account_status_impl(
+            self,
+            record_usage=record_usage,
+            fallback_to_usage_registry=fallback_to_usage_registry,
+        )
 
     def _run_env_overrides(self) -> dict[str, str]:
         env_overrides = dict(self.env)

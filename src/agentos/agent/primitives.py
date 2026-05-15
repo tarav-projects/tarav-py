@@ -298,8 +298,9 @@ class AgentBase:
         self,
         *,
         record_usage: bool = True,
+        fallback_to_usage_registry: bool = True,
     ) -> AccountStatus:
-        del record_usage
+        del record_usage, fallback_to_usage_registry
         raise CliError(
             f"agent {self.instance_id or '<default>'} for provider {self.provider} "
             "does not support account_status"
@@ -387,6 +388,7 @@ class Agent(Protocol):
         self,
         *,
         record_usage: bool = True,
+        fallback_to_usage_registry: bool = True,
     ) -> AccountStatus: ...
 
 
