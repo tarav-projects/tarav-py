@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Mapping
+from typing import Any, Literal, Mapping
 
 
 AccountCheckStatus = Literal["ok", "error"]
 AccountUsageStatus = Literal["ok", "error", "unavailable"]
 AccountIdentityMatch = Literal["verified", "mismatched", "unknown", "unavailable"]
+USAGE_RECORD_STATUS_FRESH = "fresh"
+USAGE_RECORD_STATUS_REGISTRY_FALLBACK = "registry_fallback"
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,42 @@ class AccountStatusError(Exception):
         if self.detail:
             payload["detail"] = dict(self.detail)
         return payload
+
+
+def fresh_usage_record_metadata(*, source: str) -> dict[str, Any]:
+    return {
+        "status": USAGE_RECORD_STATUS_FRESH,
+        "recorded_at": None,
+        "source": source,
+    }
+
+
+def registry_fallback_usage_record_metadata(
+    *,
+    source: str,
+    recorded_at: str | None,
+    live_error: Mapping[str, object],
+) -> dict[str, Any]:
+    return {
+        "status": USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
+        "recorded_at": recorded_at,
+        "age_sec": usage_record_age_sec(recorded_at),
+        "source": source,
+        "live_error": dict(live_error),
+    }
+
+
+def usage_record_age_sec(recorded_at: str | None) -> int | None:
+    if recorded_at is None:
+        return None
+    try:
+        normalized = recorded_at[:-1] + "+00:00" if recorded_at.endswith("Z") else recorded_at
+        parsed = datetime.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.UTC)
+    return max(0, round((datetime.datetime.now(tz=datetime.UTC) - parsed).total_seconds()))
 
 
 @dataclass(frozen=True)
@@ -166,5 +205,10 @@ __all__ = [
     "AccountStatusError",
     "AccountUsageStatus",
     "AgentAccountContext",
+    "USAGE_RECORD_STATUS_FRESH",
+    "USAGE_RECORD_STATUS_REGISTRY_FALLBACK",
     "UsageOverTimeLimitData",
+    "fresh_usage_record_metadata",
+    "registry_fallback_usage_record_metadata",
+    "usage_record_age_sec",
 ]

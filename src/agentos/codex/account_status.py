@@ -17,6 +17,7 @@ from agentos.agent.account_status import (
     AccountStatus,
     AccountStatusError,
     UsageOverTimeLimitData,
+    fresh_usage_record_metadata,
 )
 from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
@@ -80,11 +81,7 @@ def _codex_account_status_impl(
         usage_summary = _limits_summary(limits) if limits else None
         auth_summary = "Codex rate limits read" if usage_status == "ok" else None
         usage_record_metadata = (
-            {
-                "status": "fresh",
-                "recorded_at": None,
-                "source": CODEX_APP_SERVER_USAGE_SOURCE,
-            }
+            fresh_usage_record_metadata(source=CODEX_APP_SERVER_USAGE_SOURCE)
             if usage_status == "ok"
             else None
         )

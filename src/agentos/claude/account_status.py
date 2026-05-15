@@ -26,7 +26,10 @@ from agentos.agent.account_status import (
     AccountLimit,
     AccountStatus,
     AccountStatusError,
+    USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     UsageOverTimeLimitData,
+    fresh_usage_record_metadata,
+    registry_fallback_usage_record_metadata,
 )
 from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
@@ -273,7 +276,7 @@ def _account_usage_GET(
             (),
             payload,
             payload,
-            _fresh_usage_record_metadata(),
+            fresh_usage_record_metadata(source=CLAUDE_USAGE_GET_SOURCE),
         )
     except AccountStatusError as exc:
         return _account_usage_registry_fallback(
@@ -329,7 +332,11 @@ def _account_usage_registry_fallback(
         (),
         payload,
         None,
-        _registry_fallback_usage_record_metadata(record, live_error=live_error),
+        registry_fallback_usage_record_metadata(
+            source=CLAUDE_USAGE_GET_SOURCE,
+            recorded_at=_string_or_none(record.get("recorded_at")),
+            live_error=live_error.summary(),
+        ),
     )
 
 
@@ -396,42 +403,6 @@ def _fetch_claude_usage_payload(agent: Agent) -> dict[str, Any]:
     return payload
 
 
-def _fresh_usage_record_metadata() -> dict[str, Any]:
-    return {
-        "status": "fresh",
-        "recorded_at": None,
-        "source": CLAUDE_USAGE_GET_SOURCE,
-    }
-
-
-def _registry_fallback_usage_record_metadata(
-    record: Mapping[str, Any],
-    *,
-    live_error: AccountStatusError,
-) -> dict[str, Any]:
-    recorded_at = _string_or_none(record.get("recorded_at"))
-    return {
-        "status": "registry_fallback",
-        "recorded_at": recorded_at,
-        "age_sec": _usage_record_age_sec(recorded_at),
-        "source": CLAUDE_USAGE_GET_SOURCE,
-        "live_error": live_error.summary(),
-    }
-
-
-def _usage_record_age_sec(recorded_at: str | None) -> int | None:
-    if recorded_at is None:
-        return None
-    try:
-        normalized = recorded_at[:-1] + "+00:00" if recorded_at.endswith("Z") else recorded_at
-        parsed = datetime.datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=datetime.UTC)
-    return max(0, round((datetime.datetime.now(tz=datetime.UTC) - parsed).total_seconds()))
-
-
 def _usage_auth_summary(
     usage_record_metadata: Mapping[str, Any] | None,
     *,
@@ -441,7 +412,7 @@ def _usage_auth_summary(
         return None
     if (
         isinstance(usage_record_metadata, Mapping)
-        and usage_record_metadata.get("status") == "registry_fallback"
+        and usage_record_metadata.get("status") == USAGE_RECORD_STATUS_REGISTRY_FALLBACK
     ):
         return "Claude usage registry fallback"
     return "Claude usage API read"

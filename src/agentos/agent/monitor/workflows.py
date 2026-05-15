@@ -5,6 +5,10 @@ import time
 from typing import Any
 
 from agentos._core.errors import CliError
+from agentos.agent.account_status import (
+    USAGE_RECORD_STATUS_FRESH,
+    USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
+)
 from agentos.agent.monitor.loop import MonitorWorkflow
 from agentos.agent.monitor.models import (
     MonitorFrame,
@@ -314,9 +318,9 @@ def _usage_refresh_line(account_status: dict[str, Any]) -> str | None:
     if not isinstance(usage_record, dict):
         return None
     status = usage_record.get("status")
-    if status == "fresh":
+    if status == USAGE_RECORD_STATUS_FRESH:
         return "    refreshed | now"
-    if status != "registry_fallback":
+    if status != USAGE_RECORD_STATUS_REGISTRY_FALLBACK:
         return None
     recorded_at = _parse_datetime(_string_value(usage_record.get("recorded_at")))
     if recorded_at is None:

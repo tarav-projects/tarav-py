@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -90,7 +90,7 @@ def latest_usage_record(
     return None
 
 
-def _iter_lines_reverse(path: Path, *, chunk_size: int = 8192):
+def _iter_lines_reverse(path: Path, *, chunk_size: int = 8192) -> Iterator[str]:
     with path.open("rb") as handle:
         handle.seek(0, os.SEEK_END)
         position = handle.tell()
