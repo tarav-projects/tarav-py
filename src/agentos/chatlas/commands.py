@@ -238,7 +238,14 @@ def _cmd_chatlas_produce(args: argparse.Namespace) -> int:
 
 
 def _cmd_chatlas_run_produce(args: argparse.Namespace) -> int:
-    from pathlib import Path
+    config = _chatlas_run_produce_config()
+    use_config = args.run_produce_provider is None
+    provider = args.run_produce_provider or config.get("agent_provider")
+    if not provider:
+        print("error: --agent-provider is required (no default in chatlas config)", file=sys.stderr)
+        return 1
+    profile = args.profile if args.profile is not None else (config.get("profile") if use_config else None)
+    model = args.model if args.model is not None else (config.get("model") if use_config else None)
 
     query_payload = chatlas_index_query(**_chatlas_index_selector_kwargs(args))
     rows = query_payload.get("rows", [])
@@ -252,15 +259,37 @@ def _cmd_chatlas_run_produce(args: argparse.Namespace) -> int:
         return 0
     payload = chatlas_run_produce(
         view=args.view,
-        provider=args.run_produce_provider,
-        profile=args.profile,
-        model=args.model,
+        provider=provider,
+        profile=profile,
+        model=model,
         dry_run=args.dry_run,
-        cwd=Path.cwd().resolve(),
+        force=args.force,
         rows=rows,
     )
     print(format_json_output(payload))
     return 1 if payload.get("failed_count", 0) else 0
+
+
+def _chatlas_run_produce_config() -> dict[str, object]:
+    import json
+    from agentos.chatlas.delta_scan import default_chatlas_root
+
+    config_path = default_chatlas_root() / "config.json"
+    if not config_path.is_file():
+        return {}
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    chatlas_block = payload.get("chatlas", payload)
+    if not isinstance(chatlas_block, dict):
+        return {}
+    run_produce = chatlas_block.get("run_produce", {})
+    if not isinstance(run_produce, dict):
+        return {}
+    return run_produce
 
 
 def _add_chatlas_provider_argument(parser: argparse.ArgumentParser, *, help_text: str) -> None:
@@ -723,9 +752,9 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     run_produce_parser.add_argument(
         "--agent-provider",
         choices=tuple(p.family for p in canonical_provider_families()),
-        required=True,
+        default=None,
         dest="run_produce_provider",
-        help="Agent provider to use for production.",
+        help="Agent provider to use for production. Falls back to chatlas config default.",
     )
     run_produce_parser.add_argument(
         "--profile",
@@ -741,6 +770,11 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "--dry-run",
         action="store_true",
         help="Show prompts and agent commands without executing.",
+    )
+    run_produce_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Run the agent even if the view is already fresh.",
     )
     _add_chatlas_index_selector_arguments(run_produce_parser)
     run_produce_parser.set_defaults(handler=_cmd_chatlas_run_produce)

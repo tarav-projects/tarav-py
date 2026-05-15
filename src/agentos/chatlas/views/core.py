@@ -311,8 +311,7 @@ def chatlas_run_produce(
     profile: str | None = None,
     model: str | None = None,
     dry_run: bool = False,
-    cwd: Path | None = None,
-    start_path: Path | None = None,
+    force: bool = False,
     chatlas_root: Path | None = None,
     rows: list[dict[str, object]],
 ) -> dict[str, object]:
@@ -321,8 +320,7 @@ def chatlas_run_produce(
 
     workflow = _workflow_by_name(view)
     root = _chatlas_root(chatlas_root)
-    effective_cwd = cwd or Path.cwd().resolve()
-    effective_start_path = start_path or effective_cwd
+    agent_cwd = root
 
     results: list[dict[str, object]] = []
     for row in rows:
@@ -332,10 +330,17 @@ def chatlas_run_produce(
             parameters=[_canonical_session_parameter(row)],
             source_rows=[row],
         )
+
+        if not force and not dry_run:
+            status = workflow.current_status(context)
+            if status.state == "fresh":
+                results.append({"skipped": True, "reason": "fresh"})
+                continue
+
         prompt = workflow.build_produce_prompt(context)
 
         if dry_run:
-            agent = resolve_agent(provider=provider, profile=profile, start_path=effective_start_path)
+            agent = resolve_agent(provider=provider, profile=profile, start_path=agent_cwd)
             command_config = AgentCommandConfig(prompt=prompt, model=model, interaction_mode="non_interactive")
             dry_result = agent.run_dry(command_config)
             results.append({
@@ -344,9 +349,9 @@ def chatlas_run_produce(
             })
             continue
 
-        agent = resolve_agent(provider=provider, profile=profile, start_path=effective_start_path)
+        agent = resolve_agent(provider=provider, profile=profile, start_path=agent_cwd)
         command_config = AgentCommandConfig(prompt=prompt, model=model, interaction_mode="non_interactive")
-        run_config = AgentRunConfig(cwd=effective_cwd, process_mode="terminal")
+        run_config = AgentRunConfig(cwd=agent_cwd, process_mode="terminal")
         result = agent.run(command_config, run_config)
         results.append({
             "exit_code": result.exit_code,
@@ -362,12 +367,14 @@ def chatlas_run_produce(
             "runs": results,
         }
 
-    failed = sum(1 for r in results if r.get("exit_code", 1) != 0)
+    skipped = sum(1 for r in results if r.get("skipped"))
+    failed = sum(1 for r in results if r.get("exit_code", 1) != 0 and not r.get("skipped"))
     return {
         "status": "ok" if failed == 0 else "error",
         "command": "chatlas run-produce",
         "view": view,
         "run_count": len(results),
+        "skipped_count": skipped,
         "failed_count": failed,
         "runs": results,
     }
