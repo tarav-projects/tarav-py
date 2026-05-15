@@ -12,8 +12,6 @@ from uuid import uuid4
 from agentos._core.errors import CliError
 from agentos.chatlas.delta_scan import default_chatlas_root
 from agentos.chatlas.index_query import select_one_chatlas_index_row
-from agentos.agent.providers import resolve_agent
-from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.chatlas.session_model import (
     build_chatlas_session_model_from_index_row,
     project_chatlas_session_model_view,
@@ -283,6 +281,32 @@ def chatlas_views_commit(
 def chatlas_produce(
     *,
     view: str,
+    explain: bool = False,
+    chatlas_root: Path | None = None,
+    **selectors: object,
+) -> dict[str, object]:
+    context = _context_from_selector(view=view, chatlas_root=chatlas_root, selectors=selectors)
+    if context.workflow.kind == "internal":
+        status = _ensure_available(context, explain=explain)
+        return _view_result(
+            command="chatlas produce",
+            context=context,
+            status=status,
+            explain=explain,
+        )
+    prompt = context.workflow.build_produce_prompt(context)
+    return {
+        "status": "ok",
+        "command": "chatlas produce",
+        "view": context.workflow.name,
+        "kind": context.workflow.kind,
+        "prompt": prompt,
+    }
+
+
+def chatlas_run_produce(
+    *,
+    view: str,
     provider: str,
     profile: str | None = None,
     model: str | None = None,
@@ -290,42 +314,62 @@ def chatlas_produce(
     cwd: Path | None = None,
     start_path: Path | None = None,
     chatlas_root: Path | None = None,
-    **selectors: object,
+    rows: list[dict[str, object]],
 ) -> dict[str, object]:
-    context = _context_from_selector(view=view, chatlas_root=chatlas_root, selectors=selectors)
-    prompt = context.workflow.build_produce_prompt(context)
+    from agentos.agent.providers import resolve_agent
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
+
+    workflow = _workflow_by_name(view)
+    root = _chatlas_root(chatlas_root)
     effective_cwd = cwd or Path.cwd().resolve()
     effective_start_path = start_path or effective_cwd
-    agent = resolve_agent(
-        provider=provider,
-        profile=profile,
-        start_path=effective_start_path,
-    )
-    command_config = AgentCommandConfig(
-        prompt=prompt,
-        model=model,
-        interaction_mode="non_interactive",
-    )
+
+    results: list[dict[str, object]] = []
+    for row in rows:
+        context = _context_from_parameters(
+            workflow=workflow,
+            chatlas_root=root,
+            parameters=[_canonical_session_parameter(row)],
+            source_rows=[row],
+        )
+        prompt = workflow.build_produce_prompt(context)
+
+        if dry_run:
+            agent = resolve_agent(provider=provider, profile=profile, start_path=effective_start_path)
+            command_config = AgentCommandConfig(prompt=prompt, model=model, interaction_mode="non_interactive")
+            dry_result = agent.run_dry(command_config)
+            results.append({
+                "prompt": prompt,
+                "agent_command": list(dry_result.lines),
+            })
+            continue
+
+        agent = resolve_agent(provider=provider, profile=profile, start_path=effective_start_path)
+        command_config = AgentCommandConfig(prompt=prompt, model=model, interaction_mode="non_interactive")
+        run_config = AgentRunConfig(cwd=effective_cwd, process_mode="terminal")
+        result = agent.run(command_config, run_config)
+        results.append({
+            "exit_code": result.exit_code,
+        })
 
     if dry_run:
-        dry_result = agent.run_dry(command_config)
         return {
             "status": "ok",
-            "command": "chatlas produce",
+            "command": "chatlas run-produce",
             "dry_run": True,
-            "prompt": prompt,
-            "agent_command": list(dry_result.lines),
+            "view": view,
+            "run_count": len(results),
+            "runs": results,
         }
 
-    run_config = AgentRunConfig(
-        cwd=effective_cwd,
-        process_mode="terminal",
-    )
-    result = agent.run(command_config, run_config)
+    failed = sum(1 for r in results if r.get("exit_code", 1) != 0)
     return {
-        "status": "ok" if result.exit_code == 0 else "error",
-        "command": "chatlas produce",
-        "exit_code": result.exit_code,
+        "status": "ok" if failed == 0 else "error",
+        "command": "chatlas run-produce",
+        "view": view,
+        "run_count": len(results),
+        "failed_count": failed,
+        "runs": results,
     }
 
 

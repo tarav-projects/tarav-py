@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .core import (
     chatlas_produce,
+    chatlas_run_produce,
     chatlas_views_commit,
     chatlas_views_get,
     chatlas_views_list,
@@ -14,6 +15,7 @@ from .core import (
 
 __all__ = [
     "chatlas_produce",
+    "chatlas_run_produce",
     "chatlas_views_commit",
     "chatlas_views_get",
     "chatlas_views_list",
