@@ -12,21 +12,21 @@ from agentos.agent.primitives import (
     agent_session_paths,
 )
 from agentos.agent.run_runtime import (
+    AgentCommand,
+    AgentCommandConfig,
+    AgentRunConfig,
     AgentRunDryResult,
-    AgentRunRequest,
     AgentRunResult,
-    build_agent_run_command,
-    execute_agent_run_command,
-    format_agent_run_command,
+    build_agent_command_argv,
+    execute_agent_command,
+    format_agent_command,
 )
-from agentos._core.errors import CliError
 from agentos.codex.session import (
     CodexSession,
     CodexSessionRef,
     discover_codex_session_refs,
     load_codex_session,
 )
-from agentos.codex.linking import link_codex_auth_for_account, load_codex_mux_config
 from agentos.codex.account_status import codex_account_status
 
 
@@ -61,24 +61,37 @@ class CodexAgent(AgentBase):
         direct_targets, sqlite_db_paths = agent_session_paths(self)
         return direct_targets + sqlite_db_paths
 
-    def run(self, request: AgentRunRequest) -> AgentRunResult:
-        command = self._run_command(request)
-        env_overrides = self._run_env_overrides()
-        self._account_link_lines(request, mutate=True)
-        return execute_agent_run_command(
-            command,
-            cwd=request.cwd,
-            env_overrides=env_overrides,
+    def build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
+        effective_config = self._codex_command_config(command_config)
+        return AgentCommand(
+            argv=build_agent_command_argv(
+                effective_config,
+                instance_id=self.instance_id,
+                provider=self.provider,
+                cli_command=self.cli_command,
+                run_args=self.run_args,
+                default_model=self.default_model,
+                model_flag=self.model_flag,
+                prompt_flag=self.prompt_flag,
+            ),
+            env_overrides=self._run_env_overrides(),
         )
 
-    def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult:
-        command = self._run_command(request)
-        env_overrides = self._run_env_overrides()
-        lines = [
-            *self._account_link_lines(request, mutate=False),
-            format_agent_run_command(command, env_overrides=env_overrides),
-        ]
-        return AgentRunDryResult(lines=tuple(lines))
+    def run(
+        self,
+        command_config: AgentCommandConfig,
+        run_config: AgentRunConfig,
+    ) -> AgentRunResult:
+        return execute_agent_command(
+            self.build_command(command_config),
+            run_config=self._run_config_with_timeout(run_config),
+        )
+
+    def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
+        command = self.build_command(command_config)
+        return AgentRunDryResult(
+            lines=(*command.setup_lines, format_agent_command(command)),
+        )
 
     def account_status(
         self,
@@ -94,16 +107,17 @@ class CodexAgent(AgentBase):
             config=config,
         )
 
-    def _run_command(self, request: AgentRunRequest) -> tuple[str, ...]:
-        return build_agent_run_command(
-            request,
-            instance_id=self.instance_id,
-            provider=self.provider,
-            cli_command=self.cli_command,
-            run_args=self.run_args,
-            default_model=self.default_model,
-            model_flag=self.model_flag,
-            prompt_flag=self.prompt_flag,
+    def _codex_command_config(self, command_config: AgentCommandConfig) -> AgentCommandConfig:
+        if command_config.interaction_mode != "non_interactive":
+            return command_config
+        if command_config.prompt is None or command_config.argv:
+            return command_config
+        return AgentCommandConfig(
+            prompt=None,
+            argv=("exec", command_config.prompt),
+            model=command_config.model,
+            account=command_config.account,
+            interaction_mode=command_config.interaction_mode,
         )
 
     def _run_env_overrides(self) -> dict[str, str]:
@@ -112,19 +126,14 @@ class CodexAgent(AgentBase):
             env_overrides[CODEX_HOME_ENV_VAR] = str(self.home)
         return env_overrides
 
-    def _account_link_lines(self, request: AgentRunRequest, *, mutate: bool) -> tuple[str, ...]:
-        if request.account is None:
-            return ()
-        if self.home is None:
-            raise CliError("--account for provider codex requires a configured or explicit --home")
-        source_auth, destination_auth = link_codex_auth_for_account(
-            request.account,
-            codex_home=self.home,
-            config=load_codex_mux_config(),
-            mutate=mutate,
+    def _run_config_with_timeout(self, run_config: AgentRunConfig) -> AgentRunConfig:
+        if run_config.timeout_sec is not None or self.timeout_sec is None:
+            return run_config
+        return AgentRunConfig(
+            cwd=run_config.cwd,
+            process_mode=run_config.process_mode,
+            timeout_sec=self.timeout_sec,
         )
-        if mutate:
-            return ()
-        return (f"link {destination_auth} -> {source_auth}",)
+
 
 __all__ = ["CodexAgent"]

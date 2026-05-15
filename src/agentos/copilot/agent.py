@@ -9,12 +9,14 @@ from agentos.agent.primitives import (
     agent_session_paths,
 )
 from agentos.agent.run_runtime import (
+    AgentCommand,
+    AgentCommandConfig,
+    AgentRunConfig,
     AgentRunDryResult,
-    AgentRunRequest,
     AgentRunResult,
-    build_agent_run_command,
-    execute_agent_run_command,
-    format_agent_run_command,
+    build_agent_command_argv,
+    execute_agent_command,
+    format_agent_command,
 )
 from agentos._core.errors import CliError
 from agentos.copilot.session import (
@@ -52,33 +54,46 @@ class CopilotAgent(AgentBase):
     def load_session(self, session_ref: CopilotSessionRef) -> CopilotSession:
         return load_copilot_session(session_ref)
 
-    def run(self, request: AgentRunRequest) -> AgentRunResult:
-        if request.account is not None:
+    def build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
+        if command_config.account is not None:
             raise CliError(f"--account is not supported for provider {self.provider}")
-        return execute_agent_run_command(
-            self._run_command(request),
-            cwd=request.cwd,
+        return AgentCommand(
+            argv=build_agent_command_argv(
+                command_config,
+                instance_id=self.instance_id,
+                provider=self.provider,
+                cli_command=self.cli_command,
+                run_args=self.run_args,
+                default_model=self.default_model,
+                model_flag=self.model_flag,
+                prompt_flag=self.prompt_flag,
+            ),
             env_overrides=dict(self.env),
         )
 
-    def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult:
-        if request.account is not None:
-            raise CliError(f"--account is not supported for provider {self.provider}")
-        command = self._run_command(request)
-        return AgentRunDryResult(
-            lines=(format_agent_run_command(command, env_overrides=dict(self.env)),)
+    def run(
+        self,
+        command_config: AgentCommandConfig,
+        run_config: AgentRunConfig,
+    ) -> AgentRunResult:
+        return execute_agent_command(
+            self.build_command(command_config),
+            run_config=self._run_config_with_timeout(run_config),
         )
 
-    def _run_command(self, request: AgentRunRequest) -> tuple[str, ...]:
-        return build_agent_run_command(
-            request,
-            instance_id=self.instance_id,
-            provider=self.provider,
-            cli_command=self.cli_command,
-            run_args=self.run_args,
-            default_model=self.default_model,
-            model_flag=self.model_flag,
-            prompt_flag=self.prompt_flag,
+    def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
+        command = self.build_command(command_config)
+        return AgentRunDryResult(
+            lines=(*command.setup_lines, format_agent_command(command)),
+        )
+
+    def _run_config_with_timeout(self, run_config: AgentRunConfig) -> AgentRunConfig:
+        if run_config.timeout_sec is not None or self.timeout_sec is None:
+            return run_config
+        return AgentRunConfig(
+            cwd=run_config.cwd,
+            process_mode=run_config.process_mode,
+            timeout_sec=self.timeout_sec,
         )
 
 

@@ -8,7 +8,7 @@ from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
 from agentos.agent.primitives import Agent
 from agentos.agent.providers import load_configured_agents, resolve_agent
-from agentos.agent.run_runtime import AgentRunRequest
+from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provider_families())
@@ -91,19 +91,19 @@ def _resolve_run_argv(argv_parts: list[str]) -> tuple[str, ...]:
 def _cmd_agent_run(args: argparse.Namespace) -> int:
     argv = _resolve_run_argv(args.argv)
     prompt = _resolve_run_prompt(args.prompt, argv)
-    agent, request = _resolve_agent_run(
+    agent, command_config, run_config = _resolve_agent_run(
         args,
         prompt=prompt,
         argv=argv,
     )
 
     if args.dry_run:
-        dry_result = agent.run_dry(request)
+        dry_result = agent.run_dry(command_config)
         for line in dry_result.lines:
             print(line)
         return 0
 
-    result = agent.run(request)
+    result = agent.run(command_config, run_config)
     return result.exit_code
 
 
@@ -124,29 +124,35 @@ def _resolve_agent_run(
     *,
     prompt: str | None,
     argv: tuple[str, ...],
-) -> tuple[Agent, AgentRunRequest]:
+) -> tuple[Agent, AgentCommandConfig, AgentRunConfig]:
     agent, cwd = _resolve_agent_run_target(args)
-    return agent, _agent_run_request(
+    return agent, _agent_command_config(
         args,
         prompt=prompt,
         argv=argv,
-        cwd=cwd,
-    )
+    ), _agent_run_config(cwd=cwd)
 
 
-def _agent_run_request(
+def _agent_command_config(
     args: argparse.Namespace,
     *,
     prompt: str | None,
     argv: tuple[str, ...],
-    cwd: Path,
-) -> AgentRunRequest:
-    return AgentRunRequest(
+    interaction_mode: str = "interactive",
+) -> AgentCommandConfig:
+    return AgentCommandConfig(
         prompt=prompt,
         argv=argv,
         model=args.model,
-        cwd=cwd,
         account=args.account,
+        interaction_mode=interaction_mode,
+    )
+
+
+def _agent_run_config(*, cwd: Path) -> AgentRunConfig:
+    return AgentRunConfig(
+        cwd=cwd,
+        process_mode="terminal",
     )
 
 
@@ -156,13 +162,14 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         raise CliError(
             f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
         )
-    request = _agent_run_request(
+    interaction_mode = "non_interactive" if agent.provider == "codex" else "interactive"
+    command_config = _agent_command_config(
         args,
         prompt=agent.ping.prompt,
         argv=agent.ping.argv,
-        cwd=cwd,
+        interaction_mode=interaction_mode,
     )
-    result = agent.run(request)
+    result = agent.run(command_config, _agent_run_config(cwd=cwd))
     return result.exit_code
 
 

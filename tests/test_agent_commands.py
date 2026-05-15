@@ -87,6 +87,134 @@ def test_agent_run_uses_configured_agent(
     assert observed["cwd"] == str(Path.cwd().resolve())
 
 
+def test_codex_build_command_models_interaction_mode(tmp_path: Path) -> None:
+    from agentos.agent.run_runtime import AgentCommandConfig
+    from agentos.codex.agent import CodexAgent
+
+    agent = CodexAgent(
+        home=tmp_path / "codex-home",
+        cli_command=("codex",),
+        run_args=("--dangerously-bypass-approvals-and-sandbox",),
+        default_model="gpt-5.4",
+        model_flag="--model",
+    )
+
+    interactive = agent.build_command(AgentCommandConfig(prompt="ping"))
+    non_interactive = agent.build_command(
+        AgentCommandConfig(prompt="ping", interaction_mode="non_interactive")
+    )
+    raw = agent.build_command(
+        AgentCommandConfig(argv=("exec", "ping"), interaction_mode="non_interactive")
+    )
+
+    assert interactive.argv == (
+        "codex",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--model",
+        "gpt-5.4",
+        "ping",
+    )
+    assert non_interactive.argv == (
+        "codex",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--model",
+        "gpt-5.4",
+        "exec",
+        "ping",
+    )
+    assert raw.argv == (
+        "codex",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--model",
+        "gpt-5.4",
+        "exec",
+        "ping",
+    )
+    assert non_interactive.env_overrides["CODEX_HOME"] == str(tmp_path / "codex-home")
+
+
+def test_codex_run_capture_uses_run_config_without_rewriting_command(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos._core.process import ProcessResult
+    import agentos.agent.run_runtime as run_runtime
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
+    from agentos.codex.agent import CodexAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run_process(command, **kwargs):
+        observed["command"] = tuple(command)
+        observed.update(kwargs)
+        return ProcessResult(exit_code=0, stdout="pong\n", stderr="tokens used\n")
+
+    monkeypatch.setattr(run_runtime, "run_process", fake_run_process)
+
+    agent = CodexAgent(
+        home=tmp_path / "codex-home",
+        cli_command=("codex",),
+        run_args=("--dangerously-bypass-approvals-and-sandbox",),
+        default_model="gpt-5.4",
+        model_flag="--model",
+    )
+    result = agent.run(
+        AgentCommandConfig(prompt="ping", interaction_mode="non_interactive"),
+        AgentRunConfig(cwd=tmp_path, process_mode="capture", timeout_sec=30),
+    )
+
+    assert observed["command"] == (
+        "codex",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--model",
+        "gpt-5.4",
+        "exec",
+        "ping",
+    )
+    assert observed["cwd"] == tmp_path
+    assert observed["env_overrides"] == {"CODEX_HOME": str(tmp_path / "codex-home")}
+    assert observed["mode"] == "capture"
+    assert observed["timeout_sec"] == 30
+    assert result.exit_code == 0
+    assert result.stdout == "pong\n"
+    assert result.stderr == "tokens used\n"
+
+
+def test_codex_capture_mode_does_not_imply_non_interactive(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos._core.process import ProcessResult
+    import agentos.agent.run_runtime as run_runtime
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
+    from agentos.codex.agent import CodexAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run_process(command, **kwargs):
+        observed["command"] = tuple(command)
+        observed.update(kwargs)
+        return ProcessResult(exit_code=0, stdout="pong\n")
+
+    monkeypatch.setattr(run_runtime, "run_process", fake_run_process)
+
+    agent = CodexAgent(
+        cli_command=("codex",),
+        run_args=("--dangerously-bypass-approvals-and-sandbox",),
+    )
+    agent.run(
+        AgentCommandConfig(prompt="ping"),
+        AgentRunConfig(cwd=tmp_path, process_mode="capture"),
+    )
+
+    assert observed["command"] == (
+        "codex",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "ping",
+    )
+    assert observed["mode"] == "capture"
+
+
 def test_agent_run_uses_configured_instance_env(
     tmp_path: Path,
     monkeypatch,
@@ -374,12 +502,10 @@ def test_agent_run_codex_account_dry_run_uses_profile_home_override(
     agentos_home = tmp_path / "agentos-home"
     configured_home = tmp_path / "codex-configured"
     override_home = tmp_path / "codex-override"
-    auth_path = agentos_home / "accounts" / "codex" / "tk" / "auth.json"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    _write(auth_path, "{}\n")
     _write_global_config(
         agentos_home / "config.json",
         provider_instances=[
@@ -413,11 +539,10 @@ def test_agent_run_codex_account_dry_run_uses_profile_home_override(
         == 0
     )
 
-    output = capsys.readouterr().out.strip().splitlines()
-    assert output == [
-        f"link {override_home.resolve() / 'auth.json'} -> {auth_path.resolve()}",
-        f"CODEX_HOME={override_home.resolve()} codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 hello",
-    ]
+    assert (
+        capsys.readouterr().out.strip()
+        == f"CODEX_HOME={override_home.resolve()} codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 hello"
+    )
 
 
 def test_legacy_agent_link_command_is_removed(capsys: pytest.CaptureFixture[str]) -> None:
@@ -453,14 +578,19 @@ def test_agent_run_invokes_provider_native_run(
         ],
     )
 
-    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, AgentRunResult
     from agentos.codex.agent import CodexAgent
 
     observed: dict[str, object] = {}
 
-    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
+    def fake_run(
+        self: CodexAgent,
+        command_config: AgentCommandConfig,
+        run_config: AgentRunConfig,
+    ) -> AgentRunResult:
         observed["provider"] = self.provider
-        observed["request"] = request
+        observed["command_config"] = command_config
+        observed["run_config"] = run_config
         return AgentRunResult(exit_code=7)
 
     monkeypatch.setattr(CodexAgent, "run", fake_run)
@@ -487,15 +617,16 @@ def test_agent_run_invokes_provider_native_run(
         == 7
     )
 
-    request = observed["request"]
+    command_config = observed["command_config"]
+    run_config = observed["run_config"]
     assert observed["provider"] == "codex"
-    assert request == AgentRunRequest(
+    assert command_config == AgentCommandConfig(
         prompt="hello",
         argv=(),
         model="gpt-5.2",
-        cwd=cwd.resolve(),
         account="tk",
     )
+    assert run_config == AgentRunConfig(cwd=cwd.resolve())
 
 
 def _write_codex_ping_config(
@@ -521,14 +652,19 @@ def _write_codex_ping_config(
 def _observe_codex_run(
     monkeypatch,
 ) -> dict[str, object]:
-    from agentos.agent.run_runtime import AgentRunRequest, AgentRunResult
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, AgentRunResult
     from agentos.codex.agent import CodexAgent
 
     observed: dict[str, object] = {}
 
-    def fake_run(self: CodexAgent, request: AgentRunRequest) -> AgentRunResult:
+    def fake_run(
+        self: CodexAgent,
+        command_config: AgentCommandConfig,
+        run_config: AgentRunConfig,
+    ) -> AgentRunResult:
         observed["provider"] = self.provider
-        observed["request"] = request
+        observed["command_config"] = command_config
+        observed["run_config"] = run_config
         return AgentRunResult(exit_code=0)
 
     monkeypatch.setattr(CodexAgent, "run", fake_run)
@@ -548,7 +684,7 @@ def test_agent_ping_invokes_provider_native_run(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    from agentos.agent.run_runtime import AgentRunRequest
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 
     _write_codex_ping_config(agentos_home, work_home=work_home)
     observed = _observe_codex_run(monkeypatch)
@@ -573,15 +709,17 @@ def test_agent_ping_invokes_provider_native_run(
         == 0
     )
 
-    request = observed["request"]
+    command_config = observed["command_config"]
+    run_config = observed["run_config"]
     assert observed["provider"] == "codex"
-    assert request == AgentRunRequest(
+    assert command_config == AgentCommandConfig(
         prompt="ping",
         argv=(),
         model="gpt-5.2",
-        cwd=cwd.resolve(),
         account="tk",
+        interaction_mode="non_interactive",
     )
+    assert run_config == AgentRunConfig(cwd=cwd.resolve())
 
 
 def test_agent_ping_uses_configured_prompt(
@@ -595,7 +733,7 @@ def test_agent_ping_uses_configured_prompt(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    from agentos.agent.run_runtime import AgentRunRequest
+    from agentos.agent.run_runtime import AgentCommandConfig
 
     _write_codex_ping_config(
         agentos_home,
@@ -606,10 +744,11 @@ def test_agent_ping_uses_configured_prompt(
 
     assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 0
 
-    request = observed["request"]
-    assert isinstance(request, AgentRunRequest)
-    assert request.prompt == "health check"
-    assert request.argv == ()
+    command_config = observed["command_config"]
+    assert isinstance(command_config, AgentCommandConfig)
+    assert command_config.prompt == "health check"
+    assert command_config.argv == ()
+    assert command_config.interaction_mode == "non_interactive"
 
 
 def test_agent_ping_uses_configured_argv(
@@ -623,7 +762,7 @@ def test_agent_ping_uses_configured_argv(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    from agentos.agent.run_runtime import AgentRunRequest
+    from agentos.agent.run_runtime import AgentCommandConfig
 
     _write_codex_ping_config(
         agentos_home,
@@ -634,10 +773,11 @@ def test_agent_ping_uses_configured_argv(
 
     assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 0
 
-    request = observed["request"]
-    assert isinstance(request, AgentRunRequest)
-    assert request.prompt is None
-    assert request.argv == ("status", "--json")
+    command_config = observed["command_config"]
+    assert isinstance(command_config, AgentCommandConfig)
+    assert command_config.prompt is None
+    assert command_config.argv == ("status", "--json")
+    assert command_config.interaction_mode == "non_interactive"
 
 
 def test_agent_ping_rejects_prompt_and_argv_config(
@@ -689,14 +829,17 @@ def test_agent_run_dry_invokes_provider_native_run_dry(
         ],
     )
 
-    from agentos.agent.run_runtime import AgentRunDryResult, AgentRunRequest
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunDryResult
     from agentos.codex.agent import CodexAgent
 
     observed: dict[str, object] = {}
 
-    def fake_run_dry(self: CodexAgent, request: AgentRunRequest) -> AgentRunDryResult:
+    def fake_run_dry(
+        self: CodexAgent,
+        command_config: AgentCommandConfig,
+    ) -> AgentRunDryResult:
         observed["provider"] = self.provider
-        observed["request"] = request
+        observed["command_config"] = command_config
         return AgentRunDryResult(lines=("provider dry line",))
 
     monkeypatch.setattr(CodexAgent, "run_dry", fake_run_dry)
@@ -718,13 +861,12 @@ def test_agent_run_dry_invokes_provider_native_run_dry(
         == 0
     )
 
-    request = observed["request"]
+    command_config = observed["command_config"]
     assert observed["provider"] == "codex"
-    assert request == AgentRunRequest(
+    assert command_config == AgentCommandConfig(
         prompt="hello dry",
         argv=(),
         model=None,
-        cwd=Path.cwd().resolve(),
         account=None,
     )
     assert capsys.readouterr().out.strip() == "provider dry line"
@@ -754,14 +896,17 @@ def test_agent_run_dry_invokes_provider_native_run_dry_with_raw_argv(
         ],
     )
 
-    from agentos.agent.run_runtime import AgentRunDryResult, AgentRunRequest
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunDryResult
     from agentos.codex.agent import CodexAgent
 
     observed: dict[str, object] = {}
 
-    def fake_run_dry(self: CodexAgent, request: AgentRunRequest) -> AgentRunDryResult:
+    def fake_run_dry(
+        self: CodexAgent,
+        command_config: AgentCommandConfig,
+    ) -> AgentRunDryResult:
         observed["provider"] = self.provider
-        observed["request"] = request
+        observed["command_config"] = command_config
         return AgentRunDryResult(lines=("provider raw dry line",))
 
     monkeypatch.setattr(CodexAgent, "run_dry", fake_run_dry)
@@ -784,13 +929,12 @@ def test_agent_run_dry_invokes_provider_native_run_dry_with_raw_argv(
         == 0
     )
 
-    request = observed["request"]
+    command_config = observed["command_config"]
     assert observed["provider"] == "codex"
-    assert request == AgentRunRequest(
+    assert command_config == AgentCommandConfig(
         prompt=None,
         argv=("exec", "hello"),
         model=None,
-        cwd=Path.cwd().resolve(),
         account=None,
     )
     assert capsys.readouterr().out.strip() == "provider raw dry line"
@@ -1220,7 +1364,7 @@ def test_agent_run_codex_provider_argv_dry_run_uses_configured_run_args(
     )
 
 
-def test_agent_run_codex_raw_argv_with_account_links_auth(
+def test_agent_run_codex_raw_argv_with_account_preserves_command(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
@@ -1228,11 +1372,9 @@ def test_agent_run_codex_raw_argv_with_account_links_auth(
     home = tmp_path / "home"
     agentos_home = tmp_path / "agentos-home"
     codex_home = tmp_path / "codex-home"
-    auth_path = agentos_home / "accounts" / "codex" / "tk" / "auth.json"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    _write(auth_path, "{}\n")
 
     _write_global_config(
         agentos_home / "config.json",
@@ -1266,11 +1408,10 @@ def test_agent_run_codex_raw_argv_with_account_links_auth(
         == 0
     )
 
-    output = capsys.readouterr().out.strip().splitlines()
-    assert output == [
-        f"link {codex_home / 'auth.json'} -> {auth_path.resolve()}",
-        f"CODEX_HOME={codex_home} codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 exec hello",
-    ]
+    assert (
+        capsys.readouterr().out.strip()
+        == f"CODEX_HOME={codex_home} codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.4 exec hello"
+    )
 
 
 def test_agent_run_copilot_raw_argv_dry_run(
@@ -1667,4 +1808,3 @@ def test_agent_run_uses_explicit_project_target_for_config_resolution(
     assert observed["cwd"] == str(workspace.resolve())
     assert observed["codex_home"] == str(work_home)
     assert observed["check"] is False
-

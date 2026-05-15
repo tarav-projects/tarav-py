@@ -173,6 +173,36 @@ def _assert_no_old_codex_layout(provider_root: Path) -> None:
     assert not (provider_root / "accounts" / "br" / "auth.json").exists()
 
 
+def _registered_linked_codex_home(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    *,
+    account_id: str = "acc_123",
+) -> Path:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    target_home = tmp_path / "codex-home"
+    _write(source_auth, _auth_json(account_id=account_id))
+
+    assert main(_register_args(source_auth)) == 0
+    capsys.readouterr()
+    assert main(_link_args(target_home)) == 0
+    capsys.readouterr()
+    return target_home
+
+
+def _stub_codex_login_status(monkeypatch, target_home: Path):
+    import agentos.codex.account_status as codex_account_status
+
+    def fake_run_process(*args, **kwargs):
+        assert kwargs["env_overrides"]["CODEX_HOME"] == str(target_home.resolve())
+        return ProcessResult(exit_code=0, stdout="Logged in using ChatGPT\n", stderr="")
+
+    monkeypatch.setattr(codex_account_status, "run_process", fake_run_process)
+    return codex_account_status
+
+
 def test_agent_accounts_register_codex_writes_consolidated_registry(
     tmp_path: Path,
     monkeypatch,
@@ -623,23 +653,8 @@ def test_codex_account_status_reports_auth_check_without_usage_refresh(
     monkeypatch,
     capsys,
 ) -> None:
-    import agentos.codex.account_status as codex_account_status
-
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    source_auth = tmp_path / "source.json"
-    target_home = tmp_path / "codex-home"
-    _write(source_auth, _auth_json())
-
-    assert main(_register_args(source_auth)) == 0
-    capsys.readouterr()
-    assert main(_link_args(target_home)) == 0
-    capsys.readouterr()
-
-    def fake_run_process(*args, **kwargs):
-        assert kwargs["env_overrides"]["CODEX_HOME"] == str(target_home.resolve())
-        return ProcessResult(exit_code=0, stdout="Logged in using ChatGPT\n", stderr="")
-
-    monkeypatch.setattr(codex_account_status, "run_process", fake_run_process)
+    target_home = _registered_linked_codex_home(tmp_path, monkeypatch, capsys)
+    _stub_codex_login_status(monkeypatch, target_home)
     agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
 
     status = agent.account_status()
@@ -661,28 +676,15 @@ def test_codex_account_status_reports_identity_mismatch_as_status_error(
     monkeypatch,
     capsys,
 ) -> None:
-    import agentos.codex.account_status as codex_account_status
-
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    source_auth = tmp_path / "source.json"
-    target_home = tmp_path / "codex-home"
-    _write(source_auth, _auth_json(account_id="acc_123"))
-
-    assert main(_register_args(source_auth)) == 0
-    capsys.readouterr()
-    assert main(_link_args(target_home)) == 0
-    capsys.readouterr()
+    target_home = _registered_linked_codex_home(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        account_id="acc_123",
+    )
     _write(target_home / "auth.json", _auth_json(account_id="acc_other"))
 
-    monkeypatch.setattr(
-        codex_account_status,
-        "run_process",
-        lambda *args, **kwargs: ProcessResult(
-            exit_code=0,
-            stdout="Logged in using ChatGPT\n",
-            stderr="",
-        ),
-    )
+    _stub_codex_login_status(monkeypatch, target_home)
     agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
 
     status = agent.account_status()
@@ -701,27 +703,8 @@ def test_codex_account_status_refresh_usage_parses_limits(
     monkeypatch,
     capsys,
 ) -> None:
-    import agentos.codex.account_status as codex_account_status
-
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    source_auth = tmp_path / "source.json"
-    target_home = tmp_path / "codex-home"
-    _write(source_auth, _auth_json())
-
-    assert main(_register_args(source_auth)) == 0
-    capsys.readouterr()
-    assert main(_link_args(target_home)) == 0
-    capsys.readouterr()
-
-    monkeypatch.setattr(
-        codex_account_status,
-        "run_process",
-        lambda *args, **kwargs: ProcessResult(
-            exit_code=0,
-            stdout="Logged in using ChatGPT\n",
-            stderr="",
-        ),
-    )
+    target_home = _registered_linked_codex_home(tmp_path, monkeypatch, capsys)
+    codex_account_status = _stub_codex_login_status(monkeypatch, target_home)
     monkeypatch.setattr(
         codex_account_status,
         "_read_codex_account_rate_limits",
@@ -759,27 +742,8 @@ def test_codex_account_status_preserves_auth_when_usage_refresh_errors(
     monkeypatch,
     capsys,
 ) -> None:
-    import agentos.codex.account_status as codex_account_status
-
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    source_auth = tmp_path / "source.json"
-    target_home = tmp_path / "codex-home"
-    _write(source_auth, _auth_json())
-
-    assert main(_register_args(source_auth)) == 0
-    capsys.readouterr()
-    assert main(_link_args(target_home)) == 0
-    capsys.readouterr()
-
-    monkeypatch.setattr(
-        codex_account_status,
-        "run_process",
-        lambda *args, **kwargs: ProcessResult(
-            exit_code=0,
-            stdout="Logged in using ChatGPT\n",
-            stderr="",
-        ),
-    )
+    target_home = _registered_linked_codex_home(tmp_path, monkeypatch, capsys)
+    codex_account_status = _stub_codex_login_status(monkeypatch, target_home)
 
     def fail_rate_limits(agent):
         raise AccountStatusError(error_type="command_failed", message="rate limit failed")

@@ -9,7 +9,13 @@ from urllib.parse import quote
 
 from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus, AgentAccountContext
-from agentos.agent.run_runtime import AgentRunDryResult, AgentRunRequest, AgentRunResult
+from agentos.agent.run_runtime import (
+    AgentCommand,
+    AgentCommandConfig,
+    AgentRunConfig,
+    AgentRunDryResult,
+    AgentRunResult,
+)
 from agentos.providers import ProviderHomeAnchor
 from agentos.providers import require_canonical_provider_spec
 
@@ -186,12 +192,21 @@ class AgentBase:
             payload["chatlas_excludes"] = list(self.chatlas_excludes)
         return payload
 
-    def run(self, request: AgentRunRequest) -> AgentRunResult:
+    def build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
         raise CliError(
             f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
         )
 
-    def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult:
+    def run(
+        self,
+        command_config: AgentCommandConfig,
+        run_config: AgentRunConfig,
+    ) -> AgentRunResult:
+        raise CliError(
+            f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
+        )
+
+    def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
         raise CliError(
             f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
         )
@@ -270,9 +285,15 @@ class Agent(Protocol):
 
     def summary(self) -> dict[str, object]: ...
 
-    def run(self, request: AgentRunRequest) -> AgentRunResult: ...
+    def build_command(self, command_config: AgentCommandConfig) -> AgentCommand: ...
 
-    def run_dry(self, request: AgentRunRequest) -> AgentRunDryResult: ...
+    def run(
+        self,
+        command_config: AgentCommandConfig,
+        run_config: AgentRunConfig,
+    ) -> AgentRunResult: ...
+
+    def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult: ...
 
     def account_status(
         self,

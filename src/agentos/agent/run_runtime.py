@@ -3,23 +3,40 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from agentos._core.errors import CliError
-from agentos._core.process import ProcessError, run_process
+from agentos._core.process import ProcessError, ProcessMode, run_process
 
 
 @dataclass(frozen=True)
-class AgentRunRequest:
-    prompt: str | None
-    argv: tuple[str, ...]
-    model: str | None
-    cwd: Path
+class AgentCommandConfig:
+    prompt: str | None = None
+    argv: tuple[str, ...] = ()
+    model: str | None = None
     account: str | None = None
+    interaction_mode: Literal["interactive", "non_interactive"] = "interactive"
+
+
+@dataclass(frozen=True)
+class AgentRunConfig:
+    cwd: Path
+    process_mode: ProcessMode = "terminal"
+    timeout_sec: int | None = None
+
+
+@dataclass(frozen=True)
+class AgentCommand:
+    argv: tuple[str, ...]
+    env_overrides: dict[str, str]
+    setup_lines: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class AgentRunResult:
     exit_code: int
+    stdout: str | None = None
+    stderr: str | None = None
 
 
 @dataclass(frozen=True)
@@ -27,8 +44,8 @@ class AgentRunDryResult:
     lines: tuple[str, ...]
 
 
-def build_agent_run_command(
-    request: AgentRunRequest,
+def build_agent_command_argv(
+    command_config: AgentCommandConfig,
     *,
     instance_id: str | None,
     provider: str,
@@ -44,65 +61,65 @@ def build_agent_run_command(
         )
 
     command = [*cli_command, *run_args]
-    effective_model = request.model or default_model
+    effective_model = command_config.model or default_model
     if effective_model is not None:
         if model_flag is None:
             raise CliError(
                 f"agent {instance_id or '<default>'} for provider {provider} does not define model_flag"
             )
         command.extend([model_flag, effective_model])
-    command.extend(request.argv)
-    if request.prompt is not None:
+    command.extend(command_config.argv)
+    if command_config.prompt is not None:
         if prompt_flag is None:
-            command.append(request.prompt)
+            command.append(command_config.prompt)
         else:
-            command.extend([prompt_flag, request.prompt])
+            command.extend([prompt_flag, command_config.prompt])
     return tuple(command)
 
 
-def format_agent_run_command(
-    command: tuple[str, ...],
-    *,
-    env_overrides: dict[str, str],
-) -> str:
-    if not env_overrides:
-        return shlex.join(command)
+def format_agent_command(command: AgentCommand) -> str:
+    if not command.env_overrides:
+        return shlex.join(command.argv)
 
     env_prefix = " ".join(
         f"{key}={shlex.quote(value)}"
-        for key, value in sorted(env_overrides.items())
+        for key, value in sorted(command.env_overrides.items())
     )
-    return f"{env_prefix} {shlex.join(command)}"
+    return f"{env_prefix} {shlex.join(command.argv)}"
 
 
-def execute_agent_run_command(
-    command: tuple[str, ...],
+def execute_agent_command(
+    command: AgentCommand,
     *,
-    cwd: Path,
-    env_overrides: dict[str, str],
+    run_config: AgentRunConfig,
 ) -> AgentRunResult:
     try:
         result = run_process(
-            command,
-            cwd=cwd,
-            env_overrides=env_overrides,
-            mode="terminal",
+            command.argv,
+            cwd=run_config.cwd,
+            env_overrides=command.env_overrides,
+            mode=run_config.process_mode,
+            timeout_sec=run_config.timeout_sec,
         )
     except ProcessError as exc:
         if exc.error_type == "command_not_found":
-            executable = command[0] if command else "<empty>"
+            executable = command.argv[0] if command.argv else "<empty>"
             raise CliError(f"agent executable not found: {executable}") from exc
         raise
     return AgentRunResult(
         exit_code=result.exit_code,
+        stdout=result.stdout,
+        stderr=result.stderr,
     )
 
 
 __all__ = [
+    "AgentCommand",
+    "AgentCommandConfig",
+    "AgentRunConfig",
     "AgentRunDryResult",
-    "AgentRunRequest",
     "AgentRunResult",
-    "build_agent_run_command",
-    "execute_agent_run_command",
-    "format_agent_run_command",
+    "build_agent_command_argv",
+    "execute_agent_command",
+    "format_agent_command",
 ]
