@@ -15,6 +15,8 @@ from agentos.chatlas.delta_scan import (
 )
 from agentos.chatlas.index_query import run_chatlas_index_query
 from agentos.chatlas.index_query import select_one_chatlas_index_row
+from agentos.chatlas.index_doctor import format_chatlas_index_doctor_markdown
+from agentos.chatlas.index_doctor import run_chatlas_index_doctor
 from agentos.chatlas.index_stats import format_chatlas_index_stats_markdown
 from agentos.chatlas.index_stats import run_chatlas_index_stats
 from agentos.chatlas.query import run_chatlas_query
@@ -119,6 +121,17 @@ def chatlas_index_query(
         limit=limit,
         chatlas_root=chatlas_root,
     )
+
+
+def chatlas_index_doctor(
+    *,
+    chatlas_root: Path | None = None,
+) -> dict[str, object]:
+    return run_chatlas_index_doctor(chatlas_root=chatlas_root)
+
+
+def format_chatlas_doctor_markdown(payload: dict[str, object]) -> str:
+    return format_chatlas_index_doctor_markdown(payload)
 
 
 def _chatlas_stub_error(command: str) -> CliError:

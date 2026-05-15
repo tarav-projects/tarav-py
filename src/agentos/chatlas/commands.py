@@ -5,6 +5,7 @@ import sys
 
 from agentos.agent._cli_common import format_json_output, optional_string_tuple
 from agentos.chatlas.core import (
+    chatlas_index_doctor,
     chatlas_index_query,
     chatlas_index_redo,
     chatlas_index_reset,
@@ -14,6 +15,7 @@ from agentos.chatlas.core import (
     chatlas_raw_paths,
     chatlas_stats,
     chatlas_update,
+    format_chatlas_doctor_markdown,
     format_chatlas_stats_markdown,
 )
 from agentos.chatlas.session_model import chatlas_export_session_model
@@ -94,6 +96,15 @@ def _cmd_chatlas_index_query(args: argparse.Namespace) -> int:
     payload = chatlas_index_query(**_chatlas_index_selector_kwargs(args))
     print(format_json_output(payload))
     return 0
+
+
+def _cmd_chatlas_index_doctor(args: argparse.Namespace) -> int:
+    payload = chatlas_index_doctor()
+    if args.output_format == "markdown":
+        print(format_chatlas_doctor_markdown(payload))
+    else:
+        print(format_json_output(payload))
+    return 0 if payload.get("status") == "ok" else 1
 
 
 def _cmd_chatlas_stats(args: argparse.Namespace) -> int:
@@ -415,6 +426,19 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Output format. Chatlas index query supports json only.",
     )
     index_query_parser.set_defaults(handler=_cmd_chatlas_index_query)
+
+    index_doctor_parser = index_subparsers.add_parser(
+        "doctor",
+        help="Check Chatlas session index consistency.",
+    )
+    index_doctor_parser.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        dest="output_format",
+        help="Output format (default: markdown).",
+    )
+    index_doctor_parser.set_defaults(handler=_cmd_chatlas_index_doctor)
 
     stats_parser = chatlas_subparsers.add_parser(
         "stats",
