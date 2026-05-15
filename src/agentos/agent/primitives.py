@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import quote
@@ -258,12 +257,7 @@ class AgentBase:
 
     def account_status(
         self,
-        *,
-        refresh_usage: bool = False,
-        methods: tuple[str, ...] | None = None,
-        config: Mapping[str, object] | None = None,
     ) -> AccountStatus:
-        del refresh_usage, methods, config
         raise CliError(
             f"agent {self.instance_id or '<default>'} for provider {self.provider} "
             "does not support account_status"
@@ -343,10 +337,6 @@ class Agent(Protocol):
 
     def account_status(
         self,
-        *,
-        refresh_usage: bool = False,
-        methods: tuple[str, ...] | None = None,
-        config: Mapping[str, object] | None = None,
     ) -> AccountStatus: ...
 
 
