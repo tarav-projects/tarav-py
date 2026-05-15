@@ -19,7 +19,7 @@ from agentos.claude.session import (
     discover_claude_session_refs,
     load_claude_session,
 )
-from agentos.claude.account_status import claude_account_status
+from agentos.claude.account_status import _claude_account_status_impl
 
 
 CLAUDE_PROVIDER = "claude-code"
@@ -61,7 +61,7 @@ class ClaudeAgent(AgentBase):
     def account_status(
         self,
     ) -> AccountStatus:
-        return claude_account_status(self)
+        return _claude_account_status_impl(self)
 
     def _run_env_overrides(self) -> dict[str, str]:
         env_overrides = dict(self.env)

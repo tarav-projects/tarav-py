@@ -20,7 +20,7 @@ from agentos.codex.session import (
     discover_codex_session_refs,
     load_codex_session,
 )
-from agentos.codex.account_status import codex_account_status
+from agentos.codex.account_status import _codex_account_status_impl
 
 
 CODEX_PROVIDER = "codex"
@@ -64,7 +64,7 @@ class CodexAgent(AgentBase):
     def account_status(
         self,
     ) -> AccountStatus:
-        return codex_account_status(self)
+        return _codex_account_status_impl(self)
 
     def _codex_command_config(self, command_config: AgentCommandConfig) -> AgentCommandConfig:
         if command_config.interaction_mode != "non_interactive":

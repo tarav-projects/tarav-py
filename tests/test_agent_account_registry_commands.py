@@ -856,7 +856,7 @@ def test_codex_account_status_fetches_limits_with_single_status_call(
 
     monkeypatch.setattr(
         codex_account_status,
-        "_read_codex_account_rate_limits",
+        "_fetch_account_usage_app_server_payload",
         lambda agent: {
             "rateLimits": {
                 "limitId": "test-limit",
@@ -924,7 +924,7 @@ def test_codex_account_status_parses_limits(
 
     monkeypatch.setattr(
         codex_account_status,
-        "_read_codex_account_rate_limits",
+        "_fetch_account_usage_app_server_payload",
         lambda agent: {
             "rateLimitsByLimitId": {
                 "test-limit": {
@@ -1021,7 +1021,7 @@ def test_codex_account_status_app_server_uses_agent_command_model(
     agent = build_registered_account_agent(
         provider="codex", account="br", home=target_home
     )
-    payload = codex_account_status._read_codex_account_rate_limits(agent)
+    payload = codex_account_status._fetch_account_usage_app_server_payload(agent)
 
     assert observed["command"][-1] == "app-server"
     assert observed["env"]["CODEX_HOME"] == str(target_home.resolve())
@@ -1042,7 +1042,7 @@ def test_codex_account_status_preserves_identity_when_usage_errors(
         )
 
     monkeypatch.setattr(
-        codex_account_status, "_read_codex_account_rate_limits", fail_rate_limits
+        codex_account_status, "_fetch_account_usage_app_server_payload", fail_rate_limits
     )
     agent = build_registered_account_agent(
         provider="codex", account="br", home=target_home
@@ -1235,6 +1235,47 @@ def test_claude_statusline_parser_maps_subscription_limits() -> None:
     assert limits[0].provider_limit == {"limit_type": "five_hour"}
 
 
+def test_claude_usage_get_parser_maps_subscription_limits() -> None:
+    import agentos.claude.account_status as claude_account_status
+
+    limits = claude_account_status._parse_claude_usage_get_limits(
+        {
+            "five_hour": {
+                "utilization": 20.0,
+                "resets_at": "2026-05-15T20:29:59.734578+00:00",
+            },
+            "seven_day": {
+                "utilization": 72.0,
+                "resets_at": "2026-05-16T10:00:00.734604+00:00",
+            },
+            "seven_day_sonnet": None,
+        }
+    )
+
+    assert [limit.limit_name for limit in limits] == ["burst", "weekly"]
+    assert [limit.limit_label for limit in limits] == ["Burst", "Weekly"]
+    assert [
+        limit.usage_over_time.used_percent
+        for limit in limits
+        if limit.usage_over_time
+    ] == [20, 72]
+    assert [
+        limit.usage_over_time.period_duration_mins
+        for limit in limits
+        if limit.usage_over_time
+    ] == [300, 10_080]
+    assert limits[0].usage_over_time is not None
+    assert (
+        limits[0].usage_over_time.resets_at
+        == "2026-05-15T20:29:59.734578Z"
+    )
+    assert (
+        limits[0].usage_over_time.period_started_at
+        == "2026-05-15T15:29:59.734578Z"
+    )
+    assert limits[0].provider_limit == {"limit_type": "five_hour"}
+
+
 def test_claude_statusline_uses_stable_system_home_workspace(tmp_path: Path) -> None:
     import agentos.claude.account_status as claude_account_status
     from agentos.claude.agent import ClaudeAgent
@@ -1328,7 +1369,7 @@ def test_claude_statusline_uses_stale_cache_when_live_refresh_times_out(
         fail_live_refresh,
     )
 
-    limits, errors, payload = claude_account_status._claude_usage_limits(agent)
+    limits, errors, payload = claude_account_status._account_usage_statusline(agent)
 
     assert errors == ()
     assert [limit.limit_name for limit in limits] == ["burst", "weekly"]
@@ -1336,7 +1377,7 @@ def test_claude_statusline_uses_stale_cache_when_live_refresh_times_out(
     assert payload["agentos_cache"]["stale_fallback"] is True
 
 
-def test_claude_account_status_uses_statusline_limits(
+def test_claude_account_status_uses_get_usage_limits(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1379,25 +1420,23 @@ def test_claude_account_status_uses_statusline_limits(
     )
     capsys.readouterr()
 
-    def fake_collect_statusline_payload(agent):
+    def fake_fetch_usage_payload(agent):
         assert agent.home == claude_home.resolve()
         return {
-            "rate_limits": {
-                "five_hour": {
-                    "used_percentage": 20,
-                    "resets_at": 1_776_000_000,
-                },
-                "seven_day": {
-                    "used_percentage": 94,
-                    "resets_at": 1_776_604_800,
-                },
-            }
+            "five_hour": {
+                "utilization": 20,
+                "resets_at": "2026-04-12T13:20:00Z",
+            },
+            "seven_day": {
+                "utilization": 94,
+                "resets_at": "2026-04-19T13:20:00Z",
+            },
         }
 
     monkeypatch.setattr(
         claude_account_status,
-        "_collect_claude_statusline_payload",
-        fake_collect_statusline_payload,
+        "_fetch_claude_usage_payload",
+        fake_fetch_usage_payload,
     )
     agent = build_registered_account_agent(
         provider="claude-code", account="main", home=claude_home

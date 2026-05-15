@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import os
 import pty
 import re
 import select
 import subprocess
+import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
+from agentos._core.process import run_process
 from agentos.agent.account_registry import load_account, load_links
 from agentos.agent.account_status import (
     AccountIdentity,
@@ -28,6 +33,10 @@ from agentos.agent.run_runtime import AgentCommandConfig
 
 
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
+DEFAULT_USAGE_GET_TIMEOUT_SEC = 5
+CLAUDE_USAGE_API_URL = "https://api.anthropic.com/api/oauth/usage"
+CLAUDE_OAUTH_BETA_HEADER = "oauth-2025-04-20"
+CLAUDE_CREDENTIALS_SERVICE_SUFFIX = "-credentials"
 CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC = 60
 CLAUDE_STATUSLINE_STALE_FALLBACK_MAX_AGE_SEC = 600
 CLAUDE_USAGE_REFRESH_PROMPT = "Reply with OK."
@@ -43,7 +52,7 @@ _ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
-def claude_account_status(
+def _claude_account_status_impl(
     agent: Agent,
 ) -> AccountStatus:
     if agent.account is None:
@@ -83,12 +92,12 @@ def claude_account_status(
         usage_summary = None
         limits: tuple[AccountLimit, ...] = ()
         usage_errors: tuple[AccountStatusError, ...] = ()
-        statusline_payload: dict[str, Any] | None = None
+        usage_payload: dict[str, Any] | None = None
     else:
-        limits, usage_errors, statusline_payload = _claude_usage_limits(agent)
+        limits, usage_errors, usage_payload = _account_usage_GET(agent)
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
-        auth_summary = "Claude statusLine captured" if usage_status == "ok" else None
+        auth_summary = "Claude usage API read" if usage_status == "ok" else None
 
     return AccountStatus(
         provider=agent.provider,
@@ -112,7 +121,7 @@ def claude_account_status(
                 if isinstance(home_config, dict)
                 else None
             ),
-            "statusline": statusline_payload,
+            "usage": usage_payload,
         },
     )
 
@@ -221,7 +230,21 @@ def _setup_errors(
     return tuple(errors)
 
 
-def _claude_usage_limits(
+# Claude usage data has multiple possible sources. Keep each implementation
+# isolated while we evaluate which one should become the long-term capability.
+def _account_usage_GET(
+    agent: Agent,
+) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...], dict[str, Any] | None]:
+    try:
+        payload = _fetch_claude_usage_payload(agent)
+        return _parse_claude_usage_get_limits(payload), (), payload
+    except AccountStatusError as exc:
+        return (), (exc,), None
+    except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None
+
+
+def _account_usage_statusline(
     agent: Agent,
 ) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...], dict[str, Any] | None]:
     try:
@@ -242,6 +265,141 @@ def _claude_usage_limits(
         return (), (exc,), None
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
         return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None
+
+
+def _fetch_claude_usage_payload(agent: Agent) -> dict[str, Any]:
+    access_token = _claude_oauth_access_token(agent)
+    timeout_sec = agent.timeout_sec or DEFAULT_USAGE_GET_TIMEOUT_SEC
+    request = urllib.request.Request(
+        CLAUDE_USAGE_API_URL,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "anthropic-beta": CLAUDE_OAUTH_BETA_HEADER,
+            "Content-Type": "application/json",
+            "User-Agent": "claude-cli/agentos",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_sec) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        detail = _read_http_error_detail(exc)
+        raise AccountStatusError(
+            error_type="usage_api_http_error",
+            message=f"claude usage API returned HTTP {exc.code}",
+            detail=detail,
+            exit_code=exc.code,
+        ) from exc
+    except TimeoutError as exc:
+        raise AccountStatusError(
+            error_type="timeout",
+            message=f"claude usage API timed out after {timeout_sec} seconds",
+        ) from exc
+    except OSError as exc:
+        raise AccountStatusError(
+            error_type="usage_api_failed",
+            message=str(exc),
+        ) from exc
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise CliError("claude usage API response must be a JSON object")
+    return payload
+
+
+def _claude_oauth_access_token(agent: Agent) -> str:
+    if agent.home is None:
+        raise AccountStatusError(
+            error_type="home_missing",
+            message="claude-code account_status requires an agent home",
+        )
+    storage_data = _read_claude_secure_storage(agent.home)
+    oauth_data = storage_data.get("claudeAiOauth")
+    if not isinstance(oauth_data, dict):
+        raise AccountStatusError(
+            error_type="oauth_token_missing",
+            message="claude-code OAuth token is not available in secure storage",
+        )
+    access_token = oauth_data.get("accessToken")
+    if not isinstance(access_token, str) or not access_token:
+        raise AccountStatusError(
+            error_type="oauth_token_missing",
+            message="claude-code OAuth access token is missing",
+        )
+    return access_token
+
+
+def _read_claude_secure_storage(home: Path) -> dict[str, Any]:
+    if sys.platform == "darwin":
+        keychain_data = _read_claude_keychain_storage(home)
+        if keychain_data is not None:
+            return keychain_data
+    credentials_path = home / ".credentials.json"
+    if credentials_path.is_file():
+        try:
+            payload = json.loads(credentials_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise AccountStatusError(
+                error_type="oauth_storage_invalid",
+                message=f"invalid claude-code credentials file: {exc}",
+            ) from exc
+        if isinstance(payload, dict):
+            return payload
+    raise AccountStatusError(
+        error_type="oauth_storage_missing",
+        message="claude-code OAuth secure storage was not found",
+    )
+
+
+def _read_claude_keychain_storage(home: Path) -> dict[str, Any] | None:
+    for service_name in _claude_keychain_service_names(home):
+        result = run_process(
+            (
+                "security",
+                "find-generic-password",
+                "-a",
+                os.environ.get("USER", ""),
+                "-s",
+                service_name,
+                "-w",
+            ),
+            mode="capture",
+            timeout_sec=DEFAULT_USAGE_GET_TIMEOUT_SEC,
+        )
+        if result.exit_code != 0:
+            continue
+        raw = result.stdout or ""
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
+def _claude_keychain_service_names(home: Path) -> tuple[str, ...]:
+    home_hash = hashlib.sha256(str(home).encode("utf-8")).hexdigest()[:8]
+    return (
+        f"Claude Code{CLAUDE_CREDENTIALS_SERVICE_SUFFIX}-{home_hash}",
+        f"Claude Code{CLAUDE_CREDENTIALS_SERVICE_SUFFIX}",
+    )
+
+
+def _read_http_error_detail(exc: urllib.error.HTTPError) -> dict[str, object]:
+    try:
+        body = exc.read().decode("utf-8")
+    except OSError:
+        body = ""
+    detail: dict[str, object] = {"status": exc.code}
+    if body:
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError:
+            detail["body"] = body[:500]
+        else:
+            detail["body"] = parsed
+    return detail
 
 
 def _collect_claude_statusline_payload(agent: Agent) -> dict[str, Any]:
@@ -497,6 +655,52 @@ def _load_claude_statusline_capture(capture_path: Path) -> dict[str, Any] | None
     return payload
 
 
+def _parse_claude_usage_get_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:
+    limits: list[AccountLimit] = []
+    for limit_type in ("five_hour", "seven_day"):
+        raw_limit = payload.get(limit_type)
+        if raw_limit is None:
+            continue
+        if not isinstance(raw_limit, dict):
+            raise CliError(f"claude {limit_type} usage payload must be an object")
+        limits.append(_parse_claude_usage_get_limit(limit_type, raw_limit))
+    if not limits:
+        raise CliError("claude usage API payload has no supported limits")
+    return tuple(limits)
+
+
+def _parse_claude_usage_get_limit(
+    limit_type: str,
+    raw_limit: Mapping[str, Any],
+) -> AccountLimit:
+    utilization = _optional_float(
+        raw_limit.get("utilization"),
+        field_name=f"claude {limit_type} utilization",
+    )
+    used_percent = round(utilization) if utilization is not None else None
+    resets_at = _string_or_none(raw_limit.get("resets_at"))
+    period_duration_mins = _claude_rate_limit_duration_mins(limit_type)
+    period_started_at, period_ends_at = _period_bounds_from_reset_iso(
+        resets_at=resets_at,
+        period_duration_mins=period_duration_mins,
+    )
+    return AccountLimit(
+        limit_class="usage_over_time",
+        limit_name=_claude_rate_limit_name(limit_type),
+        limit_label=_claude_rate_limit_label(limit_type),
+        usage_over_time=UsageOverTimeLimitData(
+            used_percent=used_percent,
+            period_started_at=period_started_at,
+            period_ends_at=period_ends_at,
+            period_duration_mins=period_duration_mins,
+            resets_at=_normalize_iso_datetime(resets_at),
+        ),
+        provider_limit={
+            "limit_type": limit_type,
+        },
+    )
+
+
 def _parse_claude_statusline_rate_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:
     raw_rate_limits = payload.get("rate_limits")
     if not isinstance(raw_rate_limits, dict) or not raw_rate_limits:
@@ -603,6 +807,23 @@ def _period_bounds_from_reset(
     )
 
 
+def _period_bounds_from_reset_iso(
+    *,
+    resets_at: str | None,
+    period_duration_mins: int | None,
+) -> tuple[str | None, str | None]:
+    if resets_at is None or period_duration_mins is None:
+        return (None, None)
+    reset_at = _parse_iso_datetime(resets_at)
+    if reset_at is None:
+        return (None, _normalize_iso_datetime(resets_at))
+    period_started_at = reset_at - datetime.timedelta(minutes=period_duration_mins)
+    return (
+        _datetime_to_iso(period_started_at),
+        _datetime_to_iso(reset_at),
+    )
+
+
 def _iso_from_epoch_seconds(epoch_seconds: int | None) -> str | None:
     if epoch_seconds is None:
         return None
@@ -610,6 +831,34 @@ def _iso_from_epoch_seconds(epoch_seconds: int | None) -> str | None:
         epoch_seconds,
         tz=datetime.timezone.utc,
     ).isoformat().replace("+00:00", "Z")
+
+
+def _normalize_iso_datetime(value: str | None) -> str | None:
+    parsed = _parse_iso_datetime(value)
+    if parsed is None:
+        return value
+    return _datetime_to_iso(parsed)
+
+
+def _parse_iso_datetime(value: str | None) -> datetime.datetime | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed.astimezone(datetime.timezone.utc)
+
+
+def _datetime_to_iso(value: datetime.datetime) -> str:
+    return value.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _optional_int(value: object, *, field_name: str) -> int | None:
@@ -741,4 +990,4 @@ def _string_or_none(value: object) -> str | None:
     return None
 
 
-__all__ = ["claude_account_status"]
+__all__: list[str] = []

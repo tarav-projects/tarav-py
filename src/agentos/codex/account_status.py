@@ -27,7 +27,7 @@ DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
 CODEX_APP_SERVER_ARGV = ("app-server",)
 
 
-def codex_account_status(
+def _codex_account_status_impl(
     agent: Agent,
 ) -> AccountStatus:
     if agent.account is None:
@@ -67,7 +67,7 @@ def codex_account_status(
         limits: tuple[AccountLimit, ...] = ()
         usage_errors: tuple[AccountStatusError, ...] = ()
     else:
-        limits, usage_errors = _codex_usage_limits(agent)
+        limits, usage_errors = _account_usage_app_server(agent)
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
         auth_summary = "Codex rate limits read" if usage_status == "ok" else None
@@ -149,9 +149,13 @@ def _setup_errors(
     return tuple(errors)
 
 
-def _codex_usage_limits(agent: Agent) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...]]:
+# Codex usage data may grow additional sources. Keep each implementation
+# isolated while we evaluate which one should become the long-term capability.
+def _account_usage_app_server(
+    agent: Agent,
+) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...]]:
     try:
-        payload = _read_codex_account_rate_limits(agent)
+        payload = _fetch_account_usage_app_server_payload(agent)
         return tuple(_parse_codex_rate_limits(payload)), ()
     except AccountStatusError as exc:
         return (), (exc,)
@@ -159,7 +163,7 @@ def _codex_usage_limits(agent: Agent) -> tuple[tuple[AccountLimit, ...], tuple[A
         return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),)
 
 
-def _read_codex_account_rate_limits(agent: Agent) -> dict[str, Any]:
+def _fetch_account_usage_app_server_payload(agent: Agent) -> dict[str, Any]:
     command = _build_codex_account_status_command(agent, argv=CODEX_APP_SERVER_ARGV)
     timeout_sec = _account_timeout_sec(agent)
     try:
@@ -484,4 +488,4 @@ def _string_or_none(value: object) -> str | None:
     return None
 
 
-__all__ = ["codex_account_status"]
+__all__: list[str] = []
