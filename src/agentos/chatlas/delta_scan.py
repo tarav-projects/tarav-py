@@ -23,6 +23,8 @@ from agentos.chatlas.session_model._hashes import _session_identity_hash
 
 CHATLAS_DIRNAME = "chatlas"
 DEFAULT_CHATLAS_PHASE = "index-only"
+RAW_PARTITION_MANIFEST_CLASS = "agentos.chatlas.raw_partition_manifest"
+RAW_PARTITION_MANIFEST_FILENAME = "manifest.json"
 SESSION_INDEX_DERIVATIONS_CACHE_DIR = Path("cache") / "session-index-derivations-v1"
 SESSION_INDEX_ROOT = Path("index") / "sessions"
 CopyResult = Literal["added", "updated", "unchanged", "skipped"]
@@ -980,7 +982,7 @@ def _derivation_cache_partition_path(cache_root: Path, *, instance: ChatlasProvi
 
 
 def _raw_partition_manifest_path(raw_root: Path, *, instance: ChatlasProviderInstance) -> Path:
-    return raw_root / instance.partition_key / "manifest.json"
+    return raw_root / instance.partition_key / RAW_PARTITION_MANIFEST_FILENAME
 
 
 def _load_raw_partition_manifest(path: Path) -> dict[str, Any] | None:
@@ -1014,7 +1016,7 @@ def _raw_partition_manifest_payload(instance: ChatlasProviderInstance, *, raw_ro
             }
         )
     return {
-        "class": "agentos.chatlas.raw_partition_manifest",
+        "class": RAW_PARTITION_MANIFEST_CLASS,
         "schema_version": 1,
         "provider": instance.provider,
         "provider_instance_fingerprint": instance.fingerprint,

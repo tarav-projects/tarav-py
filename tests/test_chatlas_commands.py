@@ -111,6 +111,14 @@ def _chatlas_index_rows(chatlas_root: Path) -> list[dict[str, object]]:
     return rows
 
 
+def _codex_raw_home(chatlas_root: Path, fingerprint: str) -> Path:
+    return chatlas_root / "raw" / "codex" / fingerprint / "home"
+
+
+def _codex_manifest_path(chatlas_root: Path, fingerprint: str) -> Path:
+    return _codex_raw_home(chatlas_root, fingerprint).parent / "manifest.json"
+
+
 def _assert_chatlas_query_counts(
     payload: dict[str, object],
     *,
@@ -222,22 +230,24 @@ def test_chatlas_update_delta_scan_copies_and_indexes_codex_raw(
     assert instance_payload["stats"]["native_scan"]["source_artifact_count"] == 2
     assert instance_payload["stats"]["raw_copy"]["copied_file_count"] == 2
     assert instance_payload["stats"]["timing"]["elapsed_seconds"] >= 0
-    manifest_path = chatlas_root / "raw" / "codex" / instance_payload["provider_instance_fingerprint"] / "manifest.json"
+    fingerprint = instance_payload["provider_instance_fingerprint"]
+    raw_home = _codex_raw_home(chatlas_root, fingerprint)
+    manifest_path = _codex_manifest_path(chatlas_root, fingerprint)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest == {
         "class": "agentos.chatlas.raw_partition_manifest",
         "schema_version": 1,
         "provider": "codex",
-        "provider_instance_fingerprint": instance_payload["provider_instance_fingerprint"],
+        "provider_instance_fingerprint": fingerprint,
         "instance": "codex-work",
         "home": str(codex_home),
-        "raw_home": str(chatlas_root / "raw" / "codex" / instance_payload["provider_instance_fingerprint"] / "home"),
+        "raw_home": str(raw_home),
         "home_source": "configured_agent_home",
         "source_roots": [
             {
                 "role": "home",
                 "source_root": str(codex_home),
-                "raw_root": str(chatlas_root / "raw" / "codex" / instance_payload["provider_instance_fingerprint"] / "home"),
+                "raw_root": str(raw_home),
             }
         ],
     }
@@ -994,7 +1004,7 @@ def test_chatlas_update_delta_scan_unchanged_run_uses_derivation_cache(
     first_payload = json.loads(capsys.readouterr().out)
     chatlas_root = home / "Documents" / "chatlas"
     fingerprint = first_payload["instances"][0]["provider_instance_fingerprint"]
-    manifest_path = chatlas_root / "raw" / "codex" / fingerprint / "manifest.json"
+    manifest_path = _codex_manifest_path(chatlas_root, fingerprint)
     replacement_manifest = {
         "class": "agentos.chatlas.raw_partition_manifest",
         "schema_version": 1,

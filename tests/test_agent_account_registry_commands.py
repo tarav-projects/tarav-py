@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 from pathlib import Path
 
@@ -195,11 +196,13 @@ def _registered_linked_codex_home(
 def _stub_codex_login_status(monkeypatch, target_home: Path):
     import agentos.codex.account_status as codex_account_status
 
-    def fake_run_process(*args, **kwargs):
-        assert kwargs["env_overrides"]["CODEX_HOME"] == str(target_home.resolve())
+    def fake_execute_agent_command(command, *, run_config):
+        assert command.env_overrides["CODEX_HOME"] == str(target_home.resolve())
+        assert command.argv[-2:] == ("login", "status")
+        assert run_config.process_mode == "capture"
         return ProcessResult(exit_code=0, stdout="Logged in using ChatGPT\n", stderr="")
 
-    monkeypatch.setattr(codex_account_status, "run_process", fake_run_process)
+    monkeypatch.setattr(codex_account_status, "execute_agent_command", fake_execute_agent_command)
     return codex_account_status
 
 
@@ -735,6 +738,72 @@ def test_codex_account_status_refresh_usage_parses_limits(
     assert [limit.limit_name for limit in status.limits] == ["5h", "168h"]
     assert [limit.usage_over_time.used_percent for limit in status.limits if limit.usage_over_time] == [25, 40]
     assert status.usage_summary == "5 hours 25%, 168 hours 40%"
+
+
+def test_codex_account_status_app_server_uses_agent_command_model(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    target_home = _registered_linked_codex_home(tmp_path, monkeypatch, capsys)
+    import agentos.codex.account_status as codex_account_status
+
+    observed: dict[str, object] = {}
+
+    class FakeProcess:
+        def __init__(self, command, **kwargs):
+            observed["command"] = tuple(command)
+            observed["env"] = kwargs["env"]
+            self.args = command
+            self.stdin = io.StringIO()
+            self.stdout = io.StringIO(
+                json.dumps({"id": 1, "result": {}})
+                + "\n"
+                + json.dumps(
+                    {
+                        "id": 2,
+                        "result": {
+                            "rateLimits": {
+                                "limitId": "test-limit",
+                                "primary": {
+                                    "usedPercent": 25,
+                                    "windowDurationMins": 300,
+                                    "resetsAt": 1_776_000_000,
+                                },
+                            }
+                        },
+                    }
+                )
+                + "\n"
+            )
+            self.stderr = io.StringIO("")
+
+        def wait(self, timeout=None):
+            del timeout
+            return 0
+
+        def poll(self):
+            return 0
+
+        def terminate(self):
+            pass
+
+        def kill(self):
+            pass
+
+    monkeypatch.setattr(
+        codex_account_status.select,
+        "select",
+        lambda read, write, error, timeout: (read, write, error),
+    )
+    monkeypatch.setattr(codex_account_status.subprocess, "Popen", FakeProcess)
+
+    agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
+    payload = codex_account_status._read_codex_account_rate_limits(agent)
+
+    assert observed["command"][-1] == "app-server"
+    assert observed["env"]["CODEX_HOME"] == str(target_home.resolve())
+    assert payload["rateLimits"]["limitId"] == "test-limit"
 
 
 def test_codex_account_status_preserves_auth_when_usage_refresh_errors(

@@ -6,10 +6,11 @@ import os
 import select
 import subprocess
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos._core.process import ProcessError, run_process
+from agentos._core.process import ProcessError
 from agentos.agent.account_registry import load_account
 from agentos.agent.account_status import (
     AccountIdentity,
@@ -20,10 +21,10 @@ from agentos.agent.account_status import (
     UsageOverTimeLimitData,
 )
 from agentos.agent.primitives import Agent
+from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, execute_agent_command
 from agentos.codex.account_registry import inspect_codex_account_home
 
 
-CODEX_HOME_ENV_VAR = "CODEX_HOME"
 DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
 
 
@@ -168,16 +169,20 @@ def _setup_errors(
 
 
 def _codex_auth_status(agent: Agent) -> tuple[str | None, AccountStatusError | None]:
-    command = (*agent.cli_command, "login", "status")
+    command = agent.build_command(AgentCommandConfig(argv=("login", "status")))
     try:
-        result = run_process(
+        result = execute_agent_command(
             command,
-            env_overrides=_codex_env_overrides(agent),
-            mode="capture",
-            timeout_sec=_account_timeout_sec(agent),
+            run_config=AgentRunConfig(
+                cwd=Path.cwd().resolve(),
+                process_mode="capture",
+                timeout_sec=_account_timeout_sec(agent),
+            ),
         )
     except ProcessError as exc:
         return None, AccountStatusError(error_type=exc.error_type, message=exc.message)
+    except CliError as exc:
+        return None, AccountStatusError(error_type="command_failed", message=str(exc))
     stdout = (result.stdout or "").strip()
     stderr = (result.stderr or "").strip()
     output = stdout or stderr
@@ -213,16 +218,16 @@ def _codex_usage_limits(agent: Agent) -> tuple[tuple[AccountLimit, ...], tuple[A
 
 
 def _read_codex_account_rate_limits(agent: Agent) -> dict[str, Any]:
-    command = [*agent.cli_command, "app-server"]
+    command = agent.build_command(AgentCommandConfig(argv=("app-server",)))
     timeout_sec = _account_timeout_sec(agent)
     try:
         process = subprocess.Popen(
-            command,
+            list(command.argv),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=_codex_process_environment(agent),
+            env=_process_environment(command.env_overrides),
         )
     except FileNotFoundError as exc:
         raise AccountStatusError(error_type="command_not_found", message=str(exc)) from exc
@@ -480,16 +485,9 @@ def _codex_response_error_message(error_payload: object) -> str:
     return "codex app-server returned an invalid error payload"
 
 
-def _codex_env_overrides(agent: Agent) -> dict[str, str]:
-    env_overrides = dict(agent.env)
-    if agent.home is not None:
-        env_overrides[CODEX_HOME_ENV_VAR] = str(agent.home)
-    return env_overrides
-
-
-def _codex_process_environment(agent: Agent) -> dict[str, str]:
+def _process_environment(env_overrides: Mapping[str, str]) -> dict[str, str]:
     env = os.environ.copy()
-    env.update(_codex_env_overrides(agent))
+    env.update(env_overrides)
     return env
 
 
