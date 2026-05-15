@@ -320,6 +320,9 @@ def _limits_summary(account_status: dict[str, Any]) -> str:
     usage_summary = account_status.get("usage_summary")
     if isinstance(usage_summary, str) and usage_summary:
         return usage_summary
+    usage_error = _usage_error_message(account_status)
+    if usage_error is not None:
+        return f"error | {usage_error}"
     limits = account_status.get("limits")
     if not isinstance(limits, list) or not limits:
         return "none"
@@ -336,6 +339,22 @@ def _limits_summary(account_status: dict[str, Any]) -> str:
     if summaries:
         return ", ".join(summaries)
     return "unknown"
+
+
+def _usage_error_message(account_status: dict[str, Any]) -> str | None:
+    usage_errors = account_status.get("usage_errors")
+    if not isinstance(usage_errors, list) or not usage_errors:
+        return None
+    first_error = usage_errors[0]
+    if not isinstance(first_error, dict):
+        return "unknown usage error"
+    message = first_error.get("message")
+    if isinstance(message, str) and message:
+        return message
+    error_type = first_error.get("type")
+    if isinstance(error_type, str) and error_type:
+        return error_type
+    return "unknown usage error"
 
 
 def _limit_label(limit: dict[str, Any], usage_over_time: dict[str, object]) -> str:
