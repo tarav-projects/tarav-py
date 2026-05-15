@@ -19,6 +19,7 @@ from typing import Any
 
 from agentos._core.errors import CliError
 from agentos._core.process import run_process
+from agentos._core.project import agentos_home_dir
 from agentos.agent.account_registry import load_account, load_links
 from agentos.agent.account_status import (
     AccountIdentity,
@@ -34,6 +35,8 @@ from agentos.agent.run_runtime import AgentCommandConfig
 
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
 DEFAULT_USAGE_GET_TIMEOUT_SEC = 5
+CLAUDE_USAGE_GET_CACHE_MAX_AGE_SEC = 300
+CLAUDE_USAGE_GET_STALE_FALLBACK_MAX_AGE_SEC = 3600
 CLAUDE_USAGE_API_URL = "https://api.anthropic.com/api/oauth/usage"
 CLAUDE_OAUTH_BETA_HEADER = "oauth-2025-04-20"
 CLAUDE_CREDENTIALS_SERVICE_SUFFIX = "-credentials"
@@ -235,10 +238,29 @@ def _setup_errors(
 def _account_usage_GET(
     agent: Agent,
 ) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...], dict[str, Any] | None]:
+    cached_payload = _load_cached_claude_usage_get_payload(
+        agent,
+        max_age_sec=CLAUDE_USAGE_GET_CACHE_MAX_AGE_SEC,
+    )
+    if cached_payload is not None:
+        return _parse_claude_usage_get_limits(cached_payload), (), cached_payload
+
     try:
         payload = _fetch_claude_usage_payload(agent)
-        return _parse_claude_usage_get_limits(payload), (), payload
+        _write_cached_claude_usage_get_payload(agent, payload)
+        return (
+            _parse_claude_usage_get_limits(payload),
+            (),
+            _with_usage_get_cache_metadata(payload, cache_status="live"),
+        )
     except AccountStatusError as exc:
+        cached_payload = _load_cached_claude_usage_get_payload(
+            agent,
+            max_age_sec=CLAUDE_USAGE_GET_STALE_FALLBACK_MAX_AGE_SEC,
+            stale_error=exc,
+        )
+        if cached_payload is not None:
+            return _parse_claude_usage_get_limits(cached_payload), (), cached_payload
         return (), (exc,), None
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
         return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None
@@ -305,6 +327,100 @@ def _fetch_claude_usage_payload(agent: Agent) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise CliError("claude usage API response must be a JSON object")
     return payload
+
+
+def _load_cached_claude_usage_get_payload(
+    agent: Agent,
+    *,
+    max_age_sec: int,
+    stale_error: AccountStatusError | None = None,
+) -> dict[str, Any] | None:
+    cache_path = _claude_usage_get_cache_path(agent)
+    if not cache_path.is_file():
+        return None
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(cache, dict):
+        return None
+    captured_at = cache.get("captured_at_epoch")
+    payload = cache.get("payload")
+    if not isinstance(captured_at, int | float) or not isinstance(payload, dict):
+        return None
+    age_sec = time.time() - float(captured_at)
+    if age_sec < 0 or age_sec > max_age_sec:
+        return None
+    cache_status = "stale_fallback" if stale_error is not None else "fresh"
+    return _with_usage_get_cache_metadata(
+        payload,
+        cache_status=cache_status,
+        captured_at_epoch=float(captured_at),
+        age_sec=age_sec,
+        stale_error=stale_error,
+    )
+
+
+def _write_cached_claude_usage_get_payload(agent: Agent, payload: dict[str, Any]) -> None:
+    cache_path = _claude_usage_get_cache_path(agent)
+    now = time.time()
+    cache = {
+        "schema_version": 1,
+        "provider": agent.provider,
+        "account": _account_name(agent),
+        "method": "oauth_usage_get",
+        "captured_at_epoch": now,
+        "captured_at": _iso_from_epoch_seconds(int(now)),
+        "payload": payload,
+    }
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = cache_path.parent / f".{cache_path.name}.agentos-tmp-{os.getpid()}"
+    temp_path.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temp_path, cache_path)
+
+
+def _claude_usage_get_cache_path(agent: Agent) -> Path:
+    return (
+        agentos_home_dir()
+        / "cache"
+        / "account-status"
+        / agent.provider
+        / _account_name(agent)
+        / "oauth_usage_get.json"
+    )
+
+
+def _with_usage_get_cache_metadata(
+    payload: Mapping[str, Any],
+    *,
+    cache_status: str,
+    captured_at_epoch: float | None = None,
+    age_sec: float | None = None,
+    stale_error: AccountStatusError | None = None,
+) -> dict[str, Any]:
+    payload_with_metadata = dict(payload)
+    metadata: dict[str, object] = {
+        "method": "oauth_usage_get",
+        "status": cache_status,
+    }
+    if captured_at_epoch is not None:
+        metadata["captured_at_epoch"] = captured_at_epoch
+        metadata["captured_at"] = _iso_from_epoch_seconds(int(captured_at_epoch))
+    if age_sec is not None:
+        metadata["age_sec"] = round(age_sec, 3)
+    if stale_error is not None:
+        metadata["live_error"] = stale_error.summary()
+    payload_with_metadata["agentos_cache"] = metadata
+    return payload_with_metadata
+
+
+def _account_name(agent: Agent) -> str:
+    if agent.account is None:
+        raise AccountStatusError(
+            error_type="account_missing",
+            message="claude-code account_status requires an agent account context",
+        )
+    return agent.account.account
 
 
 def _claude_oauth_access_token(agent: Agent) -> str:

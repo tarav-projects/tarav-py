@@ -8,7 +8,38 @@ from typing import Any
 from agentos.codex.session import CodexSession
 from agentos.agent.extractors.codex import is_codex_rollout_path
 
-from ._shared import *
+from ._shared import (
+    _ExperimentalNormalizationResult,
+    _SemanticEventBuilder,
+    _attach_event_refs_to_tool_invocations,
+    _copy_present_fields,
+    _count_payload,
+    _coverage_status,
+    _dedupe_dicts,
+    _dict_list,
+    _event_timestamp,
+    _event_turn_id,
+    _experimental_normalized_counts,
+    _experimental_unsupported_concepts,
+    _first_event_for_turn,
+    _int_or_none,
+    _int_or_zero,
+    _model_run_reasoning_count,
+    _project_messages_from_events,
+    _project_reasoning_trace_from_events,
+    _record_native_dict,
+    _record_native_int_field,
+    _semantic_event_outcome_from_status,
+    _semantic_event_producer,
+    _semantic_event_surfaces,
+    _sorted_count_dict,
+    _source_ref_first_record_index,
+    _source_ref_record_indices,
+    _string_list,
+    _string_or_none,
+    _tool_invocation_refs_by_call_id,
+    _warn_about_tool_group_records,
+)
 from ._transcript import _experimental_clean_transcript_result
 
 _CODEX_CONTEXT_MESSAGE_PREFIXES = (
@@ -158,9 +189,22 @@ def _experimental_normalize_codex_session(
             ),
         )
 
+    fallback_artifact = {
+        "role": "transcript",
+        "path": str(primary_path),
+    }
+    fallback_source = {
+        "source_ref_id": session.source_ref_id or "source-1",
+        **fallback_artifact,
+    }
     fallback = _experimental_clean_transcript_result(
-        session,
-        sources=sources,
+        {
+            "provider": session.provider,
+            "session_id": session.session_id,
+            "primary_backing_artifact": fallback_artifact,
+            "backing_artifacts": [fallback_artifact],
+        },
+        sources=[fallback_source],
         normalizer="codex.raw_rollout.experimental.v1",
     )
     warnings = [

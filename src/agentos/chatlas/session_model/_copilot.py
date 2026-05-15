@@ -9,7 +9,36 @@ from agentos._core.errors import CliError
 from agentos.copilot.session import CopilotSession
 from agentos.agent.extractors.copilot_cli import is_copilot_cli_session_path
 
-from ._shared import *
+from ._shared import (
+    _ExperimentalNormalizationResult,
+    _SemanticEventBuilder,
+    _attach_event_refs_to_tool_invocations,
+    _attach_tool_invocation_refs_to_events,
+    _copy_present_fields,
+    _count_payload,
+    _coverage_status,
+    _dedupe_dicts,
+    _dict_list,
+    _experimental_normalized_counts,
+    _experimental_unsupported_concepts,
+    _int_or_none,
+    _int_or_zero,
+    _model_run_reasoning_count,
+    _project_messages_from_events,
+    _project_reasoning_trace_from_events,
+    _project_usage_from_events,
+    _record_native_dict,
+    _record_native_int_field,
+    _record_native_string_field,
+    _semantic_event_producer,
+    _semantic_event_surfaces,
+    _sorted_count_dict,
+    _source_ref_event_indices,
+    _source_ref_first_event_index,
+    _string_list,
+    _string_or_none,
+    _warn_about_tool_group_records,
+)
 
 _COPILOT_MESSAGE_NATIVE_FIELDS = (
     ("messageId", "message_id"),
@@ -198,7 +227,6 @@ def _copilot_events_from_raw_events(
     current_interaction_ref: str | None = None
 
     for raw_event in raw_events.events:
-        event_type = raw_event.event_type or "unknown"
         if raw_event.event_type is None:
             warnings.append(
                 f"copilot event record {raw_event.event_index} has no event type"

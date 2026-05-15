@@ -8,7 +8,32 @@ from typing import Any
 from agentos.claude.session import ClaudeSession
 from agentos.agent.extractors.claude_code import is_claude_code_session_path
 
-from ._shared import *
+from ._shared import (
+    _ExperimentalNormalizationResult,
+    _SemanticEventBuilder,
+    _attach_event_refs_to_tool_invocations,
+    _copy_present_fields,
+    _count_payload,
+    _coverage_status,
+    _dedupe_dicts,
+    _dict_list,
+    _experimental_normalized_counts,
+    _int_or_none,
+    _int_or_zero,
+    _model_run_reasoning_count,
+    _project_messages_from_events,
+    _project_reasoning_trace_from_events,
+    _project_usage_from_events,
+    _record_native_dict,
+    _record_native_int_field,
+    _semantic_event_producer,
+    _semantic_event_surfaces,
+    _sorted_count_dict,
+    _string_list,
+    _string_or_none,
+    _tool_invocation_refs_by_call_id,
+    _warn_about_tool_group_records,
+)
 
 @dataclass(frozen=True)
 class _ClaudeRawRecord:

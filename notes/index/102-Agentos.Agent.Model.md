@@ -154,6 +154,25 @@ Agentos may share primitives where they genuinely fit:
 
 These are reusable primitives, not a forced object hierarchy. Provider-specific objects decide how the primitives apply.
 
+## Relocation.Function
+
+`Relocation.Function` is a private function created primarily to relocate or contain an implementation block in a more natural module/file location.
+
+It does not introduce a new public interface, reusable abstraction, domain concept, or independent capability. The original caller remains the semantic interface; the relocation function is only the implementation body placed elsewhere.
+
+Name a relocation function so it does not imply a new semantic level. The name should signal implementation placement, not a new concept.
+
+Python example:
+
+```python
+def account_status(self):
+    return _codex_account_status_impl(self)
+```
+
+Here, `agent.account_status()` is the capability. `_codex_account_status_impl(agent)` is the relocation function holding the provider-local implementation.
+
+Use this pattern when it improves agent navigation and natural placement without pretending the extracted block is a deeper abstraction.
+
 ## Design Rules
 
 - Prefer three provider-native anchors: `<Provider>.Agent`, `<Provider>.SessionRef`, and `<Provider>.Session`.
@@ -167,6 +186,7 @@ These are reusable primitives, not a forced object hierarchy. Provider-specific 
 - Provider quirks belong in raw artifacts or `<Provider>.Session`, not in `Session.Model`.
 - Cross-provider coordination belongs to Agentos-level services, not to provider sessions.
 - Shared Agentos primitives are allowed only when they do not become a forced schema for every provider.
+- Use `Relocation.Function` for private extracted implementation bodies that only exist to place code in a more natural file or module.
 - Do not prescribe implementation mechanics in the concept model.
 
 ## Relationship To Current Implementation
@@ -180,6 +200,7 @@ The target direction is to reduce `ProviderInstance` into a config/input bridge 
 - `Session.Model`
 - `Chatlas.Standard.Model.Contract`
 - `Project.Selection.Protocol`
+- `Relocation.Function`
 
 ## Provenance
 

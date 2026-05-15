@@ -2,7 +2,7 @@
 
 ## Impl-Req State
 
-Implemented as the first migration slice: the old Chatlas update-era runtime is archived as dead reference and the live command surface is stubbed.
+Implemented as the first migration slice: the old Chatlas update-era runtime was archived as dead reference and the live command surface was temporarily stubbed. Later implementation slices restored real Chatlas update, query, stats, raw, export, and views behavior; this note is retained as history for the deprecation boundary, not as current runtime state.
 
 ## User Intent
 
@@ -183,3 +183,4 @@ Old behavior-heavy tests should be skipped, rewritten, or moved in a later test-
 
 - 2026-05-11: Created to capture the first Chatlas update redesign migration slice: archive old implementation as dead reference, sever runtime use, and stub the live command surface.
 - 2026-05-11: Implemented the slice. Archived old Chatlas runtime under `_DEPRECATED/chatlas-update-v1/`, replaced live Chatlas update/query/stats/raw/export runtime behavior with explicit stubs, replaced impacted command tests with stub-boundary tests, verified no `_DEPRECATED` imports under `src/agentos`, refreshed the editable CLI, and checked `agentos chatlas update --output-mode=json`.
+- 2026-05-15: Stale-state cleanup. Clarified that the stub slice is historical: later slices restored real Chatlas update/query/stats/raw/export/views behavior in `src/agentos/chatlas`, while `_DEPRECATED/chatlas-update-v1/` remains dead reference code only.

@@ -7,7 +7,6 @@ from pathlib import Path
 import stat
 from typing import Any
 
-from agentos._core.errors import CliError
 from agentos.chatlas.delta_scan import (
     run_chatlas_delta_scan,
     run_chatlas_index_redo,
@@ -132,10 +131,6 @@ def chatlas_index_doctor(
 
 def format_chatlas_doctor_markdown(payload: dict[str, object]) -> str:
     return format_chatlas_index_doctor_markdown(payload)
-
-
-def _chatlas_stub_error(command: str) -> CliError:
-    return CliError(f"{command} is under reimplementation")
 
 
 def chatlas_stats(
@@ -393,30 +388,6 @@ def _string_or_none(value: object) -> str | None:
     return None
 
 
-def resolve_chatlas_sessions(
-    *,
-    query: str | None = None,
-    providers: tuple[str, ...] | None = None,
-    chatlas_root: Path | None = None,
-) -> list[dict[str, Any]]:
-    _ = query
-    _ = providers
-    _ = chatlas_root
-    raise _chatlas_stub_error("chatlas session resolution")
-
-
-def chatlas_resolved_session_stats(
-    *,
-    query: str,
-    providers: tuple[str, ...] | None = None,
-    chatlas_root: Path | None = None,
-) -> dict[str, object]:
-    _ = query
-    _ = providers
-    _ = chatlas_root
-    raise _chatlas_stub_error("chatlas session stats")
-
-
 __all__ = [
     "chatlas_query",
     "chatlas_index_query",
@@ -425,9 +396,7 @@ __all__ = [
     "chatlas_index_update",
     "chatlas_raw_export",
     "chatlas_raw_paths",
-    "chatlas_resolved_session_stats",
     "chatlas_stats",
     "chatlas_update",
     "format_chatlas_stats_markdown",
-    "resolve_chatlas_sessions",
 ]

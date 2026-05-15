@@ -17,6 +17,7 @@ from agentos.agent.account_status import (
     AccountLimit,
     AccountStatus,
     AccountStatusError,
+    AgentAccountContext,
     UsageOverTimeLimitData,
 )
 from agentos.agent.providers import build_registered_account_agent
@@ -1274,6 +1275,161 @@ def test_claude_usage_get_parser_maps_subscription_limits() -> None:
         == "2026-05-15T15:29:59.734578Z"
     )
     assert limits[0].provider_limit == {"limit_type": "five_hour"}
+
+
+def test_claude_usage_get_uses_fresh_account_cache(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    cache_path = (
+        agentos_home
+        / "cache"
+        / "account-status"
+        / "claude-code"
+        / "main"
+        / "oauth_usage_get.json"
+    )
+    _write(
+        cache_path,
+        json.dumps(
+            {
+                "captured_at_epoch": 100.0,
+                "payload": {
+                    "five_hour": {
+                        "utilization": 20,
+                        "resets_at": "2026-05-15T20:29:59Z",
+                    }
+                },
+            }
+        )
+        + "\n",
+    )
+    monkeypatch.setattr(claude_account_status.time, "time", lambda: 120.0)
+
+    def fail_fetch(agent):
+        del agent
+        raise AssertionError("fresh account cache should skip provider fetch")
+
+    monkeypatch.setattr(claude_account_status, "_fetch_claude_usage_payload", fail_fetch)
+
+    limits, errors, payload = claude_account_status._account_usage_GET(agent)
+
+    assert errors == ()
+    assert [limit.limit_name for limit in limits] == ["burst"]
+    assert payload is not None
+    assert payload["agentos_cache"]["status"] == "fresh"
+    assert payload["agentos_cache"]["age_sec"] == 20.0
+
+
+def test_claude_usage_get_writes_account_cache(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    monkeypatch.setattr(claude_account_status.time, "time", lambda: 100.0)
+    monkeypatch.setattr(
+        claude_account_status,
+        "_fetch_claude_usage_payload",
+        lambda agent: {
+            "five_hour": {
+                "utilization": 33,
+                "resets_at": "2026-05-15T20:29:59Z",
+            }
+        },
+    )
+
+    limits, errors, payload = claude_account_status._account_usage_GET(agent)
+
+    assert errors == ()
+    assert [limit.usage_over_time.used_percent for limit in limits if limit.usage_over_time] == [
+        33
+    ]
+    assert payload is not None
+    assert payload["agentos_cache"]["status"] == "live"
+    cache_payload = json.loads(
+        (
+            agentos_home
+            / "cache"
+            / "account-status"
+            / "claude-code"
+            / "main"
+            / "oauth_usage_get.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert cache_payload["provider"] == "claude-code"
+    assert cache_payload["account"] == "main"
+    assert cache_payload["payload"]["five_hour"]["utilization"] == 33
+
+
+def test_claude_usage_get_uses_stale_account_cache_when_refresh_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    cache_path = (
+        agentos_home
+        / "cache"
+        / "account-status"
+        / "claude-code"
+        / "main"
+        / "oauth_usage_get.json"
+    )
+    _write(
+        cache_path,
+        json.dumps(
+            {
+                "captured_at_epoch": 100.0,
+                "payload": {
+                    "five_hour": {
+                        "utilization": 20,
+                        "resets_at": "2026-05-15T20:29:59Z",
+                    }
+                },
+            }
+        )
+        + "\n",
+    )
+    monkeypatch.setattr(claude_account_status.time, "time", lambda: 500.0)
+
+    def fail_fetch(agent):
+        del agent
+        raise AccountStatusError(
+            error_type="usage_api_http_error",
+            message="claude usage API returned HTTP 429",
+            exit_code=429,
+        )
+
+    monkeypatch.setattr(claude_account_status, "_fetch_claude_usage_payload", fail_fetch)
+
+    limits, errors, payload = claude_account_status._account_usage_GET(agent)
+
+    assert errors == ()
+    assert [limit.limit_name for limit in limits] == ["burst"]
+    assert payload is not None
+    assert payload["agentos_cache"]["status"] == "stale_fallback"
+    assert payload["agentos_cache"]["live_error"]["type"] == "usage_api_http_error"
 
 
 def test_claude_statusline_uses_stable_system_home_workspace(tmp_path: Path) -> None:
