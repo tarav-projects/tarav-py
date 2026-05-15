@@ -1274,10 +1274,66 @@ def test_claude_statusline_uses_fresh_system_home_cache(
     )
     monkeypatch.setattr(claude_account_status.time, "time", lambda: 120.0)
 
-    payload = claude_account_status._load_cached_claude_statusline_payload(agent)
+    payload = claude_account_status._load_cached_claude_statusline_payload(
+        agent,
+        max_age_sec=60,
+    )
 
     assert payload is not None
     assert payload["rate_limits"]["five_hour"]["used_percentage"] == 20
+
+
+def test_claude_statusline_uses_stale_cache_when_live_refresh_times_out(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    agent = ClaudeAgent(home=tmp_path / "claude-home")
+    cache_path = claude_account_status._claude_statusline_cache_path(agent)
+    _write(
+        cache_path,
+        json.dumps(
+            {
+                "captured_at_epoch": 100.0,
+                "statusline": {
+                    "rate_limits": {
+                        "five_hour": {
+                            "used_percentage": 20,
+                            "resets_at": 1_776_000_000,
+                        },
+                        "seven_day": {
+                            "used_percentage": 68,
+                            "resets_at": 1_776_604_800,
+                        },
+                    }
+                },
+            }
+        )
+        + "\n",
+    )
+    monkeypatch.setattr(claude_account_status.time, "time", lambda: 220.0)
+
+    def fail_live_refresh(*args, **kwargs):
+        del args, kwargs
+        raise AccountStatusError(
+            error_type="timeout",
+            message="provider command timed out after 45 seconds using model haiku",
+        )
+
+    monkeypatch.setattr(
+        claude_account_status,
+        "_run_claude_statusline_refresh_session",
+        fail_live_refresh,
+    )
+
+    limits, errors, payload = claude_account_status._claude_usage_limits(agent)
+
+    assert errors == ()
+    assert [limit.limit_name for limit in limits] == ["burst", "weekly"]
+    assert payload is not None
+    assert payload["agentos_cache"]["stale_fallback"] is True
 
 
 def test_claude_account_status_uses_statusline_limits(

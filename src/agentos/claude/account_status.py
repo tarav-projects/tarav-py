@@ -29,6 +29,7 @@ from agentos.agent.run_runtime import AgentCommandConfig
 
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
 CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC = 60
+CLAUDE_STATUSLINE_STALE_FALLBACK_MAX_AGE_SEC = 600
 CLAUDE_USAGE_REFRESH_PROMPT = "Reply with OK."
 CLAUDE_USAGE_REFRESH_MODEL = "haiku"
 CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC = 0.75
@@ -227,13 +228,27 @@ def _claude_usage_limits(
         payload = _collect_claude_statusline_payload(agent)
         return _parse_claude_statusline_rate_limits(payload), (), payload
     except AccountStatusError as exc:
+        cached_payload = _load_cached_claude_statusline_payload(
+            agent,
+            max_age_sec=CLAUDE_STATUSLINE_STALE_FALLBACK_MAX_AGE_SEC,
+        )
+        if cached_payload is not None:
+            cached_payload = dict(cached_payload)
+            cached_payload["agentos_cache"] = {
+                "stale_fallback": True,
+                "live_error": exc.summary(),
+            }
+            return _parse_claude_statusline_rate_limits(cached_payload), (), cached_payload
         return (), (exc,), None
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
         return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None
 
 
 def _collect_claude_statusline_payload(agent: Agent) -> dict[str, Any]:
-    cached_payload = _load_cached_claude_statusline_payload(agent)
+    cached_payload = _load_cached_claude_statusline_payload(
+        agent,
+        max_age_sec=CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC,
+    )
     if cached_payload is not None:
         return cached_payload
 
@@ -295,7 +310,11 @@ def _claude_statusline_cache_path(agent: Agent) -> Path:
     return agent.home / "agentos" / "cache" / "statusline-rate-limits.json"
 
 
-def _load_cached_claude_statusline_payload(agent: Agent) -> dict[str, Any] | None:
+def _load_cached_claude_statusline_payload(
+    agent: Agent,
+    *,
+    max_age_sec: int,
+) -> dict[str, Any] | None:
     cache_path = _claude_statusline_cache_path(agent)
     if not cache_path.is_file():
         return None
@@ -312,7 +331,7 @@ def _load_cached_claude_statusline_payload(agent: Agent) -> dict[str, Any] | Non
         )
     except CliError:
         return None
-    if captured_at is None or time.time() - captured_at > CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC:
+    if captured_at is None or time.time() - captured_at > max_age_sec:
         return None
     statusline_payload = payload.get("statusline")
     if not isinstance(statusline_payload, dict):
