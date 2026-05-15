@@ -277,36 +277,53 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
     if args.provider == "codex":
         from agentos.codex.account_registry import link_codex_account_to_home
 
-        print(
-            json.dumps(
-                link_codex_account_to_home(
-                    home=Path(args.home),
-                    account=args.account,
-                    force=args.force,
-                    argv=getattr(args, "_agentos_argv", []),
-                ),
-                indent=2,
-                sort_keys=True,
-            )
+        payload = link_codex_account_to_home(
+            home=Path(args.home),
+            account=args.account,
+            force=args.force,
+            argv=getattr(args, "_agentos_argv", []),
         )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(_format_agent_accounts_link(payload))
         return 0
     if args.provider == "claude-code":
         from agentos.claude.account_registry import link_claude_account_to_home
 
-        print(
-            json.dumps(
-                link_claude_account_to_home(
-                    home=Path(args.home),
-                    account=args.account,
-                    force=args.force,
-                    argv=getattr(args, "_agentos_argv", []),
-                ),
-                indent=2,
-                sort_keys=True,
-            )
+        payload = link_claude_account_to_home(
+            home=Path(args.home),
+            account=args.account,
+            force=args.force,
+            argv=getattr(args, "_agentos_argv", []),
         )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(_format_agent_accounts_link(payload))
         return 0
     raise CliError(f"agent accounts link is not supported for provider {args.provider}")
+
+
+def _format_agent_accounts_link(payload: dict[str, object]) -> str:
+    provider = payload.get("provider")
+    account = payload.get("account")
+    home = payload.get("home")
+    kind = payload.get("kind")
+    if kind == "artifact":
+        auth_path = payload.get("auth_path")
+        return (
+            f"Linked {provider} account {account} to {home} "
+            f"(auth copied to {auth_path})."
+        )
+    if kind == "claimed":
+        return (
+            f"Linked {provider} account {account} to {home} "
+            "(claimed login)."
+        )
+    return (
+        f"Linked {provider} account {account} to {home}."
+    )
 
 
 def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
@@ -651,6 +668,11 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "--force",
         action="store_true",
         help="Overwrite unknown or broken target-home auth state.",
+    )
+    accounts_link_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON.",
     )
     accounts_link_parser.set_defaults(handler=_cmd_agent_accounts_link)
 

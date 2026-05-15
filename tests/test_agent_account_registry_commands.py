@@ -97,7 +97,9 @@ def _register_args(
     return args
 
 
-def _link_args(home: Path, *, account: str = "br", force: bool = False) -> list[str]:
+def _link_args(
+    home: Path, *, account: str = "br", force: bool = False, json_output: bool = False
+) -> list[str]:
     args = [
         "agent",
         "accounts",
@@ -111,6 +113,8 @@ def _link_args(home: Path, *, account: str = "br", force: bool = False) -> list[
     ]
     if force:
         args.append("--force")
+    if json_output:
+        args.append("--json")
     return args
 
 
@@ -566,7 +570,7 @@ def test_agent_accounts_link_writes_home_auth_and_link_registry(
 
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
-    assert main(_link_args(target_home)) == 0
+    assert main(_link_args(target_home, json_output=True)) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["kind"] == "artifact"
     assert payload["copied_auth"]["artifact_id"] == auth_sha
@@ -604,6 +608,27 @@ def test_agent_accounts_link_writes_home_auth_and_link_registry(
     assert event_payload["previous_link"] is None
 
 
+def test_agent_accounts_link_default_output_is_short_status_message(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    target_home = tmp_path / "codex"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth)) == 0
+    capsys.readouterr()
+    assert main(_link_args(target_home)) == 0
+    output = capsys.readouterr().out
+
+    assert output == (
+        f"Linked codex account br to {target_home.resolve()} "
+        f"(auth copied to {target_home.resolve() / 'auth.json'}).\n"
+    )
+
+
 def test_agent_accounts_link_registers_known_current_auth_before_switching(
     tmp_path: Path,
     monkeypatch,
@@ -630,7 +655,7 @@ def test_agent_accounts_link_registers_known_current_auth_before_switching(
     capsys.readouterr()
     assert main(_register_args(jp_source_auth, account="jp")) == 0
     capsys.readouterr()
-    assert main(_link_args(target_home, account="jp")) == 0
+    assert main(_link_args(target_home, account="jp", json_output=True)) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["target_before_link"]["account"] == "br"
     assert payload["target_before_link"]["action"] == "registered"
@@ -685,13 +710,13 @@ def test_agent_accounts_link_force_overwrites_unknown_and_broken_auth(
 
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
-    assert main(_link_args(unknown_home, force=True)) == 0
+    assert main(_link_args(unknown_home, force=True, json_output=True)) == 0
     assert (
         json.loads(capsys.readouterr().out)["target_before_link"]["classification"]
         == "unknown"
     )
     assert (unknown_home / "auth.json").read_text(encoding="utf-8") == auth_text
-    assert main(_link_args(broken_home, force=True)) == 0
+    assert main(_link_args(broken_home, force=True, json_output=True)) == 0
     assert (
         json.loads(capsys.readouterr().out)["target_before_link"]["classification"]
         == "broken"
@@ -1146,6 +1171,7 @@ def test_agent_accounts_register_claude_metadata_only_and_link_claimed(
                 "main",
                 "--home",
                 str(claude_home),
+                "--json",
             ]
         )
         == 0
