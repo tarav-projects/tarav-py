@@ -2020,8 +2020,8 @@ def test_agent_accounts_monitor_once_prints_account_status(
     assert "Tick: 1" in output
     assert "limits-tracking" in output
     assert "refresh_interval_sec: 60" not in output
-    assert "    ⬢ codex/br:" in output
-    assert "      refreshed | now" in output
+    assert "    ⬢ codex/br:  | now" in output
+    assert "refreshed | now" not in output
     assert "      usage/time |  3% / 37% = 0.1 | Burst" in output
     assert "          resets | " in output
     assert "      usage/time |  1% / 18% = 0.1 | Weekly" in output
@@ -2063,7 +2063,8 @@ def test_agent_accounts_monitor_once_prints_registry_fallback_refresh_time(
 
     assert main(["agent", "accounts", "monitor", "--once"]) == 0
     output = capsys.readouterr().out
-    assert "      refreshed | " in output
+    assert "    ⬢ codex/br:  | " in output
+    assert "refreshed | " not in output
     assert " | 12m ago" in output
 
 
@@ -2125,22 +2126,19 @@ def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
     assert len(calls) == 2
     assert payload["frame"]["tick"] == 3
     assert len(payload["frame"]["blocks"]) == 1
-    assert payload["frame"]["blocks"][0]["lines"][0] == "  ⬢ codex/br:"
-    assert payload["frame"]["blocks"][0]["lines"][1] == "    refreshed | now"
+    assert payload["frame"]["blocks"][0]["lines"][0] == "  ⬢ codex/br: | now"
     assert payload["frame"]["blocks"][0]["rows"][0] == {
-        "kind": "text",
-        "text": "  ⬢ codex/br:",
-    }
-    assert payload["frame"]["blocks"][0]["rows"][1] == {
-        "kind": "text",
-        "text": "    refreshed | now",
+        "kind": "account",
+        "text": "  ⬢ codex/br: | now",
+        "label": "  ⬢ codex/br:",
+        "value": "now",
     }
     assert any(
         row["kind"] == "usage_time" for row in payload["frame"]["blocks"][0]["rows"]
     )
     assert any(row["kind"] == "reset" for row in payload["frame"]["blocks"][0]["rows"])
-    assert "  ⬢ codex/br:" in payload["frame"]["blocks"][0]["lines"]
-    assert "  ⬢ codex/jp:" in payload["frame"]["blocks"][0]["lines"]
+    assert "  ⬢ codex/br: | now" in payload["frame"]["blocks"][0]["lines"]
+    assert "  ⬢ codex/jp: | now" in payload["frame"]["blocks"][0]["lines"]
     assert payload["frame"]["blocks"][0]["data"]["run_count"] == 1
     assert payload["frame"]["blocks"][0]["data"]["targets"][0]["home"] == str(
         agentos_home / "agent" / "homes" / "codex" / "br"

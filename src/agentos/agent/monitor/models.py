@@ -47,42 +47,94 @@ class MonitorTextRow:
 
 
 @dataclass(frozen=True)
+class MonitorAccountRow:
+    label: str
+    value: str | None = None
+    suffix: str | None = None
+    kind: Literal["account"] = "account"
+
+    @property
+    def text(self) -> str:
+        return _column_text(label=self.label, value=self.value, suffix=self.suffix)
+
+    def summary(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "kind": self.kind,
+            "text": self.text,
+            "label": self.label,
+        }
+        if self.value is not None:
+            payload["value"] = self.value
+        if self.suffix is not None:
+            payload["suffix"] = self.suffix
+        return payload
+
+
+@dataclass(frozen=True)
 class MonitorUsageTimeRow:
-    text: str
+    label: str
+    value: str
+    suffix: str | None
     used_percent: int
     elapsed_percent: int
     ratio: float | None
-    label: str
     kind: Literal["usage_time"] = "usage_time"
 
+    @property
+    def text(self) -> str:
+        return _column_text(label=self.label, value=self.value, suffix=self.suffix)
+
     def summary(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "kind": self.kind,
             "text": self.text,
+            "label": self.label,
+            "value": self.value,
             "used_percent": self.used_percent,
             "elapsed_percent": self.elapsed_percent,
             "ratio": self.ratio,
-            "label": self.label,
         }
+        if self.suffix is not None:
+            payload["suffix"] = self.suffix
+        return payload
 
 
 @dataclass(frozen=True)
 class MonitorResetRow:
-    text: str
+    label: str
+    value: str
+    suffix: str | None
     elapsed_percent: int
     marker_percent: int | None = None
     kind: Literal["reset"] = "reset"
 
+    @property
+    def text(self) -> str:
+        return _column_text(label=self.label, value=self.value, suffix=self.suffix)
+
     def summary(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "kind": self.kind,
             "text": self.text,
+            "label": self.label,
+            "value": self.value,
             "elapsed_percent": self.elapsed_percent,
             "marker_percent": self.marker_percent,
         }
+        if self.suffix is not None:
+            payload["suffix"] = self.suffix
+        return payload
 
 
-MonitorRow = MonitorTextRow | MonitorUsageTimeRow | MonitorResetRow
+MonitorRow = MonitorTextRow | MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow
+
+
+def _column_text(*, label: str, value: str | None, suffix: str | None) -> str:
+    if value is None:
+        return label
+    if suffix is None:
+        return f"{label} | {value}"
+    return f"{label} | {value} | {suffix}"
 
 
 @dataclass
@@ -137,7 +189,10 @@ def monitor_block(
 
 
 def monitor_row_payload(row: object) -> dict[str, object] | None:
-    if isinstance(row, MonitorTextRow | MonitorUsageTimeRow | MonitorResetRow):
+    if isinstance(
+        row,
+        MonitorTextRow | MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow,
+    ):
         return row.summary()
     if isinstance(row, dict):
         return row
@@ -159,7 +214,10 @@ def monitor_block_payload(block: dict[str, object]) -> dict[str, object]:
 def monitor_block_rows(block: dict[str, object]) -> list[MonitorRow]:
     rows = block.get("rows")
     if isinstance(rows, list) and all(
-        isinstance(row, MonitorTextRow | MonitorUsageTimeRow | MonitorResetRow)
+        isinstance(
+            row,
+            MonitorTextRow | MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow,
+        )
         for row in rows
     ):
         return rows

@@ -6,10 +6,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from agentos.agent.monitor.models import (
+    MonitorAccountRow,
     MonitorFrame,
     MonitorResetRow,
     MonitorRow,
     MonitorState,
+    MonitorTextRow,
     MonitorUsageTimeRow,
     monitor_block_payload,
     monitor_block_rows,
@@ -39,6 +41,12 @@ class _MonitorRenderTextRow:
 class _MonitorRenderBarRow:
     row: MonitorUsageTimeRow | MonitorResetRow
     text: str
+
+
+@dataclass(frozen=True)
+class _MonitorColumnGeometry:
+    label_width: int
+    value_width: int
 
 
 def monitor_result_payload(
@@ -143,24 +151,83 @@ def _monitor_render_rows(
                     _MonitorRenderTextRow(title),
                 ]
             )
-        for row in monitor_block_rows(block):
-            rows.append(_monitor_render_row(row))
+        block_rows = monitor_block_rows(block)
+        rows.extend(_monitor_render_block_rows(block_rows))
     return rows
+
+
+def _monitor_render_block_rows(
+    rows: list[MonitorRow],
+) -> list[_MonitorRenderTextRow | _MonitorRenderBarRow]:
+    geometry = _monitor_column_geometry(rows)
+    return [_monitor_render_row(row, geometry=geometry) for row in rows]
 
 
 def _monitor_render_row(
     row: MonitorRow,
+    *,
+    geometry: _MonitorColumnGeometry,
 ) -> _MonitorRenderTextRow | _MonitorRenderBarRow:
-    text = _format_monitor_row_text(row)
+    text = _format_monitor_row_text(row, geometry=geometry)
     if isinstance(row, MonitorUsageTimeRow | MonitorResetRow):
         return _MonitorRenderBarRow(row=row, text=text)
     return _MonitorRenderTextRow(text)
 
 
-def _format_monitor_row_text(row: MonitorRow) -> str:
-    if not row.text:
-        return ""
-    return f"  {row.text}"
+def _format_monitor_row_text(
+    row: MonitorRow, *, geometry: _MonitorColumnGeometry
+) -> str:
+    if isinstance(row, MonitorTextRow):
+        if not row.text:
+            return ""
+        return f"  {row.text}"
+    if isinstance(row, MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow):
+        return f"  {_format_monitor_column_row(row, geometry=geometry)}"
+    return ""
+
+
+def _format_monitor_column_row(
+    row: MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow,
+    *,
+    geometry: _MonitorColumnGeometry,
+) -> str:
+    if row.value is None:
+        return row.label
+    label = _set_cell_size(row.label, geometry.label_width)
+    if row.suffix is None:
+        return f"{label} | {row.value}"
+    value = _set_cell_size(row.value, geometry.value_width)
+    return f"{label} | {value} | {row.suffix}"
+
+
+def _monitor_column_geometry(rows: list[MonitorRow]) -> _MonitorColumnGeometry:
+    column_rows = [
+        row
+        for row in rows
+        if isinstance(row, MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow)
+        and row.value is not None
+    ]
+    return _MonitorColumnGeometry(
+        label_width=max((_cell_len(row.label) for row in column_rows), default=0),
+        value_width=max(
+            (_cell_len(row.value) for row in column_rows if row.suffix is not None),
+            default=0,
+        ),
+    )
+
+
+def _cell_len(value: str) -> int:
+    from rich.cells import cell_len
+
+    return cell_len(value)
+
+
+def _set_cell_size(value: str, width: int) -> str:
+    from rich.cells import set_cell_size
+
+    if width <= 0:
+        return value
+    return set_cell_size(value, width)
 
 
 def _monitor_bar_width(

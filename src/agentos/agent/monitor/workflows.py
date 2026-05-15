@@ -11,6 +11,7 @@ from agentos.agent.account_status import (
 )
 from agentos.agent.monitor.loop import MonitorWorkflow
 from agentos.agent.monitor.models import (
+    MonitorAccountRow,
     MonitorFrame,
     MonitorResetRow,
     MonitorRow,
@@ -229,15 +230,17 @@ def _target_state_summary(target_state: dict[str, object]) -> dict[str, object]:
 def _target_rows(
     *, target: MonitorTarget, target_state: dict[str, object]
 ) -> list[MonitorRow]:
-    rows: list[MonitorRow] = [MonitorTextRow(f"  {_target_title(target)}")]
+    account_status = target_state.get("account_status")
+    rows: list[MonitorRow] = [
+        MonitorAccountRow(
+            label=f"  {_target_title(target)}",
+            **_usage_refresh_columns(account_status if isinstance(account_status, dict) else None),
+        )
+    ]
     if target_state.get("status") == "error":
         rows.append(MonitorTextRow(f"    error | {_error_message(target_state)}"))
         return rows
-    account_status = target_state.get("account_status")
     if isinstance(account_status, dict):
-        refresh_line = _usage_refresh_line(account_status)
-        if refresh_line is not None:
-            rows.append(MonitorTextRow(refresh_line))
         limit_rows = _account_limit_rows(account_status)
         if limit_rows:
             rows.extend(limit_rows)
@@ -281,20 +284,20 @@ def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
         ratio = _usage_time_ratio(used_percent, elapsed_percent)
         rows.append(
             MonitorUsageTimeRow(
-                _usage_time_line(
+                label="    usage/time",
+                value=_usage_time_value(
                     used_percent=used_percent,
                     elapsed_percent=elapsed_percent,
                     ratio=ratio,
-                    label=label,
                 ),
+                suffix=label,
                 used_percent=max(0, min(100, used_percent)),
                 elapsed_percent=max(0, min(100, elapsed_percent)),
                 ratio=ratio,
-                label=label,
             )
         )
-        reset_line = _reset_line(usage_over_time, recorded_at=now)
-        if reset_line is not None:
+        reset_columns = _reset_columns(usage_over_time, recorded_at=now)
+        if reset_columns is not None:
             marker_percent = (
                 max(0, min(100, used_percent))
                 if used_percent > elapsed_percent
@@ -302,7 +305,9 @@ def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
             )
             rows.append(
                 MonitorResetRow(
-                    reset_line,
+                    label="        resets",
+                    value=reset_columns[0],
+                    suffix=reset_columns[1],
                     elapsed_percent=max(0, min(100, elapsed_percent)),
                     marker_percent=marker_percent,
                 )
@@ -310,36 +315,36 @@ def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
     return rows
 
 
-def _usage_refresh_line(account_status: dict[str, Any]) -> str | None:
+def _usage_refresh_columns(account_status: dict[str, Any] | None) -> dict[str, str | None]:
+    if account_status is None:
+        return {"value": None, "suffix": None}
     raw = account_status.get("raw")
     if not isinstance(raw, dict):
-        return None
+        return {"value": None, "suffix": None}
     usage_record = raw.get("usage_record")
     if not isinstance(usage_record, dict):
-        return None
+        return {"value": None, "suffix": None}
     status = usage_record.get("status")
     if status == USAGE_RECORD_STATUS_FRESH:
-        return "    refreshed | now"
+        return {"value": "now", "suffix": None}
     if status != USAGE_RECORD_STATUS_REGISTRY_FALLBACK:
-        return None
+        return {"value": None, "suffix": None}
     recorded_at = _parse_datetime(_string_value(usage_record.get("recorded_at")))
     if recorded_at is None:
-        return None
+        return {"value": None, "suffix": None}
     age_sec = _int_value(usage_record.get("age_sec"))
     if age_sec is None:
         age_sec = int((datetime.datetime.now(tz=datetime.UTC) - recorded_at).total_seconds())
     recorded_display = recorded_at.astimezone().strftime("%a %m-%d %H:%M")
-    return f"    refreshed | {recorded_display} | {_format_age_duration(age_sec)} ago"
+    return {"value": recorded_display, "suffix": f"{_format_age_duration(age_sec)} ago"}
 
 
-def _usage_time_line(
-    *, used_percent: int, elapsed_percent: int, ratio: float | None, label: str
+def _usage_time_value(
+    *, used_percent: int, elapsed_percent: int, ratio: float | None
 ) -> str:
     return (
-        "    usage/time"
-        f" | {_format_usage_percent_plain(used_percent)} / {_format_usage_percent_plain(elapsed_percent)}"
+        f"{_format_usage_percent_plain(used_percent)} / {_format_usage_percent_plain(elapsed_percent)}"
         f" = {_format_usage_time_ratio_text(ratio)}"
-        f" | {label}"
     )
 
 
@@ -396,9 +401,9 @@ def _limit_label(limit: dict[str, Any], usage_over_time: dict[str, object]) -> s
     return "usage"
 
 
-def _reset_line(
+def _reset_columns(
     usage_over_time: dict[str, object], *, recorded_at: datetime.datetime
-) -> str | None:
+) -> tuple[str, str | None] | None:
     reset_at = _parse_datetime(_string_value(usage_over_time.get("resets_at")))
     if reset_at is None:
         reset_at = _parse_datetime(_string_value(usage_over_time.get("period_ends_at")))
@@ -408,7 +413,7 @@ def _reset_line(
     remaining_display = _format_remaining_duration(
         int((reset_at - recorded_at).total_seconds())
     )
-    return f"        resets | {reset_display} | {remaining_display}"
+    return reset_display, remaining_display
 
 
 def _elapsed_percent(

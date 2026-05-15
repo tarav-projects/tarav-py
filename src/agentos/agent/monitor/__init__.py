@@ -4,6 +4,7 @@ from agentos.agent.monitor.config import (
 )
 from agentos.agent.monitor.loop import MonitorLoop, MonitorWorkflow
 from agentos.agent.monitor.models import (
+    MonitorAccountRow,
     MonitorFrame,
     MonitorResetRow,
     MonitorRow,
@@ -26,6 +27,7 @@ from agentos.agent.monitor.workflows import (
 
 __all__ = [
     "LimitsTrackingWorkflow",
+    "MonitorAccountRow",
     "MonitorFrame",
     "MonitorResetRow",
     "MonitorRow",
