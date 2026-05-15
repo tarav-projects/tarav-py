@@ -15,6 +15,9 @@ from agentos.agent.run_runtime import (
     AgentRunConfig,
     AgentRunDryResult,
     AgentRunResult,
+    build_agent_command_argv,
+    execute_agent_command,
+    format_agent_command,
 )
 from agentos.providers import ProviderHomeAnchor
 from agentos.providers import require_canonical_provider_spec
@@ -197,18 +200,49 @@ class AgentBase:
             f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
         )
 
+    def _build_command_with_env(
+        self,
+        command_config: AgentCommandConfig,
+        *,
+        env_overrides: dict[str, str],
+    ) -> AgentCommand:
+        return AgentCommand(
+            argv=build_agent_command_argv(
+                command_config,
+                instance_id=self.instance_id,
+                provider=self.provider,
+                cli_command=self.cli_command,
+                run_args=self.run_args,
+                default_model=self.default_model,
+                model_flag=self.model_flag,
+                prompt_flag=self.prompt_flag,
+            ),
+            env_overrides=env_overrides,
+        )
+
     def run(
         self,
         command_config: AgentCommandConfig,
         run_config: AgentRunConfig,
     ) -> AgentRunResult:
-        raise CliError(
-            f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
+        return execute_agent_command(
+            self.build_command(command_config),
+            run_config=self._run_config_with_timeout(run_config),
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
-        raise CliError(
-            f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
+        command = self.build_command(command_config)
+        return AgentRunDryResult(
+            lines=(*command.setup_lines, format_agent_command(command)),
+        )
+
+    def _run_config_with_timeout(self, run_config: AgentRunConfig) -> AgentRunConfig:
+        if run_config.timeout_sec is not None or self.timeout_sec is None:
+            return run_config
+        return AgentRunConfig(
+            cwd=run_config.cwd,
+            process_mode=run_config.process_mode,
+            timeout_sec=self.timeout_sec,
         )
 
     def account_status(
