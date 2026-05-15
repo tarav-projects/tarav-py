@@ -13,6 +13,7 @@ from agentos.agent.monitor.loop import MonitorWorkflow
 from agentos.agent.monitor.models import (
     MonitorAccountRow,
     MonitorFrame,
+    MonitorInfoRow,
     MonitorResetRow,
     MonitorRow,
     MonitorState,
@@ -244,6 +245,9 @@ def _target_rows(
         limit_rows = _account_limit_rows(account_status)
         if limit_rows:
             rows.extend(limit_rows)
+            fetch_error_row = _fetch_error_row(account_status)
+            if fetch_error_row is not None:
+                rows.append(fetch_error_row)
             return rows
         rows.append(MonitorTextRow(f"    usage | {_limits_summary(account_status)}"))
     return rows
@@ -337,6 +341,24 @@ def _usage_refresh_columns(account_status: dict[str, Any] | None) -> dict[str, s
         age_sec = int((datetime.datetime.now(tz=datetime.UTC) - recorded_at).total_seconds())
     recorded_display = recorded_at.astimezone().strftime("%a %m-%d %H:%M")
     return {"value": recorded_display, "suffix": f"{_format_age_duration(age_sec)} ago"}
+
+
+def _fetch_error_row(account_status: dict[str, Any]) -> MonitorInfoRow | None:
+    raw = account_status.get("raw")
+    if not isinstance(raw, dict):
+        return None
+    usage_record = raw.get("usage_record")
+    if not isinstance(usage_record, dict):
+        return None
+    if usage_record.get("status") != USAGE_RECORD_STATUS_REGISTRY_FALLBACK:
+        return None
+    live_error = usage_record.get("live_error")
+    if not isinstance(live_error, dict):
+        return None
+    message = live_error.get("message")
+    if not isinstance(message, str) or not message:
+        return None
+    return MonitorInfoRow(label="        fetch error", value=message)
 
 
 def _usage_time_value(

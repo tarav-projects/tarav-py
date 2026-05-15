@@ -18,7 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
+from agentos._core.path_validation import validate_string_for_path
 from agentos._core.process import run_process
+from agentos._core.project import agentos_home_dir
 from agentos.agent.account_registry import load_account, load_links
 from agentos.agent.account_status import (
     AccountIdentity,
@@ -40,6 +42,7 @@ DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
 DEFAULT_USAGE_GET_TIMEOUT_SEC = 5
 CLAUDE_USAGE_API_URL = "https://api.anthropic.com/api/oauth/usage"
 CLAUDE_USAGE_GET_SOURCE = "oauth_usage_get"
+CLAUDE_USAGE_GET_THROTTLE_SCHEMA_VERSION = 1
 CLAUDE_OAUTH_BETA_HEADER = "oauth-2025-04-20"
 CLAUDE_CREDENTIALS_SERVICE_SUFFIX = "-credentials"
 CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC = 60
@@ -269,8 +272,17 @@ def _account_usage_GET(
     dict[str, Any] | None,
     dict[str, Any] | None,
 ]:
+    throttle_error = _load_claude_usage_get_throttle(agent)
+    if throttle_error is not None:
+        return _account_usage_registry_fallback(
+            agent,
+            live_error=throttle_error,
+            fallback_to_usage_registry=fallback_to_usage_registry,
+        )
+
     try:
         payload = _fetch_claude_usage_payload(agent)
+        _clear_claude_usage_get_throttle(agent)
         return (
             _parse_claude_usage_get_limits(payload),
             (),
@@ -279,6 +291,7 @@ def _account_usage_GET(
             fresh_usage_record_metadata(source=CLAUDE_USAGE_GET_SOURCE),
         )
     except AccountStatusError as exc:
+        _write_claude_usage_get_throttle(agent, exc)
         return _account_usage_registry_fallback(
             agent,
             live_error=exc,
@@ -427,6 +440,106 @@ def _account_name(agent: Agent) -> str:
     return agent.account.account
 
 
+def _claude_usage_get_throttle_path(agent: Agent) -> Path:
+    provider = validate_string_for_path(agent.provider, field_name="provider")
+    account = validate_string_for_path(_account_name(agent), field_name="account")
+    return (
+        agentos_home_dir()
+        / "cache"
+        / "account-status"
+        / provider
+        / account
+        / "oauth_usage_get-throttle.json"
+    )
+
+
+def _load_claude_usage_get_throttle(agent: Agent) -> AccountStatusError | None:
+    throttle_path = _claude_usage_get_throttle_path(agent)
+    if not throttle_path.is_file():
+        return None
+    try:
+        payload = json.loads(throttle_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or not _claude_usage_get_throttle_matches(agent, payload):
+        return None
+    retry_after_until = _parse_iso_datetime(_string_or_none(payload.get("retry_after_until")))
+    if retry_after_until is None:
+        return None
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    remaining_sec = round((retry_after_until - now).total_seconds())
+    if remaining_sec <= 0:
+        _clear_claude_usage_get_throttle(agent)
+        return None
+    live_error = payload.get("live_error")
+    if not isinstance(live_error, dict):
+        return None
+    detail = live_error.get("detail")
+    detail_payload = dict(detail) if isinstance(detail, Mapping) else {}
+    detail_payload["retry_after_remaining_sec"] = remaining_sec
+    return AccountStatusError(
+        error_type=_string_or_none(live_error.get("type")) or "usage_api_throttled",
+        message=_string_or_none(live_error.get("message"))
+        or "claude usage API is temporarily throttled",
+        exit_code=_optional_error_exit_code(live_error.get("exit_code")),
+        detail=detail_payload,
+    )
+
+
+def _write_claude_usage_get_throttle(agent: Agent, error: AccountStatusError) -> None:
+    if error.exit_code != 429:
+        return
+    retry_after_sec = _optional_positive_retry_after_sec(error.detail.get("retry_after_sec"))
+    retry_after_until = _string_or_none(error.detail.get("retry_after_until"))
+    if retry_after_sec is None or _parse_iso_datetime(retry_after_until) is None:
+        return
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    throttle = {
+        "schema_version": CLAUDE_USAGE_GET_THROTTLE_SCHEMA_VERSION,
+        "provider": agent.provider,
+        "account": _account_name(agent),
+        "source": CLAUDE_USAGE_GET_SOURCE,
+        "reason": "http_429",
+        "captured_at": _datetime_to_iso(now),
+        "retry_after_sec": retry_after_sec,
+        "retry_after_until": retry_after_until,
+        "live_error": error.summary(),
+    }
+    throttle_path = _claude_usage_get_throttle_path(agent)
+    throttle_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=throttle_path.parent,
+        delete=False,
+    ) as handle:
+        temp_path = Path(handle.name)
+        json.dump(throttle, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    os.replace(temp_path, throttle_path)
+
+
+def _clear_claude_usage_get_throttle(agent: Agent) -> None:
+    try:
+        _claude_usage_get_throttle_path(agent).unlink()
+    except FileNotFoundError:
+        return
+
+
+def _claude_usage_get_throttle_matches(agent: Agent, payload: Mapping[str, Any]) -> bool:
+    return (
+        payload.get("schema_version") == CLAUDE_USAGE_GET_THROTTLE_SCHEMA_VERSION
+        and payload.get("provider") == agent.provider
+        and payload.get("account") == _account_name(agent)
+        and payload.get("source") == CLAUDE_USAGE_GET_SOURCE
+        and payload.get("reason") == "http_429"
+    )
+
+
+def _optional_error_exit_code(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def _claude_oauth_access_token(agent: Agent) -> str:
     if agent.home is None:
         raise AccountStatusError(
@@ -512,6 +625,14 @@ def _read_http_error_detail(exc: urllib.error.HTTPError) -> dict[str, object]:
     except OSError:
         body = ""
     detail: dict[str, object] = {"status": exc.code}
+    retry_after_value = exc.headers.get("Retry-After") if exc.headers is not None else None
+    retry_after_sec = _parse_retry_after_seconds(retry_after_value)
+    if exc.code == 429 and retry_after_sec is not None:
+        retry_after_until = datetime.datetime.now(
+            tz=datetime.timezone.utc
+        ) + datetime.timedelta(seconds=retry_after_sec)
+        detail["retry_after_sec"] = retry_after_sec
+        detail["retry_after_until"] = _datetime_to_iso(retry_after_until)
     if body:
         try:
             parsed = json.loads(body)
@@ -520,6 +641,29 @@ def _read_http_error_detail(exc: urllib.error.HTTPError) -> dict[str, object]:
         else:
             detail["body"] = parsed
     return detail
+
+
+def _parse_retry_after_seconds(value: str | None) -> int | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    try:
+        retry_after_sec = int(normalized)
+    except ValueError:
+        return None
+    if retry_after_sec <= 0:
+        return None
+    return retry_after_sec
+
+
+def _optional_positive_retry_after_sec(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if value <= 0:
+        return None
+    return value
 
 
 def _collect_claude_statusline_payload(agent: Agent) -> dict[str, Any]:

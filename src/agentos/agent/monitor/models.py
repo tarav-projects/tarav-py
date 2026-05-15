@@ -71,6 +71,29 @@ class MonitorAccountRow:
 
 
 @dataclass(frozen=True)
+class MonitorInfoRow:
+    label: str
+    value: str
+    suffix: str | None = None
+    kind: Literal["info"] = "info"
+
+    @property
+    def text(self) -> str:
+        return _column_text(label=self.label, value=self.value, suffix=self.suffix)
+
+    def summary(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "kind": self.kind,
+            "text": self.text,
+            "label": self.label,
+            "value": self.value,
+        }
+        if self.suffix is not None:
+            payload["suffix"] = self.suffix
+        return payload
+
+
+@dataclass(frozen=True)
 class MonitorUsageTimeRow:
     label: str
     value: str
@@ -126,7 +149,13 @@ class MonitorResetRow:
         return payload
 
 
-MonitorRow = MonitorTextRow | MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow
+MonitorRow = (
+    MonitorTextRow
+    | MonitorAccountRow
+    | MonitorInfoRow
+    | MonitorUsageTimeRow
+    | MonitorResetRow
+)
 
 
 def _column_text(*, label: str, value: str | None, suffix: str | None) -> str:
@@ -191,7 +220,11 @@ def monitor_block(
 def monitor_row_payload(row: object) -> dict[str, object] | None:
     if isinstance(
         row,
-        MonitorTextRow | MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow,
+        MonitorTextRow
+        | MonitorAccountRow
+        | MonitorInfoRow
+        | MonitorUsageTimeRow
+        | MonitorResetRow,
     ):
         return row.summary()
     if isinstance(row, dict):
@@ -216,7 +249,11 @@ def monitor_block_rows(block: dict[str, object]) -> list[MonitorRow]:
     if isinstance(rows, list) and all(
         isinstance(
             row,
-            MonitorTextRow | MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow,
+            MonitorTextRow
+            | MonitorAccountRow
+            | MonitorInfoRow
+            | MonitorUsageTimeRow
+            | MonitorResetRow,
         )
         for row in rows
     ):

@@ -8,6 +8,7 @@ from typing import Any
 from agentos.agent.monitor.models import (
     MonitorAccountRow,
     MonitorFrame,
+    MonitorInfoRow,
     MonitorResetRow,
     MonitorRow,
     MonitorState,
@@ -181,13 +182,13 @@ def _format_monitor_row_text(
         if not row.text:
             return ""
         return f"  {row.text}"
-    if isinstance(row, MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow):
+    if isinstance(row, MonitorAccountRow | MonitorInfoRow | MonitorUsageTimeRow | MonitorResetRow):
         return f"  {_format_monitor_column_row(row, geometry=geometry)}"
     return ""
 
 
 def _format_monitor_column_row(
-    row: MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow,
+    row: MonitorAccountRow | MonitorInfoRow | MonitorUsageTimeRow | MonitorResetRow,
     *,
     geometry: _MonitorColumnGeometry,
 ) -> str:
@@ -204,7 +205,7 @@ def _monitor_column_geometry(rows: list[MonitorRow]) -> _MonitorColumnGeometry:
     column_rows = [
         row
         for row in rows
-        if isinstance(row, MonitorAccountRow | MonitorUsageTimeRow | MonitorResetRow)
+        if isinstance(row, MonitorAccountRow | MonitorInfoRow | MonitorUsageTimeRow | MonitorResetRow)
         and row.value is not None
     ]
     return _MonitorColumnGeometry(

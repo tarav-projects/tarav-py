@@ -1523,6 +1523,74 @@ def test_claude_usage_get_parser_maps_subscription_limits() -> None:
     assert limits[0].provider_limit == {"limit_type": "five_hour"}
 
 
+def test_claude_usage_get_http_error_detail_captures_retry_after() -> None:
+    import urllib.error
+
+    import agentos.claude.account_status as claude_account_status
+
+    error = urllib.error.HTTPError(
+        "https://api.anthropic.com/api/oauth/usage",
+        429,
+        "Too Many Requests",
+        {"Retry-After": "2852"},
+        io.BytesIO(b'{"error":{"type":"rate_limit_error"}}'),
+    )
+
+    detail = claude_account_status._read_http_error_detail(error)
+
+    assert detail["status"] == 429
+    assert detail["retry_after_sec"] == 2852
+    assert isinstance(detail["retry_after_until"], str)
+    assert detail["body"] == {"error": {"type": "rate_limit_error"}}
+
+
+def test_claude_usage_get_throttle_path_is_metadata_only(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+
+    throttle_path = claude_account_status._claude_usage_get_throttle_path(agent)
+    retry_after_until = _iso_z(
+        datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(minutes=5)
+    )
+    claude_account_status._write_claude_usage_get_throttle(
+        agent,
+        AccountStatusError(
+            error_type="usage_api_http_error",
+            message="claude usage API returned HTTP 429",
+            exit_code=429,
+            detail={
+                "status": 429,
+                "retry_after_sec": 300,
+                "retry_after_until": retry_after_until,
+            },
+        ),
+    )
+
+    assert throttle_path == (
+        agentos_home
+        / "cache"
+        / "account-status"
+        / "claude-code"
+        / "main"
+        / "oauth_usage_get-throttle.json"
+    )
+    throttle = _read_json(throttle_path)
+    assert throttle["source"] == "oauth_usage_get"
+    assert throttle["retry_after_sec"] == 300
+    assert "payload" not in throttle
+    assert "five_hour" not in throttle
+    assert "seven_day" not in throttle
+
+
 def test_claude_usage_get_fetches_provider_before_registry_fallback(
     tmp_path: Path,
     monkeypatch,
@@ -1668,6 +1736,216 @@ def test_claude_usage_get_uses_latest_registry_record_when_refresh_fails(
     assert usage_record["status"] == "registry_fallback"
     assert usage_record["source"] == "oauth_usage_get"
     assert usage_record["live_error"]["type"] == "usage_api_http_error"
+
+
+def test_claude_usage_get_active_throttle_skips_provider_fetch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.agent.usage_registry import append_usage_record
+    from agentos.claude.agent import ClaudeAgent
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=agent.home,
+        source="oauth_usage_get",
+        payload={
+            "five_hour": {
+                "utilization": 20,
+                "resets_at": "2026-05-15T20:29:59Z",
+            }
+        },
+    )
+    retry_after_until = _iso_z(
+        datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(minutes=30)
+    )
+    claude_account_status._write_claude_usage_get_throttle(
+        agent,
+        AccountStatusError(
+            error_type="usage_api_http_error",
+            message="claude usage API returned HTTP 429",
+            exit_code=429,
+            detail={
+                "status": 429,
+                "retry_after_sec": 1800,
+                "retry_after_until": retry_after_until,
+            },
+        ),
+    )
+
+    def fail_if_fetches(agent):
+        del agent
+        raise AssertionError("provider fetch should be skipped while throttle is active")
+
+    monkeypatch.setattr(claude_account_status, "_fetch_claude_usage_payload", fail_if_fetches)
+
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_GET(agent)
+    )
+
+    assert errors == ()
+    assert [limit.limit_name for limit in limits] == ["burst"]
+    assert payload is not None
+    assert payload["five_hour"]["utilization"] == 20
+    assert record_payload is None
+    assert usage_record is not None
+    assert usage_record["status"] == "registry_fallback"
+    assert usage_record["live_error"]["message"] == "claude usage API returned HTTP 429"
+    assert (
+        usage_record["live_error"]["detail"]["retry_after_remaining_sec"] > 0
+    )
+
+
+def test_claude_usage_get_http_429_writes_throttle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    retry_after_until = _iso_z(
+        datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(minutes=15)
+    )
+
+    def fail_fetch(agent):
+        del agent
+        raise AccountStatusError(
+            error_type="usage_api_http_error",
+            message="claude usage API returned HTTP 429",
+            exit_code=429,
+            detail={
+                "status": 429,
+                "retry_after_sec": 900,
+                "retry_after_until": retry_after_until,
+            },
+        )
+
+    monkeypatch.setattr(claude_account_status, "_fetch_claude_usage_payload", fail_fetch)
+
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_GET(agent)
+    )
+
+    assert limits == ()
+    assert [error.error_type for error in errors] == ["usage_api_http_error"]
+    assert payload is None
+    assert record_payload is None
+    assert usage_record is None
+    throttle = _read_json(claude_account_status._claude_usage_get_throttle_path(agent))
+    assert throttle["reason"] == "http_429"
+    assert throttle["retry_after_sec"] == 900
+    assert throttle["live_error"]["message"] == "claude usage API returned HTTP 429"
+
+
+def test_claude_usage_get_live_success_clears_expired_throttle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    throttle_path = claude_account_status._claude_usage_get_throttle_path(agent)
+    _write(
+        throttle_path,
+        json.dumps(
+            {
+                "schema_version": 1,
+                "provider": "claude-code",
+                "account": "main",
+                "source": "oauth_usage_get",
+                "reason": "http_429",
+                "captured_at": "2026-05-15T00:00:00Z",
+                "retry_after_sec": 1,
+                "retry_after_until": "2026-05-15T00:00:01Z",
+                "live_error": {
+                    "type": "usage_api_http_error",
+                    "message": "claude usage API returned HTTP 429",
+                    "exit_code": 429,
+                    "detail": {
+                        "status": 429,
+                        "retry_after_sec": 1,
+                        "retry_after_until": "2026-05-15T00:00:01Z",
+                    },
+                },
+            }
+        )
+        + "\n",
+    )
+    monkeypatch.setattr(
+        claude_account_status,
+        "_fetch_claude_usage_payload",
+        lambda agent: {
+            "five_hour": {
+                "utilization": 33,
+                "resets_at": "2026-05-15T20:29:59Z",
+            }
+        },
+    )
+
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_GET(agent)
+    )
+
+    assert errors == ()
+    assert [limit.usage_over_time.used_percent for limit in limits if limit.usage_over_time] == [
+        33
+    ]
+    assert payload is not None
+    assert record_payload == payload
+    assert usage_record["status"] == "fresh"
+    assert not throttle_path.exists()
+
+
+def test_claude_usage_get_non_429_error_does_not_write_throttle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    monkeypatch.setattr(
+        claude_account_status,
+        "_fetch_claude_usage_payload",
+        lambda agent: (_ for _ in ()).throw(
+            AccountStatusError(
+                error_type="timeout",
+                message="claude usage API timed out after 5 seconds",
+            )
+        ),
+    )
+
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_GET(agent)
+    )
+
+    assert limits == ()
+    assert [error.error_type for error in errors] == ["timeout"]
+    assert payload is None
+    assert record_payload is None
+    assert usage_record is None
+    assert not claude_account_status._claude_usage_get_throttle_path(agent).exists()
 
 
 def test_claude_usage_get_refresh_failure_can_disable_registry_fallback(
@@ -2057,15 +2335,20 @@ def test_agent_accounts_monitor_once_prints_registry_fallback_refresh_time(
                 "recorded_at": "2026-05-15T15:03:00Z",
                 "age_sec": 12 * 60,
                 "source": "app_server",
+                "live_error": {
+                    "type": "usage_api_http_error",
+                    "message": "provider returned HTTP 429",
+                },
             }
         },
     )
 
     assert main(["agent", "accounts", "monitor", "--once"]) == 0
     output = capsys.readouterr().out
-    assert "    ⬢ codex/br:  | " in output
+    assert "    ⬢ codex/br:" in output
     assert "refreshed | " not in output
     assert " | 12m ago" in output
+    assert "          fetch error | provider returned HTTP 429" in output
 
 
 def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
