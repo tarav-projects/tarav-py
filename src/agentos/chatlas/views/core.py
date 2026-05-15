@@ -12,6 +12,8 @@ from uuid import uuid4
 from agentos._core.errors import CliError
 from agentos.chatlas.delta_scan import default_chatlas_root
 from agentos.chatlas.index_query import select_one_chatlas_index_row
+from agentos.agent.providers import resolve_agent
+from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.chatlas.session_model import (
     build_chatlas_session_model_from_index_row,
     project_chatlas_session_model_view,
@@ -64,6 +66,11 @@ class ChatlasViewWorkflow(Protocol):
         self,
         context: "ChatlasViewContext",
     ) -> dict[str, object]: ...
+
+    def build_produce_prompt(
+        self,
+        context: "ChatlasViewContext",
+    ) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -273,6 +280,55 @@ def chatlas_views_commit(
     )
 
 
+def chatlas_produce(
+    *,
+    view: str,
+    provider: str,
+    profile: str | None = None,
+    model: str | None = None,
+    dry_run: bool = False,
+    cwd: Path | None = None,
+    start_path: Path | None = None,
+    chatlas_root: Path | None = None,
+    **selectors: object,
+) -> dict[str, object]:
+    context = _context_from_selector(view=view, chatlas_root=chatlas_root, selectors=selectors)
+    prompt = context.workflow.build_produce_prompt(context)
+    effective_cwd = cwd or Path.cwd().resolve()
+    effective_start_path = start_path or effective_cwd
+    agent = resolve_agent(
+        provider=provider,
+        profile=profile,
+        start_path=effective_start_path,
+    )
+    command_config = AgentCommandConfig(
+        prompt=prompt,
+        model=model,
+        interaction_mode="non_interactive",
+    )
+
+    if dry_run:
+        dry_result = agent.run_dry(command_config)
+        return {
+            "status": "ok",
+            "command": "chatlas produce",
+            "dry_run": True,
+            "prompt": prompt,
+            "agent_command": list(dry_result.lines),
+        }
+
+    run_config = AgentRunConfig(
+        cwd=effective_cwd,
+        process_mode="terminal",
+    )
+    result = agent.run(command_config, run_config)
+    return {
+        "status": "ok" if result.exit_code == 0 else "error",
+        "command": "chatlas produce",
+        "exit_code": result.exit_code,
+    }
+
+
 def _ensure_available(
     context: ChatlasViewContext,
     *,
@@ -383,6 +439,11 @@ class ZipTranscriptWorkflow:
         _ = context
         return {"mode": "internal", "action": "auto-produce"}
 
+    def build_produce_prompt(self, context: ChatlasViewContext) -> str:
+        raise CliError(
+            f"chatlas produce is not supported for internal view: {self.name}"
+        )
+
 
 class ZipTranscriptAgentSummaryWorkflow:
     name = "zip-transcript-agent-summary"
@@ -460,6 +521,30 @@ class ZipTranscriptAgentSummaryWorkflow:
             "primary_artifact": self.artifact_contract.primary_artifact,
             "stage": stage_hint,
         }
+
+    def build_produce_prompt(self, context: ChatlasViewContext) -> str:
+        selector = _session_selector_flags(context.parameters[0])
+        return (
+            "Load `chatlas-usage/references/producer-zip-transcript-agent-summary.md` and follow it.\n"
+            "\n"
+            f"Session selector: {selector}\n"
+            "\n"
+            "Ensure `zip-transcript`, then ensure `zip-transcript-agent-summary`.\n"
+            "Return only the path to the fresh `summary.json` artifact. Do not paste the artifact body."
+        )
+
+
+def _session_selector_flags(parameter: dict[str, object]) -> str:
+    identity_hash = parameter.get("identity_hash")
+    if isinstance(identity_hash, str) and identity_hash:
+        return f"--identity-hash {identity_hash}"
+    uri = parameter.get("uri")
+    if isinstance(uri, str) and uri:
+        return f"--uri {uri}"
+    session_id = parameter.get("session_id")
+    if isinstance(session_id, str) and session_id:
+        return f"--session-id {session_id}"
+    raise CliError("cannot build session selector for chatlas produce: no identity_hash, uri, or session_id")
 
 
 def _zip_transcript_dependency_status(

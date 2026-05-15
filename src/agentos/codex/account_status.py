@@ -20,6 +20,7 @@ from agentos.agent.account_status import (
 )
 from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
+from agentos.agent.usage_registry import append_usage_record
 from agentos.codex.account_registry import inspect_codex_account_home
 
 
@@ -29,6 +30,8 @@ CODEX_APP_SERVER_ARGV = ("app-server",)
 
 def _codex_account_status_impl(
     agent: Agent,
+    *,
+    record_usage: bool = True,
 ) -> AccountStatus:
     if agent.account is None:
         raise CliError("codex account_status requires an agent account context")
@@ -66,11 +69,20 @@ def _codex_account_status_impl(
         usage_summary = None
         limits: tuple[AccountLimit, ...] = ()
         usage_errors: tuple[AccountStatusError, ...] = ()
+        usage_payload: dict[str, Any] | None = None
     else:
-        limits, usage_errors = _account_usage_app_server(agent)
+        limits, usage_errors, usage_payload = _account_usage_app_server(agent)
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
         auth_summary = "Codex rate limits read" if usage_status == "ok" else None
+        if record_usage and usage_status == "ok" and limits and usage_payload is not None:
+            append_usage_record(
+                provider=agent.provider,
+                account=agent.account.account,
+                home=agent.home,
+                source="app_server",
+                payload=usage_payload,
+            )
 
     return AccountStatus(
         provider=agent.provider,
@@ -89,6 +101,7 @@ def _codex_account_status_impl(
         usage_errors=tuple(usage_errors),
         raw={
             "home_status": home_status,
+            "usage": usage_payload,
         },
     )
 
@@ -153,14 +166,14 @@ def _setup_errors(
 # isolated while we evaluate which one should become the long-term capability.
 def _account_usage_app_server(
     agent: Agent,
-) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...]]:
+) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...], dict[str, Any] | None]:
     try:
         payload = _fetch_account_usage_app_server_payload(agent)
-        return tuple(_parse_codex_rate_limits(payload)), ()
+        return tuple(_parse_codex_rate_limits(payload)), (), payload
     except AccountStatusError as exc:
-        return (), (exc,)
+        return (), (exc,), None
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),)
+        return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None
 
 
 def _fetch_account_usage_app_server_payload(agent: Agent) -> dict[str, Any]:

@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 import sys
 
+from pathlib import Path
+
 from agentos.agent._cli_common import format_json_output, optional_string_tuple
+from agentos.providers import canonical_provider_families
 from agentos.chatlas.core import (
     chatlas_index_doctor,
     chatlas_index_query,
@@ -21,6 +24,7 @@ from agentos.chatlas.core import (
 from agentos.chatlas.session_model import chatlas_export_session_model
 from agentos.chatlas.raw import supported_chatlas_provider_families
 from agentos.chatlas.views import (
+    chatlas_produce,
     chatlas_views_commit,
     chatlas_views_get,
     chatlas_views_list,
@@ -222,6 +226,22 @@ def _cmd_chatlas_views_commit(args: argparse.Namespace) -> int:
     payload = chatlas_views_commit(stage_id=args.stage_id)
     print(format_json_output(payload))
     return 0
+
+
+def _cmd_chatlas_produce(args: argparse.Namespace) -> int:
+    payload = chatlas_produce(
+        view=args.view,
+        provider=args.produce_provider,
+        profile=args.profile,
+        model=args.model,
+        dry_run=args.dry_run,
+        cwd=Path.cwd().resolve(),
+        **_chatlas_index_selector_kwargs(args),
+    )
+    if args.dry_run:
+        print(format_json_output(payload))
+        return 0
+    return payload.get("exit_code", 1)
 
 
 def _add_chatlas_provider_argument(parser: argparse.ArgumentParser, *, help_text: str) -> None:
@@ -668,3 +688,33 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Stage id returned by `agentos chatlas views stage`.",
     )
     views_commit_parser.set_defaults(handler=_cmd_chatlas_views_commit)
+
+    produce_parser = chatlas_subparsers.add_parser(
+        "produce",
+        help="Launch an agent to produce an external Chatlas view.",
+    )
+    _add_chatlas_view_argument(produce_parser)
+    produce_parser.add_argument(
+        "--agent-provider",
+        choices=tuple(p.family for p in canonical_provider_families()),
+        required=True,
+        dest="produce_provider",
+        help="Agent provider to use for production.",
+    )
+    produce_parser.add_argument(
+        "--profile",
+        default=None,
+        help="Agent profile (instance id) when multiple are configured for the provider.",
+    )
+    produce_parser.add_argument(
+        "--model",
+        default=None,
+        help="Override the agent default model.",
+    )
+    produce_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show the prompt and agent command without executing.",
+    )
+    _add_chatlas_index_selector_arguments(produce_parser)
+    produce_parser.set_defaults(handler=_cmd_chatlas_produce)

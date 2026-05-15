@@ -63,8 +63,10 @@ class CodexAgent(AgentBase):
 
     def account_status(
         self,
+        *,
+        record_usage: bool = True,
     ) -> AccountStatus:
-        return _codex_account_status_impl(self)
+        return _codex_account_status_impl(self, record_usage=record_usage)
 
     def _codex_command_config(self, command_config: AgentCommandConfig) -> AgentCommandConfig:
         if command_config.interaction_mode != "non_interactive":

@@ -60,8 +60,10 @@ class ClaudeAgent(AgentBase):
 
     def account_status(
         self,
+        *,
+        record_usage: bool = True,
     ) -> AccountStatus:
-        return _claude_account_status_impl(self)
+        return _claude_account_status_impl(self, record_usage=record_usage)
 
     def _run_env_overrides(self) -> dict[str, str]:
         env_overrides = dict(self.env)

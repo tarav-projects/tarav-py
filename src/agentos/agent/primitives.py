@@ -257,7 +257,10 @@ class AgentBase:
 
     def account_status(
         self,
+        *,
+        record_usage: bool = True,
     ) -> AccountStatus:
+        del record_usage
         raise CliError(
             f"agent {self.instance_id or '<default>'} for provider {self.provider} "
             "does not support account_status"
@@ -337,6 +340,8 @@ class Agent(Protocol):
 
     def account_status(
         self,
+        *,
+        record_usage: bool = True,
     ) -> AccountStatus: ...
 
 

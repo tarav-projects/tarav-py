@@ -31,6 +31,7 @@ from agentos.agent.account_status import (
 )
 from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
+from agentos.agent.usage_registry import append_usage_record
 
 
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
@@ -57,6 +58,8 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 def _claude_account_status_impl(
     agent: Agent,
+    *,
+    record_usage: bool = True,
 ) -> AccountStatus:
     if agent.account is None:
         raise CliError("claude-code account_status requires an agent account context")
@@ -101,6 +104,20 @@ def _claude_account_status_impl(
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
         auth_summary = "Claude usage API read" if usage_status == "ok" else None
+        if (
+            record_usage
+            and usage_status == "ok"
+            and limits
+            and usage_payload is not None
+            and _usage_get_cache_status(usage_payload) == "live"
+        ):
+            append_usage_record(
+                provider=agent.provider,
+                account=agent.account.account,
+                home=agent.home,
+                source="oauth_usage_get",
+                payload=_usage_get_provider_payload(usage_payload),
+            )
 
     return AccountStatus(
         provider=agent.provider,
@@ -412,6 +429,20 @@ def _with_usage_get_cache_metadata(
         metadata["live_error"] = stale_error.summary()
     payload_with_metadata["agentos_cache"] = metadata
     return payload_with_metadata
+
+
+def _usage_get_cache_status(payload: Mapping[str, Any]) -> str | None:
+    metadata = payload.get("agentos_cache")
+    if not isinstance(metadata, dict):
+        return None
+    status = metadata.get("status")
+    return status if isinstance(status, str) else None
+
+
+def _usage_get_provider_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    provider_payload = dict(payload)
+    provider_payload.pop("agentos_cache", None)
+    return provider_payload
 
 
 def _account_name(agent: Agent) -> str:

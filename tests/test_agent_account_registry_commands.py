@@ -78,6 +78,14 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
     return entries
 
 
+def _usage_registry_entries(agentos_home: Path) -> list[dict[str, object]]:
+    registry_root = agentos_home / "agent" / "usage-registry"
+    entries: list[dict[str, object]] = []
+    for path in sorted(registry_root.glob("*-usage.jsonl")):
+        entries.extend(_read_jsonl(path))
+    return entries
+
+
 def _register_args(
     auth_file: Path, *, account: str = "br", register_only: bool = False
 ) -> list[str]:
@@ -212,6 +220,49 @@ def _registered_linked_codex_home(
     assert main(_link_args(target_home)) == 0
     capsys.readouterr()
     return target_home
+
+
+def _registered_linked_claude_home(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> Path:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    claude_home = tmp_path / "claude-home"
+    claude_home.mkdir()
+    _write(
+        claude_home / ".claude.json",
+        json.dumps(
+            {
+                "oauthAccount": {
+                    "accountUuid": "claude-account-id",
+                    "emailAddress": "person@example.com",
+                    "displayName": "Claude Person",
+                }
+            }
+        )
+        + "\n",
+    )
+    assert main(_claude_register_args(label="Claude main")) == 0
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "link",
+                "--provider",
+                "claude-code",
+                "--account",
+                "main",
+                "--home",
+                str(claude_home),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    return claude_home
 
 
 def _monitor_account_status(
@@ -910,6 +961,54 @@ def test_codex_account_status_fetches_limits_with_single_status_call(
     assert status.auth_summary == "Codex rate limits read"
     assert [limit.limit_name for limit in status.limits] == ["5h"]
     assert status.errors == ()
+    entries = _usage_registry_entries(tmp_path / "home" / ".agentos")
+    assert len(entries) == 1
+    assert entries[0]["class"] == "agentos.agent.usage-record"
+    assert entries[0]["provider"] == "codex"
+    assert entries[0]["account"] == "br"
+    assert entries[0]["home"] == str(target_home.resolve())
+    assert entries[0]["source"] == "app_server"
+    assert entries[0]["payload"] == {
+        "rateLimits": {
+            "limitId": "test-limit",
+            "primary": {
+                "usedPercent": 25,
+                "windowDurationMins": 300,
+                "resetsAt": 1_776_000_000,
+            },
+        }
+    }
+
+
+def test_agent_usage_registry_appends_monthly_jsonl(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.usage_registry import append_usage_record
+
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+
+    path = append_usage_record(
+        provider="codex",
+        account="br",
+        home=tmp_path / "agent-home",
+        source="app_server",
+        payload={"raw": {"used": 25}},
+    )
+
+    assert path.parent == agentos_home / "agent" / "usage-registry"
+    assert path.name.endswith("-usage.jsonl")
+    assert len(path.name) == len("202605-usage.jsonl")
+    assert not (path.parent / "latest.json").exists()
+    entries = _read_jsonl(path)
+    assert len(entries) == 1
+    assert entries[0]["schema_version"] == 1
+    assert entries[0]["class"] == "agentos.agent.usage-record"
+    assert entries[0]["provider"] == "codex"
+    assert entries[0]["account"] == "br"
+    assert entries[0]["home"] == str((tmp_path / "agent-home").resolve())
+    assert entries[0]["source"] == "app_server"
+    assert entries[0]["payload"] == {"raw": {"used": 25}}
 
 
 def test_codex_account_status_reports_identity_mismatch_as_status_error(
@@ -1083,6 +1182,39 @@ def test_codex_account_status_preserves_identity_when_usage_errors(
     assert [error.summary() for error in status.usage_errors] == [
         {"type": "command_failed", "message": "rate limit failed"}
     ]
+    assert _usage_registry_entries(tmp_path / "home" / ".agentos") == []
+
+
+def test_codex_account_status_record_usage_false_skips_usage_registry(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    target_home = _registered_linked_codex_home(tmp_path, monkeypatch, capsys)
+    import agentos.codex.account_status as codex_account_status
+
+    monkeypatch.setattr(
+        codex_account_status,
+        "_fetch_account_usage_app_server_payload",
+        lambda agent: {
+            "rateLimits": {
+                "limitId": "test-limit",
+                "primary": {
+                    "usedPercent": 25,
+                    "windowDurationMins": 300,
+                    "resetsAt": 1_776_000_000,
+                },
+            }
+        },
+    )
+    agent = build_registered_account_agent(
+        provider="codex", account="br", home=target_home
+    )
+
+    status = agent.account_status(record_usage=False)
+
+    assert status.usage_status == "ok"
+    assert _usage_registry_entries(tmp_path / "home" / ".agentos") == []
 
 
 def test_agent_accounts_status_defaults_to_general_registry_view(
@@ -1566,41 +1698,7 @@ def test_claude_account_status_uses_get_usage_limits(
 ) -> None:
     import agentos.claude.account_status as claude_account_status
 
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    claude_home = tmp_path / "claude-home"
-    claude_home.mkdir()
-    _write(
-        claude_home / ".claude.json",
-        json.dumps(
-            {
-                "oauthAccount": {
-                    "accountUuid": "claude-account-id",
-                    "emailAddress": "person@example.com",
-                    "displayName": "Claude Person",
-                }
-            }
-        )
-        + "\n",
-    )
-    assert main(_claude_register_args(label="Claude main")) == 0
-    capsys.readouterr()
-    assert (
-        main(
-            [
-                "agent",
-                "accounts",
-                "link",
-                "--provider",
-                "claude-code",
-                "--account",
-                "main",
-                "--home",
-                str(claude_home),
-            ]
-        )
-        == 0
-    )
-    capsys.readouterr()
+    claude_home = _registered_linked_claude_home(tmp_path, monkeypatch, capsys)
 
     def fake_fetch_usage_payload(agent):
         assert agent.home == claude_home.resolve()
@@ -1636,6 +1734,93 @@ def test_claude_account_status_uses_get_usage_limits(
         for limit in status.limits
         if limit.usage_over_time
     ] == [20, 94]
+    entries = _usage_registry_entries(tmp_path / "home" / ".agentos")
+    assert len(entries) == 1
+    assert entries[0]["provider"] == "claude-code"
+    assert entries[0]["account"] == "main"
+    assert entries[0]["home"] == str(claude_home.resolve())
+    assert entries[0]["source"] == "oauth_usage_get"
+    assert entries[0]["payload"] == {
+        "five_hour": {
+            "utilization": 20,
+            "resets_at": "2026-04-12T13:20:00Z",
+        },
+        "seven_day": {
+            "utilization": 94,
+            "resets_at": "2026-04-19T13:20:00Z",
+        },
+    }
+
+
+def test_claude_account_status_record_usage_false_skips_usage_registry(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+
+    claude_home = _registered_linked_claude_home(tmp_path, monkeypatch, capsys)
+    monkeypatch.setattr(
+        claude_account_status,
+        "_fetch_claude_usage_payload",
+        lambda agent: {
+            "five_hour": {
+                "utilization": 20,
+                "resets_at": "2026-04-12T13:20:00Z",
+            }
+        },
+    )
+    agent = build_registered_account_agent(
+        provider="claude-code", account="main", home=claude_home
+    )
+
+    status = agent.account_status(record_usage=False)
+
+    assert status.usage_status == "ok"
+    assert _usage_registry_entries(tmp_path / "home" / ".agentos") == []
+
+
+def test_claude_account_status_fresh_cache_skips_usage_registry(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+
+    agentos_home = tmp_path / "home" / ".agentos"
+    claude_home = _registered_linked_claude_home(tmp_path, monkeypatch, capsys)
+    cache_path = (
+        agentos_home
+        / "cache"
+        / "account-status"
+        / "claude-code"
+        / "main"
+        / "oauth_usage_get.json"
+    )
+    _write(
+        cache_path,
+        json.dumps(
+            {
+                "captured_at_epoch": 100.0,
+                "payload": {
+                    "five_hour": {
+                        "utilization": 20,
+                        "resets_at": "2026-04-12T13:20:00Z",
+                    }
+                },
+            }
+        )
+        + "\n",
+    )
+    monkeypatch.setattr(claude_account_status.time, "time", lambda: 120.0)
+    agent = build_registered_account_agent(
+        provider="claude-code", account="main", home=claude_home
+    )
+
+    status = agent.account_status()
+
+    assert status.usage_status == "ok"
+    assert _usage_registry_entries(agentos_home) == []
 
 
 def test_agent_accounts_monitor_once_prints_account_status(
