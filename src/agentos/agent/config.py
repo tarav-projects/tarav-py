@@ -605,20 +605,28 @@ def _load_agent_ping_config(value: object, *, field_name: str) -> AgentPingConfi
 
     raw_prompt = value.get("prompt")
     raw_argv = value.get("argv")
+    raw_expected_number = value.get("expected_number", 745)
     has_prompt = raw_prompt is not None
     has_argv = raw_argv is not None
     if has_prompt and has_argv:
         raise CliError(f"{field_name} must define either prompt or argv, not both")
 
     if not raw_enabled:
-        if has_prompt or has_argv:
-            raise CliError(f"{field_name} must not define prompt or argv when disabled")
-        return AgentPingConfig(enabled=False, prompt=None)
+        if has_prompt or has_argv or "expected_number" in value:
+            raise CliError(
+                f"{field_name} must not define prompt, argv, or expected_number when disabled"
+            )
+        return AgentPingConfig(enabled=False, prompt=None, expected_number=None)
+
+    expected_number = _load_ping_expected_number(
+        raw_expected_number,
+        field_name=f"{field_name}.expected_number",
+    )
 
     if has_prompt:
         if not isinstance(raw_prompt, str) or not raw_prompt.strip():
             raise CliError(f"{field_name}.prompt must be a non-empty string")
-        return AgentPingConfig(prompt=raw_prompt.strip())
+        return AgentPingConfig(prompt=raw_prompt.strip(), expected_number=expected_number)
 
     if has_argv:
         argv = _load_string_argv(
@@ -627,9 +635,17 @@ def _load_agent_ping_config(value: object, *, field_name: str) -> AgentPingConfi
         )
         if not argv:
             raise CliError(f"{field_name}.argv must be a non-empty JSON array")
-        return AgentPingConfig(prompt=None, argv=argv)
+        return AgentPingConfig(prompt=None, argv=argv, expected_number=expected_number)
 
     return default_agent_ping_config()
+
+
+def _load_ping_expected_number(value: object, *, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CliError(f"{field_name} must be an integer or null")
+    return value
 
 
 def _load_string_mapping(value: object, *, field_name: str) -> tuple[tuple[str, str], ...]:

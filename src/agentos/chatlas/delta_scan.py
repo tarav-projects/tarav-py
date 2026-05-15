@@ -254,6 +254,7 @@ def run_chatlas_index_redo(
         _emit(progress, f"[chatlas] {instance.provider}/{instance.instance}: raw index redo")
         instance_report = _redo_provider_instance_index(
             instance=instance,
+            raw_root=raw_root,
             session_index_root=session_index_root,
             progress=progress,
         )
@@ -370,6 +371,7 @@ def _process_provider_instance(
     native_sessions = _discover_instance_sessions(instance)
     report["timing"]["native_scan_seconds"] += _elapsed_seconds(discovery_started_at)
     report["native_scan"]["session_count"] = len(native_sessions)
+    _create_raw_partition_manifest_if_missing(instance, raw_root=raw_root)
 
     cache_compare_started_at = time.perf_counter()
     old_cache = _load_derivation_cache_partition(cache_root, instance=instance) if cache_enabled else {}
@@ -528,6 +530,7 @@ def _reset_session_index_for_redo(
 def _redo_provider_instance_index(
     *,
     instance: ChatlasProviderInstance,
+    raw_root: Path,
     session_index_root: Path,
     progress: Callable[[str], None] | None,
 ) -> dict[str, Any]:
@@ -544,7 +547,8 @@ def _redo_provider_instance_index(
         report["native_scan"]["changed_source_artifact_count"] += source_count
 
     index_started_at = time.perf_counter()
-    rows = [_session_index_row(session) for session in sessions]
+    manifest_home = _raw_partition_manifest_home(raw_root, instance=instance)
+    rows = [_session_index_row(session, provider_home=manifest_home) for session in sessions]
     upserted = _replace_session_index_partition(
         session_index_root,
         instance=instance,
@@ -973,6 +977,61 @@ def _write_derivation_cache_partition(
 
 def _derivation_cache_partition_path(cache_root: Path, *, instance: ChatlasProviderInstance) -> Path:
     return cache_root / instance.partition_key / "sessions.json"
+
+
+def _raw_partition_manifest_path(raw_root: Path, *, instance: ChatlasProviderInstance) -> Path:
+    return raw_root / instance.partition_key / "manifest.json"
+
+
+def _load_raw_partition_manifest(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _raw_partition_manifest_home(raw_root: Path, *, instance: ChatlasProviderInstance) -> str | None:
+    manifest = _load_raw_partition_manifest(_raw_partition_manifest_path(raw_root, instance=instance))
+    if manifest is None:
+        return None
+    home = manifest.get("home")
+    return home if isinstance(home, str) and home else None
+
+
+def _raw_partition_manifest_payload(instance: ChatlasProviderInstance, *, raw_root: Path) -> dict[str, Any]:
+    home = _provider_instance_home(instance)
+    raw_home = instance.raw_home(raw_root)
+    source_roots: list[dict[str, str]] = []
+    if home is not None and raw_home is not None:
+        source_roots.append(
+            {
+                "role": "home",
+                "source_root": home,
+                "raw_root": str(raw_home),
+            }
+        )
+    return {
+        "class": "agentos.chatlas.raw_partition_manifest",
+        "schema_version": 1,
+        "provider": instance.provider,
+        "provider_instance_fingerprint": instance.fingerprint,
+        "instance": instance.instance,
+        "home": home,
+        "raw_home": str(raw_home) if raw_home is not None else None,
+        "home_source": "configured_agent_home" if home is not None else None,
+        "source_roots": source_roots,
+    }
+
+
+def _create_raw_partition_manifest_if_missing(instance: ChatlasProviderInstance, *, raw_root: Path) -> None:
+    path = _raw_partition_manifest_path(raw_root, instance=instance)
+    if path.exists():
+        return
+    payload = _raw_partition_manifest_payload(instance, raw_root=raw_root)
+    write_text_if_changed(path, json.dumps(payload, sort_keys=True, indent=2) + "\n")
 
 
 def _path_metadata_signature(path: Path) -> dict[str, object]:

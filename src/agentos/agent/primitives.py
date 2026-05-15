@@ -50,8 +50,9 @@ class SessionSource:
 @dataclass(frozen=True)
 class AgentPingConfig:
     enabled: bool = True
-    prompt: str | None = "ping"
+    prompt: str | None = "What is 423 + 322? Reply with only the number."
     argv: tuple[str, ...] = ()
+    expected_number: int | None = 745
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {"enabled": self.enabled}
@@ -59,6 +60,8 @@ class AgentPingConfig:
             payload["prompt"] = self.prompt
         if self.argv:
             payload["argv"] = list(self.argv)
+        if self.expected_number is not None:
+            payload["expected_number"] = self.expected_number
         return payload
 
 

@@ -665,7 +665,7 @@ def _observe_codex_run(
         observed["provider"] = self.provider
         observed["command_config"] = command_config
         observed["run_config"] = run_config
-        return AgentRunResult(exit_code=0)
+        return AgentRunResult(exit_code=0, stdout="745\n")
 
     monkeypatch.setattr(CodexAgent, "run", fake_run)
     return observed
@@ -674,6 +674,7 @@ def _observe_codex_run(
 def test_agent_ping_invokes_provider_native_run(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     home = tmp_path / "home"
     agentos_home = tmp_path / "agentos-home"
@@ -713,18 +714,22 @@ def test_agent_ping_invokes_provider_native_run(
     run_config = observed["run_config"]
     assert observed["provider"] == "codex"
     assert command_config == AgentCommandConfig(
-        prompt="ping",
+        prompt="What is 423 + 322? Reply with only the number.",
         argv=(),
         model="gpt-5.2",
         account="tk",
         interaction_mode="non_interactive",
     )
-    assert run_config == AgentRunConfig(cwd=cwd.resolve())
+    assert run_config == AgentRunConfig(cwd=cwd.resolve(), process_mode="capture")
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("pong model=gpt-5.2 elapsed_ms=")
+    assert output.removeprefix("pong model=gpt-5.2 elapsed_ms=").isdigit()
 
 
 def test_agent_ping_uses_configured_prompt(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     home = tmp_path / "home"
     agentos_home = tmp_path / "agentos-home"
@@ -749,11 +754,15 @@ def test_agent_ping_uses_configured_prompt(
     assert command_config.prompt == "health check"
     assert command_config.argv == ()
     assert command_config.interaction_mode == "non_interactive"
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("pong model=gpt-5.4 elapsed_ms=")
+    assert output.removeprefix("pong model=gpt-5.4 elapsed_ms=").isdigit()
 
 
 def test_agent_ping_uses_configured_argv(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     home = tmp_path / "home"
     agentos_home = tmp_path / "agentos-home"
@@ -778,6 +787,75 @@ def test_agent_ping_uses_configured_argv(
     assert command_config.prompt is None
     assert command_config.argv == ("status", "--json")
     assert command_config.interaction_mode == "non_interactive"
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("pong model=gpt-5.4 elapsed_ms=")
+    assert output.removeprefix("pong model=gpt-5.4 elapsed_ms=").isdigit()
+
+
+def test_agent_ping_fails_when_expected_number_is_missing(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, AgentRunResult
+    from agentos.codex.agent import CodexAgent
+
+    def fake_run(
+        self: CodexAgent,
+        command_config: AgentCommandConfig,
+        run_config: AgentRunConfig,
+    ) -> AgentRunResult:
+        del self, command_config, run_config
+        return AgentRunResult(exit_code=0, stdout="744\n")
+
+    monkeypatch.setattr(CodexAgent, "run", fake_run)
+    _write_codex_ping_config(agentos_home, work_home=work_home)
+
+    assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 1
+    assert (
+        "agent ping failed: expected numeric answer 745 was not present in provider output"
+        in capsys.readouterr().err
+    )
+
+
+def test_agent_ping_fails_when_provider_command_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, AgentRunResult
+    from agentos.codex.agent import CodexAgent
+
+    def fake_run(
+        self: CodexAgent,
+        command_config: AgentCommandConfig,
+        run_config: AgentRunConfig,
+    ) -> AgentRunResult:
+        del self, command_config, run_config
+        return AgentRunResult(exit_code=2, stderr="provider unavailable\n")
+
+    monkeypatch.setattr(CodexAgent, "run", fake_run)
+    _write_codex_ping_config(agentos_home, work_home=work_home)
+
+    assert main(["agent", "ping", "--provider", "codex", "--profile", "work"]) == 1
+    assert (
+        "agent ping failed: provider command exited with 2: provider unavailable"
+        in capsys.readouterr().err
+    )
 
 
 def test_agent_ping_rejects_prompt_and_argv_config(

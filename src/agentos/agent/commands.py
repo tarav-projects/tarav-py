@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import time
 from pathlib import Path
 
 from agentos._core.project import normalize_project_target
@@ -13,6 +15,7 @@ from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provider_families())
 _AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES = ("codex", "claude-code")
+_PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 
 
 def _list_configured_agents(
@@ -169,8 +172,48 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         argv=agent.ping.argv,
         interaction_mode=interaction_mode,
     )
-    result = agent.run(command_config, _agent_run_config(cwd=cwd))
-    return result.exit_code
+    started_at = time.perf_counter()
+    result = agent.run(command_config, AgentRunConfig(cwd=cwd, process_mode="capture"))
+    elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+    _validate_agent_ping_result(
+        result,
+        expected_number=agent.ping.expected_number,
+    )
+    print(
+        f"pong model={_agent_ping_model(agent, command_config)} "
+        f"elapsed_ms={elapsed_ms}"
+    )
+    return 0
+
+
+def _validate_agent_ping_result(
+    result,
+    *,
+    expected_number: int | None,
+) -> None:
+    output = _agent_ping_output(result.stdout, result.stderr)
+    if result.exit_code != 0:
+        detail = output.strip()
+        suffix = f": {detail}" if detail else ""
+        raise CliError(f"agent ping failed: provider command exited with {result.exit_code}{suffix}")
+
+    if expected_number is None:
+        return
+
+    numbers = [int(match.group(0)) for match in _PING_NUMBER_PATTERN.finditer(output)]
+    if expected_number not in numbers:
+        raise CliError(
+            f"agent ping failed: expected numeric answer {expected_number} "
+            "was not present in provider output"
+        )
+
+
+def _agent_ping_output(stdout: str | None, stderr: str | None) -> str:
+    return "\n".join(part for part in (stdout, stderr) if part)
+
+
+def _agent_ping_model(agent: Agent, command_config: AgentCommandConfig) -> str:
+    return command_config.model or agent.default_model or "<provider-default>"
 
 
 def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:

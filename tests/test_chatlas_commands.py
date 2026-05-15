@@ -222,6 +222,27 @@ def test_chatlas_update_delta_scan_copies_and_indexes_codex_raw(
     assert instance_payload["stats"]["native_scan"]["source_artifact_count"] == 2
     assert instance_payload["stats"]["raw_copy"]["copied_file_count"] == 2
     assert instance_payload["stats"]["timing"]["elapsed_seconds"] >= 0
+    manifest_path = chatlas_root / "raw" / "codex" / instance_payload["provider_instance_fingerprint"] / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest == {
+        "class": "agentos.chatlas.raw_partition_manifest",
+        "schema_version": 1,
+        "provider": "codex",
+        "provider_instance_fingerprint": instance_payload["provider_instance_fingerprint"],
+        "instance": "codex-work",
+        "home": str(codex_home),
+        "raw_home": str(chatlas_root / "raw" / "codex" / instance_payload["provider_instance_fingerprint"] / "home"),
+        "home_source": "configured_agent_home",
+        "source_roots": [
+            {
+                "role": "home",
+                "source_root": str(codex_home),
+                "raw_root": str(chatlas_root / "raw" / "codex" / instance_payload["provider_instance_fingerprint"] / "home"),
+            }
+        ],
+    }
+    assert "session_count" not in manifest
+    assert "session_updated_at_range" not in manifest
     assert len(rows) == 1
     assert rows[0]["provider"] == "codex"
     assert rows[0]["session_id"] == session_id
@@ -344,6 +365,8 @@ def test_chatlas_index_redo_rebuilds_index_from_copied_raw(
     assert payload["session_index"]["upserted_row_count"] == 1
     assert [row["session_id"] for row in rows] == [session_id]
     assert rows[0]["display_name"] == "redo source"
+    assert rows[0]["home"] == str(codex_home)
+    assert str(home / "Documents" / "chatlas" / "raw") not in rows[0]["home"]
     assert not stale_index.exists()
 
 
@@ -961,14 +984,29 @@ def test_chatlas_update_delta_scan_unchanged_run_uses_derivation_cache(
     monkeypatch,
     capsys,
 ) -> None:
-    _, agentos_home, codex_home = _isolate_agentos(monkeypatch, tmp_path)
+    home, agentos_home, codex_home = _isolate_agentos(monkeypatch, tmp_path)
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
     rollout_path = codex_home / "sessions" / "2026" / "03" / "25" / f"rollout-fixture-{session_id}.jsonl"
     _write_codex_rollout(rollout_path, session_id=session_id)
     _write_global_config(agentos_home, codex_home=codex_home)
 
     assert main(["chatlas", "update", "--provider", "codex", "--output-mode", "json"]) == 0
-    capsys.readouterr()
+    first_payload = json.loads(capsys.readouterr().out)
+    chatlas_root = home / "Documents" / "chatlas"
+    fingerprint = first_payload["instances"][0]["provider_instance_fingerprint"]
+    manifest_path = chatlas_root / "raw" / "codex" / fingerprint / "manifest.json"
+    replacement_manifest = {
+        "class": "agentos.chatlas.raw_partition_manifest",
+        "schema_version": 1,
+        "provider": "codex",
+        "provider_instance_fingerprint": fingerprint,
+        "instance": "preexisting",
+        "home": "/already/stamped",
+        "raw_home": "/already/raw",
+        "home_source": "manual",
+        "source_roots": [],
+    }
+    _write(manifest_path, json.dumps(replacement_manifest, sort_keys=True, indent=2) + "\n")
     assert main(["chatlas", "update", "--provider", "codex", "--output-mode", "json"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
@@ -980,6 +1018,7 @@ def test_chatlas_update_delta_scan_unchanged_run_uses_derivation_cache(
     assert payload["raw_copy"]["copied_file_count"] == 0
     assert payload["session_index"]["upserted_row_count"] == 0
     assert payload["instances"][0]["stats"]["cache"]["hit_count"] == 1
+    assert json.loads(manifest_path.read_text(encoding="utf-8")) == replacement_manifest
 
 
 def test_chatlas_update_delta_scan_mutated_artifact_updates_delta_session(
