@@ -6,13 +6,20 @@ import hashlib
 import io
 import json
 from pathlib import Path
+from threading import Event
 
 import pytest
 
 from _helpers import set_fake_agentos_home as _set_fake_agentos_home
 from _helpers import write_text_file as _write
 from agentos._core.process import ProcessResult
-from agentos.agent.account_status import AccountIdentity, AccountLimit, AccountStatus, AccountStatusError, UsageOverTimeLimitData
+from agentos.agent.account_status import (
+    AccountIdentity,
+    AccountLimit,
+    AccountStatus,
+    AccountStatusError,
+    UsageOverTimeLimitData,
+)
 from agentos.agent.providers import build_registered_account_agent
 from agentos.cli import main
 
@@ -32,21 +39,24 @@ def _auth_json(
     last_refresh: str = "2026-05-12T17:00:07Z",
     iat: int = 1_776_000_000,
 ) -> str:
-    return json.dumps(
-        {
-            "auth_mode": "chatgpt",
-            "OPENAI_API_KEY": None,
-            "tokens": {
-                "id_token": _jwt({"email": email, "iat": iat}),
-                "access_token": _jwt({"iat": iat}),
-                "refresh_token": "secret-refresh-token",
-                "account_id": account_id,
+    return (
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "OPENAI_API_KEY": None,
+                "tokens": {
+                    "id_token": _jwt({"email": email, "iat": iat}),
+                    "access_token": _jwt({"iat": iat}),
+                    "refresh_token": "secret-refresh-token",
+                    "account_id": account_id,
+                },
+                "last_refresh": last_refresh,
             },
-            "last_refresh": last_refresh,
-        },
-        indent=2,
-        sort_keys=True,
-    ) + "\n"
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
 
 
 def _sha(text: str) -> str:
@@ -68,7 +78,9 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
     return entries
 
 
-def _register_args(auth_file: Path, *, account: str = "br", register_only: bool = False) -> list[str]:
+def _register_args(
+    auth_file: Path, *, account: str = "br", register_only: bool = False
+) -> list[str]:
     args = [
         "agent",
         "accounts",
@@ -102,7 +114,9 @@ def _link_args(home: Path, *, account: str = "br", force: bool = False) -> list[
     return args
 
 
-def _status_args(home: Path, *, json_output: bool = True, provider: str = "codex") -> list[str]:
+def _status_args(
+    home: Path, *, json_output: bool = True, provider: str = "codex"
+) -> list[str]:
     args = [
         "agent",
         "accounts",
@@ -117,7 +131,9 @@ def _status_args(home: Path, *, json_output: bool = True, provider: str = "codex
     return args
 
 
-def _registry_status_args(*, provider: str | None = None, json_output: bool = True) -> list[str]:
+def _registry_status_args(
+    *, provider: str | None = None, json_output: bool = True
+) -> list[str]:
     args = ["agent", "accounts", "status"]
     if provider is not None:
         args.extend(["--provider", provider])
@@ -203,13 +219,21 @@ def _stub_codex_login_status(monkeypatch, target_home: Path):
         assert run_config.process_mode == "capture"
         return ProcessResult(exit_code=0, stdout="Logged in using ChatGPT\n", stderr="")
 
-    monkeypatch.setattr(codex_account_status, "execute_agent_command", fake_execute_agent_command)
+    monkeypatch.setattr(
+        codex_account_status, "execute_agent_command", fake_execute_agent_command
+    )
     return codex_account_status
 
 
-def _monitor_account_status(*, provider: str, account: str, home: Path) -> AccountStatus:
-    burst_started_at, burst_ends_at = _usage_period(duration_mins=300, elapsed_percent=37)
-    weekly_started_at, weekly_ends_at = _usage_period(duration_mins=10_080, elapsed_percent=18)
+def _monitor_account_status(
+    *, provider: str, account: str, home: Path
+) -> AccountStatus:
+    burst_started_at, burst_ends_at = _usage_period(
+        duration_mins=300, elapsed_percent=37
+    )
+    weekly_started_at, weekly_ends_at = _usage_period(
+        duration_mins=10_080, elapsed_percent=18
+    )
     return AccountStatus(
         provider=provider,
         account=account,
@@ -263,7 +287,9 @@ def _iso_z(value: datetime.datetime) -> str:
     return value.astimezone(datetime.UTC).isoformat().replace("+00:00", "Z")
 
 
-def _stub_monitor_account_status(monkeypatch, *, failures: set[str] | None = None) -> list[str]:
+def _stub_monitor_account_status(
+    monkeypatch, *, failures: set[str] | None = None
+) -> list[str]:
     import agentos.agent.monitor.workflows as monitor_workflows
 
     calls: list[str] = []
@@ -281,13 +307,21 @@ def _stub_monitor_account_status(monkeypatch, *, failures: set[str] | None = Non
             calls.append(key)
             if key in failed_targets:
                 raise RuntimeError(f"cannot refresh {self.account}")
-            return _monitor_account_status(provider=self.provider, account=self.account, home=self.home)
+            return _monitor_account_status(
+                provider=self.provider, account=self.account, home=self.home
+            )
 
-    def fake_build_registered_account_agent(*, provider: str, account: str, home: Path, start_path: Path | str = "."):
+    def fake_build_registered_account_agent(
+        *, provider: str, account: str, home: Path, start_path: Path | str = "."
+    ):
         del start_path
         return FakeAgent(provider=provider, account=account, home=Path(home))
 
-    monkeypatch.setattr(monitor_workflows, "build_registered_account_agent", fake_build_registered_account_agent)
+    monkeypatch.setattr(
+        monitor_workflows,
+        "build_registered_account_agent",
+        fake_build_registered_account_agent,
+    )
     return calls
 
 
@@ -309,7 +343,9 @@ def test_agent_accounts_register_codex_writes_consolidated_registry(
     assert "secret-refresh-token" not in json.dumps(payload)
 
     provider_root = agentos_home / "accounts" / "codex"
-    assert (provider_root / "artifacts" / f"{auth_sha}.auth.json").read_text(encoding="utf-8") == auth_text
+    assert (provider_root / "artifacts" / f"{auth_sha}.auth.json").read_text(
+        encoding="utf-8"
+    ) == auth_text
     accounts = _read_json(provider_root / "accounts.json")
     assert accounts["accounts"]["br"]["provider"] == "codex"
     assert accounts["accounts"]["br"]["account_id"] == "acc_123"
@@ -431,11 +467,18 @@ def test_agent_accounts_register_new_hash_updates_active_artifact(
 
     provider_root = agentos_home / "accounts" / "codex"
     artifacts = _read_jsonl(provider_root / "artifacts.jsonl")
-    assert [entry["artifact_id"] for entry in artifacts] == [_sha(first_text), _sha(second_text)]
+    assert [entry["artifact_id"] for entry in artifacts] == [
+        _sha(first_text),
+        _sha(second_text),
+    ]
     accounts = _read_json(provider_root / "accounts.json")
     assert accounts["accounts"]["br"]["active_artifact_id"] == _sha(second_text)
-    assert (provider_root / "artifacts" / f"{_sha(first_text)}.auth.json").read_text(encoding="utf-8") == first_text
-    assert (provider_root / "artifacts" / f"{_sha(second_text)}.auth.json").read_text(encoding="utf-8") == second_text
+    assert (provider_root / "artifacts" / f"{_sha(first_text)}.auth.json").read_text(
+        encoding="utf-8"
+    ) == first_text
+    assert (provider_root / "artifacts" / f"{_sha(second_text)}.auth.json").read_text(
+        encoding="utf-8"
+    ) == second_text
 
 
 def test_agent_accounts_register_only_preserves_active_artifact(
@@ -460,11 +503,19 @@ def test_agent_accounts_register_only_preserves_active_artifact(
 
     provider_root = agentos_home / "accounts" / "codex"
     artifacts = _read_jsonl(provider_root / "artifacts.jsonl")
-    assert [entry["artifact_id"] for entry in artifacts] == [_sha(active_text), _sha(archived_text)]
+    assert [entry["artifact_id"] for entry in artifacts] == [
+        _sha(active_text),
+        _sha(archived_text),
+    ]
     accounts = _read_json(provider_root / "accounts.json")
     assert accounts["accounts"]["br"]["active_artifact_id"] == _sha(active_text)
-    assert accounts["accounts"]["br"]["artifact_file"] == f"artifacts/{_sha(active_text)}.auth.json"
-    assert (provider_root / "artifacts" / f"{_sha(archived_text)}.auth.json").read_text(encoding="utf-8") == archived_text
+    assert (
+        accounts["accounts"]["br"]["artifact_file"]
+        == f"artifacts/{_sha(active_text)}.auth.json"
+    )
+    assert (provider_root / "artifacts" / f"{_sha(archived_text)}.auth.json").read_text(
+        encoding="utf-8"
+    ) == archived_text
 
 
 def test_agent_accounts_register_only_new_account_has_no_active_artifact(
@@ -543,7 +594,20 @@ def test_agent_accounts_link_writes_home_auth_and_link_registry(
     assert link["kind"] == "artifact"
     assert link["artifact_id"] == auth_sha
 
-    assert main(["stdlib", "utils", "cmd-logger", "query", "--event-type", "agent.accounts.link", "--json"]) == 0
+    assert (
+        main(
+            [
+                "stdlib",
+                "utils",
+                "cmd-logger",
+                "query",
+                "--event-type",
+                "agent.accounts.link",
+                "--json",
+            ]
+        )
+        == 0
+    )
     log_payload = json.loads(capsys.readouterr().out)
     assert log_payload["count"] == 1
     event_payload = log_payload["events"][0]["payload"]
@@ -565,9 +629,15 @@ def test_agent_accounts_link_registers_known_current_auth_before_switching(
     br_source_auth = tmp_path / "br-source.json"
     jp_source_auth = tmp_path / "jp-source.json"
     target_home = tmp_path / "codex"
-    old_br_auth = _auth_json(account_id="acc_br", email="br@example.com", last_refresh="2026-05-01T00:00:00Z")
-    current_br_auth = _auth_json(account_id="acc_br", email="br@example.com", last_refresh="2026-05-02T00:00:00Z")
-    jp_auth = _auth_json(account_id="acc_jp", email="jp@example.com", last_refresh="2026-05-03T00:00:00Z")
+    old_br_auth = _auth_json(
+        account_id="acc_br", email="br@example.com", last_refresh="2026-05-01T00:00:00Z"
+    )
+    current_br_auth = _auth_json(
+        account_id="acc_br", email="br@example.com", last_refresh="2026-05-02T00:00:00Z"
+    )
+    jp_auth = _auth_json(
+        account_id="acc_jp", email="jp@example.com", last_refresh="2026-05-03T00:00:00Z"
+    )
     _write(br_source_auth, old_br_auth)
     _write(jp_source_auth, jp_auth)
     _write(target_home / "auth.json", current_br_auth)
@@ -632,10 +702,16 @@ def test_agent_accounts_link_force_overwrites_unknown_and_broken_auth(
     assert main(_register_args(source_auth)) == 0
     capsys.readouterr()
     assert main(_link_args(unknown_home, force=True)) == 0
-    assert json.loads(capsys.readouterr().out)["target_before_link"]["classification"] == "unknown"
+    assert (
+        json.loads(capsys.readouterr().out)["target_before_link"]["classification"]
+        == "unknown"
+    )
     assert (unknown_home / "auth.json").read_text(encoding="utf-8") == auth_text
     assert main(_link_args(broken_home, force=True)) == 0
-    assert json.loads(capsys.readouterr().out)["target_before_link"]["classification"] == "broken"
+    assert (
+        json.loads(capsys.readouterr().out)["target_before_link"]["classification"]
+        == "broken"
+    )
     assert (broken_home / "auth.json").read_text(encoding="utf-8") == auth_text
 
 
@@ -679,7 +755,9 @@ def test_agent_accounts_status_reports_home_and_registry_state(
     assert status_payload["classification"] == "matching-active"
     assert status_payload["link_consistency"] == "verified"
     assert status_payload["auth"]["account_id"] == "acc_123"
-    assert status_payload["artifact_registry_matches"][0]["artifact_id"] == _sha(auth_text)
+    assert status_payload["artifact_registry_matches"][0]["artifact_id"] == _sha(
+        auth_text
+    )
     assert "providers" not in status_payload
 
     assert main(_status_args(target_home, json_output=False)) == 0
@@ -753,8 +831,16 @@ def test_build_registered_account_agent_ignores_provider_profile_ambiguity(
                 "schema_version": 1,
                 "agent": {
                     "instances": [
-                        {"provider": "codex", "id": "codex-a", "home": str(tmp_path / "a")},
-                        {"provider": "codex", "id": "codex-b", "home": str(tmp_path / "b")},
+                        {
+                            "provider": "codex",
+                            "id": "codex-a",
+                            "home": str(tmp_path / "a"),
+                        },
+                        {
+                            "provider": "codex",
+                            "id": "codex-b",
+                            "home": str(tmp_path / "b"),
+                        },
                     ]
                 },
             },
@@ -766,7 +852,9 @@ def test_build_registered_account_agent_ignores_provider_profile_ambiguity(
 
     assert main(_register_args(source_auth, account="br")) == 0
     capsys.readouterr()
-    agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
+    agent = build_registered_account_agent(
+        provider="codex", account="br", home=target_home
+    )
 
     assert agent.provider == "codex"
     assert agent.instance_id is None
@@ -782,7 +870,9 @@ def test_codex_account_status_reports_auth_check_without_usage_refresh(
 ) -> None:
     target_home = _registered_linked_codex_home(tmp_path, monkeypatch, capsys)
     _stub_codex_login_status(monkeypatch, target_home)
-    agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
+    agent = build_registered_account_agent(
+        provider="codex", account="br", home=target_home
+    )
 
     status = agent.account_status()
 
@@ -812,7 +902,9 @@ def test_codex_account_status_reports_identity_mismatch_as_status_error(
     _write(target_home / "auth.json", _auth_json(account_id="acc_other"))
 
     _stub_codex_login_status(monkeypatch, target_home)
-    agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
+    agent = build_registered_account_agent(
+        provider="codex", account="br", home=target_home
+    )
 
     status = agent.account_status()
 
@@ -852,7 +944,9 @@ def test_codex_account_status_refresh_usage_parses_limits(
             }
         },
     )
-    agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
+    agent = build_registered_account_agent(
+        provider="codex", account="br", home=target_home
+    )
 
     status = agent.account_status(refresh_usage=True)
 
@@ -860,7 +954,11 @@ def test_codex_account_status_refresh_usage_parses_limits(
     assert status.usage_status == "ok"
     assert status.usage_errors == ()
     assert [limit.limit_name for limit in status.limits] == ["5h", "168h"]
-    assert [limit.usage_over_time.used_percent for limit in status.limits if limit.usage_over_time] == [25, 40]
+    assert [
+        limit.usage_over_time.used_percent
+        for limit in status.limits
+        if limit.usage_over_time
+    ] == [25, 40]
     assert status.usage_summary == "5 hours 25%, 168 hours 40%"
 
 
@@ -922,7 +1020,9 @@ def test_codex_account_status_app_server_uses_agent_command_model(
     )
     monkeypatch.setattr(codex_account_status.subprocess, "Popen", FakeProcess)
 
-    agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
+    agent = build_registered_account_agent(
+        provider="codex", account="br", home=target_home
+    )
     payload = codex_account_status._read_codex_account_rate_limits(agent)
 
     assert observed["command"][-1] == "app-server"
@@ -939,10 +1039,16 @@ def test_codex_account_status_preserves_auth_when_usage_refresh_errors(
     codex_account_status = _stub_codex_login_status(monkeypatch, target_home)
 
     def fail_rate_limits(agent):
-        raise AccountStatusError(error_type="command_failed", message="rate limit failed")
+        raise AccountStatusError(
+            error_type="command_failed", message="rate limit failed"
+        )
 
-    monkeypatch.setattr(codex_account_status, "_read_codex_account_rate_limits", fail_rate_limits)
-    agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
+    monkeypatch.setattr(
+        codex_account_status, "_read_codex_account_rate_limits", fail_rate_limits
+    )
+    agent = build_registered_account_agent(
+        provider="codex", account="br", home=target_home
+    )
 
     status = agent.account_status(refresh_usage=True)
 
@@ -1029,14 +1135,42 @@ def test_agent_accounts_register_claude_metadata_only_and_link_claimed(
     assert not (provider_root / "artifacts.jsonl").exists()
     assert not (provider_root / "accounts" / "main" / "manifest.json").exists()
 
-    assert main(["agent", "accounts", "link", "--provider", "claude-code", "--account", "main", "--home", str(claude_home)]) == 0
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "link",
+                "--provider",
+                "claude-code",
+                "--account",
+                "main",
+                "--home",
+                str(claude_home),
+            ]
+        )
+        == 0
+    )
     link_payload = json.loads(capsys.readouterr().out)
     assert link_payload["kind"] == "claimed"
     links = _read_json(provider_root / "links.json")
     assert links["links"][str(claude_home.resolve())]["kind"] == "claimed"
     assert links["links"][str(claude_home.resolve())]["account"] == "main"
 
-    assert main(["stdlib", "utils", "cmd-logger", "query", "--event-type", "agent.accounts.link", "--json"]) == 0
+    assert (
+        main(
+            [
+                "stdlib",
+                "utils",
+                "cmd-logger",
+                "query",
+                "--event-type",
+                "agent.accounts.link",
+                "--json",
+            ]
+        )
+        == 0
+    )
     log_payload = json.loads(capsys.readouterr().out)
     assert log_payload["count"] == 1
     event_payload = log_payload["events"][0]["payload"]
@@ -1090,11 +1224,11 @@ def test_agent_accounts_monitor_once_prints_account_status(
     assert "Agent accounts monitor" in output
     assert "Tick: 1" in output
     assert "limits-tracking" in output
-    assert "refresh_interval_sec: 60" in output
-    assert "  ⬢ codex/br:" in output
-    assert "    usage/time |  3% / 37% = 0.1 | Burst" in output
-    assert "        resets | " in output
-    assert "    usage/time |  1% / 18% = 0.1 | Weekly" in output
+    assert "refresh_interval_sec: 60" not in output
+    assert "    ⬢ codex/br:" in output
+    assert "      usage/time |  3% / 37% = 0.1 | Burst" in output
+    assert "          resets | " in output
+    assert "      usage/time |  1% / 18% = 0.1 | Weekly" in output
     assert "under construction" not in output
 
 
@@ -1121,36 +1255,87 @@ def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
                 "refresh_interval_sec": 60,
                 "targets": [
                     {"provider": "codex", "account": "br"},
-                    {"provider": "codex", "account": "jp", "home": str(tmp_path / "jp-home")},
+                    {
+                        "provider": "codex",
+                        "account": "jp",
+                        "home": str(tmp_path / "jp-home"),
+                    },
                 ],
             },
         ],
     )
     calls = _stub_monitor_account_status(monkeypatch)
 
-    assert main(["agent", "accounts", "monitor", "--max-ticks", "3", "--interval-sec", "0", "--json"]) == 0
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "monitor",
+                "--max-ticks",
+                "3",
+                "--interval-sec",
+                "0",
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["tick"] == 3
-    assert payload["workflow_run_counts"] == {"limits-tracking": 3}
-    assert payload["state"]["limits-tracking"]["last_tick"] == 3
-    assert payload["state"]["limits-tracking"]["run_count"] == 3
+    assert payload["workflow_run_counts"] == {"limits-tracking": 1}
+    assert payload["state"]["limits-tracking"]["last_tick"] == 1
+    assert payload["state"]["limits-tracking"]["run_count"] == 1
     assert payload["state"]["limits-tracking"]["refresh_interval_sec"] == 60
     assert len(calls) == 2
     assert payload["frame"]["tick"] == 3
     assert len(payload["frame"]["blocks"]) == 1
-    assert payload["frame"]["blocks"][0]["lines"][0] == "refresh_interval_sec: 60"
-    assert "⬢ codex/br:" in payload["frame"]["blocks"][0]["lines"]
-    assert "⬢ codex/jp:" in payload["frame"]["blocks"][0]["lines"]
-    assert payload["frame"]["blocks"][0]["data"]["run_count"] == 3
+    assert payload["frame"]["blocks"][0]["lines"][0] == "  ⬢ codex/br:"
+    assert payload["frame"]["blocks"][0]["rows"][0] == {
+        "kind": "text",
+        "text": "  ⬢ codex/br:",
+    }
+    assert any(
+        row["kind"] == "usage_time" for row in payload["frame"]["blocks"][0]["rows"]
+    )
+    assert any(row["kind"] == "reset" for row in payload["frame"]["blocks"][0]["rows"])
+    assert "  ⬢ codex/br:" in payload["frame"]["blocks"][0]["lines"]
+    assert "  ⬢ codex/jp:" in payload["frame"]["blocks"][0]["lines"]
+    assert payload["frame"]["blocks"][0]["data"]["run_count"] == 1
     assert payload["frame"]["blocks"][0]["data"]["targets"][0]["home"] == str(
         agentos_home / "agent" / "homes" / "codex" / "br"
     )
-    assert payload["frame"]["blocks"][0]["data"]["targets"][1]["home"] == str((tmp_path / "jp-home").resolve())
+    assert payload["frame"]["blocks"][0]["data"]["targets"][1]["home"] == str(
+        (tmp_path / "jp-home").resolve()
+    )
     assert payload["frame"]["blocks"][0]["data"]["targets"][0]["status"] == "ok"
-    assert payload["frame"]["blocks"][0]["data"]["targets"][0]["account_status"]["usage_status"] == "ok"
+    assert (
+        payload["frame"]["blocks"][0]["data"]["targets"][0]["account_status"][
+            "usage_status"
+        ]
+        == "ok"
+    )
 
 
-def test_agent_accounts_monitor_loop_keeps_same_frame_and_state_objects() -> None:
+def test_agent_accounts_monitor_frame_prepare_resets_render_data() -> None:
+    from agentos.agent.monitor import MonitorFrame
+
+    frame = MonitorFrame(tick=9)
+    frame.status_lines.append("old status")
+    frame.warnings.append("old warning")
+    frame.errors.append("old error")
+    frame.add_block("old", ["stale"])
+
+    frame.prepare(tick=12)
+
+    assert frame.tick == 12
+    assert frame.status_lines == []
+    assert frame.warnings == []
+    assert frame.errors == []
+    assert frame.blocks == []
+
+
+def test_agent_accounts_monitor_loop_publishes_working_frame_and_shared_state() -> None:
     from agentos.agent.monitor import MonitorFrame, MonitorLoop, MonitorState
 
     seen_frames: list[int] = []
@@ -1169,17 +1354,55 @@ def test_agent_accounts_monitor_loop_keeps_same_frame_and_state_objects() -> Non
     loop = MonitorLoop(
         workflows=(RecordingWorkflow(),),
         interval_sec=0,
-        max_ticks=3,
+        max_ticks=1,
     )
-    frame, state = loop.run()
+    frame, state = loop.run(wait_for_first_frame=True)
 
-    assert frame is loop.frame
+    assert frame is loop.visible_frame
     assert state is loop.state
     assert len(set(seen_frames)) == 1
     assert len(set(seen_states)) == 1
-    assert frame.tick == 3
-    assert state.tick == 3
-    assert state.data["recording"] == 3
+    assert seen_frames[0] == id(frame)
+    assert frame.tick == 1
+    assert state.tick == 1
+    assert state.data["recording"] == 1
+
+
+def test_agent_accounts_monitor_slow_workflow_does_not_block_render_ticks() -> None:
+    from agentos.agent.monitor import MonitorFrame, MonitorLoop, MonitorState
+
+    started = Event()
+    release = Event()
+    finished = Event()
+    rendered: list[tuple[int, bool, bool]] = []
+
+    class SlowWorkflow:
+        name = "slow"
+
+        def run(self, state: MonitorState, frame: MonitorFrame) -> None:
+            started.set()
+            release.wait(timeout=0.2)
+            frame.add_block("slow", [f"finished at {state.tick}"])
+            finished.set()
+
+    def record_tick(frame: MonitorFrame, state: MonitorState) -> None:
+        rendered.append((state.tick, bool(frame.blocks), finished.is_set()))
+        if len(rendered) == 2:
+            release.set()
+
+    loop = MonitorLoop(
+        workflows=(SlowWorkflow(),),
+        interval_sec=0.01,
+        max_ticks=2,
+    )
+
+    loop.run(on_tick=record_tick)
+
+    assert started.is_set()
+    assert rendered == [(1, False, False), (2, False, False)]
+    assert finished.is_set()
+    assert loop._workflow_thread is not None
+    assert not loop._workflow_thread.is_alive()
 
 
 def test_agent_accounts_monitor_once_uses_loop_max_ticks(
@@ -1232,10 +1455,24 @@ def test_agent_accounts_monitor_max_ticks_uses_same_loop_path(
     )
     calls = _stub_monitor_account_status(monkeypatch)
 
-    assert main(["agent", "accounts", "monitor", "--max-ticks", "2", "--interval-sec", "0", "--json"]) == 0
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "monitor",
+                "--max-ticks",
+                "2",
+                "--interval-sec",
+                "0",
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["tick"] == 2
-    assert payload["workflow_run_counts"] == {"limits-tracking": 2}
+    assert payload["workflow_run_counts"] == {"limits-tracking": 1}
     assert len(calls) == 1
 
 
@@ -1264,16 +1501,32 @@ def test_agent_accounts_monitor_refreshes_after_workflow_interval(
     )
     calls = _stub_monitor_account_status(monkeypatch)
     monotonic_values = iter([0.0, 0.0, 0.0, 0.5, 0.5, 0.5, 1.1, 1.1])
-    monkeypatch.setattr(monitor_workflows.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        monitor_workflows.time, "monotonic", lambda: next(monotonic_values)
+    )
 
-    assert main(["agent", "accounts", "monitor", "--max-ticks", "3", "--interval-sec", "0", "--json"]) == 0
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "monitor",
+                "--max-ticks",
+                "3",
+                "--interval-sec",
+                "0",
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
 
-    assert len(calls) == 2
+    assert len(calls) == 1
     target_states = payload["state"]["limits-tracking"]["targets"]
     target_state = next(iter(target_states.values()))
-    assert target_state["refresh_count"] == 2
-    assert target_state["last_refresh_tick"] == 3
+    assert target_state["refresh_count"] == 1
+    assert target_state["last_refresh_tick"] == 1
 
 
 def test_agent_accounts_monitor_target_error_is_workflow_owned(
@@ -1315,7 +1568,7 @@ def test_agent_accounts_monitor_target_error_is_workflow_owned(
     assert [target["status"] for target in targets] == ["error", "ok"]
     assert targets[0]["error"]["type"] == "RuntimeError"
     assert targets[0]["error"]["message"] == "cannot refresh br"
-    assert "  error | cannot refresh br" in payload["frame"]["blocks"][0]["lines"]
+    assert "    error | cannot refresh br" in payload["frame"]["blocks"][0]["lines"]
 
 
 def test_agent_accounts_monitor_workflow_error_goes_to_state_and_frame() -> None:
@@ -1336,26 +1589,18 @@ def test_agent_accounts_monitor_workflow_error_goes_to_state_and_frame() -> None
     loop = MonitorLoop(
         workflows=(FailingWorkflow(), PassingWorkflow()),
         interval_sec=0,
-        max_ticks=2,
+        max_ticks=1,
     )
 
-    frame, state = loop.run()
+    frame, state = loop.run(wait_for_first_frame=True)
 
     assert frame.errors == [
         "unexpected workflow error: failing: RuntimeError: boom",
-        "unexpected workflow error: failing: RuntimeError: boom",
     ]
     assert frame.blocks[0]["title"] == "passing"
-    assert frame.blocks[1]["title"] == "passing"
     assert state.data["workflow_errors"] == [
         {
             "tick": 1,
-            "workflow": "failing",
-            "error_type": "RuntimeError",
-            "message": "boom",
-        },
-        {
-            "tick": 2,
             "workflow": "failing",
             "error_type": "RuntimeError",
             "message": "boom",
@@ -1391,9 +1636,11 @@ def test_agent_accounts_monitor_runs_workflows_in_config_order(
 
     assert main(["agent", "accounts", "monitor", "--once", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert [block["title"] for block in payload["frame"]["blocks"]] == ["limits-tracking", "limits-tracking"]
-    assert [block["data"]["run_count"] for block in payload["frame"]["blocks"]] == [1, 2]
-    assert payload["workflow_run_counts"] == {"limits-tracking": 2}
+    assert [block["title"] for block in payload["frame"]["blocks"]] == [
+        "limits-tracking"
+    ]
+    assert payload["frame"]["blocks"][0]["data"]["run_count"] == 1
+    assert payload["workflow_run_counts"] == {"limits-tracking": 1}
 
 
 def test_agent_accounts_monitor_reports_unknown_workflow(
@@ -1422,10 +1669,14 @@ def test_agent_accounts_monitor_reports_invalid_config(
     capsys,
 ) -> None:
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
-    _write_monitor_config(agentos_home, [{"workflow": "limits-tracking", "targets": []}])
+    _write_monitor_config(
+        agentos_home, [{"workflow": "limits-tracking", "targets": []}]
+    )
 
     assert main(["agent", "accounts", "monitor", "--once"]) == 1
-    assert "agent.accounts.monitor[0].targets must not be empty" in capsys.readouterr().err
+    assert (
+        "agent.accounts.monitor[0].targets must not be empty" in capsys.readouterr().err
+    )
 
 
 @pytest.mark.parametrize("refresh_interval_sec", [0, -1, True, "slow"])
@@ -1453,7 +1704,10 @@ def test_agent_accounts_monitor_reports_invalid_refresh_interval(
     )
 
     assert main(["agent", "accounts", "monitor", "--once"]) == 1
-    assert "agent.accounts.monitor[0].refresh_interval_sec must be a positive number" in capsys.readouterr().err
+    assert (
+        "agent.accounts.monitor[0].refresh_interval_sec must be a positive number"
+        in capsys.readouterr().err
+    )
 
 
 def test_agent_accounts_monitor_reports_missing_registered_account(

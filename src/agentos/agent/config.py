@@ -6,7 +6,11 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.path_validation import validate_string_for_path
-from agentos.agent.primitives import AgentConfig, AgentPingConfig, default_agent_ping_config
+from agentos.agent.primitives import (
+    AgentConfig,
+    AgentPingConfig,
+    default_agent_ping_config,
+)
 from agentos._core.project import (
     agentos_home_dir,
     find_agentos_project_root,
@@ -68,7 +72,19 @@ def _agent_default_model(family_name: str) -> str | None:
     return None
 
 
+def _agent_default_ping_model(family_name: str) -> str | None:
+    if family_name == "claude-code":
+        return "haiku"
+    if family_name == "codex":
+        return "gpt-5.4-mini"
+    if family_name == "pi":
+        return "gpt-5.4-mini"
+    return None
+
+
 def _agent_default_model_flag(family_name: str) -> str | None:
+    if family_name == "claude-code":
+        return "--model"
     if family_name == "codex":
         return "--model"
     if family_name == "copilot-cli":
@@ -152,7 +168,9 @@ class AgentConfigEntry:
         return f"{self.item_path()}.{field}"
 
 
-def load_chat_config_documents(*, start_path: Path | str = ".") -> tuple[dict[str, object], ...]:
+def load_chat_config_documents(
+    *, start_path: Path | str = "."
+) -> tuple[dict[str, object], ...]:
     configs: list[dict[str, object]] = []
 
     global_path = global_config_path(agentos_home_dir())
@@ -177,7 +195,9 @@ def agent_config_entries_from_config(
     if raw_instances is None:
         return ()
     if not isinstance(raw_instances, list):
-        raise CliError(f"config field {'.'.join(source.object_path)} must be a JSON array")
+        raise CliError(
+            f"config field {'.'.join(source.object_path)} must be a JSON array"
+        )
 
     entries: list[AgentConfigEntry] = []
     for index, raw_instance in enumerate(raw_instances):
@@ -210,7 +230,9 @@ def load_agent_config_entries(
     return tuple(entries)
 
 
-def _config_value_at_object_path(config: dict[str, object], *, object_path: tuple[str, ...]) -> object | None:
+def _config_value_at_object_path(
+    config: dict[str, object], *, object_path: tuple[str, ...]
+) -> object | None:
     if not object_path:
         return config
 
@@ -219,16 +241,22 @@ def _config_value_at_object_path(config: dict[str, object], *, object_path: tupl
     for key in object_path[:-1]:
         current_path.append(key)
         if not isinstance(current, dict):
-            raise CliError(f"config field {'.'.join(current_path)} must be a JSON object")
+            raise CliError(
+                f"config field {'.'.join(current_path)} must be a JSON object"
+            )
         next_value = current.get(key)
         if next_value is None:
             return None
         if not isinstance(next_value, dict):
-            raise CliError(f"config field {'.'.join(current_path)} must be a JSON object")
+            raise CliError(
+                f"config field {'.'.join(current_path)} must be a JSON object"
+            )
         current = next_value
 
     if not isinstance(current, dict):
-        raise CliError(f"config field {'.'.join(object_path[:-1])} must be a JSON object")
+        raise CliError(
+            f"config field {'.'.join(object_path[:-1])} must be a JSON object"
+        )
     return current.get(object_path[-1])
 
 
@@ -266,7 +294,9 @@ def select_agent_configs(
         if agent_config.instance_id is not None
     }
     missing_ids = [
-        instance_id for instance_id in selected_instance_ids if instance_id not in agent_configs_by_id
+        instance_id
+        for instance_id in selected_instance_ids
+        if instance_id not in agent_configs_by_id
     ]
     if missing_ids:
         suffix = "s" if len(missing_ids) != 1 else ""
@@ -286,7 +316,9 @@ def select_agent_configs(
             f"{selector_field_name} references unsupported {unsupported_instance_label} "
             f"instance id{suffix}: {', '.join(unsupported_ids)}"
         )
-    return tuple(agent_configs_by_id[instance_id] for instance_id in selected_instance_ids)
+    return tuple(
+        agent_configs_by_id[instance_id] for instance_id in selected_instance_ids
+    )
 
 
 def load_unique_string_list(
@@ -307,7 +339,9 @@ def load_unique_string_list(
     seen_ids: set[str] = set()
     for index, raw_item in enumerate(value):
         if not isinstance(raw_item, str) or not raw_item.strip():
-            raise CliError(f"{normalized_item_field_name}[{index}] must be a non-empty string")
+            raise CliError(
+                f"{normalized_item_field_name}[{index}] must be a non-empty string"
+            )
         item = raw_item.strip()
         if item in seen_ids:
             raise CliError(
@@ -324,7 +358,10 @@ def default_agent_configs(
 ) -> tuple["AgentConfig", ...]:
     instances: list[AgentConfig] = []
     for provider_spec in canonical_chat_provider_specs():
-        if supports_session_discovery_only and not provider_spec.supports_session_discovery:
+        if (
+            supports_session_discovery_only
+            and not provider_spec.supports_session_discovery
+        ):
             continue
 
         direct_targets: list[Path] = []
@@ -334,7 +371,9 @@ def default_agent_configs(
 
         home_spec = provider_spec.home_spec
         home = Path(home_spec.default_home).expanduser().resolve()
-        home_direct_paths, home_grep_paths, home_sqlite_db_paths = home_spec.build_paths(home=home)
+        home_direct_paths, home_grep_paths, home_sqlite_db_paths = (
+            home_spec.build_paths(home=home)
+        )
         direct_targets.extend(home_direct_paths)
         grep_targets.extend(home_grep_paths or home_direct_paths)
         sqlite_db_paths.extend(home_sqlite_db_paths)
@@ -359,14 +398,18 @@ def default_agent_configs(
     return tuple(instances)
 
 
-def agent_config_with_home_override(config: AgentConfig, *, home: Path | str) -> AgentConfig:
+def agent_config_with_home_override(
+    config: AgentConfig, *, home: Path | str
+) -> AgentConfig:
     provider_spec = canonical_chat_provider_spec_for_name(config.provider)
     if provider_spec is None:
         raise CliError(f"--home is not supported for provider {config.provider}")
 
     home_spec = provider_spec.home_spec
     normalized_home = Path(home).expanduser().resolve()
-    direct_targets, grep_targets, sqlite_db_paths = home_spec.build_paths(home=normalized_home)
+    direct_targets, grep_targets, sqlite_db_paths = home_spec.build_paths(
+        home=normalized_home
+    )
     return replace(
         config,
         home=normalized_home,
@@ -386,7 +429,10 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     provider_family = canonical_provider_family_for_name(family_name)
     if provider_family is None:
         supported_providers = ", ".join(
-            sorted(provider_family.family for provider_family in canonical_provider_families())
+            sorted(
+                provider_family.family
+                for provider_family in canonical_provider_families()
+            )
         )
         raise CliError(
             f"{entry.field_name('provider')} must be one of: {supported_providers}"
@@ -464,14 +510,22 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     )
     if raw_timeout_sec is None:
         timeout_sec = None
-    elif isinstance(raw_timeout_sec, bool) or not isinstance(raw_timeout_sec, int) or raw_timeout_sec < 1:
-        raise CliError(f"{entry.field_name('timeout_sec')} must be an integer greater than 0")
+    elif (
+        isinstance(raw_timeout_sec, bool)
+        or not isinstance(raw_timeout_sec, int)
+        or raw_timeout_sec < 1
+    ):
+        raise CliError(
+            f"{entry.field_name('timeout_sec')} must be an integer greater than 0"
+        )
     else:
         timeout_sec = raw_timeout_sec
     if raw_default_model is None:
         default_model = _agent_default_model(family_name)
     elif not isinstance(raw_default_model, str) or not raw_default_model.strip():
-        raise CliError(f"{entry.field_name('default_model')} must be a non-empty string")
+        raise CliError(
+            f"{entry.field_name('default_model')} must be a non-empty string"
+        )
     else:
         default_model = raw_default_model.strip()
     if raw_model_flag is None:
@@ -489,6 +543,7 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     ping = _load_agent_ping_config(
         raw_ping,
         field_name=entry.field_name("ping"),
+        default_model=_agent_default_ping_model(family_name),
     )
     includes = _load_optional_string_tuple(
         raw_includes,
@@ -516,20 +571,30 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
             )
 
         home_spec = provider_spec.home_spec
-        normalized_home = Path(
-            _normalize_provider_home(
-                home,
-                field_name=entry.field_name("home"),
+        normalized_home = (
+            Path(
+                _normalize_provider_home(
+                    home,
+                    field_name=entry.field_name("home"),
+                )
             )
-        ).expanduser().resolve()
-        home_direct_paths, home_grep_paths, home_sqlite_db_paths = home_spec.build_paths(home=normalized_home)
+            .expanduser()
+            .resolve()
+        )
+        home_direct_paths, home_grep_paths, home_sqlite_db_paths = (
+            home_spec.build_paths(home=normalized_home)
+        )
         resolved_direct_targets = _unique_paths(tuple(home_direct_paths))
-        resolved_grep_targets = _unique_paths(tuple(home_grep_paths or home_direct_paths))
+        resolved_grep_targets = _unique_paths(
+            tuple(home_grep_paths or home_direct_paths)
+        )
         resolved_sqlite_db_paths = _unique_paths(tuple(home_sqlite_db_paths))
         anchors = tuple(home_spec.build_anchors(home=normalized_home))
     elif direct_paths or sqlite_db_paths:
         resolved_direct_targets = _resolve_raw_paths(direct_paths)
-        resolved_grep_targets = _resolve_raw_paths(grep_paths) if grep_paths else resolved_direct_targets
+        resolved_grep_targets = (
+            _resolve_raw_paths(grep_paths) if grep_paths else resolved_direct_targets
+        )
         resolved_sqlite_db_paths = _resolve_raw_paths(sqlite_db_paths)
         anchors = _build_explicit_agent_config_anchors(
             direct_targets=resolved_direct_targets,
@@ -593,9 +658,11 @@ def _load_string_argv(value: object, *, field_name: str) -> tuple[str, ...]:
     return tuple(argv)
 
 
-def _load_agent_ping_config(value: object, *, field_name: str) -> AgentPingConfig:
+def _load_agent_ping_config(
+    value: object, *, field_name: str, default_model: str | None = None
+) -> AgentPingConfig:
     if value is None:
-        return default_agent_ping_config()
+        return default_agent_ping_config_with_model(default_model)
     if not isinstance(value, dict):
         raise CliError(f"{field_name} must be a JSON object")
 
@@ -606,15 +673,16 @@ def _load_agent_ping_config(value: object, *, field_name: str) -> AgentPingConfi
     raw_prompt = value.get("prompt")
     raw_argv = value.get("argv")
     raw_expected_number = value.get("expected_number", 745)
+    raw_model = value.get("model", default_model)
     has_prompt = raw_prompt is not None
     has_argv = raw_argv is not None
     if has_prompt and has_argv:
         raise CliError(f"{field_name} must define either prompt or argv, not both")
 
     if not raw_enabled:
-        if has_prompt or has_argv or "expected_number" in value:
+        if has_prompt or has_argv or "expected_number" in value or "model" in value:
             raise CliError(
-                f"{field_name} must not define prompt, argv, or expected_number when disabled"
+                f"{field_name} must not define prompt, argv, expected_number, or model when disabled"
             )
         return AgentPingConfig(enabled=False, prompt=None, expected_number=None)
 
@@ -622,11 +690,16 @@ def _load_agent_ping_config(value: object, *, field_name: str) -> AgentPingConfi
         raw_expected_number,
         field_name=f"{field_name}.expected_number",
     )
+    model = _load_ping_model(raw_model, field_name=f"{field_name}.model")
 
     if has_prompt:
         if not isinstance(raw_prompt, str) or not raw_prompt.strip():
             raise CliError(f"{field_name}.prompt must be a non-empty string")
-        return AgentPingConfig(prompt=raw_prompt.strip(), expected_number=expected_number)
+        return AgentPingConfig(
+            prompt=raw_prompt.strip(),
+            expected_number=expected_number,
+            model=model,
+        )
 
     if has_argv:
         argv = _load_string_argv(
@@ -635,9 +708,27 @@ def _load_agent_ping_config(value: object, *, field_name: str) -> AgentPingConfi
         )
         if not argv:
             raise CliError(f"{field_name}.argv must be a non-empty JSON array")
-        return AgentPingConfig(prompt=None, argv=argv, expected_number=expected_number)
+        return AgentPingConfig(
+            prompt=None,
+            argv=argv,
+            expected_number=expected_number,
+            model=model,
+        )
 
-    return default_agent_ping_config()
+    return default_agent_ping_config_with_model(model)
+
+
+def default_agent_ping_config_with_model(model: str | None) -> AgentPingConfig:
+    config = default_agent_ping_config()
+    if model is None:
+        return config
+    return AgentPingConfig(
+        enabled=config.enabled,
+        prompt=config.prompt,
+        argv=config.argv,
+        expected_number=config.expected_number,
+        model=model,
+    )
 
 
 def _load_ping_expected_number(value: object, *, field_name: str) -> int | None:
@@ -648,7 +739,17 @@ def _load_ping_expected_number(value: object, *, field_name: str) -> int | None:
     return value
 
 
-def _load_string_mapping(value: object, *, field_name: str) -> tuple[tuple[str, str], ...]:
+def _load_ping_model(value: object, *, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise CliError(f"{field_name} must be a non-empty string or null")
+    return value.strip()
+
+
+def _load_string_mapping(
+    value: object, *, field_name: str
+) -> tuple[tuple[str, str], ...]:
     if value is None:
         return ()
     if not isinstance(value, dict):
@@ -706,7 +807,9 @@ def _expand_user_home(value: str) -> str:
 
 
 def _resolve_raw_paths(raw_paths: tuple[str, ...]) -> tuple[Path, ...]:
-    return _unique_paths(tuple(Path(raw_path).expanduser().resolve() for raw_path in raw_paths))
+    return _unique_paths(
+        tuple(Path(raw_path).expanduser().resolve() for raw_path in raw_paths)
+    )
 
 
 def _build_explicit_agent_config_anchors(
@@ -723,6 +826,7 @@ def _build_explicit_agent_config_anchors(
         for index, path in enumerate(sqlite_db_paths)
     )
     return tuple(anchors)
+
 
 __all__ = [
     "canonical_chat_provider_spec_for_name",

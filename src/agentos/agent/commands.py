@@ -13,7 +13,9 @@ from agentos.agent.providers import load_configured_agents, resolve_agent
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.providers import canonical_provider_families
 
-_AGENT_PROVIDER_CHOICES = tuple(provider.family for provider in canonical_provider_families())
+_AGENT_PROVIDER_CHOICES = tuple(
+    provider.family for provider in canonical_provider_families()
+)
 _AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES = ("codex", "claude-code")
 _PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 
@@ -129,11 +131,15 @@ def _resolve_agent_run(
     argv: tuple[str, ...],
 ) -> tuple[Agent, AgentCommandConfig, AgentRunConfig]:
     agent, cwd = _resolve_agent_run_target(args)
-    return agent, _agent_command_config(
-        args,
-        prompt=prompt,
-        argv=argv,
-    ), _agent_run_config(cwd=cwd)
+    return (
+        agent,
+        _agent_command_config(
+            args,
+            prompt=prompt,
+            argv=argv,
+        ),
+        _agent_run_config(cwd=cwd),
+    )
 
 
 def _agent_command_config(
@@ -165,13 +171,20 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         raise CliError(
             f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
         )
-    interaction_mode = "non_interactive" if agent.provider == "codex" else "interactive"
     command_config = _agent_command_config(
         args,
         prompt=agent.ping.prompt,
         argv=agent.ping.argv,
-        interaction_mode=interaction_mode,
+        interaction_mode="non_interactive",
     )
+    if command_config.model is None and agent.ping.model is not None:
+        command_config = AgentCommandConfig(
+            prompt=command_config.prompt,
+            argv=command_config.argv,
+            model=agent.ping.model,
+            account=command_config.account,
+            interaction_mode=command_config.interaction_mode,
+        )
     started_at = time.perf_counter()
     result = agent.run(command_config, AgentRunConfig(cwd=cwd, process_mode="capture"))
     elapsed_ms = round((time.perf_counter() - started_at) * 1000)
@@ -180,8 +193,7 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         expected_number=agent.ping.expected_number,
     )
     print(
-        f"pong model={_agent_ping_model(agent, command_config)} "
-        f"elapsed_ms={elapsed_ms}"
+        f"pong model={_agent_ping_model(agent, command_config)} elapsed_ms={elapsed_ms}"
     )
     return 0
 
@@ -195,7 +207,9 @@ def _validate_agent_ping_result(
     if result.exit_code != 0:
         detail = output.strip()
         suffix = f": {detail}" if detail else ""
-        raise CliError(f"agent ping failed: provider command exited with {result.exit_code}{suffix}")
+        raise CliError(
+            f"agent ping failed: provider command exited with {result.exit_code}{suffix}"
+        )
 
     if expected_number is None:
         return
@@ -219,7 +233,9 @@ def _agent_ping_model(agent: Agent, command_config: AgentCommandConfig) -> str:
 def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
     if args.provider == "codex":
         if args.auth_file is None:
-            raise CliError("agent accounts register --provider codex requires --auth-file")
+            raise CliError(
+                "agent accounts register --provider codex requires --auth-file"
+            )
         from agentos.codex.account_registry import register_codex_account_from_auth_file
 
         print(
@@ -252,7 +268,9 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
             )
         )
         return 0
-    raise CliError(f"agent accounts register is not supported for provider {args.provider}")
+    raise CliError(
+        f"agent accounts register is not supported for provider {args.provider}"
+    )
 
 
 def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
@@ -301,6 +319,7 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
         if args.home is None:
             return _cmd_agent_accounts_registry_status(args, provider=args.provider)
         from agentos.codex.account_registry import inspect_codex_account_home
+
         payload = inspect_codex_account_home(home=Path(args.home))
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
@@ -308,7 +327,9 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
             print(_format_agent_accounts_status(payload))
         return 0
     if args.home is not None:
-        payload = _inspect_claimed_account_home(provider=args.provider, home=Path(args.home))
+        payload = _inspect_claimed_account_home(
+            provider=args.provider, home=Path(args.home)
+        )
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
         else:
@@ -318,7 +339,11 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_accounts_monitor(args: argparse.Namespace) -> int:
-    from agentos.agent.monitor import RichMonitorRenderer, build_monitor_loop, dumps_monitor_json
+    from agentos.agent.monitor import (
+        RichMonitorRenderer,
+        build_monitor_loop,
+        dumps_monitor_json,
+    )
 
     max_ticks = 1 if args.once else args.max_ticks
     loop = build_monitor_loop(
@@ -329,18 +354,19 @@ def _cmd_agent_accounts_monitor(args: argparse.Namespace) -> int:
     try:
         if args.json:
             if max_ticks is None:
+
                 def print_json_tick(frame, state) -> None:
                     print(dumps_monitor_json(frame, state), flush=True)
 
                 loop.run(on_tick=print_json_tick)
                 return 0
 
-            frame, state = loop.run()
+            frame, state = loop.run(wait_for_first_frame=True)
             print(dumps_monitor_json(frame, state))
             return 0
 
         with RichMonitorRenderer() as renderer:
-            loop.run(on_tick=renderer.render)
+            loop.run(on_tick=renderer.render, wait_for_first_frame=args.once)
         return 0
     except KeyboardInterrupt:
         return 130
@@ -357,13 +383,19 @@ def _inspect_claimed_account_home(*, provider: str, home: Path) -> dict[str, obj
         "command": "agent accounts status",
         "provider": provider,
         "home": normalized_home,
-        "classification": "claimed" if isinstance(link, dict) and link.get("kind") == "claimed" else "unlinked",
-        "link_consistency": "claimed-unverified" if isinstance(link, dict) and link.get("kind") == "claimed" else "unlinked",
+        "classification": "claimed"
+        if isinstance(link, dict) and link.get("kind") == "claimed"
+        else "unlinked",
+        "link_consistency": "claimed-unverified"
+        if isinstance(link, dict) and link.get("kind") == "claimed"
+        else "unlinked",
         "link": link if isinstance(link, dict) else None,
     }
 
 
-def _cmd_agent_accounts_registry_status(args: argparse.Namespace, *, provider: str | None) -> int:
+def _cmd_agent_accounts_registry_status(
+    args: argparse.Namespace, *, provider: str | None
+) -> int:
     from agentos.agent.account_registry import inspect_account_registry
 
     payload = inspect_account_registry(provider)
@@ -407,7 +439,8 @@ def _format_agent_accounts_status(payload: dict[str, object]) -> str:
             {
                 account
                 for item in account_matches
-                if isinstance(item, dict) and isinstance((account := item.get("account")), str)
+                if isinstance(item, dict)
+                and isinstance((account := item.get("account")), str)
             }
         )
         if accounts:

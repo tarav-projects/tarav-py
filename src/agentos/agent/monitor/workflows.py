@@ -6,7 +6,16 @@ from typing import Any
 
 from agentos._core.errors import CliError
 from agentos.agent.monitor.loop import MonitorWorkflow
-from agentos.agent.monitor.models import MonitorFrame, MonitorState, MonitorTarget, MonitorWorkflowConfig
+from agentos.agent.monitor.models import (
+    MonitorFrame,
+    MonitorResetRow,
+    MonitorRow,
+    MonitorState,
+    MonitorTarget,
+    MonitorTextRow,
+    MonitorUsageTimeRow,
+    MonitorWorkflowConfig,
+)
 from agentos.agent.providers import build_registered_account_agent
 
 
@@ -29,13 +38,19 @@ class LimitsTrackingWorkflow:
         target_states = self._target_states(workflow_state)
         for target in self.config.targets:
             target_key = _target_key(target)
-            target_state = self._target_state(target_states, target=target, target_key=target_key)
+            target_state = self._target_state(
+                target_states, target=target, target_key=target_key
+            )
             last_refresh_at = target_state.get("last_refresh_at_monotonic")
             should_refresh = not isinstance(last_refresh_at, int | float)
             if not should_refresh:
-                should_refresh = now - float(last_refresh_at) >= self.config.refresh_interval_sec
+                should_refresh = (
+                    now - float(last_refresh_at) >= self.config.refresh_interval_sec
+                )
             if should_refresh:
-                self._refresh_target(target_state, target=target, now=now, tick=frame.tick)
+                self._refresh_target(
+                    target_state, target=target, now=now, tick=frame.tick
+                )
 
         self._write_frame_block(frame, workflow_state=workflow_state)
 
@@ -86,7 +101,9 @@ class LimitsTrackingWorkflow:
         tick: int,
     ) -> None:
         try:
-            agent = build_registered_account_agent(provider=target.provider, account=target.account, home=target.home)
+            agent = build_registered_account_agent(
+                provider=target.provider, account=target.account, home=target.home
+            )
             account_status = agent.account_status(refresh_usage=True)
         except Exception as exc:
             target_state.update(
@@ -114,36 +131,86 @@ class LimitsTrackingWorkflow:
             }
         )
 
-    def _write_frame_block(self, frame: MonitorFrame, *, workflow_state: dict[str, object]) -> None:
-        lines = [f"refresh_interval_sec: {_format_seconds(self.config.refresh_interval_sec)}"]
+    def _write_frame_block(
+        self, frame: MonitorFrame, *, workflow_state: dict[str, object]
+    ) -> None:
+        rows: list[MonitorRow] = []
         target_summaries: list[dict[str, object]] = []
         target_states = self._target_states(workflow_state)
-        for target in self.config.targets:
+        for index, target in enumerate(self.config.targets):
+            if index > 0:
+                rows.append(MonitorTextRow(""))
             target_key = _target_key(target)
             raw_target_state = target_states.get(target_key)
-            target_state = raw_target_state if isinstance(raw_target_state, dict) else {}
+            target_state = (
+                raw_target_state if isinstance(raw_target_state, dict) else {}
+            )
             target_summaries.append(dict(target_state))
-            lines.extend(_target_lines(target=target, target_state=target_state))
+            rows.extend(_target_rows(target=target, target_state=target_state))
         data = {
             "refresh_interval_sec": self.config.refresh_interval_sec,
             "run_count": workflow_state.get("run_count"),
             "targets": target_summaries,
         }
-        if self._frame_block_index is None:
+        if (
+            self._frame_block_index is None
+            or self._frame_block_index >= len(frame.blocks)
+        ):
             self._frame_block_index = len(frame.blocks)
-            frame.add_block(self.name, lines, data=data)
+            frame.add_block(self.name, rows=rows, data=data)
             return
-        frame.replace_block(self._frame_block_index, title=self.name, lines=lines, data=data)
+        frame.replace_block(
+            self._frame_block_index, title=self.name, rows=rows, data=data
+        )
 
 
-def build_monitor_workflows(configs: tuple[MonitorWorkflowConfig, ...]) -> tuple[MonitorWorkflow, ...]:
+def build_monitor_workflows(
+    configs: tuple[MonitorWorkflowConfig, ...],
+) -> tuple[MonitorWorkflow, ...]:
     workflows: list[MonitorWorkflow] = []
+    limits_tracking_configs = tuple(
+        config for config in configs if config.name == "limits-tracking"
+    )
+    if limits_tracking_configs:
+        workflows.append(
+            LimitsTrackingWorkflow(
+                _merge_limits_tracking_configs(limits_tracking_configs)
+            )
+        )
     for config in configs:
         if config.name == "limits-tracking":
-            workflows.append(LimitsTrackingWorkflow(config))
             continue
         raise CliError(f"unknown monitor workflow {config.name!r}")
     return tuple(workflows)
+
+
+def _merge_limits_tracking_configs(
+    configs: tuple[MonitorWorkflowConfig, ...],
+) -> MonitorWorkflowConfig:
+    if len(configs) == 1:
+        return configs[0]
+    targets: list[MonitorTarget] = []
+    target_keys: set[tuple[str, str, str]] = set()
+    raw_configs: list[dict[str, object]] = []
+    refresh_interval_sec = min(config.refresh_interval_sec for config in configs)
+    for config in configs:
+        for target in config.targets:
+            target_key = (target.provider, target.account, str(target.home))
+            if target_key in target_keys:
+                continue
+            target_keys.add(target_key)
+            targets.append(target)
+        raw_configs.append(config.raw_config)
+    return MonitorWorkflowConfig(
+        name="limits-tracking",
+        targets=tuple(targets),
+        refresh_interval_sec=refresh_interval_sec,
+        raw_config={
+            "workflow": "limits-tracking",
+            "refresh_interval_sec": refresh_interval_sec,
+            "configs": raw_configs,
+        },
+    )
 
 
 def _target_key(target: MonitorTarget) -> str:
@@ -157,19 +224,21 @@ def _refresh_count(target_state: dict[str, object]) -> int:
     return 0
 
 
-def _target_lines(*, target: MonitorTarget, target_state: dict[str, object]) -> list[str]:
-    lines = [_target_title(target)]
+def _target_rows(
+    *, target: MonitorTarget, target_state: dict[str, object]
+) -> list[MonitorRow]:
+    rows: list[MonitorRow] = [MonitorTextRow(f"  {_target_title(target)}")]
     if target_state.get("status") == "error":
-        lines.append(f"  error | {_error_message(target_state)}")
-        return lines
+        rows.append(MonitorTextRow(f"    error | {_error_message(target_state)}"))
+        return rows
     account_status = target_state.get("account_status")
     if isinstance(account_status, dict):
-        limit_lines = _account_limit_lines(account_status)
-        if limit_lines:
-            lines.extend(limit_lines)
-            return lines
-        lines.append(f"  usage | {_limits_summary(account_status)}")
-    return lines
+        limit_rows = _account_limit_rows(account_status)
+        if limit_rows:
+            rows.extend(limit_rows)
+            return rows
+        rows.append(MonitorTextRow(f"    usage | {_limits_summary(account_status)}"))
+    return rows
 
 
 def _target_title(target: MonitorTarget) -> str:
@@ -186,12 +255,12 @@ def _error_message(target_state: dict[str, object]) -> str:
     return "unknown error"
 
 
-def _account_limit_lines(account_status: dict[str, Any]) -> list[str]:
+def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
     limits = account_status.get("limits")
     if not isinstance(limits, list):
         return []
 
-    lines: list[str] = []
+    rows: list[MonitorRow] = []
     now = datetime.datetime.now(tz=datetime.UTC)
     for limit in limits:
         if not isinstance(limit, dict):
@@ -203,16 +272,48 @@ def _account_limit_lines(account_status: dict[str, Any]) -> list[str]:
         elapsed_percent = _elapsed_percent(usage_over_time, recorded_at=now)
         if used_percent is None or elapsed_percent is None:
             continue
-        lines.append(
-            "  usage/time"
-            f" | {_format_usage_percent_plain(used_percent)} / {_format_usage_percent_plain(elapsed_percent)}"
-            f" = {_format_usage_time_ratio(used_percent, elapsed_percent)}"
-            f" | {_limit_label(limit, usage_over_time)}"
+        label = _limit_label(limit, usage_over_time)
+        ratio = _usage_time_ratio(used_percent, elapsed_percent)
+        rows.append(
+            MonitorUsageTimeRow(
+                _usage_time_line(
+                    used_percent=used_percent,
+                    elapsed_percent=elapsed_percent,
+                    ratio=ratio,
+                    label=label,
+                ),
+                used_percent=max(0, min(100, used_percent)),
+                elapsed_percent=max(0, min(100, elapsed_percent)),
+                ratio=ratio,
+                label=label,
+            )
         )
         reset_line = _reset_line(usage_over_time, recorded_at=now)
         if reset_line is not None:
-            lines.append(reset_line)
-    return lines
+            marker_percent = (
+                max(0, min(100, used_percent))
+                if used_percent > elapsed_percent
+                else None
+            )
+            rows.append(
+                MonitorResetRow(
+                    reset_line,
+                    elapsed_percent=max(0, min(100, elapsed_percent)),
+                    marker_percent=marker_percent,
+                )
+            )
+    return rows
+
+
+def _usage_time_line(
+    *, used_percent: int, elapsed_percent: int, ratio: float | None, label: str
+) -> str:
+    return (
+        "    usage/time"
+        f" | {_format_usage_percent_plain(used_percent)} / {_format_usage_percent_plain(elapsed_percent)}"
+        f" = {_format_usage_time_ratio_text(ratio)}"
+        f" | {label}"
+    )
 
 
 def _limits_summary(account_status: dict[str, Any]) -> str:
@@ -249,27 +350,45 @@ def _limit_label(limit: dict[str, Any], usage_over_time: dict[str, object]) -> s
     return "usage"
 
 
-def _reset_line(usage_over_time: dict[str, object], *, recorded_at: datetime.datetime) -> str | None:
+def _reset_line(
+    usage_over_time: dict[str, object], *, recorded_at: datetime.datetime
+) -> str | None:
     reset_at = _parse_datetime(_string_value(usage_over_time.get("resets_at")))
     if reset_at is None:
         reset_at = _parse_datetime(_string_value(usage_over_time.get("period_ends_at")))
     if reset_at is None:
         return None
     reset_display = reset_at.astimezone().strftime("%a %m-%d %H:%M")
-    remaining_display = _format_remaining_duration(int((reset_at - recorded_at).total_seconds()))
-    return f"      resets | {reset_display} | {remaining_display}"
+    remaining_display = _format_remaining_duration(
+        int((reset_at - recorded_at).total_seconds())
+    )
+    return f"        resets | {reset_display} | {remaining_display}"
 
 
-def _elapsed_percent(usage_over_time: dict[str, object], *, recorded_at: datetime.datetime) -> int | None:
-    period_started_at = _parse_datetime(_string_value(usage_over_time.get("period_started_at")))
-    period_ends_at = _parse_datetime(_string_value(usage_over_time.get("period_ends_at")))
+def _elapsed_percent(
+    usage_over_time: dict[str, object], *, recorded_at: datetime.datetime
+) -> int | None:
+    period_started_at = _parse_datetime(
+        _string_value(usage_over_time.get("period_started_at"))
+    )
+    period_ends_at = _parse_datetime(
+        _string_value(usage_over_time.get("period_ends_at"))
+    )
     if period_started_at is None:
         duration_mins = _int_value(usage_over_time.get("period_duration_mins"))
         if duration_mins is not None and period_ends_at is not None:
-            period_started_at = period_ends_at - datetime.timedelta(minutes=duration_mins)
+            period_started_at = period_ends_at - datetime.timedelta(
+                minutes=duration_mins
+            )
     if period_ends_at is None:
-        period_ends_at = _parse_datetime(_string_value(usage_over_time.get("resets_at")))
-    if period_started_at is None or period_ends_at is None or period_ends_at <= period_started_at:
+        period_ends_at = _parse_datetime(
+            _string_value(usage_over_time.get("resets_at"))
+        )
+    if (
+        period_started_at is None
+        or period_ends_at is None
+        or period_ends_at <= period_started_at
+    ):
         return None
     duration_seconds = (period_ends_at - period_started_at).total_seconds()
     if duration_seconds <= 0:
@@ -283,12 +402,18 @@ def _format_usage_percent_plain(value: int) -> str:
     return f"{max(0, min(100, value))}%".rjust(3)
 
 
-def _format_usage_time_ratio(used_percent: int, elapsed_percent: int) -> str:
+def _usage_time_ratio(used_percent: int, elapsed_percent: int) -> float | None:
     clamped_elapsed_percent = max(0, min(100, elapsed_percent))
     if clamped_elapsed_percent == 0:
-        return "n/a"
+        return None
     clamped_used_percent = max(0, min(100, used_percent))
-    return f"{clamped_used_percent / clamped_elapsed_percent:.1f}"
+    return clamped_used_percent / clamped_elapsed_percent
+
+
+def _format_usage_time_ratio_text(ratio: float | None) -> str:
+    if ratio is None:
+        return "n/a"
+    return f"{ratio:.1f}"
 
 
 def _format_remaining_duration(diff_seconds: int) -> str:

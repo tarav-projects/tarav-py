@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from agentos.cli import main
-from _helpers import write_global_config as _write_global_config, write_project_config as _write_project_config, write_project_marker as _write_project_marker, write_text_file as _write
+from _helpers import (
+    write_global_config as _write_global_config,
+    write_project_config as _write_project_config,
+    write_project_marker as _write_project_marker,
+    write_text_file as _write,
+)
 
 
 def test_agent_run_uses_configured_agent(
@@ -131,6 +136,29 @@ def test_codex_build_command_models_interaction_mode(tmp_path: Path) -> None:
         "ping",
     )
     assert non_interactive.env_overrides["CODEX_HOME"] == str(tmp_path / "codex-home")
+
+
+def test_claude_build_command_models_non_interactive_prompt(tmp_path: Path) -> None:
+    from agentos.agent.run_runtime import AgentCommandConfig
+    from agentos.claude.agent import ClaudeAgent
+
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        cli_command=("claude",),
+        model_flag="--model",
+        prompt_flag="-p",
+    )
+
+    command = agent.build_command(
+        AgentCommandConfig(
+            prompt="ping",
+            model="haiku",
+            interaction_mode="non_interactive",
+        )
+    )
+
+    assert command.argv == ("claude", "--model", "haiku", "-p", "ping")
+    assert command.env_overrides["CLAUDE_CONFIG_DIR"] == str(tmp_path / "claude-home")
 
 
 def test_codex_run_capture_uses_run_config_without_rewriting_command(
@@ -257,7 +285,21 @@ def test_agent_run_uses_configured_instance_env(
 
     monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
-    assert main(["agent", "run", "--provider", "codex", "--profile", "work", "--prompt", "hello"]) == 0
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--prompt",
+                "hello",
+            ]
+        )
+        == 0
+    )
 
     assert observed["codex_home"] == str(work_home)
 
@@ -376,7 +418,21 @@ def test_agent_run_claude_uses_configured_home_env(
 
     monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
-    assert main(["agent", "run", "--provider", "claude-code", "--profile", "claude-main", "--prompt", "hello"]) == 0
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "claude-code",
+                "--profile",
+                "claude-main",
+                "--prompt",
+                "hello",
+            ]
+        )
+        == 0
+    )
 
     assert observed["command"] == ["claude", "-p", "hello"]
     assert observed["claude_config_dir"] == str(claude_home)
@@ -490,7 +546,10 @@ def test_agent_run_claude_dry_run_prints_configured_home_env(
         == 0
     )
 
-    assert capsys.readouterr().out.strip() == f"CLAUDE_CONFIG_DIR={claude_home} claude -p hello"
+    assert (
+        capsys.readouterr().out.strip()
+        == f"CLAUDE_CONFIG_DIR={claude_home} claude -p hello"
+    )
 
 
 def test_agent_run_codex_account_dry_run_uses_profile_home_override(
@@ -545,7 +604,9 @@ def test_agent_run_codex_account_dry_run_uses_profile_home_override(
     )
 
 
-def test_legacy_agent_link_command_is_removed(capsys: pytest.CaptureFixture[str]) -> None:
+def test_legacy_agent_link_command_is_removed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(["agent", "link", "--help"])
 
@@ -578,7 +639,11 @@ def test_agent_run_invokes_provider_native_run(
         ],
     )
 
-    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, AgentRunResult
+    from agentos.agent.run_runtime import (
+        AgentCommandConfig,
+        AgentRunConfig,
+        AgentRunResult,
+    )
     from agentos.codex.agent import CodexAgent
 
     observed: dict[str, object] = {}
@@ -652,7 +717,11 @@ def _write_codex_ping_config(
 def _observe_codex_run(
     monkeypatch,
 ) -> dict[str, object]:
-    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, AgentRunResult
+    from agentos.agent.run_runtime import (
+        AgentCommandConfig,
+        AgentRunConfig,
+        AgentRunResult,
+    )
     from agentos.codex.agent import CodexAgent
 
     observed: dict[str, object] = {}
@@ -668,6 +737,51 @@ def _observe_codex_run(
         return AgentRunResult(exit_code=0, stdout="745\n")
 
     monkeypatch.setattr(CodexAgent, "run", fake_run)
+    return observed
+
+
+def _write_claude_ping_config(
+    agentos_home: Path,
+    *,
+    work_home: Path,
+    ping: dict[str, object] | None = None,
+) -> None:
+    instance: dict[str, object] = {
+        "provider": "claude-code",
+        "id": "work",
+        "home": str(work_home),
+        "cli_command": ["claude"],
+        "model_flag": "--model",
+    }
+    if ping is not None:
+        instance["ping"] = ping
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[instance],
+    )
+
+
+def _observe_claude_run(monkeypatch) -> dict[str, object]:
+    from agentos.agent.run_runtime import (
+        AgentCommandConfig,
+        AgentRunConfig,
+        AgentRunResult,
+    )
+    from agentos.claude.agent import ClaudeAgent
+
+    observed: dict[str, object] = {}
+
+    def fake_run(
+        self: ClaudeAgent,
+        command_config: AgentCommandConfig,
+        run_config: AgentRunConfig,
+    ) -> AgentRunResult:
+        observed["provider"] = self.provider
+        observed["command_config"] = command_config
+        observed["run_config"] = run_config
+        return AgentRunResult(exit_code=0, stdout="745\n")
+
+    monkeypatch.setattr(ClaudeAgent, "run", fake_run)
     return observed
 
 
@@ -726,6 +840,41 @@ def test_agent_ping_invokes_provider_native_run(
     assert output.removeprefix("pong model=gpt-5.2 elapsed_ms=").isdigit()
 
 
+def test_agent_ping_invokes_claude_non_interactively(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "claude-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
+
+    _write_claude_ping_config(agentos_home, work_home=work_home)
+    observed = _observe_claude_run(monkeypatch)
+
+    assert (
+        main(["agent", "ping", "--provider", "claude-code", "--profile", "work"]) == 0
+    )
+
+    assert observed["provider"] == "claude-code"
+    assert observed["command_config"] == AgentCommandConfig(
+        prompt="What is 423 + 322? Reply with only the number.",
+        argv=(),
+        model="haiku",
+        interaction_mode="non_interactive",
+    )
+    assert observed["run_config"] == AgentRunConfig(
+        cwd=Path.cwd().resolve(), process_mode="capture"
+    )
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("pong model=haiku elapsed_ms=")
+
+
 def test_agent_ping_uses_configured_prompt(
     tmp_path: Path,
     monkeypatch,
@@ -755,8 +904,36 @@ def test_agent_ping_uses_configured_prompt(
     assert command_config.argv == ()
     assert command_config.interaction_mode == "non_interactive"
     output = capsys.readouterr().out.strip()
-    assert output.startswith("pong model=gpt-5.4 elapsed_ms=")
-    assert output.removeprefix("pong model=gpt-5.4 elapsed_ms=").isdigit()
+    assert output.startswith("pong model=gpt-5.4-mini elapsed_ms=")
+    assert output.removeprefix("pong model=gpt-5.4-mini elapsed_ms=").isdigit()
+
+
+def test_agent_ping_uses_configured_ping_model(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "claude-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_claude_ping_config(
+        agentos_home,
+        work_home=work_home,
+        ping={"model": "sonnet"},
+    )
+    observed = _observe_claude_run(monkeypatch)
+
+    assert (
+        main(["agent", "ping", "--provider", "claude-code", "--profile", "work"]) == 0
+    )
+
+    assert observed["command_config"].model == "sonnet"
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("pong model=sonnet elapsed_ms=")
 
 
 def test_agent_ping_uses_configured_argv(
@@ -788,8 +965,8 @@ def test_agent_ping_uses_configured_argv(
     assert command_config.argv == ("status", "--json")
     assert command_config.interaction_mode == "non_interactive"
     output = capsys.readouterr().out.strip()
-    assert output.startswith("pong model=gpt-5.4 elapsed_ms=")
-    assert output.removeprefix("pong model=gpt-5.4 elapsed_ms=").isdigit()
+    assert output.startswith("pong model=gpt-5.4-mini elapsed_ms=")
+    assert output.removeprefix("pong model=gpt-5.4-mini elapsed_ms=").isdigit()
 
 
 def test_agent_ping_fails_when_expected_number_is_missing(
@@ -804,7 +981,11 @@ def test_agent_ping_fails_when_expected_number_is_missing(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, AgentRunResult
+    from agentos.agent.run_runtime import (
+        AgentCommandConfig,
+        AgentRunConfig,
+        AgentRunResult,
+    )
     from agentos.codex.agent import CodexAgent
 
     def fake_run(
@@ -837,7 +1018,11 @@ def test_agent_ping_fails_when_provider_command_fails(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
 
-    from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, AgentRunResult
+    from agentos.agent.run_runtime import (
+        AgentCommandConfig,
+        AgentRunConfig,
+        AgentRunResult,
+    )
     from agentos.codex.agent import CodexAgent
 
     def fake_run(
@@ -1532,7 +1717,10 @@ def test_agent_run_copilot_raw_argv_dry_run(
         == 0
     )
 
-    assert capsys.readouterr().out.strip() == "copilot --allow-all-tools --no-ask-user auth status"
+    assert (
+        capsys.readouterr().out.strip()
+        == "copilot --allow-all-tools --no-ask-user auth status"
+    )
 
 
 def test_agent_run_pi_raw_argv_dry_run(
@@ -1776,8 +1964,7 @@ def test_provider_capabilities_are_scoped_by_subsystem() -> None:
 
     default_run_providers = set(supported_default_run_provider_families())
     chatlas_providers = {
-        provider.family
-        for provider in supported_chatlas_provider_families()
+        provider.family for provider in supported_chatlas_provider_families()
     }
     home_providers_with_session_layout = {
         provider.family

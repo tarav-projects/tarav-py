@@ -53,6 +53,7 @@ class AgentPingConfig:
     prompt: str | None = "What is 423 + 322? Reply with only the number."
     argv: tuple[str, ...] = ()
     expected_number: int | None = 745
+    model: str | None = None
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {"enabled": self.enabled}
@@ -62,6 +63,8 @@ class AgentPingConfig:
             payload["argv"] = list(self.argv)
         if self.expected_number is not None:
             payload["expected_number"] = self.expected_number
+        if self.model is not None:
+            payload["model"] = self.model
         return payload
 
 
@@ -157,7 +160,10 @@ class AgentBase:
     chatlas_excludes: tuple[str, ...] = ()
 
     def summary(self) -> dict[str, object]:
-        payload: dict[str, object] = {"provider": self.provider, "is_default": self.is_default}
+        payload: dict[str, object] = {
+            "provider": self.provider,
+            "is_default": self.is_default,
+        }
         if self.fingerprint is not None:
             payload["fingerprint"] = self.fingerprint
         if self.instance_id is not None:
@@ -191,7 +197,9 @@ class AgentBase:
         if self.sqlite_db_paths:
             payload["sqlite_db_paths"] = [str(path) for path in self.sqlite_db_paths]
         if self.identity_anchors:
-            payload["identity_anchors"] = [anchor.summary() for anchor in self.identity_anchors]
+            payload["identity_anchors"] = [
+                anchor.summary() for anchor in self.identity_anchors
+            ]
         if self.chatlas_includes:
             payload["chatlas_includes"] = list(self.chatlas_includes)
         if self.chatlas_excludes:
@@ -260,6 +268,7 @@ class AgentBase:
             f"agent {self.instance_id or '<default>'} for provider {self.provider} "
             "does not support account_status"
         )
+
 
 def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
     return {
