@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** add a minimal read-only `agentos chatlas index doctor` command that verifies the materialized Chatlas session index against core index/raw-storage invariants
-- **status:** proposed
+- **status:** implemented
 - **source:** user request after manually auditing Chatlas index consistency following Claude archive migration and full reindex
 - **target:** expose the most important consistency checks as a repeatable CLI command with focused tests
 - **non-goals:** do not repair, reindex, migrate archives, scan live provider homes, normalize sessions, or add provider-specific deep checks in v1
@@ -166,7 +166,7 @@ This mirrors ordinary doctor command behavior: successful check runs are quiet e
 - path: index rows + raw partition filesystem -> doctor payload
 - observable: a clean fixture returns `status: ok`
 - check: focused tests call the runtime or CLI on fixture roots
-- status: pending
+- status: done
 
 ### Slice 2 - Add the CLI command surface
 
@@ -180,7 +180,7 @@ This mirrors ordinary doctor command behavior: successful check runs are quiet e
   - `agentos chatlas index --help` lists `doctor`
   - `agentos chatlas index doctor --format json` emits the doctor payload
 - check: command tests cover clean and failing exit codes
-- status: pending
+- status: done
 
 ### Slice 3 - Add the minimal test battery
 
@@ -197,7 +197,7 @@ This mirrors ordinary doctor command behavior: successful check runs are quiet e
 - path: synthetic Chatlas root -> CLI/runtime doctor -> deterministic error report
 - observable: each known broken index shape is caught by exactly the intended check
 - check: `uv run python -m pytest tests/test_chatlas_commands.py -q` or the dedicated test module
-- status: pending
+- status: done
 
 ### Slice 4 - Verify installed CLI behavior
 
@@ -213,8 +213,9 @@ This mirrors ordinary doctor command behavior: successful check runs are quiet e
   - focused pytest command
   - `uv run python -m pytest -q`
   - installed CLI smoke output
-- status: pending
+- status: done
 
 ## Impl.Log
 
 - 2026-05-15: Created implementation request from the accepted minimal design for `agentos chatlas index doctor`: a read-only index/raw consistency checker covering required fields, identity uniqueness, backing artifact existence, home provenance hygiene, and raw partition manifest coverage.
+- 2026-05-15: Implemented `agentos chatlas index doctor` with JSON/markdown output, nonzero error exit semantics, focused tests for the minimal check set, editable CLI reinstall, and installed-command smoke checks against the current Chatlas index.

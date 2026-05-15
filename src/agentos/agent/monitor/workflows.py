@@ -104,7 +104,7 @@ class LimitsTrackingWorkflow:
             agent = build_registered_account_agent(
                 provider=target.provider, account=target.account, home=target.home
             )
-            account_status = agent.account_status(refresh_usage=True)
+            account_status = agent.account_status()
         except Exception as exc:
             target_state.update(
                 {

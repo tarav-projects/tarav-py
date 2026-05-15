@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections.abc import Mapping
 from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
@@ -61,17 +60,8 @@ class ClaudeAgent(AgentBase):
 
     def account_status(
         self,
-        *,
-        refresh_usage: bool = False,
-        methods: tuple[str, ...] | None = None,
-        config: Mapping[str, object] | None = None,
     ) -> AccountStatus:
-        return claude_account_status(
-            self,
-            refresh_usage=refresh_usage,
-            methods=methods,
-            config=config,
-        )
+        return claude_account_status(self)
 
     def _run_env_overrides(self) -> dict[str, str]:
         env_overrides = dict(self.env)

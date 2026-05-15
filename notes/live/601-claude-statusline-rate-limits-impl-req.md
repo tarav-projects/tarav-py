@@ -6,7 +6,7 @@ Status: implemented
 
 Owner surface: `agentos-py`
 
-Request: implement Claude subscription limit tracking for `agent.account_status(refresh_usage=True)` using Claude Code `statusLine.rate_limits` as the only active Claude usage source for now.
+Request: implement Claude subscription limit tracking for `agent.account_status()` using Claude Code `statusLine.rate_limits` as the only active Claude usage source for now.
 
 Source context:
 
@@ -160,22 +160,22 @@ Validation:
 uv run pytest tests/test_agent_account_registry_commands.py::<new_collector_boundary_test> -q
 ```
 
-### Slice 3: Wire Claude account_status(refresh_usage=True)
+### Slice 3: Wire Claude account_status()
 
 Status: completed
 
 Change:
 
 - Update `claude_account_status(...)`:
-  - keep existing account/home/identity/auth validation,
-  - only run statusLine capture when `refresh_usage=True` or `methods` asks for `limits`,
+  - keep existing account/home/identity validation,
+  - run statusLine capture as the single provider account-status call,
   - set `usage_status="ok"` and `limits=(...)` on success,
   - set `usage_status="error"` and `usage_errors=(...)` on capture/parse failure,
-  - keep `usage_status="unavailable"` only when usage refresh is not requested.
+  - keep `usage_status="unavailable"` only when local account/home validation prevents provider execution.
 
 Path exercised:
 
-- Existing provider builder -> `ClaudeAgent.account_status(refresh_usage=True)` -> normalized `AccountStatus`.
+- Existing provider builder -> `ClaudeAgent.account_status()` -> normalized `AccountStatus`.
 
 Observable result:
 
@@ -230,7 +230,7 @@ agentos agent accounts monitor --once
 
 ## Acceptance Signals
 
-- `ClaudeAgent.account_status(refresh_usage=True)` returns `usage_status="ok"` and at least one `AccountLimit` for a logged-in subscription account with statusLine `rate_limits`.
+- `ClaudeAgent.account_status()` returns `usage_status="ok"` and at least one `AccountLimit` for a logged-in subscription account with statusLine `rate_limits`.
 - The monitor shows Claude usage/time rows without provider-specific monitor code.
 - Failures return `AccountStatus` with `usage_errors`; monitor does not crash.
 - No OAuth/web-cookie/API-key code is introduced.
@@ -239,5 +239,6 @@ agentos agent accounts monitor --once
 
 - Draft created from current design decision: implement Claude subscription usage via `statusLine.rate_limits` only.
 - Implemented in `src/agentos/claude/account_status.py`: Claude usage refresh now captures Claude Code `statusLine.rate_limits` through a provider-local PTY helper, parses `five_hour` and `seven_day`, and maps them to `AccountStatus.limits`.
-- Added tests in `tests/test_agent_account_registry_commands.py` for parser mapping, `ClaudeAgent.account_status(refresh_usage=True)` success, usage refresh errors as data, and auth-only behavior without usage refresh.
+- Added tests in `tests/test_agent_account_registry_commands.py` for parser mapping, `ClaudeAgent.account_status()` success, and usage refresh errors as data.
+- Collapsed account status to a single behavior: no `refresh_usage`, no `methods` selector, and no separate provider auth/ping command before fetching usage.
 - No OAuth, web-cookie, API-key, or stream-json usage fallback was added.

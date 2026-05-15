@@ -12,7 +12,6 @@ import pytest
 
 from _helpers import set_fake_agentos_home as _set_fake_agentos_home
 from _helpers import write_text_file as _write
-from agentos._core.process import ProcessResult
 from agentos.agent.account_status import (
     AccountIdentity,
     AccountLimit,
@@ -21,7 +20,6 @@ from agentos.agent.account_status import (
     UsageOverTimeLimitData,
 )
 from agentos.agent.providers import build_registered_account_agent
-from agentos.agent.run_runtime import AgentRunResult
 from agentos.cli import main
 
 
@@ -211,21 +209,6 @@ def _registered_linked_codex_home(
     return target_home
 
 
-def _stub_codex_login_status(monkeypatch, target_home: Path):
-    import agentos.codex.account_status as codex_account_status
-
-    def fake_execute_agent_command(command, *, run_config):
-        assert command.env_overrides["CODEX_HOME"] == str(target_home.resolve())
-        assert command.argv[-2:] == ("login", "status")
-        assert run_config.process_mode == "capture"
-        return ProcessResult(exit_code=0, stdout="Logged in using ChatGPT\n", stderr="")
-
-    monkeypatch.setattr(
-        codex_account_status, "execute_agent_command", fake_execute_agent_command
-    )
-    return codex_account_status
-
-
 def _monitor_account_status(
     *, provider: str, account: str, home: Path
 ) -> AccountStatus:
@@ -302,8 +285,7 @@ def _stub_monitor_account_status(
             self.account = account
             self.home = home
 
-        def account_status(self, *, refresh_usage: bool = False) -> AccountStatus:
-            assert refresh_usage is True
+        def account_status(self) -> AccountStatus:
             key = f"{self.provider}/{self.account}@{self.home}"
             calls.append(key)
             if key in failed_targets:
@@ -864,13 +846,28 @@ def test_build_registered_account_agent_ignores_provider_profile_ambiguity(
     assert agent.account.account == "br"
 
 
-def test_codex_account_status_reports_auth_check_without_usage_refresh(
+def test_codex_account_status_fetches_limits_with_single_status_call(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     target_home = _registered_linked_codex_home(tmp_path, monkeypatch, capsys)
-    _stub_codex_login_status(monkeypatch, target_home)
+    import agentos.codex.account_status as codex_account_status
+
+    monkeypatch.setattr(
+        codex_account_status,
+        "_read_codex_account_rate_limits",
+        lambda agent: {
+            "rateLimits": {
+                "limitId": "test-limit",
+                "primary": {
+                    "usedPercent": 25,
+                    "windowDurationMins": 300,
+                    "resetsAt": 1_776_000_000,
+                },
+            }
+        },
+    )
     agent = build_registered_account_agent(
         provider="codex", account="br", home=target_home
     )
@@ -878,14 +875,14 @@ def test_codex_account_status_reports_auth_check_without_usage_refresh(
     status = agent.account_status()
 
     assert status.check_status == "ok"
-    assert status.usage_status == "unavailable"
+    assert status.usage_status == "ok"
     assert status.link_state == "verified"
     assert status.identity_match == "verified"
     assert status.expected_identity.provider_account_id == "acc_123"
     assert status.fetched_identity is not None
     assert status.fetched_identity.provider_account_id == "acc_123"
-    assert status.auth_summary == "Logged in using ChatGPT"
-    assert status.limits == ()
+    assert status.auth_summary == "Codex rate limits read"
+    assert [limit.limit_name for limit in status.limits] == ["5h"]
     assert status.errors == ()
 
 
@@ -902,7 +899,6 @@ def test_codex_account_status_reports_identity_mismatch_as_status_error(
     )
     _write(target_home / "auth.json", _auth_json(account_id="acc_other"))
 
-    _stub_codex_login_status(monkeypatch, target_home)
     agent = build_registered_account_agent(
         provider="codex", account="br", home=target_home
     )
@@ -918,13 +914,14 @@ def test_codex_account_status_reports_identity_mismatch_as_status_error(
     ]
 
 
-def test_codex_account_status_refresh_usage_parses_limits(
+def test_codex_account_status_parses_limits(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     target_home = _registered_linked_codex_home(tmp_path, monkeypatch, capsys)
-    codex_account_status = _stub_codex_login_status(monkeypatch, target_home)
+    import agentos.codex.account_status as codex_account_status
+
     monkeypatch.setattr(
         codex_account_status,
         "_read_codex_account_rate_limits",
@@ -949,7 +946,7 @@ def test_codex_account_status_refresh_usage_parses_limits(
         provider="codex", account="br", home=target_home
     )
 
-    status = agent.account_status(refresh_usage=True)
+    status = agent.account_status()
 
     assert status.check_status == "ok"
     assert status.usage_status == "ok"
@@ -1031,13 +1028,13 @@ def test_codex_account_status_app_server_uses_agent_command_model(
     assert payload["rateLimits"]["limitId"] == "test-limit"
 
 
-def test_codex_account_status_preserves_auth_when_usage_refresh_errors(
+def test_codex_account_status_preserves_identity_when_usage_errors(
     tmp_path: Path,
     monkeypatch,
     capsys,
 ) -> None:
     target_home = _registered_linked_codex_home(tmp_path, monkeypatch, capsys)
-    codex_account_status = _stub_codex_login_status(monkeypatch, target_home)
+    import agentos.codex.account_status as codex_account_status
 
     def fail_rate_limits(agent):
         raise AccountStatusError(
@@ -1051,7 +1048,7 @@ def test_codex_account_status_preserves_auth_when_usage_refresh_errors(
         provider="codex", account="br", home=target_home
     )
 
-    status = agent.account_status(refresh_usage=True)
+    status = agent.account_status()
 
     assert status.check_status == "ok"
     assert status.identity_match == "verified"
@@ -1238,7 +1235,52 @@ def test_claude_statusline_parser_maps_subscription_limits() -> None:
     assert limits[0].provider_limit == {"limit_type": "five_hour"}
 
 
-def test_claude_account_status_refresh_usage_uses_statusline_limits(
+def test_claude_statusline_uses_stable_system_home_workspace(tmp_path: Path) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    agent = ClaudeAgent(home=tmp_path / "claude-home")
+
+    assert claude_account_status._claude_statusline_workspace(agent) == (
+        tmp_path / "claude-home" / "agentos" / "workspaces" / "statusline-refresh"
+    )
+
+
+def test_claude_statusline_uses_fresh_system_home_cache(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    agent = ClaudeAgent(home=tmp_path / "claude-home")
+    cache_path = claude_account_status._claude_statusline_cache_path(agent)
+    _write(
+        cache_path,
+        json.dumps(
+            {
+                "captured_at_epoch": 100.0,
+                "statusline": {
+                    "rate_limits": {
+                        "five_hour": {
+                            "used_percentage": 20,
+                            "resets_at": 1_776_000_000,
+                        }
+                    }
+                },
+            }
+        )
+        + "\n",
+    )
+    monkeypatch.setattr(claude_account_status.time, "time", lambda: 120.0)
+
+    payload = claude_account_status._load_cached_claude_statusline_payload(agent)
+
+    assert payload is not None
+    assert payload["rate_limits"]["five_hour"]["used_percentage"] == 20
+
+
+def test_claude_account_status_uses_statusline_limits(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1281,10 +1323,6 @@ def test_claude_account_status_refresh_usage_uses_statusline_limits(
     )
     capsys.readouterr()
 
-    def fake_execute_agent_command(command, *, run_config):
-        del command, run_config
-        return AgentRunResult(exit_code=0, stdout="745\n", stderr="")
-
     def fake_collect_statusline_payload(agent):
         assert agent.home == claude_home.resolve()
         return {
@@ -1301,9 +1339,6 @@ def test_claude_account_status_refresh_usage_uses_statusline_limits(
         }
 
     monkeypatch.setattr(
-        claude_account_status, "execute_agent_command", fake_execute_agent_command
-    )
-    monkeypatch.setattr(
         claude_account_status,
         "_collect_claude_statusline_payload",
         fake_collect_statusline_payload,
@@ -1312,7 +1347,7 @@ def test_claude_account_status_refresh_usage_uses_statusline_limits(
         provider="claude-code", account="main", home=claude_home
     )
 
-    status = agent.account_status(refresh_usage=True)
+    status = agent.account_status()
 
     assert status.check_status == "ok"
     assert status.usage_status == "ok"

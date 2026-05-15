@@ -140,7 +140,7 @@ def _check_backing_artifacts_exist(rows: list[dict[str, Any]]) -> dict[str, obje
         artifacts = _row_backing_artifacts(row)
         for artifact_role, artifact in artifacts:
             path = artifact.get("path") if isinstance(artifact, dict) else None
-            if isinstance(path, str) and Path(path).is_file():
+            if isinstance(path, str) and Path(path).exists():
                 continue
             error_count += 1
             _append_sample(

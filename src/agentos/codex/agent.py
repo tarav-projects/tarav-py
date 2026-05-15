@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections.abc import Mapping
 from pathlib import Path
 
 from agentos.agent.account_status import AccountStatus
@@ -64,17 +63,8 @@ class CodexAgent(AgentBase):
 
     def account_status(
         self,
-        *,
-        refresh_usage: bool = False,
-        methods: tuple[str, ...] | None = None,
-        config: Mapping[str, object] | None = None,
     ) -> AccountStatus:
-        return codex_account_status(
-            self,
-            refresh_usage=refresh_usage,
-            methods=methods,
-            config=config,
-        )
+        return codex_account_status(self)
 
     def _codex_command_config(self, command_config: AgentCommandConfig) -> AgentCommandConfig:
         if command_config.interaction_mode != "non_interactive":

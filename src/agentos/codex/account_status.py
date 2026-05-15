@@ -6,11 +6,9 @@ import os
 import select
 import subprocess
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos._core.process import ProcessError
 from agentos.agent.account_registry import load_account
 from agentos.agent.account_status import (
     AccountIdentity,
@@ -21,24 +19,17 @@ from agentos.agent.account_status import (
     UsageOverTimeLimitData,
 )
 from agentos.agent.primitives import Agent
-from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, execute_agent_command
+from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.codex.account_registry import inspect_codex_account_home
 
 
 DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
-CODEX_LOGIN_STATUS_ARGV = ("login", "status")
 CODEX_APP_SERVER_ARGV = ("app-server",)
 
 
 def codex_account_status(
     agent: Agent,
-    *,
-    refresh_usage: bool = False,
-    methods: tuple[str, ...] | None = None,
-    config: Mapping[str, object] | None = None,
 ) -> AccountStatus:
-    del config
-    _validate_methods(methods)
     if agent.account is None:
         raise CliError("codex account_status requires an agent account context")
     if agent.home is None:
@@ -68,21 +59,18 @@ def codex_account_status(
             )
         )
 
-    auth_summary, auth_error = _codex_auth_status(agent)
-    if auth_error is not None:
-        errors.append(auth_error)
-
     check_status = "error" if errors else "ok"
-    should_fetch_limits = refresh_usage or (methods is not None and "limits" in methods)
-    if check_status == "error" or not should_fetch_limits:
+    auth_summary: str | None = None
+    if check_status == "error":
         usage_status = "unavailable"
-        usage_summary = None if should_fetch_limits else "usage refresh not requested"
+        usage_summary = None
         limits: tuple[AccountLimit, ...] = ()
         usage_errors: tuple[AccountStatusError, ...] = ()
     else:
         limits, usage_errors = _codex_usage_limits(agent)
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
+        auth_summary = "Codex rate limits read" if usage_status == "ok" else None
 
     return AccountStatus(
         provider=agent.provider,
@@ -103,15 +91,6 @@ def codex_account_status(
             "home_status": home_status,
         },
     )
-
-
-def _validate_methods(methods: tuple[str, ...] | None) -> None:
-    if methods is None:
-        return
-    supported = {"auth", "limits"}
-    unknown = [method for method in methods if method not in supported]
-    if unknown:
-        raise CliError(f"unsupported codex account_status methods: {', '.join(unknown)}")
 
 
 def _expected_identity(account_record: dict[str, object]) -> AccountIdentity:
@@ -168,37 +147,6 @@ def _setup_errors(
             )
         )
     return tuple(errors)
-
-
-def _codex_auth_status(agent: Agent) -> tuple[str | None, AccountStatusError | None]:
-    try:
-        result = _execute_codex_capture(agent, argv=CODEX_LOGIN_STATUS_ARGV)
-    except ProcessError as exc:
-        return None, AccountStatusError(error_type=exc.error_type, message=exc.message)
-    except CliError as exc:
-        return None, AccountStatusError(error_type="command_failed", message=str(exc))
-    stdout = (result.stdout or "").strip()
-    stderr = (result.stderr or "").strip()
-    output = stdout or stderr
-    if result.exit_code != 0:
-        return None, AccountStatusError(
-            error_type="command_failed",
-            message=output or f"provider command exited with code {result.exit_code}",
-            exit_code=result.exit_code,
-        )
-    if not output:
-        return None, AccountStatusError(
-            error_type="invalid_output",
-            message="provider command returned no output",
-        )
-    return _parse_codex_login_status_summary(output), None
-
-
-def _parse_codex_login_status_summary(output: str) -> str:
-    lines = [line.strip() for line in output.splitlines() if line.strip()]
-    if not lines:
-        raise CliError("provider command returned no output")
-    return lines[0]
 
 
 def _codex_usage_limits(agent: Agent) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...]]:
@@ -289,17 +237,6 @@ def _read_codex_account_rate_limits(agent: Agent) -> dict[str, Any]:
         ) from exc
     finally:
         _terminate_process(process)
-
-
-def _execute_codex_capture(agent: Agent, *, argv: tuple[str, ...]):
-    return execute_agent_command(
-        _build_codex_account_status_command(agent, argv=argv),
-        run_config=AgentRunConfig(
-            cwd=Path.cwd().resolve(),
-            process_mode="capture",
-            timeout_sec=_account_timeout_sec(agent),
-        ),
-    )
 
 
 def _build_codex_account_status_command(agent: Agent, *, argv: tuple[str, ...]):

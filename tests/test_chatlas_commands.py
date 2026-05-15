@@ -119,6 +119,57 @@ def _codex_manifest_path(chatlas_root: Path, fingerprint: str) -> Path:
     return _codex_raw_home(chatlas_root, fingerprint).parent / "manifest.json"
 
 
+def _doctor_row(
+    chatlas_root: Path,
+    *,
+    uri: str = "agentos://chat-session/codex/fingerprint/session-1",
+    provider: str = "codex",
+    fingerprint: str = "fingerprint",
+    session_id: str = "session-1",
+    home: str = "/tmp/codex-home",
+    artifact_name: str = "session-1.jsonl",
+) -> dict[str, object]:
+    artifact_path = chatlas_root / "raw" / provider / fingerprint / "home" / artifact_name
+    return {
+        "uri": uri,
+        "provider": provider,
+        "session_id": session_id,
+        "updated_at": "2026-03-08T01:09:01.000Z",
+        "home": home,
+        "instance": "codex-work",
+        "provider_instance_fingerprint": fingerprint,
+        "primary_backing_artifact": {
+            "path": str(artifact_path),
+        },
+        "backing_artifacts": [
+            {
+                "path": str(artifact_path),
+            }
+        ],
+        "extractable": True,
+    }
+
+
+def _write_doctor_index(chatlas_root: Path, rows: list[dict[str, object]]) -> None:
+    partition = chatlas_root / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(partition, "\n".join(json.dumps(row) for row in rows) + "\n")
+
+
+def _write_doctor_manifest(chatlas_root: Path, *, provider: str = "codex", fingerprint: str = "fingerprint") -> None:
+    _write(
+        chatlas_root / "raw" / provider / fingerprint / "manifest.json",
+        json.dumps(
+            {
+                "class": "agentos.chatlas.raw_partition_manifest",
+                "schema_version": 1,
+                "provider": provider,
+                "provider_instance_fingerprint": fingerprint,
+            }
+        )
+        + "\n",
+    )
+
+
 def _assert_chatlas_query_counts(
     payload: dict[str, object],
     *,
@@ -569,6 +620,155 @@ def test_chatlas_stats_counts_malformed_index_rows(
     assert payload["stats"]["session_count"] == 1
     assert payload["stats"]["scanned_row_count"] == 4
     assert payload["stats"]["skipped_row_count"] == 3
+
+
+def test_chatlas_index_doctor_clean_fixture_returns_ok(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    row = _doctor_row(chatlas_root)
+    artifact_path = Path(row["primary_backing_artifact"]["path"])
+    _write(artifact_path, "{}\n")
+    _write_doctor_index(chatlas_root, [row])
+    _write_doctor_manifest(chatlas_root)
+
+    assert main(["chatlas", "index", "doctor", "--format", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["command"] == "chatlas index doctor"
+    assert payload["summary"]["row_count"] == 1
+    assert payload["summary"]["error_count"] == 0
+    assert {check["name"]: check["status"] for check in payload["checks"]} == {
+        "required_fields": "ok",
+        "duplicate_uri": "ok",
+        "duplicate_provider_fingerprint_session": "ok",
+        "backing_artifacts_exist": "ok",
+        "home_not_managed_storage": "ok",
+        "raw_partition_manifests": "ok",
+    }
+
+
+def test_chatlas_index_doctor_default_output_is_markdown_summary(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _isolate_agentos(monkeypatch, tmp_path)
+
+    assert main(["chatlas", "index", "doctor"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Chatlas index doctor" in output
+    assert "Status: ok" in output
+    assert "Rows: 0" in output
+    assert "Errors: 0" in output
+
+
+def test_chatlas_index_doctor_reports_required_field_errors(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    row = _doctor_row(chatlas_root)
+    row.pop("updated_at")
+    row["home"] = None
+    _write_doctor_index(chatlas_root, [row])
+
+    assert main(["chatlas", "index", "doctor", "--format", "json"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    check = next(check for check in payload["checks"] if check["name"] == "required_fields")
+    assert check["status"] == "error"
+    assert check["error_count"] == 2
+    assert {sample["field"] for sample in check["samples"]} == {"updated_at", "home"}
+
+
+def test_chatlas_index_doctor_reports_duplicate_identity_errors(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    row = _doctor_row(chatlas_root)
+    duplicate = {**row}
+    _write_doctor_index(chatlas_root, [row, duplicate])
+
+    assert main(["chatlas", "index", "doctor", "--format", "json"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert checks["duplicate_uri"]["error_count"] == 1
+    assert checks["duplicate_provider_fingerprint_session"]["error_count"] == 1
+
+
+def test_chatlas_index_doctor_reports_missing_backing_artifact(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    row = _doctor_row(chatlas_root)
+    _write_doctor_index(chatlas_root, [row])
+    _write_doctor_manifest(chatlas_root)
+
+    assert main(["chatlas", "index", "doctor", "--format", "json"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    check = next(check for check in payload["checks"] if check["name"] == "backing_artifacts_exist")
+    assert check["status"] == "error"
+    assert check["error_count"] == 2
+    assert check["samples"][0]["artifact"] == "primary_backing_artifact"
+
+
+def test_chatlas_index_doctor_reports_home_under_managed_storage(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    row = _doctor_row(chatlas_root, home=str(chatlas_root / "raw" / "codex" / "fingerprint" / "home"))
+    artifact_path = Path(row["primary_backing_artifact"]["path"])
+    _write(artifact_path, "{}\n")
+    _write_doctor_index(chatlas_root, [row])
+    _write_doctor_manifest(chatlas_root)
+
+    assert main(["chatlas", "index", "doctor", "--format", "json"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    check = next(check for check in payload["checks"] if check["name"] == "home_not_managed_storage")
+    assert check["status"] == "error"
+    assert check["error_count"] == 1
+    assert check["samples"][0]["managed_root"] == str(chatlas_root / "raw")
+
+
+def test_chatlas_index_doctor_reports_missing_raw_partition_manifest(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    row = _doctor_row(chatlas_root)
+    artifact_path = Path(row["primary_backing_artifact"]["path"])
+    _write(artifact_path, "{}\n")
+    _write_doctor_index(chatlas_root, [row])
+
+    assert main(["chatlas", "index", "doctor", "--format", "json"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    check = next(check for check in payload["checks"] if check["name"] == "raw_partition_manifests")
+    assert check["status"] == "error"
+    assert check["error_count"] == 1
+    assert check["samples"][0]["path"] == str(chatlas_root / "raw" / "codex" / "fingerprint" / "manifest.json")
 
 
 def test_chatlas_index_query_filters_index_rows_without_raw_artifacts(

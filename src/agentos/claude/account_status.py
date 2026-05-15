@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos._core.process import ProcessError
 from agentos.agent.account_registry import load_account, load_links
 from agentos.agent.account_status import (
     AccountIdentity,
@@ -25,14 +24,11 @@ from agentos.agent.account_status import (
     UsageOverTimeLimitData,
 )
 from agentos.agent.primitives import Agent
-from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, execute_agent_command
+from agentos.agent.run_runtime import AgentCommandConfig
 
 
-DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
-CLAUDE_STATUS_PROMPT = "What is 423 + 322? Reply with only the number."
-CLAUDE_STATUS_EXPECTED_NUMBER = "745"
-CLAUDE_STATUS_MODEL = "haiku"
+CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC = 60
 CLAUDE_USAGE_REFRESH_PROMPT = "Reply with OK."
 CLAUDE_USAGE_REFRESH_MODEL = "haiku"
 CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC = 0.75
@@ -48,13 +44,7 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 def claude_account_status(
     agent: Agent,
-    *,
-    refresh_usage: bool = False,
-    methods: tuple[str, ...] | None = None,
-    config: Mapping[str, object] | None = None,
 ) -> AccountStatus:
-    del config
-    _validate_methods(methods)
     if agent.account is None:
         raise CliError("claude-code account_status requires an agent account context")
     if agent.home is None:
@@ -85,17 +75,11 @@ def claude_account_status(
             )
         )
 
-    auth_summary: str | None = None
-    if not errors:
-        auth_summary, auth_error = _claude_auth_status(agent)
-        if auth_error is not None:
-            errors.append(auth_error)
-
-    should_fetch_usage = refresh_usage or (methods is not None and "limits" in methods)
     check_status = "error" if errors else "ok"
-    if check_status == "error" or not should_fetch_usage:
+    auth_summary: str | None = None
+    if check_status == "error":
         usage_status = "unavailable"
-        usage_summary = None if should_fetch_usage else "usage refresh not requested"
+        usage_summary = None
         limits: tuple[AccountLimit, ...] = ()
         usage_errors: tuple[AccountStatusError, ...] = ()
         statusline_payload: dict[str, Any] | None = None
@@ -103,6 +87,7 @@ def claude_account_status(
         limits, usage_errors, statusline_payload = _claude_usage_limits(agent)
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
+        auth_summary = "Claude statusLine captured" if usage_status == "ok" else None
 
     return AccountStatus(
         provider=agent.provider,
@@ -129,17 +114,6 @@ def claude_account_status(
             "statusline": statusline_payload,
         },
     )
-
-
-def _validate_methods(methods: tuple[str, ...] | None) -> None:
-    if methods is None:
-        return
-    supported = {"auth", "limits"}
-    unknown = [method for method in methods if method not in supported]
-    if unknown:
-        raise CliError(
-            f"unsupported claude-code account_status methods: {', '.join(unknown)}"
-        )
 
 
 def _expected_identity(account_record: dict[str, object]) -> AccountIdentity:
@@ -246,55 +220,6 @@ def _setup_errors(
     return tuple(errors)
 
 
-def _claude_auth_status(agent: Agent) -> tuple[str | None, AccountStatusError | None]:
-    try:
-        result = execute_agent_command(
-            agent.build_command(
-                AgentCommandConfig(
-                    prompt=CLAUDE_STATUS_PROMPT,
-                    model=agent.ping.model or CLAUDE_STATUS_MODEL,
-                    interaction_mode="non_interactive",
-                )
-            ),
-            run_config=AgentRunConfig(
-                cwd=Path.cwd().resolve(),
-                process_mode="capture",
-                timeout_sec=agent.timeout_sec or DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC,
-            ),
-        )
-    except ProcessError as exc:
-        return None, AccountStatusError(error_type=exc.error_type, message=exc.message)
-    except CliError as exc:
-        return None, AccountStatusError(error_type="command_failed", message=str(exc))
-
-    stdout = (result.stdout or "").strip()
-    stderr = (result.stderr or "").strip()
-    output = stdout or stderr
-    if result.exit_code != 0:
-        return None, AccountStatusError(
-            error_type="command_failed",
-            message=output or f"provider command exited with code {result.exit_code}",
-            exit_code=result.exit_code,
-        )
-    if _looks_logged_out(output):
-        return None, AccountStatusError(
-            error_type="not_logged_in",
-            message=output or "claude-code home is not logged in",
-        )
-    if CLAUDE_STATUS_EXPECTED_NUMBER not in output:
-        return None, AccountStatusError(
-            error_type="invalid_output",
-            message="provider command did not return the expected status response",
-            detail={"output": output},
-        )
-    return "Claude command completed", None
-
-
-def _looks_logged_out(output: str) -> bool:
-    lowered = output.lower()
-    return "not logged in" in lowered or "please run /login" in lowered
-
-
 def _claude_usage_limits(
     agent: Agent,
 ) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...], dict[str, Any] | None]:
@@ -308,14 +233,18 @@ def _claude_usage_limits(
 
 
 def _collect_claude_statusline_payload(agent: Agent) -> dict[str, Any]:
+    cached_payload = _load_cached_claude_statusline_payload(agent)
+    if cached_payload is not None:
+        return cached_payload
+
     timeout_sec = max(agent.timeout_sec or DEFAULT_USAGE_STATUS_TIMEOUT_SEC, DEFAULT_USAGE_STATUS_TIMEOUT_SEC)
+    workspace_root = _claude_statusline_workspace(agent)
+    workspace_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="agentos-claude-usage-") as temp_dir:
         temp_root = Path(temp_dir)
         capture_path = temp_root / "statusline.json"
         settings_path = temp_root / "settings.json"
         script_path = temp_root / "capture-statusline.sh"
-        workspace_root = temp_root / "workspace"
-        workspace_root.mkdir()
 
         script_path.write_text(
             "#!/bin/sh\n"
@@ -343,8 +272,77 @@ def _collect_claude_statusline_payload(agent: Agent) -> dict[str, Any]:
             settings_path=settings_path,
             timeout_sec=timeout_sec,
         )
+    _write_cached_claude_statusline_payload(agent=agent, statusline_payload=payload)
     _cleanup_claude_statusline_transcript(agent=agent, statusline_payload=payload)
     return payload
+
+
+def _claude_statusline_workspace(agent: Agent) -> Path:
+    if agent.home is None:
+        raise AccountStatusError(
+            error_type="home_missing",
+            message="claude-code account_status requires an agent home",
+        )
+    return agent.home / "agentos" / "workspaces" / "statusline-refresh"
+
+
+def _claude_statusline_cache_path(agent: Agent) -> Path:
+    if agent.home is None:
+        raise AccountStatusError(
+            error_type="home_missing",
+            message="claude-code account_status requires an agent home",
+        )
+    return agent.home / "agentos" / "cache" / "statusline-rate-limits.json"
+
+
+def _load_cached_claude_statusline_payload(agent: Agent) -> dict[str, Any] | None:
+    cache_path = _claude_statusline_cache_path(agent)
+    if not cache_path.is_file():
+        return None
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        captured_at = _optional_float(
+            payload.get("captured_at_epoch"),
+            field_name="claude statusLine cache captured_at_epoch",
+        )
+    except CliError:
+        return None
+    if captured_at is None or time.time() - captured_at > CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC:
+        return None
+    statusline_payload = payload.get("statusline")
+    if not isinstance(statusline_payload, dict):
+        return None
+    rate_limits = statusline_payload.get("rate_limits")
+    if not isinstance(rate_limits, dict) or not rate_limits:
+        return None
+    return statusline_payload
+
+
+def _write_cached_claude_statusline_payload(
+    *, agent: Agent, statusline_payload: Mapping[str, Any]
+) -> None:
+    cache_path = _claude_statusline_cache_path(agent)
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "captured_at_epoch": time.time(),
+                    "statusline": dict(statusline_payload),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        return
 
 
 def _run_claude_statusline_refresh_session(
@@ -364,7 +362,7 @@ def _run_claude_statusline_refresh_session(
                 "--settings",
                 str(settings_path),
             ),
-            model=agent.ping.model or CLAUDE_USAGE_REFRESH_MODEL,
+            model=CLAUDE_USAGE_REFRESH_MODEL,
             interaction_mode="interactive",
         )
     )
@@ -408,7 +406,14 @@ def _run_claude_statusline_refresh_session(
             if now - start >= timeout_sec:
                 raise AccountStatusError(
                     error_type="timeout",
-                    message=f"provider command timed out after {timeout_sec} seconds",
+                    message=(
+                        "provider command timed out after "
+                        f"{timeout_sec} seconds using model {CLAUDE_USAGE_REFRESH_MODEL}"
+                    ),
+                    detail={
+                        "model": CLAUDE_USAGE_REFRESH_MODEL,
+                        "home": str(agent.home) if agent.home is not None else None,
+                    },
                 )
 
             transcript_chunks.extend(_read_pty_chunks(master_fd, timeout_sec=0.25))
