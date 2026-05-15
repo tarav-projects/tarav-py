@@ -22,6 +22,7 @@ class MonitorTarget:
 class MonitorWorkflowConfig:
     name: str
     targets: tuple[MonitorTarget, ...]
+    refresh_interval_sec: float
     raw_config: dict[str, object]
 
 

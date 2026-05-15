@@ -83,6 +83,7 @@ _TRANSCRIPT_EXTRACTABLE_SUFFIXES = {
 class ChatlasProviderInstance:
     agent: Agent
     fingerprint: str
+    source_home: str | None = None
 
     @property
     def provider(self) -> str:
@@ -475,14 +476,22 @@ def _archived_provider_instances(
             continue
         for partition_dir in sorted(path for path in provider_dir.iterdir() if path.is_dir()):
             fingerprint = unquote(partition_dir.name)
+            manifest = _load_raw_partition_manifest(partition_dir / RAW_PARTITION_MANIFEST_FILENAME)
             agent = _agent_from_raw_partition(
                 provider=provider,
                 fingerprint=fingerprint,
                 partition_dir=partition_dir,
+                manifest=manifest,
             )
             if agent is None:
                 continue
-            instances.append(ChatlasProviderInstance(agent=agent, fingerprint=fingerprint))
+            instances.append(
+                ChatlasProviderInstance(
+                    agent=agent,
+                    fingerprint=fingerprint,
+                    source_home=_raw_partition_manifest_string(manifest, "home"),
+                )
+            )
     return tuple(sorted(instances, key=lambda instance: (instance.provider, instance.instance)))
 
 
@@ -491,10 +500,12 @@ def _agent_from_raw_partition(
     provider: str,
     fingerprint: str,
     partition_dir: Path,
+    manifest: dict[str, Any] | None,
 ) -> Agent | None:
     raw_home = partition_dir / "home"
     raw_paths = partition_dir / "paths"
     home = raw_home if raw_home.is_dir() else None
+    instance_id = _raw_partition_manifest_string(manifest, "instance")
     direct_targets: tuple[Path, ...] = ()
     if home is None and raw_paths.is_dir():
         direct_targets = tuple(sorted(path for path in raw_paths.rglob("*") if path.is_file()))
@@ -503,7 +514,7 @@ def _agent_from_raw_partition(
     return agent_from_config(
         AgentConfig(
             provider=provider,
-            instance_id=None,
+            instance_id=instance_id,
             label=None,
             home=home,
             direct_targets=direct_targets,
@@ -819,6 +830,8 @@ def _session_index_row(
 
 
 def _provider_instance_home(instance: ChatlasProviderInstance) -> str | None:
+    if instance.source_home is not None:
+        return instance.source_home
     if instance.agent.home is None:
         return None
     return str(instance.agent.home)
@@ -995,6 +1008,13 @@ def _load_raw_partition_manifest(path: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _raw_partition_manifest_string(manifest: dict[str, Any] | None, field_name: str) -> str | None:
+    if manifest is None:
+        return None
+    value = manifest.get(field_name)
+    return value if isinstance(value, str) and value else None
+
+
 def _raw_partition_manifest_home(raw_root: Path, *, instance: ChatlasProviderInstance) -> str | None:
     manifest = _load_raw_partition_manifest(_raw_partition_manifest_path(raw_root, instance=instance))
     if manifest is None:
@@ -1093,7 +1113,7 @@ def _provider_instance_summary(instance: ChatlasProviderInstance, *, raw_root: P
         "provider": instance.provider,
         "instance": instance.instance,
         "provider_instance_fingerprint": instance.fingerprint,
-        "home": str(instance.agent.home) if instance.agent.home is not None else None,
+        "home": _provider_instance_home(instance),
         "partition": instance.partition_key,
         "raw_home": str(instance.raw_home(raw_root)) if instance.raw_home(raw_root) is not None else None,
     }

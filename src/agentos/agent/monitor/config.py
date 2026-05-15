@@ -31,6 +31,10 @@ def load_monitor_workflow_configs(*, start_path: Path | str = ".") -> tuple[Moni
                 MonitorWorkflowConfig(
                     name=workflow_name,
                     targets=targets,
+                    refresh_interval_sec=_refresh_interval_sec(
+                        raw_config,
+                        field_name=entry.field_name("refresh_interval_sec"),
+                    ),
                     raw_config=dict(raw_config),
                 )
             )
@@ -91,3 +95,12 @@ def _required_string(payload: dict[str, object], key: str, *, field_name: str) -
     if not isinstance(value, str) or not value.strip():
         raise CliError(f"{field_name} must be a non-empty string")
     return validate_string_for_path(value, field_name=field_name)
+
+
+def _refresh_interval_sec(raw_config: dict[str, object], *, field_name: str) -> float:
+    value = raw_config.get("refresh_interval_sec", 60)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise CliError(f"{field_name} must be a positive number")
+    if value <= 0:
+        raise CliError(f"{field_name} must be a positive number")
+    return float(value)

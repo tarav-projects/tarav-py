@@ -26,6 +26,8 @@ from agentos.codex.account_registry import inspect_codex_account_home
 
 
 DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
+CODEX_LOGIN_STATUS_ARGV = ("login", "status")
+CODEX_APP_SERVER_ARGV = ("app-server",)
 
 
 def codex_account_status(
@@ -169,16 +171,8 @@ def _setup_errors(
 
 
 def _codex_auth_status(agent: Agent) -> tuple[str | None, AccountStatusError | None]:
-    command = agent.build_command(AgentCommandConfig(argv=("login", "status")))
     try:
-        result = execute_agent_command(
-            command,
-            run_config=AgentRunConfig(
-                cwd=Path.cwd().resolve(),
-                process_mode="capture",
-                timeout_sec=_account_timeout_sec(agent),
-            ),
-        )
+        result = _execute_codex_capture(agent, argv=CODEX_LOGIN_STATUS_ARGV)
     except ProcessError as exc:
         return None, AccountStatusError(error_type=exc.error_type, message=exc.message)
     except CliError as exc:
@@ -218,11 +212,11 @@ def _codex_usage_limits(agent: Agent) -> tuple[tuple[AccountLimit, ...], tuple[A
 
 
 def _read_codex_account_rate_limits(agent: Agent) -> dict[str, Any]:
-    command = agent.build_command(AgentCommandConfig(argv=("app-server",)))
+    command = _build_codex_account_status_command(agent, argv=CODEX_APP_SERVER_ARGV)
     timeout_sec = _account_timeout_sec(agent)
     try:
         process = subprocess.Popen(
-            list(command.argv),
+            command.argv,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -295,6 +289,21 @@ def _read_codex_account_rate_limits(agent: Agent) -> dict[str, Any]:
         ) from exc
     finally:
         _terminate_process(process)
+
+
+def _execute_codex_capture(agent: Agent, *, argv: tuple[str, ...]):
+    return execute_agent_command(
+        _build_codex_account_status_command(agent, argv=argv),
+        run_config=AgentRunConfig(
+            cwd=Path.cwd().resolve(),
+            process_mode="capture",
+            timeout_sec=_account_timeout_sec(agent),
+        ),
+    )
+
+
+def _build_codex_account_status_command(agent: Agent, *, argv: tuple[str, ...]):
+    return agent.build_command(AgentCommandConfig(argv=argv))
 
 
 def _parse_codex_rate_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:

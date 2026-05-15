@@ -74,18 +74,24 @@ def build_registered_account_agent(
     home: Path | str,
     start_path: Path | str = ".",
 ) -> Agent:
+    del start_path
     account_record = load_account(provider, account)
     account_context = AgentAccountContext(
         provider=str(account_record["provider"]),
         account=str(account_record["account"]),
     )
-    config = resolve_agent_config(
+    config = _default_registered_account_agent_config(
         provider=account_context.provider,
-        profile=None,
-        start_path=Path(start_path),
         home=home,
     )
     return agent_from_config(replace(config, account=account_context))
+
+
+def _default_registered_account_agent_config(*, provider: str, home: Path | str) -> AgentConfig:
+    for agent_config in default_agent_configs():
+        if agent_config.provider == provider:
+            return agent_config_with_home_override(agent_config, home=home)
+    raise CliError(f"unsupported registered account provider {provider}")
 
 
 def resolve_agent(

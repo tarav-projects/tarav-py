@@ -11,7 +11,7 @@ import pytest
 from _helpers import set_fake_agentos_home as _set_fake_agentos_home
 from _helpers import write_text_file as _write
 from agentos._core.process import ProcessResult
-from agentos.agent.account_status import AccountStatusError
+from agentos.agent.account_status import AccountIdentity, AccountLimit, AccountStatus, AccountStatusError, UsageOverTimeLimitData
 from agentos.agent.providers import build_registered_account_agent
 from agentos.cli import main
 
@@ -204,6 +204,61 @@ def _stub_codex_login_status(monkeypatch, target_home: Path):
 
     monkeypatch.setattr(codex_account_status, "execute_agent_command", fake_execute_agent_command)
     return codex_account_status
+
+
+def _monitor_account_status(*, provider: str, account: str, home: Path) -> AccountStatus:
+    return AccountStatus(
+        provider=provider,
+        account=account,
+        home=home,
+        check_status="ok",
+        usage_status="ok",
+        link_state="verified",
+        expected_identity=AccountIdentity(provider_account_id=f"acc_{account}"),
+        fetched_identity=AccountIdentity(provider_account_id=f"acc_{account}"),
+        identity_match="verified",
+        usage_summary="5 hours 25%, 168 hours 40%",
+        limits=(
+            AccountLimit(
+                limit_class="usage_over_time",
+                limit_name="5h",
+                limit_label="5 hours",
+                usage_over_time=UsageOverTimeLimitData(
+                    used_percent=25,
+                    period_started_at="2026-05-12T12:00:00Z",
+                    period_ends_at="2026-05-12T17:00:00Z",
+                ),
+            ),
+        ),
+    )
+
+
+def _stub_monitor_account_status(monkeypatch, *, failures: set[str] | None = None) -> list[str]:
+    import agentos.agent.monitor.workflows as monitor_workflows
+
+    calls: list[str] = []
+    failed_targets = set() if failures is None else failures
+
+    class FakeAgent:
+        def __init__(self, *, provider: str, account: str, home: Path) -> None:
+            self.provider = provider
+            self.account = account
+            self.home = home
+
+        def account_status(self, *, refresh_usage: bool = False) -> AccountStatus:
+            assert refresh_usage is True
+            key = f"{self.provider}/{self.account}@{self.home}"
+            calls.append(key)
+            if key in failed_targets:
+                raise RuntimeError(f"cannot refresh {self.account}")
+            return _monitor_account_status(provider=self.provider, account=self.account, home=self.home)
+
+    def fake_build_registered_account_agent(*, provider: str, account: str, home: Path, start_path: Path | str = "."):
+        del start_path
+        return FakeAgent(provider=provider, account=account, home=Path(home))
+
+    monkeypatch.setattr(monitor_workflows, "build_registered_account_agent", fake_build_registered_account_agent)
+    return calls
 
 
 def test_agent_accounts_register_codex_writes_consolidated_registry(
@@ -651,6 +706,45 @@ def test_build_registered_account_agent_reuses_registry_error_for_missing_accoun
     assert "agent account is not registered: codex.missing" in str(exc_info.value)
 
 
+def test_build_registered_account_agent_ignores_provider_profile_ambiguity(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    target_home = tmp_path / "monitor-home"
+    _write(source_auth, _auth_json())
+    _write(
+        agentos_home / "config.json",
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "schema_version": 1,
+                "agent": {
+                    "instances": [
+                        {"provider": "codex", "id": "codex-a", "home": str(tmp_path / "a")},
+                        {"provider": "codex", "id": "codex-b", "home": str(tmp_path / "b")},
+                    ]
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+    )
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    agent = build_registered_account_agent(provider="codex", account="br", home=target_home)
+
+    assert agent.provider == "codex"
+    assert agent.instance_id is None
+    assert agent.home == target_home.resolve()
+    assert agent.account is not None
+    assert agent.account.account == "br"
+
+
 def test_codex_account_status_reports_auth_check_without_usage_refresh(
     tmp_path: Path,
     monkeypatch,
@@ -939,7 +1033,7 @@ def test_agent_accounts_register_claude_requires_email(
     assert "requires --email" in capsys.readouterr().err
 
 
-def test_agent_accounts_monitor_once_prints_under_construction(
+def test_agent_accounts_monitor_once_prints_account_status(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -959,14 +1053,20 @@ def test_agent_accounts_monitor_once_prints_under_construction(
             },
         ],
     )
+    _stub_monitor_account_status(monkeypatch)
 
     assert main(["agent", "accounts", "monitor", "--once"]) == 0
     output = capsys.readouterr().out
     assert "Agent accounts monitor" in output
     assert "Tick: 1" in output
     assert "limits-tracking" in output
-    assert "status: under construction" in output
-    assert "targets: 1" in output
+    assert "refresh_interval_sec: 60" in output
+    assert "codex/br" in output
+    assert "status: ok" in output
+    assert "check: ok" in output
+    assert "usage: ok" in output
+    assert "limits: 5 hours 25%, 168 hours 40%" in output
+    assert "under construction" not in output
 
 
 def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
@@ -989,6 +1089,7 @@ def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
         [
             {
                 "workflow": "limits-tracking",
+                "refresh_interval_sec": 60,
                 "targets": [
                     {"provider": "codex", "account": "br"},
                     {"provider": "codex", "account": "jp", "home": str(tmp_path / "jp-home")},
@@ -996,6 +1097,7 @@ def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
             },
         ],
     )
+    calls = _stub_monitor_account_status(monkeypatch)
 
     assert main(["agent", "accounts", "monitor", "--max-ticks", "3", "--interval-sec", "0", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -1003,18 +1105,20 @@ def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
     assert payload["workflow_run_counts"] == {"limits-tracking": 3}
     assert payload["state"]["limits-tracking"]["last_tick"] == 3
     assert payload["state"]["limits-tracking"]["run_count"] == 3
+    assert payload["state"]["limits-tracking"]["refresh_interval_sec"] == 60
+    assert len(calls) == 2
     assert payload["frame"]["tick"] == 3
     assert len(payload["frame"]["blocks"]) == 1
-    assert payload["frame"]["blocks"][0]["lines"] == [
-        "status: under construction",
-        "tick: 3",
-        "targets: 2",
-    ]
+    assert payload["frame"]["blocks"][0]["lines"][0] == "refresh_interval_sec: 60"
+    assert "codex/br" in payload["frame"]["blocks"][0]["lines"]
+    assert "codex/jp" in payload["frame"]["blocks"][0]["lines"]
     assert payload["frame"]["blocks"][0]["data"]["run_count"] == 3
     assert payload["frame"]["blocks"][0]["data"]["targets"][0]["home"] == str(
         agentos_home / "agent" / "homes" / "codex" / "br"
     )
     assert payload["frame"]["blocks"][0]["data"]["targets"][1]["home"] == str((tmp_path / "jp-home").resolve())
+    assert payload["frame"]["blocks"][0]["data"]["targets"][0]["status"] == "ok"
+    assert payload["frame"]["blocks"][0]["data"]["targets"][0]["account_status"]["usage_status"] == "ok"
 
 
 def test_agent_accounts_monitor_loop_keeps_same_frame_and_state_objects() -> None:
@@ -1069,6 +1173,7 @@ def test_agent_accounts_monitor_once_uses_loop_max_ticks(
             },
         ],
     )
+    _stub_monitor_account_status(monkeypatch)
 
     assert main(["agent", "accounts", "monitor", "--once", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -1096,11 +1201,92 @@ def test_agent_accounts_monitor_max_ticks_uses_same_loop_path(
             },
         ],
     )
+    calls = _stub_monitor_account_status(monkeypatch)
 
     assert main(["agent", "accounts", "monitor", "--max-ticks", "2", "--interval-sec", "0", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["tick"] == 2
     assert payload["workflow_run_counts"] == {"limits-tracking": 2}
+    assert len(calls) == 1
+
+
+def test_agent_accounts_monitor_refreshes_after_workflow_interval(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.agent.monitor.workflows as monitor_workflows
+
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "refresh_interval_sec": 1,
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+        ],
+    )
+    calls = _stub_monitor_account_status(monkeypatch)
+    monotonic_values = iter([0.0, 0.0, 0.0, 0.5, 0.5, 0.5, 1.1, 1.1])
+    monkeypatch.setattr(monitor_workflows.time, "monotonic", lambda: next(monotonic_values))
+
+    assert main(["agent", "accounts", "monitor", "--max-ticks", "3", "--interval-sec", "0", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert len(calls) == 2
+    target_states = payload["state"]["limits-tracking"]["targets"]
+    target_state = next(iter(target_states.values()))
+    assert target_state["refresh_count"] == 2
+    assert target_state["last_refresh_tick"] == 3
+
+
+def test_agent_accounts_monitor_target_error_is_workflow_owned(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    first_auth = tmp_path / "first.json"
+    second_auth = tmp_path / "second.json"
+    _write(first_auth, _auth_json(account_id="acc_br", email="br@example.com"))
+    _write(second_auth, _auth_json(account_id="acc_jp", email="jp@example.com"))
+
+    assert main(_register_args(first_auth, account="br")) == 0
+    capsys.readouterr()
+    assert main(_register_args(second_auth, account="jp")) == 0
+    capsys.readouterr()
+    br_home = agentos_home / "agent" / "homes" / "codex" / "br"
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "targets": [
+                    {"provider": "codex", "account": "br"},
+                    {"provider": "codex", "account": "jp"},
+                ],
+            },
+        ],
+    )
+    _stub_monitor_account_status(monkeypatch, failures={f"codex/br@{br_home}"})
+
+    assert main(["agent", "accounts", "monitor", "--once", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert "workflow_errors" not in payload["state"]
+    assert payload["frame"]["errors"] == []
+    targets = payload["frame"]["blocks"][0]["data"]["targets"]
+    assert [target["status"] for target in targets] == ["error", "ok"]
+    assert targets[0]["error"]["type"] == "RuntimeError"
+    assert targets[0]["error"]["message"] == "cannot refresh br"
+    assert "  error: cannot refresh br" in payload["frame"]["blocks"][0]["lines"]
 
 
 def test_agent_accounts_monitor_workflow_error_goes_to_state_and_frame() -> None:
@@ -1172,6 +1358,7 @@ def test_agent_accounts_monitor_runs_workflows_in_config_order(
             },
         ],
     )
+    _stub_monitor_account_status(monkeypatch)
 
     assert main(["agent", "accounts", "monitor", "--once", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -1210,6 +1397,34 @@ def test_agent_accounts_monitor_reports_invalid_config(
 
     assert main(["agent", "accounts", "monitor", "--once"]) == 1
     assert "agent.accounts.monitor[0].targets must not be empty" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("refresh_interval_sec", [0, -1, True, "slow"])
+def test_agent_accounts_monitor_reports_invalid_refresh_interval(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    refresh_interval_sec: object,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "limits-tracking",
+                "refresh_interval_sec": refresh_interval_sec,
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+        ],
+    )
+
+    assert main(["agent", "accounts", "monitor", "--once"]) == 1
+    assert "agent.accounts.monitor[0].refresh_interval_sec must be a positive number" in capsys.readouterr().err
 
 
 def test_agent_accounts_monitor_reports_missing_registered_account(

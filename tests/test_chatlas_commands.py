@@ -371,10 +371,13 @@ def test_chatlas_index_redo_rebuilds_index_from_copied_raw(
     rows = _chatlas_index_rows(home / "Documents" / "chatlas")
     assert payload["status"] == "ok"
     assert payload["command"] == "chatlas index redo"
+    assert payload["instances"][0]["instance"] == "codex-work"
+    assert payload["instances"][0]["home"] == str(codex_home)
     assert payload["native_scan"]["session_count"] == 1
     assert payload["session_index"]["upserted_row_count"] == 1
     assert [row["session_id"] for row in rows] == [session_id]
     assert rows[0]["display_name"] == "redo source"
+    assert rows[0]["instance"] == "codex-work"
     assert rows[0]["home"] == str(codex_home)
     assert str(home / "Documents" / "chatlas" / "raw") not in rows[0]["home"]
     assert not stale_index.exists()
