@@ -39,6 +39,7 @@ DEFAULT_USAGE_GET_TIMEOUT_SEC = 5
 CLAUDE_USAGE_GET_CACHE_MAX_AGE_SEC = 300
 CLAUDE_USAGE_GET_STALE_FALLBACK_MAX_AGE_SEC = 3600
 CLAUDE_USAGE_API_URL = "https://api.anthropic.com/api/oauth/usage"
+CLAUDE_USAGE_GET_SOURCE = "oauth_usage_get"
 CLAUDE_OAUTH_BETA_HEADER = "oauth-2025-04-20"
 CLAUDE_CREDENTIALS_SERVICE_SUFFIX = "-credentials"
 CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC = 60
@@ -100,23 +101,17 @@ def _claude_account_status_impl(
         usage_errors: tuple[AccountStatusError, ...] = ()
         usage_payload: dict[str, Any] | None = None
     else:
-        limits, usage_errors, usage_payload = _account_usage_GET(agent)
+        limits, usage_errors, usage_payload, usage_record_payload = _account_usage_GET(agent)
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
         auth_summary = "Claude usage API read" if usage_status == "ok" else None
-        if (
-            record_usage
-            and usage_status == "ok"
-            and limits
-            and usage_payload is not None
-            and _usage_get_cache_status(usage_payload) == "live"
-        ):
+        if record_usage and usage_status == "ok" and limits and usage_record_payload is not None:
             append_usage_record(
                 provider=agent.provider,
                 account=agent.account.account,
                 home=agent.home,
-                source="oauth_usage_get",
-                payload=_usage_get_provider_payload(usage_payload),
+                source=CLAUDE_USAGE_GET_SOURCE,
+                payload=usage_record_payload,
             )
 
     return AccountStatus(
@@ -254,13 +249,18 @@ def _setup_errors(
 # isolated while we evaluate which one should become the long-term capability.
 def _account_usage_GET(
     agent: Agent,
-) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...], dict[str, Any] | None]:
+) -> tuple[
+    tuple[AccountLimit, ...],
+    tuple[AccountStatusError, ...],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
     cached_payload = _load_cached_claude_usage_get_payload(
         agent,
         max_age_sec=CLAUDE_USAGE_GET_CACHE_MAX_AGE_SEC,
     )
     if cached_payload is not None:
-        return _parse_claude_usage_get_limits(cached_payload), (), cached_payload
+        return _parse_claude_usage_get_limits(cached_payload), (), cached_payload, None
 
     try:
         payload = _fetch_claude_usage_payload(agent)
@@ -269,6 +269,7 @@ def _account_usage_GET(
             _parse_claude_usage_get_limits(payload),
             (),
             _with_usage_get_cache_metadata(payload, cache_status="live"),
+            payload,
         )
     except AccountStatusError as exc:
         cached_payload = _load_cached_claude_usage_get_payload(
@@ -277,10 +278,10 @@ def _account_usage_GET(
             stale_error=exc,
         )
         if cached_payload is not None:
-            return _parse_claude_usage_get_limits(cached_payload), (), cached_payload
-        return (), (exc,), None
+            return _parse_claude_usage_get_limits(cached_payload), (), cached_payload, None
+        return (), (exc,), None, None
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None
+        return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None, None
 
 
 def _account_usage_statusline(
@@ -385,7 +386,7 @@ def _write_cached_claude_usage_get_payload(agent: Agent, payload: dict[str, Any]
         "schema_version": 1,
         "provider": agent.provider,
         "account": _account_name(agent),
-        "method": "oauth_usage_get",
+        "method": CLAUDE_USAGE_GET_SOURCE,
         "captured_at_epoch": now,
         "captured_at": _iso_from_epoch_seconds(int(now)),
         "payload": payload,
@@ -417,7 +418,7 @@ def _with_usage_get_cache_metadata(
 ) -> dict[str, Any]:
     payload_with_metadata = dict(payload)
     metadata: dict[str, object] = {
-        "method": "oauth_usage_get",
+        "method": CLAUDE_USAGE_GET_SOURCE,
         "status": cache_status,
     }
     if captured_at_epoch is not None:
@@ -429,20 +430,6 @@ def _with_usage_get_cache_metadata(
         metadata["live_error"] = stale_error.summary()
     payload_with_metadata["agentos_cache"] = metadata
     return payload_with_metadata
-
-
-def _usage_get_cache_status(payload: Mapping[str, Any]) -> str | None:
-    metadata = payload.get("agentos_cache")
-    if not isinstance(metadata, dict):
-        return None
-    status = metadata.get("status")
-    return status if isinstance(status, str) else None
-
-
-def _usage_get_provider_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    provider_payload = dict(payload)
-    provider_payload.pop("agentos_cache", None)
-    return provider_payload
 
 
 def _account_name(agent: Agent) -> str:

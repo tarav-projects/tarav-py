@@ -1478,11 +1478,12 @@ def test_claude_usage_get_uses_fresh_account_cache(
 
     monkeypatch.setattr(claude_account_status, "_fetch_claude_usage_payload", fail_fetch)
 
-    limits, errors, payload = claude_account_status._account_usage_GET(agent)
+    limits, errors, payload, record_payload = claude_account_status._account_usage_GET(agent)
 
     assert errors == ()
     assert [limit.limit_name for limit in limits] == ["burst"]
     assert payload is not None
+    assert record_payload is None
     assert payload["agentos_cache"]["status"] == "fresh"
     assert payload["agentos_cache"]["age_sec"] == 20.0
 
@@ -1511,13 +1512,19 @@ def test_claude_usage_get_writes_account_cache(
         },
     )
 
-    limits, errors, payload = claude_account_status._account_usage_GET(agent)
+    limits, errors, payload, record_payload = claude_account_status._account_usage_GET(agent)
 
     assert errors == ()
     assert [limit.usage_over_time.used_percent for limit in limits if limit.usage_over_time] == [
         33
     ]
     assert payload is not None
+    assert record_payload == {
+        "five_hour": {
+            "utilization": 33,
+            "resets_at": "2026-05-15T20:29:59Z",
+        }
+    }
     assert payload["agentos_cache"]["status"] == "live"
     cache_payload = json.loads(
         (
@@ -1581,11 +1588,12 @@ def test_claude_usage_get_uses_stale_account_cache_when_refresh_fails(
 
     monkeypatch.setattr(claude_account_status, "_fetch_claude_usage_payload", fail_fetch)
 
-    limits, errors, payload = claude_account_status._account_usage_GET(agent)
+    limits, errors, payload, record_payload = claude_account_status._account_usage_GET(agent)
 
     assert errors == ()
     assert [limit.limit_name for limit in limits] == ["burst"]
     assert payload is not None
+    assert record_payload is None
     assert payload["agentos_cache"]["status"] == "stale_fallback"
     assert payload["agentos_cache"]["live_error"]["type"] == "usage_api_http_error"
 

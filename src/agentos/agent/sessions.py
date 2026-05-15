@@ -10,12 +10,7 @@ from urllib.parse import unquote
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
-from agentos.agent.primitives import (
-    SessionSource,
-    agent_fingerprint,
-    agent_identity_key,
-    agent_uri_key,
-)
+from agentos.agent.primitives import SessionSource
 from agentos.agent.providers import Agent, agent_from_config, load_configured_agents
 from agentos.agent.config import (
     canonical_chat_provider_specs,
@@ -276,7 +271,7 @@ def _dedupe_agents(
 ) -> tuple[Agent, ...]:
     unique_instances: dict[tuple[object, ...], Agent] = {}
     for agent in agents:
-        key = agent_identity_key(agent)
+        key = agent.identity_key()
         if key not in unique_instances:
             unique_instances[key] = agent
     return tuple(unique_instances.values())
@@ -738,9 +733,9 @@ def _provider_agent_context_from_agent(
     sqlite_db_paths = agent.sqlite_db_paths
     return ProviderAgentContext(
         agent=agent,
-        instance_fingerprint=agent_fingerprint(agent),
-        instance_identity_key=agent_identity_key(agent),
-        instance_uri_key=agent_uri_key(agent),
+        instance_fingerprint=agent.fingerprint(),
+        instance_identity_key=agent.identity_key(),
+        instance_uri_key=agent.uri_key(),
         direct_targets=agent.direct_targets,
         direct_existing_targets=tuple(target for target in direct_targets if target.exists()),
         direct_missing_targets=tuple(target for target in direct_targets if not target.exists()),

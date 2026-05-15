@@ -467,6 +467,7 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
     raw_model_flag = raw_instance.get("model_flag")
     raw_prompt_flag = raw_instance.get("prompt_flag")
     raw_ping = raw_instance.get("ping")
+    raw_fingerprint = raw_instance.get("fingerprint")
     raw_includes = raw_instance.get("includes")
     raw_excludes = raw_instance.get("excludes")
 
@@ -545,6 +546,12 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         field_name=entry.field_name("ping"),
         default_model=_agent_default_ping_model(family_name),
     )
+    if raw_fingerprint is None:
+        fingerprint_override = None
+    elif not isinstance(raw_fingerprint, str) or not raw_fingerprint.strip():
+        raise CliError(f"{entry.field_name('fingerprint')} must be a non-empty string")
+    else:
+        fingerprint_override = raw_fingerprint.strip()
     includes = _load_optional_string_tuple(
         raw_includes,
         field_name=entry.field_name("includes"),
@@ -617,6 +624,7 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         model_flag=model_flag,
         prompt_flag=prompt_flag,
         ping=ping,
+        fingerprint_override=fingerprint_override,
         chatlas_includes=includes,
         chatlas_excludes=excludes,
         identity_anchors=anchors,

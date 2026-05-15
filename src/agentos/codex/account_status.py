@@ -26,6 +26,7 @@ from agentos.codex.account_registry import inspect_codex_account_home
 
 DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
 CODEX_APP_SERVER_ARGV = ("app-server",)
+CODEX_APP_SERVER_USAGE_SOURCE = "app_server"
 
 
 def _codex_account_status_impl(
@@ -80,7 +81,7 @@ def _codex_account_status_impl(
                 provider=agent.provider,
                 account=agent.account.account,
                 home=agent.home,
-                source="app_server",
+                source=CODEX_APP_SERVER_USAGE_SOURCE,
                 payload=usage_payload,
             )
 

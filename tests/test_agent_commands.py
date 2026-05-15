@@ -1068,6 +1068,39 @@ def test_agent_ping_rejects_prompt_and_argv_config(
     )
 
 
+def test_configured_fingerprint_is_instance_method_override(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "fingerprint": "configured-fingerprint",
+            }
+        ],
+    )
+
+    from agentos.agent.providers import load_configured_agents
+
+    (agent,) = load_configured_agents()
+
+    assert agent.fingerprint() == "configured-fingerprint"
+    assert agent.uri_key() == "configured-fingerprint"
+    assert agent.summary()["fingerprint"] == "configured-fingerprint"
+    assert callable(agent.fingerprint)
+
+
 def test_agent_run_dry_invokes_provider_native_run_dry(
     tmp_path: Path,
     monkeypatch,

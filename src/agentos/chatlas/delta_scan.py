@@ -13,7 +13,7 @@ from urllib.parse import quote, unquote
 
 from agentos._core.errors import CliError
 from agentos.agent.config import load_chat_config_documents, load_unique_string_list
-from agentos.agent.primitives import Agent, AgentConfig, SessionSource, agent_fingerprint
+from agentos.agent.primitives import Agent, AgentConfig, SessionSource
 from agentos.agent.providers import agent_from_config, load_configured_agents
 from agentos.agent.session_refs import BackingArtifact, ProviderSessionRef, backing_artifacts_from_sources
 from agentos.agent.sessions import _format_stats_timestamp
@@ -312,7 +312,7 @@ def _selected_provider_instances(
 
     deduped: dict[tuple[str, str], ChatlasProviderInstance] = {}
     for agent in agents:
-        instance = ChatlasProviderInstance(agent=agent, fingerprint=agent_fingerprint(agent))
+        instance = ChatlasProviderInstance(agent=agent, fingerprint=agent.fingerprint())
         deduped[(instance.provider, instance.fingerprint)] = instance
     return tuple(sorted(deduped.values(), key=lambda instance: (instance.provider, instance.instance)))
 
@@ -520,7 +520,7 @@ def _agent_from_raw_partition(
             direct_targets=direct_targets,
             sqlite_db_paths=(),
             is_default=False,
-            fingerprint=fingerprint,
+            fingerprint_override=fingerprint,
         )
     )
 
@@ -645,7 +645,7 @@ def _archived_provider_agent(
             direct_targets=direct_targets,
             sqlite_db_paths=sqlite_db_paths,
             is_default=instance.agent.is_default,
-            fingerprint=instance.fingerprint,
+            fingerprint_override=instance.fingerprint,
         )
     )
 

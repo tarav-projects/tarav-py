@@ -87,7 +87,7 @@ class AgentConfig:
     prompt_flag: str | None = None
     ping: AgentPingConfig = field(default_factory=default_agent_ping_config)
     is_default: bool = False
-    fingerprint: str | None = None
+    fingerprint_override: str | None = None
     direct_targets: tuple[Path, ...] = ()
     grep_targets: tuple[Path, ...] = ()
     sqlite_db_paths: tuple[Path, ...] = ()
@@ -96,8 +96,8 @@ class AgentConfig:
     chatlas_excludes: tuple[str, ...] = ()
 
     def computed_fingerprint(self) -> str:
-        if self.fingerprint is not None:
-            return self.fingerprint
+        if self.fingerprint_override is not None:
+            return self.fingerprint_override
         return agent_identity_fingerprint(
             provider=self.provider,
             anchors=self.identity_anchors,
@@ -150,7 +150,7 @@ class AgentBase:
     prompt_flag: str | None = None
     ping: AgentPingConfig = field(default_factory=default_agent_ping_config)
     is_default: bool = False
-    fingerprint: str | None = None
+    fingerprint_override: str | None = None
     direct_targets: tuple[Path, ...] = ()
     grep_targets: tuple[Path, ...] = ()
     sqlite_db_paths: tuple[Path, ...] = ()
@@ -163,8 +163,8 @@ class AgentBase:
             "provider": self.provider,
             "is_default": self.is_default,
         }
-        if self.fingerprint is not None:
-            payload["fingerprint"] = self.fingerprint
+        if self.fingerprint_override is not None:
+            payload["fingerprint"] = self.fingerprint_override
         if self.instance_id is not None:
             payload["instance_id"] = self.instance_id
         if self.label is not None:
@@ -204,6 +204,45 @@ class AgentBase:
         if self.chatlas_excludes:
             payload["chatlas_excludes"] = list(self.chatlas_excludes)
         return payload
+
+    def fingerprint(self) -> str:
+        if self.fingerprint_override is not None:
+            return self.fingerprint_override
+        return agent_identity_fingerprint(
+            provider=self.provider,
+            anchors=self.identity_anchors,
+            direct_targets=self.direct_targets,
+            sqlite_db_paths=self.sqlite_db_paths,
+        )
+
+    def identity_key(self) -> tuple[object, ...]:
+        if self.identity_anchors:
+            return (
+                self.provider,
+                tuple(anchor.identity_key() for anchor in self.identity_anchors),
+            )
+        return (
+            self.provider,
+            self.instance_id,
+            str(self.home) if self.home is not None else None,
+            tuple(str(path) for path in self.direct_targets),
+            tuple(str(path) for path in self.grep_targets),
+            tuple(str(path) for path in self.sqlite_db_paths),
+            self.cli_command,
+            self.run_args,
+            self.env,
+            self.account,
+            self.timeout_sec,
+            self.default_model,
+            self.model_flag,
+            self.prompt_flag,
+            self.ping,
+            self.chatlas_includes,
+            self.chatlas_excludes,
+        )
+
+    def uri_key(self) -> str:
+        return quote(self.fingerprint(), safe="")
 
     def build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
         raise CliError(
@@ -282,7 +321,7 @@ def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
         "prompt_flag": config.prompt_flag,
         "ping": config.ping,
         "is_default": config.is_default,
-        "fingerprint": config.fingerprint,
+        "fingerprint_override": config.fingerprint_override,
         "direct_targets": config.direct_targets,
         "grep_targets": config.grep_targets,
         "sqlite_db_paths": config.sqlite_db_paths,
@@ -318,7 +357,7 @@ class Agent(Protocol):
     prompt_flag: str | None
     ping: AgentPingConfig
     is_default: bool
-    fingerprint: str | None
+    fingerprint_override: str | None
     direct_targets: tuple[Path, ...]
     grep_targets: tuple[Path, ...]
     sqlite_db_paths: tuple[Path, ...]
@@ -327,6 +366,12 @@ class Agent(Protocol):
     chatlas_excludes: tuple[str, ...]
 
     def summary(self) -> dict[str, object]: ...
+
+    def fingerprint(self) -> str: ...
+
+    def identity_key(self) -> tuple[object, ...]: ...
+
+    def uri_key(self) -> str: ...
 
     def build_command(self, command_config: AgentCommandConfig) -> AgentCommand: ...
 
@@ -394,48 +439,6 @@ def agent_identity_fingerprint(
     return digest.hexdigest()
 
 
-def agent_fingerprint(agent: Agent) -> str:
-    if agent.fingerprint is not None:
-        return agent.fingerprint
-    return agent_identity_fingerprint(
-        provider=agent.provider,
-        anchors=agent.identity_anchors,
-        direct_targets=agent.direct_targets,
-        sqlite_db_paths=agent.sqlite_db_paths,
-    )
-
-
-def agent_identity_key(agent: Agent) -> tuple[object, ...]:
-    if agent.identity_anchors:
-        return (
-            agent.provider,
-            tuple(anchor.identity_key() for anchor in agent.identity_anchors),
-        )
-    return (
-        agent.provider,
-        agent.instance_id,
-        str(agent.home) if agent.home is not None else None,
-        tuple(str(path) for path in agent.direct_targets),
-        tuple(str(path) for path in agent.grep_targets),
-        tuple(str(path) for path in agent.sqlite_db_paths),
-        agent.cli_command,
-        agent.run_args,
-        agent.env,
-        agent.account,
-        agent.timeout_sec,
-        agent.default_model,
-        agent.model_flag,
-        agent.prompt_flag,
-        agent.ping,
-        agent.chatlas_includes,
-        agent.chatlas_excludes,
-    )
-
-
-def agent_uri_key(agent: Agent) -> str:
-    return quote(agent_fingerprint(agent), safe="")
-
-
 __all__ = [
     "Agent",
     "AgentAccountContext",
@@ -445,11 +448,8 @@ __all__ = [
     "SessionSource",
     "agent_base_kwargs_for_provider",
     "agent_base_kwargs_from_config",
-    "agent_fingerprint",
     "agent_identity_fingerprint",
-    "agent_identity_key",
     "default_agent_ping_config",
     "agent_session_paths",
-    "agent_uri_key",
     "provider_session_paths",
 ]

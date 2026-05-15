@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** move provider-agent identity helpers from free functions to agent instance methods, so callers use `agent.fingerprint()`, `agent.identity_key()`, and `agent.uri_key()`
-- **status:** ready for implementation
+- **status:** implemented
 - **source:** user request on 2026-05-15 after review of `agent_fingerprint(agent)`
 - **target project:** `agentos-py`
 - **current worktree note:** the worktree already has unrelated edits in `src/agentos/agent/primitives.py`, `src/agentos/codex/agent.py`, and `src/agentos/claude/agent.py` for `account_status(record_usage=...)`; preserve those changes and adapt around them
@@ -49,7 +49,7 @@
 - path: configured `AgentConfig` -> provider agent via `agent_from_config()` -> identity methods
 - observable: a provider agent can answer `agent.fingerprint()`, `agent.identity_key()`, and `agent.uri_key()`
 - check: focused tests or existing tests that construct configured agents and assert stable identity values
-- status: not started
+- status: done
 
 ### Slice 2 - Resolve the field/method name conflict
 
@@ -59,7 +59,7 @@
 - path: config document field `"fingerprint"` -> `AgentConfig` -> concrete provider agent -> `agent.fingerprint()`
 - observable: configured explicit fingerprints still override computed fingerprints
 - check: test that a config-level `"fingerprint"` value appears in summary and is returned by `agent.fingerprint()`
-- status: not started
+- status: done
 
 ### Slice 3 - Replace runtime helper call sites
 
@@ -70,7 +70,7 @@
 - path: session listing and chatlas update instance selection
 - observable: generated provider instance fingerprints and URIs remain byte-for-byte stable for the same config
 - check: session/chatlas tests that assert `provider_instance_fingerprint`, `uri`, or raw/index partition paths
-- status: not started
+- status: done
 
 ### Slice 4 - Remove obsolete free-function surface
 
@@ -81,7 +81,7 @@
 - path: public primitive exports -> codebase imports
 - observable: no code imports or calls the removed helpers
 - check: `rg "agent_fingerprint|agent_identity_key|agent_uri_key" src tests`
-- status: not started
+- status: done
 
 ### Slice 5 - Validation and CLI smoke checks
 
@@ -92,9 +92,11 @@
   - `uv run ruff check src/agentos/agent src/agentos/chatlas tests`
   - `uv run pytest tests/test_agent_commands.py tests/test_chatlas_commands.py tests/test_chatlas_views.py -q`
   - targeted tests around any changed config-loading behavior
-- status: not started
+- status: done
 
 ## Impl.Log
 
 - 2026-05-15: Impl designer created this request after the user approved the direction to move `agent_fingerprint(agent)` into the provider agent instance interface as `agent.fingerprint()`.
 - 2026-05-15: Codebase scan found current free-function call sites in `src/agentos/agent/sessions.py` and `src/agentos/chatlas/delta_scan.py`; also found existing dirty worktree edits for `account_status(record_usage=...)` that implementers must preserve.
+- 2026-05-15: Implemented the identity-method refactor. Added `fingerprint()`, `identity_key()`, and `uri_key()` to `AgentBase` and the `Agent` protocol; renamed the stored override field to `fingerprint_override`; preserved the external config/summary key `"fingerprint"`; updated session and Chatlas call sites; removed obsolete helper functions and exports.
+- 2026-05-15: Validation passed with `uv run pytest tests/test_agent_commands.py tests/test_chatlas_commands.py tests/test_chatlas_views.py -q`, `uv run pytest tests/test_agent_commands.py -q`, `uv run ruff check src/agentos/agent src/agentos/chatlas tests/test_agent_commands.py tests/test_chatlas_commands.py tests/test_chatlas_views.py`, and `rg "agent_fingerprint|agent_identity_key|agent_uri_key" src tests -S` returning no matches.
