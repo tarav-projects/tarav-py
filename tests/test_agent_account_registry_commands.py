@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import datetime
 import hashlib
 import io
 import json
@@ -207,6 +208,8 @@ def _stub_codex_login_status(monkeypatch, target_home: Path):
 
 
 def _monitor_account_status(*, provider: str, account: str, home: Path) -> AccountStatus:
+    burst_started_at, burst_ends_at = _usage_period(duration_mins=300, elapsed_percent=37)
+    weekly_started_at, weekly_ends_at = _usage_period(duration_mins=10_080, elapsed_percent=18)
     return AccountStatus(
         provider=provider,
         account=account,
@@ -217,20 +220,47 @@ def _monitor_account_status(*, provider: str, account: str, home: Path) -> Accou
         expected_identity=AccountIdentity(provider_account_id=f"acc_{account}"),
         fetched_identity=AccountIdentity(provider_account_id=f"acc_{account}"),
         identity_match="verified",
-        usage_summary="5 hours 25%, 168 hours 40%",
+        usage_summary="5 hours 3%, 168 hours 1%",
         limits=(
             AccountLimit(
                 limit_class="usage_over_time",
                 limit_name="5h",
                 limit_label="5 hours",
                 usage_over_time=UsageOverTimeLimitData(
-                    used_percent=25,
-                    period_started_at="2026-05-12T12:00:00Z",
-                    period_ends_at="2026-05-12T17:00:00Z",
+                    used_percent=3,
+                    period_started_at=burst_started_at,
+                    period_ends_at=burst_ends_at,
+                    period_duration_mins=300,
+                    resets_at=burst_ends_at,
+                ),
+            ),
+            AccountLimit(
+                limit_class="usage_over_time",
+                limit_name="168h",
+                limit_label="168 hours",
+                usage_over_time=UsageOverTimeLimitData(
+                    used_percent=1,
+                    period_started_at=weekly_started_at,
+                    period_ends_at=weekly_ends_at,
+                    period_duration_mins=10_080,
+                    resets_at=weekly_ends_at,
                 ),
             ),
         ),
     )
+
+
+def _usage_period(*, duration_mins: int, elapsed_percent: int) -> tuple[str, str]:
+    now = datetime.datetime.now(tz=datetime.UTC)
+    duration = datetime.timedelta(minutes=duration_mins)
+    elapsed = duration * (elapsed_percent / 100)
+    started_at = now - elapsed
+    ends_at = started_at + duration
+    return _iso_z(started_at), _iso_z(ends_at)
+
+
+def _iso_z(value: datetime.datetime) -> str:
+    return value.astimezone(datetime.UTC).isoformat().replace("+00:00", "Z")
 
 
 def _stub_monitor_account_status(monkeypatch, *, failures: set[str] | None = None) -> list[str]:
@@ -1061,11 +1091,10 @@ def test_agent_accounts_monitor_once_prints_account_status(
     assert "Tick: 1" in output
     assert "limits-tracking" in output
     assert "refresh_interval_sec: 60" in output
-    assert "codex/br" in output
-    assert "status: ok" in output
-    assert "check: ok" in output
-    assert "usage: ok" in output
-    assert "limits: 5 hours 25%, 168 hours 40%" in output
+    assert "  ⬢ codex/br:" in output
+    assert "    usage/time |  3% / 37% = 0.1 | Burst" in output
+    assert "        resets | " in output
+    assert "    usage/time |  1% / 18% = 0.1 | Weekly" in output
     assert "under construction" not in output
 
 
@@ -1110,8 +1139,8 @@ def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(
     assert payload["frame"]["tick"] == 3
     assert len(payload["frame"]["blocks"]) == 1
     assert payload["frame"]["blocks"][0]["lines"][0] == "refresh_interval_sec: 60"
-    assert "codex/br" in payload["frame"]["blocks"][0]["lines"]
-    assert "codex/jp" in payload["frame"]["blocks"][0]["lines"]
+    assert "⬢ codex/br:" in payload["frame"]["blocks"][0]["lines"]
+    assert "⬢ codex/jp:" in payload["frame"]["blocks"][0]["lines"]
     assert payload["frame"]["blocks"][0]["data"]["run_count"] == 3
     assert payload["frame"]["blocks"][0]["data"]["targets"][0]["home"] == str(
         agentos_home / "agent" / "homes" / "codex" / "br"
@@ -1286,7 +1315,7 @@ def test_agent_accounts_monitor_target_error_is_workflow_owned(
     assert [target["status"] for target in targets] == ["error", "ok"]
     assert targets[0]["error"]["type"] == "RuntimeError"
     assert targets[0]["error"]["message"] == "cannot refresh br"
-    assert "  error: cannot refresh br" in payload["frame"]["blocks"][0]["lines"]
+    assert "  error | cannot refresh br" in payload["frame"]["blocks"][0]["lines"]
 
 
 def test_agent_accounts_monitor_workflow_error_goes_to_state_and_frame() -> None:
