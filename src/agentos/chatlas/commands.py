@@ -123,22 +123,7 @@ def _cmd_chatlas_stats(args: argparse.Namespace) -> int:
 
 
 def _cmd_chatlas_query(args: argparse.Namespace) -> int:
-    payload = chatlas_query(
-        uri=args.uri,
-        identity_hash=args.identity_hash,
-        providers=optional_string_tuple(args.providers),
-        session_id=args.session_id,
-        display_name=args.display_name,
-        sort=args.sort,
-        limit=args.limit,
-        scan_limit=args.scan_limit,
-        extractable_only=args.extractable,
-        updated_after=args.updated_after,
-        raw_contains=optional_string_tuple(args.raw_contains),
-        user_contains=optional_string_tuple(args.user_contains),
-        assistant_contains=optional_string_tuple(args.assistant_contains),
-        message_contains=optional_string_tuple(args.message_contains),
-    )
+    payload = chatlas_query(**_chatlas_query_selector_kwargs(args))
     print(format_json_output(payload))
     return 0
 
@@ -247,7 +232,7 @@ def _cmd_chatlas_run_produce(args: argparse.Namespace) -> int:
     profile = args.profile if args.profile is not None else (config.get("profile") if use_config else None)
     model = args.model if args.model is not None else (config.get("model") if use_config else None)
 
-    query_payload = chatlas_index_query(**_chatlas_index_selector_kwargs(args))
+    query_payload = chatlas_query(**_chatlas_query_selector_kwargs(args))
     rows = query_payload.get("rows", [])
     if not rows:
         print(format_json_output({
@@ -418,6 +403,111 @@ def _add_chatlas_index_update_arguments(parser: argparse.ArgumentParser) -> None
     )
 
 
+def _add_chatlas_query_selector_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--uri",
+        default=None,
+        help="Match the indexed session URI exactly.",
+    )
+    parser.add_argument(
+        "--identity-hash",
+        default=None,
+        help="Match the indexed identity hash exactly.",
+    )
+    _add_chatlas_provider_argument(
+        parser,
+        help_text="Restrict query to a provider family. Repeat to include multiple providers.",
+    )
+    parser.add_argument(
+        "--session-id",
+        default=None,
+        help="Match the indexed provider session id exactly.",
+    )
+    parser.add_argument(
+        "--display-name",
+        default=None,
+        help="Match indexed display names by case-insensitive substring.",
+    )
+    parser.add_argument(
+        "--extractable",
+        action="store_true",
+        help="Keep only sessions with an extractable primary artifact.",
+    )
+    parser.add_argument(
+        "--updated-after",
+        default=None,
+        help="Keep only sessions whose indexed updated_at is at or after this ISO 8601 timestamp.",
+    )
+    parser.add_argument(
+        "--sort",
+        choices=("lexical", "newest", "oldest"),
+        default="lexical",
+        help="Sort order for returned sessions (default: lexical).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum number of sessions to return.",
+    )
+    parser.add_argument(
+        "--scan-limit",
+        type=int,
+        default=None,
+        help="Maximum number of index candidates to scan before raw and standard-model filters.",
+    )
+    parser.add_argument(
+        "--raw-contains",
+        action="append",
+        default=None,
+        help="Keep only sessions whose backing artifacts contain this literal text. Repeat for AND matching.",
+    )
+    parser.add_argument(
+        "--user-contains",
+        action="append",
+        default=None,
+        help="Keep only sessions whose visible user message text contains this literal text. Repeat for AND matching.",
+    )
+    parser.add_argument(
+        "--assistant-contains",
+        action="append",
+        default=None,
+        help="Keep only sessions whose visible assistant message text contains this literal text. Repeat for AND matching.",
+    )
+    parser.add_argument(
+        "--message-contains",
+        action="append",
+        default=None,
+        help="Keep only sessions whose visible user or assistant message text contains this literal text. Repeat for AND matching.",
+    )
+    parser.add_argument(
+        "--min-user-turns",
+        type=int,
+        default=None,
+        help="Keep only sessions with at least this many visible user turns.",
+    )
+
+
+def _chatlas_query_selector_kwargs(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "uri": args.uri,
+        "identity_hash": args.identity_hash,
+        "providers": optional_string_tuple(args.providers),
+        "session_id": args.session_id,
+        "display_name": args.display_name,
+        "extractable_only": args.extractable,
+        "updated_after": args.updated_after,
+        "sort": args.sort,
+        "limit": args.limit,
+        "scan_limit": args.scan_limit,
+        "raw_contains": optional_string_tuple(args.raw_contains),
+        "user_contains": optional_string_tuple(args.user_contains),
+        "assistant_contains": optional_string_tuple(args.assistant_contains),
+        "message_contains": optional_string_tuple(args.message_contains),
+        "min_user_turns": args.min_user_turns,
+    }
+
+
 def _add_chatlas_view_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--view",
@@ -537,85 +627,7 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         "query",
         help="Query Chatlas sessions with layered index, raw, and standard-model filters.",
     )
-    query_parser.add_argument(
-        "--uri",
-        default=None,
-        help="Match the indexed session URI exactly.",
-    )
-    query_parser.add_argument(
-        "--identity-hash",
-        default=None,
-        help="Match the indexed identity hash exactly.",
-    )
-    query_parser.add_argument(
-        "--provider",
-        choices=_CHATLAS_PROVIDER_CHOICES,
-        action="append",
-        dest="providers",
-        help="Restrict query to a provider family. Repeat to include multiple providers.",
-    )
-    query_parser.add_argument(
-        "--session-id",
-        default=None,
-        help="Match the indexed provider session id exactly.",
-    )
-    query_parser.add_argument(
-        "--display-name",
-        default=None,
-        help="Match indexed display names by case-insensitive substring.",
-    )
-    query_parser.add_argument(
-        "--extractable",
-        action="store_true",
-        help="Keep only sessions with an extractable primary artifact.",
-    )
-    query_parser.add_argument(
-        "--updated-after",
-        default=None,
-        help="Keep only sessions whose indexed updated_at is at or after this ISO 8601 timestamp.",
-    )
-    query_parser.add_argument(
-        "--sort",
-        choices=("lexical", "newest", "oldest"),
-        default="lexical",
-        help="Sort order for returned sessions (default: lexical).",
-    )
-    query_parser.add_argument(
-        "--scan-limit",
-        type=int,
-        default=None,
-        help="Maximum number of index candidates to scan before raw and standard-model filters.",
-    )
-    query_parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Maximum number of sessions to return.",
-    )
-    query_parser.add_argument(
-        "--raw-contains",
-        action="append",
-        default=None,
-        help="Keep only sessions whose backing artifacts contain this literal text. Repeat for AND matching.",
-    )
-    query_parser.add_argument(
-        "--user-contains",
-        action="append",
-        default=None,
-        help="Keep only sessions whose visible user message text contains this literal text. Repeat for AND matching.",
-    )
-    query_parser.add_argument(
-        "--assistant-contains",
-        action="append",
-        default=None,
-        help="Keep only sessions whose visible assistant message text contains this literal text. Repeat for AND matching.",
-    )
-    query_parser.add_argument(
-        "--message-contains",
-        action="append",
-        default=None,
-        help="Keep only sessions whose visible user or assistant message text contains this literal text. Repeat for AND matching.",
-    )
+    _add_chatlas_query_selector_arguments(query_parser)
     query_parser.set_defaults(handler=_cmd_chatlas_query)
 
     export_parser = chatlas_subparsers.add_parser(
@@ -776,5 +788,5 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Run the agent even if the view is already fresh.",
     )
-    _add_chatlas_index_selector_arguments(run_produce_parser)
+    _add_chatlas_query_selector_arguments(run_produce_parser)
     run_produce_parser.set_defaults(handler=_cmd_chatlas_run_produce)

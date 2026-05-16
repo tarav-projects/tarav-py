@@ -28,6 +28,7 @@ def run_chatlas_query(
     user_contains: tuple[str, ...] | None = None,
     assistant_contains: tuple[str, ...] | None = None,
     message_contains: tuple[str, ...] | None = None,
+    min_user_turns: int | None = None,
     chatlas_root: Path | None = None,
 ) -> dict[str, object]:
     index = load_chatlas_session_index_rows(chatlas_root=chatlas_root)
@@ -43,6 +44,7 @@ def run_chatlas_query(
         "user_contains": list(user_contains) if user_contains is not None else None,
         "assistant_contains": list(assistant_contains) if assistant_contains is not None else None,
         "message_contains": list(message_contains) if message_contains is not None else None,
+        "min_user_turns": min_user_turns,
     }
     index_matched_rows = [
         row
@@ -72,6 +74,7 @@ def run_chatlas_query(
             user_contains=user_contains,
             assistant_contains=assistant_contains,
             message_contains=message_contains,
+            min_user_turns=min_user_turns,
         )
     ]
     effective_limit = _DEFAULT_LIMIT if limit is None else limit
@@ -116,14 +119,17 @@ def _row_matches_standard_model_filters(
     user_contains: tuple[str, ...] | None,
     assistant_contains: tuple[str, ...] | None,
     message_contains: tuple[str, ...] | None,
+    min_user_turns: int | None = None,
 ) -> bool:
-    if not user_contains and not assistant_contains and not message_contains:
+    if not user_contains and not assistant_contains and not message_contains and not min_user_turns:
         return True
     try:
         session_model = build_chatlas_session_model_from_index_row(row)
     except Exception:
         return False
     user_texts = _visible_message_texts(session_model, roles={"user"})
+    if min_user_turns is not None and len(user_texts) < min_user_turns:
+        return False
     assistant_texts = _visible_message_texts(session_model, roles={"assistant"})
     message_texts = user_texts + assistant_texts
     return (
@@ -209,6 +215,8 @@ def _normalized_session_row(row: dict[str, Any]) -> dict[str, object]:
     return {
         "uri": _string_or_none(row.get("uri")),
         "provider": _string_or_none(row.get("provider")),
+        "instance": _string_or_none(row.get("instance")),
+        "identity_hash": _string_or_none(row.get("identity_hash")),
         "session_id": _string_or_none(row.get("session_id")),
         "updated_at": _string_or_none(row.get("updated_at")),
         "home": _string_or_none(row.get("home")),
