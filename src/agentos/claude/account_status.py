@@ -43,6 +43,7 @@ DEFAULT_USAGE_GET_TIMEOUT_SEC = 5
 CLAUDE_USAGE_API_URL = "https://api.anthropic.com/api/oauth/usage"
 CLAUDE_USAGE_GET_SOURCE = "oauth_usage_get"
 CLAUDE_USAGE_GET_THROTTLE_SCHEMA_VERSION = 1
+CLAUDE_USAGE_GET_THROTTLE_MARGIN_SEC = 300
 CLAUDE_OAUTH_BETA_HEADER = "oauth-2025-04-20"
 CLAUDE_CREDENTIALS_SERVICE_SUFFIX = "-credentials"
 CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC = 60
@@ -628,10 +629,12 @@ def _read_http_error_detail(exc: urllib.error.HTTPError) -> dict[str, object]:
     retry_after_value = exc.headers.get("Retry-After") if exc.headers is not None else None
     retry_after_sec = _parse_retry_after_seconds(retry_after_value)
     if exc.code == 429 and retry_after_sec is not None:
+        effective_retry_after_sec = retry_after_sec + CLAUDE_USAGE_GET_THROTTLE_MARGIN_SEC
         retry_after_until = datetime.datetime.now(
             tz=datetime.timezone.utc
-        ) + datetime.timedelta(seconds=retry_after_sec)
+        ) + datetime.timedelta(seconds=effective_retry_after_sec)
         detail["retry_after_sec"] = retry_after_sec
+        detail["retry_after_margin_sec"] = CLAUDE_USAGE_GET_THROTTLE_MARGIN_SEC
         detail["retry_after_until"] = _datetime_to_iso(retry_after_until)
     if body:
         try:

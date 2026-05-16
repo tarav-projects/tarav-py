@@ -330,7 +330,7 @@ def _usage_refresh_columns(account_status: dict[str, Any] | None) -> dict[str, s
         return {"value": None, "suffix": None}
     status = usage_record.get("status")
     if status == USAGE_RECORD_STATUS_FRESH:
-        return {"value": "now", "suffix": None}
+        return {"value": "fresh", "suffix": None}
     if status != USAGE_RECORD_STATUS_REGISTRY_FALLBACK:
         return {"value": None, "suffix": None}
     recorded_at = _parse_datetime(_string_value(usage_record.get("recorded_at")))
@@ -358,7 +358,27 @@ def _fetch_error_row(account_status: dict[str, Any]) -> MonitorInfoRow | None:
     message = live_error.get("message")
     if not isinstance(message, str) or not message:
         return None
+    retry_suffix = _fetch_error_retry_suffix(live_error)
+    if retry_suffix is not None:
+        message = f"{message} [{retry_suffix}]"
     return MonitorInfoRow(label="        fetch error", value=message)
+
+
+def _fetch_error_retry_suffix(live_error: dict[str, object]) -> str | None:
+    detail = live_error.get("detail")
+    if not isinstance(detail, dict):
+        return None
+    remaining_sec = _int_value(detail.get("retry_after_remaining_sec"))
+    if remaining_sec is None:
+        retry_after_until = _parse_datetime(_string_value(detail.get("retry_after_until")))
+        if retry_after_until is None:
+            return None
+        remaining_sec = int(
+            (retry_after_until - datetime.datetime.now(tz=datetime.UTC)).total_seconds()
+        )
+    if remaining_sec <= 0:
+        return None
+    return f"retry in {_format_age_duration(remaining_sec)}"
 
 
 def _usage_time_value(
