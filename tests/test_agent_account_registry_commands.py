@@ -288,6 +288,25 @@ def _claude_usage_get_payload(
     }
 
 
+def _claude_statusline_payload(
+    *,
+    burst_used: int = 20,
+    weekly_used: int | None = None,
+) -> dict[str, object]:
+    rate_limits: dict[str, object] = {
+        "five_hour": {
+            "used_percentage": burst_used,
+            "resets_at": 1_776_000_000,
+        }
+    }
+    if weekly_used is not None:
+        rate_limits["seven_day"] = {
+            "used_percentage": weekly_used,
+            "resets_at": 1_776_604_800,
+        }
+    return {"rate_limits": rate_limits}
+
+
 def _append_claude_usage_get_record(agent, *, utilization: int = 20) -> None:
     from agentos.agent.usage_registry import append_usage_record
 
@@ -297,6 +316,18 @@ def _append_claude_usage_get_record(agent, *, utilization: int = 20) -> None:
         home=agent.home,
         source="oauth_usage_get",
         payload=_claude_usage_get_payload(utilization=utilization),
+    )
+
+
+def _append_claude_statusline_record(agent, *, burst_used: int = 20) -> None:
+    from agentos.agent.usage_registry import append_usage_record
+
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=agent.home,
+        source="statusline_rate_limits",
+        payload=_claude_statusline_payload(burst_used=burst_used),
     )
 
 
@@ -1704,7 +1735,7 @@ def test_claude_usage_get_fresh_fetch_does_not_write_account_cache(
     assert not (agentos_home / "cache" / "account-status").exists()
 
 
-def test_claude_usage_get_uses_latest_registry_record_when_refresh_fails(
+def test_claude_usage_get_returns_live_error_when_refresh_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1723,15 +1754,11 @@ def test_claude_usage_get_uses_latest_registry_record_when_refresh_fails(
         claude_account_status._account_usage_GET(agent)
     )
 
-    assert errors == ()
-    assert [limit.limit_name for limit in limits] == ["burst"]
-    assert payload is not None
+    assert limits == ()
+    assert [error.error_type for error in errors] == ["usage_api_http_error"]
+    assert payload is None
     assert record_payload is None
-    assert payload["five_hour"]["utilization"] == 20
-    assert usage_record is not None
-    assert usage_record["status"] == "registry_fallback"
-    assert usage_record["source"] == "oauth_usage_get"
-    assert usage_record["live_error"]["type"] == "usage_api_http_error"
+    assert usage_record is None
 
 
 def test_claude_usage_get_active_throttle_skips_provider_fetch(
@@ -1760,17 +1787,11 @@ def test_claude_usage_get_active_throttle_skips_provider_fetch(
         claude_account_status._account_usage_GET(agent)
     )
 
-    assert errors == ()
-    assert [limit.limit_name for limit in limits] == ["burst"]
-    assert payload is not None
-    assert payload["five_hour"]["utilization"] == 20
+    assert limits == ()
+    assert [error.error_type for error in errors] == ["usage_api_http_error"]
+    assert payload is None
     assert record_payload is None
-    assert usage_record is not None
-    assert usage_record["status"] == "registry_fallback"
-    assert usage_record["live_error"]["message"] == "claude usage API returned HTTP 429"
-    assert (
-        usage_record["live_error"]["detail"]["retry_after_remaining_sec"] > 0
-    )
+    assert usage_record is None
 
 
 def test_claude_usage_get_http_429_writes_throttle(
@@ -1889,32 +1910,40 @@ def test_claude_usage_get_non_429_error_does_not_write_throttle(
     assert not claude_account_status._claude_usage_get_throttle_path(agent).exists()
 
 
-def test_claude_usage_get_refresh_failure_can_disable_registry_fallback(
+def test_claude_account_status_refresh_failure_can_disable_registry_fallback(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ) -> None:
     import agentos.claude.account_status as claude_account_status
 
-    agent = _claude_usage_get_agent(tmp_path, monkeypatch)
-    _append_claude_usage_get_record(agent, utilization=20)
+    claude_home = _registered_linked_claude_home(tmp_path, monkeypatch, capsys)
+    agent = build_registered_account_agent(
+        provider="claude-code", account="main", home=claude_home
+    )
+    _append_claude_statusline_record(agent, burst_used=20)
+
+    def fail_statusline_refresh(*args, **kwargs):
+        del args, kwargs
+        raise AccountStatusError(
+            error_type="timeout",
+            message="provider command timed out after 45 seconds using model haiku",
+        )
+
     monkeypatch.setattr(
         claude_account_status,
-        "_fetch_claude_usage_payload",
-        lambda agent: (_ for _ in ()).throw(_claude_usage_http_429_error()),
+        "_run_claude_statusline_refresh_session",
+        fail_statusline_refresh,
     )
 
-    limits, errors, payload, record_payload, usage_record = (
-        claude_account_status._account_usage_GET(
-            agent,
-            fallback_to_usage_registry=False,
-        )
+    status = agent.account_status(
+        fallback_to_usage_registry=False,
     )
 
-    assert limits == ()
-    assert [error.error_type for error in errors] == ["usage_api_http_error"]
-    assert payload is None
-    assert record_payload is None
-    assert usage_record is None
+    assert status.usage_status == "error"
+    assert [error.error_type for error in status.usage_errors] == ["timeout"]
+    assert status.raw["usage"] is None
+    assert status.raw["usage_record"] is None
 
 
 def test_claude_usage_get_refresh_failure_without_registry_record_returns_error(
@@ -1952,7 +1981,7 @@ def test_claude_statusline_uses_stable_system_home_workspace(tmp_path: Path) -> 
     )
 
 
-def test_claude_statusline_uses_fresh_system_home_cache(
+def test_claude_statusline_fetch_returns_recordable_fresh_payload(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1960,36 +1989,47 @@ def test_claude_statusline_uses_fresh_system_home_cache(
     from agentos.claude.agent import ClaudeAgent
 
     agent = ClaudeAgent(home=tmp_path / "claude-home")
-    cache_path = claude_account_status._claude_statusline_cache_path(agent)
-    _write(
-        cache_path,
-        json.dumps(
-            {
-                "captured_at_epoch": 100.0,
-                "statusline": {
-                    "rate_limits": {
-                        "five_hour": {
-                            "used_percentage": 20,
-                            "resets_at": 1_776_000_000,
-                        }
-                    }
-                },
-            }
-        )
-        + "\n",
-    )
-    monkeypatch.setattr(claude_account_status.time, "time", lambda: 120.0)
+    captured: list[dict[str, object]] = []
 
-    payload = claude_account_status._load_cached_claude_statusline_payload(
-        agent,
-        max_age_sec=60,
+    def fake_statusline_refresh(agent_arg, *, cwd, capture_path, settings_path, timeout_sec):
+        assert agent_arg is agent
+        assert cwd == tmp_path / "claude-home" / "agentos" / "workspaces" / "statusline-refresh"
+        assert capture_path.name == "statusline.json"
+        assert settings_path.is_file()
+        assert timeout_sec == 45
+        captured.append(json.loads(settings_path.read_text(encoding="utf-8")))
+        return _claude_statusline_payload(burst_used=33, weekly_used=68)
+
+    monkeypatch.setattr(
+        claude_account_status,
+        "_run_claude_statusline_refresh_session",
+        fake_statusline_refresh,
     )
 
-    assert payload is not None
-    assert payload["rate_limits"]["five_hour"]["used_percentage"] == 20
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_statusline(agent)
+    )
+
+    assert errors == ()
+    assert [limit.limit_name for limit in limits] == ["burst", "weekly"]
+    assert [limit.usage_over_time.used_percent for limit in limits if limit.usage_over_time] == [
+        33,
+        68,
+    ]
+    assert payload == _claude_statusline_payload(burst_used=33, weekly_used=68)
+    assert record_payload == payload
+    assert usage_record == {
+        "status": "fresh",
+        "recorded_at": None,
+        "source": "statusline_rate_limits",
+    }
+    assert captured[0]["statusLine"]["type"] == "command"
+    assert not (
+        tmp_path / "claude-home" / "agentos" / "cache" / "statusline-rate-limits.json"
+    ).exists()
 
 
-def test_claude_statusline_uses_stale_cache_when_live_refresh_times_out(
+def test_claude_statusline_refresh_failure_returns_live_error_without_cache(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1997,9 +2037,8 @@ def test_claude_statusline_uses_stale_cache_when_live_refresh_times_out(
     from agentos.claude.agent import ClaudeAgent
 
     agent = ClaudeAgent(home=tmp_path / "claude-home")
-    cache_path = claude_account_status._claude_statusline_cache_path(agent)
     _write(
-        cache_path,
+        tmp_path / "claude-home" / "agentos" / "cache" / "statusline-rate-limits.json",
         json.dumps(
             {
                 "captured_at_epoch": 100.0,
@@ -2019,7 +2058,6 @@ def test_claude_statusline_uses_stale_cache_when_live_refresh_times_out(
         )
         + "\n",
     )
-    monkeypatch.setattr(claude_account_status.time, "time", lambda: 220.0)
 
     def fail_live_refresh(*args, **kwargs):
         del args, kwargs
@@ -2034,15 +2072,91 @@ def test_claude_statusline_uses_stale_cache_when_live_refresh_times_out(
         fail_live_refresh,
     )
 
-    limits, errors, payload = claude_account_status._account_usage_statusline(agent)
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_statusline(agent)
+    )
+
+    assert limits == ()
+    assert [error.error_type for error in errors] == ["timeout"]
+    assert payload is None
+    assert record_payload is None
+    assert usage_record is None
+
+
+def test_claude_statusline_cleanup_is_disabled_by_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    agent = ClaudeAgent(home=tmp_path / "claude-home")
+    monkeypatch.setattr(
+        claude_account_status,
+        "_run_claude_statusline_refresh_session",
+        lambda *args, **kwargs: _claude_statusline_payload(burst_used=20),
+    )
+
+    def fail_if_cleanup_runs(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("cleanup should be disabled by default")
+
+    monkeypatch.setattr(
+        claude_account_status,
+        "_cleanup_claude_statusline_transcript",
+        fail_if_cleanup_runs,
+    )
+
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_statusline(agent)
+    )
 
     assert errors == ()
-    assert [limit.limit_name for limit in limits] == ["burst", "weekly"]
-    assert payload is not None
-    assert payload["agentos_cache"]["stale_fallback"] is True
+    assert [limit.limit_name for limit in limits] == ["burst"]
+    assert payload == record_payload
+    assert usage_record["source"] == "statusline_rate_limits"
 
 
-def test_claude_account_status_uses_get_usage_limits(
+def test_claude_statusline_cleanup_is_best_effort_when_enabled(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.claude.agent import ClaudeAgent
+
+    agent = ClaudeAgent(home=tmp_path / "claude-home")
+    monkeypatch.setattr(
+        claude_account_status,
+        "_run_claude_statusline_refresh_session",
+        lambda *args, **kwargs: _claude_statusline_payload(burst_used=20),
+    )
+    cleanup_calls: list[object] = []
+
+    def fail_cleanup(**kwargs):
+        cleanup_calls.append(kwargs["statusline_payload"])
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(
+        claude_account_status,
+        "_cleanup_claude_statusline_transcript",
+        fail_cleanup,
+    )
+
+    limits, errors, payload, record_payload, usage_record = (
+        claude_account_status._account_usage_statusline(
+            agent,
+            cleanup_transcript=True,
+        )
+    )
+
+    assert errors == ()
+    assert [limit.limit_name for limit in limits] == ["burst"]
+    assert cleanup_calls == [payload]
+    assert record_payload == payload
+    assert usage_record["source"] == "statusline_rate_limits"
+
+
+def test_claude_account_status_uses_statusline_usage_limits(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -2051,23 +2165,15 @@ def test_claude_account_status_uses_get_usage_limits(
 
     claude_home = _registered_linked_claude_home(tmp_path, monkeypatch, capsys)
 
-    def fake_fetch_usage_payload(agent):
+    def fake_statusline_refresh(agent, *, cwd, capture_path, settings_path, timeout_sec):
+        del cwd, capture_path, settings_path, timeout_sec
         assert agent.home == claude_home.resolve()
-        return {
-            "five_hour": {
-                "utilization": 20,
-                "resets_at": "2026-04-12T13:20:00Z",
-            },
-            "seven_day": {
-                "utilization": 94,
-                "resets_at": "2026-04-19T13:20:00Z",
-            },
-        }
+        return _claude_statusline_payload(burst_used=20, weekly_used=94)
 
     monkeypatch.setattr(
         claude_account_status,
-        "_fetch_claude_usage_payload",
-        fake_fetch_usage_payload,
+        "_run_claude_statusline_refresh_session",
+        fake_statusline_refresh,
     )
     agent = build_registered_account_agent(
         provider="claude-code", account="main", home=claude_home
@@ -2078,6 +2184,7 @@ def test_claude_account_status_uses_get_usage_limits(
     assert status.check_status == "ok"
     assert status.usage_status == "ok"
     assert status.usage_errors == ()
+    assert status.auth_summary == "Claude statusLine read"
     assert status.usage_summary == "Burst 20%, Weekly 94%"
     assert [limit.limit_name for limit in status.limits] == ["burst", "weekly"]
     assert [
@@ -2090,17 +2197,11 @@ def test_claude_account_status_uses_get_usage_limits(
     assert entries[0]["provider"] == "claude-code"
     assert entries[0]["account"] == "main"
     assert entries[0]["home"] == str(claude_home.resolve())
-    assert entries[0]["source"] == "oauth_usage_get"
-    assert entries[0]["payload"] == {
-        "five_hour": {
-            "utilization": 20,
-            "resets_at": "2026-04-12T13:20:00Z",
-        },
-        "seven_day": {
-            "utilization": 94,
-            "resets_at": "2026-04-19T13:20:00Z",
-        },
-    }
+    assert entries[0]["source"] == "statusline_rate_limits"
+    assert entries[0]["payload"] == _claude_statusline_payload(
+        burst_used=20,
+        weekly_used=94,
+    )
 
 
 def test_claude_account_status_record_usage_false_skips_usage_registry(
@@ -2113,13 +2214,8 @@ def test_claude_account_status_record_usage_false_skips_usage_registry(
     claude_home = _registered_linked_claude_home(tmp_path, monkeypatch, capsys)
     monkeypatch.setattr(
         claude_account_status,
-        "_fetch_claude_usage_payload",
-        lambda agent: {
-            "five_hour": {
-                "utilization": 20,
-                "resets_at": "2026-04-12T13:20:00Z",
-            }
-        },
+        "_run_claude_statusline_refresh_session",
+        lambda *args, **kwargs: _claude_statusline_payload(burst_used=20),
     )
     agent = build_registered_account_agent(
         provider="claude-code", account="main", home=claude_home
@@ -2145,24 +2241,21 @@ def test_claude_account_status_registry_fallback_returns_status_without_append(
         provider="claude-code",
         account="main",
         home=claude_home,
-        source="oauth_usage_get",
-        payload={
-            "five_hour": {
-                "utilization": 20,
-                "resets_at": "2026-04-12T13:20:00Z",
-            }
-        },
+        source="statusline_rate_limits",
+        payload=_claude_statusline_payload(burst_used=20),
     )
+
+    def fail_statusline_refresh(*args, **kwargs):
+        del args, kwargs
+        raise AccountStatusError(
+            error_type="timeout",
+            message="provider command timed out after 45 seconds using model haiku",
+        )
+
     monkeypatch.setattr(
         claude_account_status,
-        "_fetch_claude_usage_payload",
-        lambda agent: (_ for _ in ()).throw(
-            AccountStatusError(
-                error_type="usage_api_http_error",
-                message="claude usage API returned HTTP 429",
-                exit_code=429,
-            )
-        ),
+        "_run_claude_statusline_refresh_session",
+        fail_statusline_refresh,
     )
     agent = build_registered_account_agent(
         provider="claude-code", account="main", home=claude_home
@@ -2173,7 +2266,50 @@ def test_claude_account_status_registry_fallback_returns_status_without_append(
     assert status.usage_status == "ok"
     assert status.auth_summary == "Claude usage registry fallback"
     assert status.raw["usage_record"]["status"] == "registry_fallback"
-    assert status.raw["usage"]["five_hour"]["utilization"] == 20
+    assert status.raw["usage"]["rate_limits"]["five_hour"]["used_percentage"] == 20
+    assert len(_usage_registry_entries(agentos_home)) == 1
+
+
+def test_claude_account_status_does_not_fallback_to_get_usage_records(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.agent.usage_registry import append_usage_record
+
+    agentos_home = tmp_path / "home" / ".agentos"
+    claude_home = _registered_linked_claude_home(tmp_path, monkeypatch, capsys)
+    append_usage_record(
+        provider="claude-code",
+        account="main",
+        home=claude_home,
+        source="oauth_usage_get",
+        payload=_claude_usage_get_payload(utilization=20),
+    )
+
+    def fail_statusline_refresh(*args, **kwargs):
+        del args, kwargs
+        raise AccountStatusError(
+            error_type="timeout",
+            message="provider command timed out after 45 seconds using model haiku",
+        )
+
+    monkeypatch.setattr(
+        claude_account_status,
+        "_run_claude_statusline_refresh_session",
+        fail_statusline_refresh,
+    )
+    agent = build_registered_account_agent(
+        provider="claude-code", account="main", home=claude_home
+    )
+
+    status = agent.account_status()
+
+    assert status.usage_status == "error"
+    assert [error.error_type for error in status.usage_errors] == ["timeout"]
+    assert status.raw["usage"] is None
+    assert status.raw["usage_record"] is None
     assert len(_usage_registry_entries(agentos_home)) == 1
 
 

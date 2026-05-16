@@ -42,12 +42,11 @@ DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
 DEFAULT_USAGE_GET_TIMEOUT_SEC = 5
 CLAUDE_USAGE_API_URL = "https://api.anthropic.com/api/oauth/usage"
 CLAUDE_USAGE_GET_SOURCE = "oauth_usage_get"
+CLAUDE_STATUSLINE_USAGE_SOURCE = "statusline_rate_limits"
 CLAUDE_USAGE_GET_THROTTLE_SCHEMA_VERSION = 1
 CLAUDE_USAGE_GET_THROTTLE_MARGIN_SEC = 300
 CLAUDE_OAUTH_BETA_HEADER = "oauth-2025-04-20"
 CLAUDE_CREDENTIALS_SERVICE_SUFFIX = "-credentials"
-CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC = 60
-CLAUDE_STATUSLINE_STALE_FALLBACK_MAX_AGE_SEC = 600
 CLAUDE_USAGE_REFRESH_PROMPT = "Reply with OK."
 CLAUDE_USAGE_REFRESH_MODEL = "haiku"
 CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC = 0.75
@@ -112,10 +111,22 @@ def _claude_account_status_impl(
             usage_payload,
             usage_record_payload,
             usage_record_metadata,
-        ) = _account_usage_GET(
-            agent,
-            fallback_to_usage_registry=fallback_to_usage_registry,
-        )
+        ) = _account_usage_statusline(agent, cleanup_transcript=False)
+        if usage_errors:
+            live_error = usage_errors[0]
+            (
+                limits,
+                usage_errors,
+                usage_payload,
+                usage_record_payload,
+                usage_record_metadata,
+            ) = _account_usage_registry_fallback(
+                agent,
+                source=CLAUDE_STATUSLINE_USAGE_SOURCE,
+                parser=_parse_claude_statusline_rate_limits,
+                live_error=live_error,
+                fallback_to_usage_registry=fallback_to_usage_registry,
+            )
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
         auth_summary = _usage_auth_summary(usage_record_metadata, usage_status=usage_status)
@@ -124,7 +135,8 @@ def _claude_account_status_impl(
                 provider=agent.provider,
                 account=agent.account.account,
                 home=agent.home,
-                source=CLAUDE_USAGE_GET_SOURCE,
+                source=_usage_record_source(usage_record_metadata)
+                or CLAUDE_STATUSLINE_USAGE_SOURCE,
                 payload=usage_record_payload,
             )
 
@@ -264,8 +276,6 @@ def _setup_errors(
 # isolated while we evaluate which one should become the long-term capability.
 def _account_usage_GET(
     agent: Agent,
-    *,
-    fallback_to_usage_registry: bool = True,
 ) -> tuple[
     tuple[AccountLimit, ...],
     tuple[AccountStatusError, ...],
@@ -275,11 +285,7 @@ def _account_usage_GET(
 ]:
     throttle_error = _load_claude_usage_get_throttle(agent)
     if throttle_error is not None:
-        return _account_usage_registry_fallback(
-            agent,
-            live_error=throttle_error,
-            fallback_to_usage_registry=fallback_to_usage_registry,
-        )
+        return (), (throttle_error,), None, None, None
 
     try:
         payload = _fetch_claude_usage_payload(agent)
@@ -293,22 +299,22 @@ def _account_usage_GET(
         )
     except AccountStatusError as exc:
         _write_claude_usage_get_throttle(agent, exc)
-        return _account_usage_registry_fallback(
-            agent,
-            live_error=exc,
-            fallback_to_usage_registry=fallback_to_usage_registry,
-        )
-    except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        return _account_usage_registry_fallback(
-            agent,
-            live_error=AccountStatusError(error_type="invalid_output", message=str(exc)),
-            fallback_to_usage_registry=fallback_to_usage_registry,
+        return (), (exc,), None, None, None
+    except (CliError, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return (
+            (),
+            (AccountStatusError(error_type="invalid_output", message=str(exc)),),
+            None,
+            None,
+            None,
         )
 
 
 def _account_usage_registry_fallback(
     agent: Agent,
     *,
+    source: str,
+    parser,
     live_error: AccountStatusError,
     fallback_to_usage_registry: bool,
 ) -> tuple[
@@ -326,7 +332,7 @@ def _account_usage_registry_fallback(
         provider=agent.provider,
         account=_account_name(agent),
         home=agent.home,
-        source=CLAUDE_USAGE_GET_SOURCE,
+        source=source,
     )
     if record is None:
         return (), (live_error,), None, None, None
@@ -334,8 +340,8 @@ def _account_usage_registry_fallback(
     if not isinstance(payload, dict):
         return (), (live_error,), None, None, None
     try:
-        limits = _parse_claude_usage_get_limits(payload)
-    except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        limits = parser(payload)
+    except (CliError, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
         fallback_error = AccountStatusError(
             error_type="invalid_registry_payload",
             message=str(exc),
@@ -347,34 +353,96 @@ def _account_usage_registry_fallback(
         payload,
         None,
         registry_fallback_usage_record_metadata(
-            source=CLAUDE_USAGE_GET_SOURCE,
+            source=source,
             recorded_at=_string_or_none(record.get("recorded_at")),
             live_error=live_error.summary(),
         ),
     )
 
 
+def _usage_record_source(usage_record_metadata: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(usage_record_metadata, Mapping):
+        return None
+    source = usage_record_metadata.get("source")
+    return source if isinstance(source, str) and source else None
+
+
 def _account_usage_statusline(
     agent: Agent,
-) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...], dict[str, Any] | None]:
+    *,
+    cleanup_transcript: bool = False,
+) -> tuple[
+    tuple[AccountLimit, ...],
+    tuple[AccountStatusError, ...],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
     try:
-        payload = _collect_claude_statusline_payload(agent)
-        return _parse_claude_statusline_rate_limits(payload), (), payload
-    except AccountStatusError as exc:
-        cached_payload = _load_cached_claude_statusline_payload(
-            agent,
-            max_age_sec=CLAUDE_STATUSLINE_STALE_FALLBACK_MAX_AGE_SEC,
+        timeout_sec = max(
+            agent.timeout_sec or DEFAULT_USAGE_STATUS_TIMEOUT_SEC,
+            DEFAULT_USAGE_STATUS_TIMEOUT_SEC,
         )
-        if cached_payload is not None:
-            cached_payload = dict(cached_payload)
-            cached_payload["agentos_cache"] = {
-                "stale_fallback": True,
-                "live_error": exc.summary(),
-            }
-            return _parse_claude_statusline_rate_limits(cached_payload), (), cached_payload
-        return (), (exc,), None
-    except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None
+        workspace_root = _claude_statusline_workspace(agent)
+        workspace_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="agentos-claude-usage-") as temp_dir:
+            temp_root = Path(temp_dir)
+            capture_path = temp_root / "statusline.json"
+            settings_path = temp_root / "settings.json"
+            script_path = temp_root / "capture-statusline.sh"
+
+            script_path.write_text(
+                "#!/bin/sh\n"
+                f"cat > {json.dumps(str(capture_path))}\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            script_path.chmod(0o700)
+            settings_path.write_text(
+                json.dumps(
+                    {
+                        "statusLine": {
+                            "type": "command",
+                            "command": str(script_path),
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            payload = _run_claude_statusline_refresh_session(
+                agent,
+                cwd=workspace_root,
+                capture_path=capture_path,
+                settings_path=settings_path,
+                timeout_sec=timeout_sec,
+            )
+        limits = _parse_claude_statusline_rate_limits(payload)
+        if cleanup_transcript:
+            try:
+                _cleanup_claude_statusline_transcript(
+                    agent=agent,
+                    statusline_payload=payload,
+                )
+            except Exception:
+                pass
+        return (
+            limits,
+            (),
+            payload,
+            payload,
+            fresh_usage_record_metadata(source=CLAUDE_STATUSLINE_USAGE_SOURCE),
+        )
+    except AccountStatusError as exc:
+        return (), (exc,), None, None, None
+    except (CliError, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return (
+            (),
+            (AccountStatusError(error_type="invalid_output", message=str(exc)),),
+            None,
+            None,
+            None,
+        )
 
 
 def _fetch_claude_usage_payload(agent: Agent) -> dict[str, Any]:
@@ -429,6 +497,8 @@ def _usage_auth_summary(
         and usage_record_metadata.get("status") == USAGE_RECORD_STATUS_REGISTRY_FALLBACK
     ):
         return "Claude usage registry fallback"
+    if _usage_record_source(usage_record_metadata) == CLAUDE_STATUSLINE_USAGE_SOURCE:
+        return "Claude statusLine read"
     return "Claude usage API read"
 
 
@@ -669,54 +739,6 @@ def _optional_positive_retry_after_sec(value: object) -> int | None:
     return value
 
 
-def _collect_claude_statusline_payload(agent: Agent) -> dict[str, Any]:
-    cached_payload = _load_cached_claude_statusline_payload(
-        agent,
-        max_age_sec=CLAUDE_STATUSLINE_CACHE_MAX_AGE_SEC,
-    )
-    if cached_payload is not None:
-        return cached_payload
-
-    timeout_sec = max(agent.timeout_sec or DEFAULT_USAGE_STATUS_TIMEOUT_SEC, DEFAULT_USAGE_STATUS_TIMEOUT_SEC)
-    workspace_root = _claude_statusline_workspace(agent)
-    workspace_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="agentos-claude-usage-") as temp_dir:
-        temp_root = Path(temp_dir)
-        capture_path = temp_root / "statusline.json"
-        settings_path = temp_root / "settings.json"
-        script_path = temp_root / "capture-statusline.sh"
-
-        script_path.write_text(
-            "#!/bin/sh\n"
-            f"cat > {json.dumps(str(capture_path))}\n"
-            "exit 0\n",
-            encoding="utf-8",
-        )
-        script_path.chmod(0o700)
-        settings_path.write_text(
-            json.dumps(
-                {
-                    "statusLine": {
-                        "type": "command",
-                        "command": str(script_path),
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        payload = _run_claude_statusline_refresh_session(
-            agent,
-            cwd=workspace_root,
-            capture_path=capture_path,
-            settings_path=settings_path,
-            timeout_sec=timeout_sec,
-        )
-    _write_cached_claude_statusline_payload(agent=agent, statusline_payload=payload)
-    _cleanup_claude_statusline_transcript(agent=agent, statusline_payload=payload)
-    return payload
-
-
 def _claude_statusline_workspace(agent: Agent) -> Path:
     if agent.home is None:
         raise AccountStatusError(
@@ -724,69 +746,6 @@ def _claude_statusline_workspace(agent: Agent) -> Path:
             message="claude-code account_status requires an agent home",
         )
     return agent.home / "agentos" / "workspaces" / "statusline-refresh"
-
-
-def _claude_statusline_cache_path(agent: Agent) -> Path:
-    if agent.home is None:
-        raise AccountStatusError(
-            error_type="home_missing",
-            message="claude-code account_status requires an agent home",
-        )
-    return agent.home / "agentos" / "cache" / "statusline-rate-limits.json"
-
-
-def _load_cached_claude_statusline_payload(
-    agent: Agent,
-    *,
-    max_age_sec: int,
-) -> dict[str, Any] | None:
-    cache_path = _claude_statusline_cache_path(agent)
-    if not cache_path.is_file():
-        return None
-    try:
-        payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    try:
-        captured_at = _optional_float(
-            payload.get("captured_at_epoch"),
-            field_name="claude statusLine cache captured_at_epoch",
-        )
-    except CliError:
-        return None
-    if captured_at is None or time.time() - captured_at > max_age_sec:
-        return None
-    statusline_payload = payload.get("statusline")
-    if not isinstance(statusline_payload, dict):
-        return None
-    rate_limits = statusline_payload.get("rate_limits")
-    if not isinstance(rate_limits, dict) or not rate_limits:
-        return None
-    return statusline_payload
-
-
-def _write_cached_claude_statusline_payload(
-    *, agent: Agent, statusline_payload: Mapping[str, Any]
-) -> None:
-    cache_path = _claude_statusline_cache_path(agent)
-    try:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(
-            json.dumps(
-                {
-                    "captured_at_epoch": time.time(),
-                    "statusline": dict(statusline_payload),
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-    except OSError:
-        return
 
 
 def _run_claude_statusline_refresh_session(
