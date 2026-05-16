@@ -2315,6 +2315,20 @@ def test_agent_accounts_monitor_row_animation_moves_overflowing_cells() -> None:
     assert "laude usage API returned" in second
 
 
+def test_agent_accounts_monitor_row_animation_wraps_periodically() -> None:
+    from agentos.agent.monitor import MonitorInfoRow, MonitorRenderContext
+
+    row = MonitorInfoRow(label="x", value="hello agentos, we are amazing")
+    context = MonitorRenderContext(label_width=1, value_width=19, suffix_width=1)
+    row.animation_tick = 18
+
+    assert "are amazing | hello" in row.render_frame(context)
+    row.step_animation()
+    assert "re amazing | hello " in row.render_frame(context)
+    row.step_animation()
+    assert "e amazing | hello a" in row.render_frame(context)
+
+
 def test_agent_accounts_monitor_row_animation_keeps_short_cells_stable() -> None:
     from agentos.agent.monitor import MonitorInfoRow
 
