@@ -239,7 +239,9 @@ def _target_rows(
         )
     ]
     if target_state.get("status") == "error":
-        rows.append(MonitorTextRow(f"    error | {_error_message(target_state)}"))
+        rows.append(
+            MonitorInfoRow(label="    error", value=_error_message(target_state))
+        )
         return rows
     if isinstance(account_status, dict):
         limit_rows = _account_limit_rows(account_status)
@@ -249,7 +251,9 @@ def _target_rows(
             if fetch_error_row is not None:
                 rows.append(fetch_error_row)
             return rows
-        rows.append(MonitorTextRow(f"    usage | {_limits_summary(account_status)}"))
+        rows.append(
+            MonitorInfoRow(label="    usage", value=_limits_summary(account_status))
+        )
     return rows
 
 

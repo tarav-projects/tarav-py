@@ -6,6 +6,17 @@ from typing import Literal
 
 
 @dataclass(frozen=True)
+class MonitorRenderContext:
+    label_width: int = 24
+    value_width: int = 24
+    suffix_width: int = 12
+    row_indent: str = "  "
+
+
+DEFAULT_MONITOR_RENDER_CONTEXT = MonitorRenderContext()
+
+
+@dataclass(frozen=True)
 class MonitorTarget:
     provider: str
     account: str
@@ -34,10 +45,20 @@ class MonitorState:
     data: dict[str, object] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
+@dataclass
 class MonitorTextRow:
     text: str
     kind: Literal["text"] = "text"
+
+    def render_frame(
+        self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
+    ) -> str:
+        if not self.text:
+            return ""
+        return f"{context.row_indent}{self.text}"
+
+    def step_animation(self) -> None:
+        return None
 
     def summary(self) -> dict[str, object]:
         return {
@@ -46,16 +67,31 @@ class MonitorTextRow:
         }
 
 
-@dataclass(frozen=True)
+@dataclass
 class MonitorAccountRow:
     label: str
     value: str | None = None
     suffix: str | None = None
     kind: Literal["account"] = "account"
+    animation_tick: int = field(default=0, init=False, repr=False, compare=False)
 
     @property
     def text(self) -> str:
         return _column_text(label=self.label, value=self.value, suffix=self.suffix)
+
+    def render_frame(
+        self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
+    ) -> str:
+        return _render_column_row(
+            label=self.label,
+            value=self.value,
+            suffix=self.suffix,
+            animation_tick=self.animation_tick,
+            context=context,
+        )
+
+    def step_animation(self) -> None:
+        self.animation_tick += 1
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -70,16 +106,31 @@ class MonitorAccountRow:
         return payload
 
 
-@dataclass(frozen=True)
+@dataclass
 class MonitorInfoRow:
     label: str
     value: str
     suffix: str | None = None
     kind: Literal["info"] = "info"
+    animation_tick: int = field(default=0, init=False, repr=False, compare=False)
 
     @property
     def text(self) -> str:
         return _column_text(label=self.label, value=self.value, suffix=self.suffix)
+
+    def render_frame(
+        self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
+    ) -> str:
+        return _render_column_row(
+            label=self.label,
+            value=self.value,
+            suffix=self.suffix,
+            animation_tick=self.animation_tick,
+            context=context,
+        )
+
+    def step_animation(self) -> None:
+        self.animation_tick += 1
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -93,7 +144,7 @@ class MonitorInfoRow:
         return payload
 
 
-@dataclass(frozen=True)
+@dataclass
 class MonitorUsageTimeRow:
     label: str
     value: str
@@ -102,10 +153,25 @@ class MonitorUsageTimeRow:
     elapsed_percent: int
     ratio: float | None
     kind: Literal["usage_time"] = "usage_time"
+    animation_tick: int = field(default=0, init=False, repr=False, compare=False)
 
     @property
     def text(self) -> str:
         return _column_text(label=self.label, value=self.value, suffix=self.suffix)
+
+    def render_frame(
+        self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
+    ) -> str:
+        return _render_column_row(
+            label=self.label,
+            value=self.value,
+            suffix=self.suffix,
+            animation_tick=self.animation_tick,
+            context=context,
+        )
+
+    def step_animation(self) -> None:
+        self.animation_tick += 1
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -122,7 +188,7 @@ class MonitorUsageTimeRow:
         return payload
 
 
-@dataclass(frozen=True)
+@dataclass
 class MonitorResetRow:
     label: str
     value: str
@@ -130,10 +196,25 @@ class MonitorResetRow:
     elapsed_percent: int
     marker_percent: int | None = None
     kind: Literal["reset"] = "reset"
+    animation_tick: int = field(default=0, init=False, repr=False, compare=False)
 
     @property
     def text(self) -> str:
         return _column_text(label=self.label, value=self.value, suffix=self.suffix)
+
+    def render_frame(
+        self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
+    ) -> str:
+        return _render_column_row(
+            label=self.label,
+            value=self.value,
+            suffix=self.suffix,
+            animation_tick=self.animation_tick,
+            context=context,
+        )
+
+    def step_animation(self) -> None:
+        self.animation_tick += 1
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -166,6 +247,79 @@ def _column_text(*, label: str, value: str | None, suffix: str | None) -> str:
     return f"{label} | {value} | {suffix}"
 
 
+def _render_column_row(
+    *,
+    label: str,
+    value: str | None,
+    suffix: str | None,
+    animation_tick: int,
+    context: MonitorRenderContext,
+) -> str:
+    label_text = _render_cell(label, context.label_width, animation_tick)
+    if value is None:
+        return f"{context.row_indent}{label_text}"
+    value_text = _render_cell(value, context.value_width, animation_tick)
+    if suffix is None:
+        return f"{context.row_indent}{label_text} | {value_text}"
+    suffix_text = _render_cell(suffix, context.suffix_width, animation_tick)
+    return f"{context.row_indent}{label_text} | {value_text} | {suffix_text}"
+
+
+def _render_cell(value: str, width: int, animation_tick: int) -> str:
+    from rich.cells import cell_len, set_cell_size
+
+    if width <= 0:
+        return value
+    if cell_len(value) <= width:
+        return set_cell_size(value, width)
+    offset = _marquee_offset(
+        content_width=cell_len(value),
+        viewport_width=width,
+        animation_tick=animation_tick,
+    )
+    return set_cell_size(_cell_viewport(value, offset, width), width)
+
+
+def _marquee_offset(
+    *, content_width: int, viewport_width: int, animation_tick: int
+) -> int:
+    overflow = max(0, content_width - viewport_width)
+    if overflow <= 0:
+        return 0
+    start_hold_ticks = 1
+    end_hold_ticks = 1
+    cycle_length = start_hold_ticks + overflow + end_hold_ticks
+    cycle_tick = animation_tick % cycle_length
+    if cycle_tick < start_hold_ticks:
+        return 0
+    if cycle_tick >= start_hold_ticks + overflow:
+        return overflow
+    return cycle_tick - start_hold_ticks + 1
+
+
+def _cell_viewport(value: str, offset: int, width: int) -> str:
+    start_index = _cell_offset_to_text_index(value, offset)
+    end_index = _cell_offset_to_text_index(value, offset + width)
+    return value[start_index:end_index]
+
+
+def _cell_offset_to_text_index(text: str, cell_offset: int) -> int:
+    from rich.cells import split_graphemes
+
+    if cell_offset <= 0:
+        return 0
+    cell_position = 0
+    graphemes, _ = split_graphemes(text)
+    for start, end, cell_size in graphemes:
+        next_cell_position = cell_position + cell_size
+        if next_cell_position == cell_offset:
+            return end
+        if next_cell_position > cell_offset:
+            return start
+        cell_position = next_cell_position
+    return len(text)
+
+
 @dataclass
 class MonitorFrame:
     tick: int = 0
@@ -193,6 +347,15 @@ class MonitorFrame:
 
     def add_error(self, message: str) -> None:
         self.errors.append(message)
+
+    def step_animations(self) -> None:
+        for block in self.blocks:
+            for row in monitor_block_rows(block):
+                row.step_animation()
+
+    def inherit_animation_state_from(self, previous: MonitorFrame) -> None:
+        for row, previous_row in zip(_frame_rows(self), _frame_rows(previous)):
+            _inherit_row_animation_state(row, previous_row)
 
 
 def monitor_block(
@@ -262,3 +425,20 @@ def monitor_block_rows(block: dict[str, object]) -> list[MonitorRow]:
     if isinstance(lines, list):
         return [MonitorTextRow(line) for line in lines if isinstance(line, str)]
     return []
+
+
+def _frame_rows(frame: MonitorFrame) -> list[MonitorRow]:
+    rows: list[MonitorRow] = []
+    for block in frame.blocks:
+        rows.extend(monitor_block_rows(block))
+    return rows
+
+
+def _inherit_row_animation_state(row: MonitorRow, previous_row: MonitorRow) -> None:
+    if type(row) is not type(previous_row):
+        return
+    if isinstance(row, MonitorTextRow) or isinstance(previous_row, MonitorTextRow):
+        return
+    if row.text != previous_row.text:
+        return
+    row.animation_tick = previous_row.animation_tick

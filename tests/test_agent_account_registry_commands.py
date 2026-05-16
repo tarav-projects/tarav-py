@@ -2205,11 +2205,13 @@ def test_agent_accounts_monitor_once_prints_account_status(
     assert "Tick: 1" in output
     assert "limits-tracking" in output
     assert "refresh_interval_sec: 60" not in output
-    assert "    ⬢ codex/br:  | fresh" in output
+    assert "    ⬢ codex/br:            | fresh" in output
     assert "refreshed | fresh" not in output
-    assert "      usage/time |  3% / 37% = 0.1 | Burst" in output
-    assert "          resets | " in output
-    assert "      usage/time |  1% / 18% = 0.1 | Weekly" in output
+    assert "      usage/time           |  3% /" in output
+    assert " | Burst" in output
+    assert "          resets           | " in output
+    assert "      usage/time           |  1% /" in output
+    assert " | Weekly" in output
     assert "under construction" not in output
 
 
@@ -2258,7 +2260,172 @@ def test_agent_accounts_monitor_once_prints_registry_fallback_refresh_time(
     assert "    ⬢ codex/br:" in output
     assert "refreshed | " not in output
     assert " | 12m ago" in output
-    assert "          fetch error | provider returned HTTP 429 [retry in 54m]" in output
+    assert "          fetch error      | provider returned HTTP 4" in output
+
+
+def test_agent_accounts_monitor_rows_use_fixed_columns() -> None:
+    from agentos.agent.monitor import (
+        MonitorAccountRow,
+        MonitorFrame,
+        MonitorInfoRow,
+        format_monitor_frame,
+    )
+
+    frame = MonitorFrame(tick=1)
+    frame.add_block(
+        "limits-tracking",
+        rows=[
+            MonitorAccountRow(
+                label="  claude-code/browser-jp:",
+                value="Fri 05-15 16:51",
+                suffix="2h 47m ago",
+            ),
+            MonitorInfoRow(
+                label="        fetch error",
+                value="claude usage API returned HTTP 429 [retry in 39m]",
+            ),
+            MonitorAccountRow(label="  ⬢ codex/br:", value="fresh"),
+        ],
+    )
+
+    lines = format_monitor_frame(frame).splitlines()
+    column_lines = [line for line in lines if "|" in line]
+
+    assert len(column_lines) == 3
+    assert {line.index("|") for line in column_lines} == {27}
+    assert "claude-code/browser-jp" in column_lines[0]
+    assert "claude usage API returne" in column_lines[1]
+    assert "fresh" in column_lines[2]
+
+
+def test_agent_accounts_monitor_row_animation_moves_overflowing_cells() -> None:
+    from agentos.agent.monitor import MonitorInfoRow
+
+    row = MonitorInfoRow(
+        label="        fetch error",
+        value="claude usage API returned HTTP 429 [retry in 39m]",
+    )
+    first = row.render_frame()
+
+    row.step_animation()
+    second = row.render_frame()
+
+    assert first != second
+    assert "claude usage API returne" in first
+    assert "laude usage API returned" in second
+
+
+def test_agent_accounts_monitor_row_animation_keeps_short_cells_stable() -> None:
+    from agentos.agent.monitor import MonitorInfoRow
+
+    row = MonitorInfoRow(label="    usage", value="fresh")
+    first = row.render_frame()
+
+    for _ in range(5):
+        row.step_animation()
+
+    assert row.render_frame() == first
+
+
+def test_agent_accounts_monitor_loop_steps_visible_frame_animation_after_draw() -> None:
+    from agentos.agent.monitor import (
+        MonitorFrame,
+        MonitorInfoRow,
+        MonitorLoop,
+        MonitorState,
+        format_monitor_frame,
+    )
+
+    second_run_release = Event()
+    rendered: list[str] = []
+
+    class LongRowWorkflow:
+        name = "long-row"
+
+        def __init__(self) -> None:
+            self.runs = 0
+
+        def run(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state
+            self.runs += 1
+            if self.runs > 1:
+                second_run_release.wait(timeout=0.2)
+                return
+            frame.add_block(
+                "long-row",
+                rows=[
+                    MonitorInfoRow(
+                        label="        fetch error",
+                        value="claude usage API returned HTTP 429 [retry in 39m]",
+                    )
+                ],
+            )
+
+    workflow = LongRowWorkflow()
+
+    def record_render(frame: MonitorFrame, state: MonitorState) -> None:
+        del state
+        rendered.append(format_monitor_frame(frame))
+        if len(rendered) == 2:
+            second_run_release.set()
+
+    MonitorLoop(
+        workflows=(workflow,),
+        interval_sec=0.01,
+        max_ticks=2,
+    ).run(on_tick=record_render, wait_for_first_frame=True)
+
+    assert len(rendered) == 2
+    assert rendered[0] != rendered[1]
+    assert "claude usage API returne" in rendered[0]
+    assert "laude usage API returned" in rendered[1]
+
+
+def test_agent_accounts_monitor_loop_preserves_animation_across_republished_rows() -> None:
+    from agentos.agent.monitor import (
+        MonitorFrame,
+        MonitorInfoRow,
+        MonitorLoop,
+        MonitorState,
+        format_monitor_frame,
+    )
+
+    rendered: list[str] = []
+
+    class FastWorkflow:
+        name = "fast"
+
+        def __init__(self) -> None:
+            self.runs = 0
+
+        def run(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state
+            self.runs += 1
+            frame.add_block(
+                "fast",
+                rows=[
+                    MonitorInfoRow(
+                        label="        fetch error",
+                        value="claude usage API returned HTTP 429 [retry in 39m]",
+                    )
+                ],
+            )
+
+    workflow = FastWorkflow()
+
+    def record_render(frame: MonitorFrame, state: MonitorState) -> None:
+        del state
+        rendered.append(format_monitor_frame(frame))
+
+    MonitorLoop(
+        workflows=(workflow,),
+        interval_sec=0.01,
+        max_ticks=3,
+    ).run(on_tick=record_render, wait_for_first_frame=True)
+
+    assert workflow.runs >= 2
+    assert "claude usage API returne" in rendered[0]
+    assert any("laude usage API returned" in output for output in rendered[1:])
 
 
 def test_agent_accounts_monitor_json_preserves_state_and_frame_across_ticks(

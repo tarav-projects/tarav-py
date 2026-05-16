@@ -70,6 +70,7 @@ class MonitorLoop:
 
                 if on_tick is not None:
                     on_tick(self.visible_frame, self.state)
+                    self.visible_frame.step_animations()
 
                 ticks_run += 1
                 if self.max_ticks is None or ticks_run < self.max_ticks:
@@ -105,6 +106,7 @@ class MonitorLoop:
     def _publish_working_frame_if_ready(self, *, start_next_cycle: bool) -> None:
         if not self.working_frame_ready.is_set():
             return
+        self.working_frame.inherit_animation_state_from(self.visible_frame)
         self.visible_frame, self.working_frame = self.working_frame, self.visible_frame
         self.working_frame_ready.clear()
         self._workflow_started = False
