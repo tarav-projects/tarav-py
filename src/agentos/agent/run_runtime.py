@@ -56,9 +56,7 @@ def build_agent_command_argv(
     prompt_flag: str | None,
 ) -> tuple[str, ...]:
     if not cli_command:
-        raise CliError(
-            f"agent {instance_id or '<default>'} for provider {provider} has no cli_command"
-        )
+        raise CliError(_missing_provider_cli_command_message(provider))
 
     command = [*cli_command, *run_args]
     effective_model = command_config.model or default_model
@@ -75,6 +73,32 @@ def build_agent_command_argv(
         else:
             command.extend([prompt_flag, command_config.prompt])
     return tuple(command)
+
+
+def _missing_provider_cli_command_message(provider: str) -> str:
+    return "\n".join(
+        (
+            f"agent provider {provider} requires agent.providers.{provider}.cli_command",
+            "example:",
+            "{",
+            '  "agent": {',
+            '    "providers": {',
+            f'      "{provider}": {{',
+            f'        "cli_command": ["{_provider_cli_command_example(provider)}"]',
+            "      }",
+            "    }",
+            "  }",
+            "}",
+        )
+    )
+
+
+def _provider_cli_command_example(provider: str) -> str:
+    if provider == "claude-code":
+        return "/opt/homebrew/bin/claude"
+    if provider == "codex":
+        return "/opt/homebrew/bin/codex"
+    return "/path/to/provider-cli"
 
 
 def format_agent_command(command: AgentCommand) -> str:

@@ -45,14 +45,7 @@ _CANONICAL_CHAT_PROVIDER_SPECS: tuple[ChatProviderSpec, ...] = ()
 
 
 def _agent_default_cli_command(family_name: str) -> tuple[str, ...]:
-    if family_name == "claude-code":
-        return ("claude",)
-    if family_name == "codex":
-        return ("codex",)
-    if family_name == "copilot-cli":
-        return ("copilot",)
-    if family_name == "pi":
-        return ("pi",)
+    del family_name
     return ()
 
 
@@ -153,6 +146,12 @@ AGENT_INSTANCE_CONFIG_SOURCE = AgentConfigSource(
     object_path=("agent", "instances"),
     field_prefix="agent.instances",
 )
+
+
+@dataclass(frozen=True)
+class AgentProviderConfig:
+    provider: str
+    cli_command: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -261,13 +260,71 @@ def _config_value_at_object_path(
 
 
 def load_agent_configs(*, start_path: Path | str = ".") -> tuple["AgentConfig", ...]:
+    provider_configs = load_agent_provider_configs(start_path=start_path)
     entries = load_agent_config_entries(
         start_path=start_path,
         sources=(AGENT_INSTANCE_CONFIG_SOURCE,),
     )
-    agent_configs = tuple(agent_config_from_config_entry(entry) for entry in entries)
+    agent_configs = tuple(
+        agent_config_from_config_entry(entry, provider_configs=provider_configs)
+        for entry in entries
+    )
     _validate_unique_agent_config_ids(agent_configs)
     return agent_configs
+
+
+def load_agent_provider_configs(
+    *, start_path: Path | str = "."
+) -> dict[str, AgentProviderConfig]:
+    provider_configs: dict[str, AgentProviderConfig] = {}
+    for config in load_chat_config_documents(start_path=start_path):
+        provider_configs.update(agent_provider_configs_from_config(config))
+    return provider_configs
+
+
+def agent_provider_configs_from_config(
+    config: dict[str, object],
+) -> dict[str, AgentProviderConfig]:
+    raw_providers = _config_value_at_object_path(
+        config, object_path=("agent", "providers")
+    )
+    if raw_providers is None:
+        return {}
+    if not isinstance(raw_providers, dict):
+        raise CliError("config field agent.providers must be a JSON object")
+
+    provider_configs: dict[str, AgentProviderConfig] = {}
+    for raw_provider, raw_provider_config in raw_providers.items():
+        if not isinstance(raw_provider, str) or not raw_provider.strip():
+            raise CliError("agent.providers contains an invalid provider key")
+        provider = raw_provider.strip()
+        if canonical_provider_family_for_name(provider) is None:
+            supported_providers = ", ".join(
+                sorted(
+                    provider_family.family
+                    for provider_family in canonical_provider_families()
+                )
+            )
+            raise CliError(
+                f"agent.providers.{provider} must be one of: {supported_providers}"
+            )
+        if not isinstance(raw_provider_config, dict):
+            raise CliError(f"agent.providers.{provider} must be a JSON object")
+
+        raw_cli_command = raw_provider_config.get("cli_command")
+        cli_command = (
+            _load_string_argv(
+                raw_cli_command,
+                field_name=f"agent.providers.{provider}.cli_command",
+            )
+            if raw_cli_command is not None
+            else ()
+        )
+        provider_configs[provider] = AgentProviderConfig(
+            provider=provider,
+            cli_command=cli_command,
+        )
+    return provider_configs
 
 
 def select_agent_configs(
@@ -420,7 +477,11 @@ def agent_config_with_home_override(
     )
 
 
-def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
+def agent_config_from_config_entry(
+    entry: AgentConfigEntry,
+    *,
+    provider_configs: dict[str, AgentProviderConfig] | None = None,
+) -> "AgentConfig":
     raw_instance = entry.raw_instance
     family_name = raw_instance.get("provider")
     if not isinstance(family_name, str) or not family_name:
@@ -489,12 +550,15 @@ def agent_config_from_config_entry(entry: AgentConfigEntry) -> "AgentConfig":
         raw_sqlite_db_paths if raw_sqlite_db_paths is not None else raw_sqlite_db_path,
         field_name=entry.field_name("sqlite_db_paths"),
     )
+    provider_config = (provider_configs or {}).get(provider_family.family)
     cli_command = (
         _load_string_argv(
             raw_cli_command,
             field_name=entry.field_name("cli_command"),
         )
         if raw_cli_command is not None
+        else provider_config.cli_command
+        if provider_config is not None
         else _agent_default_cli_command(family_name)
     )
     run_args = (
@@ -646,6 +710,14 @@ def _validate_unique_agent_config_ids(agent_configs: tuple["AgentConfig", ...]) 
             f"duplicate id {agent_config.instance_id} for providers "
             f"{existing.provider} and {agent_config.provider}"
         )
+
+
+def agent_config_with_provider_config(
+    config: AgentConfig, provider_config: AgentProviderConfig | None
+) -> AgentConfig:
+    if provider_config is None or config.cli_command:
+        return config
+    return replace(config, cli_command=provider_config.cli_command)
 
 
 def _normalize_provider_home(home: object, *, field_name: str) -> str:
@@ -851,12 +923,16 @@ __all__ = [
     "ProviderFamily",
     "ProviderHomeSpec",
     "AgentConfigEntry",
+    "AgentProviderConfig",
     "AgentConfigSource",
     "AgentConfig",
+    "agent_config_with_provider_config",
     "agent_config_with_home_override",
+    "agent_provider_configs_from_config",
     "ProviderHomeAnchor",
     "agent_config_from_config_entry",
     "agent_config_entries_from_config",
+    "load_agent_provider_configs",
     "require_canonical_provider_family",
     "select_agent_configs",
 ]

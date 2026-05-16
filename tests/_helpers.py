@@ -53,16 +53,21 @@ def write_global_routing_config(
 
 def _build_agent_payload(
     *,
+    provider_configs: dict[str, dict[str, object]] | None = None,
     provider_instances: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "instances": provider_instances or [],
     }
+    if provider_configs is not None:
+        payload["providers"] = provider_configs
+    return payload
 
 
 def write_global_config(
     path: Path,
     *,
+    provider_configs: dict[str, dict[str, object]] | None = None,
     provider_instances: list[dict[str, object]] | None = None,
 ) -> None:
     write_text_file(
@@ -72,6 +77,7 @@ def write_global_config(
                 "class": "agentos.global.config",
                 "schema_version": 1,
                 "agent": _build_agent_payload(
+                    provider_configs=provider_configs,
                     provider_instances=provider_instances,
                 ),
             }
@@ -82,6 +88,7 @@ def write_global_config(
 def write_project_config(
     path: Path,
     *,
+    provider_configs: dict[str, dict[str, object]] | None = None,
     provider_instances: list[dict[str, object]] | None = None,
 ) -> None:
     write_text_file(
@@ -91,6 +98,7 @@ def write_project_config(
                 "class": "agentos.project.config",
                 "schema_version": 1,
                 "agent": _build_agent_payload(
+                    provider_configs=provider_configs,
                     provider_instances=provider_instances,
                 ),
             }

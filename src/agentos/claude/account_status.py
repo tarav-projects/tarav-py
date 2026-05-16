@@ -14,6 +14,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -54,10 +55,49 @@ CLAUDE_REFRESH_TRUST_CONFIRM_RETRY_SEC = 0.75
 CLAUDE_REFRESH_PROMPT_FALLBACK_DELAY_SEC = 2.5
 CLAUDE_REFRESH_INTERRUPT_SETTLE_SEC = 0.05
 CLAUDE_REFRESH_TERMINATE_WAIT_SEC = 0.5
+CLAUDE_STATUSLINE_PROMPT_SUBMIT_BYTES = b"\r\n"
+CLAUDE_STATUSLINE_TRANSCRIPT_TAIL_CHARS = 4_000
+CLAUDE_STATUSLINE_PARENT_ENV_ALLOWLIST = frozenset(
+    {
+        "HOME",
+        "LANG",
+        "LOGNAME",
+        "PATH",
+        "SHELL",
+        "SSH_AUTH_SOCK",
+        "TERM",
+        "TMPDIR",
+        "USER",
+    }
+)
+CLAUDE_STATUSLINE_LAST_RUN_LOG_FILENAME = "claude-statusline-last-run.json"
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+@dataclass
+class _ClaudeStatusLineRunLog:
+    agent: Agent
+    argv: tuple[str, ...]
+    cwd: Path
+    capture_path: Path
+    settings_path: Path
+    timeout_sec: int
+    env: Mapping[str, str]
+    started_at_monotonic: float
+    events: list[dict[str, object]] = field(default_factory=list)
+    prompt_sent: bool = False
+    trust_prompt_seen: bool = False
+    trust_confirm_sent: bool = False
+    process_returncode: int | None = None
+    transcript_text: str = ""
+    normalized_transcript_text: str = ""
+    statusline_payload: Mapping[str, Any] | None = None
+    invalid_capture_payload: Mapping[str, Any] | None = None
+    invalid_capture_error: str | None = None
+    error: Mapping[str, Any] | None = None
 
 
 def _claude_account_status_impl(
@@ -769,9 +809,19 @@ def _run_claude_statusline_refresh_session(
             interaction_mode="interactive",
         )
     )
-    env = _process_environment(command.env_overrides)
-    env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
-    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    env = _claude_statusline_process_environment(command.env_overrides)
+    started_at = time.monotonic()
+    run_log = _ClaudeStatusLineRunLog(
+        agent=agent,
+        argv=command.argv,
+        cwd=cwd,
+        capture_path=capture_path,
+        settings_path=settings_path,
+        timeout_sec=timeout_sec,
+        env=env,
+        started_at_monotonic=started_at,
+    )
+    _append_claude_statusline_log_event(run_log, "start")
 
     try:
         master_fd, slave_fd = pty.openpty()
@@ -786,15 +836,19 @@ def _run_claude_statusline_refresh_session(
             close_fds=True,
         )
     except FileNotFoundError as exc:
-        raise AccountStatusError(error_type="command_not_found", message=str(exc)) from exc
+        error = AccountStatusError(error_type="command_not_found", message=str(exc))
+        _finalize_claude_statusline_log(run_log, error=error)
+        raise error from exc
     except OSError as exc:
-        raise AccountStatusError(error_type="command_failed", message=str(exc)) from exc
+        error = AccountStatusError(error_type="command_failed", message=str(exc))
+        _finalize_claude_statusline_log(run_log, error=error)
+        raise error from exc
     finally:
         if "slave_fd" in locals():
             os.close(slave_fd)
 
     os.set_blocking(master_fd, False)
-    start = time.monotonic()
+    start = started_at
     next_trust_confirm_at = start + CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC
     prompt_fallback_at = start + CLAUDE_REFRESH_PROMPT_FALLBACK_DELAY_SEC
     prompt_sent = False
@@ -807,7 +861,15 @@ def _run_claude_statusline_refresh_session(
         while True:
             now = time.monotonic()
             if now - start >= timeout_sec:
-                raise AccountStatusError(
+                run_log.prompt_sent = prompt_sent
+                run_log.trust_prompt_seen = trust_prompt_seen
+                run_log.trust_confirm_sent = trust_confirm_sent
+                run_log.transcript_text = _decode_terminal_transcript(transcript_chunks)
+                run_log.normalized_transcript_text = _normalize_terminal_output(
+                    transcript_chunks
+                )
+                _record_claude_statusline_invalid_capture(run_log)
+                error = AccountStatusError(
                     error_type="timeout",
                     message=(
                         "provider command timed out after "
@@ -818,6 +880,8 @@ def _run_claude_statusline_refresh_session(
                         "home": str(agent.home) if agent.home is not None else None,
                     },
                 )
+                _finalize_claude_statusline_log(run_log, error=error)
+                raise error
 
             transcript_chunks.extend(_read_pty_chunks(master_fd, timeout_sec=0.25))
             transcript_text = _normalize_terminal_output(transcript_chunks)
@@ -827,43 +891,78 @@ def _run_claude_statusline_refresh_session(
                 if now >= next_trust_confirm_at:
                     _write_pty(master_fd, b"\r")
                     trust_confirm_sent = True
+                    run_log.trust_prompt_seen = trust_prompt_seen
+                    run_log.trust_confirm_sent = trust_confirm_sent
+                    _append_claude_statusline_log_event(run_log, "trust_confirm_sent")
                     next_trust_confirm_at = now + CLAUDE_REFRESH_TRUST_CONFIRM_RETRY_SEC
 
             if not prompt_sent and _claude_refresh_main_prompt_visible(transcript_text):
-                _write_pty(master_fd, (CLAUDE_USAGE_REFRESH_PROMPT + "\r").encode("utf-8"))
+                _write_claude_statusline_prompt(master_fd)
                 prompt_sent = True
+                run_log.prompt_sent = prompt_sent
+                _append_claude_statusline_log_event(
+                    run_log,
+                    "prompt_sent",
+                    prompt_submit_bytes=repr(CLAUDE_STATUSLINE_PROMPT_SUBMIT_BYTES),
+                )
 
             if (
                 not prompt_sent
                 and not _claude_refresh_trust_prompt_visible(transcript_text)
                 and ((not trust_prompt_seen and now >= prompt_fallback_at) or trust_confirm_sent)
             ):
-                _write_pty(master_fd, (CLAUDE_USAGE_REFRESH_PROMPT + "\r").encode("utf-8"))
+                _write_claude_statusline_prompt(master_fd)
                 prompt_sent = True
+                run_log.prompt_sent = prompt_sent
+                _append_claude_statusline_log_event(
+                    run_log,
+                    "prompt_fallback_sent",
+                    prompt_submit_bytes=repr(CLAUDE_STATUSLINE_PROMPT_SUBMIT_BYTES),
+                )
 
             statusline_payload = _load_claude_statusline_capture(capture_path)
             if statusline_payload is not None:
+                run_log.statusline_payload = statusline_payload
+                _append_claude_statusline_log_event(run_log, "capture_loaded")
                 break
+            _record_claude_statusline_invalid_capture(run_log)
 
             if process.poll() is not None:
+                _append_claude_statusline_log_event(run_log, "process_exited")
                 break
     finally:
         _terminate_pty_process(process, master_fd)
 
+    run_log.prompt_sent = prompt_sent
+    run_log.trust_prompt_seen = trust_prompt_seen
+    run_log.trust_confirm_sent = trust_confirm_sent
+    run_log.process_returncode = process.returncode
+    run_log.transcript_text = _decode_terminal_transcript(transcript_chunks)
+    run_log.normalized_transcript_text = _normalize_terminal_output(transcript_chunks)
+    run_log.statusline_payload = statusline_payload
+    if statusline_payload is None:
+        _record_claude_statusline_invalid_capture(run_log)
     if statusline_payload is not None:
+        _finalize_claude_statusline_log(run_log, error=None)
         return statusline_payload
 
-    transcript = b"".join(transcript_chunks).decode("utf-8", errors="ignore").strip()
     if process.returncode not in (0, None):
-        raise AccountStatusError(
+        error = AccountStatusError(
             error_type="command_failed",
-            message=transcript or f"provider command exited with code {process.returncode}",
+            message=(
+                run_log.transcript_text.strip()
+                or f"provider command exited with code {process.returncode}"
+            ),
             exit_code=process.returncode,
         )
-    raise AccountStatusError(
+        _finalize_claude_statusline_log(run_log, error=error)
+        raise error
+    error = AccountStatusError(
         error_type="invalid_output",
         message="provider command did not emit a statusLine payload with rate_limits",
     )
+    _finalize_claude_statusline_log(run_log, error=error)
+    raise error
 
 
 def _load_claude_statusline_capture(capture_path: Path) -> dict[str, Any] | None:
@@ -879,6 +978,168 @@ def _load_claude_statusline_capture(capture_path: Path) -> dict[str, Any] | None
     if not isinstance(rate_limits, dict) or not rate_limits:
         return None
     return payload
+
+
+def _append_claude_statusline_log_event(
+    run_log: _ClaudeStatusLineRunLog,
+    event: str,
+    **extra: object,
+) -> None:
+    run_log.events.append(
+        {
+            "event": event,
+            "elapsed_sec": round(time.monotonic() - run_log.started_at_monotonic, 3),
+            "capture": _claude_statusline_capture_file_status(run_log.capture_path),
+            **extra,
+        }
+    )
+
+
+def _finalize_claude_statusline_log(
+    run_log: _ClaudeStatusLineRunLog,
+    *,
+    error: AccountStatusError | None,
+) -> None:
+    run_log.error = error.summary() if error is not None else None
+    payload = {
+        "class": "agentos.claude.statusline.last-run-log",
+        "schema_version": 1,
+        "finished_at": _datetime_to_iso(datetime.datetime.now(tz=datetime.timezone.utc)),
+        "elapsed_sec": round(time.monotonic() - run_log.started_at_monotonic, 3),
+        "status": "error" if error is not None else "ok",
+        "provider": run_log.agent.provider,
+        "account": _account_name_or_none(run_log.agent),
+        "home": str(run_log.agent.home) if run_log.agent.home is not None else None,
+        "cwd": str(run_log.cwd),
+        "argv": list(run_log.argv),
+        "model": CLAUDE_USAGE_REFRESH_MODEL,
+        "timeout_sec": run_log.timeout_sec,
+        "env": dict(run_log.env),
+        "settings_path": str(run_log.settings_path),
+        "capture_path": str(run_log.capture_path),
+        "capture": _claude_statusline_capture_file_status(run_log.capture_path),
+        "events": run_log.events,
+        "state": {
+            "prompt_sent": run_log.prompt_sent,
+            "trust_prompt_seen": run_log.trust_prompt_seen,
+            "trust_confirm_sent": run_log.trust_confirm_sent,
+            "process_returncode": run_log.process_returncode,
+        },
+        "transcript": run_log.transcript_text,
+        "transcript_tail": _text_tail(run_log.transcript_text),
+        "normalized_transcript_tail": _text_tail(run_log.normalized_transcript_text),
+        "statusline_payload": run_log.statusline_payload,
+        "invalid_capture_payload": run_log.invalid_capture_payload,
+        "invalid_capture_error": run_log.invalid_capture_error,
+        "error": run_log.error,
+    }
+    _write_claude_statusline_last_run_log(payload)
+
+
+def _write_claude_statusline_last_run_log(payload: Mapping[str, Any]) -> None:
+    log_path = _claude_statusline_last_run_log_path()
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=log_path.parent,
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temp_path, log_path)
+    except OSError:
+        return
+
+
+def _claude_statusline_last_run_log_path() -> Path:
+    return agentos_home_dir() / "logs" / CLAUDE_STATUSLINE_LAST_RUN_LOG_FILENAME
+
+
+def _claude_statusline_capture_file_status(path: Path) -> dict[str, object]:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return {
+            "exists": False,
+            "path": str(path),
+        }
+    except OSError as exc:
+        return {
+            "exists": False,
+            "path": str(path),
+            "error": str(exc),
+        }
+    return {
+        "exists": True,
+        "path": str(path),
+        "size_bytes": stat.st_size,
+    }
+
+
+def _record_claude_statusline_invalid_capture(
+    run_log: _ClaudeStatusLineRunLog,
+) -> None:
+    if run_log.statusline_payload is not None:
+        return
+    payload, error = _read_claude_statusline_invalid_capture(run_log.capture_path)
+    if payload is None and error is None:
+        return
+    if payload == run_log.invalid_capture_payload and error == run_log.invalid_capture_error:
+        return
+    run_log.invalid_capture_payload = payload
+    run_log.invalid_capture_error = error
+    _append_claude_statusline_log_event(
+        run_log,
+        "capture_rejected",
+        invalid_capture_payload=run_log.invalid_capture_payload,
+        invalid_capture_error=run_log.invalid_capture_error,
+    )
+
+
+def _read_claude_statusline_invalid_capture(
+    capture_path: Path,
+) -> tuple[dict[str, Any] | None, str | None]:
+    if not capture_path.exists():
+        return None, None
+    try:
+        raw = capture_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, str(exc)
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"invalid JSON: {exc}"
+    if not isinstance(payload, dict):
+        return None, f"capture payload must be a JSON object, got {type(payload).__name__}"
+    rate_limits = payload.get("rate_limits")
+    if isinstance(rate_limits, dict) and rate_limits:
+        return None, None
+    return payload, "capture payload is missing rate_limits"
+
+
+def _account_name_or_none(agent: Agent) -> str | None:
+    if agent.account is None:
+        return None
+    return agent.account.account
+
+
+def _decode_terminal_transcript(chunks: list[bytes]) -> str:
+    return b"".join(chunks).decode("utf-8", errors="ignore")
+
+
+def _write_claude_statusline_prompt(master_fd: int) -> None:
+    _write_pty(
+        master_fd,
+        CLAUDE_USAGE_REFRESH_PROMPT.encode("utf-8")
+        + CLAUDE_STATUSLINE_PROMPT_SUBMIT_BYTES,
+    )
+
+
+def _text_tail(text: str) -> str:
+    return text[-CLAUDE_STATUSLINE_TRANSCRIPT_TAIL_CHARS:]
 
 
 def _parse_claude_usage_get_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:
@@ -1204,10 +1465,20 @@ def _cleanup_claude_statusline_transcript(
         return
 
 
-def _process_environment(env_overrides: Mapping[str, str]) -> dict[str, str]:
-    env = os.environ.copy()
+def _claude_statusline_process_environment(env_overrides: Mapping[str, str]) -> dict[str, str]:
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if _allow_claude_statusline_parent_env(key)
+    }
     env.update(env_overrides)
+    env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
     return env
+
+
+def _allow_claude_statusline_parent_env(key: str) -> bool:
+    return key in CLAUDE_STATUSLINE_PARENT_ENV_ALLOWLIST or key.startswith("LC_")
 
 
 def _string_or_none(value: object) -> str | None:

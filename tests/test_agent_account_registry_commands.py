@@ -210,7 +210,26 @@ def _registered_linked_codex_home(
     *,
     account_id: str = "acc_123",
 ) -> Path:
-    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    _write(
+        agentos_home / "config.json",
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "schema_version": 1,
+                "agent": {
+                    "providers": {
+                        "codex": {
+                            "cli_command": ["/opt/homebrew/bin/codex"],
+                        },
+                    },
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+    )
     source_auth = tmp_path / "source.json"
     target_home = tmp_path / "codex-home"
     _write(source_auth, _auth_json(account_id=account_id))
@@ -1006,6 +1025,11 @@ def test_build_registered_account_agent_ignores_provider_profile_ambiguity(
                 "class": "agentos.global.config",
                 "schema_version": 1,
                 "agent": {
+                    "providers": {
+                        "codex": {
+                            "cli_command": ["/opt/homebrew/bin/codex"],
+                        },
+                    },
                     "instances": [
                         {
                             "provider": "codex",
@@ -1035,8 +1059,49 @@ def test_build_registered_account_agent_ignores_provider_profile_ambiguity(
     assert agent.provider == "codex"
     assert agent.instance_id is None
     assert agent.home == target_home.resolve()
+    assert agent.cli_command == ("/opt/homebrew/bin/codex",)
     assert agent.account is not None
     assert agent.account.account == "br"
+
+
+def test_build_registered_account_agent_uses_provider_cli_command(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    target_home = tmp_path / "monitor-home"
+    _write(source_auth, _auth_json())
+    _write(
+        agentos_home / "config.json",
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "schema_version": 1,
+                "agent": {
+                    "providers": {
+                        "codex": {
+                            "cli_command": ["/opt/homebrew/bin/codex"],
+                        },
+                    },
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+    )
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    agent = build_registered_account_agent(
+        provider="codex", account="br", home=target_home
+    )
+
+    assert agent.instance_id is None
+    assert agent.home == target_home.resolve()
+    assert agent.cli_command == ("/opt/homebrew/bin/codex",)
 
 
 def test_codex_account_status_fetches_limits_with_single_status_call(
@@ -2027,6 +2092,192 @@ def test_claude_statusline_fetch_returns_recordable_fresh_payload(
     assert not (
         tmp_path / "claude-home" / "agentos" / "cache" / "statusline-rate-limits.json"
     ).exists()
+
+
+def test_claude_statusline_process_environment_strips_parent_claude_controls(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+
+    monkeypatch.setenv("PATH", "/bin:/usr/bin")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("LANG", "en_US.UTF-8")
+    monkeypatch.setenv("LC_ALL", "C.UTF-8")
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/wrong/claude")
+    monkeypatch.setenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "0")
+    monkeypatch.setenv("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "0")
+    monkeypatch.setenv("CLAUDE_CODE_AUTO_CONNECT_IDE", "true")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "secret")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://proxy.example")
+    monkeypatch.setenv("CMUX_CLAUDE_HOOKS_DISABLED", "1")
+    monkeypatch.setenv("NODE_OPTIONS", "--max-old-space-size=4096")
+
+    env = claude_account_status._claude_statusline_process_environment(
+        {
+            "CLAUDE_CONFIG_DIR": str(tmp_path / "system-home"),
+            "CUSTOM_AGENT_ENV": "kept",
+        }
+    )
+
+    assert env["PATH"] == "/bin:/usr/bin"
+    assert env["HOME"] == str(tmp_path)
+    assert env["LANG"] == "en_US.UTF-8"
+    assert env["LC_ALL"] == "C.UTF-8"
+    assert env["TERM"] == "xterm-256color"
+    assert env["CLAUDE_CONFIG_DIR"] == str(tmp_path / "system-home")
+    assert env["CUSTOM_AGENT_ENV"] == "kept"
+    assert env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+    assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    assert "CLAUDE_CODE_AUTO_CONNECT_IDE" not in env
+    assert "ANTHROPIC_API_KEY" not in env
+    assert "ANTHROPIC_BASE_URL" not in env
+    assert "CMUX_CLAUDE_HOOKS_DISABLED" not in env
+    assert "NODE_OPTIONS" not in env
+
+
+def test_claude_statusline_last_run_log_records_success(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.agent.account_status import AgentAccountContext
+    from agentos.claude.agent import ClaudeAgent
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    payload = _claude_statusline_payload(burst_used=20)
+    capture_path = tmp_path / "statusline.json"
+    capture_path.write_text(json.dumps(payload), encoding="utf-8")
+    run_log = claude_account_status._ClaudeStatusLineRunLog(
+        agent=agent,
+        argv=("claude", "--model", "haiku"),
+        cwd=tmp_path,
+        capture_path=capture_path,
+        settings_path=tmp_path / "settings.json",
+        timeout_sec=45,
+        env={
+            "CLAUDE_CONFIG_DIR": str(tmp_path / "claude-home"),
+            "PATH": "/bin:/usr/bin",
+            "ANTHROPIC_API_KEY": "should-not-log-value",
+        },
+        started_at_monotonic=claude_account_status.time.monotonic(),
+        prompt_sent=True,
+        transcript_text="Claude Code ready\n",
+        normalized_transcript_text="claude code ready",
+        statusline_payload=payload,
+    )
+    claude_account_status._append_claude_statusline_log_event(run_log, "capture_loaded")
+
+    claude_account_status._finalize_claude_statusline_log(run_log, error=None)
+
+    log_path = claude_account_status._claude_statusline_last_run_log_path()
+    log = _read_json(log_path)
+    assert log["status"] == "ok"
+    assert log["provider"] == "claude-code"
+    assert log["account"] == "main"
+    assert log["argv"] == ["claude", "--model", "haiku"]
+    assert log["capture"]["exists"] is True
+    assert log["events"][0]["event"] == "capture_loaded"
+    assert log["state"]["prompt_sent"] is True
+    assert log["transcript"] == "Claude Code ready\n"
+    assert log["transcript_tail"] == "Claude Code ready\n"
+    assert log["normalized_transcript_tail"] == "claude code ready"
+    assert log["statusline_payload"] == payload
+    assert log["invalid_capture_payload"] is None
+    assert log["invalid_capture_error"] is None
+    assert log["env"]["ANTHROPIC_API_KEY"] == "should-not-log-value"
+
+
+def test_claude_statusline_last_run_log_records_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.agent.account_status import AgentAccountContext
+    from agentos.claude.agent import ClaudeAgent
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    run_log = claude_account_status._ClaudeStatusLineRunLog(
+        agent=agent,
+        argv=("claude", "--model", "haiku"),
+        cwd=tmp_path,
+        capture_path=tmp_path / "missing-statusline.json",
+        settings_path=tmp_path / "settings.json",
+        timeout_sec=45,
+        env={"CLAUDE_CONFIG_DIR": str(tmp_path / "claude-home")},
+        started_at_monotonic=claude_account_status.time.monotonic(),
+        transcript_text="login required\n",
+        normalized_transcript_text="login required",
+    )
+    error = AccountStatusError(error_type="timeout", message="provider command timed out")
+
+    claude_account_status._finalize_claude_statusline_log(run_log, error=error)
+
+    log = _read_json(claude_account_status._claude_statusline_last_run_log_path())
+    assert log["status"] == "error"
+    assert log["capture"]["exists"] is False
+    assert log["transcript"] == "login required\n"
+    assert log["normalized_transcript_tail"] == "login required"
+    assert log["error"]["type"] == "timeout"
+    assert log["error"]["message"] == "provider command timed out"
+
+
+def test_claude_statusline_last_run_log_records_invalid_capture(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.claude.account_status as claude_account_status
+    from agentos.agent.account_status import AgentAccountContext
+    from agentos.claude.agent import ClaudeAgent
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    agent = ClaudeAgent(
+        home=tmp_path / "claude-home",
+        account=AgentAccountContext(provider="claude-code", account="main"),
+    )
+    capture_path = tmp_path / "statusline.json"
+    invalid_payload = {
+        "model": {"display_name": "Haiku 4.5"},
+        "workspace": {"current_dir": str(tmp_path)},
+    }
+    capture_path.write_text(json.dumps(invalid_payload), encoding="utf-8")
+    run_log = claude_account_status._ClaudeStatusLineRunLog(
+        agent=agent,
+        argv=("claude", "--model", "haiku"),
+        cwd=tmp_path,
+        capture_path=capture_path,
+        settings_path=tmp_path / "settings.json",
+        timeout_sec=45,
+        env={"CLAUDE_CONFIG_DIR": str(tmp_path / "claude-home")},
+        started_at_monotonic=claude_account_status.time.monotonic(),
+        prompt_sent=True,
+        transcript_text="Reply with OK.\n",
+        normalized_transcript_text="reply with ok.",
+    )
+
+    claude_account_status._record_claude_statusline_invalid_capture(run_log)
+    claude_account_status._finalize_claude_statusline_log(
+        run_log,
+        error=AccountStatusError(error_type="timeout", message="timed out"),
+    )
+
+    log = _read_json(claude_account_status._claude_statusline_last_run_log_path())
+    assert log["invalid_capture_error"] == "capture payload is missing rate_limits"
+    assert log["invalid_capture_payload"] == invalid_payload
+    assert log["events"][0]["event"] == "capture_rejected"
+    assert log["events"][0]["invalid_capture_error"] == (
+        "capture payload is missing rate_limits"
+    )
+    assert log["events"][0]["invalid_capture_payload"] == invalid_payload
 
 
 def test_claude_statusline_refresh_failure_returns_live_error_without_cache(

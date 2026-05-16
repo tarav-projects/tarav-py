@@ -11,9 +11,12 @@ from agentos.agent.primitives import (
     AgentConfig,
 )
 from agentos.agent.config import (
+    AgentProviderConfig,
+    agent_config_with_provider_config,
     agent_config_with_home_override,
     default_agent_configs,
     load_agent_configs,
+    load_agent_provider_configs,
 )
 from agentos.claude.agent import ClaudeAgent
 from agentos.codex.agent import CodexAgent
@@ -36,9 +39,13 @@ def load_configured_agents(*, start_path: Path | str = ".") -> tuple[Agent, ...]
 
 def load_agent_configs_with_defaults(*, start_path: Path | str = ".") -> tuple[AgentConfig, ...]:
     configured = load_agent_configs(start_path=start_path)
+    provider_configs = load_agent_provider_configs(start_path=start_path)
     configured_providers = {config.provider for config in configured}
     defaults = tuple(
-        config
+        agent_config_with_provider_config(
+            config,
+            provider_configs.get(config.provider),
+        )
         for config in default_agent_configs()
         if config.provider not in configured_providers
     )
@@ -74,23 +81,33 @@ def build_registered_account_agent(
     home: Path | str,
     start_path: Path | str = ".",
 ) -> Agent:
-    del start_path
     account_record = load_account(provider, account)
     account_context = AgentAccountContext(
         provider=str(account_record["provider"]),
         account=str(account_record["account"]),
     )
+    provider_configs = load_agent_provider_configs(start_path=start_path)
     config = _default_registered_account_agent_config(
         provider=account_context.provider,
         home=home,
+        provider_configs=provider_configs,
     )
     return agent_from_config(replace(config, account=account_context))
 
 
-def _default_registered_account_agent_config(*, provider: str, home: Path | str) -> AgentConfig:
+def _default_registered_account_agent_config(
+    *,
+    provider: str,
+    home: Path | str,
+    provider_configs: dict[str, AgentProviderConfig],
+) -> AgentConfig:
     for agent_config in default_agent_configs():
         if agent_config.provider == provider:
-            return agent_config_with_home_override(agent_config, home=home)
+            configured_agent = agent_config_with_provider_config(
+                agent_config,
+                provider_configs.get(provider),
+            )
+            return agent_config_with_home_override(configured_agent, home=home)
     raise CliError(f"unsupported registered account provider {provider}")
 
 

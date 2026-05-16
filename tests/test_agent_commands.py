@@ -1394,6 +1394,187 @@ def test_configured_provider_agents_use_provider_native_models(
     ]
 
 
+def test_configured_instance_inherits_provider_cli_command(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_configs={
+            "codex": {
+                "cli_command": ["/opt/homebrew/bin/codex"],
+            }
+        },
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+            }
+        ],
+    )
+
+    from agentos.agent.providers import load_configured_agents
+
+    (agent,) = load_configured_agents()
+
+    assert agent.cli_command == ("/opt/homebrew/bin/codex",)
+
+
+def test_project_provider_cli_config_applies_to_instance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    project_root = tmp_path / "project"
+    workspace = project_root / "workspace"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    workspace.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+    monkeypatch.chdir(workspace)
+
+    _write_project_marker(project_root)
+    _write_project_config(
+        project_root / ".agentos" / "config.json",
+        provider_configs={
+            "codex": {
+                "cli_command": ["/project/bin/codex"],
+            }
+        },
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "project-work",
+                "home": str(work_home),
+            }
+        ],
+    )
+
+    from agentos.agent.providers import load_configured_agents
+
+    (agent,) = load_configured_agents()
+
+    assert agent.cli_command == ("/project/bin/codex",)
+
+
+def test_instance_cli_command_overrides_provider_cli_command(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_configs={
+            "codex": {
+                "cli_command": ["/opt/homebrew/bin/codex"],
+            }
+        },
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+                "cli_command": ["/custom/bin/codex"],
+            }
+        ],
+    )
+
+    from agentos.agent.providers import load_configured_agents
+
+    (agent,) = load_configured_agents()
+
+    assert agent.cli_command == ("/custom/bin/codex",)
+
+
+def test_agent_run_requires_provider_cli_command(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    work_home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "codex",
+                "id": "work",
+                "home": str(work_home),
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "codex",
+                "--profile",
+                "work",
+                "--dry-run",
+                "--prompt",
+                "hello",
+            ]
+        )
+        == 1
+    )
+    error = capsys.readouterr().err
+    assert "agent provider codex requires agent.providers.codex.cli_command" in error
+    assert '"/opt/homebrew/bin/codex"' in error
+
+
+def test_agent_providers_config_must_be_object(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write(
+        agentos_home / "config.json",
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "schema_version": 1,
+                "agent": {
+                    "providers": [],
+                    "instances": [],
+                },
+            }
+        ),
+    )
+
+    assert main(["agent", "list"]) == 1
+    assert "config field agent.providers must be a JSON object" in capsys.readouterr().err
+
+
 def test_session_capable_provider_agents_expose_session_ref_discovery() -> None:
     from agentos.claude.agent import ClaudeAgent
     from agentos.codex.agent import CodexAgent
@@ -1429,6 +1610,11 @@ def test_agent_run_uses_copilot_cli_agent_config(
 
     _write_global_config(
         agentos_home / "config.json",
+        provider_configs={
+            "copilot-cli": {
+                "cli_command": ["copilot"],
+            }
+        },
         provider_instances=[
             {
                 "provider": "copilot-cli",
@@ -1502,6 +1688,11 @@ def test_agent_run_uses_pi_provider_defaults(
 
     _write_global_config(
         agentos_home / "config.json",
+        provider_configs={
+            "pi": {
+                "cli_command": ["pi"],
+            }
+        },
         provider_instances=[
             {
                 "provider": "pi",
@@ -1576,6 +1767,11 @@ def test_agent_run_dry_run_prints_instance_env_prefix(
 
     _write_global_config(
         agentos_home / "config.json",
+        provider_configs={
+            "pi": {
+                "cli_command": ["pi"],
+            }
+        },
         provider_instances=[
             {
                 "provider": "pi",
@@ -1770,6 +1966,11 @@ def test_agent_run_pi_raw_argv_dry_run(
 
     _write_global_config(
         agentos_home / "config.json",
+        provider_configs={
+            "pi": {
+                "cli_command": ["pi"],
+            }
+        },
         provider_instances=[
             {
                 "provider": "pi",
