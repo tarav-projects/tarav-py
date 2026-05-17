@@ -326,6 +326,29 @@ def _claude_statusline_payload(
     return {"rate_limits": rate_limits}
 
 
+def _codex_usage_payload(
+    *,
+    burst_used: int = 3,
+    weekly_used: int = 1,
+) -> dict[str, object]:
+    return {
+        "rateLimitsByLimitId": {
+            "test-limit": {
+                "primary": {
+                    "usedPercent": burst_used,
+                    "windowDurationMins": 300,
+                    "resetsAt": 1_776_000_000,
+                },
+                "secondary": {
+                    "usedPercent": weekly_used,
+                    "windowDurationMins": 10080,
+                    "resetsAt": 1_776_604_800,
+                },
+            }
+        }
+    }
+
+
 def _append_claude_usage_get_record(agent, *, utilization: int = 20) -> None:
     from agentos.agent.usage_registry import append_usage_record
 
@@ -2569,6 +2592,8 @@ def test_agent_accounts_monitor_once_prints_account_status(
     monkeypatch,
     capsys,
 ) -> None:
+    from agentos.agent.usage_registry import append_usage_record
+
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source_auth = tmp_path / "source.json"
     _write(source_auth, _auth_json())
@@ -2585,6 +2610,13 @@ def test_agent_accounts_monitor_once_prints_account_status(
         ],
     )
     _stub_monitor_account_status(monkeypatch)
+    append_usage_record(
+        provider="codex",
+        account="br",
+        home=agentos_home / "agent" / "homes" / "codex" / "br",
+        source="app_server",
+        payload=_codex_usage_payload(),
+    )
 
     assert main(["agent", "accounts", "monitor", "--once"]) == 0
     output = capsys.readouterr().out
@@ -2592,7 +2624,8 @@ def test_agent_accounts_monitor_once_prints_account_status(
     assert "Tick: 1" in output
     assert "limits-tracking" in output
     assert "refresh_interval_sec: 60" not in output
-    assert "    ⬢ codex/br:            | fresh" in output
+    assert "    ⬢ codex/br:            | " in output
+    assert " ago" in output
     assert "refreshed | fresh" not in output
     assert "      usage/time           |  3% /" in output
     assert " | Burst" in output
@@ -2607,6 +2640,8 @@ def test_agent_accounts_monitor_once_prints_registry_fallback_refresh_time(
     monkeypatch,
     capsys,
 ) -> None:
+    from agentos.agent.usage_registry import append_usage_record
+
     agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source_auth = tmp_path / "source.json"
     _write(source_auth, _auth_json())
@@ -2622,32 +2657,72 @@ def test_agent_accounts_monitor_once_prints_registry_fallback_refresh_time(
             },
         ],
     )
-    target_key = f"codex/br@{agentos_home / 'agent' / 'homes' / 'codex' / 'br'}"
-    _stub_monitor_account_status(
-        monkeypatch,
-        usage_records={
-            target_key: {
-                "status": "registry_fallback",
-                "recorded_at": "2026-05-15T15:03:00Z",
-                "age_sec": 12 * 60,
-                "source": "app_server",
-                "live_error": {
-                    "type": "usage_api_http_error",
-                    "message": "provider returned HTTP 429",
-                    "detail": {
-                        "retry_after_remaining_sec": 54 * 60,
-                    },
-                },
-            }
-        },
+    _stub_monitor_account_status(monkeypatch)
+    append_usage_record(
+        provider="codex",
+        account="br",
+        home=agentos_home / "agent" / "homes" / "codex" / "br",
+        source="app_server",
+        payload=_codex_usage_payload(),
     )
 
     assert main(["agent", "accounts", "monitor", "--once"]) == 0
     output = capsys.readouterr().out
     assert "    ⬢ codex/br:" in output
     assert "refreshed | " not in output
-    assert " | 12m ago" in output
-    assert "          fetch error      | provider returned HTTP 4" in output
+    assert " ago" in output
+    assert "          fetch error      |" not in output
+
+
+def test_limits_tracking_setup_primes_from_usage_registry_without_provider_fetch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.agent.monitor.workflows as monitor_workflows
+    from agentos.agent.monitor import (
+        LimitsTrackingWorkflow,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+    from agentos.agent.usage_registry import append_usage_record
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    target_home = tmp_path / "codex-home"
+    append_usage_record(
+        provider="codex",
+        account="br",
+        home=target_home,
+        source="app_server",
+        payload=_codex_usage_payload(burst_used=25, weekly_used=40),
+    )
+    monkeypatch.setattr(
+        monitor_workflows,
+        "build_registered_account_agent",
+        lambda **kwargs: pytest.fail(f"provider fetch during setup: {kwargs}"),
+    )
+    workflow = LimitsTrackingWorkflow(
+        MonitorWorkflowConfig(
+            name="limits-tracking",
+            targets=(
+                MonitorTarget(provider="codex", account="br", home=target_home),
+            ),
+            refresh_interval_sec=60,
+            raw_config={},
+        )
+    )
+    frame = MonitorFrame()
+    state = MonitorState()
+
+    workflow.setup(state, frame)
+
+    assert state.workflow_run_counts == {}
+    target = frame.blocks[0]["data"]["targets"][0]
+    assert target["status"] == "ok"
+    assert target["account_status"]["raw"]["usage_record"]["status"] == "registry_latest"
+    assert frame.blocks[0]["lines"][0].startswith("  ⬢ codex/br: | ")
+    assert any("usage/time | 25%" in line for line in frame.blocks[0]["lines"])
 
 
 def test_agent_accounts_monitor_rows_use_fixed_columns() -> None:
@@ -2746,13 +2821,19 @@ def test_agent_accounts_monitor_loop_steps_visible_frame_animation_after_draw() 
         def __init__(self) -> None:
             self.runs = 0
 
-        def run(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
-            del trigger
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
             del state
+            self._write_frame(frame)
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+            del trigger, state
             self.runs += 1
             if self.runs > 1:
                 second_run_release.wait(timeout=0.2)
                 return
+            self._write_frame(frame)
+
+        def _write_frame(self, frame: MonitorFrame) -> None:
             frame.add_block(
                 "long-row",
                 rows=[
@@ -2785,6 +2866,7 @@ def test_agent_accounts_monitor_loop_steps_visible_frame_animation_after_draw() 
 
 def test_agent_accounts_monitor_loop_preserves_animation_across_republished_rows() -> None:
     from agentos.agent.monitor import (
+        MONITOR_ENTER_ALARM,
         MonitorFrame,
         MonitorInfoRow,
         MonitorLoop,
@@ -2800,10 +2882,16 @@ def test_agent_accounts_monitor_loop_preserves_animation_across_republished_rows
         def __init__(self) -> None:
             self.runs = 0
 
-        def run(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
-            del trigger
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
             del state
+            self._write_frame(frame)
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+            del trigger, state
             self.runs += 1
+            self._write_frame(frame)
+
+        def _write_frame(self, frame: MonitorFrame) -> None:
             frame.add_block(
                 "fast",
                 rows=[
@@ -2825,7 +2913,7 @@ def test_agent_accounts_monitor_loop_preserves_animation_across_republished_rows
         del state
         rendered.append(format_monitor_frame(frame))
         if len(rendered) == 1:
-            loop.set_alarm("io.enter")
+            loop.set_alarm(MONITOR_ENTER_ALARM)
 
     loop.run(on_tick=record_render, wait_for_first_frame=True)
 
@@ -2835,7 +2923,12 @@ def test_agent_accounts_monitor_loop_preserves_animation_across_republished_rows
 
 
 def test_agent_accounts_monitor_manual_requests_coalesce_while_workflow_runs() -> None:
-    from agentos.agent.monitor import MonitorFrame, MonitorLoop, MonitorState
+    from agentos.agent.monitor import (
+        MONITOR_ENTER_ALARM,
+        MonitorFrame,
+        MonitorLoop,
+        MonitorState,
+    )
 
     started = Event()
     release = Event()
@@ -2846,7 +2939,10 @@ def test_agent_accounts_monitor_manual_requests_coalesce_while_workflow_runs() -
         def __init__(self) -> None:
             self.runs = 0
 
-        def run(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state, frame
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
             del state, trigger
             self.runs += 1
             if self.runs == 1:
@@ -2864,9 +2960,9 @@ def test_agent_accounts_monitor_manual_requests_coalesce_while_workflow_runs() -
     def record_render(frame: MonitorFrame, state: MonitorState) -> None:
         del frame, state
         if started.is_set() and not release.is_set():
-            loop.set_alarm("io.enter")
-            loop.set_alarm("io.enter")
-            loop.set_alarm("io.enter")
+            loop.set_alarm(MONITOR_ENTER_ALARM)
+            loop.set_alarm(MONITOR_ENTER_ALARM)
+            loop.set_alarm(MONITOR_ENTER_ALARM)
             release.set()
 
     loop.run(on_tick=record_render)
@@ -2988,13 +3084,14 @@ def test_agent_accounts_monitor_loop_publishes_working_frame_and_shared_state() 
     class RecordingWorkflow:
         name = "recording"
 
-        def run(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
-            del trigger
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
             seen_frames.append(id(frame))
             seen_states.append(id(state))
             state.data["recording"] = state.data.get("recording", 0) + 1
-            if not frame.blocks:
-                frame.add_block("recording", ["created"])
+            frame.add_block("recording", ["created"])
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+            del state, frame, trigger
 
     loop = MonitorLoop(
         workflows=(RecordingWorkflow(),),
@@ -3013,6 +3110,41 @@ def test_agent_accounts_monitor_loop_publishes_working_frame_and_shared_state() 
     assert state.data["recording"] == 1
 
 
+def test_agent_accounts_monitor_setup_frame_is_visible_before_slow_loop() -> None:
+    from agentos.agent.monitor import MonitorFrame, MonitorLoop, MonitorState
+
+    started = Event()
+    release = Event()
+    rendered: list[tuple[int, tuple[str, ...]]] = []
+
+    class SlowWorkflow:
+        name = "slow"
+
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state
+            frame.add_block("slow", ["setup ready"])
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+            del state, trigger
+            started.set()
+            release.wait(timeout=0.2)
+            frame.add_block("slow", ["loop ready"])
+
+    def record_tick(frame: MonitorFrame, state: MonitorState) -> None:
+        rendered.append((state.tick, tuple(frame.blocks[0]["lines"])))
+        if started.is_set():
+            release.set()
+
+    MonitorLoop(
+        workflows=(SlowWorkflow(),),
+        interval_sec=0.01,
+        max_ticks=3,
+    ).run(on_tick=record_tick, wait_for_first_frame=True)
+
+    assert rendered[0] == (1, ("setup ready",))
+    assert rendered[-1] == (3, ("loop ready",))
+
+
 def test_agent_accounts_monitor_slow_workflow_does_not_block_render_ticks() -> None:
     from agentos.agent.monitor import MonitorFrame, MonitorLoop, MonitorState
 
@@ -3024,7 +3156,10 @@ def test_agent_accounts_monitor_slow_workflow_does_not_block_render_ticks() -> N
     class SlowWorkflow:
         name = "slow"
 
-        def run(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state, frame
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
             del trigger
             started.set()
             release.wait(timeout=0.2)
@@ -3093,7 +3228,8 @@ def test_agent_accounts_monitor_once_uses_loop_max_ticks(
     assert main(["agent", "accounts", "monitor", "--once", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["tick"] == 1
-    assert payload["workflow_run_counts"] == {"limits-tracking": 1}
+    assert payload["workflow_run_counts"] == {}
+    assert payload["frame"]["blocks"][0]["data"]["targets"][0]["status"] == "pending"
 
 
 def test_agent_accounts_monitor_max_ticks_uses_same_loop_path(
@@ -3125,51 +3261,51 @@ def test_agent_accounts_monitor_max_ticks_uses_same_loop_path(
                 "accounts",
                 "monitor",
                 "--max-ticks",
-                "2",
+                "3",
                 "--interval-sec",
-                "0",
+                "0.01",
                 "--json",
             ]
         )
         == 0
     )
     payload = json.loads(capsys.readouterr().out)
-    assert payload["tick"] == 2
+    assert payload["tick"] == 3
     assert payload["workflow_run_counts"] == {"limits-tracking": 1}
     assert len(calls) == 1
 
 
 def test_agent_accounts_monitor_clock_one_shot_alarm_fires_once() -> None:
-    from agentos.agent.monitor import MonitorClock
+    from agentos.agent.monitor import MONITOR_ENTER_ALARM, MonitorClock
 
     clock = MonitorClock()
-    clock.set_one_shot("io.enter")
+    clock.set_one_shot(MONITOR_ENTER_ALARM)
 
     first = clock.step()
     second = clock.step()
 
     assert first.tick == 1
-    assert first.fired("io.enter")
-    assert first.alarms["io.enter"].armed is False
-    assert not second.fired("io.enter")
+    assert first.fired(MONITOR_ENTER_ALARM)
+    assert first.alarms[MONITOR_ENTER_ALARM].armed is False
+    assert not second.fired(MONITOR_ENTER_ALARM)
 
 
 def test_agent_accounts_monitor_clock_periodic_alarm_rearms() -> None:
-    from agentos.agent.monitor import MonitorClock
+    from agentos.agent.monitor import LIMITS_TRACKING_PERIODIC_ALARM, MonitorClock
 
     clock = MonitorClock()
-    clock.set_periodic("limits-tracking.periodic", period_ticks=2)
+    clock.set_periodic(LIMITS_TRACKING_PERIODIC_ALARM, period_ticks=2)
 
     first = clock.step()
     second = clock.step()
     third = clock.step()
 
-    assert not first.fired("limits-tracking.periodic")
-    assert first.alarms["limits-tracking.periodic"].remaining_ticks == 1
-    assert second.fired("limits-tracking.periodic")
-    assert second.alarms["limits-tracking.periodic"].remaining_ticks == 2
-    assert not third.fired("limits-tracking.periodic")
-    assert third.alarms["limits-tracking.periodic"].remaining_ticks == 1
+    assert not first.fired(LIMITS_TRACKING_PERIODIC_ALARM)
+    assert first.alarms[LIMITS_TRACKING_PERIODIC_ALARM].remaining_ticks == 1
+    assert second.fired(LIMITS_TRACKING_PERIODIC_ALARM)
+    assert second.alarms[LIMITS_TRACKING_PERIODIC_ALARM].remaining_ticks == 2
+    assert not third.fired(LIMITS_TRACKING_PERIODIC_ALARM)
+    assert third.alarms[LIMITS_TRACKING_PERIODIC_ALARM].remaining_ticks == 1
 
 
 def test_agent_accounts_monitor_refreshes_after_clock_periodic_alarm(
@@ -3228,6 +3364,7 @@ def test_agent_accounts_monitor_manual_trigger_forces_limits_refresh(
 ) -> None:
     from agentos.agent.monitor import (
         LimitsTrackingWorkflow,
+        MONITOR_ENTER_ALARM,
         MonitorLoop,
         MonitorTarget,
         MonitorWorkflowConfig,
@@ -3252,13 +3389,13 @@ def test_agent_accounts_monitor_manual_trigger_forces_limits_refresh(
             ),
         ),
         interval_sec=0.01,
-        max_ticks=3,
+        max_ticks=5,
     )
 
     def request_manual_refresh(frame, state) -> None:
         del frame, state
         if len(calls) == 1:
-            loop.set_alarm("io.enter")
+            loop.set_alarm(MONITOR_ENTER_ALARM)
 
     loop.run(on_tick=request_manual_refresh, wait_for_first_frame=True)
 
@@ -3295,7 +3432,7 @@ def test_agent_accounts_monitor_unrelated_alarm_runs_workflow_without_provider_f
             ),
         ),
         interval_sec=0.01,
-        max_ticks=3,
+        max_ticks=5,
     )
 
     def request_scheduled_refresh(frame, state) -> None:
@@ -3339,7 +3476,21 @@ def test_agent_accounts_monitor_target_error_is_workflow_owned(
     )
     _stub_monitor_account_status(monkeypatch, failures={f"codex/br@{br_home}"})
 
-    assert main(["agent", "accounts", "monitor", "--once", "--json"]) == 0
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "monitor",
+                "--max-ticks",
+                "3",
+                "--interval-sec",
+                "0.01",
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
 
     assert "workflow_errors" not in payload["state"]
@@ -3357,33 +3508,40 @@ def test_agent_accounts_monitor_workflow_error_goes_to_state_and_frame() -> None
     class FailingWorkflow:
         name = "failing"
 
-        def run(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state, frame
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
             del state, frame, trigger
             raise RuntimeError("boom")
 
     class PassingWorkflow:
         name = "passing"
 
-        def run(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state, frame
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
             del trigger
             frame.add_block("passing", [f"status: ok at {frame.tick}"])
 
     loop = MonitorLoop(
         workflows=(FailingWorkflow(), PassingWorkflow()),
-        interval_sec=0,
-        max_ticks=1,
+        interval_sec=0.01,
+        max_ticks=2,
     )
 
     frame, state = loop.run(wait_for_first_frame=True)
 
     assert frame.errors == [
-        "unexpected workflow error: failing: RuntimeError: boom",
+        "unexpected workflow loop error: failing: RuntimeError: boom",
     ]
     assert frame.blocks[0]["title"] == "passing"
     assert state.data["workflow_errors"] == [
         {
             "tick": 1,
             "workflow": "failing",
+            "phase": "loop",
             "error_type": "RuntimeError",
             "message": "boom",
         },
@@ -3416,11 +3574,25 @@ def test_agent_accounts_monitor_runs_workflows_in_config_order(
     )
     _stub_monitor_account_status(monkeypatch)
 
-    assert main(["agent", "accounts", "monitor", "--once", "--json"]) == 0
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "monitor",
+                "--max-ticks",
+                "3",
+                "--interval-sec",
+                "0.01",
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
-    assert [block["title"] for block in payload["frame"]["blocks"]] == [
-        "limits-tracking | next in 59 ticks"
-    ]
+    assert payload["frame"]["blocks"][0]["title"].startswith(
+        "limits-tracking | next in "
+    )
     assert payload["frame"]["blocks"][0]["data"]["run_count"] == 1
     assert payload["workflow_run_counts"] == {"limits-tracking": 1}
 

@@ -1206,6 +1206,12 @@ def _parse_claude_statusline_rate_limits(payload: Mapping[str, Any]) -> tuple[Ac
     return tuple(limits)
 
 
+def claude_statusline_usage_record_limits(
+    payload: Mapping[str, Any],
+) -> tuple[AccountLimit, ...]:
+    return _parse_claude_statusline_rate_limits(payload)
+
+
 def _parse_claude_statusline_limit(
     limit_type: str,
     raw_limit: Mapping[str, Any],

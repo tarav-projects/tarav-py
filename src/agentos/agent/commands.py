@@ -398,7 +398,7 @@ def _should_listen_for_monitor_enter(args: argparse.Namespace) -> bool:
 
 
 def _start_monitor_enter_trigger_thread(loop) -> Thread:
-    from agentos.agent.monitor.loop import MONITOR_ENTER_ALARM
+    from agentos.agent.monitor import MONITOR_ENTER_ALARM
 
     def listen_for_enter() -> None:
         while not loop.stop_requested.is_set():

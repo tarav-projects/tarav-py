@@ -6,6 +6,9 @@ from typing import Literal
 
 
 MonitorAlarmKind = Literal["one-shot", "periodic"]
+MONITOR_STARTUP_ALARM = "startup"
+MONITOR_ENTER_ALARM = "io.enter"
+LIMITS_TRACKING_PERIODIC_ALARM = "limits-tracking.periodic"
 
 
 @dataclass

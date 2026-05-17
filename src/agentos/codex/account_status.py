@@ -293,6 +293,10 @@ def _parse_codex_rate_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, 
     return tuple(limits)
 
 
+def codex_usage_record_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:
+    return _parse_codex_rate_limits(payload)
+
+
 def _parse_codex_snapshot_windows(
     snapshot: Mapping[str, Any],
     *,

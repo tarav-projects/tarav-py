@@ -1,18 +1,27 @@
 from __future__ import annotations
 
 import datetime
+import json
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from agentos._core.errors import CliError
 from agentos.agent.account_status import (
+    AccountIdentity,
+    AccountLimit,
+    AccountStatus,
     USAGE_RECORD_STATUS_FRESH,
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
+    USAGE_RECORD_STATUS_REGISTRY_LATEST,
+    registry_latest_usage_record_metadata,
 )
-from agentos.agent.monitor.clock import MonitorClockSnapshot
-from agentos.agent.monitor.loop import (
+from agentos.agent.monitor.clock import (
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
     MONITOR_STARTUP_ALARM,
+    MonitorClockSnapshot,
+)
+from agentos.agent.monitor.loop import (
     MonitorWorkflow,
 )
 from agentos.agent.monitor.models import (
@@ -28,6 +37,15 @@ from agentos.agent.monitor.models import (
     MonitorWorkflowConfig,
 )
 from agentos.agent.providers import build_registered_account_agent
+from agentos.agent.usage_registry import latest_usage_record
+from agentos.claude.account_status import (
+    CLAUDE_STATUSLINE_USAGE_SOURCE,
+    claude_statusline_usage_record_limits,
+)
+from agentos.codex.account_status import (
+    CODEX_APP_SERVER_USAGE_SOURCE,
+    codex_usage_record_limits,
+)
 
 
 class LimitsTrackingWorkflow:
@@ -38,7 +56,25 @@ class LimitsTrackingWorkflow:
         self.config = config
         self.refresh_interval_sec = config.refresh_interval_sec
 
-    def run(
+    def setup(
+        self,
+        state: MonitorState,
+        frame: MonitorFrame,
+    ) -> None:
+        workflow_state = self._workflow_state(state)
+        workflow_state["setup_tick"] = frame.tick
+        workflow_state["refresh_interval_sec"] = self.config.refresh_interval_sec
+        target_states = self._target_states(workflow_state)
+        for target in self.config.targets:
+            target_key = _target_key(target)
+            target_state = self._target_state(
+                target_states, target=target, target_key=target_key
+            )
+            self._prime_target_from_usage_registry(target_state, target=target)
+
+        self._write_frame_block(frame, workflow_state=workflow_state)
+
+    def loop(
         self,
         state: MonitorState,
         frame: MonitorFrame,
@@ -69,6 +105,67 @@ class LimitsTrackingWorkflow:
                 self._refresh_target(target_state, target=target, tick=frame.tick)
 
         self._write_frame_block(frame, workflow_state=workflow_state)
+
+    def _prime_target_from_usage_registry(
+        self,
+        target_state: dict[str, object],
+        *,
+        target: MonitorTarget,
+    ) -> None:
+        source = _usage_record_source_for_target(target)
+        if source is None:
+            target_state.update(
+                {
+                    "status": "pending",
+                    "setup_message": "waiting for first fetch",
+                    "account_status": None,
+                    "error": None,
+                }
+            )
+            return
+        record = latest_usage_record(
+            provider=target.provider,
+            account=target.account,
+            home=target.home,
+            source=source,
+        )
+        if record is None:
+            target_state.update(
+                {
+                    "status": "pending",
+                    "setup_message": "waiting for first fetch",
+                    "account_status": None,
+                    "error": None,
+                }
+            )
+            return
+        try:
+            account_status = _account_status_summary_from_usage_record(
+                target=target,
+                source=source,
+                record=record,
+            )
+        except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            target_state.update(
+                {
+                    "status": "error",
+                    "setup_message": None,
+                    "account_status": None,
+                    "error": {
+                        "type": type(exc).__name__,
+                        "message": str(exc),
+                    },
+                }
+            )
+            return
+        target_state.update(
+            {
+                "status": "ok",
+                "setup_message": None,
+                "account_status": account_status,
+                "error": None,
+            }
+        )
 
     def _workflow_state(self, state: MonitorState) -> dict[str, object]:
         existing = state.data.get(self.name)
@@ -234,6 +331,59 @@ def _target_refresh_count(target_state: dict[str, object]) -> int:
     return 0
 
 
+def _usage_record_source_for_target(target: MonitorTarget) -> str | None:
+    if target.provider == "codex":
+        return CODEX_APP_SERVER_USAGE_SOURCE
+    if target.provider == "claude-code":
+        return CLAUDE_STATUSLINE_USAGE_SOURCE
+    return None
+
+
+def _usage_record_limit_parser(
+    source: str,
+) -> Callable[[Mapping[str, Any]], tuple[AccountLimit, ...]]:
+    if source == CODEX_APP_SERVER_USAGE_SOURCE:
+        return codex_usage_record_limits
+    if source == CLAUDE_STATUSLINE_USAGE_SOURCE:
+        return claude_statusline_usage_record_limits
+    raise CliError(f"unsupported monitor usage record source {source!r}")
+
+
+def _account_status_summary_from_usage_record(
+    *,
+    target: MonitorTarget,
+    source: str,
+    record: Mapping[str, Any],
+) -> dict[str, object]:
+    payload = record.get("payload")
+    if not isinstance(payload, dict):
+        raise CliError("usage registry record payload must be an object")
+    limits = _usage_record_limit_parser(source)(payload)
+    status = AccountStatus(
+        provider=target.provider,
+        account=target.account,
+        home=target.home,
+        check_status="ok",
+        usage_status="ok",
+        link_state="registry_latest",
+        expected_identity=AccountIdentity(),
+        fetched_identity=None,
+        identity_match="unknown",
+        usage_summary=_limits_summary(
+            {"limits": [limit.summary() for limit in limits]}
+        ),
+        limits=limits,
+        raw={
+            "usage": payload,
+            "usage_record": registry_latest_usage_record_metadata(
+                source=source,
+                recorded_at=_string_value(record.get("recorded_at")),
+            ),
+        },
+    )
+    return status.summary()
+
+
 def _target_state_summary(target_state: dict[str, object]) -> dict[str, object]:
     return dict(target_state)
 
@@ -264,6 +414,10 @@ def _target_rows(
         rows.append(
             MonitorInfoRow(label="    usage", value=_limits_summary(account_status))
         )
+        return rows
+    setup_message = target_state.get("setup_message")
+    if isinstance(setup_message, str) and setup_message:
+        rows.append(MonitorInfoRow(label="    usage", value=setup_message))
     return rows
 
 
@@ -345,7 +499,10 @@ def _usage_refresh_columns(account_status: dict[str, Any] | None) -> dict[str, s
     status = usage_record.get("status")
     if status == USAGE_RECORD_STATUS_FRESH:
         return {"value": "fresh", "suffix": None}
-    if status != USAGE_RECORD_STATUS_REGISTRY_FALLBACK:
+    if status not in {
+        USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
+        USAGE_RECORD_STATUS_REGISTRY_LATEST,
+    }:
         return {"value": None, "suffix": None}
     recorded_at = _parse_datetime(_string_value(usage_record.get("recorded_at")))
     if recorded_at is None:

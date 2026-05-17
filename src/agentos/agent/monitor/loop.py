@@ -7,21 +7,29 @@ from collections.abc import Callable
 from typing import Protocol
 
 from agentos._core.errors import CliError
-from agentos.agent.monitor.clock import MonitorClock, MonitorClockSnapshot
+from agentos.agent.monitor.clock import (
+    LIMITS_TRACKING_PERIODIC_ALARM,
+    MONITOR_STARTUP_ALARM,
+    MonitorClock,
+    MonitorClockSnapshot,
+)
 from agentos.agent.monitor.models import (
     MonitorFrame,
     MonitorState,
 )
 
-MONITOR_STARTUP_ALARM = "startup"
-MONITOR_ENTER_ALARM = "io.enter"
-LIMITS_TRACKING_PERIODIC_ALARM = "limits-tracking.periodic"
-
 
 class MonitorWorkflow(Protocol):
     name: str
 
-    def run(
+    def setup(
+        self,
+        state: MonitorState,
+        frame: MonitorFrame,
+    ) -> None:
+        ...
+
+    def loop(
         self,
         state: MonitorState,
         frame: MonitorFrame,
@@ -61,6 +69,7 @@ class MonitorLoop:
         self._pending_workflow_snapshot: MonitorClockSnapshot | None = None
         self._workflow_active_count = 0
         self._clock_snapshot = self.clock.snapshot()
+        self._has_visible_frame = False
         self._configure_initial_alarms()
 
     def run(
@@ -125,6 +134,7 @@ class MonitorLoop:
             return
         self.working_frame.inherit_animation_state_from(self.visible_frame)
         self.visible_frame, self.working_frame = self.working_frame, self.visible_frame
+        self._has_visible_frame = True
         self.working_frame_ready.clear()
         with self._workflow_condition:
             self._workflow_condition.notify()
@@ -133,7 +143,7 @@ class MonitorLoop:
         status_lines = [f"tick: {self.state.tick}"]
         if self._workflow_is_active():
             status_lines.append("workflow: fetching account data")
-        if self.visible_frame.tick == 0:
+        if not self._has_visible_frame:
             self.visible_frame.prepare(tick=self.state.tick)
             self.visible_frame.status_lines = [
                 *status_lines,
@@ -174,6 +184,7 @@ class MonitorLoop:
             thread.join(timeout=1.0)
 
     def _run_workflow_loop(self) -> None:
+        self._run_workflow_setup()
         while not self.stop_requested.is_set():
             snapshot = self._take_workflow_snapshot()
             if snapshot is None:
@@ -187,10 +198,10 @@ class MonitorLoop:
             try:
                 for workflow in self.workflows:
                     try:
-                        workflow.run(self.state, frame, snapshot)
+                        workflow.loop(self.state, frame, snapshot)
                     except Exception as exc:
                         self._record_unexpected_workflow_error(
-                            frame=frame, workflow=workflow, error=exc
+                            frame=frame, workflow=workflow, error=exc, phase="loop"
                         )
             except Exception as exc:
                 frame.add_error(
@@ -202,6 +213,28 @@ class MonitorLoop:
             self.working_frame_ready.set()
             with self._workflow_condition:
                 self._workflow_condition.notify()
+
+    def _run_workflow_setup(self) -> None:
+        frame = self.working_frame
+        frame.prepare(tick=self.state.tick)
+        frame.status_lines = [f"tick: {self.state.tick}"]
+
+        try:
+            for workflow in self.workflows:
+                try:
+                    workflow.setup(self.state, frame)
+                except Exception as exc:
+                    self._record_unexpected_workflow_error(
+                        frame=frame, workflow=workflow, error=exc, phase="setup"
+                    )
+        except Exception as exc:
+            frame.add_error(
+                f"unexpected workflow setup error: {type(exc).__name__}: {exc}"
+            )
+
+        self.working_frame_ready.set()
+        with self._workflow_condition:
+            self._workflow_condition.notify()
 
     def _set_workflow_active(self, active: bool) -> None:
         with self._workflow_condition:
@@ -224,9 +257,17 @@ class MonitorLoop:
             return None
 
     def _record_unexpected_workflow_error(
-        self, *, frame: MonitorFrame, workflow: MonitorWorkflow, error: Exception
+        self,
+        *,
+        frame: MonitorFrame,
+        workflow: MonitorWorkflow,
+        error: Exception,
+        phase: str,
     ) -> None:
-        message = f"unexpected workflow error: {workflow.name}: {type(error).__name__}: {error}"
+        message = (
+            f"unexpected workflow {phase} error: "
+            f"{workflow.name}: {type(error).__name__}: {error}"
+        )
         frame.add_error(message)
         workflow_errors = self.state.data.setdefault("workflow_errors", [])
         if isinstance(workflow_errors, list):
@@ -234,6 +275,7 @@ class MonitorLoop:
                 {
                     "tick": frame.tick,
                     "workflow": workflow.name,
+                    "phase": phase,
                     "error_type": type(error).__name__,
                     "message": str(error),
                 }

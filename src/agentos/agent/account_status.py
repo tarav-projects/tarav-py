@@ -11,6 +11,7 @@ AccountUsageStatus = Literal["ok", "error", "unavailable"]
 AccountIdentityMatch = Literal["verified", "mismatched", "unknown", "unavailable"]
 USAGE_RECORD_STATUS_FRESH = "fresh"
 USAGE_RECORD_STATUS_REGISTRY_FALLBACK = "registry_fallback"
+USAGE_RECORD_STATUS_REGISTRY_LATEST = "registry_latest"
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,19 @@ def registry_fallback_usage_record_metadata(
         "age_sec": usage_record_age_sec(recorded_at),
         "source": source,
         "live_error": dict(live_error),
+    }
+
+
+def registry_latest_usage_record_metadata(
+    *,
+    source: str,
+    recorded_at: str | None,
+) -> dict[str, Any]:
+    return {
+        "status": USAGE_RECORD_STATUS_REGISTRY_LATEST,
+        "recorded_at": recorded_at,
+        "age_sec": usage_record_age_sec(recorded_at),
+        "source": source,
     }
 
 
@@ -207,8 +221,10 @@ __all__ = [
     "AgentAccountContext",
     "USAGE_RECORD_STATUS_FRESH",
     "USAGE_RECORD_STATUS_REGISTRY_FALLBACK",
+    "USAGE_RECORD_STATUS_REGISTRY_LATEST",
     "UsageOverTimeLimitData",
     "fresh_usage_record_metadata",
+    "registry_latest_usage_record_metadata",
     "registry_fallback_usage_record_metadata",
     "usage_record_age_sec",
 ]
