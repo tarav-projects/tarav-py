@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import time
 from typing import Any
 
 from agentos._core.errors import CliError
@@ -9,7 +8,13 @@ from agentos.agent.account_status import (
     USAGE_RECORD_STATUS_FRESH,
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
 )
-from agentos.agent.monitor.loop import MonitorWorkflow
+from agentos.agent.monitor.clock import MonitorClockSnapshot
+from agentos.agent.monitor.loop import (
+    LIMITS_TRACKING_PERIODIC_ALARM,
+    MONITOR_ENTER_ALARM,
+    MONITOR_STARTUP_ALARM,
+    MonitorWorkflow,
+)
 from agentos.agent.monitor.models import (
     MonitorAccountRow,
     MonitorFrame,
@@ -27,35 +32,41 @@ from agentos.agent.providers import build_registered_account_agent
 
 class LimitsTrackingWorkflow:
     name = "limits-tracking"
+    periodic_alarm_name = LIMITS_TRACKING_PERIODIC_ALARM
 
     def __init__(self, config: MonitorWorkflowConfig) -> None:
         self.config = config
+        self.refresh_interval_sec = config.refresh_interval_sec
 
-    def run(self, state: MonitorState, frame: MonitorFrame) -> None:
+    def run(
+        self,
+        state: MonitorState,
+        frame: MonitorFrame,
+        trigger: MonitorClockSnapshot,
+    ) -> None:
         run_count = state.workflow_run_counts.get(self.name, 0) + 1
         state.workflow_run_counts[self.name] = run_count
         workflow_state = self._workflow_state(state)
         workflow_state["last_tick"] = frame.tick
         workflow_state["run_count"] = run_count
         workflow_state["refresh_interval_sec"] = self.config.refresh_interval_sec
+        workflow_state["fired_alarms"] = list(trigger.fired_alarm_names)
 
-        now = time.monotonic()
+        should_refresh = bool(
+            {
+                MONITOR_STARTUP_ALARM,
+                MONITOR_ENTER_ALARM,
+                LIMITS_TRACKING_PERIODIC_ALARM,
+            }.intersection(trigger.fired_alarm_names)
+        )
         target_states = self._target_states(workflow_state)
         for target in self.config.targets:
             target_key = _target_key(target)
             target_state = self._target_state(
                 target_states, target=target, target_key=target_key
             )
-            last_refresh_at = target_state.get("last_refresh_at_monotonic")
-            should_refresh = not isinstance(last_refresh_at, int | float)
-            if not should_refresh:
-                should_refresh = (
-                    now - float(last_refresh_at) >= self.config.refresh_interval_sec
-                )
             if should_refresh:
-                self._refresh_target(
-                    target_state, target=target, now=now, tick=frame.tick
-                )
+                self._refresh_target(target_state, target=target, tick=frame.tick)
 
         self._write_frame_block(frame, workflow_state=workflow_state)
 
@@ -96,7 +107,6 @@ class LimitsTrackingWorkflow:
         target_state: dict[str, object],
         *,
         target: MonitorTarget,
-        now: float,
         tick: int,
     ) -> None:
         try:
@@ -108,7 +118,6 @@ class LimitsTrackingWorkflow:
             target_state.update(
                 {
                     "status": "error",
-                    "last_refresh_at_monotonic": now,
                     "last_refresh_tick": tick,
                     "refresh_count": _target_refresh_count(target_state) + 1,
                     "account_status": None,
@@ -122,7 +131,6 @@ class LimitsTrackingWorkflow:
         target_state.update(
             {
                 "status": "ok",
-                "last_refresh_at_monotonic": now,
                 "last_refresh_tick": tick,
                 "refresh_count": _target_refresh_count(target_state) + 1,
                 "account_status": account_status.summary(),
@@ -147,6 +155,8 @@ class LimitsTrackingWorkflow:
             target_summaries.append(_target_state_summary(target_state))
             rows.extend(_target_rows(target=target, target_state=target_state))
         data = {
+            "workflow": self.name,
+            "periodic_alarm_name": LIMITS_TRACKING_PERIODIC_ALARM,
             "refresh_interval_sec": self.config.refresh_interval_sec,
             "run_count": workflow_state.get("run_count"),
             "targets": target_summaries,

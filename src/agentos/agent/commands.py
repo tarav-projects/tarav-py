@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import time
 from pathlib import Path
+from threading import Thread
 
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
@@ -383,10 +385,35 @@ def _cmd_agent_accounts_monitor(args: argparse.Namespace) -> int:
             return 0
 
         with RichMonitorRenderer() as renderer:
+            if _should_listen_for_monitor_enter(args):
+                _start_monitor_enter_trigger_thread(loop)
             loop.run(on_tick=renderer.render, wait_for_first_frame=args.once)
         return 0
     except KeyboardInterrupt:
         return 130
+
+
+def _should_listen_for_monitor_enter(args: argparse.Namespace) -> bool:
+    return not args.json and not args.once and sys.stdin.isatty()
+
+
+def _start_monitor_enter_trigger_thread(loop) -> Thread:
+    from agentos.agent.monitor.loop import MONITOR_ENTER_ALARM
+
+    def listen_for_enter() -> None:
+        while not loop.stop_requested.is_set():
+            line = sys.stdin.readline()
+            if line == "":
+                return
+            loop.set_alarm(MONITOR_ENTER_ALARM, remaining_ticks=0)
+
+    thread = Thread(
+        target=listen_for_enter,
+        name="agentos-monitor-input",
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 
 def _inspect_claimed_account_home(*, provider: str, home: Path) -> dict[str, object]:
