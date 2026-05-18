@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import time
+from dataclasses import dataclass
 from threading import Condition, Event, Thread
 from collections.abc import Callable
 from typing import Protocol
@@ -9,6 +10,7 @@ from typing import Protocol
 from agentos._core.errors import CliError
 from agentos.agent.monitor.clock import (
     LIMITS_TRACKING_PERIODIC_ALARM,
+    MONITOR_ENTER_ALARM,
     MONITOR_STARTUP_ALARM,
     MonitorClock,
     MonitorClockSnapshot,
@@ -17,6 +19,12 @@ from agentos.agent.monitor.models import (
     MonitorFrame,
     MonitorState,
 )
+
+
+@dataclass
+class _AdaptivePeriodicAlarmState:
+    baseline_sec: float
+    current_sec: float
 
 
 class MonitorWorkflow(Protocol):
@@ -70,6 +78,7 @@ class MonitorLoop:
         self._workflow_active_count = 0
         self._clock_snapshot = self.clock.snapshot()
         self._has_visible_frame = False
+        self._limits_tracking_adaptive_alarm: _AdaptivePeriodicAlarmState | None = None
         self._configure_initial_alarms()
 
     def run(
@@ -83,7 +92,9 @@ class MonitorLoop:
         try:
             while self.max_ticks is None or ticks_run < self.max_ticks:
                 started_at = time.monotonic()
-                self._clock_snapshot = self.clock.step()
+                self._clock_snapshot = self._apply_adaptive_alarm_policy(
+                    self.clock.step()
+                )
                 self.state.tick = self._clock_snapshot.tick
                 if self._clock_snapshot.fired_alarm_names:
                     self._queue_workflow_snapshot(self._clock_snapshot)
@@ -283,29 +294,71 @@ class MonitorLoop:
 
     def _configure_initial_alarms(self) -> None:
         self.clock.set_one_shot(MONITOR_STARTUP_ALARM, remaining_ticks=0)
-        period_ticks = _workflow_period_ticks(
+        period_sec = _workflow_period_seconds(
             workflows=self.workflows,
-            interval_sec=self.interval_sec,
             alarm_name=LIMITS_TRACKING_PERIODIC_ALARM,
         )
-        if period_ticks is not None:
-            self.clock.set_periodic(
-                LIMITS_TRACKING_PERIODIC_ALARM,
-                period_ticks=period_ticks,
-            )
+        if period_sec is None:
+            return
+        self._limits_tracking_adaptive_alarm = _AdaptivePeriodicAlarmState(
+            baseline_sec=period_sec,
+            current_sec=period_sec,
+        )
+        self._arm_limits_tracking_periodic_alarm()
+
+    def _apply_adaptive_alarm_policy(
+        self, snapshot: MonitorClockSnapshot
+    ) -> MonitorClockSnapshot:
+        alarm_state = self._limits_tracking_adaptive_alarm
+        if alarm_state is None:
+            return snapshot
+        if snapshot.fired(MONITOR_ENTER_ALARM):
+            alarm_state.current_sec = alarm_state.baseline_sec
+            self._arm_limits_tracking_periodic_alarm()
+            return self._snapshot_with_fired(snapshot.fired_alarm_names)
+        if snapshot.fired(LIMITS_TRACKING_PERIODIC_ALARM):
+            alarm_state.current_sec += 1.0
+            self._arm_limits_tracking_periodic_alarm()
+            return self._snapshot_with_fired(snapshot.fired_alarm_names)
+        return snapshot
+
+    def _arm_limits_tracking_periodic_alarm(self) -> None:
+        alarm_state = self._limits_tracking_adaptive_alarm
+        if alarm_state is None:
+            return
+        self.clock.set_periodic(
+            LIMITS_TRACKING_PERIODIC_ALARM,
+            period_ticks=_period_ticks_from_seconds(
+                alarm_state.current_sec,
+                interval_sec=self.interval_sec,
+            ),
+        )
+
+    def _snapshot_with_fired(
+        self, fired_alarm_names: tuple[str, ...]
+    ) -> MonitorClockSnapshot:
+        current = self.clock.snapshot()
+        return MonitorClockSnapshot(
+            tick=current.tick,
+            alarms=current.alarms,
+            fired_alarm_names=fired_alarm_names,
+        )
 
 
-def _workflow_period_ticks(
+def _workflow_period_seconds(
     *,
     workflows: tuple[MonitorWorkflow, ...],
-    interval_sec: float,
     alarm_name: str,
-) -> int | None:
-    cadence_sec = interval_sec if interval_sec > 0 else 1.0
+) -> float | None:
     for workflow in workflows:
         if getattr(workflow, "periodic_alarm_name", None) != alarm_name:
             continue
         refresh_interval_sec = getattr(workflow, "refresh_interval_sec", None)
         if isinstance(refresh_interval_sec, int | float):
-            return max(1, math.ceil(float(refresh_interval_sec) / cadence_sec))
+            return float(refresh_interval_sec)
     return None
+
+
+def _period_ticks_from_seconds(period_sec: float, *, interval_sec: float) -> int:
+    cadence_sec = interval_sec if interval_sec > 0 else 1.0
+    return max(1, math.ceil(period_sec / cadence_sec))

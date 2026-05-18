@@ -168,6 +168,7 @@ def chatlas_query(
     message_contains: tuple[str, ...] | None = None,
     min_user_turns: int | None = None,
     chatlas_root: Path | None = None,
+    row_shape: str = "compact",
 ) -> dict[str, object]:
     return run_chatlas_query(
         uri=uri,
@@ -186,6 +187,7 @@ def chatlas_query(
         message_contains=message_contains,
         min_user_turns=min_user_turns,
         chatlas_root=chatlas_root,
+        row_shape=row_shape,
     )
 
 

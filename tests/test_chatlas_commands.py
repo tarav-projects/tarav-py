@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from agentos.chatlas.core import chatlas_query
 from agentos.cli import main
 
 
@@ -1100,6 +1101,44 @@ def test_chatlas_export_reports_zero_multiple_and_unsupported_matches(
     assert "chatlas export has no provider-specific raw normalizer for provider 'gemini-cli'" in unsupported.err
 
 
+def test_chatlas_export_reports_codex_normalization_blocker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    missing_artifact = home / "Documents" / "chatlas" / "raw" / "codex" / "fingerprint" / "home" / "missing.jsonl"
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        json.dumps(
+            {
+                "provider": "codex",
+                "uri": "agentos://chat-session/codex/fingerprint/session-missing",
+                "session_id": "session-missing",
+                "identity_hash": "hash-missing",
+                "primary_backing_artifact": {
+                    "role": "transcript",
+                    "path": str(missing_artifact),
+                },
+                "backing_artifacts": [
+                    {
+                        "role": "transcript",
+                        "path": str(missing_artifact),
+                    }
+                ],
+            }
+        )
+        + "\n",
+    )
+
+    assert main(["chatlas", "export", "--session-id", "session-missing"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "chatlas export could not normalize codex raw artifacts for session 'session-missing'" in captured.err
+    assert f"primary transcript artifact is missing: {missing_artifact}" in captured.err
+
+
 def test_chatlas_export_rejects_positional_and_missing_selector(
     tmp_path: Path,
     monkeypatch,
@@ -1377,6 +1416,107 @@ def test_chatlas_query_filters_index_rows_and_returns_minimal_shape(
             "project_path": None,
         }
     ]
+
+
+def test_chatlas_query_can_return_full_rows_for_internal_consumers(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    artifact_path = home / "Documents" / "chatlas" / "raw" / "codex" / "fingerprint" / "home" / "session-1.jsonl"
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        json.dumps(
+            {
+                "provider": "codex",
+                "uri": "agentos://chat-session/codex/fingerprint/session-1",
+                "session_id": "session-1",
+                "identity_hash": "hash-1",
+                "primary_backing_artifact": {
+                    "role": "transcript",
+                    "path": str(artifact_path),
+                },
+                "backing_artifacts": [
+                    {
+                        "role": "transcript",
+                        "path": str(artifact_path),
+                    }
+                ],
+            }
+        )
+        + "\n",
+    )
+
+    compact_payload = chatlas_query(session_id="session-1")
+    full_payload = chatlas_query(session_id="session-1", row_shape="full")
+
+    assert "primary_backing_artifact" not in compact_payload["rows"][0]
+    assert full_payload["rows"][0]["primary_backing_artifact"]["path"] == str(artifact_path)
+    assert full_payload["rows"][0]["backing_artifacts"][0]["role"] == "transcript"
+
+
+def test_chatlas_run_produce_uses_full_query_rows(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    artifact_path = home / "Documents" / "chatlas" / "raw" / "codex" / "fingerprint" / "home" / "session-1.jsonl"
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        json.dumps(
+            {
+                "provider": "codex",
+                "uri": "agentos://chat-session/codex/fingerprint/session-1",
+                "session_id": "session-1",
+                "identity_hash": "hash-1",
+                "primary_backing_artifact": {
+                    "role": "transcript",
+                    "path": str(artifact_path),
+                },
+                "backing_artifacts": [
+                    {
+                        "role": "transcript",
+                        "path": str(artifact_path),
+                    }
+                ],
+            }
+        )
+        + "\n",
+    )
+    captured_rows: list[dict[str, object]] = []
+
+    def fake_run_produce(**kwargs):
+        captured_rows.extend(kwargs["rows"])
+        return {
+            "status": "ok",
+            "command": "chatlas run-produce",
+            "failed_count": 0,
+        }
+
+    monkeypatch.setattr("agentos.chatlas.commands.chatlas_run_produce", fake_run_produce)
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "run-produce",
+                "--agent-provider",
+                "codex",
+                "--session-id",
+                "session-1",
+                "--view",
+                "zip-transcript-agent-summary",
+            ]
+        )
+        == 0
+    )
+
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+    assert captured_rows[0]["primary_backing_artifact"]["path"] == str(artifact_path)
+    assert captured_rows[0]["backing_artifacts"][0]["role"] == "transcript"
 
 
 def test_chatlas_query_rejects_positional_and_legacy_options(

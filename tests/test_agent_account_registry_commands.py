@@ -3308,6 +3308,154 @@ def test_agent_accounts_monitor_clock_periodic_alarm_rearms() -> None:
     assert third.alarms[LIMITS_TRACKING_PERIODIC_ALARM].remaining_ticks == 1
 
 
+def test_agent_accounts_monitor_limits_periodic_alarm_adapts_after_automatic_fire() -> None:
+    from agentos.agent.monitor import (
+        LIMITS_TRACKING_PERIODIC_ALARM,
+        MONITOR_STARTUP_ALARM,
+        MonitorFrame,
+        MonitorLoop,
+        MonitorState,
+    )
+
+    class PeriodicWorkflow:
+        name = "limits-tracking"
+        periodic_alarm_name = LIMITS_TRACKING_PERIODIC_ALARM
+        refresh_interval_sec = 2
+
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state, frame
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+            del state, frame, trigger
+
+    loop = MonitorLoop(
+        workflows=(PeriodicWorkflow(),),
+        interval_sec=1,
+        max_ticks=1,
+    )
+
+    startup = loop._apply_adaptive_alarm_policy(loop.clock.step())
+    first_refresh = loop._apply_adaptive_alarm_policy(loop.clock.step())
+    waiting = loop._apply_adaptive_alarm_policy(loop.clock.step())
+    waiting_again = loop._apply_adaptive_alarm_policy(loop.clock.step())
+    second_refresh = loop._apply_adaptive_alarm_policy(loop.clock.step())
+
+    assert startup.fired(MONITOR_STARTUP_ALARM)
+    assert startup.alarms[LIMITS_TRACKING_PERIODIC_ALARM].period_ticks == 2
+    assert first_refresh.fired(LIMITS_TRACKING_PERIODIC_ALARM)
+    assert first_refresh.alarms[LIMITS_TRACKING_PERIODIC_ALARM].period_ticks == 3
+    assert first_refresh.alarms[LIMITS_TRACKING_PERIODIC_ALARM].remaining_ticks == 3
+    assert not waiting.fired(LIMITS_TRACKING_PERIODIC_ALARM)
+    assert not waiting_again.fired(LIMITS_TRACKING_PERIODIC_ALARM)
+    assert second_refresh.fired(LIMITS_TRACKING_PERIODIC_ALARM)
+    assert second_refresh.alarms[LIMITS_TRACKING_PERIODIC_ALARM].period_ticks == 4
+
+
+def test_agent_accounts_monitor_enter_resets_adaptive_limits_period() -> None:
+    from agentos.agent.monitor import (
+        LIMITS_TRACKING_PERIODIC_ALARM,
+        MONITOR_ENTER_ALARM,
+        MonitorFrame,
+        MonitorLoop,
+        MonitorState,
+    )
+
+    class PeriodicWorkflow:
+        name = "limits-tracking"
+        periodic_alarm_name = LIMITS_TRACKING_PERIODIC_ALARM
+        refresh_interval_sec = 2
+
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state, frame
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+            del state, frame, trigger
+
+    loop = MonitorLoop(
+        workflows=(PeriodicWorkflow(),),
+        interval_sec=1,
+        max_ticks=1,
+    )
+
+    loop._apply_adaptive_alarm_policy(loop.clock.step())
+    loop._apply_adaptive_alarm_policy(loop.clock.step())
+    loop.set_alarm(MONITOR_ENTER_ALARM)
+    manual = loop._apply_adaptive_alarm_policy(loop.clock.step())
+
+    assert manual.fired(MONITOR_ENTER_ALARM)
+    assert manual.alarms[LIMITS_TRACKING_PERIODIC_ALARM].period_ticks == 2
+    assert manual.alarms[LIMITS_TRACKING_PERIODIC_ALARM].remaining_ticks == 2
+
+
+def test_agent_accounts_monitor_enter_wins_over_simultaneous_periodic_alarm() -> None:
+    from agentos.agent.monitor import (
+        LIMITS_TRACKING_PERIODIC_ALARM,
+        MONITOR_ENTER_ALARM,
+        MonitorFrame,
+        MonitorLoop,
+        MonitorState,
+    )
+
+    class PeriodicWorkflow:
+        name = "limits-tracking"
+        periodic_alarm_name = LIMITS_TRACKING_PERIODIC_ALARM
+        refresh_interval_sec = 2
+
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state, frame
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+            del state, frame, trigger
+
+    loop = MonitorLoop(
+        workflows=(PeriodicWorkflow(),),
+        interval_sec=1,
+        max_ticks=1,
+    )
+
+    loop._apply_adaptive_alarm_policy(loop.clock.step())
+    loop.set_alarm(MONITOR_ENTER_ALARM)
+    simultaneous = loop._apply_adaptive_alarm_policy(loop.clock.step())
+
+    assert simultaneous.fired(MONITOR_ENTER_ALARM)
+    assert simultaneous.fired(LIMITS_TRACKING_PERIODIC_ALARM)
+    assert simultaneous.alarms[LIMITS_TRACKING_PERIODIC_ALARM].period_ticks == 2
+    assert simultaneous.alarms[LIMITS_TRACKING_PERIODIC_ALARM].remaining_ticks == 2
+
+
+def test_agent_accounts_monitor_startup_does_not_increase_limits_period() -> None:
+    from agentos.agent.monitor import (
+        LIMITS_TRACKING_PERIODIC_ALARM,
+        MONITOR_STARTUP_ALARM,
+        MonitorFrame,
+        MonitorLoop,
+        MonitorState,
+    )
+
+    class PeriodicWorkflow:
+        name = "limits-tracking"
+        periodic_alarm_name = LIMITS_TRACKING_PERIODIC_ALARM
+        refresh_interval_sec = 2
+
+        def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+            del state, frame
+
+        def loop(self, state: MonitorState, frame: MonitorFrame, trigger) -> None:
+            del state, frame, trigger
+
+    loop = MonitorLoop(
+        workflows=(PeriodicWorkflow(),),
+        interval_sec=1,
+        max_ticks=1,
+    )
+
+    startup = loop._apply_adaptive_alarm_policy(loop.clock.step())
+
+    assert startup.fired(MONITOR_STARTUP_ALARM)
+    assert startup.alarms[LIMITS_TRACKING_PERIODIC_ALARM].period_ticks == 2
+    assert startup.alarms[LIMITS_TRACKING_PERIODIC_ALARM].remaining_ticks == 1
+
+
 def test_agent_accounts_monitor_refreshes_after_clock_periodic_alarm(
     tmp_path: Path,
     monkeypatch,

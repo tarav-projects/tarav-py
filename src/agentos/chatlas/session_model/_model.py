@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
+from agentos.agent.extractors.codex import is_codex_rollout_path
+from agentos.agent.session_utils import primary_transcript_artifact
 from agentos.chatlas.index_query import select_one_chatlas_index_row
 from agentos.claude.session import ClaudeSession
 from agentos.codex.session import CodexSession
@@ -124,7 +126,7 @@ def _experimental_normalize_provider_raw(
             codex_result = _experimental_normalize_codex_session(codex_session)
             if codex_result is not None:
                 return codex_result
-        raise CliError("chatlas export could not normalize codex raw artifacts")
+        raise CliError(_codex_normalization_failure_message(session))
     if provider == "claude-code":
         claude_session = ClaudeSession.from_chatlas_session_payload(
             session,
@@ -150,6 +152,38 @@ def _experimental_normalize_provider_raw(
         "chatlas export has no provider-specific raw normalizer "
         f"for provider {provider!r}; supported providers: "
         f"{', '.join(_SUPPORTED_EXPORT_PROVIDERS)}"
+    )
+
+
+def _codex_normalization_failure_message(session: dict[str, Any]) -> str:
+    prefix = "chatlas export could not normalize codex raw artifacts"
+    session_id = _string_or_none(session.get("session_id"))
+    session_text = f" for session {session_id!r}" if session_id is not None else ""
+    artifact = primary_transcript_artifact(session)
+    if artifact is None:
+        return f"{prefix}{session_text}: no primary transcript backing artifact"
+
+    path_text = _string_or_none(artifact.get("path"))
+    if path_text is None:
+        return f"{prefix}{session_text}: primary transcript artifact has no path"
+
+    path = Path(path_text)
+    if not path.exists():
+        return f"{prefix}{session_text}: primary transcript artifact is missing: {path}"
+    if not path.is_file():
+        return f"{prefix}{session_text}: primary transcript artifact is not a file: {path}"
+    try:
+        if not is_codex_rollout_path(path):
+            return (
+                f"{prefix}{session_text}: primary transcript artifact is not a "
+                f"recognized Codex rollout JSONL: {path}"
+            )
+    except OSError as exc:
+        return f"{prefix}{session_text}: could not read primary transcript artifact {path}: {exc}"
+
+    return (
+        f"{prefix}{session_text}: recognized Codex rollout produced no normalizable "
+        f"messages, events, model runs, or clean transcript fallback records: {path}"
     )
 
 

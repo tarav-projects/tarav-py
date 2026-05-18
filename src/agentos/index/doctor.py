@@ -24,8 +24,7 @@ def _check_reserved_files(index_dir: Path) -> list[dict[str, object]]:
     """Check that reserved index files exist."""
     issues: list[dict[str, object]] = []
     for name, role in [
-        ("000-index.md", "file-organization entry point"),
-        ("001-ontology.md", "ontological entry point (symbol table)"),
+        ("000-index.md", "index routing table and symbol table"),
     ]:
         path = index_dir / name
         if not path.exists():

@@ -30,7 +30,10 @@ def run_chatlas_query(
     message_contains: tuple[str, ...] | None = None,
     min_user_turns: int | None = None,
     chatlas_root: Path | None = None,
+    row_shape: str = "compact",
 ) -> dict[str, object]:
+    if row_shape not in {"compact", "full"}:
+        raise ValueError(f"unsupported Chatlas query row_shape: {row_shape}")
     index = load_chatlas_session_index_rows(chatlas_root=chatlas_root)
     filters = {
         "uri": uri,
@@ -79,6 +82,11 @@ def run_chatlas_query(
     ]
     effective_limit = _DEFAULT_LIMIT if limit is None else limit
     returned_rows = filtered_rows[:effective_limit]
+    result_rows: list[dict[str, object]]
+    if row_shape == "full":
+        result_rows = returned_rows
+    else:
+        result_rows = [_normalized_session_row(row) for row in returned_rows]
     return {
         "status": "ok",
         "command": "chatlas query",
@@ -95,7 +103,7 @@ def run_chatlas_query(
         "candidate_row_count": len(scanned_candidates),
         "query_matched_row_count": len(filtered_rows),
         "returned_row_count": len(returned_rows),
-        "rows": [_normalized_session_row(row) for row in returned_rows],
+        "rows": result_rows,
     }
 
 

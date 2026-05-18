@@ -232,7 +232,10 @@ def _cmd_chatlas_run_produce(args: argparse.Namespace) -> int:
     profile = args.profile if args.profile is not None else (config.get("profile") if use_config else None)
     model = args.model if args.model is not None else (config.get("model") if use_config else None)
 
-    query_payload = chatlas_query(**_chatlas_query_selector_kwargs(args))
+    query_payload = chatlas_query(
+        **_chatlas_query_selector_kwargs(args),
+        row_shape="full",
+    )
     rows = query_payload.get("rows", [])
     if not rows:
         print(format_json_output({
