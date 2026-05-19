@@ -317,6 +317,17 @@ def test_chatlas_update_delta_scan_copies_and_indexes_codex_raw(
     assert rows[0]["native"]["cwd"] == str(project_path)
     assert str(codex_home) not in rows[0]["primary_backing_artifact"]["path"]
     assert str(chatlas_root / "raw") in rows[0]["primary_backing_artifact"]["path"]
+    assert rows[0]["summary"] == {
+        "visible_user_turn_count": 1,
+        "visible_assistant_turn_count": 1,
+        "visible_message_count": 2,
+        "visible_user_text_char_count": 5,
+        "visible_assistant_text_char_count": 2,
+        "visible_text_char_count": 7,
+        "first_user_text_excerpt": "hello",
+        "last_user_text_excerpt": "hello",
+        "last_assistant_text_excerpt": "hi",
+    }
 
     assert main(["chatlas", "query", "--session-id", session_id]) == 0
     query_payload = json.loads(capsys.readouterr().out)
@@ -324,10 +335,13 @@ def test_chatlas_update_delta_scan_copies_and_indexes_codex_raw(
         {
             "uri": rows[0]["uri"],
             "provider": "codex",
+            "instance": "codex-work",
+            "identity_hash": rows[0]["identity_hash"],
             "session_id": session_id,
             "updated_at": rows[0]["updated_at"],
             "home": str(codex_home),
             "project_path": str(project_path),
+            "summary": rows[0]["summary"],
         }
     ]
 
@@ -374,6 +388,63 @@ def test_chatlas_index_update_exposes_delta_scan_command(
     assert payload["session_index"]["upserted_row_count"] == 1
 
 
+def test_chatlas_index_update_summary_tracks_visible_turns_and_excerpts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, agentos_home, codex_home = _isolate_agentos(monkeypatch, tmp_path)
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675fd5"
+    rollout_path = codex_home / "sessions" / "2026" / "03" / "25" / f"rollout-fixture-{session_id}.jsonl"
+    _write_codex_rollout(
+        rollout_path,
+        session_id=session_id,
+        user_text="first   user\nmessage",
+        assistant_text="first assistant reply",
+    )
+    with rollout_path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "timestamp": "2026-03-08T01:09:04.000Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "second user request"}],
+                    },
+                }
+            )
+            + "\n"
+        )
+        handle.write(
+            json.dumps(
+                {
+                    "timestamp": "2026-03-08T01:09:05.000Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "second assistant reply"}],
+                    },
+                }
+            )
+            + "\n"
+        )
+    _write_global_config(agentos_home, codex_home=codex_home)
+
+    assert main(["chatlas", "index", "update", "--provider", "codex", "--output-mode", "json"]) == 0
+    capsys.readouterr()
+
+    summary = _chatlas_index_rows(home / "Documents" / "chatlas")[0]["summary"]
+    assert summary["visible_user_turn_count"] == 2
+    assert summary["visible_assistant_turn_count"] == 2
+    assert summary["visible_message_count"] == 4
+    assert summary["first_user_text_excerpt"] == "first user message"
+    assert summary["last_user_text_excerpt"] == "second user request"
+    assert summary["last_assistant_text_excerpt"] == "second assistant reply"
+
+
 def test_chatlas_index_reset_deletes_index_and_cache_only(
     tmp_path: Path,
     monkeypatch,
@@ -383,7 +454,7 @@ def test_chatlas_index_reset_deletes_index_and_cache_only(
     chatlas_root = home / "Documents" / "chatlas"
     raw_artifact = chatlas_root / "raw" / "codex" / "fingerprint" / "home" / "sessions" / "rollout.jsonl"
     index_artifact = chatlas_root / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
-    cache_artifact = chatlas_root / "cache" / "session-index-derivations-v1" / "codex" / "fingerprint" / "sessions.json"
+    cache_artifact = chatlas_root / "cache" / "session-index-derivations-v2" / "codex" / "fingerprint" / "sessions.json"
     _write(raw_artifact, "{}\n")
     _write(index_artifact, "{}\n")
     _write(cache_artifact, "{}\n")
@@ -395,8 +466,8 @@ def test_chatlas_index_reset_deletes_index_and_cache_only(
     assert payload["command"] == "chatlas index reset"
     assert raw_artifact.is_file()
     assert not (chatlas_root / "index" / "sessions").exists()
-    assert not (chatlas_root / "cache" / "session-index-derivations-v1").exists()
-    assert {Path(row["path"]).name for row in payload["deleted"]} == {"sessions", "session-index-derivations-v1"}
+    assert not (chatlas_root / "cache" / "session-index-derivations-v2").exists()
+    assert {Path(row["path"]).name for row in payload["deleted"]} == {"sessions", "session-index-derivations-v2"}
 
 
 def test_chatlas_index_redo_rebuilds_index_from_copied_raw(
@@ -1413,12 +1484,66 @@ def test_chatlas_query_filters_index_rows_and_returns_minimal_shape(
         {
             "uri": "agentos://chat-session/codex/fingerprint/session-1",
             "provider": "codex",
+            "instance": None,
+            "identity_hash": "hash-1",
             "session_id": "session-1",
             "updated_at": "2026-03-08T01:09:01.000Z",
             "home": None,
             "project_path": None,
+            "summary": None,
         }
     ]
+
+
+def test_chatlas_query_min_user_turns_uses_indexed_summary_without_raw_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-high",
+                        "session_id": "session-high",
+                        "updated_at": "2026-03-09T01:09:01.000Z",
+                        "summary": {"visible_user_turn_count": 6},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-low",
+                        "session_id": "session-low",
+                        "updated_at": "2026-03-08T01:09:01.000Z",
+                        "summary": {"visible_user_turn_count": 5},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-missing-summary",
+                        "session_id": "session-missing-summary",
+                        "updated_at": "2026-03-10T01:09:01.000Z",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+    )
+
+    assert main(["chatlas", "query", "--min-user-turns", "6", "--sort", "newest"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    _assert_chatlas_query_counts(payload, index_matched=3, candidate=3, query_matched=1, returned=1)
+    assert [row["session_id"] for row in payload["rows"]] == ["session-high"]
+    assert payload["rows"][0]["summary"] == {"visible_user_turn_count": 6}
+    assert not (home / "Documents" / "chatlas" / "raw").exists()
 
 
 def test_chatlas_query_can_return_full_rows_for_internal_consumers(

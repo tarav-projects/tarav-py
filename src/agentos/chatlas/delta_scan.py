@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 from shutil import copy2, rmtree
 import stat
 import time
@@ -25,9 +26,10 @@ CHATLAS_DIRNAME = "chatlas"
 DEFAULT_CHATLAS_PHASE = "index-only"
 RAW_PARTITION_MANIFEST_CLASS = "agentos.chatlas.raw_partition_manifest"
 RAW_PARTITION_MANIFEST_FILENAME = "manifest.json"
-SESSION_INDEX_DERIVATIONS_CACHE_DIR = Path("cache") / "session-index-derivations-v1"
+SESSION_INDEX_DERIVATIONS_CACHE_DIR = Path("cache") / "session-index-derivations-v2"
 SESSION_INDEX_ROOT = Path("index") / "sessions"
 CopyResult = Literal["added", "updated", "unchanged", "skipped"]
+_SESSION_SUMMARY_EXCERPT_CHAR_LIMIT = 240
 
 _REPORT_TEMPLATE: dict[str, Any] = {
     "provider_count": 0,
@@ -796,7 +798,7 @@ def _session_index_row(
     if provider_home is _USE_PROVIDER_INSTANCE_HOME:
         provider_home = _provider_instance_home(session.provider_instance)
     home_value = provider_home if isinstance(provider_home, str) else None
-    return {
+    row = {
         "class": "agentos.chatlas.session",
         "schema_version": 1,
         "provider": session.provider_instance.provider,
@@ -827,6 +829,89 @@ def _session_index_row(
             provider_session_id=session.session_id,
         ),
     }
+    row["summary"] = _session_index_summary(row)
+    return row
+
+
+def _session_index_summary(row: dict[str, Any]) -> dict[str, object]:
+    try:
+        from agentos.chatlas.session_model import build_chatlas_session_model_from_index_row
+
+        session_model = build_chatlas_session_model_from_index_row(row)
+    except Exception:
+        return _empty_session_index_summary()
+    user_texts = _visible_message_texts(session_model, roles={"user"})
+    assistant_texts = _visible_message_texts(session_model, roles={"assistant"})
+    all_texts = user_texts + assistant_texts
+    summary = _empty_session_index_summary()
+    summary.update(
+        {
+            "visible_user_turn_count": len(user_texts),
+            "visible_assistant_turn_count": len(assistant_texts),
+            "visible_message_count": len(all_texts),
+            "visible_user_text_char_count": sum(len(text) for text in user_texts),
+            "visible_assistant_text_char_count": sum(len(text) for text in assistant_texts),
+            "visible_text_char_count": sum(len(text) for text in all_texts),
+            "first_user_text_excerpt": _text_excerpt(user_texts[0]) if user_texts else None,
+            "last_user_text_excerpt": _text_excerpt(user_texts[-1]) if user_texts else None,
+            "last_assistant_text_excerpt": _text_excerpt(assistant_texts[-1]) if assistant_texts else None,
+        }
+    )
+    return summary
+
+
+def _empty_session_index_summary() -> dict[str, object]:
+    return {
+        "visible_user_turn_count": 0,
+        "visible_assistant_turn_count": 0,
+        "visible_message_count": 0,
+        "visible_user_text_char_count": 0,
+        "visible_assistant_text_char_count": 0,
+        "visible_text_char_count": 0,
+        "first_user_text_excerpt": None,
+        "last_user_text_excerpt": None,
+        "last_assistant_text_excerpt": None,
+    }
+
+
+def _visible_message_texts(
+    session_model: dict[str, Any],
+    *,
+    roles: set[str],
+) -> list[str]:
+    chat = session_model.get("chat")
+    if not isinstance(chat, dict):
+        return []
+    messages = chat.get("messages")
+    if not isinstance(messages, list):
+        return []
+    texts: list[str] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        if message.get("role") not in roles:
+            continue
+        if message.get("visibility") != "conversation":
+            continue
+        text = _content_text(message.get("content"))
+        if text:
+            texts.append(text)
+    return texts
+
+
+def _content_text(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    return "\n".join(
+        text
+        for block in value
+        if isinstance(block, dict)
+        and isinstance((text := block.get("text")), str)
+    )
+
+
+def _text_excerpt(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()[:_SESSION_SUMMARY_EXCERPT_CHAR_LIMIT]
 
 
 def _provider_instance_home(instance: ChatlasProviderInstance) -> str | None:

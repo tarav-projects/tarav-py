@@ -72,12 +72,12 @@ def run_chatlas_query(
         row
         for row in scanned_candidates
         if _row_matches_raw_filters(row, raw_contains=raw_contains)
+        and _row_matches_summary_filters(row, min_user_turns=min_user_turns)
         and _row_matches_standard_model_filters(
             row,
             user_contains=user_contains,
             assistant_contains=assistant_contains,
             message_contains=message_contains,
-            min_user_turns=min_user_turns,
         )
     ]
     effective_limit = _DEFAULT_LIMIT if limit is None else limit
@@ -127,17 +127,14 @@ def _row_matches_standard_model_filters(
     user_contains: tuple[str, ...] | None,
     assistant_contains: tuple[str, ...] | None,
     message_contains: tuple[str, ...] | None,
-    min_user_turns: int | None = None,
 ) -> bool:
-    if not user_contains and not assistant_contains and not message_contains and not min_user_turns:
+    if not user_contains and not assistant_contains and not message_contains:
         return True
     try:
         session_model = build_chatlas_session_model_from_index_row(row)
     except Exception:
         return False
     user_texts = _visible_message_texts(session_model, roles={"user"})
-    if min_user_turns is not None and len(user_texts) < min_user_turns:
-        return False
     assistant_texts = _visible_message_texts(session_model, roles={"assistant"})
     message_texts = user_texts + assistant_texts
     return (
@@ -145,6 +142,20 @@ def _row_matches_standard_model_filters(
         and _texts_match_all(assistant_texts, assistant_contains)
         and _texts_match_all(message_texts, message_contains)
     )
+
+
+def _row_matches_summary_filters(
+    row: dict[str, Any],
+    *,
+    min_user_turns: int | None,
+) -> bool:
+    if min_user_turns is None:
+        return True
+    summary = row.get("summary")
+    if not isinstance(summary, dict):
+        return False
+    user_turn_count = summary.get("visible_user_turn_count")
+    return isinstance(user_turn_count, int) and user_turn_count >= min_user_turns
 
 
 def _raw_artifact_texts(row: dict[str, Any]) -> list[str]:
@@ -229,6 +240,7 @@ def _normalized_session_row(row: dict[str, Any]) -> dict[str, object]:
         "updated_at": _string_or_none(row.get("updated_at")),
         "home": _string_or_none(row.get("home")),
         "project_path": _string_or_none(row.get("project_path")),
+        "summary": row.get("summary") if isinstance(row.get("summary"), dict) else None,
     }
 
 
