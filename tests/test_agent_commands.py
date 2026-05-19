@@ -1952,6 +1952,55 @@ def test_agent_run_copilot_raw_argv_dry_run(
     )
 
 
+def test_agent_run_copilot_home_sets_copilot_home_env(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    agentos_home = tmp_path / "agentos-home"
+    copilot_home = tmp_path / "copilot-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
+
+    _write_global_config(
+        agentos_home / "config.json",
+        provider_instances=[
+            {
+                "provider": "copilot-cli",
+                "id": "copilot-main",
+                "cli_command": ["copilot"],
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "agent",
+                "run",
+                "--provider",
+                "copilot-cli",
+                "--profile",
+                "copilot-main",
+                "--home",
+                str(copilot_home),
+                "--dry-run",
+                "--",
+                "auth",
+                "status",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        capsys.readouterr().out.strip()
+        == f"COPILOT_HOME={copilot_home.resolve()} copilot --allow-all-tools --no-ask-user auth status"
+    )
+
+
 def test_agent_run_pi_raw_argv_dry_run(
     tmp_path: Path,
     monkeypatch,

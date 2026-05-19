@@ -46,6 +46,10 @@ from agentos.codex.account_status import (
     CODEX_APP_SERVER_USAGE_SOURCE,
     codex_usage_record_limits,
 )
+from agentos.copilot.account_status import (
+    COPILOT_INTERNAL_USER_USAGE_SOURCE,
+    copilot_usage_record_limits,
+)
 
 
 class LimitsTrackingWorkflow:
@@ -336,6 +340,8 @@ def _usage_record_source_for_target(target: MonitorTarget) -> str | None:
         return CODEX_APP_SERVER_USAGE_SOURCE
     if target.provider == "claude-code":
         return CLAUDE_STATUSLINE_USAGE_SOURCE
+    if target.provider == "copilot-cli":
+        return COPILOT_INTERNAL_USER_USAGE_SOURCE
     return None
 
 
@@ -346,6 +352,8 @@ def _usage_record_limit_parser(
         return codex_usage_record_limits
     if source == CLAUDE_STATUSLINE_USAGE_SOURCE:
         return claude_statusline_usage_record_limits
+    if source == COPILOT_INTERNAL_USER_USAGE_SOURCE:
+        return copilot_usage_record_limits
     raise CliError(f"unsupported monitor usage record source {source!r}")
 
 

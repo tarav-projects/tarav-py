@@ -13,15 +13,18 @@ from agentos.agent.run_runtime import (
     AgentCommandConfig,
 )
 from agentos._core.errors import CliError
+from agentos.agent.account_status import AccountStatus
 from agentos.copilot.session import (
     CopilotSession,
     CopilotSessionRef,
     discover_copilot_session_refs,
     load_copilot_session,
 )
+from agentos.copilot.account_status import _copilot_account_status_impl
 
 
 COPILOT_PROVIDER = "copilot-cli"
+COPILOT_HOME_ENV_VAR = "COPILOT_HOME"
 
 
 @dataclass(frozen=True)
@@ -53,8 +56,26 @@ class CopilotAgent(AgentBase):
             raise CliError(f"--account is not supported for provider {self.provider}")
         return self._build_command_with_env(
             command_config,
-            env_overrides=dict(self.env),
+            env_overrides=self._run_env_overrides(),
         )
+
+    def account_status(
+        self,
+        *,
+        record_usage: bool = True,
+        fallback_to_usage_registry: bool = True,
+    ) -> AccountStatus:
+        return _copilot_account_status_impl(
+            self,
+            record_usage=record_usage,
+            fallback_to_usage_registry=fallback_to_usage_registry,
+        )
+
+    def _run_env_overrides(self) -> dict[str, str]:
+        env_overrides = dict(self.env)
+        if self.home is not None:
+            env_overrides[COPILOT_HOME_ENV_VAR] = str(self.home)
+        return env_overrides
 
 
 __all__ = ["CopilotAgent"]

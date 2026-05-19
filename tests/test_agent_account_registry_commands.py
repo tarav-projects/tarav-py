@@ -176,6 +176,28 @@ def _claude_register_args(
     return args
 
 
+def _copilot_register_args(
+    *,
+    account: str = "jp",
+    account_id: str | None = "josePereiro",
+    label: str | None = None,
+) -> list[str]:
+    args = [
+        "agent",
+        "accounts",
+        "register",
+        "--provider",
+        "copilot-cli",
+        "--account",
+        account,
+    ]
+    if account_id is not None:
+        args.extend(["--account-id", account_id])
+    if label is not None:
+        args.extend(["--label", label])
+    return args
+
+
 def _write_monitor_config(agentos_home: Path, monitor: list[dict[str, object]]) -> None:
     _write(
         agentos_home / "config.json",
@@ -284,6 +306,47 @@ def _registered_linked_claude_home(
     return claude_home
 
 
+def _registered_linked_copilot_home(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    *,
+    account_id: str = "josePereiro",
+) -> Path:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    copilot_home = tmp_path / "copilot-home"
+    copilot_home.mkdir()
+    assert (
+        main(
+            _copilot_register_args(
+                account="jp",
+                account_id=account_id,
+                label="GitHub Copilot jp",
+            )
+        )
+        == 0
+    )
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "agent",
+                "accounts",
+                "link",
+                "--provider",
+                "copilot-cli",
+                "--account",
+                "jp",
+                "--home",
+                str(copilot_home),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    return copilot_home
+
+
 def _claude_usage_get_agent(tmp_path: Path, monkeypatch):
     from agentos.claude.agent import ClaudeAgent
 
@@ -346,6 +409,37 @@ def _codex_usage_payload(
                 },
             }
         }
+    }
+
+
+def _copilot_usage_payload(
+    *,
+    login: str = "josePereiro",
+    percent_remaining: float = 84.4,
+    remaining: int = 422,
+    entitlement: int = 500,
+    reset_at: str = "2026-06-01T00:00:00Z",
+) -> dict[str, object]:
+    return {
+        "login": login,
+        "copilot_plan": "individual",
+        "quota_reset_date_utc": reset_at,
+        "quota_snapshots": {
+            "chat": {
+                "percent_remaining": 100.0,
+                "remaining": 0,
+                "entitlement": 0,
+                "quota_id": "chat",
+                "has_quota": False,
+                "unlimited": True,
+            },
+            "premium_interactions": {
+                "percent_remaining": percent_remaining,
+                "remaining": remaining,
+                "entitlement": entitlement,
+                "quota_id": "premium_interactions",
+            }
+        },
     }
 
 
@@ -1519,6 +1613,45 @@ def test_agent_accounts_status_defaults_to_general_registry_view(
     assert payload["accounts"][0]["active_artifact_id"] == _sha(auth_text)
 
 
+def test_agent_accounts_register_copilot_writes_claimed_registry(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+
+    assert main(_copilot_register_args(label="GitHub Copilot jp")) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["provider"] == "copilot-cli"
+    assert payload["account"] == "jp"
+    account_record = payload["account_record"]
+    assert account_record["account_id"] == "josePereiro"
+    assert account_record["auth_kinds"] == ["github-cli-token"]
+    accounts = _read_json(agentos_home / "accounts" / "copilot-cli" / "accounts.json")
+    assert accounts["accounts"]["jp"]["account_id"] == "josePereiro"
+
+    assert main(_registry_status_args(provider="copilot-cli", json_output=True)) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["provider"] == "copilot-cli"
+    assert status["account_count"] == 1
+
+
+def test_agent_accounts_register_copilot_requires_account_id(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+
+    assert main(_copilot_register_args(account_id=None)) == 1
+
+    assert (
+        "agent accounts register --provider copilot-cli requires --account-id"
+        in capsys.readouterr().err
+    )
+
+
 def test_agent_accounts_status_reports_malformed_registry_path(
     tmp_path: Path,
     monkeypatch,
@@ -2587,6 +2720,201 @@ def test_claude_account_status_does_not_fallback_to_get_usage_records(
     assert len(_usage_registry_entries(agentos_home)) == 1
 
 
+def test_copilot_account_status_fetches_usage_and_records_registry(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.copilot.account_status as copilot_account_status
+
+    copilot_home = _registered_linked_copilot_home(tmp_path, monkeypatch, capsys)
+    monkeypatch.setattr(
+        copilot_account_status,
+        "_fetch_copilot_internal_user_payload",
+        lambda agent: _copilot_usage_payload(percent_remaining=84.4),
+    )
+    agent = build_registered_account_agent(
+        provider="copilot-cli", account="jp", home=copilot_home
+    )
+
+    status = agent.account_status()
+
+    assert status.check_status == "ok"
+    assert status.usage_status == "ok"
+    assert status.identity_match == "verified"
+    assert status.expected_identity.provider_account_id == "josePereiro"
+    assert status.fetched_identity is not None
+    assert status.fetched_identity.provider_account_id == "josePereiro"
+    assert status.auth_summary == "Copilot usage read"
+    assert status.usage_summary == "Premium 16%"
+    assert [limit.limit_name for limit in status.limits] == ["premium"]
+    assert [
+        limit.usage_over_time.used_percent
+        for limit in status.limits
+        if limit.usage_over_time
+    ] == [16]
+    entries = _usage_registry_entries(tmp_path / "home" / ".agentos")
+    assert len(entries) == 1
+    assert entries[0]["provider"] == "copilot-cli"
+    assert entries[0]["account"] == "jp"
+    assert entries[0]["home"] == str(copilot_home.resolve())
+    assert entries[0]["source"] == "copilot_internal_user"
+    assert entries[0]["payload"]["login"] == "josePereiro"
+
+
+def test_copilot_account_status_reports_identity_mismatch(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.copilot.account_status as copilot_account_status
+
+    copilot_home = _registered_linked_copilot_home(tmp_path, monkeypatch, capsys)
+    monkeypatch.setattr(
+        copilot_account_status,
+        "_fetch_copilot_internal_user_payload",
+        lambda agent: _copilot_usage_payload(login="otherUser"),
+    )
+    agent = build_registered_account_agent(
+        provider="copilot-cli", account="jp", home=copilot_home
+    )
+
+    status = agent.account_status()
+
+    assert status.check_status == "error"
+    assert status.usage_status == "unavailable"
+    assert status.identity_match == "mismatched"
+    assert [error.error_type for error in status.errors] == ["identity_mismatch"]
+    assert _usage_registry_entries(tmp_path / "home" / ".agentos") == []
+
+
+def test_copilot_account_status_record_usage_false_skips_usage_registry(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.copilot.account_status as copilot_account_status
+
+    copilot_home = _registered_linked_copilot_home(tmp_path, monkeypatch, capsys)
+    monkeypatch.setattr(
+        copilot_account_status,
+        "_fetch_copilot_internal_user_payload",
+        lambda agent: _copilot_usage_payload(),
+    )
+    agent = build_registered_account_agent(
+        provider="copilot-cli", account="jp", home=copilot_home
+    )
+
+    status = agent.account_status(record_usage=False)
+
+    assert status.usage_status == "ok"
+    assert _usage_registry_entries(tmp_path / "home" / ".agentos") == []
+
+
+def test_copilot_account_status_reports_missing_home_as_setup_error(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    assert main(_copilot_register_args(label="GitHub Copilot jp")) == 0
+    capsys.readouterr()
+    agent = build_registered_account_agent(
+        provider="copilot-cli",
+        account="jp",
+        home=tmp_path / "missing-copilot-home",
+    )
+
+    status = agent.account_status()
+
+    assert status.check_status == "error"
+    assert status.usage_status == "unavailable"
+    assert status.identity_match == "unavailable"
+    assert [error.error_type for error in status.errors] == [
+        "home_missing",
+        "home_link_unusable",
+    ]
+    assert _usage_registry_entries(tmp_path / "home" / ".agentos") == []
+
+
+def test_copilot_account_status_registry_fallback_returns_status_without_append(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.copilot.account_status as copilot_account_status
+    from agentos.agent.usage_registry import append_usage_record
+
+    agentos_home = tmp_path / "home" / ".agentos"
+    copilot_home = _registered_linked_copilot_home(tmp_path, monkeypatch, capsys)
+    append_usage_record(
+        provider="copilot-cli",
+        account="jp",
+        home=copilot_home,
+        source="copilot_internal_user",
+        payload=_copilot_usage_payload(percent_remaining=84.4),
+    )
+
+    def fail_usage(agent):
+        del agent
+        raise AccountStatusError(
+            error_type="network_error",
+            message="copilot usage fetch failed",
+        )
+
+    monkeypatch.setattr(
+        copilot_account_status,
+        "_fetch_copilot_internal_user_payload",
+        fail_usage,
+    )
+    agent = build_registered_account_agent(
+        provider="copilot-cli", account="jp", home=copilot_home
+    )
+
+    status = agent.account_status()
+
+    assert status.usage_status == "ok"
+    assert status.auth_summary == "Copilot usage registry fallback"
+    assert status.raw["usage_record"]["status"] == "registry_fallback"
+    assert status.raw["usage"]["login"] == "josePereiro"
+    assert len(_usage_registry_entries(agentos_home)) == 1
+
+
+def test_copilot_account_status_live_error_without_registry_returns_usage_error(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import agentos.copilot.account_status as copilot_account_status
+
+    copilot_home = _registered_linked_copilot_home(tmp_path, monkeypatch, capsys)
+
+    def fail_usage(agent):
+        del agent
+        raise AccountStatusError(
+            error_type="network_error",
+            message="copilot usage fetch failed",
+        )
+
+    monkeypatch.setattr(
+        copilot_account_status,
+        "_fetch_copilot_internal_user_payload",
+        fail_usage,
+    )
+    agent = build_registered_account_agent(
+        provider="copilot-cli", account="jp", home=copilot_home
+    )
+
+    status = agent.account_status()
+
+    assert status.check_status == "ok"
+    assert status.usage_status == "error"
+    assert [error.error_type for error in status.usage_errors] == ["network_error"]
+    assert status.raw["usage"] is None
+    assert status.raw["usage_record"] is None
+    assert _usage_registry_entries(tmp_path / "home" / ".agentos") == []
+
+
 def test_agent_accounts_monitor_once_prints_account_status(
     tmp_path: Path,
     monkeypatch,
@@ -2723,6 +3051,57 @@ def test_limits_tracking_setup_primes_from_usage_registry_without_provider_fetch
     assert target["account_status"]["raw"]["usage_record"]["status"] == "registry_latest"
     assert frame.blocks[0]["lines"][0].startswith("  ⬢ codex/br: | ")
     assert any("usage/time | 25%" in line for line in frame.blocks[0]["lines"])
+
+
+def test_limits_tracking_setup_primes_copilot_from_usage_registry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import agentos.agent.monitor.workflows as monitor_workflows
+    from agentos.agent.monitor import (
+        LimitsTrackingWorkflow,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+    from agentos.agent.usage_registry import append_usage_record
+
+    _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    target_home = tmp_path / "copilot-home"
+    append_usage_record(
+        provider="copilot-cli",
+        account="jp",
+        home=target_home,
+        source="copilot_internal_user",
+        payload=_copilot_usage_payload(percent_remaining=84.4),
+    )
+    monkeypatch.setattr(
+        monitor_workflows,
+        "build_registered_account_agent",
+        lambda **kwargs: pytest.fail(f"provider fetch during setup: {kwargs}"),
+    )
+    workflow = LimitsTrackingWorkflow(
+        MonitorWorkflowConfig(
+            name="limits-tracking",
+            targets=(
+                MonitorTarget(provider="copilot-cli", account="jp", home=target_home),
+            ),
+            refresh_interval_sec=60,
+            raw_config={},
+        )
+    )
+    frame = MonitorFrame()
+    state = MonitorState()
+
+    workflow.setup(state, frame)
+
+    target = frame.blocks[0]["data"]["targets"][0]
+    assert target["status"] == "ok"
+    assert target["account_status"]["raw"]["usage_record"]["status"] == "registry_latest"
+    assert frame.blocks[0]["lines"][0].startswith("  copilot-cli/jp: | ")
+    assert any("usage/time | 16%" in line for line in frame.blocks[0]["lines"])
+    assert any(" | Premium" in line for line in frame.blocks[0]["lines"])
 
 
 def test_agent_accounts_monitor_rows_use_fixed_columns() -> None:
