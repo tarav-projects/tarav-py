@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Literal
 
 
+AUTO_PRIME_ZERO_LIMITS_WORKFLOW = "auto-prime-zero-limits"
+LIMITS_TRACKING_WORKFLOW = "limits-tracking"
+
+
 @dataclass(frozen=True)
 class MonitorRenderContext:
     label_width: int = 24

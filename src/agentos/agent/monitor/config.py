@@ -8,10 +8,14 @@ from agentos._core.project import agentos_home_dir
 from agentos.agent.account_registry import load_account
 from agentos.agent.config import AgentConfigSource, agent_config_entries_from_config, load_chat_config_documents
 from agentos.agent.monitor.loop import MonitorLoop
-from agentos.agent.monitor.models import MonitorTarget, MonitorWorkflowConfig
+from agentos.agent.monitor.models import (
+    AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
+    LIMITS_TRACKING_WORKFLOW,
+    MonitorTarget,
+    MonitorWorkflowConfig,
+)
 from agentos.agent.monitor.workflows import build_monitor_workflows
 
-AUTO_PRIME_ZERO_LIMITS_WORKFLOW = "auto-prime-zero-limits"
 AUTO_PRIME_ZERO_LIMITS_DEFAULT_TARGET_LIMITS = {
     "codex": ("burst",),
     "claude-code": ("burst",),
@@ -20,7 +24,6 @@ AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS = {
     "codex": ("burst", "weekly"),
     "claude-code": ("burst", "weekly"),
 }
-LIMITS_TRACKING_WORKFLOW = "limits-tracking"
 
 MONITOR_CONFIG_SOURCE = AgentConfigSource(
     object_path=("agent", "accounts", "monitor"),

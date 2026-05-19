@@ -29,6 +29,8 @@ from agentos.agent.monitor.loop import (
     MonitorWorkflow,
 )
 from agentos.agent.monitor.models import (
+    AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
+    LIMITS_TRACKING_WORKFLOW,
     MonitorAccountRow,
     MonitorFrame,
     MonitorInfoRow,
@@ -61,7 +63,7 @@ _PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 
 
 class LimitsTrackingWorkflow:
-    name = "limits-tracking"
+    name = LIMITS_TRACKING_WORKFLOW
     periodic_alarm_name = LIMITS_TRACKING_PERIODIC_ALARM
 
     def __init__(self, config: MonitorWorkflowConfig) -> None:
@@ -274,7 +276,7 @@ class LimitsTrackingWorkflow:
 
 
 class AutoPrimeZeroLimitsWorkflow:
-    name = "auto-prime-zero-limits"
+    name = AUTO_PRIME_ZERO_LIMITS_WORKFLOW
     periodic_alarm_name = AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM
 
     def __init__(self, config: MonitorWorkflowConfig) -> None:
@@ -345,7 +347,7 @@ class AutoPrimeZeroLimitsWorkflow:
         tick: int,
     ) -> None:
         target_states = self._target_states(workflow_state)
-        limits_state = state.data.get("limits-tracking")
+        limits_state = state.data.get(LIMITS_TRACKING_WORKFLOW)
         if not isinstance(limits_state, dict):
             workflow_state["last_scan"] = {
                 "tick": tick,
@@ -562,23 +564,23 @@ def build_monitor_workflows(
 ) -> tuple[MonitorWorkflow, ...]:
     workflows: list[MonitorWorkflow] = []
     limits_tracking_configs = tuple(
-        config for config in configs if config.name == "limits-tracking"
+        config for config in configs if config.name == LIMITS_TRACKING_WORKFLOW
     )
     auto_prime_configs = tuple(
-        config for config in configs if config.name == "auto-prime-zero-limits"
+        config for config in configs if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
     )
     for config in configs:
-        if config.name == "limits-tracking":
-            if not any(workflow.name == "limits-tracking" for workflow in workflows):
+        if config.name == LIMITS_TRACKING_WORKFLOW:
+            if not any(workflow.name == LIMITS_TRACKING_WORKFLOW for workflow in workflows):
                 workflows.append(
                     LimitsTrackingWorkflow(
                         _merge_limits_tracking_configs(limits_tracking_configs)
                     )
                 )
             continue
-        if config.name == "auto-prime-zero-limits":
+        if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW:
             if not any(
-                workflow.name == "auto-prime-zero-limits" for workflow in workflows
+                workflow.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW for workflow in workflows
             ):
                 workflows.append(
                     AutoPrimeZeroLimitsWorkflow(
@@ -608,11 +610,11 @@ def _merge_limits_tracking_configs(
             targets.append(target)
         raw_configs.append(config.raw_config)
     return MonitorWorkflowConfig(
-        name="limits-tracking",
+        name=LIMITS_TRACKING_WORKFLOW,
         targets=tuple(targets),
         refresh_interval_sec=refresh_interval_sec,
         raw_config={
-            "workflow": "limits-tracking",
+            "workflow": LIMITS_TRACKING_WORKFLOW,
             "refresh_interval_sec": refresh_interval_sec,
             "configs": raw_configs,
         },
@@ -646,13 +648,13 @@ def _merge_auto_prime_configs(
             target_limit_ids[provider] = tuple(dict.fromkeys((*existing, *limit_ids)))
         raw_configs.append(config.raw_config)
     return MonitorWorkflowConfig(
-        name="auto-prime-zero-limits",
+        name=AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
         targets=tuple(targets),
         refresh_interval_sec=interval_sec,
         retry_cooldown_sec=retry_cooldown_sec,
         target_limit_ids=target_limit_ids,
         raw_config={
-            "workflow": "auto-prime-zero-limits",
+            "workflow": AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
             "interval_sec": interval_sec,
             "retry_cooldown_sec": retry_cooldown_sec,
             "target_limits": target_limit_ids,
