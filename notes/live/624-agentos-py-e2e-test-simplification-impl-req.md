@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** simplify the `agentos-py` pytest suite by cutting unit-style and overly granular tests, leaving a smaller set of end-to-end scenario tests that preserve meaningful CLI and artifact coverage.
-- **status:** approved for execution.
+- **status:** implemented.
 - **source:** direct user request after a test-suite research pass on 2026-05-19.
 - **goal:** reduce test source from about `14.6k` LOC and about `382` granular tests toward `6k-8k` LOC and `40-80` scenario tests, while keeping coverage focused on externally observable behavior.
 - **target project:** `/Users/pereiro/projects/agentos-project/agentos-py`
@@ -104,7 +104,7 @@ Shared setup belongs in `tests/_helpers.py` or a very small `tests/e2e_helpers.p
 
 ### Slice 1 - Establish Shared E2E Fixture Layer
 
-Status: pending.
+Status: implemented.
 
 - Read `tests/_helpers.py` and the setup blocks in the largest test files.
 - Move repeated setup into a small shared e2e fixture/helper layer:
@@ -120,7 +120,7 @@ Status: pending.
 
 ### Slice 2 - Remove Pure Unit/Internal Test Files
 
-Status: pending.
+Status: implemented.
 
 - Delete or fold the direct private/unit tests listed in `Initial.Cut.Targets`.
 - If a test protects a durable contract, rewrite it as a small e2e or public-contract scenario instead of keeping private-helper coverage.
@@ -130,7 +130,7 @@ Status: pending.
 
 ### Slice 3 - Collapse Tara Tapes Into CLI Scenarios
 
-Status: pending.
+Status: implemented.
 
 - Replace direct core/check/archive tests with a compact e2e file covering:
   - init with manifest data
@@ -147,7 +147,7 @@ Status: pending.
 
 ### Slice 4 - Consolidate Stdlib, Project, And Small Command Tests
 
-Status: pending.
+Status: implemented.
 
 - Consolidate smaller command surfaces:
   - stdlib routing/help
@@ -161,7 +161,7 @@ Status: pending.
 
 ### Slice 5 - Consolidate Chatlas Scenarios
 
-Status: pending.
+Status: implemented.
 
 - Reshape Chatlas tests around a few durable workflows:
   - index update from provider raw fixture and query results
@@ -177,7 +177,7 @@ Status: pending.
 
 ### Slice 6 - Consolidate Skills Scenarios
 
-Status: pending.
+Status: implemented.
 
 - Reshape skills tests around a few end-to-end workflows:
   - import using default routing profile
@@ -192,7 +192,7 @@ Status: pending.
 
 ### Slice 7 - Consolidate Agent And Account Scenarios
 
-Status: pending.
+Status: implemented.
 
 - Reduce agent command tests to scenario coverage for:
   - configured agents list output
@@ -211,7 +211,7 @@ Status: pending.
 
 ### Slice 8 - Final Verification And Test-Suite Budget Check
 
-Status: pending.
+Status: implemented.
 
 - Run the full suite:
 
@@ -237,3 +237,4 @@ for f in tests/test_*.py; do printf '%s\t' "$f"; rg -c '^def test_' "$f"; done
 ## Impl.Log
 
 - 2026-05-19: Impl.Req created from accepted test-suite simplification target and initial research findings. No implementation changes made yet.
+- 2026-05-19: Implemented the e2e test simplification. Replaced the large Agent, account registry, Chatlas, Skills, Forum, Tara Tapes, and stdlib-heavy granular files with compact scenario tests; deleted private/unit-oriented test files. Final measured test suite: `1,626` LOC, `51` tests, no test file over `218` LOC. Verification: `uv run pytest` passed with `51 passed`.
