@@ -302,6 +302,7 @@ class AutoPrimeZeroLimitsWorkflow:
         workflow_state["setup_tick"] = frame.tick
         workflow_state["interval_sec"] = self.config.refresh_interval_sec
         workflow_state["retry_cooldown_sec"] = self.retry_cooldown_sec
+        self._write_config_state(workflow_state)
         self._write_frame_block(frame, workflow_state=workflow_state)
 
     def loop(
@@ -318,6 +319,7 @@ class AutoPrimeZeroLimitsWorkflow:
         workflow_state["interval_sec"] = self.config.refresh_interval_sec
         workflow_state["retry_cooldown_sec"] = self.retry_cooldown_sec
         workflow_state["fired_alarms"] = list(trigger.fired_alarm_names)
+        self._write_config_state(workflow_state)
 
         if trigger.fired(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM):
             self._scan_and_prime(state, workflow_state=workflow_state, tick=frame.tick)
@@ -342,6 +344,16 @@ class AutoPrimeZeroLimitsWorkflow:
         target_states: dict[str, object] = {}
         workflow_state["targets"] = target_states
         return target_states
+
+    def _write_config_state(self, workflow_state: dict[str, object]) -> None:
+        workflow_state["target_limit_ids"] = {
+            provider: tuple(sorted(limit_ids))
+            for provider, limit_ids in self.target_limit_ids.items()
+        }
+        workflow_state["triggers"] = {
+            provider: tuple(sorted(trigger_names))
+            for provider, trigger_names in self.triggers.items()
+        }
 
     def _scan_and_prime(
         self,
@@ -572,17 +584,19 @@ class AutoPrimeZeroLimitsWorkflow:
                     value=f"{_target_state_name(target_state)} failed: {message}",
                 )
             )
-        if not rows:
+        if (
+            not rows
+            and workflow_state.get("setup_tick") is None
+            and workflow_state.get("last_scan") is None
+        ):
             return
         data = {
             "workflow": self.name,
             "periodic_alarm_name": AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
             "interval_sec": self.config.refresh_interval_sec,
             "retry_cooldown_sec": self.retry_cooldown_sec,
-            "triggers": {
-                provider: tuple(sorted(trigger_names))
-                for provider, trigger_names in self.triggers.items()
-            },
+            "target_limit_ids": workflow_state.get("target_limit_ids"),
+            "triggers": workflow_state.get("triggers"),
             "run_count": workflow_state.get("run_count"),
             "last_scan": last_scan,
             "targets": self._target_states(workflow_state),
