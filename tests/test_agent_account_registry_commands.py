@@ -514,7 +514,7 @@ def _monitor_account_status(
         expected_identity=AccountIdentity(provider_account_id=f"acc_{account}"),
         fetched_identity=AccountIdentity(provider_account_id=f"acc_{account}"),
         identity_match="verified",
-        usage_summary="5 hours 3%, 168 hours 1%",
+        usage_summary="Burst 3%, Weekly 1%",
         raw={
             "usage_record": usage_record
             if usage_record is not None
@@ -527,8 +527,9 @@ def _monitor_account_status(
         limits=(
             AccountLimit(
                 limit_class="usage_over_time",
-                limit_name="5h",
-                limit_label="5 hours",
+                limit_id="burst",
+                limit_name="burst",
+                limit_label="Burst",
                 usage_over_time=UsageOverTimeLimitData(
                     used_percent=3,
                     period_started_at=burst_started_at,
@@ -539,8 +540,9 @@ def _monitor_account_status(
             ),
             AccountLimit(
                 limit_class="usage_over_time",
-                limit_name="168h",
-                limit_label="168 hours",
+                limit_id="weekly",
+                limit_name="weekly",
+                limit_label="Weekly",
                 usage_over_time=UsageOverTimeLimitData(
                     used_percent=1,
                     period_started_at=weekly_started_at,
@@ -669,12 +671,13 @@ def test_account_status_model_serializes_expected_shape(tmp_path: Path) -> None:
         fetched_identity=AccountIdentity(provider_account_id="acc_123"),
         identity_match="verified",
         auth_summary="Logged in using ChatGPT",
-        usage_summary="5 hours 30%",
+        usage_summary="Burst 30%",
         limits=(
             AccountLimit(
                 limit_class="usage_over_time",
-                limit_name="5h",
-                limit_label="5 hours",
+                limit_id="burst",
+                limit_name="burst",
+                limit_label="Burst",
                 usage_over_time=UsageOverTimeLimitData(
                     used_percent=30,
                     period_started_at="2026-05-12T12:00:00Z",
@@ -698,12 +701,13 @@ def test_account_status_model_serializes_expected_shape(tmp_path: Path) -> None:
         "fetched_identity": {"provider_account_id": "acc_123"},
         "identity_match": "verified",
         "auth_summary": "Logged in using ChatGPT",
-        "usage_summary": "5 hours 30%",
+        "usage_summary": "Burst 30%",
         "limits": [
             {
                 "limit_class": "usage_over_time",
-                "limit_name": "5h",
-                "limit_label": "5 hours",
+                "limit_id": "burst",
+                "limit_name": "burst",
+                "limit_label": "Burst",
                 "usage_over_time": {
                     "used_percent": 30,
                     "period_started_at": "2026-05-12T12:00:00Z",
@@ -1257,7 +1261,8 @@ def test_codex_account_status_fetches_limits_with_single_status_call(
     assert status.fetched_identity is not None
     assert status.fetched_identity.provider_account_id == "acc_123"
     assert status.auth_summary == "Codex rate limits read"
-    assert [limit.limit_name for limit in status.limits] == ["5h"]
+    assert [limit.limit_id for limit in status.limits] == ["burst"]
+    assert [limit.limit_name for limit in status.limits] == ["burst"]
     assert status.errors == ()
     entries = _usage_registry_entries(tmp_path / "home" / ".agentos")
     assert len(entries) == 1
@@ -1436,13 +1441,14 @@ def test_codex_account_status_parses_limits(
     assert status.check_status == "ok"
     assert status.usage_status == "ok"
     assert status.usage_errors == ()
-    assert [limit.limit_name for limit in status.limits] == ["5h", "168h"]
+    assert [limit.limit_id for limit in status.limits] == ["burst", "weekly"]
+    assert [limit.limit_name for limit in status.limits] == ["burst", "weekly"]
     assert [
         limit.usage_over_time.used_percent
         for limit in status.limits
         if limit.usage_over_time
     ] == [25, 40]
-    assert status.usage_summary == "5 hours 25%, 168 hours 40%"
+    assert status.usage_summary == "Burst 25%, Weekly 40%"
 
 
 def test_codex_account_status_app_server_uses_agent_command_model(

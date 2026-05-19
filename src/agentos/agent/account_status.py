@@ -146,6 +146,7 @@ class UsageOverTimeLimitData:
 @dataclass(frozen=True)
 class AccountLimit:
     limit_class: str
+    limit_id: str
     limit_name: str
     limit_label: str | None
     usage_over_time: UsageOverTimeLimitData | None = None
@@ -154,6 +155,7 @@ class AccountLimit:
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
             "limit_class": self.limit_class,
+            "limit_id": self.limit_id,
             "limit_name": self.limit_name,
             "limit_label": self.limit_label,
         }

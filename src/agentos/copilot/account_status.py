@@ -627,6 +627,7 @@ def _copilot_limit_from_snapshot(
         return None
     return AccountLimit(
         limit_class="usage_over_time",
+        limit_id=name,
         limit_name=name,
         limit_label=label,
         usage_over_time=UsageOverTimeLimitData(

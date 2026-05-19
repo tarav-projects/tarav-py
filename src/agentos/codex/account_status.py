@@ -328,8 +328,9 @@ def _parse_codex_snapshot_windows(
         limits.append(
             AccountLimit(
                 limit_class="usage_over_time",
-                limit_name=_codex_window_name(window_duration_mins, window_key=window_key),
-                limit_label=_codex_window_label(window_duration_mins, window_key=window_key),
+                limit_id=_codex_window_limit_id(window_key),
+                limit_name=_codex_window_limit_id(window_key),
+                limit_label=_codex_window_label(window_key),
                 usage_over_time=UsageOverTimeLimitData(
                     used_percent=used_percent,
                     period_started_at=period_started_at,
@@ -347,23 +348,20 @@ def _parse_codex_snapshot_windows(
     return tuple(limits)
 
 
-def _codex_window_name(window_duration_mins: int | None, *, window_key: str) -> str:
-    if window_duration_mins is None:
-        return window_key
-    if window_duration_mins >= 60 and window_duration_mins % 60 == 0:
-        return f"{window_duration_mins // 60}h"
-    return f"{window_duration_mins}m"
+def _codex_window_limit_id(window_key: str) -> str:
+    if window_key == "primary":
+        return "burst"
+    if window_key == "secondary":
+        return "weekly"
+    raise CliError(f"unsupported codex rate-limit window {window_key!r}")
 
 
-def _codex_window_label(window_duration_mins: int | None, *, window_key: str) -> str:
-    if window_duration_mins is None:
-        return window_key.title()
-    if window_duration_mins >= 60 and window_duration_mins % 60 == 0:
-        hours = window_duration_mins // 60
-        unit = "hour" if hours == 1 else "hours"
-        return f"{hours} {unit}"
-    unit = "minute" if window_duration_mins == 1 else "minutes"
-    return f"{window_duration_mins} {unit}"
+def _codex_window_label(window_key: str) -> str:
+    if window_key == "primary":
+        return "Burst"
+    if window_key == "secondary":
+        return "Weekly"
+    raise CliError(f"unsupported codex rate-limit window {window_key!r}")
 
 
 def _limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:

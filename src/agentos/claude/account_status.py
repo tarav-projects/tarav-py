@@ -1173,6 +1173,7 @@ def _parse_claude_usage_get_limit(
     )
     return AccountLimit(
         limit_class="usage_over_time",
+        limit_id=_claude_rate_limit_id(limit_type),
         limit_name=_claude_rate_limit_name(limit_type),
         limit_label=_claude_rate_limit_label(limit_type),
         usage_over_time=UsageOverTimeLimitData(
@@ -1232,6 +1233,7 @@ def _parse_claude_statusline_limit(
     )
     return AccountLimit(
         limit_class="usage_over_time",
+        limit_id=_claude_rate_limit_id(limit_type),
         limit_name=_claude_rate_limit_name(limit_type),
         limit_label=_claude_rate_limit_label(limit_type),
         usage_over_time=UsageOverTimeLimitData(
@@ -1247,12 +1249,16 @@ def _parse_claude_statusline_limit(
     )
 
 
-def _claude_rate_limit_name(limit_type: str) -> str:
+def _claude_rate_limit_id(limit_type: str) -> str:
     if limit_type == "five_hour":
         return "burst"
     if limit_type == "seven_day":
         return "weekly"
-    return limit_type
+    raise CliError(f"unsupported claude rate-limit type {limit_type!r}")
+
+
+def _claude_rate_limit_name(limit_type: str) -> str:
+    return _claude_rate_limit_id(limit_type)
 
 
 def _claude_rate_limit_label(limit_type: str) -> str:
@@ -1268,7 +1274,7 @@ def _claude_rate_limit_duration_mins(limit_type: str) -> int | None:
         return 300
     if limit_type == "seven_day":
         return 10_080
-    return None
+    raise CliError(f"unsupported claude rate-limit type {limit_type!r}")
 
 
 def _limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:
