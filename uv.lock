@@ -7,6 +7,7 @@ name = "agentos"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "agentos-canvas-py" },
     { name = "jmespath" },
     { name = "jsonschema" },
     { name = "rich" },
@@ -21,11 +22,25 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "agentos-canvas-py", editable = "../canvas/agentos-canvas-py" },
     { name = "jmespath", specifier = ">=1.0.1" },
     { name = "jsonschema", specifier = ">=4.25.1" },
     { name = "rich", specifier = ">=13.7,<16" },
     { name = "tara-stdlib-py", editable = "../../tara-project/tara-project-py/packages/tara-stdlib-py" },
 ]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "ruff", specifier = ">=0.15.12" },
+]
+
+[[package]]
+name = "agentos-canvas-py"
+version = "0.1.0"
+source = { editable = "../canvas/agentos-canvas-py" }
+
+[package.metadata]
 
 [package.metadata.requires-dev]
 dev = [

@@ -6,10 +6,10 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from agentos._core.errors import CliError
-
-from .core import (
+from agentos_canvas.core import (
     ModelCard,
     ModelRelationship,
     make_canvas_node,
@@ -21,7 +21,6 @@ from .core import (
     read_canvas,
     read_model,
     render_canvas,
-    resize_node,
     write_canvas,
     write_model,
 )
