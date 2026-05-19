@@ -9,7 +9,6 @@ from uuid import UUID
 from agentos._core.errors import CliError
 from agentos._core.clock import utc_now_iso as _utc_now_iso
 from agentos._core.ids import normalize_or_generate_uuid
-from agentos._core.path_validation import validate_string_for_path
 
 AGENTOS_DIRNAME = ".agentos"
 PROJECT_MARKER_FILENAME = "project.json"
@@ -119,6 +118,21 @@ def find_agentos_project_root(start_path: Path | str = ".") -> Path | None:
     if project is None:
         return None
     return project.root
+
+
+def find_agentos_project_roots_under(root: Path | str) -> list[Path]:
+    search_root = Path(root).expanduser().resolve()
+    if not search_root.exists():
+        raise CliError(f"project discovery root does not exist: {search_root}")
+    if not search_root.is_dir():
+        raise CliError(f"project discovery root is not a directory: {search_root}")
+
+    project_roots = {
+        marker.parent.parent.resolve()
+        for marker in search_root.rglob(PROJECT_MARKER_FILENAME)
+        if marker.parent.name == AGENTOS_DIRNAME and marker.is_file()
+    }
+    return sorted(project_roots)
 
 
 def normalize_project_target(project_path: Path | str = ".") -> Path:

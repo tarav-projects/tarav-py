@@ -6,10 +6,13 @@ import sys
 from pathlib import Path
 
 from agentos._core.project import (
+    assert_project_base,
     build_not_inside_project_message,
+    find_agentos_project_roots_under,
     initialize_global_layout,
     initialize_project_layout,
     find_agentos_project_root,
+    require_agentos_project,
     require_explicit_project_target,
 )
 
@@ -76,6 +79,23 @@ def _cmd_rev_parse(args: argparse.Namespace) -> int:
     raise SystemExit("error: missing rev-parse mode")
 
 
+def _cmd_projects_list(args: argparse.Namespace) -> int:
+    for project_root in find_agentos_project_roots_under(args.root):
+        print(project_root)
+    return 0
+
+
+def _cmd_projects_resolve(args: argparse.Namespace) -> int:
+    project = require_agentos_project(
+        start_path=Path.cwd(),
+        project=args.project,
+        include_init_hint=True,
+    )
+    assert_project_base(project, args.project_base)
+    print("true")
+    return 0
+
+
 def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
     init_parser = subparsers.add_parser(
         "init",
@@ -136,3 +156,46 @@ def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Start path for parent-walk discovery (default: current directory).",
     )
     rev_parse_parser.set_defaults(handler=_cmd_rev_parse)
+
+    projects_parser = subparsers.add_parser(
+        "projects",
+        help="Discover and verify Agentos.Project roots.",
+    )
+    projects_subparsers = projects_parser.add_subparsers(
+        dest="projects_command",
+        required=True,
+    )
+
+    projects_list_parser = projects_subparsers.add_parser(
+        "list",
+        help="List Agentos projects under a root.",
+    )
+    projects_list_parser.add_argument(
+        "--root",
+        type=Path,
+        required=True,
+        help="Root directory to scan for Agentos.Project markers.",
+    )
+    projects_list_parser.set_defaults(handler=_cmd_projects_list)
+
+    projects_resolve_parser = projects_subparsers.add_parser(
+        "resolve",
+        help="Resolve an Agentos project and assert its root basename.",
+    )
+    projects_resolve_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help=(
+            "Optional project selector. Bare --project targets current pwd. "
+            "Requires an existing project."
+        ),
+    )
+    projects_resolve_parser.add_argument(
+        "--project-base",
+        required=True,
+        help="Required assertion for the resolved project root basename.",
+    )
+    projects_resolve_parser.set_defaults(handler=_cmd_projects_resolve)
