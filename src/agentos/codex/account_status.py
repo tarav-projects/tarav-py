@@ -16,9 +16,11 @@ from agentos.agent.account_status import (
     AccountLimit,
     AccountStatus,
     AccountStatusError,
+    USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     UsageOverTimeLimitData,
     fresh_usage_record_metadata,
 )
+from agentos.agent.account_usage_fallback import account_usage_registry_fallback
 from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
@@ -36,7 +38,6 @@ def _codex_account_status_impl(
     record_usage: bool = True,
     fallback_to_usage_registry: bool = True,
 ) -> AccountStatus:
-    del fallback_to_usage_registry
     if agent.account is None:
         raise CliError("codex account_status requires an agent account context")
     if agent.home is None:
@@ -76,22 +77,43 @@ def _codex_account_status_impl(
         usage_payload: dict[str, Any] | None = None
         usage_record_metadata: dict[str, Any] | None = None
     else:
-        limits, usage_errors, usage_payload = _account_usage_app_server(agent)
+        (
+            limits,
+            usage_errors,
+            usage_payload,
+            usage_record_payload,
+            usage_record_metadata,
+        ) = _account_usage_app_server(agent)
+        if usage_errors:
+            live_error = usage_errors[0]
+            (
+                limits,
+                usage_errors,
+                usage_payload,
+                usage_record_payload,
+                usage_record_metadata,
+            ) = account_usage_registry_fallback(
+                provider=agent.provider,
+                account=agent.account.account,
+                home=agent.home,
+                source=CODEX_APP_SERVER_USAGE_SOURCE,
+                parser=codex_usage_record_limits,
+                live_error=live_error,
+                fallback_to_usage_registry=fallback_to_usage_registry,
+            )
         usage_status = "error" if usage_errors else "ok"
         usage_summary = _limits_summary(limits) if limits else None
-        auth_summary = "Codex rate limits read" if usage_status == "ok" else None
-        usage_record_metadata = (
-            fresh_usage_record_metadata(source=CODEX_APP_SERVER_USAGE_SOURCE)
-            if usage_status == "ok"
-            else None
+        auth_summary = _usage_auth_summary(
+            usage_record_metadata,
+            usage_status=usage_status,
         )
-        if record_usage and usage_status == "ok" and limits and usage_payload is not None:
+        if record_usage and usage_status == "ok" and limits and usage_record_payload is not None:
             append_usage_record(
                 provider=agent.provider,
                 account=agent.account.account,
                 home=agent.home,
                 source=CODEX_APP_SERVER_USAGE_SOURCE,
-                payload=usage_payload,
+                payload=usage_record_payload,
             )
 
     return AccountStatus(
@@ -177,14 +199,32 @@ def _setup_errors(
 # isolated while we evaluate which one should become the long-term capability.
 def _account_usage_app_server(
     agent: Agent,
-) -> tuple[tuple[AccountLimit, ...], tuple[AccountStatusError, ...], dict[str, Any] | None]:
+) -> tuple[
+    tuple[AccountLimit, ...],
+    tuple[AccountStatusError, ...],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
     try:
         payload = _fetch_account_usage_app_server_payload(agent)
-        return tuple(_parse_codex_rate_limits(payload)), (), payload
+        return (
+            tuple(_parse_codex_rate_limits(payload)),
+            (),
+            payload,
+            payload,
+            fresh_usage_record_metadata(source=CODEX_APP_SERVER_USAGE_SOURCE),
+        )
     except AccountStatusError as exc:
-        return (), (exc,), None
+        return (), (exc,), None, None, None
     except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        return (), (AccountStatusError(error_type="invalid_output", message=str(exc)),), None
+        return (
+            (),
+            (AccountStatusError(error_type="invalid_output", message=str(exc)),),
+            None,
+            None,
+            None,
+        )
 
 
 def _fetch_account_usage_app_server_payload(agent: Agent) -> dict[str, Any]:
@@ -377,6 +417,21 @@ def _limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:
         label = limit.limit_label or limit.limit_name
         parts.append(f"{label} {usage.used_percent}%")
     return ", ".join(parts) or None
+
+
+def _usage_auth_summary(
+    usage_record_metadata: Mapping[str, Any] | None,
+    *,
+    usage_status: str,
+) -> str | None:
+    if usage_status != "ok":
+        return None
+    if (
+        isinstance(usage_record_metadata, Mapping)
+        and usage_record_metadata.get("status") == USAGE_RECORD_STATUS_REGISTRY_FALLBACK
+    ):
+        return "Codex usage registry fallback"
+    return "Codex rate limits read"
 
 
 def _write_json_line(process: subprocess.Popen[str], payload: Mapping[str, Any]) -> None:

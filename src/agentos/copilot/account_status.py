@@ -20,10 +20,10 @@ from agentos.agent.account_status import (
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     UsageOverTimeLimitData,
     fresh_usage_record_metadata,
-    registry_fallback_usage_record_metadata,
 )
+from agentos.agent.account_usage_fallback import account_usage_registry_fallback
 from agentos.agent.primitives import Agent
-from agentos.agent.usage_registry import append_usage_record, latest_usage_record
+from agentos.agent.usage_registry import append_usage_record
 
 
 DEFAULT_COPILOT_USAGE_TIMEOUT_SEC = 15
@@ -106,9 +106,12 @@ def _copilot_account_status_impl(
                 usage_payload,
                 usage_record_payload,
                 usage_record_metadata,
-            ) = _account_usage_registry_fallback(
-                agent,
+            ) = account_usage_registry_fallback(
+                provider=agent.provider,
+                account=_account_name(agent),
+                home=agent.home,
                 source=COPILOT_INTERNAL_USER_USAGE_SOURCE,
+                parser=copilot_usage_record_limits,
                 live_error=live_error,
                 fallback_to_usage_registry=fallback_to_usage_registry,
             )
@@ -278,55 +281,6 @@ def _account_usage_internal_user(
             None,
             None,
         )
-
-
-def _account_usage_registry_fallback(
-    agent: Agent,
-    *,
-    source: str,
-    live_error: AccountStatusError,
-    fallback_to_usage_registry: bool,
-) -> tuple[
-    tuple[AccountLimit, ...],
-    tuple[AccountStatusError, ...],
-    dict[str, Any] | None,
-    dict[str, Any] | None,
-    dict[str, Any] | None,
-]:
-    if not fallback_to_usage_registry:
-        return (), (live_error,), None, None, None
-    if agent.home is None:
-        return (), (live_error,), None, None, None
-    record = latest_usage_record(
-        provider=agent.provider,
-        account=_account_name(agent),
-        home=agent.home,
-        source=source,
-    )
-    if record is None:
-        return (), (live_error,), None, None, None
-    payload = record.get("payload")
-    if not isinstance(payload, dict):
-        return (), (live_error,), None, None, None
-    try:
-        limits = copilot_usage_record_limits(payload)
-    except (CliError, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        fallback_error = AccountStatusError(
-            error_type="invalid_registry_payload",
-            message=str(exc),
-        )
-        return (), (live_error, fallback_error), None, None, None
-    return (
-        limits,
-        (),
-        payload,
-        None,
-        registry_fallback_usage_record_metadata(
-            source=source,
-            recorded_at=_string_or_none(record.get("recorded_at")),
-            live_error=live_error.summary(),
-        ),
-    )
 
 
 def _fetch_copilot_internal_user_payload(agent: Agent) -> dict[str, Any]:

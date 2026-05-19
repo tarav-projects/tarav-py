@@ -32,11 +32,11 @@ from agentos.agent.account_status import (
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     UsageOverTimeLimitData,
     fresh_usage_record_metadata,
-    registry_fallback_usage_record_metadata,
 )
+from agentos.agent.account_usage_fallback import account_usage_registry_fallback
 from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
-from agentos.agent.usage_registry import append_usage_record, latest_usage_record
+from agentos.agent.usage_registry import append_usage_record
 
 
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
@@ -160,8 +160,10 @@ def _claude_account_status_impl(
                 usage_payload,
                 usage_record_payload,
                 usage_record_metadata,
-            ) = _account_usage_registry_fallback(
-                agent,
+            ) = account_usage_registry_fallback(
+                provider=agent.provider,
+                account=_account_name(agent),
+                home=agent.home,
                 source=CLAUDE_STATUSLINE_USAGE_SOURCE,
                 parser=_parse_claude_statusline_rate_limits,
                 live_error=live_error,
@@ -348,56 +350,6 @@ def _account_usage_GET(
             None,
             None,
         )
-
-
-def _account_usage_registry_fallback(
-    agent: Agent,
-    *,
-    source: str,
-    parser,
-    live_error: AccountStatusError,
-    fallback_to_usage_registry: bool,
-) -> tuple[
-    tuple[AccountLimit, ...],
-    tuple[AccountStatusError, ...],
-    dict[str, Any] | None,
-    dict[str, Any] | None,
-    dict[str, Any] | None,
-]:
-    if not fallback_to_usage_registry:
-        return (), (live_error,), None, None, None
-    if agent.home is None:
-        return (), (live_error,), None, None, None
-    record = latest_usage_record(
-        provider=agent.provider,
-        account=_account_name(agent),
-        home=agent.home,
-        source=source,
-    )
-    if record is None:
-        return (), (live_error,), None, None, None
-    payload = record.get("payload")
-    if not isinstance(payload, dict):
-        return (), (live_error,), None, None, None
-    try:
-        limits = parser(payload)
-    except (CliError, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        fallback_error = AccountStatusError(
-            error_type="invalid_registry_payload",
-            message=str(exc),
-        )
-        return (), (live_error, fallback_error), None, None, None
-    return (
-        limits,
-        (),
-        payload,
-        None,
-        registry_fallback_usage_record_metadata(
-            source=source,
-            recorded_at=_string_or_none(record.get("recorded_at")),
-            live_error=live_error.summary(),
-        ),
-    )
 
 
 def _usage_record_source(usage_record_metadata: Mapping[str, Any] | None) -> str | None:
