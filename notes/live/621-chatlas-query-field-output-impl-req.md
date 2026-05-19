@@ -182,3 +182,7 @@ agentos chatlas query --help
 ## Impl.Log
 
 - Created as the execution handoff for adding a minimal `--field session_id` output mode to `agentos chatlas query`, with help guidance for using `jq` when arbitrary JSON-field extraction is needed.
+- Implemented `--field session_id` as a CLI-only projection over the existing `chatlas_query(...)` payload. The selector kwargs remain query-only, default JSON output is unchanged, and field mode prints one non-null session id per returned row.
+- Added concise `agentos chatlas query --help` examples for the built-in field output and the `jq` escape hatch.
+- Added focused tests covering default JSON behavior through existing query assertions, `--field session_id` line output, missing/null session id omission, filter/limit respect, and help examples.
+- Verified with `uv run pytest tests/test_chatlas_commands.py -q` and `uv run ruff check src/agentos/chatlas tests/test_chatlas_commands.py`.

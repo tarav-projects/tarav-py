@@ -124,6 +124,12 @@ def _cmd_chatlas_stats(args: argparse.Namespace) -> int:
 
 def _cmd_chatlas_query(args: argparse.Namespace) -> int:
     payload = chatlas_query(**_chatlas_query_selector_kwargs(args))
+    if args.field == "session_id":
+        for row in payload.get("rows", []):
+            value = row.get("session_id") if isinstance(row, dict) else None
+            if value is not None:
+                print(value)
+        return 0
     print(format_json_output(payload))
     return 0
 
@@ -489,6 +495,12 @@ def _add_chatlas_query_selector_arguments(parser: argparse.ArgumentParser) -> No
         default=None,
         help="Keep only sessions with at least this many visible user turns.",
     )
+    parser.add_argument(
+        "--field",
+        choices=("session_id",),
+        default=None,
+        help="Print one field value per matching row. Currently supports session_id.",
+    )
 
 
 def _chatlas_query_selector_kwargs(args: argparse.Namespace) -> dict[str, object]:
@@ -629,6 +641,12 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
     query_parser = chatlas_subparsers.add_parser(
         "query",
         help="Query Chatlas sessions with layered index, raw, and standard-model filters.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  agentos chatlas query --min-user-turns 4 --field session_id\n"
+            "  agentos chatlas query --min-user-turns 4 | jq -r '.rows[].session_id'"
+        ),
     )
     _add_chatlas_query_selector_arguments(query_parser)
     query_parser.set_defaults(handler=_cmd_chatlas_query)

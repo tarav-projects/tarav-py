@@ -1546,6 +1546,90 @@ def test_chatlas_query_min_user_turns_uses_indexed_summary_without_raw_artifacts
     assert not (home / "Documents" / "chatlas" / "raw").exists()
 
 
+def test_chatlas_query_field_session_id_prints_matching_ids(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    partition = home / "Documents" / "chatlas" / "index" / "sessions" / "codex" / "fingerprint" / "sessions.index.jsonl"
+    _write(
+        partition,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-new",
+                        "session_id": "session-new",
+                        "updated_at": "2026-03-09T01:09:01.000Z",
+                        "summary": {"visible_user_turn_count": 4},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-old",
+                        "session_id": "session-old",
+                        "updated_at": "2026-03-08T01:09:01.000Z",
+                        "summary": {"visible_user_turn_count": 4},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "uri": "agentos://chat-session/codex/fingerprint/session-low",
+                        "session_id": "session-low",
+                        "updated_at": "2026-03-10T01:09:01.000Z",
+                        "summary": {"visible_user_turn_count": 3},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "provider": "codex",
+                        "uri": "agentos://chat-session/codex/fingerprint/missing-session-id",
+                        "updated_at": "2026-03-11T01:09:01.000Z",
+                        "summary": {"visible_user_turn_count": 4},
+                    }
+                ),
+            ]
+        )
+        + "\n",
+    )
+
+    assert (
+        main(
+            [
+                "chatlas",
+                "query",
+                "--min-user-turns",
+                "4",
+                "--sort",
+                "newest",
+                "--limit",
+                "2",
+                "--field",
+                "session_id",
+            ]
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out.splitlines() == ["session-new"]
+
+
+def test_chatlas_query_help_describes_field_and_jq_examples(
+    capsys,
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["chatlas", "query", "--help"])
+
+    assert exc_info.value.code == 0
+    output = capsys.readouterr().out
+    assert "agentos chatlas query --min-user-turns 4 --field session_id" in output
+    assert "agentos chatlas query --min-user-turns 4 | jq -r '.rows[].session_id'" in output
+
+
 def test_chatlas_query_can_return_full_rows_for_internal_consumers(
     tmp_path: Path,
     monkeypatch,
