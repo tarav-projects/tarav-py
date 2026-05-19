@@ -291,6 +291,10 @@ class AutoPrimeZeroLimitsWorkflow:
             provider: set(limit_ids)
             for provider, limit_ids in config.target_limit_ids.items()
         }
+        self.triggers = {
+            provider: set(trigger_names)
+            for provider, trigger_names in config.triggers.items()
+        }
         self.target_keys = {_target_key(target) for target in config.targets}
 
     def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
@@ -373,11 +377,15 @@ class AutoPrimeZeroLimitsWorkflow:
         pinged = 0
         failed = 0
         for target_key, raw_target_state in raw_targets.items():
-            if not isinstance(target_key, str) or not isinstance(raw_target_state, dict):
+            if not isinstance(target_key, str) or not isinstance(
+                raw_target_state, dict
+            ):
                 continue
             if target_key not in self.target_keys:
                 continue
-            target_state = self._target_state(target_states, raw_target_state, target_key)
+            target_state = self._target_state(
+                target_states, raw_target_state, target_key
+            )
             eligible_periods = self._eligible_periods(
                 raw_target_state,
                 target_state=target_state,
@@ -416,6 +424,7 @@ class AutoPrimeZeroLimitsWorkflow:
             "provider": source_target_state.get("provider"),
             "account": source_target_state.get("account"),
             "home": source_target_state.get("home"),
+            "observations": {},
             "primed_periods": {},
         }
         target_states[target_key] = target_state
@@ -437,6 +446,9 @@ class AutoPrimeZeroLimitsWorkflow:
         target_limit_ids = self.target_limit_ids.get(provider)
         if not target_limit_ids:
             return []
+        trigger_names = self.triggers.get(provider)
+        if not trigger_names:
+            return []
         retry_after = target_state.get("retry_after_monotonic")
         if isinstance(retry_after, int | float) and monotonic_now < retry_after:
             return []
@@ -456,6 +468,8 @@ class AutoPrimeZeroLimitsWorkflow:
                 source_target_state,
                 limit,
                 target_limit_ids=target_limit_ids,
+                trigger_names=trigger_names,
+                observations=self._observations(target_state),
                 now=now,
             )
             if period is None:
@@ -465,6 +479,14 @@ class AutoPrimeZeroLimitsWorkflow:
                 continue
             eligible.append(period)
         return eligible
+
+    def _observations(self, target_state: dict[str, object]) -> dict[str, object]:
+        existing = target_state.get("observations")
+        if isinstance(existing, dict):
+            return existing
+        observations: dict[str, object] = {}
+        target_state["observations"] = observations
+        return observations
 
     def _primed_periods(self, target_state: dict[str, object]) -> dict[str, object]:
         existing = target_state.get("primed_periods")
@@ -514,6 +536,7 @@ class AutoPrimeZeroLimitsWorkflow:
             primed_periods[period_key] = {
                 "limit_id": period.get("limit_id"),
                 "status": "ok",
+                "trigger_reasons": period.get("trigger_reasons"),
                 "attempt_count": attempt_count,
                 "last_attempt_tick": tick,
                 "last_success_tick": tick,
@@ -529,9 +552,13 @@ class AutoPrimeZeroLimitsWorkflow:
             pinged = _int_value(last_scan.get("pinged"))
             failed = _int_value(last_scan.get("failed"))
             if pinged:
-                rows.append(MonitorInfoRow(label="    auto-prime", value=f"pinged {pinged}"))
+                rows.append(
+                    MonitorInfoRow(label="    auto-prime", value=f"pinged {pinged}")
+                )
             if failed:
-                rows.append(MonitorInfoRow(label="    auto-prime", value=f"failed {failed}"))
+                rows.append(
+                    MonitorInfoRow(label="    auto-prime", value=f"failed {failed}")
+                )
         for target_state in self._target_states(workflow_state).values():
             if not isinstance(target_state, dict):
                 continue
@@ -552,6 +579,10 @@ class AutoPrimeZeroLimitsWorkflow:
             "periodic_alarm_name": AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
             "interval_sec": self.config.refresh_interval_sec,
             "retry_cooldown_sec": self.retry_cooldown_sec,
+            "triggers": {
+                provider: tuple(sorted(trigger_names))
+                for provider, trigger_names in self.triggers.items()
+            },
             "run_count": workflow_state.get("run_count"),
             "last_scan": last_scan,
             "targets": self._target_states(workflow_state),
@@ -571,7 +602,9 @@ def build_monitor_workflows(
     )
     for config in configs:
         if config.name == LIMITS_TRACKING_WORKFLOW:
-            if not any(workflow.name == LIMITS_TRACKING_WORKFLOW for workflow in workflows):
+            if not any(
+                workflow.name == LIMITS_TRACKING_WORKFLOW for workflow in workflows
+            ):
                 workflows.append(
                     LimitsTrackingWorkflow(
                         _merge_limits_tracking_configs(limits_tracking_configs)
@@ -580,7 +613,8 @@ def build_monitor_workflows(
             continue
         if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW:
             if not any(
-                workflow.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW for workflow in workflows
+                workflow.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
+                for workflow in workflows
             ):
                 workflows.append(
                     AutoPrimeZeroLimitsWorkflow(
@@ -629,6 +663,7 @@ def _merge_auto_prime_configs(
     targets: list[MonitorTarget] = []
     target_keys: set[tuple[str, str, str]] = set()
     target_limit_ids: dict[str, tuple[str, ...]] = {}
+    triggers: dict[str, tuple[str, ...]] = {}
     raw_configs: list[dict[str, object]] = []
     interval_sec = min(config.refresh_interval_sec for config in configs)
     retry_cooldown_sec = min(
@@ -646,6 +681,9 @@ def _merge_auto_prime_configs(
         for provider, limit_ids in config.target_limit_ids.items():
             existing = target_limit_ids.get(provider, ())
             target_limit_ids[provider] = tuple(dict.fromkeys((*existing, *limit_ids)))
+        for provider, trigger_names in config.triggers.items():
+            existing = triggers.get(provider, ())
+            triggers[provider] = tuple(dict.fromkeys((*existing, *trigger_names)))
         raw_configs.append(config.raw_config)
     return MonitorWorkflowConfig(
         name=AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
@@ -653,11 +691,13 @@ def _merge_auto_prime_configs(
         refresh_interval_sec=interval_sec,
         retry_cooldown_sec=retry_cooldown_sec,
         target_limit_ids=target_limit_ids,
+        triggers=triggers,
         raw_config={
             "workflow": AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
             "interval_sec": interval_sec,
             "retry_cooldown_sec": retry_cooldown_sec,
             "target_limits": target_limit_ids,
+            "triggers": triggers,
             "configs": raw_configs,
         },
     )
@@ -752,7 +792,9 @@ def _target_rows(
     rows: list[MonitorRow] = [
         MonitorAccountRow(
             label=f"  {_target_title(target)}",
-            **_usage_refresh_columns(account_status if isinstance(account_status, dict) else None),
+            **_usage_refresh_columns(
+                account_status if isinstance(account_status, dict) else None
+            ),
         )
     ]
     if target_state.get("status") == "error":
@@ -844,7 +886,9 @@ def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
     return rows
 
 
-def _usage_refresh_columns(account_status: dict[str, Any] | None) -> dict[str, str | None]:
+def _usage_refresh_columns(
+    account_status: dict[str, Any] | None,
+) -> dict[str, str | None]:
     if account_status is None:
         return {"value": None, "suffix": None}
     raw = account_status.get("raw")
@@ -866,7 +910,9 @@ def _usage_refresh_columns(account_status: dict[str, Any] | None) -> dict[str, s
         return {"value": None, "suffix": None}
     age_sec = _int_value(usage_record.get("age_sec"))
     if age_sec is None:
-        age_sec = int((datetime.datetime.now(tz=datetime.UTC) - recorded_at).total_seconds())
+        age_sec = int(
+            (datetime.datetime.now(tz=datetime.UTC) - recorded_at).total_seconds()
+        )
     recorded_display = recorded_at.astimezone().strftime("%a %m-%d %H:%M")
     return {"value": recorded_display, "suffix": f"{_format_age_duration(age_sec)} ago"}
 
@@ -898,7 +944,9 @@ def _fetch_error_retry_suffix(live_error: dict[str, object]) -> str | None:
         return None
     remaining_sec = _int_value(detail.get("retry_after_remaining_sec"))
     if remaining_sec is None:
-        retry_after_until = _parse_datetime(_string_value(detail.get("retry_after_until")))
+        retry_after_until = _parse_datetime(
+            _string_value(detail.get("retry_after_until"))
+        )
         if retry_after_until is None:
             return None
         remaining_sec = int(
@@ -1095,6 +1143,8 @@ def _eligible_limit_period(
     limit: dict[str, object],
     *,
     target_limit_ids: set[str],
+    trigger_names: set[str],
+    observations: dict[str, object],
     now: datetime.datetime,
 ) -> dict[str, object] | None:
     limit_id = _string_value(limit.get("limit_id"))
@@ -1104,8 +1154,6 @@ def _eligible_limit_period(
     if not isinstance(usage_over_time, dict):
         return None
     used_percent = _int_value(usage_over_time.get("used_percent"))
-    if used_percent != 0:
-        return None
     period_started_at = _string_value(usage_over_time.get("period_started_at"))
     period_ends_at = _string_value(usage_over_time.get("period_ends_at"))
     resets_at = _string_value(usage_over_time.get("resets_at"))
@@ -1120,12 +1168,153 @@ def _eligible_limit_period(
     home = _string_value(source_target_state.get("home"))
     if provider is None or account is None or home is None:
         return None
-    return {
-        "limit_id": limit_id,
-        "period_key": "|".join(
-            (provider, account, home, limit_id, period_started_at, period_end_key)
+
+    normal_period_key = "|".join(
+        (provider, account, home, limit_id, period_started_at, period_end_key)
+    )
+    previous_observation = observations.get(limit_id)
+    reasons = _auto_prime_trigger_reasons(
+        limit,
+        usage_over_time,
+        used_percent=used_percent,
+        trigger_names=trigger_names,
+        previous_observation=previous_observation
+        if isinstance(previous_observation, dict)
+        else None,
+        period_key=normal_period_key,
+        period_end=period_end,
+        now=now,
+    )
+    observations[limit_id] = {
+        "period_key": normal_period_key,
+        "period_end": period_end.isoformat(),
+        "observed_at": now.isoformat(),
+        "used_percent": used_percent,
+        "remaining_ratio": _remaining_window_ratio(
+            limit, usage_over_time, period_end, now
         ),
     }
+    if not reasons:
+        return None
+
+    uninitialized = any(
+        reason in {"near_zero_full_window", "sliding_reset", "period_key_churn"}
+        for reason in reasons
+    )
+    period_key = (
+        "|".join((provider, account, home, limit_id, "uninitialized"))
+        if uninitialized
+        else normal_period_key
+    )
+    return {
+        "limit_id": limit_id,
+        "period_key": period_key,
+        "trigger_reasons": reasons,
+    }
+
+
+def _auto_prime_trigger_reasons(
+    limit: dict[str, object],
+    usage_over_time: dict[str, object],
+    *,
+    used_percent: int | None,
+    trigger_names: set[str],
+    previous_observation: dict[str, object] | None,
+    period_key: str,
+    period_end: datetime.datetime,
+    now: datetime.datetime,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    near_zero_full_window = _is_near_zero_full_window(
+        limit,
+        usage_over_time,
+        used_percent=used_percent,
+        period_end=period_end,
+        now=now,
+    )
+    if "zero_usage" in trigger_names and used_percent == 0:
+        reasons.append("zero_usage")
+    if "near_zero_full_window" in trigger_names and near_zero_full_window:
+        reasons.append("near_zero_full_window")
+    if (
+        "sliding_reset" in trigger_names
+        and previous_observation is not None
+        and _is_sliding_reset(previous_observation, period_end=period_end, now=now)
+    ):
+        reasons.append("sliding_reset")
+    if (
+        "period_key_churn" in trigger_names
+        and near_zero_full_window
+        and previous_observation is not None
+        and previous_observation.get("period_key") != period_key
+    ):
+        reasons.append("period_key_churn")
+    return tuple(reasons)
+
+
+def _is_near_zero_full_window(
+    limit: dict[str, object],
+    usage_over_time: dict[str, object],
+    *,
+    used_percent: int | None,
+    period_end: datetime.datetime,
+    now: datetime.datetime,
+) -> bool:
+    if used_percent is None or used_percent > 1:
+        return False
+    remaining_ratio = _remaining_window_ratio(limit, usage_over_time, period_end, now)
+    return remaining_ratio is not None and remaining_ratio >= 0.98
+
+
+def _remaining_window_ratio(
+    limit: dict[str, object],
+    usage_over_time: dict[str, object],
+    period_end: datetime.datetime,
+    now: datetime.datetime,
+) -> float | None:
+    duration_mins = _period_duration_mins(limit, usage_over_time)
+    if duration_mins is None or duration_mins <= 0:
+        return None
+    remaining_seconds = (period_end - now).total_seconds()
+    if remaining_seconds <= 0:
+        return None
+    return remaining_seconds / (duration_mins * 60)
+
+
+def _period_duration_mins(
+    limit: dict[str, object], usage_over_time: dict[str, object]
+) -> int | None:
+    duration_mins = _int_value(usage_over_time.get("period_duration_mins"))
+    if duration_mins is not None:
+        return duration_mins
+    provider_limit = limit.get("provider_limit")
+    if not isinstance(provider_limit, dict):
+        return None
+    duration_mins = _int_value(provider_limit.get("windowDurationMins"))
+    if duration_mins is not None:
+        return duration_mins
+    return _int_value(provider_limit.get("window_duration_mins"))
+
+
+def _is_sliding_reset(
+    previous_observation: dict[str, object],
+    *,
+    period_end: datetime.datetime,
+    now: datetime.datetime,
+) -> bool:
+    previous_end = _parse_datetime(
+        _string_value(previous_observation.get("period_end"))
+    )
+    previous_observed_at = _parse_datetime(
+        _string_value(previous_observation.get("observed_at"))
+    )
+    if previous_end is None or previous_observed_at is None:
+        return False
+    observation_delta = (now - previous_observed_at).total_seconds()
+    end_delta = (period_end - previous_end).total_seconds()
+    if observation_delta <= 0 or end_delta <= 0:
+        return False
+    return abs(end_delta - observation_delta) <= max(60.0, 0.20 * observation_delta)
 
 
 def _run_account_prime_ping(source_target_state: dict[str, object]) -> None:

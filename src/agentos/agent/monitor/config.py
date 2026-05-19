@@ -6,7 +6,11 @@ from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
 from agentos.agent.account_registry import load_account
-from agentos.agent.config import AgentConfigSource, agent_config_entries_from_config, load_chat_config_documents
+from agentos.agent.config import (
+    AgentConfigSource,
+    agent_config_entries_from_config,
+    load_chat_config_documents,
+)
 from agentos.agent.monitor.loop import MonitorLoop
 from agentos.agent.monitor.models import (
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
@@ -24,6 +28,21 @@ AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS = {
     "codex": ("burst", "weekly"),
     "claude-code": ("burst", "weekly"),
 }
+AUTO_PRIME_ZERO_LIMITS_DEFAULT_TRIGGERS = {
+    "codex": (
+        "zero_usage",
+        "near_zero_full_window",
+        "sliding_reset",
+        "period_key_churn",
+    ),
+    "claude-code": ("zero_usage",),
+}
+AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TRIGGERS = (
+    "zero_usage",
+    "near_zero_full_window",
+    "sliding_reset",
+    "period_key_churn",
+)
 
 MONITOR_CONFIG_SOURCE = AgentConfigSource(
     object_path=("agent", "accounts", "monitor"),
@@ -31,17 +50,25 @@ MONITOR_CONFIG_SOURCE = AgentConfigSource(
 )
 
 
-def load_monitor_workflow_configs(*, start_path: Path | str = ".") -> tuple[MonitorWorkflowConfig, ...]:
+def load_monitor_workflow_configs(
+    *, start_path: Path | str = "."
+) -> tuple[MonitorWorkflowConfig, ...]:
     configs: list[MonitorWorkflowConfig] = []
     for config_document in load_chat_config_documents(start_path=start_path):
-        for entry in agent_config_entries_from_config(config_document, source=MONITOR_CONFIG_SOURCE):
+        for entry in agent_config_entries_from_config(
+            config_document, source=MONITOR_CONFIG_SOURCE
+        ):
             raw_config = entry.raw_instance
-            workflow_name = _required_string(raw_config, "workflow", field_name=entry.field_name("workflow"))
+            workflow_name = _required_string(
+                raw_config, "workflow", field_name=entry.field_name("workflow")
+            )
             if workflow_name not in {
                 LIMITS_TRACKING_WORKFLOW,
                 AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
             }:
-                raise CliError(f"unknown monitor workflow {workflow_name!r} at {entry.field_name('workflow')}")
+                raise CliError(
+                    f"unknown monitor workflow {workflow_name!r} at {entry.field_name('workflow')}"
+                )
             targets = _load_targets(raw_config, field_name=entry.field_name("targets"))
             if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW:
                 _validate_auto_prime_target_providers(
@@ -55,11 +82,19 @@ def load_monitor_workflow_configs(*, start_path: Path | str = ".") -> tuple[Moni
                     refresh_interval_sec=_positive_number_config(
                         raw_config,
                         key=_workflow_interval_key(workflow_name),
-                        field_name=entry.field_name(_workflow_interval_key(workflow_name)),
+                        field_name=entry.field_name(
+                            _workflow_interval_key(workflow_name)
+                        ),
                     ),
                     target_limit_ids=_target_limit_ids(
                         raw_config,
                         field_name=entry.field_name("target_limits"),
+                    )
+                    if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
+                    else {},
+                    triggers=_auto_prime_triggers(
+                        raw_config,
+                        field_name=entry.field_name("triggers"),
                     )
                     if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
                     else {},
@@ -93,7 +128,9 @@ def build_monitor_loop(
     )
 
 
-def _load_targets(raw_config: dict[str, object], *, field_name: str) -> tuple[MonitorTarget, ...]:
+def _load_targets(
+    raw_config: dict[str, object], *, field_name: str
+) -> tuple[MonitorTarget, ...]:
     raw_targets = raw_config.get("targets")
     if not isinstance(raw_targets, list):
         raise CliError(f"{field_name} must be a JSON array")
@@ -104,20 +141,31 @@ def _load_targets(raw_config: dict[str, object], *, field_name: str) -> tuple[Mo
         target_field = f"{field_name}[{index}]"
         if not isinstance(raw_target, dict):
             raise CliError(f"{target_field} must be a JSON object")
-        provider = _required_string(raw_target, "provider", field_name=f"{target_field}.provider")
-        account = _required_string(raw_target, "account", field_name=f"{target_field}.account")
+        provider = _required_string(
+            raw_target, "provider", field_name=f"{target_field}.provider"
+        )
+        account = _required_string(
+            raw_target, "account", field_name=f"{target_field}.account"
+        )
         load_account(provider, account)
         targets.append(
             MonitorTarget(
                 provider=provider,
                 account=account,
-                home=_target_home(raw_target, provider=provider, account=account, field_name=f"{target_field}.home"),
+                home=_target_home(
+                    raw_target,
+                    provider=provider,
+                    account=account,
+                    field_name=f"{target_field}.home",
+                ),
             )
         )
     return tuple(targets)
 
 
-def _target_home(raw_target: dict[str, object], *, provider: str, account: str, field_name: str) -> Path:
+def _target_home(
+    raw_target: dict[str, object], *, provider: str, account: str, field_name: str
+) -> Path:
     raw_home = raw_target.get("home")
     if raw_home is None:
         return agentos_home_dir() / "agent" / "homes" / provider / account
@@ -165,7 +213,9 @@ def _target_limit_ids(
             raise CliError(f"{field_name} keys must be non-empty provider names")
         supported = AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS.get(provider)
         if supported is None:
-            raise CliError(f"{provider_field} is not supported by auto-prime-zero-limits")
+            raise CliError(
+                f"{provider_field} is not supported by auto-prime-zero-limits"
+            )
         if not isinstance(raw_limit_ids, list) or not raw_limit_ids:
             raise CliError(f"{provider_field} must be a non-empty JSON array")
         limit_ids: list[str] = []
@@ -181,6 +231,43 @@ def _target_limit_ids(
             limit_ids.append(limit_id)
         target_limits[provider] = tuple(dict.fromkeys(limit_ids))
     return target_limits
+
+
+def _auto_prime_triggers(
+    raw_config: dict[str, object], *, field_name: str
+) -> dict[str, tuple[str, ...]]:
+    raw_triggers = raw_config.get("triggers")
+    if raw_triggers is None:
+        return dict(AUTO_PRIME_ZERO_LIMITS_DEFAULT_TRIGGERS)
+    if not isinstance(raw_triggers, dict):
+        raise CliError(f"{field_name} must be a JSON object")
+    triggers: dict[str, tuple[str, ...]] = {}
+    for provider, raw_trigger_names in raw_triggers.items():
+        provider_field = f"{field_name}.{provider}"
+        if not isinstance(provider, str) or not provider:
+            raise CliError(f"{field_name} keys must be non-empty provider names")
+        if provider not in AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS:
+            raise CliError(
+                f"{provider_field} is not supported by auto-prime-zero-limits"
+            )
+        if not isinstance(raw_trigger_names, list) or not raw_trigger_names:
+            raise CliError(f"{provider_field} must be a non-empty JSON array")
+        trigger_names: list[str] = []
+        for index, raw_trigger_name in enumerate(raw_trigger_names):
+            trigger_field = f"{provider_field}[{index}]"
+            if not isinstance(raw_trigger_name, str) or not raw_trigger_name:
+                raise CliError(f"{trigger_field} must be a non-empty string")
+            trigger_name = validate_string_for_path(
+                raw_trigger_name,
+                field_name=trigger_field,
+            )
+            if trigger_name not in AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TRIGGERS:
+                raise CliError(
+                    f"{trigger_field} is not supported by auto-prime-zero-limits"
+                )
+            trigger_names.append(trigger_name)
+        triggers[provider] = tuple(dict.fromkeys(trigger_names))
+    return triggers
 
 
 def _validate_auto_prime_target_providers(
