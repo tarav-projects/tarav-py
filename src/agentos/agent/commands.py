@@ -18,7 +18,7 @@ from agentos.providers import canonical_provider_families
 _AGENT_PROVIDER_CHOICES = tuple(
     provider.family for provider in canonical_provider_families()
 )
-_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES = ("codex", "claude-code")
+_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES = ("codex", "claude-code", "copilot-cli")
 _PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 
 
@@ -270,6 +270,22 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
             )
         )
         return 0
+    if args.provider == "copilot-cli":
+        from agentos.copilot.account_registry import register_copilot_account
+
+        print(
+            json.dumps(
+                register_copilot_account(
+                    account=args.account,
+                    account_id=args.account_id,
+                    label=args.label,
+                    argv=getattr(args, "_agentos_argv", []),
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
     raise CliError(
         f"agent accounts register is not supported for provider {args.provider}"
     )
@@ -294,6 +310,20 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
         from agentos.claude.account_registry import link_claude_account_to_home
 
         payload = link_claude_account_to_home(
+            home=Path(args.home),
+            account=args.account,
+            force=args.force,
+            argv=getattr(args, "_agentos_argv", []),
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(_format_agent_accounts_link(payload))
+        return 0
+    if args.provider == "copilot-cli":
+        from agentos.copilot.account_registry import link_copilot_account_to_home
+
+        payload = link_copilot_account_to_home(
             home=Path(args.home),
             account=args.account,
             force=args.force,
@@ -658,6 +688,11 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "--email",
         default=None,
         help="Account email metadata. Required for claude-code; optional fallback for codex.",
+    )
+    accounts_register_parser.add_argument(
+        "--account-id",
+        default=None,
+        help="Provider account id metadata. Required for copilot-cli.",
     )
     accounts_register_parser.add_argument(
         "--label",

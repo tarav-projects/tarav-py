@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
+from types import SimpleNamespace
 
 import pytest
 
 from agentos.chatlas.core import chatlas_query
+from agentos.chatlas.views.core import chatlas_run_produce
 from agentos.cli import main
 
 
@@ -1517,6 +1520,205 @@ def test_chatlas_run_produce_uses_full_query_rows(
     assert json.loads(capsys.readouterr().out)["status"] == "ok"
     assert captured_rows[0]["primary_backing_artifact"]["path"] == str(artifact_path)
     assert captured_rows[0]["backing_artifacts"][0]["role"] == "transcript"
+
+
+def test_chatlas_run_produce_prepares_stage_and_commits_after_agent_success(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    artifact_path = chatlas_root / "raw" / "codex" / "fingerprint" / "home" / "session-1.jsonl"
+    _write_codex_rollout(
+        artifact_path,
+        session_id="session-1",
+        user_text="full user text",
+        assistant_text="long assistant text",
+    )
+    row = {
+        "provider": "codex",
+        "uri": "agentos://chat-session/codex/fingerprint/session-1",
+        "session_id": "session-1",
+        "identity_hash": "hash-1",
+        "primary_backing_artifact": {
+            "role": "transcript",
+            "path": str(artifact_path),
+        },
+        "backing_artifacts": [
+            {
+                "role": "transcript",
+                "path": str(artifact_path),
+            }
+        ],
+    }
+    prompts: list[str] = []
+
+    class FakeAgent:
+        def run(self, command_config, run_config):
+            _ = run_config
+            prompt = command_config.prompt
+            prompts.append(prompt)
+            source_path = Path(re.search(r"Read source transcript JSON from: (.+)", prompt).group(1))
+            output_path = Path(re.search(r"Write exactly one artifact file to: (.+)", prompt).group(1))
+            source_payload = json.loads(source_path.read_text(encoding="utf-8"))
+            summary_payload = {
+                "class": "agentos.chatlas.zip_transcript_agent_summary",
+                "schema_version": 1,
+                "view": "zip-transcript-agent-summary",
+                "source_view": "zip-transcript",
+                "session": source_payload["session"],
+                "turns": [
+                    {
+                        "role": turn["role"],
+                        "text": turn["text"] if turn["role"] == "user" else "compressed assistant turn",
+                    }
+                    for turn in source_payload["turns"]
+                ],
+            }
+            output_path.write_text(json.dumps(summary_payload, separators=(",", ":")) + "\n", encoding="utf-8")
+            return SimpleNamespace(exit_code=0)
+
+        def run_dry(self, command_config):
+            return SimpleNamespace(lines=[command_config.prompt])
+
+    monkeypatch.setattr("agentos.agent.providers.resolve_agent", lambda **kwargs: FakeAgent())
+
+    payload = chatlas_run_produce(
+        view="zip-transcript-agent-summary",
+        provider="codex",
+        rows=[row],
+        chatlas_root=chatlas_root,
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["failed_count"] == 0
+    run = payload["runs"][0]
+    assert run["exit_code"] == 0
+    assert "commit" in run
+    final_path = Path(run["artifact_path"])
+    assert final_path.is_file()
+    assert "agentos chatlas views stage" not in prompts[0]
+    assert "agentos chatlas views commit" not in prompts[0]
+    assert "/Users/pereiro/projects/agentos-project/agentos-md/skills/chatlas-usage/references" in prompts[0]
+    assert str(final_path) in prompts[0]
+    assert Path(run["prepared"]["output_artifact_path"]).name == "summary.json"
+    final_payload = json.loads(final_path.read_text(encoding="utf-8"))
+    assert [turn["role"] for turn in final_payload["turns"]] == ["user", "assistant"]
+    assert final_payload["turns"][0]["text"] == "full user text"
+    assert final_payload["turns"][1]["text"] == "compressed assistant turn"
+
+
+def test_chatlas_run_produce_reports_commit_linter_failure_after_agent_success(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    artifact_path = chatlas_root / "raw" / "codex" / "fingerprint" / "home" / "session-1.jsonl"
+    _write_codex_rollout(artifact_path, session_id="session-1")
+    row = {
+        "provider": "codex",
+        "uri": "agentos://chat-session/codex/fingerprint/session-1",
+        "session_id": "session-1",
+        "identity_hash": "hash-1",
+        "primary_backing_artifact": {
+            "role": "transcript",
+            "path": str(artifact_path),
+        },
+        "backing_artifacts": [
+            {
+                "role": "transcript",
+                "path": str(artifact_path),
+            }
+        ],
+    }
+
+    class FakeAgent:
+        def run(self, command_config, run_config):
+            _ = run_config
+            output_path = Path(
+                re.search(r"Write exactly one artifact file to: (.+)", command_config.prompt).group(1)
+            )
+            output_path.write_text(
+                json.dumps(
+                    {
+                        "class": "agentos.chatlas.zip_transcript_agent_summary",
+                        "schema_version": 1,
+                        "view": "zip-transcript-agent-summary",
+                        "source_view": "zip-transcript",
+                        "session": {},
+                        "turns": [],
+                    },
+                    separators=(",", ":"),
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return SimpleNamespace(exit_code=0)
+
+        def run_dry(self, command_config):
+            return SimpleNamespace(lines=[command_config.prompt])
+
+    monkeypatch.setattr("agentos.agent.providers.resolve_agent", lambda **kwargs: FakeAgent())
+
+    payload = chatlas_run_produce(
+        view="zip-transcript-agent-summary",
+        provider="codex",
+        rows=[row],
+        chatlas_root=chatlas_root,
+    )
+
+    assert payload["status"] == "error"
+    assert payload["failed_count"] == 1
+    assert payload["runs"][0]["exit_code"] == 0
+    assert "commit_error" in payload["runs"][0]
+    assert "Commit.Linter failed" in payload["runs"][0]["commit_error"]
+
+
+def test_chatlas_run_produce_dry_run_does_not_create_stage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home, _, _ = _isolate_agentos(monkeypatch, tmp_path)
+    chatlas_root = home / "Documents" / "chatlas"
+    artifact_path = chatlas_root / "raw" / "codex" / "fingerprint" / "home" / "session-1.jsonl"
+    _write_codex_rollout(artifact_path, session_id="session-1")
+    row = {
+        "provider": "codex",
+        "uri": "agentos://chat-session/codex/fingerprint/session-1",
+        "session_id": "session-1",
+        "identity_hash": "hash-1",
+        "primary_backing_artifact": {
+            "role": "transcript",
+            "path": str(artifact_path),
+        },
+        "backing_artifacts": [
+            {
+                "role": "transcript",
+                "path": str(artifact_path),
+            }
+        ],
+    }
+
+    class FakeAgent:
+        def run_dry(self, command_config):
+            return SimpleNamespace(lines=[command_config.prompt])
+
+    monkeypatch.setattr("agentos.agent.providers.resolve_agent", lambda **kwargs: FakeAgent())
+
+    payload = chatlas_run_produce(
+        view="zip-transcript-agent-summary",
+        provider="codex",
+        rows=[row],
+        chatlas_root=chatlas_root,
+        dry_run=True,
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["dry_run"] is True
+    assert payload["runs"][0]["prepared"]["stage_id"] is None
+    assert "<stage-id>" in payload["runs"][0]["prepared"]["output_artifact_path"]
+    assert not (chatlas_root / "views" / "_staging").exists()
 
 
 def test_chatlas_query_rejects_positional_and_legacy_options(

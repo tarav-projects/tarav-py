@@ -23,6 +23,10 @@ _MANIFEST_FILENAME = "manifest.json"
 _ZIP_TRANSCRIPT_ARTIFACT = "zip-transcript.json"
 _SUMMARY_ARTIFACT = "summary.json"
 _SUMMARY_ARTIFACT_CLASS = "agentos.chatlas.zip_transcript_agent_summary"
+_ZIP_TRANSCRIPT_AGENT_SUMMARY_REFERENCE = (
+    "/Users/pereiro/projects/agentos-project/agentos-md/skills/chatlas-usage/"
+    "references/producer-zip-transcript-agent-summary.md"
+)
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,16 @@ class ChatlasViewStatus:
     freshness: dict[str, object]
     production: dict[str, object] | None = None
     fields: dict[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class ChatlasPreparedAgentProduction:
+    prompt: str
+    stage_id: str | None
+    stage_path: Path | None
+    output_artifact_path: Path
+    final_artifact_path: Path
+    diagnostics: dict[str, object]
 
 
 class ChatlasViewWorkflow(Protocol):
@@ -69,6 +83,13 @@ class ChatlasViewWorkflow(Protocol):
         self,
         context: "ChatlasViewContext",
     ) -> str: ...
+
+    def prepare_agent_production(
+        self,
+        context: "ChatlasViewContext",
+        *,
+        dry_run: bool = False,
+    ) -> ChatlasPreparedAgentProduction: ...
 
 
 @dataclass(frozen=True)
@@ -181,6 +202,11 @@ def chatlas_views_stage(
     **selectors: object,
 ) -> dict[str, object]:
     context = _context_from_selector(view=view, chatlas_root=chatlas_root, selectors=selectors)
+    return _stage_external_view_context(context)
+
+
+def _stage_external_view_context(context: ChatlasViewContext) -> dict[str, object]:
+    view = context.workflow.name
     if context.workflow.kind != "external":
         raise CliError(f"chatlas views stage only supports external views: {view}")
 
@@ -337,7 +363,15 @@ def chatlas_run_produce(
                 results.append({"skipped": True, "reason": "fresh"})
                 continue
 
-        prompt = workflow.build_produce_prompt(context)
+        try:
+            prepared = workflow.prepare_agent_production(context, dry_run=dry_run)
+        except CliError as exc:
+            results.append({
+                "exit_code": 1,
+                "prepare_error": str(exc),
+            })
+            continue
+        prompt = prepared.prompt
 
         if dry_run:
             agent = resolve_agent(provider=provider, profile=profile, start_path=agent_cwd)
@@ -345,6 +379,7 @@ def chatlas_run_produce(
             dry_result = agent.run_dry(command_config)
             results.append({
                 "prompt": prompt,
+                "prepared": _prepared_agent_production_payload(prepared),
                 "agent_command": list(dry_result.lines),
             })
             continue
@@ -353,9 +388,22 @@ def chatlas_run_produce(
         command_config = AgentCommandConfig(prompt=prompt, model=model, interaction_mode="non_interactive")
         run_config = AgentRunConfig(cwd=agent_cwd, process_mode="terminal")
         result = agent.run(command_config, run_config)
-        results.append({
+        run_result: dict[str, object] = {
             "exit_code": result.exit_code,
-        })
+            "prepared": _prepared_agent_production_payload(prepared),
+        }
+        if result.exit_code == 0:
+            if prepared.stage_id is None:
+                run_result["commit_error"] = "prepared production did not create a stage"
+            else:
+                try:
+                    commit_result = chatlas_views_commit(stage_id=prepared.stage_id, chatlas_root=root)
+                except CliError as exc:
+                    run_result["commit_error"] = str(exc)
+                else:
+                    run_result["commit"] = commit_result
+                    run_result["artifact_path"] = str(prepared.final_artifact_path)
+        results.append(run_result)
 
     if dry_run:
         return {
@@ -368,7 +416,11 @@ def chatlas_run_produce(
         }
 
     skipped = sum(1 for r in results if r.get("skipped"))
-    failed = sum(1 for r in results if r.get("exit_code", 1) != 0 and not r.get("skipped"))
+    failed = sum(
+        1
+        for r in results
+        if not r.get("skipped") and (r.get("exit_code", 1) != 0 or r.get("commit_error"))
+    )
     return {
         "status": "ok" if failed == 0 else "error",
         "command": "chatlas run-produce",
@@ -495,6 +547,17 @@ class ZipTranscriptWorkflow:
             f"chatlas produce is not supported for internal view: {self.name}"
         )
 
+    def prepare_agent_production(
+        self,
+        context: ChatlasViewContext,
+        *,
+        dry_run: bool = False,
+    ) -> ChatlasPreparedAgentProduction:
+        _ = (context, dry_run)
+        raise CliError(
+            f"chatlas run-produce is not supported for internal view: {self.name}"
+        )
+
 
 class ZipTranscriptAgentSummaryWorkflow:
     name = "zip-transcript-agent-summary"
@@ -574,15 +637,112 @@ class ZipTranscriptAgentSummaryWorkflow:
         }
 
     def build_produce_prompt(self, context: ChatlasViewContext) -> str:
-        selector = _session_selector_flags(context.parameters[0])
-        return (
-            "Load `chatlas-usage/references/producer-zip-transcript-agent-summary.md` and follow it.\n"
-            "\n"
-            f"Session selector: {selector}\n"
-            "\n"
-            "Ensure `zip-transcript`, then ensure `zip-transcript-agent-summary`.\n"
-            "Return only the path to the fresh `summary.json` artifact. Do not paste the artifact body."
+        return self.prepare_agent_production(context, dry_run=True).prompt
+
+    def prepare_agent_production(
+        self,
+        context: ChatlasViewContext,
+        *,
+        dry_run: bool = False,
+    ) -> ChatlasPreparedAgentProduction:
+        dependency_context = _zip_transcript_dependency_context(context)
+        if dry_run:
+            dependency_status = dependency_context.workflow.current_status(dependency_context)
+            stage_id = None
+            stage_path = context.chatlas_root / _VIEWS_ROOT / _STAGING_ROOT / "<stage-id>"
+        else:
+            dependency_status = _ensure_available(dependency_context, explain=False)
+            if dependency_status.state not in {"fresh", "produced"}:
+                raise CliError(
+                    "cannot prepare zip-transcript-agent-summary: "
+                    f"zip-transcript dependency is {dependency_status.state}"
+                )
+            stage_payload = _stage_external_view_context(context)
+            stage = stage_payload.get("stage", {})
+            stage_id = stage.get("stage_id") if isinstance(stage, dict) else None
+            stage_path_value = stage.get("path") if isinstance(stage, dict) else None
+            if not isinstance(stage_id, str) or not isinstance(stage_path_value, str):
+                raise CliError("chatlas views stage returned an invalid stage payload")
+            stage_path = Path(stage_path_value)
+
+        source_artifact_path = _expected_primary_artifact_path(dependency_context)
+        output_artifact_path = stage_path / self.artifact_contract.primary_artifact
+        final_artifact_path = context.slot_path / self.artifact_contract.primary_artifact
+        prompt = _zip_transcript_agent_summary_prepared_prompt(
+            source_artifact_path=source_artifact_path,
+            output_artifact_path=output_artifact_path,
+            final_artifact_path=final_artifact_path,
         )
+        return ChatlasPreparedAgentProduction(
+            prompt=prompt,
+            stage_id=stage_id,
+            stage_path=stage_path,
+            output_artifact_path=output_artifact_path,
+            final_artifact_path=final_artifact_path,
+            diagnostics={
+                "dependency_view": dependency_context.workflow.name,
+                "dependency_state": dependency_status.state,
+                "dependency_artifact_path": str(source_artifact_path),
+                "target_view": self.name,
+                "target_cache_key": context.cache_key,
+            },
+        )
+
+
+def _zip_transcript_agent_summary_prepared_prompt(
+    *,
+    source_artifact_path: Path,
+    output_artifact_path: Path,
+    final_artifact_path: Path,
+) -> str:
+    return (
+        "Read this producer reference for artifact shape and compression rules:\n"
+        f"{_ZIP_TRANSCRIPT_AGENT_SUMMARY_REFERENCE}\n"
+        "The parent Chatlas runner has already prepared the dependency and stage.\n"
+        "\n"
+        f"Read source transcript JSON from: {source_artifact_path}\n"
+        f"Write exactly one artifact file to: {output_artifact_path}\n"
+        f"The committed target path after parent commit will be: {final_artifact_path}\n"
+        "\n"
+        "Do not run Chatlas staging or commit commands. Do not write to the committed "
+        "target path. Do not create or modify any other Chatlas view artifact.\n"
+        "\n"
+        "Write compact JSON with this shape: "
+        '{"class":"agentos.chatlas.zip_transcript_agent_summary",'
+        '"schema_version":1,"view":"zip-transcript-agent-summary",'
+        '"source_view":"zip-transcript","session":<source session>,'
+        '"turns":[{"role":<role>,"text":<text>}]}.\n'
+        "Copy `session` from the source. Preserve every source turn in order. "
+        "Preserve every user turn text verbatim. Preserve every role exactly. "
+        "Summarize assistant turns aggressively but keep nonblank text with decisions, "
+        "commands, paths, identifiers, test results, failures, warnings, unresolved "
+        "issues, and enough context for later references to remain intelligible.\n"
+        "Return only the path you wrote."
+    )
+
+
+def _expected_primary_artifact_path(context: ChatlasViewContext) -> Path:
+    return context.slot_path / context.workflow.artifact_contract.primary_artifact
+
+
+def _prepared_agent_production_payload(prepared: ChatlasPreparedAgentProduction) -> dict[str, object]:
+    return {
+        "stage_id": prepared.stage_id,
+        "stage_path": str(prepared.stage_path) if prepared.stage_path is not None else None,
+        "output_artifact_path": str(prepared.output_artifact_path),
+        "final_artifact_path": str(prepared.final_artifact_path),
+        "diagnostics": prepared.diagnostics,
+    }
+
+
+def _zip_transcript_dependency_context(context: ChatlasViewContext) -> ChatlasViewContext:
+    workflow = _workflow_by_name("zip-transcript")
+    return _context_from_parameters(
+        workflow=workflow,
+        chatlas_root=context.chatlas_root,
+        parameters=context.parameters,
+        source_rows=context.source_rows,
+    )
 
 
 def _session_selector_flags(parameter: dict[str, object]) -> str:
@@ -603,13 +763,7 @@ def _zip_transcript_dependency_status(
     *,
     explain: bool,
 ) -> ChatlasViewStatus:
-    workflow = _workflow_by_name("zip-transcript")
-    dependency_context = _context_from_parameters(
-        workflow=workflow,
-        chatlas_root=context.chatlas_root,
-        parameters=context.parameters,
-        source_rows=context.source_rows,
-    )
+    dependency_context = _zip_transcript_dependency_context(context)
     return _ensure_available(dependency_context, explain=explain)
 
 
