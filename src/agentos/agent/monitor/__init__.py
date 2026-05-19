@@ -3,6 +3,7 @@ from agentos.agent.monitor.config import (
     load_monitor_workflow_configs,
 )
 from agentos.agent.monitor.clock import (
+    AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
     MONITOR_STARTUP_ALARM,
@@ -32,12 +33,15 @@ from agentos.agent.monitor.render import (
     monitor_result_payload,
 )
 from agentos.agent.monitor.workflows import (
+    AutoPrimeZeroLimitsWorkflow,
     LimitsTrackingWorkflow,
     build_monitor_workflows,
 )
 
 __all__ = [
     "DEFAULT_MONITOR_RENDER_CONTEXT",
+    "AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM",
+    "AutoPrimeZeroLimitsWorkflow",
     "LIMITS_TRACKING_PERIODIC_ALARM",
     "LimitsTrackingWorkflow",
     "MONITOR_ENTER_ALARM",

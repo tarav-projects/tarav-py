@@ -11,6 +11,16 @@ from agentos.agent.monitor.loop import MonitorLoop
 from agentos.agent.monitor.models import MonitorTarget, MonitorWorkflowConfig
 from agentos.agent.monitor.workflows import build_monitor_workflows
 
+AUTO_PRIME_ZERO_LIMITS_WORKFLOW = "auto-prime-zero-limits"
+AUTO_PRIME_ZERO_LIMITS_DEFAULT_TARGET_LIMITS = {
+    "codex": ("burst",),
+    "claude-code": ("burst",),
+}
+AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS = {
+    "codex": ("burst", "weekly"),
+    "claude-code": ("burst", "weekly"),
+}
+LIMITS_TRACKING_WORKFLOW = "limits-tracking"
 
 MONITOR_CONFIG_SOURCE = AgentConfigSource(
     object_path=("agent", "accounts", "monitor"),
@@ -24,17 +34,40 @@ def load_monitor_workflow_configs(*, start_path: Path | str = ".") -> tuple[Moni
         for entry in agent_config_entries_from_config(config_document, source=MONITOR_CONFIG_SOURCE):
             raw_config = entry.raw_instance
             workflow_name = _required_string(raw_config, "workflow", field_name=entry.field_name("workflow"))
-            if workflow_name != "limits-tracking":
+            if workflow_name not in {
+                LIMITS_TRACKING_WORKFLOW,
+                AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
+            }:
                 raise CliError(f"unknown monitor workflow {workflow_name!r} at {entry.field_name('workflow')}")
             targets = _load_targets(raw_config, field_name=entry.field_name("targets"))
+            if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW:
+                _validate_auto_prime_target_providers(
+                    targets,
+                    field_name=entry.field_name("targets"),
+                )
             configs.append(
                 MonitorWorkflowConfig(
                     name=workflow_name,
                     targets=targets,
-                    refresh_interval_sec=_refresh_interval_sec(
+                    refresh_interval_sec=_positive_number_config(
                         raw_config,
-                        field_name=entry.field_name("refresh_interval_sec"),
+                        key=_workflow_interval_key(workflow_name),
+                        field_name=entry.field_name(_workflow_interval_key(workflow_name)),
                     ),
+                    target_limit_ids=_target_limit_ids(
+                        raw_config,
+                        field_name=entry.field_name("target_limits"),
+                    )
+                    if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
+                    else {},
+                    retry_cooldown_sec=_positive_number_config(
+                        raw_config,
+                        key="retry_cooldown_sec",
+                        field_name=entry.field_name("retry_cooldown_sec"),
+                        default=600,
+                    )
+                    if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
+                    else None,
                     raw_config=dict(raw_config),
                 )
             )
@@ -97,10 +130,62 @@ def _required_string(payload: dict[str, object], key: str, *, field_name: str) -
     return validate_string_for_path(value, field_name=field_name)
 
 
-def _refresh_interval_sec(raw_config: dict[str, object], *, field_name: str) -> float:
-    value = raw_config.get("refresh_interval_sec", 60)
+def _workflow_interval_key(workflow_name: str) -> str:
+    if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW:
+        return "interval_sec"
+    return "refresh_interval_sec"
+
+
+def _positive_number_config(
+    raw_config: dict[str, object], *, key: str, field_name: str, default: float = 60
+) -> float:
+    value = raw_config.get(key, default)
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise CliError(f"{field_name} must be a positive number")
     if value <= 0:
         raise CliError(f"{field_name} must be a positive number")
     return float(value)
+
+
+def _target_limit_ids(
+    raw_config: dict[str, object], *, field_name: str
+) -> dict[str, tuple[str, ...]]:
+    raw_target_limits = raw_config.get("target_limits")
+    if raw_target_limits is None:
+        return dict(AUTO_PRIME_ZERO_LIMITS_DEFAULT_TARGET_LIMITS)
+    if not isinstance(raw_target_limits, dict):
+        raise CliError(f"{field_name} must be a JSON object")
+    target_limits: dict[str, tuple[str, ...]] = {}
+    for provider, raw_limit_ids in raw_target_limits.items():
+        provider_field = f"{field_name}.{provider}"
+        if not isinstance(provider, str) or not provider:
+            raise CliError(f"{field_name} keys must be non-empty provider names")
+        supported = AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS.get(provider)
+        if supported is None:
+            raise CliError(f"{provider_field} is not supported by auto-prime-zero-limits")
+        if not isinstance(raw_limit_ids, list) or not raw_limit_ids:
+            raise CliError(f"{provider_field} must be a non-empty JSON array")
+        limit_ids: list[str] = []
+        for index, raw_limit_id in enumerate(raw_limit_ids):
+            limit_field = f"{provider_field}[{index}]"
+            if not isinstance(raw_limit_id, str) or not raw_limit_id:
+                raise CliError(f"{limit_field} must be a non-empty string")
+            limit_id = validate_string_for_path(raw_limit_id, field_name=limit_field)
+            if limit_id not in supported:
+                raise CliError(
+                    f"{limit_field} is not supported by auto-prime-zero-limits"
+                )
+            limit_ids.append(limit_id)
+        target_limits[provider] = tuple(dict.fromkeys(limit_ids))
+    return target_limits
+
+
+def _validate_auto_prime_target_providers(
+    targets: tuple[MonitorTarget, ...], *, field_name: str
+) -> None:
+    for index, target in enumerate(targets):
+        if target.provider in AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS:
+            continue
+        raise CliError(
+            f"{field_name}[{index}].provider is not supported by auto-prime-zero-limits"
+        )

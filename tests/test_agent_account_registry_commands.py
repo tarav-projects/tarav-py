@@ -20,7 +20,9 @@ from agentos.agent.account_status import (
     AgentAccountContext,
     UsageOverTimeLimitData,
 )
+from agentos.agent.primitives import AgentPingConfig
 from agentos.agent.providers import build_registered_account_agent
+from agentos.agent.run_runtime import AgentRunResult
 from agentos.cli import main
 
 
@@ -497,6 +499,9 @@ def _monitor_account_status(
     account: str,
     home: Path,
     usage_record: dict[str, object] | None = None,
+    burst_used: int = 3,
+    weekly_used: int = 1,
+    burst_ends_in_minutes: int = 189,
 ) -> AccountStatus:
     burst_started_at, burst_ends_at = _usage_period(
         duration_mins=300, elapsed_percent=37
@@ -504,6 +509,11 @@ def _monitor_account_status(
     weekly_started_at, weekly_ends_at = _usage_period(
         duration_mins=10_080, elapsed_percent=18
     )
+    if burst_ends_in_minutes < 0:
+        burst_ends_at = _iso_z(
+            datetime.datetime.now(tz=datetime.UTC)
+            + datetime.timedelta(minutes=burst_ends_in_minutes)
+        )
     return AccountStatus(
         provider=provider,
         account=account,
@@ -514,7 +524,7 @@ def _monitor_account_status(
         expected_identity=AccountIdentity(provider_account_id=f"acc_{account}"),
         fetched_identity=AccountIdentity(provider_account_id=f"acc_{account}"),
         identity_match="verified",
-        usage_summary="Burst 3%, Weekly 1%",
+        usage_summary=f"Burst {burst_used}%, Weekly {weekly_used}%",
         raw={
             "usage_record": usage_record
             if usage_record is not None
@@ -531,7 +541,7 @@ def _monitor_account_status(
                 limit_name="burst",
                 limit_label="Burst",
                 usage_over_time=UsageOverTimeLimitData(
-                    used_percent=3,
+                    used_percent=burst_used,
                     period_started_at=burst_started_at,
                     period_ends_at=burst_ends_at,
                     period_duration_mins=300,
@@ -544,7 +554,7 @@ def _monitor_account_status(
                 limit_name="weekly",
                 limit_label="Weekly",
                 usage_over_time=UsageOverTimeLimitData(
-                    used_percent=1,
+                    used_percent=weekly_used,
                     period_started_at=weekly_started_at,
                     period_ends_at=weekly_ends_at,
                     period_duration_mins=10_080,
@@ -573,18 +583,31 @@ def _stub_monitor_account_status(
     *,
     failures: set[str] | None = None,
     usage_records: dict[str, dict[str, object]] | None = None,
+    account_statuses: dict[str, AccountStatus] | None = None,
+    ping_failures: set[str] | None = None,
+    ping_enabled: bool = True,
 ) -> list[str]:
     import agentos.agent.monitor.workflows as monitor_workflows
 
-    calls: list[str] = []
+    class MonitorAgentCalls(list[str]):
+        ping_calls: list[str]
+
+    calls = MonitorAgentCalls()
+    ping_calls: list[str] = []
+    calls.ping_calls = ping_calls
     failed_targets = set() if failures is None else failures
     usage_record_by_target = {} if usage_records is None else usage_records
+    account_status_by_target = {} if account_statuses is None else account_statuses
+    failed_pings = set() if ping_failures is None else ping_failures
 
     class FakeAgent:
         def __init__(self, *, provider: str, account: str, home: Path) -> None:
             self.provider = provider
             self.account = account
             self.home = home
+            self.ping = AgentPingConfig(enabled=ping_enabled)
+            self.instance_id = account
+            self.default_model = "fake-model"
 
         def account_status(
             self,
@@ -597,12 +620,23 @@ def _stub_monitor_account_status(
             calls.append(key)
             if key in failed_targets:
                 raise RuntimeError(f"cannot refresh {self.account}")
+            if key in account_status_by_target:
+                return account_status_by_target[key]
             return _monitor_account_status(
                 provider=self.provider,
                 account=self.account,
                 home=self.home,
                 usage_record=usage_record_by_target.get(key),
             )
+
+        def run(self, command_config, run_config):
+            assert command_config.interaction_mode == "non_interactive"
+            assert run_config.process_mode == "capture"
+            key = f"{self.provider}/{self.account}@{self.home}"
+            ping_calls.append(key)
+            if key in failed_pings:
+                return AgentRunResult(exit_code=1, stderr="no capacity")
+            return AgentRunResult(exit_code=0, stdout="745")
 
     def fake_build_registered_account_agent(
         *, provider: str, account: str, home: Path, start_path: Path | str = "."
@@ -3977,6 +4011,597 @@ def test_agent_accounts_monitor_unrelated_alarm_runs_workflow_without_provider_f
 
     assert len(calls) == 1
     assert state.workflow_run_counts == {"limits-tracking": 2}
+
+
+def test_agent_accounts_monitor_auto_prime_defaults_to_burst_limit(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from agentos.agent.monitor.config import load_monitor_workflow_configs
+
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "auto-prime-zero-limits",
+                "targets": [{"provider": "codex", "account": "br"}],
+            },
+        ],
+    )
+
+    config = load_monitor_workflow_configs(start_path=tmp_path)
+
+    assert config[0].name == "auto-prime-zero-limits"
+    assert config[0].refresh_interval_sec == 60
+    assert config[0].retry_cooldown_sec == 600
+    assert config[0].target_limit_ids["codex"] == ("burst",)
+
+
+def test_agent_accounts_monitor_auto_prime_rejects_unsupported_limit(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    agentos_home = _set_fake_agentos_home(monkeypatch, tmp_path / "home")
+    source_auth = tmp_path / "source.json"
+    _write(source_auth, _auth_json())
+
+    assert main(_register_args(source_auth, account="br")) == 0
+    capsys.readouterr()
+    _write_monitor_config(
+        agentos_home,
+        [
+            {
+                "workflow": "auto-prime-zero-limits",
+                "targets": [{"provider": "codex", "account": "br"}],
+                "target_limits": {"codex": ["monthly"]},
+            },
+        ],
+    )
+
+    assert main(["agent", "accounts", "monitor", "--once"]) == 1
+    assert (
+        "agent.accounts.monitor[0].target_limits.codex[0] is not supported"
+        in capsys.readouterr().err
+    )
+
+
+def test_agent_accounts_monitor_auto_prime_pings_zero_limit_once_per_account(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.monitor import (
+        AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
+        AutoPrimeZeroLimitsWorkflow,
+        MonitorClockSnapshot,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+
+    target_home = tmp_path / "home"
+    target_key = f"codex/br@{target_home}"
+    status = _monitor_account_status(
+        provider="codex",
+        account="br",
+        home=target_home,
+        burst_used=0,
+        weekly_used=0,
+    )
+    calls = _stub_monitor_account_status(
+        monkeypatch,
+        account_statuses={target_key: status},
+    )
+    workflow = AutoPrimeZeroLimitsWorkflow(
+        MonitorWorkflowConfig(
+            name="auto-prime-zero-limits",
+            targets=(MonitorTarget(provider="codex", account="br", home=target_home),),
+            refresh_interval_sec=2,
+            retry_cooldown_sec=600,
+            target_limit_ids={"codex": ("burst", "weekly")},
+            raw_config={},
+        )
+    )
+    state = MonitorState(
+        data={
+            "limits-tracking": {
+                "targets": {
+                    target_key: {
+                        "provider": "codex",
+                        "account": "br",
+                        "home": str(target_home),
+                        "status": "ok",
+                        "account_status": status.summary(),
+                    }
+                }
+            }
+        }
+    )
+    trigger = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,),
+    )
+
+    workflow.loop(state, MonitorFrame(tick=1), trigger)
+    workflow.loop(state, MonitorFrame(tick=2), trigger)
+
+    assert calls.ping_calls == [target_key]
+    target_state = state.data["auto-prime-zero-limits"]["targets"][target_key]
+    primed_periods = target_state["primed_periods"]
+    assert len(primed_periods) == 2
+    assert {period["limit_id"] for period in primed_periods.values()} == {
+        "burst",
+        "weekly",
+    }
+
+
+def test_agent_accounts_monitor_auto_prime_ignores_unrelated_alarm(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.monitor import (
+        AutoPrimeZeroLimitsWorkflow,
+        MonitorClockSnapshot,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+
+    target_home = tmp_path / "home"
+    target_key = f"codex/br@{target_home}"
+    status = _monitor_account_status(
+        provider="codex",
+        account="br",
+        home=target_home,
+        burst_used=0,
+    )
+    calls = _stub_monitor_account_status(
+        monkeypatch,
+        account_statuses={target_key: status},
+    )
+    workflow = AutoPrimeZeroLimitsWorkflow(
+        MonitorWorkflowConfig(
+            name="auto-prime-zero-limits",
+            targets=(MonitorTarget(provider="codex", account="br", home=target_home),),
+            refresh_interval_sec=60,
+            retry_cooldown_sec=600,
+            target_limit_ids={"codex": ("burst",)},
+            raw_config={},
+        )
+    )
+    state = MonitorState(
+        data={
+            "limits-tracking": {
+                "targets": {
+                    target_key: {
+                        "provider": "codex",
+                        "account": "br",
+                        "home": str(target_home),
+                        "status": "ok",
+                        "account_status": status.summary(),
+                    }
+                }
+            }
+        }
+    )
+    trigger = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=("custom.service",),
+    )
+
+    workflow.loop(state, MonitorFrame(tick=1), trigger)
+
+    assert calls.ping_calls == []
+
+
+def test_agent_accounts_monitor_auto_prime_skips_without_limits_state(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.monitor import (
+        AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
+        AutoPrimeZeroLimitsWorkflow,
+        MonitorClockSnapshot,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+
+    target_home = tmp_path / "home"
+    calls = _stub_monitor_account_status(monkeypatch)
+    workflow = AutoPrimeZeroLimitsWorkflow(
+        MonitorWorkflowConfig(
+            name="auto-prime-zero-limits",
+            targets=(MonitorTarget(provider="codex", account="br", home=target_home),),
+            refresh_interval_sec=60,
+            retry_cooldown_sec=600,
+            target_limit_ids={"codex": ("burst",)},
+            raw_config={},
+        )
+    )
+    trigger = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,),
+    )
+
+    workflow.loop(MonitorState(), MonitorFrame(tick=1), trigger)
+
+    assert calls.ping_calls == []
+
+
+def test_agent_accounts_monitor_auto_prime_skips_non_zero_limit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.monitor import (
+        AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
+        AutoPrimeZeroLimitsWorkflow,
+        MonitorClockSnapshot,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+
+    target_home = tmp_path / "home"
+    target_key = f"codex/br@{target_home}"
+    status = _monitor_account_status(
+        provider="codex",
+        account="br",
+        home=target_home,
+        burst_used=1,
+    )
+    calls = _stub_monitor_account_status(
+        monkeypatch,
+        account_statuses={target_key: status},
+    )
+    workflow = AutoPrimeZeroLimitsWorkflow(
+        MonitorWorkflowConfig(
+            name="auto-prime-zero-limits",
+            targets=(MonitorTarget(provider="codex", account="br", home=target_home),),
+            refresh_interval_sec=60,
+            retry_cooldown_sec=600,
+            target_limit_ids={"codex": ("burst",)},
+            raw_config={},
+        )
+    )
+    state = MonitorState(
+        data={
+            "limits-tracking": {
+                "targets": {
+                    target_key: {
+                        "provider": "codex",
+                        "account": "br",
+                        "home": str(target_home),
+                        "status": "ok",
+                        "account_status": status.summary(),
+                    }
+                }
+            }
+        }
+    )
+    trigger = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,),
+    )
+
+    workflow.loop(state, MonitorFrame(tick=1), trigger)
+
+    assert calls.ping_calls == []
+
+
+def test_agent_accounts_monitor_auto_prime_skips_expired_period(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.monitor import (
+        AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
+        AutoPrimeZeroLimitsWorkflow,
+        MonitorClockSnapshot,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+
+    target_home = tmp_path / "home"
+    target_key = f"codex/br@{target_home}"
+    status = _monitor_account_status(
+        provider="codex",
+        account="br",
+        home=target_home,
+        burst_used=0,
+        burst_ends_in_minutes=-1,
+    )
+    calls = _stub_monitor_account_status(
+        monkeypatch,
+        account_statuses={target_key: status},
+    )
+    workflow = AutoPrimeZeroLimitsWorkflow(
+        MonitorWorkflowConfig(
+            name="auto-prime-zero-limits",
+            targets=(MonitorTarget(provider="codex", account="br", home=target_home),),
+            refresh_interval_sec=60,
+            retry_cooldown_sec=600,
+            target_limit_ids={"codex": ("burst",)},
+            raw_config={},
+        )
+    )
+    state = MonitorState(
+        data={
+            "limits-tracking": {
+                "targets": {
+                    target_key: {
+                        "provider": "codex",
+                        "account": "br",
+                        "home": str(target_home),
+                        "status": "ok",
+                        "account_status": status.summary(),
+                    }
+                }
+            }
+        }
+    )
+    trigger = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,),
+    )
+
+    workflow.loop(state, MonitorFrame(tick=1), trigger)
+
+    assert calls.ping_calls == []
+
+
+def test_agent_accounts_monitor_auto_prime_failure_uses_cooldown(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.monitor import (
+        AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
+        AutoPrimeZeroLimitsWorkflow,
+        MonitorClockSnapshot,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+
+    target_home = tmp_path / "home"
+    target_key = f"codex/br@{target_home}"
+    status = _monitor_account_status(
+        provider="codex",
+        account="br",
+        home=target_home,
+        burst_used=0,
+    )
+    calls = _stub_monitor_account_status(
+        monkeypatch,
+        account_statuses={target_key: status},
+        ping_failures={target_key},
+    )
+    workflow = AutoPrimeZeroLimitsWorkflow(
+        MonitorWorkflowConfig(
+            name="auto-prime-zero-limits",
+            targets=(MonitorTarget(provider="codex", account="br", home=target_home),),
+            refresh_interval_sec=60,
+            retry_cooldown_sec=600,
+            target_limit_ids={"codex": ("burst",)},
+            raw_config={},
+        )
+    )
+    state = MonitorState(
+        data={
+            "limits-tracking": {
+                "targets": {
+                    target_key: {
+                        "provider": "codex",
+                        "account": "br",
+                        "home": str(target_home),
+                        "status": "ok",
+                        "account_status": status.summary(),
+                    }
+                }
+            }
+        }
+    )
+    trigger = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,),
+    )
+
+    frame = MonitorFrame(tick=1)
+    workflow.loop(state, frame, trigger)
+    workflow.loop(state, MonitorFrame(tick=2), trigger)
+
+    assert calls.ping_calls == [target_key]
+    target_state = state.data["auto-prime-zero-limits"]["targets"][target_key]
+    assert target_state["last_error"]["message"].startswith(
+        "agent ping failed: provider command exited with 1"
+    )
+    assert frame.blocks[0]["title"] == "auto-prime-zero-limits"
+    assert "    auto-prime | failed 1" in frame.blocks[0]["lines"]
+    assert "codex/br failed" in frame.blocks[0]["lines"][1]
+
+
+def test_agent_accounts_monitor_auto_prime_retries_after_cooldown(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.monitor import (
+        AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
+        AutoPrimeZeroLimitsWorkflow,
+        MonitorClockSnapshot,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+
+    target_home = tmp_path / "home"
+    target_key = f"codex/br@{target_home}"
+    status = _monitor_account_status(
+        provider="codex",
+        account="br",
+        home=target_home,
+        burst_used=0,
+    )
+    calls = _stub_monitor_account_status(
+        monkeypatch,
+        account_statuses={target_key: status},
+        ping_failures={target_key},
+    )
+    workflow = AutoPrimeZeroLimitsWorkflow(
+        MonitorWorkflowConfig(
+            name="auto-prime-zero-limits",
+            targets=(MonitorTarget(provider="codex", account="br", home=target_home),),
+            refresh_interval_sec=60,
+            retry_cooldown_sec=600,
+            target_limit_ids={"codex": ("burst",)},
+            raw_config={},
+        )
+    )
+    state = MonitorState(
+        data={
+            "limits-tracking": {
+                "targets": {
+                    target_key: {
+                        "provider": "codex",
+                        "account": "br",
+                        "home": str(target_home),
+                        "status": "ok",
+                        "account_status": status.summary(),
+                    }
+                }
+            }
+        }
+    )
+    trigger = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,),
+    )
+
+    workflow.loop(state, MonitorFrame(tick=1), trigger)
+    target_state = state.data["auto-prime-zero-limits"]["targets"][target_key]
+    target_state["retry_after_monotonic"] = 0
+    workflow.loop(state, MonitorFrame(tick=2), trigger)
+
+    assert calls.ping_calls == [target_key, target_key]
+
+
+def test_agent_accounts_monitor_auto_prime_ping_disabled_records_cooldown(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from agentos.agent.monitor import (
+        AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
+        AutoPrimeZeroLimitsWorkflow,
+        MonitorClockSnapshot,
+        MonitorFrame,
+        MonitorState,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+
+    target_home = tmp_path / "home"
+    target_key = f"codex/br@{target_home}"
+    status = _monitor_account_status(
+        provider="codex",
+        account="br",
+        home=target_home,
+        burst_used=0,
+    )
+    _stub_monitor_account_status(
+        monkeypatch,
+        account_statuses={target_key: status},
+        ping_enabled=False,
+    )
+    workflow = AutoPrimeZeroLimitsWorkflow(
+        MonitorWorkflowConfig(
+            name="auto-prime-zero-limits",
+            targets=(MonitorTarget(provider="codex", account="br", home=target_home),),
+            refresh_interval_sec=60,
+            retry_cooldown_sec=600,
+            target_limit_ids={"codex": ("burst",)},
+            raw_config={},
+        )
+    )
+    state = MonitorState(
+        data={
+            "limits-tracking": {
+                "targets": {
+                    target_key: {
+                        "provider": "codex",
+                        "account": "br",
+                        "home": str(target_home),
+                        "status": "ok",
+                        "account_status": status.summary(),
+                    }
+                }
+            }
+        }
+    )
+    trigger = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,),
+    )
+
+    workflow.loop(state, MonitorFrame(tick=1), trigger)
+
+    target_state = state.data["auto-prime-zero-limits"]["targets"][target_key]
+    assert "has ping disabled" in target_state["last_error"]["message"]
+    assert isinstance(target_state["retry_after_monotonic"], float)
+
+
+def test_agent_accounts_monitor_auto_prime_alarm_uses_fixed_period() -> None:
+    from agentos.agent.monitor import (
+        AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
+        AutoPrimeZeroLimitsWorkflow,
+        MonitorLoop,
+        MonitorTarget,
+        MonitorWorkflowConfig,
+    )
+
+    loop = MonitorLoop(
+        workflows=(
+            AutoPrimeZeroLimitsWorkflow(
+                MonitorWorkflowConfig(
+                    name="auto-prime-zero-limits",
+                    targets=(MonitorTarget(provider="codex", account="br", home=Path(".")),),
+                    refresh_interval_sec=2,
+                    retry_cooldown_sec=600,
+                    target_limit_ids={"codex": ("burst",)},
+                    raw_config={},
+                )
+            ),
+        ),
+        interval_sec=1,
+        max_ticks=1,
+    )
+
+    startup = loop._apply_adaptive_alarm_policy(loop.clock.step())
+    first_prime = loop._apply_adaptive_alarm_policy(loop.clock.step())
+
+    assert not startup.fired(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM)
+    assert first_prime.fired(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM)
+    assert first_prime.alarms[AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM].period_ticks == 2
 
 
 def test_agent_accounts_monitor_target_error_is_workflow_owned(

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
+import time
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
@@ -16,6 +19,7 @@ from agentos.agent.account_status import (
     registry_latest_usage_record_metadata,
 )
 from agentos.agent.monitor.clock import (
+    AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
     MONITOR_STARTUP_ALARM,
@@ -37,6 +41,7 @@ from agentos.agent.monitor.models import (
     MonitorWorkflowConfig,
 )
 from agentos.agent.providers import build_registered_account_agent
+from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.agent.usage_registry import latest_usage_record
 from agentos.claude.account_status import (
     CLAUDE_STATUSLINE_USAGE_SOURCE,
@@ -50,6 +55,9 @@ from agentos.copilot.account_status import (
     COPILOT_INTERNAL_USER_USAGE_SOURCE,
     copilot_usage_record_limits,
 )
+
+
+_PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 
 
 class LimitsTrackingWorkflow:
@@ -265,6 +273,290 @@ class LimitsTrackingWorkflow:
         frame.add_block(self.name, rows=rows, data=data)
 
 
+class AutoPrimeZeroLimitsWorkflow:
+    name = "auto-prime-zero-limits"
+    periodic_alarm_name = AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM
+
+    def __init__(self, config: MonitorWorkflowConfig) -> None:
+        self.config = config
+        self.refresh_interval_sec = config.refresh_interval_sec
+        self.retry_cooldown_sec = (
+            config.retry_cooldown_sec
+            if config.retry_cooldown_sec is not None
+            else 600.0
+        )
+        self.target_limit_ids = {
+            provider: set(limit_ids)
+            for provider, limit_ids in config.target_limit_ids.items()
+        }
+        self.target_keys = {_target_key(target) for target in config.targets}
+
+    def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+        workflow_state = self._workflow_state(state)
+        workflow_state["setup_tick"] = frame.tick
+        workflow_state["interval_sec"] = self.config.refresh_interval_sec
+        workflow_state["retry_cooldown_sec"] = self.retry_cooldown_sec
+        self._write_frame_block(frame, workflow_state=workflow_state)
+
+    def loop(
+        self,
+        state: MonitorState,
+        frame: MonitorFrame,
+        trigger: MonitorClockSnapshot,
+    ) -> None:
+        run_count = state.workflow_run_counts.get(self.name, 0) + 1
+        state.workflow_run_counts[self.name] = run_count
+        workflow_state = self._workflow_state(state)
+        workflow_state["last_tick"] = frame.tick
+        workflow_state["run_count"] = run_count
+        workflow_state["interval_sec"] = self.config.refresh_interval_sec
+        workflow_state["retry_cooldown_sec"] = self.retry_cooldown_sec
+        workflow_state["fired_alarms"] = list(trigger.fired_alarm_names)
+
+        if trigger.fired(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM):
+            self._scan_and_prime(state, workflow_state=workflow_state, tick=frame.tick)
+
+        self._write_frame_block(frame, workflow_state=workflow_state)
+
+    def _workflow_state(self, state: MonitorState) -> dict[str, object]:
+        existing = state.data.get(self.name)
+        if isinstance(existing, dict):
+            return existing
+        workflow_state: dict[str, object] = {
+            "targets": {},
+            "last_scan": None,
+        }
+        state.data[self.name] = workflow_state
+        return workflow_state
+
+    def _target_states(self, workflow_state: dict[str, object]) -> dict[str, object]:
+        existing = workflow_state.get("targets")
+        if isinstance(existing, dict):
+            return existing
+        target_states: dict[str, object] = {}
+        workflow_state["targets"] = target_states
+        return target_states
+
+    def _scan_and_prime(
+        self,
+        state: MonitorState,
+        *,
+        workflow_state: dict[str, object],
+        tick: int,
+    ) -> None:
+        target_states = self._target_states(workflow_state)
+        limits_state = state.data.get("limits-tracking")
+        if not isinstance(limits_state, dict):
+            workflow_state["last_scan"] = {
+                "tick": tick,
+                "status": "skipped",
+                "message": "limits-tracking state is not available",
+                "pinged": 0,
+                "failed": 0,
+            }
+            return
+        raw_targets = limits_state.get("targets")
+        if not isinstance(raw_targets, dict):
+            workflow_state["last_scan"] = {
+                "tick": tick,
+                "status": "skipped",
+                "message": "limits-tracking targets state is not available",
+                "pinged": 0,
+                "failed": 0,
+            }
+            return
+
+        now = datetime.datetime.now(tz=datetime.UTC)
+        monotonic_now = time.monotonic()
+        pinged = 0
+        failed = 0
+        for target_key, raw_target_state in raw_targets.items():
+            if not isinstance(target_key, str) or not isinstance(raw_target_state, dict):
+                continue
+            if target_key not in self.target_keys:
+                continue
+            target_state = self._target_state(target_states, raw_target_state, target_key)
+            eligible_periods = self._eligible_periods(
+                raw_target_state,
+                target_state=target_state,
+                now=now,
+                monotonic_now=monotonic_now,
+            )
+            if not eligible_periods:
+                continue
+            if self._prime_target(
+                target_state,
+                source_target_state=raw_target_state,
+                eligible_periods=eligible_periods,
+                tick=tick,
+                monotonic_now=monotonic_now,
+            ):
+                pinged += 1
+            else:
+                failed += 1
+        workflow_state["last_scan"] = {
+            "tick": tick,
+            "status": "ok",
+            "pinged": pinged,
+            "failed": failed,
+        }
+
+    def _target_state(
+        self,
+        target_states: dict[str, object],
+        source_target_state: dict[str, object],
+        target_key: str,
+    ) -> dict[str, object]:
+        existing = target_states.get(target_key)
+        if isinstance(existing, dict):
+            return existing
+        target_state: dict[str, object] = {
+            "provider": source_target_state.get("provider"),
+            "account": source_target_state.get("account"),
+            "home": source_target_state.get("home"),
+            "primed_periods": {},
+        }
+        target_states[target_key] = target_state
+        return target_state
+
+    def _eligible_periods(
+        self,
+        source_target_state: dict[str, object],
+        *,
+        target_state: dict[str, object],
+        now: datetime.datetime,
+        monotonic_now: float,
+    ) -> list[dict[str, object]]:
+        if source_target_state.get("status") != "ok":
+            return []
+        provider = _string_value(source_target_state.get("provider"))
+        if provider is None:
+            return []
+        target_limit_ids = self.target_limit_ids.get(provider)
+        if not target_limit_ids:
+            return []
+        retry_after = target_state.get("retry_after_monotonic")
+        if isinstance(retry_after, int | float) and monotonic_now < retry_after:
+            return []
+
+        account_status = source_target_state.get("account_status")
+        if not isinstance(account_status, dict):
+            return []
+        limits = account_status.get("limits")
+        if not isinstance(limits, list):
+            return []
+        primed_periods = self._primed_periods(target_state)
+        eligible: list[dict[str, object]] = []
+        for limit in limits:
+            if not isinstance(limit, dict):
+                continue
+            period = _eligible_limit_period(
+                source_target_state,
+                limit,
+                target_limit_ids=target_limit_ids,
+                now=now,
+            )
+            if period is None:
+                continue
+            period_key = period["period_key"]
+            if isinstance(period_key, str) and period_key in primed_periods:
+                continue
+            eligible.append(period)
+        return eligible
+
+    def _primed_periods(self, target_state: dict[str, object]) -> dict[str, object]:
+        existing = target_state.get("primed_periods")
+        if isinstance(existing, dict):
+            return existing
+        primed_periods: dict[str, object] = {}
+        target_state["primed_periods"] = primed_periods
+        return primed_periods
+
+    def _prime_target(
+        self,
+        target_state: dict[str, object],
+        *,
+        source_target_state: dict[str, object],
+        eligible_periods: list[dict[str, object]],
+        tick: int,
+        monotonic_now: float,
+    ) -> bool:
+        target_state["last_attempt_tick"] = tick
+        try:
+            _run_account_prime_ping(source_target_state)
+        except Exception as exc:
+            target_state["retry_after_monotonic"] = (
+                monotonic_now + self.retry_cooldown_sec
+            )
+            target_state["last_error"] = {
+                "message": str(exc),
+                "error_type": type(exc).__name__,
+                "last_attempt_tick": tick,
+            }
+            return False
+
+        target_state["last_success_tick"] = tick
+        target_state["retry_after_monotonic"] = None
+        target_state["last_error"] = None
+        primed_periods = self._primed_periods(target_state)
+        for period in eligible_periods:
+            period_key = period.get("period_key")
+            if not isinstance(period_key, str):
+                continue
+            existing = primed_periods.get(period_key)
+            attempt_count = 1
+            if isinstance(existing, dict):
+                raw_count = existing.get("attempt_count")
+                if isinstance(raw_count, int):
+                    attempt_count = raw_count + 1
+            primed_periods[period_key] = {
+                "limit_id": period.get("limit_id"),
+                "status": "ok",
+                "attempt_count": attempt_count,
+                "last_attempt_tick": tick,
+                "last_success_tick": tick,
+            }
+        return True
+
+    def _write_frame_block(
+        self, frame: MonitorFrame, *, workflow_state: dict[str, object]
+    ) -> None:
+        rows: list[MonitorRow] = []
+        last_scan = workflow_state.get("last_scan")
+        if isinstance(last_scan, dict):
+            pinged = _int_value(last_scan.get("pinged"))
+            failed = _int_value(last_scan.get("failed"))
+            if pinged:
+                rows.append(MonitorInfoRow(label="    auto-prime", value=f"pinged {pinged}"))
+            if failed:
+                rows.append(MonitorInfoRow(label="    auto-prime", value=f"failed {failed}"))
+        for target_state in self._target_states(workflow_state).values():
+            if not isinstance(target_state, dict):
+                continue
+            last_error = target_state.get("last_error")
+            if not isinstance(last_error, dict):
+                continue
+            message = _string_value(last_error.get("message")) or "unknown error"
+            rows.append(
+                MonitorInfoRow(
+                    label="    auto-prime",
+                    value=f"{_target_state_name(target_state)} failed: {message}",
+                )
+            )
+        if not rows:
+            return
+        data = {
+            "workflow": self.name,
+            "periodic_alarm_name": AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
+            "interval_sec": self.config.refresh_interval_sec,
+            "retry_cooldown_sec": self.retry_cooldown_sec,
+            "run_count": workflow_state.get("run_count"),
+            "last_scan": last_scan,
+            "targets": self._target_states(workflow_state),
+        }
+        frame.add_block(self.name, rows=rows, data=data)
+
+
 def build_monitor_workflows(
     configs: tuple[MonitorWorkflowConfig, ...],
 ) -> tuple[MonitorWorkflow, ...]:
@@ -272,14 +564,27 @@ def build_monitor_workflows(
     limits_tracking_configs = tuple(
         config for config in configs if config.name == "limits-tracking"
     )
-    if limits_tracking_configs:
-        workflows.append(
-            LimitsTrackingWorkflow(
-                _merge_limits_tracking_configs(limits_tracking_configs)
-            )
-        )
+    auto_prime_configs = tuple(
+        config for config in configs if config.name == "auto-prime-zero-limits"
+    )
     for config in configs:
         if config.name == "limits-tracking":
+            if not any(workflow.name == "limits-tracking" for workflow in workflows):
+                workflows.append(
+                    LimitsTrackingWorkflow(
+                        _merge_limits_tracking_configs(limits_tracking_configs)
+                    )
+                )
+            continue
+        if config.name == "auto-prime-zero-limits":
+            if not any(
+                workflow.name == "auto-prime-zero-limits" for workflow in workflows
+            ):
+                workflows.append(
+                    AutoPrimeZeroLimitsWorkflow(
+                        _merge_auto_prime_configs(auto_prime_configs)
+                    )
+                )
             continue
         raise CliError(f"unknown monitor workflow {config.name!r}")
     return tuple(workflows)
@@ -309,6 +614,48 @@ def _merge_limits_tracking_configs(
         raw_config={
             "workflow": "limits-tracking",
             "refresh_interval_sec": refresh_interval_sec,
+            "configs": raw_configs,
+        },
+    )
+
+
+def _merge_auto_prime_configs(
+    configs: tuple[MonitorWorkflowConfig, ...],
+) -> MonitorWorkflowConfig:
+    if len(configs) == 1:
+        return configs[0]
+    targets: list[MonitorTarget] = []
+    target_keys: set[tuple[str, str, str]] = set()
+    target_limit_ids: dict[str, tuple[str, ...]] = {}
+    raw_configs: list[dict[str, object]] = []
+    interval_sec = min(config.refresh_interval_sec for config in configs)
+    retry_cooldown_sec = min(
+        config.retry_cooldown_sec
+        for config in configs
+        if config.retry_cooldown_sec is not None
+    )
+    for config in configs:
+        for target in config.targets:
+            target_key = (target.provider, target.account, str(target.home))
+            if target_key in target_keys:
+                continue
+            target_keys.add(target_key)
+            targets.append(target)
+        for provider, limit_ids in config.target_limit_ids.items():
+            existing = target_limit_ids.get(provider, ())
+            target_limit_ids[provider] = tuple(dict.fromkeys((*existing, *limit_ids)))
+        raw_configs.append(config.raw_config)
+    return MonitorWorkflowConfig(
+        name="auto-prime-zero-limits",
+        targets=tuple(targets),
+        refresh_interval_sec=interval_sec,
+        retry_cooldown_sec=retry_cooldown_sec,
+        target_limit_ids=target_limit_ids,
+        raw_config={
+            "workflow": "auto-prime-zero-limits",
+            "interval_sec": interval_sec,
+            "retry_cooldown_sec": retry_cooldown_sec,
+            "target_limits": target_limit_ids,
             "configs": raw_configs,
         },
     )
@@ -739,3 +1086,99 @@ def _string_value(value: object) -> str | None:
     if isinstance(value, str) and value:
         return value
     return None
+
+
+def _eligible_limit_period(
+    source_target_state: dict[str, object],
+    limit: dict[str, object],
+    *,
+    target_limit_ids: set[str],
+    now: datetime.datetime,
+) -> dict[str, object] | None:
+    limit_id = _string_value(limit.get("limit_id"))
+    if limit_id is None or limit_id not in target_limit_ids:
+        return None
+    usage_over_time = limit.get("usage_over_time")
+    if not isinstance(usage_over_time, dict):
+        return None
+    used_percent = _int_value(usage_over_time.get("used_percent"))
+    if used_percent != 0:
+        return None
+    period_started_at = _string_value(usage_over_time.get("period_started_at"))
+    period_ends_at = _string_value(usage_over_time.get("period_ends_at"))
+    resets_at = _string_value(usage_over_time.get("resets_at"))
+    period_end_key = period_ends_at or resets_at
+    if period_started_at is None or period_end_key is None:
+        return None
+    period_end = _parse_datetime(period_end_key)
+    if period_end is None or period_end <= now:
+        return None
+    provider = _string_value(source_target_state.get("provider"))
+    account = _string_value(source_target_state.get("account"))
+    home = _string_value(source_target_state.get("home"))
+    if provider is None or account is None or home is None:
+        return None
+    return {
+        "limit_id": limit_id,
+        "period_key": "|".join(
+            (provider, account, home, limit_id, period_started_at, period_end_key)
+        ),
+    }
+
+
+def _run_account_prime_ping(source_target_state: dict[str, object]) -> None:
+    provider = _required_target_string(source_target_state, "provider")
+    account = _required_target_string(source_target_state, "account")
+    home = Path(_required_target_string(source_target_state, "home"))
+    agent = build_registered_account_agent(
+        provider=provider,
+        account=account,
+        home=home,
+    )
+    if not agent.ping.enabled:
+        raise CliError(
+            f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
+        )
+    command_config = AgentCommandConfig(
+        prompt=agent.ping.prompt,
+        argv=agent.ping.argv,
+        model=agent.ping.model,
+        account=None,
+        interaction_mode="non_interactive",
+    )
+    result = agent.run(
+        command_config,
+        AgentRunConfig(cwd=Path.cwd().resolve(), process_mode="capture"),
+    )
+    _validate_prime_ping_result(result, expected_number=agent.ping.expected_number)
+
+
+def _validate_prime_ping_result(result, *, expected_number: int | None) -> None:
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    if result.exit_code != 0:
+        detail = output.strip()
+        suffix = f": {detail}" if detail else ""
+        raise CliError(
+            f"agent ping failed: provider command exited with {result.exit_code}{suffix}"
+        )
+    if expected_number is None:
+        return
+    numbers = [int(match.group(0)) for match in _PING_NUMBER_PATTERN.finditer(output)]
+    if expected_number not in numbers:
+        raise CliError(
+            f"agent ping failed: expected numeric answer {expected_number} "
+            "was not present in provider output"
+        )
+
+
+def _required_target_string(target_state: dict[str, object], key: str) -> str:
+    value = _string_value(target_state.get(key))
+    if value is None:
+        raise CliError(f"limits-tracking target state is missing {key}")
+    return value
+
+
+def _target_state_name(target_state: dict[str, object]) -> str:
+    provider = _string_value(target_state.get("provider")) or "unknown"
+    account = _string_value(target_state.get("account")) or "unknown"
+    return f"{provider}/{account}"

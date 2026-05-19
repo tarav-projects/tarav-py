@@ -9,6 +9,7 @@ from typing import Protocol
 
 from agentos._core.errors import CliError
 from agentos.agent.monitor.clock import (
+    AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
     MONITOR_STARTUP_ALARM,
@@ -298,6 +299,7 @@ class MonitorLoop:
             workflows=self.workflows,
             alarm_name=LIMITS_TRACKING_PERIODIC_ALARM,
         )
+        self._arm_fixed_periodic_alarm(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM)
         if period_sec is None:
             return
         self._limits_tracking_adaptive_alarm = _AdaptivePeriodicAlarmState(
@@ -330,6 +332,21 @@ class MonitorLoop:
             LIMITS_TRACKING_PERIODIC_ALARM,
             period_ticks=_period_ticks_from_seconds(
                 alarm_state.current_sec,
+                interval_sec=self.interval_sec,
+            ),
+        )
+
+    def _arm_fixed_periodic_alarm(self, alarm_name: str) -> None:
+        period_sec = _workflow_period_seconds(
+            workflows=self.workflows,
+            alarm_name=alarm_name,
+        )
+        if period_sec is None:
+            return
+        self.clock.set_periodic(
+            alarm_name,
+            period_ticks=_period_ticks_from_seconds(
+                period_sec,
                 interval_sec=self.interval_sec,
             ),
         )
