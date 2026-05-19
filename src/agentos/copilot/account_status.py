@@ -21,7 +21,10 @@ from agentos.agent.account_status import (
     UsageOverTimeLimitData,
     fresh_usage_record_metadata,
 )
-from agentos.agent.account_usage_fallback import account_usage_registry_fallback
+from agentos.agent.account_usage_fallback import (
+    AccountUsageReadResult,
+    account_usage_registry_fallback,
+)
 from agentos.agent.primitives import Agent
 from agentos.agent.usage_registry import append_usage_record
 
@@ -255,13 +258,7 @@ def _setup_errors(
 # isolated while we evaluate which one should become the long-term capability.
 def _account_usage_internal_user(
     agent: Agent,
-) -> tuple[
-    tuple[AccountLimit, ...],
-    tuple[AccountStatusError, ...],
-    dict[str, Any] | None,
-    dict[str, Any] | None,
-    dict[str, Any] | None,
-]:
+) -> AccountUsageReadResult:
     try:
         payload = _fetch_copilot_internal_user_payload(agent)
         return (

@@ -195,6 +195,17 @@ def _codex_usage_payload(*, burst_percent: int = 20, weekly_percent: int = 54) -
     }
 
 
+def _failed_app_server_result(agent: object):
+    del agent
+    return (
+        (),
+        (AccountStatusError(error_type="command_failed", message="forced app-server failure"),),
+        None,
+        None,
+        None,
+    )
+
+
 def _register_linked_codex_agent(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -289,17 +300,10 @@ def test_codex_account_status_falls_back_to_usage_registry(
     usage_record_path = agentos_home / "agent" / "usage-registry" / "202605-usage.jsonl"
     assert len(read_jsonl_file(usage_record_path)) == 1
 
-    def fail_app_server(agent: object):
-        del agent
-        return (
-            (),
-            (AccountStatusError(error_type="command_failed", message="forced app-server failure"),),
-            None,
-            None,
-            None,
-        )
-
-    monkeypatch.setattr("agentos.codex.account_status._account_usage_app_server", fail_app_server)
+    monkeypatch.setattr(
+        "agentos.codex.account_status._account_usage_app_server",
+        _failed_app_server_result,
+    )
 
     status = agent.account_status()
 
@@ -325,17 +329,10 @@ def test_codex_account_status_without_cached_usage_stays_error(
     set_fake_agentos_home(monkeypatch, tmp_path / "agentos")
     _codex_home, _auth_file, agent = _register_linked_codex_agent(tmp_path, capsys)
 
-    def fail_app_server(agent: object):
-        del agent
-        return (
-            (),
-            (AccountStatusError(error_type="command_failed", message="forced app-server failure"),),
-            None,
-            None,
-            None,
-        )
-
-    monkeypatch.setattr("agentos.codex.account_status._account_usage_app_server", fail_app_server)
+    monkeypatch.setattr(
+        "agentos.codex.account_status._account_usage_app_server",
+        _failed_app_server_result,
+    )
 
     status = agent.account_status()
 

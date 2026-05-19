@@ -13,6 +13,14 @@ from agentos.agent.account_status import (
 )
 from agentos.agent.usage_registry import latest_usage_record
 
+AccountUsageReadResult = tuple[
+    tuple[AccountLimit, ...],
+    tuple[AccountStatusError, ...],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]
+
 
 def account_usage_registry_fallback(
     *,
@@ -23,13 +31,7 @@ def account_usage_registry_fallback(
     parser: Callable[[Mapping[str, Any]], tuple[AccountLimit, ...]],
     live_error: AccountStatusError,
     fallback_to_usage_registry: bool,
-) -> tuple[
-    tuple[AccountLimit, ...],
-    tuple[AccountStatusError, ...],
-    dict[str, Any] | None,
-    dict[str, Any] | None,
-    dict[str, Any] | None,
-]:
+) -> AccountUsageReadResult:
     if not fallback_to_usage_registry:
         return (), (live_error,), None, None, None
     if home is None:
@@ -72,4 +74,4 @@ def _string_or_none(value: object) -> str | None:
     return None
 
 
-__all__ = ["account_usage_registry_fallback"]
+__all__ = ["AccountUsageReadResult", "account_usage_registry_fallback"]
