@@ -81,22 +81,21 @@ def _cmd_rev_parse(args: argparse.Namespace) -> int:
     raise SystemExit("error: missing rev-parse mode")
 
 
+def _project_list_record(project_root: Path) -> dict[str, object]:
+    marker_path = project_marker_path(project_root)
+    marker = load_project_marker(marker_path)
+    return {
+        "project_root": str(project_root),
+        "project_id": marker["project_id"],
+        "project_name": marker.get("project_name"),
+        "marker_path": str(marker_path),
+    }
+
+
 def _cmd_projects_list(args: argparse.Namespace) -> int:
     project_roots = find_agentos_project_roots_under(args.root)
     if args.json_output:
-        records = []
-        for project_root in project_roots:
-            marker_path = project_marker_path(project_root)
-            marker = load_project_marker(marker_path)
-            records.append(
-                {
-                    "project_root": str(project_root),
-                    "project_id": marker["project_id"],
-                    "project_name": marker.get("project_name"),
-                    "marker_path": str(marker_path),
-                }
-            )
-        print(json.dumps(records, indent=2))
+        print(json.dumps([_project_list_record(root) for root in project_roots], indent=2))
         return 0
 
     for project_root in project_roots:
