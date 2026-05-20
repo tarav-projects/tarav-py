@@ -225,7 +225,7 @@ Global config shape:
           "path": "/Users/pereiro/projects/agentos/skills"
         },
         "iterante": {
-          "project": "/Users/pereiro/projects/agentos-project/agentos-iterante-dev"
+          "project": "/Users/pereiro/projects/agentos-project/agentos-iterante-py"
         },
         "core": {
           "package": [
