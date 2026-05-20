@@ -29,6 +29,11 @@ from agentos.agent.monitor.loop import (
     MonitorWorkflow,
 )
 from agentos.agent.monitor.models import (
+    AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW,
+    AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN,
+    AUTO_PRIME_TRIGGER_SLIDING_RESET,
+    AUTO_PRIME_TRIGGER_ZERO_USAGE,
+    AUTO_PRIME_UNINITIALIZED_TRIGGERS,
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
     MonitorAccountRow,
@@ -1212,8 +1217,7 @@ def _eligible_limit_period(
         return None
 
     uninitialized = any(
-        reason in {"near_zero_full_window", "sliding_reset", "period_key_churn"}
-        for reason in reasons
+        reason in AUTO_PRIME_UNINITIALIZED_TRIGGERS for reason in reasons
     )
     period_key = (
         "|".join((provider, account, home, limit_id, "uninitialized"))
@@ -1246,23 +1250,26 @@ def _auto_prime_trigger_reasons(
         period_end=period_end,
         now=now,
     )
-    if "zero_usage" in trigger_names and used_percent == 0:
-        reasons.append("zero_usage")
-    if "near_zero_full_window" in trigger_names and near_zero_full_window:
-        reasons.append("near_zero_full_window")
+    if AUTO_PRIME_TRIGGER_ZERO_USAGE in trigger_names and used_percent == 0:
+        reasons.append(AUTO_PRIME_TRIGGER_ZERO_USAGE)
     if (
-        "sliding_reset" in trigger_names
+        AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW in trigger_names
+        and near_zero_full_window
+    ):
+        reasons.append(AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW)
+    if (
+        AUTO_PRIME_TRIGGER_SLIDING_RESET in trigger_names
         and previous_observation is not None
         and _is_sliding_reset(previous_observation, period_end=period_end, now=now)
     ):
-        reasons.append("sliding_reset")
+        reasons.append(AUTO_PRIME_TRIGGER_SLIDING_RESET)
     if (
-        "period_key_churn" in trigger_names
+        AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN in trigger_names
         and near_zero_full_window
         and previous_observation is not None
         and previous_observation.get("period_key") != period_key
     ):
-        reasons.append("period_key_churn")
+        reasons.append(AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN)
     return tuple(reasons)
 
 

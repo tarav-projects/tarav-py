@@ -13,6 +13,11 @@ from agentos.agent.config import (
 )
 from agentos.agent.monitor.loop import MonitorLoop
 from agentos.agent.monitor.models import (
+    AUTO_PRIME_SUPPORTED_TRIGGERS,
+    AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW,
+    AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN,
+    AUTO_PRIME_TRIGGER_SLIDING_RESET,
+    AUTO_PRIME_TRIGGER_ZERO_USAGE,
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
     MonitorTarget,
@@ -30,19 +35,13 @@ AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TARGET_LIMITS = {
 }
 AUTO_PRIME_ZERO_LIMITS_DEFAULT_TRIGGERS = {
     "codex": (
-        "zero_usage",
-        "near_zero_full_window",
-        "sliding_reset",
-        "period_key_churn",
+        AUTO_PRIME_TRIGGER_ZERO_USAGE,
+        AUTO_PRIME_TRIGGER_NEAR_ZERO_FULL_WINDOW,
+        AUTO_PRIME_TRIGGER_SLIDING_RESET,
+        AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN,
     ),
-    "claude-code": ("zero_usage",),
+    "claude-code": (AUTO_PRIME_TRIGGER_ZERO_USAGE,),
 }
-AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TRIGGERS = (
-    "zero_usage",
-    "near_zero_full_window",
-    "sliding_reset",
-    "period_key_churn",
-)
 
 MONITOR_CONFIG_SOURCE = AgentConfigSource(
     object_path=("agent", "accounts", "monitor"),
@@ -261,7 +260,7 @@ def _auto_prime_triggers(
                 raw_trigger_name,
                 field_name=trigger_field,
             )
-            if trigger_name not in AUTO_PRIME_ZERO_LIMITS_SUPPORTED_TRIGGERS:
+            if trigger_name not in AUTO_PRIME_SUPPORTED_TRIGGERS:
                 raise CliError(
                     f"{trigger_field} is not supported by auto-prime-zero-limits"
                 )
