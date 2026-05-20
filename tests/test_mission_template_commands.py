@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from agentos.cli import main
-from _helpers import set_fake_agentos_home as _set_fake_agentos_home, write_global_routing_config as _write_global_routing_config, write_project_marker as _write_project_marker, write_text_file as _write
+from _helpers import captured_json, set_fake_agentos_home as _set_fake_agentos_home, write_global_routing_config as _write_global_routing_config, write_project_marker as _write_project_marker, write_text_file as _write
 
 
 def _create_skill(path: Path, *, description: str, type_: str | None = None) -> None:
@@ -50,7 +49,7 @@ def test_mission_templates_reads_selected_imported_skills(
 
     monkeypatch.chdir(workspace)
     assert main(["mission", "templates", "--project", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
+    payload = captured_json(capsys)
 
     assert payload == [
         {

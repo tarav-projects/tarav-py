@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 
 from agentos.cli import build_parser, main
-from _helpers import set_fake_agentos_home, write_project_marker, write_text_file
+from _helpers import captured_json, read_jsonl_file, set_fake_agentos_home, write_project_marker, write_text_file
 
 
 def _init_project(root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> Path:
@@ -84,7 +84,7 @@ def test_tmp_folder_new_allocates_project_tmp_and_logs_command(
 
     log_paths = sorted((agentos_home / "activity").glob("*.jsonl"))
     assert len(log_paths) == 1
-    event = json.loads(log_paths[0].read_text(encoding="utf-8").splitlines()[0])
+    event = read_jsonl_file(log_paths[0])[0]
     assert event["event_type"] == "project.command"
     assert event["command"] == "stdlib utils tmp-folder new"
 
@@ -100,17 +100,17 @@ def test_mdblocks_blocks_find_and_lint_use_line_regions(
     )
 
     assert main(["stdlib", "mdblocks", "blocks", str(md_path), "--root", str(tmp_path), "--start-line", "4", "--json"]) == 0
-    blocks = json.loads(capsys.readouterr().out)
+    blocks = captured_json(capsys)
     assert blocks["block_count"] == 1
     assert blocks["files"][0]["blocks"][0]["title"] == "beta"
 
     assert main(["stdlib", "mdblocks", "find", str(md_path), "--root", str(tmp_path), "--start-line", "4", "--query", "alpha", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["match_count"] == 0
+    assert captured_json(capsys)["match_count"] == 0
 
     bad_path = tmp_path / "bad.md"
     write_text_file(bad_path, "****\nplain text\n****\n## valid\nbody\n")
     assert main(["stdlib", "mdblocks", "lint", str(bad_path), "--root", str(tmp_path), "--json"]) == 0
-    issues = json.loads(capsys.readouterr().out)["issues"]
+    issues = captured_json(capsys)["issues"]
     assert "separator_outside_block_semantics" in [issue["code"] for issue in issues]
 
 
@@ -121,7 +121,7 @@ def test_utils_uuid_outputs_text_and_json(capsys: pytest.CaptureFixture[str]) ->
     assert all(str(UUID(line)) == line for line in lines)
 
     assert main(["stdlib", "utils", "uuid", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
+    payload = captured_json(capsys)
     assert payload["status"] == "ok"
     assert str(UUID(payload["uuid"])) == payload["uuid"]
 
@@ -152,10 +152,10 @@ def test_cmd_logger_path_tail_and_query_filter_activity(
     assert capsys.readouterr().out.strip() == str(log_path)
 
     assert main(["stdlib", "utils", "cmd-logger", "tail", "--month", "202605", "--limit", "1", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["event_type"] == "agent.accounts.link"
+    assert captured_json(capsys)["event_type"] == "agent.accounts.link"
 
     assert main(["stdlib", "utils", "cmd-logger", "query", "--month", "202605", "--event-type", "agent.accounts.link", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
+    payload = captured_json(capsys)
     assert payload["count"] == 1
     assert payload["events"][0]["event_type"] == "agent.accounts.link"
 

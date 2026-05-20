@@ -87,85 +87,27 @@ def _eligible(
     )
 
 
-def test_auto_prime_zero_usage_still_uses_normal_period_key() -> None:
+def test_auto_prime_period_keys_distinguish_zero_and_near_zero_usage() -> None:
     now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    workflow = _workflow(triggers=("zero_usage",))
-    periods = _eligible(
-        workflow, _target_state(), _limit(used_percent=0, now=now), now=now
+    zero_periods = _eligible(
+        _workflow(triggers=("zero_usage",)),
+        _target_state(),
+        _limit(used_percent=0, now=now),
+        now=now,
     )
 
-    assert len(periods) == 1
-    assert periods[0]["trigger_reasons"] == ("zero_usage",)
-    assert periods[0]["period_key"].endswith(
+    assert len(zero_periods) == 1
+    assert zero_periods[0]["trigger_reasons"] == ("zero_usage",)
+    assert zero_periods[0]["period_key"].endswith(
         "|burst|2026-05-19T18:00:00+00:00|2026-05-19T23:00:00+00:00"
     )
 
-
-def test_auto_prime_near_zero_full_window_uses_uninitialized_key() -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    workflow = _workflow(triggers=("near_zero_full_window",))
-    periods = _eligible(
-        workflow, _target_state(), _limit(used_percent=1, now=now), now=now
-    )
-
-    assert len(periods) == 1
-    assert periods[0]["trigger_reasons"] == ("near_zero_full_window",)
-    assert periods[0]["period_key"].endswith("|burst|uninitialized")
-
-
-def test_auto_prime_sliding_reset_detects_moving_reset() -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    workflow = _workflow(triggers=("sliding_reset",))
-    target_state = _target_state()
-
-    assert not _eligible(
-        workflow,
-        target_state,
-        _limit(used_percent=2, now=now),
-        now=now,
-    )
-    periods = _eligible(
-        workflow,
-        target_state,
-        _limit(used_percent=2, now=now + datetime.timedelta(seconds=90)),
-        now=now + datetime.timedelta(seconds=90),
-    )
-
-    assert len(periods) == 1
-    assert periods[0]["trigger_reasons"] == ("sliding_reset",)
-    assert periods[0]["period_key"].endswith("|burst|uninitialized")
-
-
-def test_auto_prime_period_key_churn_detects_near_zero_moving_period() -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    workflow = _workflow(triggers=("period_key_churn",))
-    target_state = _target_state()
-
-    assert not _eligible(
-        workflow,
-        target_state,
-        _limit(used_percent=1, now=now),
-        now=now,
-    )
-    periods = _eligible(
-        workflow,
-        target_state,
-        _limit(used_percent=1, now=now + datetime.timedelta(seconds=90)),
-        now=now + datetime.timedelta(seconds=90),
-    )
-
-    assert len(periods) == 1
-    assert periods[0]["trigger_reasons"] == ("period_key_churn",)
-    assert periods[0]["period_key"].endswith("|burst|uninitialized")
-
-
-def test_auto_prime_uninitialized_key_prevents_repeat_ping() -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
     workflow = _workflow(triggers=("near_zero_full_window",))
     target_state = _target_state()
-
     first = _eligible(workflow, target_state, _limit(used_percent=1, now=now), now=now)
     assert len(first) == 1
+    assert first[0]["trigger_reasons"] == ("near_zero_full_window",)
+    assert first[0]["period_key"].endswith("|burst|uninitialized")
     primed_periods = target_state["primed_periods"]
     assert isinstance(primed_periods, dict)
     primed_periods[first[0]["period_key"]] = {"status": "ok"}
@@ -177,3 +119,30 @@ def test_auto_prime_uninitialized_key_prevents_repeat_ping() -> None:
         now=now + datetime.timedelta(seconds=90),
     )
     assert second == []
+
+
+def test_auto_prime_moving_period_triggers_use_uninitialized_key() -> None:
+    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
+
+    for trigger, used_percent in [
+        ("sliding_reset", 2),
+        ("period_key_churn", 1),
+    ]:
+        workflow = _workflow(triggers=(trigger,))
+        target_state = _target_state()
+        assert not _eligible(
+            workflow,
+            target_state,
+            _limit(used_percent=used_percent, now=now),
+            now=now,
+        )
+
+        periods = _eligible(
+            workflow,
+            target_state,
+            _limit(used_percent=used_percent, now=now + datetime.timedelta(seconds=90)),
+            now=now + datetime.timedelta(seconds=90),
+        )
+        assert len(periods) == 1
+        assert periods[0]["trigger_reasons"] == (trigger,)
+        assert periods[0]["period_key"].endswith("|burst|uninitialized")

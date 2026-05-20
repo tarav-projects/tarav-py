@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from agentos.cli import main as _agentos_main
+from _helpers import captured_json
 
 
 def main(argv: list[str]) -> int:
@@ -60,7 +61,7 @@ def test_mission_defaults_to_most_recent_active_and_no_active_file_is_created(
     assert not active_path.exists()
 
     assert main(["mission", "list", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
+    payload = captured_json(capsys)
     assert payload["default"] == "beta"
     assert [mission["name"] for mission in payload["missions"][:2]] == ["beta", "alpha"]
 
@@ -84,7 +85,7 @@ def test_mission_accepts_project_base(
     _init_project(tmp_path, monkeypatch, capsys)
 
     assert _agentos_main(["mission", "list", "--project-base", tmp_path.name, "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
+    payload = captured_json(capsys)
     assert payload["missions"] == []
 
 

@@ -1,22 +1,17 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 from agentos.cli import build_parser, main
-from _helpers import set_fake_agentos_home, write_global_routing_config, write_project_marker, write_text_file
+from _helpers import captured_json, set_fake_agentos_home, write_global_routing_config, write_project_marker, write_text_file
 
 
 def _create_skill(path: Path, *, description: str) -> None:
     write_text_file(
         path / "SKILL.md",
-        "---\n"
-        f"name: {path.name}\n"
-        f"description: {description}\n"
-        "---\n\n"
-        f"# {path.name}\n",
+        f"---\nname: {path.name}\ndescription: {description}\n---\n\n# {path.name}\n",
     )
 
 
@@ -47,7 +42,7 @@ def test_skills_list_and_path_use_selected_profile(
     monkeypatch.chdir(workspace)
 
     assert main(_skills(["skills", "list", "--json"])) == 0
-    listed = json.loads(capsys.readouterr().out)
+    listed = captured_json(capsys)
     assert listed == [
         {
             "name": "base-alpha-skill",
@@ -97,7 +92,7 @@ def test_skills_import_and_status_materialize_default_depots(
     assert (claude_depot / "base-alpha-skill").resolve() == source_skill.resolve()
 
     assert main(_skills(["skills", "status", "--json"])) == 0
-    status = json.loads(capsys.readouterr().out)
+    status = captured_json(capsys)
     assert status["profile"] == "default"
     assert status["expected"] == 1
     assert [depot["depot"] for depot in status["depots"]] == [str(agents_depot), str(claude_depot)]
@@ -158,7 +153,7 @@ def test_skills_project_source_and_config_errors(
     write_project_marker(source_project)
     _create_skill(source_project / "skills" / "alpha-skill", description="Project alpha")
     assert main(_skills(["skills", "list", "--json"])) == 0
-    listed = json.loads(capsys.readouterr().out)
+    listed = captured_json(capsys)
     assert listed[0]["name"] == "project-alpha-skill"
 
 

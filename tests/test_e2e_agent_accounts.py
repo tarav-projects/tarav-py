@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 from pathlib import Path
 
@@ -10,60 +9,13 @@ from agentos.cli import main
 from agentos.agent.monitor.config import load_monitor_workflow_configs
 from _helpers import (
     captured_json,
+    codex_auth_json,
     read_json_file,
     read_jsonl_file,
+    register_codex_args,
     set_fake_agentos_home,
     write_text_file,
 )
-
-
-def _jwt(payload: dict[str, object]) -> str:
-    raw_header = json.dumps({"alg": "none"}, separators=(",", ":")).encode("utf-8")
-    raw_payload = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    return ".".join(
-        [
-            base64.urlsafe_b64encode(raw_header).decode("ascii").rstrip("="),
-            base64.urlsafe_b64encode(raw_payload).decode("ascii").rstrip("="),
-            "signature",
-        ]
-    )
-
-
-def _auth_json(
-    *, account_id: str = "acc_123", email: str = "person@example.com"
-) -> str:
-    return (
-        json.dumps(
-            {
-                "auth_mode": "chatgpt",
-                "OPENAI_API_KEY": None,
-                "tokens": {
-                    "id_token": _jwt({"email": email, "iat": 1_776_000_000}),
-                    "access_token": _jwt({"iat": 1_776_000_000}),
-                    "refresh_token": "secret-refresh-token",
-                    "account_id": account_id,
-                },
-                "last_refresh": "2026-05-12T17:00:07Z",
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n"
-    )
-
-
-def _register_codex(auth_file: Path, *, account: str = "br") -> list[str]:
-    return [
-        "agent",
-        "accounts",
-        "register",
-        "--provider",
-        "codex",
-        "--account",
-        account,
-        "--auth-file",
-        str(auth_file),
-    ]
 
 
 def _write_monitor_config(agentos_home: Path, monitor: list[dict[str, object]]) -> None:
@@ -90,10 +42,10 @@ def test_agent_accounts_register_link_and_status_codex(
     agentos_home = set_fake_agentos_home(monkeypatch, tmp_path / "home")
     auth_file = tmp_path / "auth.json"
     codex_home = tmp_path / "codex-home"
-    auth_text = _auth_json()
+    auth_text = codex_auth_json()
     write_text_file(auth_file, auth_text)
 
-    assert main(_register_codex(auth_file)) == 0
+    assert main(register_codex_args(auth_file)) == 0
     register_payload = captured_json(capsys)
     assert register_payload["artifact_appended"] is True
     assert register_payload["account_record"]["account_id"] == "acc_123"
@@ -160,15 +112,15 @@ def test_agent_accounts_register_is_idempotent_and_rejects_identity_mismatch(
     agentos_home = set_fake_agentos_home(monkeypatch, tmp_path / "home")
     first = tmp_path / "first.json"
     mismatch = tmp_path / "mismatch.json"
-    write_text_file(first, _auth_json(account_id="acc_123"))
-    write_text_file(mismatch, _auth_json(account_id="acc_999"))
+    write_text_file(first, codex_auth_json(account_id="acc_123"))
+    write_text_file(mismatch, codex_auth_json(account_id="acc_999"))
 
-    assert main(_register_codex(first)) == 0
+    assert main(register_codex_args(first)) == 0
     assert captured_json(capsys)["artifact_appended"] is True
-    assert main(_register_codex(first)) == 0
+    assert main(register_codex_args(first)) == 0
     assert captured_json(capsys)["artifact_appended"] is False
 
-    assert main(_register_codex(mismatch)) == 1
+    assert main(register_codex_args(mismatch)) == 1
     assert "is already registered for account_id acc_123" in capsys.readouterr().err
     artifacts = read_jsonl_file(agentos_home / "accounts" / "codex" / "artifacts.jsonl")
     assert len(artifacts) == 1
@@ -182,11 +134,11 @@ def test_agent_accounts_link_protects_existing_unknown_auth(
     set_fake_agentos_home(monkeypatch, tmp_path / "home")
     source = tmp_path / "source.json"
     target_home = tmp_path / "codex"
-    unknown_auth = _auth_json(account_id="acc_unknown")
-    write_text_file(source, _auth_json(account_id="acc_123"))
+    unknown_auth = codex_auth_json(account_id="acc_unknown")
+    write_text_file(source, codex_auth_json(account_id="acc_123"))
     write_text_file(target_home / "auth.json", unknown_auth)
 
-    assert main(_register_codex(source)) == 0
+    assert main(register_codex_args(source)) == 0
     capsys.readouterr()
     assert (
         main(
@@ -346,8 +298,8 @@ def test_agent_accounts_monitor_auto_prime_trigger_config(
 ) -> None:
     agentos_home = set_fake_agentos_home(monkeypatch, tmp_path / "home")
     auth_file = tmp_path / "auth.json"
-    write_text_file(auth_file, _auth_json())
-    assert main(_register_codex(auth_file)) == 0
+    write_text_file(auth_file, codex_auth_json())
+    assert main(register_codex_args(auth_file)) == 0
     capsys.readouterr()
 
     _write_monitor_config(
