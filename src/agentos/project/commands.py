@@ -12,6 +12,8 @@ from agentos._core.project import (
     initialize_global_layout,
     initialize_project_layout,
     find_agentos_project_root,
+    load_project_marker,
+    project_marker_path,
     require_agentos_project,
     require_explicit_project_target,
 )
@@ -80,7 +82,24 @@ def _cmd_rev_parse(args: argparse.Namespace) -> int:
 
 
 def _cmd_projects_list(args: argparse.Namespace) -> int:
-    for project_root in find_agentos_project_roots_under(args.root):
+    project_roots = find_agentos_project_roots_under(args.root)
+    if args.json_output:
+        records = []
+        for project_root in project_roots:
+            marker_path = project_marker_path(project_root)
+            marker = load_project_marker(marker_path)
+            records.append(
+                {
+                    "project_root": str(project_root),
+                    "project_id": marker["project_id"],
+                    "project_name": marker.get("project_name"),
+                    "marker_path": str(marker_path),
+                }
+            )
+        print(json.dumps(records, indent=2))
+        return 0
+
+    for project_root in project_roots:
         print(project_root)
     return 0
 
@@ -175,6 +194,12 @@ def register_project_commands(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         required=True,
         help="Root directory to scan for Agentos.Project markers.",
+    )
+    projects_list_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Emit discovered project roots and marker metadata as JSON.",
     )
     projects_list_parser.set_defaults(handler=_cmd_projects_list)
 
