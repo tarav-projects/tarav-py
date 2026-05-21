@@ -11,6 +11,7 @@ from agentos.agent.account_status import (
     AccountStatusError,
     registry_fallback_usage_record_metadata,
 )
+from agentos.agent.session_utils import string_or_none
 from agentos.agent.usage_registry import latest_usage_record
 
 AccountUsageReadResult = tuple[
@@ -62,16 +63,10 @@ def account_usage_registry_fallback(
         None,
         registry_fallback_usage_record_metadata(
             source=source,
-            recorded_at=_string_or_none(record.get("recorded_at")),
+            recorded_at=string_or_none(record.get("recorded_at")),
             live_error=live_error.summary(),
         ),
     )
-
-
-def _string_or_none(value: object) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
 
 
 __all__ = ["AccountUsageReadResult", "account_usage_registry_fallback"]

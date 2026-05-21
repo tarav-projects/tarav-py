@@ -13,6 +13,7 @@ from agentos.agent.monitor.models import (
     MonitorRow,
     MonitorState,
     MonitorUsageTimeRow,
+    _cell_offset_to_text_index,
     monitor_block_payload,
     monitor_block_rows,
 )
@@ -359,23 +360,6 @@ def _tip_marker_cell(
     if marker_end <= 0 or marker_end <= current_end:
         return None
     return marker_end - 1
-
-
-def _cell_offset_to_text_index(text: str, cell_offset: int) -> int:
-    from rich.cells import split_graphemes
-
-    if cell_offset <= 0:
-        return 0
-    cell_position = 0
-    graphemes, _ = split_graphemes(text)
-    for start, end, cell_size in graphemes:
-        next_cell_position = cell_position + cell_size
-        if next_cell_position == cell_offset:
-            return end
-        if next_cell_position > cell_offset:
-            return start
-        cell_position = next_cell_position
-    return len(text)
 
 
 def _sample_hex_palette(palette: tuple[str, ...], position: float) -> str:

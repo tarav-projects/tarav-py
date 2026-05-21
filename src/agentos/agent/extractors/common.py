@@ -57,6 +57,24 @@ def format_turns_markdown(turns: list[DialogTurn]) -> str:
     return "\n".join(parts)
 
 
+def format_turns_output(turns: list[DialogTurn], output_format: str) -> str:
+    if output_format == "markdown":
+        return format_turns_markdown(turns)
+    return format_turns_jsonl(turns)
+
+
+def _string_or_none(value: object) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _string_or_empty(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    return ""
+
+
 def _markdown_fence(text: str) -> str:
     longest_run = 0
     for match in re.finditer(r"`+", text):

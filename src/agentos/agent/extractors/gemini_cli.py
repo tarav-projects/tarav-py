@@ -7,8 +7,8 @@ from typing import Any
 from agentos._core.errors import CliError
 from agentos.agent.extractors.common import (
     DialogTurn,
-    format_turns_jsonl,
-    format_turns_markdown,
+    _string_or_empty,
+    format_turns_output,
 )
 
 _GEMINI_REFERENCED_CONTENT_MARKER = "--- Content from referenced files ---"
@@ -35,9 +35,7 @@ def extract_gemini_cli_chat_session_from_path(
         raw=raw,
     )
 
-    if output_format == "markdown":
-        return format_turns_markdown(turns)
-    return format_turns_jsonl(turns)
+    return format_turns_output(turns, output_format)
 
 
 def extract_dialog_from_gemini_cli_session(
@@ -108,10 +106,6 @@ def load_gemini_cli_session_data(path: Path) -> dict[str, Any]:
         raise CliError(f"not a Gemini CLI session artifact: {path}")
 
     return obj
-
-
-def _load_gemini_session_data(path: Path) -> dict[str, Any]:
-    return load_gemini_cli_session_data(path)
 
 
 def _resolve_gemini_session_id(
@@ -316,7 +310,3 @@ def _strip_referenced_content(text: str) -> str | None:
     if stripped.startswith(_GEMINI_REFERENCED_FILE_PREFIX):
         return None
     return text.strip()
-
-
-def _string_or_empty(value: object) -> str:
-    return value if isinstance(value, str) else ""

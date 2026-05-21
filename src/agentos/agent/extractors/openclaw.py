@@ -8,8 +8,8 @@ from typing import Any
 from agentos._core.errors import CliError
 from agentos.agent.extractors.common import (
     DialogTurn,
-    format_turns_jsonl,
-    format_turns_markdown,
+    _string_or_empty,
+    format_turns_output,
 )
 from agentos.agent.extractors.pi import has_pi_session_signature
 
@@ -39,9 +39,7 @@ def extract_openclaw_chat_session_from_path(
         raw=raw,
     )
 
-    if output_format == "markdown":
-        return format_turns_markdown(turns)
-    return format_turns_jsonl(turns)
+    return format_turns_output(turns, output_format)
 
 
 def extract_dialog_from_openclaw_session(
@@ -124,10 +122,6 @@ def load_openclaw_session_records(path: Path) -> list[dict[str, Any]]:
         raise CliError(f"not an OpenClaw session artifact: {path}")
 
     return records
-
-
-def _load_openclaw_records(path: Path) -> list[dict[str, Any]]:
-    return load_openclaw_session_records(path)
 
 
 def _resolve_openclaw_session_id(
@@ -244,9 +238,3 @@ def _strip_openclaw_reply_prefix(text: str) -> str:
 def _strip_openclaw_sender_metadata(text: str) -> str:
     text = _OPENCLAW_SENDER_METADATA_RE.sub("", text)
     return text
-
-
-def _string_or_empty(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    return ""

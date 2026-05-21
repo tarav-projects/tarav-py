@@ -6,8 +6,7 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos.agent.extractors.common import (
     DialogTurn,
-    format_turns_jsonl,
-    format_turns_markdown,
+    format_turns_output,
 )
 
 _CLAUDE_USER_NOISE_PREFIXES = (
@@ -29,9 +28,7 @@ def extract_claude_code_chat_session_from_path(
     _validate_claude_code_session_path(path)
     turns = extract_dialog_from_claude_code_session(path, raw=raw)
 
-    if output_format == "markdown":
-        return format_turns_markdown(turns)
-    return format_turns_jsonl(turns)
+    return format_turns_output(turns, output_format)
 
 
 def extract_dialog_from_claude_code_session(

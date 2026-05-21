@@ -7,8 +7,9 @@ from typing import Any
 from agentos._core.errors import CliError
 from agentos.agent.extractors.common import (
     DialogTurn,
-    format_turns_jsonl,
-    format_turns_markdown,
+    _string_or_empty,
+    _string_or_none,
+    format_turns_output,
 )
 
 
@@ -31,9 +32,7 @@ def extract_copilot_cli_chat_session_from_path(
         raw=raw,
     )
 
-    if output_format == "markdown":
-        return format_turns_markdown(turns)
-    return format_turns_jsonl(turns)
+    return format_turns_output(turns, output_format)
 
 
 def extract_dialog_from_copilot_cli_session(
@@ -120,10 +119,6 @@ def load_copilot_cli_events(path: Path) -> list[dict[str, Any]]:
         raise CliError(f"not a Copilot CLI session artifact: {path}")
 
     return events
-
-
-def _load_copilot_events(path: Path) -> list[dict[str, Any]]:
-    return load_copilot_cli_events(path)
 
 
 def _resolve_copilot_session_id(
@@ -278,13 +273,3 @@ def _extract_event_text(value: object) -> str | None:
     return "\n\n".join(parts)
 
 
-def _string_or_none(value: object) -> str | None:
-    if not isinstance(value, str) or not value:
-        return None
-    return value
-
-
-def _string_or_empty(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    return ""

@@ -5,6 +5,7 @@ import json
 import re
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
@@ -180,13 +181,7 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         interaction_mode="non_interactive",
     )
     if command_config.model is None and agent.ping.model is not None:
-        command_config = AgentCommandConfig(
-            prompt=command_config.prompt,
-            argv=command_config.argv,
-            model=agent.ping.model,
-            account=command_config.account,
-            interaction_mode=command_config.interaction_mode,
-        )
+        command_config = replace(command_config, model=agent.ping.model)
     started_at = time.perf_counter()
     result = agent.run(command_config, AgentRunConfig(cwd=cwd, process_mode="capture"))
     elapsed_ms = round((time.perf_counter() - started_at) * 1000)

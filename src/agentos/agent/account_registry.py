@@ -9,6 +9,7 @@ from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
 from agentos._core.project_command_log import record_activity_event
+from agentos.agent.session_utils import string_or_none
 
 ACCOUNT_REGISTRY_SCHEMA_VERSION = 1
 LINK_REGISTRY_SCHEMA_VERSION = 1
@@ -76,7 +77,7 @@ def upsert_account(provider: str, account: str, updates: dict[str, object]) -> d
     record: dict[str, object] = {
         "provider": normalized_provider,
         "account": normalized_account,
-        "created_at": _string_or_none(existing.get("created_at")) if isinstance(existing, dict) else now,
+        "created_at": string_or_none(existing.get("created_at")) if isinstance(existing, dict) else now,
         "updated_at": now,
     }
     if isinstance(existing, dict):
@@ -311,12 +312,6 @@ def _required_string(payload: dict[str, object], field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CliError(f"registry field {field} must be a non-empty string")
     return value.strip()
-
-
-def _string_or_none(value: object) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
 
 
 __all__ = [

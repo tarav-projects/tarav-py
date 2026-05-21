@@ -24,7 +24,6 @@ from agentos.agent.session_refs import (
     backing_artifacts_from_sources,
 )
 from agentos.agent.session_utils import (
-    coerce_timestamp,
     safe_path_mtime,
 )
 
@@ -748,40 +747,6 @@ def _provider_agent_context_from_agent(
     )
 
 
-def _find_session_for_provider(
-    *,
-    provider_family: str,
-    contexts: tuple[ProviderAgentContext, ...],
-    query: str,
-    include_grep: bool,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    findings: list[dict[str, Any]] = []
-    seen_keys: set[tuple[object, ...]] = set()
-
-    for context in contexts:
-        direct_sessions = _find_direct_provider_sessions(context, query)
-        for session in direct_sessions:
-            for finding in _session_findings(session, query=query):
-                _append_unique_finding(findings, seen_keys, finding)
-
-        if include_grep:
-            for target in context.grep_existing_targets:
-                for finding in _scan_grep_findings(
-                    provider=provider_family,
-                    target=target,
-                    session_id=query,
-                ):
-                    _append_unique_finding(findings, seen_keys, finding)
-
-    payload = _build_provider_payload(
-        provider_family=provider_family,
-        contexts=contexts,
-        include_grep=include_grep,
-        item_count_key="finding_count",
-        item_count=len(findings),
-    )
-    return _sort_findings(findings), payload
-
 
 def _build_provider_payload(
     *,
@@ -941,38 +906,14 @@ def _backing_artifact_is_extractable(
         return False
 
     try:
-        if session.provider == "claude-code":
-            from agentos.agent.extractors.claude_code import is_claude_code_session_path
+        from agentos.agent.extractors import _PROVIDER_SESSION_EXTRACTORS
 
-            return is_claude_code_session_path(path)
-        if session.provider == "codex":
-            from agentos.agent.extractors.codex import is_codex_rollout_path
-
-            return is_codex_rollout_path(path)
-        if session.provider == "copilot-cli":
-            from agentos.agent.extractors.copilot_cli import is_copilot_cli_session_path
-
-            return is_copilot_cli_session_path(path)
-        if session.provider == "gemini-cli":
-            from agentos.agent.extractors.gemini_cli import is_gemini_cli_session_path
-
-            return is_gemini_cli_session_path(path)
-        if session.provider == "pi":
-            from agentos.agent.extractors.pi import is_pi_session_path
-
-            return is_pi_session_path(path)
-        if session.provider == "openclaw":
-            from agentos.agent.extractors.openclaw import is_openclaw_session_path
-
-            return is_openclaw_session_path(path)
-        if session.provider == "opencode":
-            from agentos.agent.extractors.opencode import is_opencode_session_path
-
-            return is_opencode_session_path(path)
-    except CliError:
+        spec = _PROVIDER_SESSION_EXTRACTORS.get(session.provider)
+        if spec is None:
+            return False
+        return spec.probe_artifact_path(path)
+    except Exception:
         return False
-
-    return False
 
 
 def _serialize_backing_artifact(
@@ -1298,20 +1239,6 @@ def _format_provider_stats_label(key: str) -> str:
     return labels.get(key, key.replace("_", " ").capitalize())
 
 
-def _update_time_bounds(
-    first_timestamp: float | None,
-    last_timestamp: float | None,
-    value: object,
-) -> tuple[float | None, float | None]:
-    timestamp = coerce_timestamp(value)
-    if timestamp is None:
-        return first_timestamp, last_timestamp
-    if first_timestamp is None or timestamp < first_timestamp:
-        first_timestamp = timestamp
-    if last_timestamp is None or timestamp > last_timestamp:
-        last_timestamp = timestamp
-    return first_timestamp, last_timestamp
-
 
 def _format_resolved_session_choices(sessions: list[ProviderSessionRefEntry]) -> str:
     choices: list[str] = []
@@ -1335,17 +1262,6 @@ def _validate_session_limit(limit: int | None) -> None:
     if limit < 1:
         raise ValueError(f"unsupported session limit: {limit}")
 
-
-def _glob_paths(target: Path, pattern: str) -> list[Path]:
-    if not target.is_dir():
-        return []
-
-    try:
-        paths = sorted(path.resolve() for path in target.glob(pattern))
-    except OSError:
-        return []
-
-    return paths
 
 
 

@@ -6,8 +6,7 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos.agent.extractors.common import (
     DialogTurn,
-    format_turns_jsonl,
-    format_turns_markdown,
+    format_turns_output,
 )
 
 _CODEX_SESSION_META_ORIGINATORS = {
@@ -38,9 +37,7 @@ def extract_codex_chat_session_from_path(
     _validate_codex_rollout_path(path)
     turns = extract_dialog_from_codex_rollout(path, raw=raw)
 
-    if output_format == "markdown":
-        return format_turns_markdown(turns)
-    return format_turns_jsonl(turns)
+    return format_turns_output(turns, output_format)
 
 
 def extract_dialog_from_codex_rollout(

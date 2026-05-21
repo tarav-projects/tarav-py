@@ -11,8 +11,7 @@ from typing import Any
 from agentos._core.errors import CliError
 from agentos.agent.extractors.common import (
     DialogTurn,
-    format_turns_jsonl,
-    format_turns_markdown,
+    format_turns_output,
     format_unix_ms_timestamp,
 )
 
@@ -36,9 +35,7 @@ def extract_opencode_chat_session_from_path(
         raw=raw,
     )
 
-    if output_format == "markdown":
-        return format_turns_markdown(turns)
-    return format_turns_jsonl(turns)
+    return format_turns_output(turns, output_format)
 
 
 def extract_dialog_from_opencode_session(
@@ -134,10 +131,6 @@ def resolve_opencode_db_path(path: Path) -> Path:
     raise CliError(f"unable to locate opencode.db for session artifact: {path}")
 
 
-def _resolve_opencode_db_path(path: Path) -> Path:
-    return resolve_opencode_db_path(path)
-
-
 def _looks_like_opencode_db(path: Path) -> bool:
     try:
         connection = connect_opencode_db(path)
@@ -221,14 +214,6 @@ def load_opencode_session_messages(
         )
 
     return messages
-
-
-def _load_opencode_messages(
-    *,
-    db_path: Path,
-    session_id: str,
-) -> list[dict[str, Any]]:
-    return load_opencode_session_messages(db_path=db_path, session_id=session_id)
 
 
 def connect_opencode_db(db_path: Path) -> sqlite3.Connection:

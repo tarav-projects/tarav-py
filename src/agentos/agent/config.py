@@ -813,13 +813,7 @@ def default_agent_ping_config_with_model(model: str | None) -> AgentPingConfig:
     config = default_agent_ping_config()
     if model is None:
         return config
-    return AgentPingConfig(
-        enabled=config.enabled,
-        prompt=config.prompt,
-        argv=config.argv,
-        expected_number=config.expected_number,
-        model=model,
-    )
+    return replace(config, model=model)
 
 
 def _load_ping_expected_number(value: object, *, field_name: str) -> int | None:
