@@ -13,6 +13,13 @@ AUTO_PRIME_EVENT_REGISTRY_RELATIVE_PATH = (
     "monitor",
     "auto-prime-events.jsonl",
 )
+AUTO_PRIME_EVENT_ELIGIBLE = "eligible"
+AUTO_PRIME_EVENT_SKIPPED_ALREADY_PRIMED = "skipped_already_primed"
+AUTO_PRIME_EVENT_ATTEMPT_STARTED = "attempt_started"
+AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED = "attempt_succeeded"
+AUTO_PRIME_EVENT_ATTEMPT_FAILED = "attempt_failed"
+AUTO_PRIME_EVENT_VERIFICATION_EFFECTIVE = "verification_effective"
+AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE = "verification_ineffective"
 
 
 def auto_prime_event_registry_path() -> Path:
@@ -67,4 +74,3 @@ def append_auto_prime_event(
         stream.write(json.dumps(compact_record, sort_keys=True))
         stream.write("\n")
     return compact_record
-

@@ -25,7 +25,16 @@ from agentos.agent.monitor.clock import (
     MONITOR_STARTUP_ALARM,
     MonitorClockSnapshot,
 )
-from agentos.agent.monitor.auto_prime_registry import append_auto_prime_event
+from agentos.agent.monitor.auto_prime_registry import (
+    AUTO_PRIME_EVENT_ATTEMPT_FAILED,
+    AUTO_PRIME_EVENT_ATTEMPT_STARTED,
+    AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
+    AUTO_PRIME_EVENT_ELIGIBLE,
+    AUTO_PRIME_EVENT_SKIPPED_ALREADY_PRIMED,
+    AUTO_PRIME_EVENT_VERIFICATION_EFFECTIVE,
+    AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE,
+    append_auto_prime_event,
+)
 from agentos.agent.monitor.loop import (
     MonitorWorkflow,
 )
@@ -35,6 +44,10 @@ from agentos.agent.monitor.models import (
     AUTO_PRIME_TRIGGER_SLIDING_RESET,
     AUTO_PRIME_TRIGGER_ZERO_USAGE,
     AUTO_PRIME_UNINITIALIZED_TRIGGERS,
+    AUTO_PRIME_PING_SUCCEEDED_STATUS,
+    AUTO_PRIME_VERIFICATION_EFFECTIVE,
+    AUTO_PRIME_VERIFICATION_INEFFECTIVE,
+    AUTO_PRIME_VERIFICATION_PENDING,
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
     MonitorAccountRow,
@@ -66,9 +79,6 @@ from agentos.copilot.account_status import (
 
 
 _PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
-_AUTO_PRIME_VERIFICATION_PENDING = "pending_verification"
-_AUTO_PRIME_VERIFICATION_EFFECTIVE = "effective"
-_AUTO_PRIME_VERIFICATION_INEFFECTIVE = "ineffective"
 _AUTO_PRIME_VERIFICATION_TIMEOUT_SEC = 900.0
 
 
@@ -96,7 +106,7 @@ class LimitsTrackingWorkflow:
             )
             self._prime_target_from_usage_registry(target_state, target=target)
 
-        self._write_frame_block(frame, workflow_state=workflow_state)
+        self._write_frame_block(frame, state=state, workflow_state=workflow_state)
 
     def loop(
         self,
@@ -128,7 +138,7 @@ class LimitsTrackingWorkflow:
             if should_refresh:
                 self._refresh_target(target_state, target=target, tick=frame.tick)
 
-        self._write_frame_block(frame, workflow_state=workflow_state)
+        self._write_frame_block(frame, state=state, workflow_state=workflow_state)
 
     def _prime_target_from_usage_registry(
         self,
@@ -260,7 +270,11 @@ class LimitsTrackingWorkflow:
         )
 
     def _write_frame_block(
-        self, frame: MonitorFrame, *, workflow_state: dict[str, object]
+        self,
+        frame: MonitorFrame,
+        *,
+        state: MonitorState,
+        workflow_state: dict[str, object],
     ) -> None:
         rows: list[MonitorRow] = []
         target_summaries: list[dict[str, object]] = []
@@ -273,8 +287,17 @@ class LimitsTrackingWorkflow:
             target_state = (
                 raw_target_state if isinstance(raw_target_state, dict) else {}
             )
+            auto_prime_target_state = _auto_prime_target_state(
+                state, target_key=target_key
+            )
             target_summaries.append(_target_state_summary(target_state))
-            rows.extend(_target_rows(target=target, target_state=target_state))
+            rows.extend(
+                _target_rows(
+                    target=target,
+                    target_state=target_state,
+                    auto_prime_target_state=auto_prime_target_state,
+                )
+            )
         data = {
             "workflow": self.name,
             "periodic_alarm_name": LIMITS_TRACKING_PERIODIC_ALARM,
@@ -521,7 +544,7 @@ class AutoPrimeZeroLimitsWorkflow:
                     monotonic_now=monotonic_now,
                 ):
                     self._record_period_event(
-                        "skipped_already_primed",
+                        AUTO_PRIME_EVENT_SKIPPED_ALREADY_PRIMED,
                         source_target_state=source_target_state,
                         period=period,
                         tick=tick,
@@ -530,7 +553,7 @@ class AutoPrimeZeroLimitsWorkflow:
                     )
                     continue
             self._record_period_event(
-                "eligible",
+                AUTO_PRIME_EVENT_ELIGIBLE,
                 source_target_state=source_target_state,
                 period=period,
                 tick=tick,
@@ -567,7 +590,7 @@ class AutoPrimeZeroLimitsWorkflow:
         target_state["last_attempt_tick"] = tick
         for period in eligible_periods:
             self._record_period_event(
-                "attempt_started",
+                AUTO_PRIME_EVENT_ATTEMPT_STARTED,
                 source_target_state=source_target_state,
                 period=period,
                 tick=tick,
@@ -585,7 +608,7 @@ class AutoPrimeZeroLimitsWorkflow:
             }
             for period in eligible_periods:
                 self._record_period_event(
-                    "attempt_failed",
+                    AUTO_PRIME_EVENT_ATTEMPT_FAILED,
                     source_target_state=source_target_state,
                     period=period,
                     tick=tick,
@@ -612,8 +635,8 @@ class AutoPrimeZeroLimitsWorkflow:
                     attempt_count = raw_count + 1
             primed_periods[period_key] = {
                 "limit_id": period.get("limit_id"),
-                "status": "ping_succeeded",
-                "verification_status": _AUTO_PRIME_VERIFICATION_PENDING,
+                "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
+                "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
                 "uninitialized": bool(period.get("uninitialized")),
                 "trigger_reasons": period.get("trigger_reasons"),
                 "attempt_count": attempt_count,
@@ -627,11 +650,11 @@ class AutoPrimeZeroLimitsWorkflow:
                 ),
             }
             self._record_period_event(
-                "attempt_succeeded",
+                AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
                 source_target_state=source_target_state,
                 period=period,
                 tick=tick,
-                status=_AUTO_PRIME_VERIFICATION_PENDING,
+                status=AUTO_PRIME_VERIFICATION_PENDING,
                 extra={"attempt_count": attempt_count},
             )
         return True
@@ -646,7 +669,7 @@ class AutoPrimeZeroLimitsWorkflow:
         if not period.get("uninitialized"):
             return False
         verification_status = existing.get("verification_status")
-        if verification_status == _AUTO_PRIME_VERIFICATION_EFFECTIVE:
+        if verification_status == AUTO_PRIME_VERIFICATION_EFFECTIVE:
             return False
         retry_after = existing.get("next_retry_after_monotonic")
         return isinstance(retry_after, int | float) and monotonic_now >= retry_after
@@ -684,7 +707,7 @@ class AutoPrimeZeroLimitsWorkflow:
             existing = primed_periods.get(period_key)
             if not isinstance(existing, dict):
                 continue
-            if existing.get("verification_status") == _AUTO_PRIME_VERIFICATION_EFFECTIVE:
+            if existing.get("verification_status") == AUTO_PRIME_VERIFICATION_EFFECTIVE:
                 continue
             trigger_names = self.triggers.get(provider or "", set())
             reasons = _uninitialized_trigger_reasons(
@@ -708,9 +731,9 @@ class AutoPrimeZeroLimitsWorkflow:
             existing["last_verified_tick"] = tick
             existing["last_verified_at"] = observed_at.isoformat()
             event_type = (
-                "verification_effective"
-                if new_status == _AUTO_PRIME_VERIFICATION_EFFECTIVE
-                else "verification_ineffective"
+                AUTO_PRIME_EVENT_VERIFICATION_EFFECTIVE
+                if new_status == AUTO_PRIME_VERIFICATION_EFFECTIVE
+                else AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE
             )
             self._record_period_event(
                 event_type,
@@ -727,7 +750,7 @@ class AutoPrimeZeroLimitsWorkflow:
                 tick=tick,
                 status=new_status,
             )
-            if new_status == _AUTO_PRIME_VERIFICATION_EFFECTIVE:
+            if new_status == AUTO_PRIME_VERIFICATION_EFFECTIVE:
                 primed_periods.pop(period_key, None)
 
     def _verification_status(
@@ -738,13 +761,13 @@ class AutoPrimeZeroLimitsWorkflow:
         observed_at: datetime.datetime,
     ) -> str | None:
         if not still_uninitialized:
-            return _AUTO_PRIME_VERIFICATION_EFFECTIVE
+            return AUTO_PRIME_VERIFICATION_EFFECTIVE
         last_attempt_at = _parse_datetime(_string_value(existing.get("last_attempt_at")))
         if last_attempt_at is None:
             return None
         elapsed = (observed_at - last_attempt_at).total_seconds()
         if elapsed >= min(self.retry_cooldown_sec, _AUTO_PRIME_VERIFICATION_TIMEOUT_SEC):
-            return _AUTO_PRIME_VERIFICATION_INEFFECTIVE
+            return AUTO_PRIME_VERIFICATION_INEFFECTIVE
         return None
 
     def _record_period_event(
@@ -1026,15 +1049,21 @@ def _target_state_summary(target_state: dict[str, object]) -> dict[str, object]:
 
 
 def _target_rows(
-    *, target: MonitorTarget, target_state: dict[str, object]
+    *,
+    target: MonitorTarget,
+    target_state: dict[str, object],
+    auto_prime_target_state: dict[str, object] | None = None,
 ) -> list[MonitorRow]:
     account_status = target_state.get("account_status")
+    status_parts = _account_status_parts(
+        target_state=target_state,
+        account_status=account_status if isinstance(account_status, dict) else None,
+        auto_prime_target_state=auto_prime_target_state,
+    )
     rows: list[MonitorRow] = [
         MonitorAccountRow(
             label=f"  {_target_title(target)}",
-            **_usage_refresh_columns(
-                account_status if isinstance(account_status, dict) else None
-            ),
+            status=" · ".join(status_parts) if status_parts else None,
         )
     ]
     if target_state.get("status") == "error":
@@ -1072,6 +1101,25 @@ def _error_message(target_state: dict[str, object]) -> str:
         if isinstance(message, str) and message:
             return message
     return "unknown error"
+
+
+def _account_status_parts(
+    *,
+    target_state: dict[str, object],
+    account_status: dict[str, Any] | None,
+    auto_prime_target_state: dict[str, object] | None,
+) -> tuple[str, ...]:
+    parts: list[str] = []
+    fetch_part = _usage_refresh_status_part(
+        target_state=target_state,
+        account_status=account_status,
+    )
+    if fetch_part is not None:
+        parts.append(fetch_part)
+    auto_prime_part = _auto_prime_status_part(auto_prime_target_state)
+    if auto_prime_part is not None:
+        parts.append(auto_prime_part)
+    return tuple(parts)
 
 
 def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
@@ -1126,35 +1174,120 @@ def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
     return rows
 
 
-def _usage_refresh_columns(
+def _usage_refresh_status_part(
+    *,
+    target_state: dict[str, object],
     account_status: dict[str, Any] | None,
-) -> dict[str, str | None]:
+) -> str | None:
+    if target_state.get("status") == "error":
+        return "error"
     if account_status is None:
-        return {"value": None, "suffix": None}
+        return None
     raw = account_status.get("raw")
     if not isinstance(raw, dict):
-        return {"value": None, "suffix": None}
+        return None
     usage_record = raw.get("usage_record")
     if not isinstance(usage_record, dict):
-        return {"value": None, "suffix": None}
+        return None
     status = usage_record.get("status")
     if status == USAGE_RECORD_STATUS_FRESH:
-        return {"value": "fresh", "suffix": None}
+        return "fresh"
     if status not in {
         USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
         USAGE_RECORD_STATUS_REGISTRY_LATEST,
     }:
-        return {"value": None, "suffix": None}
+        return None
     recorded_at = _parse_datetime(_string_value(usage_record.get("recorded_at")))
     if recorded_at is None:
-        return {"value": None, "suffix": None}
+        return None
     age_sec = _int_value(usage_record.get("age_sec"))
     if age_sec is None:
         age_sec = int(
             (datetime.datetime.now(tz=datetime.UTC) - recorded_at).total_seconds()
         )
-    recorded_display = recorded_at.astimezone().strftime("%a %m-%d %H:%M")
-    return {"value": recorded_display, "suffix": f"{_format_age_duration(age_sec)} ago"}
+    label = (
+        "fallback"
+        if status == USAGE_RECORD_STATUS_REGISTRY_FALLBACK
+        else "latest"
+    )
+    return f"{label} {_format_age_duration(age_sec)} ago"
+
+
+def _auto_prime_target_state(
+    state: MonitorState, *, target_key: str
+) -> dict[str, object] | None:
+    workflow_state = state.data.get(AUTO_PRIME_ZERO_LIMITS_WORKFLOW)
+    if not isinstance(workflow_state, dict):
+        return None
+    target_states = workflow_state.get("targets")
+    if not isinstance(target_states, dict):
+        return None
+    target_state = target_states.get(target_key)
+    if not isinstance(target_state, dict):
+        return None
+    return target_state
+
+
+def _auto_prime_status_part(target_state: dict[str, object] | None) -> str | None:
+    if target_state is None:
+        return None
+    if isinstance(target_state.get("last_error"), dict):
+        return "prime failed"
+    primed_periods = target_state.get("primed_periods")
+    if not isinstance(primed_periods, dict):
+        return None
+
+    statuses: list[str] = []
+    retry_after_monotonic = _retry_after_monotonic(target_state)
+    for primed_period in primed_periods.values():
+        if not isinstance(primed_period, dict):
+            continue
+        verification_status = primed_period.get("verification_status")
+        if verification_status == AUTO_PRIME_VERIFICATION_INEFFECTIVE:
+            statuses.append("ineffective")
+        elif verification_status == AUTO_PRIME_VERIFICATION_PENDING:
+            statuses.append("pending")
+        elif verification_status == AUTO_PRIME_VERIFICATION_EFFECTIVE:
+            statuses.append("effective")
+        retry_after_monotonic = _min_retry_after_monotonic(
+            retry_after_monotonic,
+            primed_period.get("next_retry_after_monotonic"),
+        )
+
+    if "ineffective" in statuses:
+        return "prime ineffective"
+    if retry_after_monotonic is not None:
+        return _auto_prime_retry_status_part(retry_after_monotonic)
+    if "pending" in statuses:
+        return "prime pending"
+    if "effective" in statuses:
+        return "primed"
+    return None
+
+
+def _retry_after_monotonic(target_state: dict[str, object]) -> float | None:
+    value = target_state.get("retry_after_monotonic")
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _min_retry_after_monotonic(
+    left: float | None, right: object
+) -> float | None:
+    if not isinstance(right, int | float) or isinstance(right, bool):
+        return left
+    right_float = float(right)
+    if left is None:
+        return right_float
+    return min(left, right_float)
+
+
+def _auto_prime_retry_status_part(retry_after_monotonic: float) -> str:
+    remaining_sec = int(retry_after_monotonic - time.monotonic())
+    if remaining_sec <= 0:
+        return "prime retry"
+    return f"prime retry in {_format_age_duration(remaining_sec)}"
 
 
 def _fetch_error_row(account_status: dict[str, Any]) -> MonitorInfoRow | None:

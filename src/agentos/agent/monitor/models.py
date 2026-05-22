@@ -24,6 +24,10 @@ AUTO_PRIME_UNINITIALIZED_TRIGGERS = frozenset(
         AUTO_PRIME_TRIGGER_PERIOD_KEY_CHURN,
     )
 )
+AUTO_PRIME_PING_SUCCEEDED_STATUS = "ping_succeeded"
+AUTO_PRIME_VERIFICATION_PENDING = "pending_verification"
+AUTO_PRIME_VERIFICATION_EFFECTIVE = "effective"
+AUTO_PRIME_VERIFICATION_INEFFECTIVE = "ineffective"
 
 
 @dataclass(frozen=True)
@@ -119,12 +123,34 @@ class _MonitorColumnRowMixin:
 
 
 @dataclass
-class MonitorAccountRow(_MonitorColumnRowMixin):
+class MonitorAccountRow:
     label: str
-    value: str | None = None
-    suffix: str | None = None
+    status: str | None = None
     kind: Literal["account"] = "account"
     animation_tick: int = field(default=0, init=False, repr=False, compare=False)
+
+    @property
+    def text(self) -> str:
+        if self.status is None:
+            return self.label
+        return f"{self.label}  {self.status}"
+
+    def render_frame(
+        self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
+    ) -> str:
+        from rich.cells import cell_len
+
+        if self.status is None:
+            return f"{context.row_indent}{_render_cell(self.label, context.label_width, self.animation_tick)}"
+        total_width = (
+            context.label_width + context.value_width + context.suffix_width + 6
+        )
+        status_width = max(0, total_width - cell_len(self.label) - 2)
+        status = _render_cell(self.status, status_width, self.animation_tick)
+        return f"{context.row_indent}{self.label}  {status}"
+
+    def step_animation(self) -> None:
+        self.animation_tick += 1
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -132,10 +158,8 @@ class MonitorAccountRow(_MonitorColumnRowMixin):
             "text": self.text,
             "label": self.label,
         }
-        if self.value is not None:
-            payload["value"] = self.value
-        if self.suffix is not None:
-            payload["suffix"] = self.suffix
+        if self.status is not None:
+            payload["status"] = self.status
         return payload
 
 
@@ -403,8 +427,8 @@ def _frame_rows(frame: MonitorFrame) -> list[MonitorRow]:
 def _inherit_row_animation_state(row: MonitorRow, previous_row: MonitorRow) -> None:
     if type(row) is not type(previous_row):
         return
-    if not isinstance(row, _MonitorColumnRowMixin) or not isinstance(
-        previous_row, _MonitorColumnRowMixin
+    if not isinstance(row, MonitorAccountRow | _MonitorColumnRowMixin) or not isinstance(
+        previous_row, MonitorAccountRow | _MonitorColumnRowMixin
     ):
         return
     if row.text != previous_row.text:

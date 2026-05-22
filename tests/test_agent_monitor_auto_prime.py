@@ -4,18 +4,36 @@ import datetime
 import json
 from pathlib import Path
 
-from agentos.agent.monitor.auto_prime_registry import auto_prime_event_registry_path
+from agentos.agent.monitor.auto_prime_registry import (
+    AUTO_PRIME_EVENT_ATTEMPT_STARTED,
+    AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
+    AUTO_PRIME_EVENT_ELIGIBLE,
+    AUTO_PRIME_EVENT_SKIPPED_ALREADY_PRIMED,
+    AUTO_PRIME_EVENT_VERIFICATION_EFFECTIVE,
+    AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE,
+    auto_prime_event_registry_path,
+)
 from agentos.agent.monitor.config import _auto_prime_triggers, _target_limit_ids
 from agentos.agent.monitor.loop import MonitorLoop
 from agentos.agent.monitor.models import (
+    AUTO_PRIME_PING_SUCCEEDED_STATUS,
+    AUTO_PRIME_VERIFICATION_EFFECTIVE,
+    AUTO_PRIME_VERIFICATION_INEFFECTIVE,
+    AUTO_PRIME_VERIFICATION_PENDING,
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
+    MonitorAccountRow,
+    MonitorFrame,
     MonitorState,
     MonitorTarget,
     MonitorWorkflowConfig,
 )
+from agentos.agent.monitor.render import format_monitor_frame, monitor_result_payload
 import agentos.agent.monitor.workflows as monitor_workflows
-from agentos.agent.monitor.workflows import AutoPrimeZeroLimitsWorkflow
+from agentos.agent.monitor.workflows import (
+    AutoPrimeZeroLimitsWorkflow,
+    LimitsTrackingWorkflow,
+)
 
 
 def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
@@ -95,6 +113,26 @@ def _limit(
     }
 
 
+def _account_status(
+    *,
+    usage_record_status: str = "fresh",
+    age_sec: int | None = None,
+) -> dict[str, object]:
+    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
+    usage_record: dict[str, object] = {
+        "status": usage_record_status,
+        "recorded_at": now.isoformat(),
+    }
+    if age_sec is not None:
+        usage_record["age_sec"] = age_sec
+    return {
+        "limits": [_limit(used_percent=20, now=now)],
+        "raw": {
+            "usage_record": usage_record,
+        },
+    }
+
+
 def _eligible(
     workflow: AutoPrimeZeroLimitsWorkflow,
     target_state: dict[str, object],
@@ -115,6 +153,131 @@ def _events() -> list[dict[str, object]]:
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def test_monitor_account_row_renders_status_as_full_lane() -> None:
+    row = MonitorAccountRow(label="  ⬢ codex/tk:", status="fresh")
+
+    rendered = row.render_frame()
+
+    assert "  ⬢ codex/tk:  fresh" in rendered
+    assert "| fresh" not in rendered
+    assert row.summary()["status"] == "fresh"
+
+
+def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
+    target = MonitorTarget(
+        provider="codex",
+        account="jp",
+        home=Path("/tmp/codex-jp"),
+    )
+    workflow = LimitsTrackingWorkflow(
+        MonitorWorkflowConfig(
+            name=LIMITS_TRACKING_WORKFLOW,
+            targets=(target,),
+            refresh_interval_sec=60,
+            raw_config={},
+        )
+    )
+    state = MonitorState(
+        data={
+            LIMITS_TRACKING_WORKFLOW: {
+                "targets": {
+                    "codex/jp@/tmp/codex-jp": {
+                        "status": "ok",
+                        "account_status": _account_status(),
+                    }
+                },
+            },
+            AUTO_PRIME_ZERO_LIMITS_WORKFLOW: {
+                "targets": {
+                    "codex/jp@/tmp/codex-jp": {
+                        "primed_periods": {
+                            "codex|jp|/tmp/codex-jp|burst|uninitialized": {
+                                "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
+                                "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+    frame = MonitorFrame()
+    workflow_state = state.data[LIMITS_TRACKING_WORKFLOW]
+    assert isinstance(workflow_state, dict)
+
+    workflow._write_frame_block(frame, state=state, workflow_state=workflow_state)
+    rendered = format_monitor_frame(frame)
+    payload = monitor_result_payload(frame, state)
+    account_row = payload["frame"]["blocks"][0]["rows"][0]  # type: ignore[index]
+
+    assert "⬢ codex/jp:  fresh · prime pending" in rendered
+    assert "| fresh" not in rendered
+    assert "usage/time" in rendered
+    assert isinstance(account_row, dict)
+    assert account_row["status"] == "fresh · prime pending"
+
+
+def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
+    monkeypatch.setattr(monitor_workflows.time, "monotonic", lambda: 100.0)
+
+    assert (
+        monitor_workflows._auto_prime_status_part(
+            {"last_error": {"message": "failed"}}
+        )
+        == "prime failed"
+    )
+    assert (
+        monitor_workflows._auto_prime_status_part(
+            {
+                "primed_periods": {
+                    "burst": {
+                        "verification_status": AUTO_PRIME_VERIFICATION_INEFFECTIVE,
+                        "next_retry_after_monotonic": 580.0,
+                    }
+                }
+            }
+        )
+        == "prime ineffective"
+    )
+    assert (
+        monitor_workflows._auto_prime_status_part(
+            {
+                "primed_periods": {
+                    "burst": {
+                        "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
+                        "next_retry_after_monotonic": 580.0,
+                    }
+                }
+            }
+        )
+        == "prime retry in 8m"
+    )
+    assert (
+        monitor_workflows._auto_prime_status_part(
+            {
+                "primed_periods": {
+                    "burst": {
+                        "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
+                    }
+                }
+            }
+        )
+        == "prime pending"
+    )
+    assert (
+        monitor_workflows._auto_prime_status_part(
+            {
+                "primed_periods": {
+                    "burst": {
+                        "verification_status": AUTO_PRIME_VERIFICATION_EFFECTIVE,
+                    }
+                }
+            }
+        )
+        == "primed"
+    )
 
 
 def test_auto_prime_period_keys_distinguish_zero_and_near_zero_usage(
@@ -144,8 +307,8 @@ def test_auto_prime_period_keys_distinguish_zero_and_near_zero_usage(
     primed_periods = target_state["primed_periods"]
     assert isinstance(primed_periods, dict)
     primed_periods[first[0]["period_key"]] = {
-        "status": "ping_succeeded",
-        "verification_status": "pending_verification",
+        "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
+        "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
         "uninitialized": True,
         "next_retry_after_monotonic": 600.0,
     }
@@ -158,9 +321,9 @@ def test_auto_prime_period_keys_distinguish_zero_and_near_zero_usage(
     )
     assert second == []
     assert [event["event_type"] for event in _events()] == [
-        "eligible",
-        "eligible",
-        "skipped_already_primed",
+        AUTO_PRIME_EVENT_ELIGIBLE,
+        AUTO_PRIME_EVENT_ELIGIBLE,
+        AUTO_PRIME_EVENT_SKIPPED_ALREADY_PRIMED,
     ]
     assert "stdout" not in json.dumps(_events())
 
@@ -236,8 +399,8 @@ def test_auto_prime_retries_uninitialized_after_cooldown(
     primed_periods = target_state["primed_periods"]
     assert isinstance(primed_periods, dict)
     primed_periods[period_key] = {
-        "status": "ping_succeeded",
-        "verification_status": "ineffective",
+        "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
+        "verification_status": AUTO_PRIME_VERIFICATION_INEFFECTIVE,
         "uninitialized": True,
         "next_retry_after_monotonic": 10.0,
     }
@@ -263,8 +426,8 @@ def test_auto_prime_verification_clears_uninitialized_after_stable_observation(
     period_key = "codex|jp|/tmp/codex-jp|burst|uninitialized"
     target_state["primed_periods"] = {
         period_key: {
-            "status": "ping_succeeded",
-            "verification_status": "pending_verification",
+            "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
+            "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
             "uninitialized": True,
             "trigger_reasons": ("near_zero_full_window",),
             "last_attempt_at": now.isoformat(),
@@ -279,7 +442,7 @@ def test_auto_prime_verification_clears_uninitialized_after_stable_observation(
     )
 
     assert period_key not in target_state["primed_periods"]
-    assert _events()[-1]["event_type"] == "verification_effective"
+    assert _events()[-1]["event_type"] == AUTO_PRIME_EVENT_VERIFICATION_EFFECTIVE
 
 
 def test_auto_prime_verification_marks_persistent_uninitialized_ineffective(
@@ -292,8 +455,8 @@ def test_auto_prime_verification_marks_persistent_uninitialized_ineffective(
     period_key = "codex|jp|/tmp/codex-jp|burst|uninitialized"
     target_state["primed_periods"] = {
         period_key: {
-            "status": "ping_succeeded",
-            "verification_status": "pending_verification",
+            "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
+            "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
             "uninitialized": True,
             "trigger_reasons": ("near_zero_full_window",),
             "last_attempt_at": (
@@ -310,8 +473,8 @@ def test_auto_prime_verification_marks_persistent_uninitialized_ineffective(
     )
 
     primed_period = target_state["primed_periods"][period_key]  # type: ignore[index]
-    assert primed_period["verification_status"] == "ineffective"  # type: ignore[index]
-    assert _events()[-1]["event_type"] == "verification_ineffective"
+    assert primed_period["verification_status"] == AUTO_PRIME_VERIFICATION_INEFFECTIVE  # type: ignore[index]
+    assert _events()[-1]["event_type"] == AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE
 
 
 def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
@@ -347,7 +510,11 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
     assert len(calls) == 1
     assert workflow_state["last_scan"]["pinged"] == 1  # type: ignore[index]
     event_types = [event["event_type"] for event in _events()]
-    assert event_types == ["eligible", "attempt_started", "attempt_succeeded"]
+    assert event_types == [
+        AUTO_PRIME_EVENT_ELIGIBLE,
+        AUTO_PRIME_EVENT_ATTEMPT_STARTED,
+        AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
+    ]
 
 
 def test_auto_prime_partial_config_maps_merge_with_defaults() -> None:

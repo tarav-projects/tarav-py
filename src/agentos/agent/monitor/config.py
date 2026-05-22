@@ -57,8 +57,9 @@ def load_monitor_workflow_configs(
 ) -> tuple[MonitorWorkflowConfig, ...]:
     configs: list[MonitorWorkflowConfig] = []
     loaded_at = datetime.datetime.now(tz=datetime.UTC).isoformat()
-    fingerprint = monitor_config_fingerprint(start_path=start_path)
-    for config_document in load_chat_config_documents(start_path=start_path):
+    config_documents = load_chat_config_documents(start_path=start_path)
+    fingerprint = _config_documents_fingerprint(config_documents)
+    for config_document in config_documents:
         for entry in agent_config_entries_from_config(
             config_document, source=MONITOR_CONFIG_SOURCE
         ):
@@ -120,6 +121,10 @@ def load_monitor_workflow_configs(
 
 def monitor_config_fingerprint(*, start_path: Path | str = ".") -> str:
     documents = load_chat_config_documents(start_path=start_path)
+    return _config_documents_fingerprint(documents)
+
+
+def _config_documents_fingerprint(documents: tuple[dict[str, object], ...]) -> str:
     payload = json.dumps(documents, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -137,7 +142,7 @@ def build_monitor_loop(
         workflows=build_monitor_workflows(configs),
         interval_sec=interval_sec,
         max_ticks=max_ticks,
-        config_fingerprint=monitor_config_fingerprint(start_path=start_path),
+        config_fingerprint=configs[0].config_fingerprint,
         config_fingerprint_loader=lambda: monitor_config_fingerprint(
             start_path=start_path
         ),
