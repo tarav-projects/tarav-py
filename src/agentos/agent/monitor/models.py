@@ -138,16 +138,15 @@ class MonitorAccountRow:
     def render_frame(
         self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
     ) -> str:
-        from rich.cells import cell_len
-
+        label = _render_cell(self.label, context.label_width, self.animation_tick)
         if self.status is None:
-            return f"{context.row_indent}{_render_cell(self.label, context.label_width, self.animation_tick)}"
+            return f"{context.row_indent}{label}"
         total_width = (
             context.label_width + context.value_width + context.suffix_width + 6
         )
-        status_width = max(0, total_width - cell_len(self.label) - 2)
+        status_width = max(0, total_width - context.label_width - 2)
         status = _render_cell(self.status, status_width, self.animation_tick)
-        return f"{context.row_indent}{self.label}  {status}"
+        return f"{context.row_indent}{label}  {status}"
 
     def step_animation(self) -> None:
         self.animation_tick += 1
