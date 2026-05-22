@@ -24,6 +24,7 @@ from agentos.agent.monitor.models import (
     LIMITS_TRACKING_WORKFLOW,
     MonitorAccountRow,
     MonitorFrame,
+    MonitorRenderContext,
     MonitorState,
     MonitorTarget,
     MonitorWorkflowConfig,
@@ -156,12 +157,20 @@ def _events() -> list[dict[str, object]]:
 
 
 def test_monitor_account_row_renders_status_as_full_lane() -> None:
-    row = MonitorAccountRow(label="  ⬢ codex/tk:", status="fresh")
+    row = MonitorAccountRow(label="account:", status="fresh")
+    context = MonitorRenderContext(
+        label_width=12,
+        value_width=10,
+        suffix_width=8,
+        row_indent="",
+    )
 
-    rendered = row.render_frame()
+    rendered = row.render_frame(context)
 
-    assert "  ⬢ codex/tk:  fresh" in rendered
-    assert "| fresh" not in rendered
+    assert rendered[:12] == "account:    "
+    assert rendered[12:15] == " | "
+    assert rendered[15:].startswith("fresh")
+    assert rendered.count("|") == 1
     assert row.summary()["status"] == "fresh"
 
 
@@ -212,8 +221,9 @@ def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
     payload = monitor_result_payload(frame, state)
     account_row = payload["frame"]["blocks"][0]["rows"][0]  # type: ignore[index]
 
-    assert "⬢ codex/jp:  fresh · prime pending" in rendered
-    assert "| fresh" not in rendered
+    assert "⬢ codex/jp:" in rendered
+    assert "fresh · prime pending" in rendered
+    assert "⬢ codex/jp:             | fresh · prime pending" in rendered
     assert "usage/time" in rendered
     assert isinstance(account_row, dict)
     assert account_row["status"] == "fresh · prime pending"

@@ -144,9 +144,9 @@ class MonitorAccountRow:
         total_width = (
             context.label_width + context.value_width + context.suffix_width + 6
         )
-        status_width = max(0, total_width - context.label_width - 2)
+        status_width = max(0, total_width - context.label_width - 3)
         status = _render_cell(self.status, status_width, self.animation_tick)
-        return f"{context.row_indent}{label}  {status}"
+        return f"{context.row_indent}{label} | {status}"
 
     def step_animation(self) -> None:
         self.animation_tick += 1
