@@ -40,4 +40,10 @@ def optional_string_tuple(values: Sequence[str] | None) -> tuple[str, ...] | Non
     return tuple(values)
 
 
-__all__ = ["normalize_updated_since", "optional_string_tuple"]
+def format_json_output(payload: object) -> str:
+    import json
+
+    return json.dumps(payload, indent=2)
+
+
+__all__ = ["format_json_output", "normalize_updated_since", "optional_string_tuple"]
