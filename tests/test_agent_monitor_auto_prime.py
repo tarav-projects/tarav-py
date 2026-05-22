@@ -223,7 +223,7 @@ def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
 
     assert "⬢ codex/jp:" in rendered
     assert "fresh · prime pending" in rendered
-    assert "⬢ codex/jp:             | fresh · prime pending" in rendered
+    assert "⬢ codex/jp:            | fresh · prime pending" in rendered
     assert "usage/time" in rendered
     assert isinstance(account_row, dict)
     assert account_row["status"] == "fresh · prime pending"
