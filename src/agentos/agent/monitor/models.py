@@ -60,6 +60,8 @@ class MonitorWorkflowConfig:
     target_limit_ids: dict[str, tuple[str, ...]] = field(default_factory=dict)
     triggers: dict[str, tuple[str, ...]] = field(default_factory=dict)
     retry_cooldown_sec: float | None = None
+    loaded_at: str | None = None
+    config_fingerprint: str | None = None
 
 
 @dataclass

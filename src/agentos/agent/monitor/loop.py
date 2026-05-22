@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import math
 import time
+import datetime
+from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Condition, Event, Thread
-from collections.abc import Callable
 from typing import Protocol
 
 from agentos._core.errors import CliError
@@ -59,6 +60,8 @@ class MonitorLoop:
         workflows: tuple[MonitorWorkflow, ...],
         interval_sec: float,
         max_ticks: int | None,
+        config_fingerprint: str | None = None,
+        config_fingerprint_loader: Callable[[], str] | None = None,
     ) -> None:
         if max_ticks is not None and max_ticks < 1:
             raise CliError("--max-ticks must be greater than 0")
@@ -67,6 +70,8 @@ class MonitorLoop:
         self.workflows = workflows
         self.interval_sec = interval_sec
         self.max_ticks = max_ticks
+        self.config_fingerprint = config_fingerprint
+        self.config_fingerprint_loader = config_fingerprint_loader
         self.clock = MonitorClock()
         self.state = MonitorState()
         self.visible_frame = MonitorFrame()
@@ -81,6 +86,7 @@ class MonitorLoop:
         self._has_visible_frame = False
         self._limits_tracking_adaptive_alarm: _AdaptivePeriodicAlarmState | None = None
         self._configure_initial_alarms()
+        self._write_monitor_setup_state()
 
     def run(
         self,
@@ -97,6 +103,7 @@ class MonitorLoop:
                     self.clock.step()
                 )
                 self.state.tick = self._clock_snapshot.tick
+                self._check_config_fingerprint()
                 if self._clock_snapshot.fired_alarm_names:
                     self._queue_workflow_snapshot(self._clock_snapshot)
                 if wait_for_first_frame and self.visible_frame.tick == 0:
@@ -307,6 +314,33 @@ class MonitorLoop:
             current_sec=period_sec,
         )
         self._arm_limits_tracking_periodic_alarm()
+
+    def _write_monitor_setup_state(self) -> None:
+        self.state.data["monitor_setup"] = {
+            "loaded_at": datetime.datetime.now(tz=datetime.UTC).isoformat(),
+            "workflow_names": [workflow.name for workflow in self.workflows],
+            "config_fingerprint": self.config_fingerprint,
+            "config_stale": False,
+        }
+
+    def _check_config_fingerprint(self) -> None:
+        if self.config_fingerprint is None or self.config_fingerprint_loader is None:
+            return
+        try:
+            current_fingerprint = self.config_fingerprint_loader()
+        except Exception as exc:
+            self.state.data["monitor_config_warning"] = {
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+            return
+        if current_fingerprint == self.config_fingerprint:
+            return
+        setup = self.state.data.get("monitor_setup")
+        if isinstance(setup, dict):
+            setup["config_stale"] = True
+            setup["current_config_fingerprint"] = current_fingerprint
+            setup["warning"] = "monitor config changed; restart required to reload workflows"
 
     def _apply_adaptive_alarm_policy(
         self, snapshot: MonitorClockSnapshot

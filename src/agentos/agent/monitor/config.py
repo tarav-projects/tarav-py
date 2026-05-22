@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import datetime
+import hashlib
+import json
 from pathlib import Path
 
 from agentos._core.errors import CliError
@@ -53,6 +56,8 @@ def load_monitor_workflow_configs(
     *, start_path: Path | str = "."
 ) -> tuple[MonitorWorkflowConfig, ...]:
     configs: list[MonitorWorkflowConfig] = []
+    loaded_at = datetime.datetime.now(tz=datetime.UTC).isoformat()
+    fingerprint = monitor_config_fingerprint(start_path=start_path)
     for config_document in load_chat_config_documents(start_path=start_path):
         for entry in agent_config_entries_from_config(
             config_document, source=MONITOR_CONFIG_SOURCE
@@ -106,9 +111,17 @@ def load_monitor_workflow_configs(
                     if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
                     else None,
                     raw_config=dict(raw_config),
+                    loaded_at=loaded_at,
+                    config_fingerprint=fingerprint,
                 )
             )
     return tuple(configs)
+
+
+def monitor_config_fingerprint(*, start_path: Path | str = ".") -> str:
+    documents = load_chat_config_documents(start_path=start_path)
+    payload = json.dumps(documents, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def build_monitor_loop(
@@ -124,6 +137,10 @@ def build_monitor_loop(
         workflows=build_monitor_workflows(configs),
         interval_sec=interval_sec,
         max_ticks=max_ticks,
+        config_fingerprint=monitor_config_fingerprint(start_path=start_path),
+        config_fingerprint_loader=lambda: monitor_config_fingerprint(
+            start_path=start_path
+        ),
     )
 
 
@@ -205,7 +222,9 @@ def _target_limit_ids(
         return dict(AUTO_PRIME_ZERO_LIMITS_DEFAULT_TARGET_LIMITS)
     if not isinstance(raw_target_limits, dict):
         raise CliError(f"{field_name} must be a JSON object")
-    target_limits: dict[str, tuple[str, ...]] = {}
+    target_limits: dict[str, tuple[str, ...]] = dict(
+        AUTO_PRIME_ZERO_LIMITS_DEFAULT_TARGET_LIMITS
+    )
     for provider, raw_limit_ids in raw_target_limits.items():
         provider_field = f"{field_name}.{provider}"
         if not isinstance(provider, str) or not provider:
@@ -240,7 +259,7 @@ def _auto_prime_triggers(
         return dict(AUTO_PRIME_ZERO_LIMITS_DEFAULT_TRIGGERS)
     if not isinstance(raw_triggers, dict):
         raise CliError(f"{field_name} must be a JSON object")
-    triggers: dict[str, tuple[str, ...]] = {}
+    triggers: dict[str, tuple[str, ...]] = dict(AUTO_PRIME_ZERO_LIMITS_DEFAULT_TRIGGERS)
     for provider, raw_trigger_names in raw_triggers.items():
         provider_field = f"{field_name}.{provider}"
         if not isinstance(provider, str) or not provider:
