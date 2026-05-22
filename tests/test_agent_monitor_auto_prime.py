@@ -257,6 +257,14 @@ def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
     assert (
         monitor_workflows._auto_prime_status_part(
             {
+                "retry_after_monotonic": 580.0,
+            }
+        )
+        == "prime retry in 8m"
+    )
+    assert (
+        monitor_workflows._auto_prime_status_part(
+            {
                 "primed_periods": {
                     "burst": {
                         "verification_status": AUTO_PRIME_VERIFICATION_PENDING,

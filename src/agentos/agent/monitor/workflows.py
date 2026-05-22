@@ -1234,53 +1234,57 @@ def _auto_prime_status_part(target_state: dict[str, object] | None) -> str | Non
     if isinstance(target_state.get("last_error"), dict):
         return "prime failed"
     primed_periods = target_state.get("primed_periods")
+    retry_after_monotonic = _auto_prime_retry_after_monotonic(
+        target_state,
+        primed_periods=primed_periods if isinstance(primed_periods, dict) else {},
+    )
     if not isinstance(primed_periods, dict):
+        if retry_after_monotonic is not None:
+            return _auto_prime_retry_status_part(retry_after_monotonic)
         return None
 
-    statuses: list[str] = []
-    retry_after_monotonic = _retry_after_monotonic(target_state)
+    has_ineffective = False
+    has_pending = False
+    has_effective = False
     for primed_period in primed_periods.values():
         if not isinstance(primed_period, dict):
             continue
         verification_status = primed_period.get("verification_status")
         if verification_status == AUTO_PRIME_VERIFICATION_INEFFECTIVE:
-            statuses.append("ineffective")
+            has_ineffective = True
         elif verification_status == AUTO_PRIME_VERIFICATION_PENDING:
-            statuses.append("pending")
+            has_pending = True
         elif verification_status == AUTO_PRIME_VERIFICATION_EFFECTIVE:
-            statuses.append("effective")
-        retry_after_monotonic = _min_retry_after_monotonic(
-            retry_after_monotonic,
-            primed_period.get("next_retry_after_monotonic"),
-        )
+            has_effective = True
 
-    if "ineffective" in statuses:
+    if has_ineffective:
         return "prime ineffective"
     if retry_after_monotonic is not None:
         return _auto_prime_retry_status_part(retry_after_monotonic)
-    if "pending" in statuses:
+    if has_pending:
         return "prime pending"
-    if "effective" in statuses:
+    if has_effective:
         return "primed"
     return None
 
 
-def _retry_after_monotonic(target_state: dict[str, object]) -> float | None:
-    value = target_state.get("retry_after_monotonic")
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        return float(value)
-    return None
-
-
-def _min_retry_after_monotonic(
-    left: float | None, right: object
+def _auto_prime_retry_after_monotonic(
+    target_state: dict[str, object], *, primed_periods: dict[object, object]
 ) -> float | None:
-    if not isinstance(right, int | float) or isinstance(right, bool):
-        return left
-    right_float = float(right)
-    if left is None:
-        return right_float
-    return min(left, right_float)
+    retry_after_monotonic = _float_value(target_state.get("retry_after_monotonic"))
+    for primed_period in primed_periods.values():
+        if not isinstance(primed_period, dict):
+            continue
+        period_retry_after = _float_value(
+            primed_period.get("next_retry_after_monotonic")
+        )
+        if period_retry_after is None:
+            continue
+        if retry_after_monotonic is None:
+            retry_after_monotonic = period_retry_after
+            continue
+        retry_after_monotonic = min(retry_after_monotonic, period_retry_after)
+    return retry_after_monotonic
 
 
 def _auto_prime_retry_status_part(retry_after_monotonic: float) -> str:
@@ -1502,6 +1506,14 @@ def _int_value(value: object) -> int | None:
         return None
     if isinstance(value, int):
         return value
+    return None
+
+
+def _float_value(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
     return None
 
 
