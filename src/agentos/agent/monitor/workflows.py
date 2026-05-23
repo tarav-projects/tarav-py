@@ -436,6 +436,8 @@ class AutoPrimeZeroLimitsWorkflow:
             target_state = self._target_state(
                 target_states, raw_target_state, target_key
             )
+            target_state["last_decisions"] = []
+            target_state["last_decision"] = None
             self._verify_existing_primes(
                 raw_target_state,
                 target_state=target_state,
@@ -510,6 +512,13 @@ class AutoPrimeZeroLimitsWorkflow:
             return []
         retry_after = target_state.get("retry_after_monotonic")
         if isinstance(retry_after, int | float) and monotonic_now < retry_after:
+            self._record_retry_blocked_decisions(
+                source_target_state,
+                target_state=target_state,
+                target_limit_ids=target_limit_ids,
+                retry_after_monotonic=float(retry_after),
+                tick=tick,
+            )
             return []
 
         account_status = source_target_state.get("account_status")
@@ -524,6 +533,9 @@ class AutoPrimeZeroLimitsWorkflow:
         for limit in limits:
             if not isinstance(limit, dict):
                 continue
+            limit_id = _string_value(limit.get("limit_id"))
+            if limit_id is None or limit_id not in target_limit_ids:
+                continue
             period = _eligible_limit_period(
                 source_target_state,
                 limit,
@@ -534,15 +546,32 @@ class AutoPrimeZeroLimitsWorkflow:
                 scan_at=scan_at,
             )
             if period is None:
+                self._record_decision(
+                    target_state,
+                    limit_id=limit_id,
+                    classification="primed",
+                    action="skipped",
+                    tick=tick,
+                )
                 continue
             period_key = period["period_key"]
+            existing: dict[str, object] | None = None
             if isinstance(period_key, str):
-                existing = primed_periods.get(period_key)
+                raw_existing = primed_periods.get(period_key)
+                existing = raw_existing if isinstance(raw_existing, dict) else None
                 if isinstance(existing, dict) and not self._period_can_retry(
                     period,
                     existing=existing,
                     monotonic_now=monotonic_now,
                 ):
+                    self._record_decision(
+                        target_state,
+                        limit_id=limit_id,
+                        classification=_auto_prime_period_classification(existing),
+                        action="skipped",
+                        period=period,
+                        tick=tick,
+                    )
                     self._record_period_event(
                         AUTO_PRIME_EVENT_SKIPPED_ALREADY_PRIMED,
                         source_target_state=source_target_state,
@@ -552,6 +581,11 @@ class AutoPrimeZeroLimitsWorkflow:
                         or existing.get("status"),
                     )
                     continue
+            period["decision_classification"] = (
+                _auto_prime_period_classification(existing)
+                if existing is not None
+                else "non-primed"
+            )
             self._record_period_event(
                 AUTO_PRIME_EVENT_ELIGIBLE,
                 source_target_state=source_target_state,
@@ -607,6 +641,14 @@ class AutoPrimeZeroLimitsWorkflow:
                 "last_attempt_tick": tick,
             }
             for period in eligible_periods:
+                self._record_decision(
+                    target_state,
+                    limit_id=period.get("limit_id"),
+                    classification=period.get("decision_classification"),
+                    action="ping failed",
+                    period=period,
+                    tick=tick,
+                )
                 self._record_period_event(
                     AUTO_PRIME_EVENT_ATTEMPT_FAILED,
                     source_target_state=source_target_state,
@@ -627,6 +669,14 @@ class AutoPrimeZeroLimitsWorkflow:
             period_key = period.get("period_key")
             if not isinstance(period_key, str):
                 continue
+            self._record_decision(
+                target_state,
+                limit_id=period.get("limit_id"),
+                classification=period.get("decision_classification"),
+                action="pinged",
+                period=period,
+                tick=tick,
+            )
             existing = primed_periods.get(period_key)
             attempt_count = 1
             if isinstance(existing, dict):
@@ -673,6 +723,82 @@ class AutoPrimeZeroLimitsWorkflow:
             return False
         retry_after = existing.get("next_retry_after_monotonic")
         return isinstance(retry_after, int | float) and monotonic_now >= retry_after
+
+    def _record_retry_blocked_decisions(
+        self,
+        source_target_state: dict[str, object],
+        *,
+        target_state: dict[str, object],
+        target_limit_ids: set[str],
+        retry_after_monotonic: float,
+        tick: int | None,
+    ) -> None:
+        account_status = source_target_state.get("account_status")
+        if not isinstance(account_status, dict):
+            return
+        limits = account_status.get("limits")
+        if not isinstance(limits, list):
+            return
+        primed_periods = self._primed_periods(target_state)
+        for limit in limits:
+            if not isinstance(limit, dict):
+                continue
+            limit_id = _string_value(limit.get("limit_id"))
+            if limit_id is None or limit_id not in target_limit_ids:
+                continue
+            period_key = _uninitialized_period_key(source_target_state, limit_id)
+            existing = primed_periods.get(period_key) if period_key else None
+            self._record_decision(
+                target_state,
+                limit_id=limit_id,
+                classification=_auto_prime_period_classification(existing)
+                if isinstance(existing, dict)
+                else "non-primed",
+                action="retry",
+                retry_after_monotonic=retry_after_monotonic,
+                tick=tick,
+            )
+
+    def _record_decision(
+        self,
+        target_state: dict[str, object],
+        *,
+        limit_id: object,
+        classification: object,
+        action: str,
+        period: dict[str, object] | None = None,
+        retry_after_monotonic: float | None = None,
+        tick: int | None,
+    ) -> None:
+        limit_id_value = _string_value(limit_id)
+        classification_value = _string_value(classification)
+        if limit_id_value is None or classification_value is None:
+            return
+        decision: dict[str, object] = {
+            "limit_id": limit_id_value,
+            "classification": classification_value,
+            "action": action,
+            "tick": tick,
+        }
+        if period is not None:
+            period_key = _string_value(period.get("period_key"))
+            if period_key is not None:
+                decision["period_key"] = period_key
+            trigger_reasons = period.get("trigger_reasons")
+            if isinstance(trigger_reasons, tuple | list):
+                decision["trigger_reasons"] = tuple(trigger_reasons)
+        if retry_after_monotonic is not None:
+            decision["retry_after_monotonic"] = retry_after_monotonic
+        decisions = target_state.get("last_decisions")
+        if not isinstance(decisions, list):
+            decisions = []
+            target_state["last_decisions"] = decisions
+        decisions.append(decision)
+        existing = target_state.get("last_decision")
+        if not isinstance(existing, dict) or _decision_priority(
+            decision
+        ) >= _decision_priority(existing):
+            target_state["last_decision"] = decision
 
     def _verify_existing_primes(
         self,
@@ -1231,6 +1357,9 @@ def _auto_prime_target_state(
 def _auto_prime_status_part(target_state: dict[str, object] | None) -> str | None:
     if target_state is None:
         return None
+    decision_part = _auto_prime_decision_status_part(target_state.get("last_decision"))
+    if decision_part is not None:
+        return decision_part
     if isinstance(target_state.get("last_error"), dict):
         return "prime failed"
     primed_periods = target_state.get("primed_periods")
@@ -1268,6 +1397,56 @@ def _auto_prime_status_part(target_state: dict[str, object] | None) -> str | Non
     return None
 
 
+def _auto_prime_decision_status_part(decision: object) -> str | None:
+    if not isinstance(decision, dict):
+        return None
+    limit_id = _string_value(decision.get("limit_id"))
+    classification = _string_value(decision.get("classification"))
+    action = _string_value(decision.get("action"))
+    if limit_id is None or classification is None or action is None:
+        return None
+    if action == "retry":
+        retry_after_monotonic = _float_value(decision.get("retry_after_monotonic"))
+        if retry_after_monotonic is not None:
+            action = _retry_action_text(retry_after_monotonic)
+    return f"{limit_id} {classification}/{action}"
+
+
+def _retry_action_text(retry_after_monotonic: float) -> str:
+    remaining_sec = int(retry_after_monotonic - time.monotonic())
+    if remaining_sec <= 0:
+        return "retry"
+    return f"retry in {_format_age_duration(remaining_sec)}"
+
+
+def _auto_prime_period_classification(period: object) -> str:
+    if not isinstance(period, dict):
+        return "primed"
+    verification_status = period.get("verification_status")
+    if verification_status == AUTO_PRIME_VERIFICATION_PENDING:
+        return "primed-pending"
+    if verification_status == AUTO_PRIME_VERIFICATION_EFFECTIVE:
+        return "primed-effective"
+    if verification_status == AUTO_PRIME_VERIFICATION_INEFFECTIVE:
+        return "primed-ineffective"
+    return "primed"
+
+
+def _decision_priority(decision: dict[str, object]) -> int:
+    action = decision.get("action")
+    if action in {"pinged", "ping failed"}:
+        return 40
+    if action == "retry":
+        return 30
+    if decision.get("classification") in {
+        "primed-pending",
+        "primed-effective",
+        "primed-ineffective",
+    }:
+        return 20
+    return 10
+
+
 def _auto_prime_retry_after_monotonic(
     target_state: dict[str, object], *, primed_periods: dict[object, object]
 ) -> float | None:
@@ -1288,10 +1467,7 @@ def _auto_prime_retry_after_monotonic(
 
 
 def _auto_prime_retry_status_part(retry_after_monotonic: float) -> str:
-    remaining_sec = int(retry_after_monotonic - time.monotonic())
-    if remaining_sec <= 0:
-        return "prime retry"
-    return f"prime retry in {_format_age_duration(remaining_sec)}"
+    return f"prime {_retry_action_text(retry_after_monotonic)}"
 
 
 def _fetch_error_row(account_status: dict[str, Any]) -> MonitorInfoRow | None:

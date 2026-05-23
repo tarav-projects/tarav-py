@@ -97,13 +97,14 @@ def _limit(
     *,
     used_percent: int,
     now: datetime.datetime,
+    limit_id: str = "burst",
     end_offset_mins: int = 300,
     duration_mins: int = 300,
 ) -> dict[str, object]:
     period_ends_at = now + datetime.timedelta(minutes=end_offset_mins)
     period_started_at = period_ends_at - datetime.timedelta(minutes=duration_mins)
     return {
-        "limit_id": "burst",
+        "limit_id": limit_id,
         "usage_over_time": {
             "used_percent": used_percent,
             "period_started_at": period_started_at.isoformat(),
@@ -201,11 +202,10 @@ def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
             AUTO_PRIME_ZERO_LIMITS_WORKFLOW: {
                 "targets": {
                     "codex/jp@/tmp/codex-jp": {
-                        "primed_periods": {
-                            "codex|jp|/tmp/codex-jp|burst|uninitialized": {
-                                "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
-                                "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
-                            }
+                        "last_decision": {
+                            "limit_id": "burst",
+                            "classification": "non-primed",
+                            "action": "pinged",
                         }
                     }
                 }
@@ -222,16 +222,29 @@ def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
     account_row = payload["frame"]["blocks"][0]["rows"][0]  # type: ignore[index]
 
     assert "⬢ codex/jp:" in rendered
-    assert "fresh · prime pending" in rendered
-    assert "⬢ codex/jp:            | fresh · prime pending" in rendered
+    assert "fresh · burst non-primed/pinged" in rendered
+    assert "⬢ codex/jp:            | fresh · burst non-primed/pinged" in rendered
     assert "usage/time" in rendered
     assert isinstance(account_row, dict)
-    assert account_row["status"] == "fresh · prime pending"
+    assert account_row["status"] == "fresh · burst non-primed/pinged"
 
 
 def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
     monkeypatch.setattr(monitor_workflows.time, "monotonic", lambda: 100.0)
 
+    assert (
+        monitor_workflows._auto_prime_status_part(
+            {
+                "last_decision": {
+                    "limit_id": "burst",
+                    "classification": "non-primed",
+                    "action": "pinged",
+                },
+                "last_error": {"message": "failed"},
+            }
+        )
+        == "burst non-primed/pinged"
+    )
     assert (
         monitor_workflows._auto_prime_status_part(
             {"last_error": {"message": "failed"}}
@@ -527,11 +540,46 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
 
     assert len(calls) == 1
     assert workflow_state["last_scan"]["pinged"] == 1  # type: ignore[index]
+    target_state = workflow_state["targets"]["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
+    assert target_state["last_decision"]["limit_id"] == "burst"  # type: ignore[index]
+    assert target_state["last_decision"]["classification"] == "non-primed"  # type: ignore[index]
+    assert target_state["last_decision"]["action"] == "pinged"  # type: ignore[index]
     event_types = [event["event_type"] for event in _events()]
     assert event_types == [
         AUTO_PRIME_EVENT_ELIGIBLE,
         AUTO_PRIME_EVENT_ATTEMPT_STARTED,
         AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
+    ]
+
+
+def test_auto_prime_decisions_only_include_configured_limits() -> None:
+    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
+    workflow = _workflow(triggers=("near_zero_full_window",))
+    target_state = _target_state()
+    source_state = _source_state(
+        limit=_limit(used_percent=40, now=now),
+    )
+    account_status = source_state["account_status"]
+    assert isinstance(account_status, dict)
+    account_status["limits"] = [
+        _limit(used_percent=40, now=now, limit_id="burst"),
+        _limit(used_percent=1, now=now, limit_id="weekly"),
+    ]
+
+    periods = workflow._eligible_periods(
+        source_state,
+        target_state=target_state,
+        scan_at=now,
+        monotonic_now=1.0,
+        tick=9,
+    )
+
+    assert periods == []
+    assert target_state["last_decision"]["limit_id"] == "burst"  # type: ignore[index]
+    assert target_state["last_decision"]["classification"] == "primed"  # type: ignore[index]
+    assert target_state["last_decision"]["action"] == "skipped"  # type: ignore[index]
+    assert [decision["limit_id"] for decision in target_state["last_decisions"]] == [  # type: ignore[index]
+        "burst"
     ]
 
 
