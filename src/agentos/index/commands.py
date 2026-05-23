@@ -3,41 +3,26 @@
 from __future__ import annotations
 
 import argparse
-import json
-from pathlib import Path
 
-from .doctor import run_doctor
+from .linter import (
+    build_linter_config,
+    render_linter_json,
+    render_linter_text,
+    run_linter,
+)
 
 
-def _cmd_doctor(args: argparse.Namespace) -> int:
-    report = run_doctor(root=args.root, emit_json=args.json)
-
+def _cmd_linter(args: argparse.Namespace) -> int:
+    config, raw_index_paths, raw_appendix_paths = build_linter_config(
+        index_paths=tuple(args.index),
+        appendix_paths=tuple(args.appendix),
+    )
+    state = run_linter(config, raw_index_paths, raw_appendix_paths)
     if args.json:
-        print(json.dumps(report, indent=2))
+        print(render_linter_json(state))
     else:
-        if report.get("status") == "error" and report.get("index_dir") is None:
-            print(f"Error: {report['message']}")
-            return 1
-
-        issue_count = report["issue_count"]
-        file_count = report["file_count"]
-
-        if issue_count == 0:
-            print(f"Index healthy: {file_count} file(s), no issues found.")
-        else:
-            print(
-                f"Scanned {file_count} file(s): "
-                f"{report['error_count']} error(s), {report['warning_count']} warning(s)"
-            )
-            for issue in report["issues"]:
-                print(
-                    f"  [{issue['severity'].upper()}] {issue['code']} "
-                    f"@ {issue['path']} - {issue['message']}"
-                )
-
-    if report.get("error_count", 0) > 0:
-        return 1
-    return 0
+        print(render_linter_text(state))
+    return 1 if state.summary()["error_count"] else 0
 
 
 def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
@@ -47,19 +32,36 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     index_subparsers = index_parser.add_subparsers(dest="index_command")
 
-    doctor_parser = index_subparsers.add_parser(
-        "doctor",
-        help="Run health checks on notes/index/.",
+    linter_parser = index_subparsers.add_parser(
+        "linter",
+        help="Lint index and appendix surfaces.",
+        description="Lint explicit Agentos index and appendix files or directories.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  agentos index linter --index skills/agentos-pkg/index "
+            "--appendix skills/agentos-pkg/appendix\n"
+            "  agentos index linter --index notes/index/001-index.md --json\n\n"
+            "Finding and check codes are Agentos Index concepts under Index.Linter/*.\n"
+            "Resolve their meaning through the agentos-pkg Index.Linter concept\n"
+            "and normal appendix discovery."
+        ),
     )
-    doctor_parser.add_argument(
-        "--root",
-        type=Path,
-        default=Path("."),
-        help="Project root directory (default: current directory).",
+    linter_parser.add_argument(
+        "--index",
+        action="append",
+        default=[],
+        help="Index file or directory to lint. Repeat to lint multiple index surfaces.",
     )
-    doctor_parser.add_argument(
+    linter_parser.add_argument(
+        "--appendix",
+        action="append",
+        default=[],
+        help="Appendix file or directory to lint. Repeat to lint multiple appendix surfaces.",
+    )
+    linter_parser.add_argument(
         "--json",
         action="store_true",
         help="Emit structured JSON output.",
     )
-    doctor_parser.set_defaults(handler=_cmd_doctor)
+    linter_parser.set_defaults(handler=_cmd_linter)
