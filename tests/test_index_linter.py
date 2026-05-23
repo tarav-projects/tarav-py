@@ -196,6 +196,51 @@ def test_index_linter_reports_index_filename_and_missing_router_file(
     assert any(finding.code == "Index.Linter/Router.MissingFile" for finding in state.findings)
 
 
+def test_index_linter_ignores_agents_md_in_index_directory(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir, _appendix_dir = _clean_index(tmp_path)
+    _write(index_dir / "AGENTS.md", "# guidance\n")
+
+    state = _run(index_paths=(index_dir.name,))
+
+    assert "index/AGENTS.md" not in state.files_by_kind["index"]
+    assert not any(
+        finding.code == "Index.Linter/Index.InvalidFilename"
+        and finding.path == "index/AGENTS.md"
+        for finding in state.findings
+    )
+
+
+def test_index_linter_accepts_chained_colon_concept_parameters(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / "index"
+    _write(
+        index_dir / "000-index.md",
+        "# Agentos Index\n\n## Routing\n\n- `100-index.md` — Alignment.Backend:InChat:What\n",
+    )
+    _write(
+        index_dir / "100-index.md",
+        "****\n## Alignment.Backend:InChat:What\n\n- backend parameterized to a phase\n****\n",
+    )
+
+    state = _run(index_paths=("index",))
+
+    assert not any(
+        finding.code == "Index.Linter/Concept.InvalidHeading"
+        for finding in state.findings
+    )
+    assert not any(
+        finding.code == "Index.Linter/Router.InvalidConcept"
+        for finding in state.findings
+    )
+
+
 def test_index_linter_reports_appendix_filename_and_orphan(
     monkeypatch,
     tmp_path: Path,

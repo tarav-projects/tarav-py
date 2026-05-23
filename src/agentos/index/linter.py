@@ -21,7 +21,7 @@ SurfaceKind = Literal["index", "appendix"]
 _CONCEPT_SEGMENT = r"[A-Z][A-Za-z0-9]*"
 _DOTTED_CONCEPT = rf"{_CONCEPT_SEGMENT}(?:\.{_CONCEPT_SEGMENT})+"
 _CONCEPT_PARAM = r"(?:[A-Za-z][\w\-.]*|<[A-Z][A-Za-z0-9]*>)"
-_CONCEPT_REF = rf"{_DOTTED_CONCEPT}(?::{_CONCEPT_PARAM})?"
+_CONCEPT_REF = rf"{_DOTTED_CONCEPT}(?::{_CONCEPT_PARAM})*"
 CONCEPT_NAME_RE = re.compile(rf"^{_CONCEPT_REF}(?:/{_CONCEPT_REF})?$")
 APPENDIX_FILENAME_RE = re.compile(rf"^(?P<concept>{_CONCEPT_REF})-appendix(?:-(?P<page>[2-9][0-9]*))?\.md$")
 ROUTER_ENTRY_RE = re.compile(r"^-\s+`(?P<file>[^`]+\.md)`\s+[—-]\s+(?P<concepts>.+)$")
@@ -837,6 +837,8 @@ def _normalize_router_concept(raw_concept: str) -> str:
 
 
 def _is_excluded(state: LinterState, path: Path) -> bool:
+    if path.name == "AGENTS.md":
+        return True
     parts = set(path.relative_to(state.config.root).parts)
     return any(pattern in parts for pattern in DEFAULT_SCAN_EXCLUDES)
 
