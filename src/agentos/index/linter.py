@@ -25,7 +25,7 @@ _CONCEPT_REF = rf"{_DOTTED_CONCEPT}(?::{_CONCEPT_PARAM})*"
 CONCEPT_NAME_RE = re.compile(rf"^{_CONCEPT_REF}(?:/{_CONCEPT_REF})?$")
 APPENDIX_FILENAME_RE = re.compile(rf"^(?P<concept>{_CONCEPT_REF})-appendix(?:-(?P<page>[2-9][0-9]*))?\.md$")
 ROUTER_ENTRY_RE = re.compile(r"^-\s+`(?P<file>[^`]+\.md)`\s+[—-]\s+(?P<concepts>.+)$")
-APPENDIX_PAGE_RE = re.compile(r"\[\+\d+\]$")
+APPENDIX_ROUTE_ANNOTATION_RE = re.compile(r"\[\+(?P<count>[1-9][0-9]*)\]$")
 INDEX_FILENAME_RE = re.compile(r"^(?:000|001|[1-9][0-9]{2})-index\.md$")
 SECTION_HEADING_RE = re.compile(r"^(#{2,6})[ \t]+(.+?)\s*$")
 
@@ -45,6 +45,12 @@ SURFACE_INVALID_BY_KIND: dict[SurfaceKind, str] = {
 }
 FILES_NONE = "Index.Linter/Files.None"
 MDBLOCKS_SYNTAX = "Index.Linter/Mdblocks.Syntax"
+BLOCK_NO_HEADINGS = "Index.Linter/Block.NoHeadings"
+BLOCK_UNCLOSED_CODE_FENCE = "Index.Linter/Block.UnclosedCodeFence"
+BLOCK_SEPARATOR_OUTSIDE_SEMANTICS = "Index.Linter/Block.SeparatorOutsideSemantics"
+BLOCK_EMPTY_HEADING = "Index.Linter/Block.EmptyHeading"
+BLOCK_TOO_LONG = "Index.Linter/Block.TooLong"
+BLOCK_DUPLICATE_HEADING = "Index.Linter/Block.DuplicateHeading"
 BLOCK_UNANCHORED_SECTION = "Index.Linter/Block.UnanchoredSection"
 ROUTER_MISSING = "Index.Linter/Router.Missing"
 ROUTER_EMPTY = "Index.Linter/Router.Empty"
@@ -55,6 +61,9 @@ CONCEPT_INVENTORY_EMPTY = "Index.Linter/Concept.InventoryEmpty"
 CONCEPT_DUPLICATE = "Index.Linter/Concept.Duplicate"
 APPENDIX_INVALID_FILENAME = "Index.Linter/Appendix.InvalidFilename"
 APPENDIX_ORPHAN = "Index.Linter/Appendix.Orphan"
+APPENDIX_ROUTE_ANNOTATION_MISSING = "Index.Linter/Appendix.RouteAnnotationMissing"
+APPENDIX_ROUTE_ANNOTATION_STALE = "Index.Linter/Appendix.RouteAnnotationStale"
+APPENDIX_PAGE_GAP = "Index.Linter/Appendix.PageGap"
 ROUTER_INVALID_CONCEPT = "Index.Linter/Router.InvalidConcept"
 ROUTER_ENTRIES_EMPTY = "Index.Linter/Router.EntriesEmpty"
 ROUTER_MISSING_ENTRY = "Index.Linter/Router.MissingEntry"
@@ -75,6 +84,23 @@ CHECK_APPENDIX_ORPHANS = "Index.Linter/Check.AppendixOrphans"
 CHECK_ROUTER_ENTRIES = "Index.Linter/Check.RouterEntries"
 CHECK_ROUTER_COVERAGE = "Index.Linter/Check.RouterCoverage"
 CHECK_ROUTER_TARGETS = "Index.Linter/Check.RouterTargets"
+CHECK_APPENDIX_ROUTE_ANNOTATIONS = "Index.Linter/Check.AppendixRouteAnnotations"
+
+MDBLOCKS_CODE_MAP = {
+    "no_headings": BLOCK_NO_HEADINGS,
+    "unclosed_code_fence": BLOCK_UNCLOSED_CODE_FENCE,
+    "separator_outside_block_semantics": BLOCK_SEPARATOR_OUTSIDE_SEMANTICS,
+    "empty_heading_title": BLOCK_EMPTY_HEADING,
+    "block_too_long": BLOCK_TOO_LONG,
+    "duplicate_heading_title_same_level": BLOCK_DUPLICATE_HEADING,
+}
+MDBLOCKS_BLOCKING_CODES = (
+    MDBLOCKS_SYNTAX,
+    BLOCK_UNCLOSED_CODE_FENCE,
+    BLOCK_SEPARATOR_OUTSIDE_SEMANTICS,
+    BLOCK_EMPTY_HEADING,
+    BLOCK_TOO_LONG,
+)
 
 
 @dataclass(frozen=True)
@@ -170,6 +196,8 @@ class ConceptBlock:
 @dataclass(frozen=True)
 class RouterEntry:
     concept: str
+    raw_concept: str
+    appendix_annotation_count: int | None
     route_file: str
     router_path: str
     line: int
@@ -189,6 +217,7 @@ class LinterState:
     )
     concepts: dict[str, list[ConceptBlock]] = field(default_factory=dict)
     appendix_concepts: dict[str, list[str]] = field(default_factory=dict)
+    appendix_pages: dict[str, dict[int, list[str]]] = field(default_factory=dict)
     routers: list[str] = field(default_factory=list)
     router_entries: dict[str, list[RouterEntry]] = field(default_factory=dict)
     findings: list[LinterFinding] = field(default_factory=list)
@@ -396,8 +425,9 @@ def _needs_index_surface(state: LinterState) -> GateResult:
 
 
 def _needs_concept_inventory(state: LinterState) -> GateResult:
-    if state.has_error(MDBLOCKS_SYNTAX):
-        return blocked("markdown block syntax has errors", MDBLOCKS_SYNTAX)
+    for code in MDBLOCKS_BLOCKING_CODES:
+        if state.has_error(code):
+            return blocked("markdown block syntax has errors", code)
     if not state.concepts:
         return blocked("concept inventory is unavailable", CONCEPT_INVENTORY)
     return allowed()
@@ -407,6 +437,27 @@ def _needs_router_inventory(state: LinterState) -> GateResult:
     if not state.routers:
         return blocked("router inventory is unavailable", ROUTER_MISSING)
     return _needs_concept_inventory(state)
+
+
+def _check_status(state: LinterState, code: str) -> CheckStatus | None:
+    for result in state.check_results:
+        if result.code == code:
+            return result.status
+    return None
+
+
+def _needs_appendix_route_annotation_inputs(state: LinterState) -> GateResult:
+    router_gate = _needs_router_inventory(state)
+    if not router_gate.allowed:
+        return router_gate
+    appendix_status = _check_status(state, CHECK_APPENDIX_FILENAMES)
+    if appendix_status is None:
+        return blocked("appendix filename inventory has not run", CHECK_APPENDIX_FILENAMES)
+    if appendix_status == "blocked":
+        return blocked("appendix filename inventory is unavailable", CHECK_APPENDIX_FILENAMES)
+    if _check_status(state, CHECK_ROUTER_ENTRIES) == "blocked":
+        return blocked("router entry inventory is unavailable", CHECK_ROUTER_ENTRIES)
+    return allowed()
 
 
 def _check_config_surfaces(state: LinterState) -> list[LinterFinding]:
@@ -510,14 +561,15 @@ def _check_mdblocks_syntax(state: LinterState) -> list[LinterFinding]:
         for issue in lint_payload["issues"]:
             if issue["code"] == "preamble_text_before_first_block":
                 continue
+            source_code = str(issue["code"])
             findings.append(
                 LinterFinding(
                     severity=issue["severity"],
-                    code=MDBLOCKS_SYNTAX,
+                    code=MDBLOCKS_CODE_MAP.get(source_code, MDBLOCKS_SYNTAX),
                     path=issue["path"],
                     line=issue.get("line"),
-                    message=f"{issue['code']}: {issue['message']}",
-                    details={"source_code": issue["code"], **issue.get("details", {})},
+                    message=f"{source_code}: {issue['message']}",
+                    details={"source_code": source_code, **issue.get("details", {})},
                 )
             )
     return findings
@@ -681,6 +733,8 @@ def _check_appendix_filenames(state: LinterState) -> list[LinterFinding]:
             continue
         concept = match.group("concept")
         state.appendix_concepts.setdefault(concept, []).append(rel_path)
+        page = int(match.group("page") or "1")
+        state.appendix_pages.setdefault(concept, {}).setdefault(page, []).append(rel_path)
     return findings
 
 
@@ -712,12 +766,15 @@ def _check_router_entries(state: LinterState) -> list[LinterFinding]:
                 continue
             route_file = match.group("file")
             for raw_concept in match.group("concepts").split(","):
-                concept = _normalize_router_concept(raw_concept)
+                route_concept = _parse_router_concept(raw_concept)
+                concept = route_concept.concept
                 if not concept:
                     continue
                 state.router_entries.setdefault(concept, []).append(
                     RouterEntry(
                         concept=concept,
+                        raw_concept=route_concept.raw_concept,
+                        appendix_annotation_count=route_concept.appendix_annotation_count,
                         route_file=route_file,
                         router_path=router_rel_path,
                         line=line_number,
@@ -743,6 +800,70 @@ def _check_router_entries(state: LinterState) -> list[LinterFinding]:
                 message="No concept routing entries were parsed from router files.",
             )
         )
+    return findings
+
+
+def _check_appendix_route_annotations(state: LinterState) -> list[LinterFinding]:
+    findings: list[LinterFinding] = []
+    for concept, pages in sorted(state.appendix_pages.items()):
+        sorted_pages = sorted(pages)
+        missing_pages = _missing_appendix_pages(sorted_pages)
+        if missing_pages:
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=APPENDIX_PAGE_GAP,
+                    path=pages[sorted_pages[0]][0],
+                    message="Appendix page files are not contiguous.",
+                    details={
+                        "concept": concept,
+                        "pages": sorted_pages,
+                        "missing_pages": missing_pages,
+                    },
+                )
+            )
+            continue
+
+        entries = state.router_entries.get(concept, [])
+        if not entries:
+            continue
+        expected_count = sorted_pages[-1]
+        for entry in entries:
+            if entry.appendix_annotation_count is None:
+                findings.append(
+                    LinterFinding(
+                        severity="warning",
+                        code=APPENDIX_ROUTE_ANNOTATION_MISSING,
+                        path=entry.router_path,
+                        line=entry.line,
+                        message="Router entry has appendix pages but no `[+N]` annotation.",
+                        details={
+                            "concept": concept,
+                            "expected_annotation": f"[+{expected_count}]",
+                            "appendix_pages": expected_count,
+                            "route_file": entry.route_file,
+                        },
+                    )
+                )
+                continue
+            if entry.appendix_annotation_count == expected_count:
+                continue
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=APPENDIX_ROUTE_ANNOTATION_STALE,
+                    path=entry.router_path,
+                    line=entry.line,
+                    message="Router appendix annotation does not match discovered appendix pages.",
+                    details={
+                        "concept": concept,
+                        "actual_annotation": f"[+{entry.appendix_annotation_count}]",
+                        "expected_annotation": f"[+{expected_count}]",
+                        "appendix_pages": expected_count,
+                        "route_file": entry.route_file,
+                    },
+                )
+            )
     return findings
 
 
@@ -830,10 +951,32 @@ def _check_router_targets(state: LinterState) -> list[LinterFinding]:
     return findings
 
 
-def _normalize_router_concept(raw_concept: str) -> str:
+@dataclass(frozen=True)
+class ParsedRouterConcept:
+    concept: str
+    raw_concept: str
+    appendix_annotation_count: int | None
+
+
+def _parse_router_concept(raw_concept: str) -> ParsedRouterConcept:
     concept = raw_concept.strip().strip("`")
     concept = concept.split(" — ", 1)[0].strip()
-    return APPENDIX_PAGE_RE.sub("", concept).strip()
+    annotation_count = None
+    annotation_match = APPENDIX_ROUTE_ANNOTATION_RE.search(concept)
+    if annotation_match is not None:
+        annotation_count = int(annotation_match.group("count"))
+        concept = concept[: annotation_match.start()].strip()
+    return ParsedRouterConcept(
+        concept=concept,
+        raw_concept=raw_concept.strip(),
+        appendix_annotation_count=annotation_count,
+    )
+
+
+def _missing_appendix_pages(pages: list[int]) -> list[int]:
+    if not pages:
+        return []
+    return [page for page in range(1, pages[-1] + 1) if page not in pages]
 
 
 def _is_excluded(state: LinterState, path: Path) -> bool:
@@ -971,6 +1114,12 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Router entries",
         gate=_needs_router_inventory,
         run=_check_router_entries,
+    ),
+    LinterCheck(
+        code=CHECK_APPENDIX_ROUTE_ANNOTATIONS,
+        title="Appendix route annotations",
+        gate=_needs_appendix_route_annotation_inputs,
+        run=_check_appendix_route_annotations,
     ),
     LinterCheck(
         code=CHECK_ROUTER_COVERAGE,

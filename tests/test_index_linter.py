@@ -23,7 +23,7 @@ def _clean_index(root: Path) -> tuple[Path, Path]:
     appendix_dir = root / "appendix"
     _write(
         index_dir / "000-index.md",
-        "# Agentos Index\n\n## Routing\n\n- `100-index.md` — Example.Concept\n",
+        "# Agentos Index\n\n## Routing\n\n- `100-index.md` — Example.Concept[+1]\n",
     )
     _write(
         index_dir / "100-index.md",
@@ -92,12 +92,40 @@ def test_index_linter_maps_mdblocks_errors_and_blocks_inventory(
     state = _run(index_paths=("index",))
 
     assert any(
-        finding.code == "Index.Linter/Mdblocks.Syntax"
+        finding.code == "Index.Linter/Block.SeparatorOutsideSemantics"
         and finding.details["source_code"] == "separator_outside_block_semantics"
         for finding in state.findings
     )
     assert any(
         result.code == "Index.Linter/Check.ConceptDuplicates" and result.status == "blocked"
+        for result in state.check_results
+    )
+
+
+def test_index_linter_maps_block_too_long_to_first_class_code(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / "index"
+    body = "\n".join(f"- line {line}" for line in range(30))
+    _write(
+        index_dir / "000-index.md",
+        "# Agentos Index\n\n## Routing\n\n- `100-index.md` — Example.Concept\n",
+    )
+    _write(index_dir / "100-index.md", f"****\n## Example.Concept\n\n{body}\n****\n")
+
+    state = _run(index_paths=("index",))
+
+    assert any(
+        finding.code == "Index.Linter/Block.TooLong"
+        and finding.details["source_code"] == "block_too_long"
+        for finding in state.findings
+    )
+    assert any(
+        result.code == "Index.Linter/Check.ConceptDuplicates"
+        and result.status == "blocked"
+        and result.blocked_by == ("Index.Linter/Block.TooLong",)
         for result in state.check_results
     )
 
@@ -237,6 +265,138 @@ def test_index_linter_accepts_chained_colon_concept_parameters(
     )
     assert not any(
         finding.code == "Index.Linter/Router.InvalidConcept"
+        for finding in state.findings
+    )
+
+
+def test_index_linter_accepts_router_appendix_annotation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / "index"
+    appendix_dir = tmp_path / "appendix"
+    _write(
+        index_dir / "000-index.md",
+        "# Agentos Index\n\n## Routing\n\n- `100-index.md` — Alignment.Backend:InChat:What[+1]\n",
+    )
+    _write(
+        index_dir / "100-index.md",
+        "****\n## Alignment.Backend:InChat:What\n\n- backend parameterized to a phase\n****\n",
+    )
+    _write(
+        appendix_dir / "Alignment.Backend:InChat:What-appendix.md",
+        "****\n## Alignment.Backend:InChat:What/Depth\n\n- depth\n****\n",
+    )
+
+    state = _run(index_paths=("index",), appendix_paths=("appendix",))
+
+    assert not any(
+        finding.code == "Index.Linter/Router.InvalidConcept"
+        for finding in state.findings
+    )
+    assert not any(
+        finding.code.startswith("Index.Linter/Appendix.RouteAnnotation")
+        for finding in state.findings
+    )
+    assert state.router_entries["Alignment.Backend:InChat:What"][0].appendix_annotation_count == 1
+
+
+def test_index_linter_records_appendix_page_inventory(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / "index"
+    appendix_dir = tmp_path / "appendix"
+    _write(
+        index_dir / "000-index.md",
+        "# Agentos Index\n\n## Routing\n\n- `100-index.md` — Example.Concept[+2]\n",
+    )
+    _write(
+        index_dir / "100-index.md",
+        "****\n## Example.Concept\n\n- compact definition\n****\n",
+    )
+    _write(appendix_dir / "Example.Concept-appendix.md", "****\n## Example.Concept/One\n\n- one\n****\n")
+    _write(appendix_dir / "Example.Concept-appendix-2.md", "****\n## Example.Concept/Two\n\n- two\n****\n")
+
+    state = _run(index_paths=("index",), appendix_paths=("appendix",))
+
+    assert sorted(state.appendix_pages["Example.Concept"]) == [1, 2]
+    assert not any(
+        finding.code in {
+            "Index.Linter/Appendix.RouteAnnotationMissing",
+            "Index.Linter/Appendix.RouteAnnotationStale",
+            "Index.Linter/Appendix.PageGap",
+        }
+        for finding in state.findings
+    )
+
+
+def test_index_linter_reports_missing_appendix_route_annotation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir, appendix_dir = _clean_index(tmp_path)
+    _write(
+        index_dir / "000-index.md",
+        "# Agentos Index\n\n## Routing\n\n- `100-index.md` — Example.Concept\n",
+    )
+
+    state = _run(index_paths=(index_dir.name,), appendix_paths=(appendix_dir.name,))
+
+    assert any(
+        finding.code == "Index.Linter/Appendix.RouteAnnotationMissing"
+        and finding.details["expected_annotation"] == "[+1]"
+        for finding in state.findings
+    )
+
+
+def test_index_linter_reports_stale_appendix_route_annotation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir, appendix_dir = _clean_index(tmp_path)
+    _write(
+        index_dir / "000-index.md",
+        "# Agentos Index\n\n## Routing\n\n- `100-index.md` — Example.Concept[+2]\n",
+    )
+
+    state = _run(index_paths=(index_dir.name,), appendix_paths=(appendix_dir.name,))
+
+    assert any(
+        finding.code == "Index.Linter/Appendix.RouteAnnotationStale"
+        and finding.details["actual_annotation"] == "[+2]"
+        and finding.details["expected_annotation"] == "[+1]"
+        for finding in state.findings
+    )
+
+
+def test_index_linter_reports_appendix_page_gap(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / "index"
+    appendix_dir = tmp_path / "appendix"
+    _write(
+        index_dir / "000-index.md",
+        "# Agentos Index\n\n## Routing\n\n- `100-index.md` — Example.Concept[+3]\n",
+    )
+    _write(
+        index_dir / "100-index.md",
+        "****\n## Example.Concept\n\n- compact definition\n****\n",
+    )
+    _write(appendix_dir / "Example.Concept-appendix.md", "****\n## Example.Concept/One\n\n- one\n****\n")
+    _write(appendix_dir / "Example.Concept-appendix-3.md", "****\n## Example.Concept/Three\n\n- three\n****\n")
+
+    state = _run(index_paths=("index",), appendix_paths=("appendix",))
+
+    assert any(
+        finding.code == "Index.Linter/Appendix.PageGap"
+        and finding.details["missing_pages"] == [2]
         for finding in state.findings
     )
 
