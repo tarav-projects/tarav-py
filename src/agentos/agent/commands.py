@@ -332,6 +332,25 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
     raise CliError(f"agent accounts link is not supported for provider {args.provider}")
 
 
+def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
+    if args.provider == "codex":
+        from agentos.codex.account_reconcile import reconcile_codex_accounts
+
+        payload = reconcile_codex_accounts(
+            account=args.account,
+            home=Path(args.home) if args.home is not None else None,
+            start_path=_config_start_path(args),
+            check=args.check,
+            argv=getattr(args, "_agentos_argv", []),
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(_format_agent_accounts_reconcile(payload))
+        return 0
+    raise CliError(f"agent accounts reconcile is not supported for provider {args.provider}")
+
+
 def _format_agent_accounts_link(payload: dict[str, object]) -> str:
     provider = payload.get("provider")
     account = payload.get("account")
@@ -351,6 +370,35 @@ def _format_agent_accounts_link(payload: dict[str, object]) -> str:
     return (
         f"Linked {provider} account {account} to {home}."
     )
+
+
+def _format_agent_accounts_reconcile(payload: dict[str, object]) -> str:
+    lines = [
+        f"Reconciled {payload.get('provider', '<unknown>')} accounts",
+        f"Homes scanned: {payload.get('scanned_count', 0)}",
+        f"Actions: {payload.get('action_count', 0)}",
+        f"Warnings: {payload.get('warning_count', 0)}",
+    ]
+    actions = payload.get("actions")
+    if isinstance(actions, list):
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+            kind = action.get("kind", "<unknown>")
+            account = action.get("account", "<unknown>")
+            artifact_id = action.get("artifact_id")
+            suffix = f" {str(artifact_id)[:12]}" if isinstance(artifact_id, str) else ""
+            lines.append(f"  - {kind}: {account}{suffix}")
+    warnings = payload.get("warnings")
+    if isinstance(warnings, list):
+        for warning in warnings:
+            if not isinstance(warning, dict):
+                continue
+            message = warning.get("message") or warning.get("kind") or "warning"
+            home = warning.get("home")
+            suffix = f" ({home})" if isinstance(home, str) else ""
+            lines.append(f"  ! {message}{suffix}")
+    return "\n".join(lines)
 
 
 def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
@@ -732,6 +780,46 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Output as JSON.",
     )
     accounts_link_parser.set_defaults(handler=_cmd_agent_accounts_link)
+
+    accounts_reconcile_parser = accounts_subparsers.add_parser(
+        "reconcile",
+        help="Register fresh known auth files and sync stale linked account homes.",
+    )
+    accounts_reconcile_parser.add_argument(
+        "--provider",
+        required=True,
+        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family to reconcile.",
+    )
+    accounts_reconcile_parser.add_argument(
+        "--account",
+        default=None,
+        help="Local AgentOS account alias to reconcile.",
+    )
+    accounts_reconcile_parser.add_argument(
+        "--home",
+        default=None,
+        help="Known provider home to reconcile.",
+    )
+    accounts_reconcile_parser.add_argument(
+        "--project",
+        nargs="?",
+        type=Path,
+        const=Path("."),
+        default=None,
+        help="Config start path for configured home discovery.",
+    )
+    accounts_reconcile_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Report intended actions without mutating account storage or homes.",
+    )
+    accounts_reconcile_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON.",
+    )
+    accounts_reconcile_parser.set_defaults(handler=_cmd_agent_accounts_reconcile)
 
     accounts_status_parser = accounts_subparsers.add_parser(
         "status",

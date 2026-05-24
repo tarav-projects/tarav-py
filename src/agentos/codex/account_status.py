@@ -28,6 +28,7 @@ from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
 from agentos.codex.account_registry import inspect_codex_account_home
+from agentos.codex.account_reconcile import reconcile_codex_accounts
 
 
 DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
@@ -47,6 +48,12 @@ def _codex_account_status_impl(
         raise CliError("codex account_status requires an agent home")
 
     account_record = load_account(agent.provider, agent.account.account)
+    reconciliation = reconcile_codex_accounts(
+        account=agent.account.account,
+        register_discovered=True,
+        sync_stale_links=True,
+        record_event=False,
+    )
     home_status = inspect_codex_account_home(home=agent.home)
     link_state = _string_or_none(home_status.get("link_consistency")) or "unknown"
     expected_identity = _expected_identity(account_record)
@@ -136,10 +143,17 @@ def _codex_account_status_impl(
         usage_errors=tuple(usage_errors),
         raw={
             "home_status": home_status,
+            "reconciliation": reconciliation
+            if _reconciliation_has_activity(reconciliation)
+            else None,
             "usage": usage_payload,
             "usage_record": usage_record_metadata,
         },
     )
+
+
+def _reconciliation_has_activity(payload: Mapping[str, object]) -> bool:
+    return bool(payload.get("actions") or payload.get("warnings"))
 
 
 def _expected_identity(account_record: dict[str, object]) -> AccountIdentity:
