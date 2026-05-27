@@ -99,10 +99,12 @@ def _resolve_run_argv(argv_parts: list[str]) -> tuple[str, ...]:
 def _cmd_agent_run(args: argparse.Namespace) -> int:
     argv = _resolve_run_argv(args.argv)
     prompt = _resolve_run_prompt(args.prompt, argv)
+    interaction_mode = "non_interactive" if args.non_interactive else "interactive"
     agent, command_config, run_config = _resolve_agent_run(
         args,
         prompt=prompt,
         argv=argv,
+        interaction_mode=interaction_mode,
     )
 
     if args.dry_run:
@@ -132,6 +134,7 @@ def _resolve_agent_run(
     *,
     prompt: str | None,
     argv: tuple[str, ...],
+    interaction_mode: str = "interactive",
 ) -> tuple[Agent, AgentCommandConfig, AgentRunConfig]:
     agent, cwd = _resolve_agent_run_target(args)
     return (
@@ -140,6 +143,7 @@ def _resolve_agent_run(
             args,
             prompt=prompt,
             argv=argv,
+            interaction_mode=interaction_mode,
         ),
         _agent_run_config(cwd=cwd),
     )
@@ -884,6 +888,11 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Run one configured agent with a prompt or raw provider arguments.",
     )
     _add_agent_run_target_args(run_parser, provider_help="Provider family to run.")
+    run_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Run in non-interactive mode. Providers that support it will use their non-interactive execution path (e.g., codex exec).",
+    )
     run_parser.add_argument(
         "--dry-run",
         action="store_true",

@@ -614,3 +614,41 @@ def test_monitor_loop_surfaces_config_fingerprint_drift() -> None:
     assert isinstance(setup, dict)
     assert setup["config_stale"] is True
     assert setup["current_config_fingerprint"] == "new"
+
+
+def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() -> None:
+    loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
+    loop.visible_frame.add_block(
+        "limits-tracking",
+        data={
+            "workflow": "limits-tracking",
+            "periodic_alarm_name": "limits-tracking.periodic",
+        },
+    )
+    loop.visible_frame.add_block(
+        "auto-prime-zero-limits",
+        data={
+            "workflow": "auto-prime-zero-limits",
+            "periodic_alarm_name": "auto-prime-zero-limits.periodic",
+        },
+    )
+    loop.clock.set_periodic(
+        "limits-tracking.periodic",
+        period_ticks=170,
+        remaining_ticks=168,
+    )
+    loop.clock.set_periodic(
+        "auto-prime-zero-limits.periodic",
+        period_ticks=8,
+        remaining_ticks=8,
+    )
+    loop._clock_snapshot = loop.clock.snapshot()
+
+    loop._apply_clock_feedback_to_visible_frame()
+
+    assert loop.visible_frame.blocks[0]["title"] == (
+        "limits-tracking | next in 168 ticks | reset 2 ticks ago"
+    )
+    assert loop.visible_frame.blocks[1]["title"] == (
+        "auto-prime-zero-limits | next in 8 ticks | reset 0 ticks ago"
+    )

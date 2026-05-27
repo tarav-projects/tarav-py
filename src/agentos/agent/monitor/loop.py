@@ -186,8 +186,10 @@ class MonitorLoop:
             if alarm is None or not alarm.armed:
                 block["title"] = workflow_name
                 continue
-            block["title"] = (
-                f"{workflow_name} | next in {alarm.remaining_ticks} ticks"
+            block["title"] = _workflow_clock_title(
+                workflow_name,
+                remaining_ticks=alarm.remaining_ticks,
+                period_ticks=alarm.period_ticks,
             )
 
     def _workflow_is_active(self) -> bool:
@@ -413,3 +415,16 @@ def _workflow_period_seconds(
 def _period_ticks_from_seconds(period_sec: float, *, interval_sec: float) -> int:
     cadence_sec = interval_sec if interval_sec > 0 else 1.0
     return max(1, math.ceil(period_sec / cadence_sec))
+
+
+def _workflow_clock_title(
+    workflow_name: str,
+    *,
+    remaining_ticks: int,
+    period_ticks: int | None,
+) -> str:
+    title = f"{workflow_name} | next in {remaining_ticks} ticks"
+    if period_ticks is None:
+        return title
+    ticks_since_reset = max(0, period_ticks - remaining_ticks)
+    return f"{title} | reset {ticks_since_reset} ticks ago"

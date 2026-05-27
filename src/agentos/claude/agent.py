@@ -53,9 +53,22 @@ class ClaudeAgent(AgentBase):
     def build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
         if command_config.account is not None:
             raise CliError(f"--account is not supported for provider {self.provider}")
+        effective_config = self._claude_command_config(command_config)
         return self._build_command_with_env(
-            command_config,
+            effective_config,
             env_overrides=self._run_env_overrides(),
+        )
+
+    def _claude_command_config(self, command_config: AgentCommandConfig) -> AgentCommandConfig:
+        if command_config.interaction_mode != "non_interactive":
+            return command_config
+        extra_argv = ("--dangerously-skip-permissions",)
+        return AgentCommandConfig(
+            prompt=command_config.prompt,
+            argv=extra_argv + command_config.argv,
+            model=command_config.model,
+            account=command_config.account,
+            interaction_mode=command_config.interaction_mode,
         )
 
     def account_status(
