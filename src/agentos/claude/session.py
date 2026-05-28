@@ -170,7 +170,7 @@ class ClaudeSession:
             source_ref_id=_source_ref_id_for_artifact(primary_artifact, sources=sources),
             title=_string_or_none(session.get("display_name")),
             cwd=_string_or_none(_native_payload(session).get("cwd")),
-            updated_at=_string_or_none(session.get("updated_at")),
+            updated_at=_string_or_none(session.get("last_activity_at")),
         )
 
     def merge(self, other: ClaudeSession) -> ClaudeSession:

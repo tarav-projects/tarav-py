@@ -44,10 +44,12 @@ class CopilotSessionRef:
         return {"project_path": self.project_path}
 
     def sort_timestamp(self) -> float | None:
+        event_ts = self.to_session().last_activity_timestamp()
+        if event_ts is not None:
+            return event_ts
         return _max_timestamp(
             self.updated_at,
             _safe_path_mtime(self.events_path),
-            _safe_path_mtime(self.events_path.parent),
         )
 
     def to_session(self) -> "CopilotSession":
@@ -118,6 +120,21 @@ class CopilotSession:
         except (CliError, OSError):
             return None
 
+    def last_activity_timestamp(self) -> float | None:
+        if not self.events_path.exists():
+            return None
+        try:
+            from agentos.agent.extractors.copilot_cli import load_copilot_cli_events
+
+            latest: float | None = None
+            for event in load_copilot_cli_events(self.events_path):
+                ts = _coerce_timestamp(event.get("timestamp"))
+                if ts is not None and (latest is None or ts > latest):
+                    latest = ts
+            return latest
+        except (CliError, OSError):
+            return None
+
     @classmethod
     def from_chatlas_session_payload(
         cls,
@@ -144,7 +161,7 @@ class CopilotSession:
             events_path=Path(events_path_text),
             source_ref_id=_source_ref_id_for_artifact(primary_artifact, sources=sources),
             project_path=_string_or_none(_native_payload(session).get("project_path")),
-            updated_at=_coerce_timestamp(session.get("updated_at")),
+            updated_at=_coerce_timestamp(session.get("last_activity_at")),
         )
 
 

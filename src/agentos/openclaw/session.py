@@ -192,7 +192,7 @@ class OpenclawSession:
             sessions_index_path=Path(index_paths[0]) if index_paths else None,
             session_keys=session_keys,
             agent_id=agent_id,
-            updated_at=_coerce_timestamp(session.get("updated_at")),
+            updated_at=_coerce_timestamp(session.get("last_activity_at")),
         )
 
 

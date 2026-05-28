@@ -151,7 +151,7 @@ class CodexSessionRef:
                 Path(path_text)
                 for path_text in _artifact_paths_by_role(session, role="session_index")
             ),
-            updated_at=_coerce_timestamp(session.get("updated_at")),
+            updated_at=_coerce_timestamp(session.get("last_activity_at")),
         )
 
 
