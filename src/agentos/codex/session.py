@@ -291,6 +291,25 @@ def discover_codex_sessions(*, targets: tuple[Path, ...]) -> tuple[CodexSession,
     )
 
 
+def find_codex_session_ref_by_id(*, targets: tuple[Path, ...], session_id: str) -> CodexSessionRef | None:
+    pattern = f"*{session_id}*.jsonl"
+    for target in targets:
+        if target.is_file() and session_id in target.stem and target.suffix == ".jsonl":
+            ref = read_codex_rollout_session_ref(target)
+            if ref is not None and ref.native_session_id == session_id:
+                return ref
+            continue
+        if not target.is_dir():
+            continue
+        for match in sorted(target.rglob(pattern)):
+            if not match.is_file():
+                continue
+            ref = read_codex_rollout_session_ref(match)
+            if ref is not None and ref.native_session_id == session_id:
+                return ref
+    return None
+
+
 def find_codex_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[CodexSession, ...]:
     sessions_by_id: dict[str, CodexSession] = {}
     for session_ref in discover_codex_session_refs(targets=targets):

@@ -209,6 +209,25 @@ def discover_claude_session_refs(*, targets: tuple[Path, ...]) -> tuple[ClaudeSe
     )
 
 
+def find_claude_session_ref_by_id(*, targets: tuple[Path, ...], session_id: str) -> ClaudeSessionRef | None:
+    filename = f"{session_id}.jsonl"
+    for target in targets:
+        if target.is_file() and target.name == filename:
+            session = read_claude_project_session(target)
+            if session is not None:
+                return _claude_session_ref_from_session(session)
+            continue
+        if not target.is_dir():
+            continue
+        for match in sorted(target.rglob(filename)):
+            if not match.is_file():
+                continue
+            session = read_claude_project_session(match)
+            if session is not None:
+                return _claude_session_ref_from_session(session)
+    return None
+
+
 def find_claude_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[ClaudeSession, ...]:
     sessions_by_id: dict[str, ClaudeSession] = {}
     for session_ref in discover_claude_session_refs(targets=targets):

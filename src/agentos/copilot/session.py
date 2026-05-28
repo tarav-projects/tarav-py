@@ -191,6 +191,27 @@ def discover_copilot_session_refs(*, targets: tuple[Path, ...]) -> tuple[Copilot
     return tuple(_copilot_session_ref_from_session(session) for session in discover_copilot_sessions(targets=targets))
 
 
+def find_copilot_session_ref_by_id(*, targets: tuple[Path, ...], session_id: str) -> CopilotSessionRef | None:
+    for target in targets:
+        if not target.is_dir():
+            if target.is_file() and target.stem == session_id and target.suffix == ".jsonl":
+                session = read_copilot_session(target)
+                if session is not None:
+                    return _copilot_session_ref_from_session(session)
+            continue
+        dir_candidate = target / session_id
+        if dir_candidate.is_dir():
+            session = read_copilot_session(dir_candidate)
+            if session is not None:
+                return _copilot_session_ref_from_session(session)
+        file_candidate = target / f"{session_id}.jsonl"
+        if file_candidate.is_file():
+            session = read_copilot_session(file_candidate)
+            if session is not None:
+                return _copilot_session_ref_from_session(session)
+    return None
+
+
 def find_copilot_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[CopilotSession, ...]:
     sessions_by_id: dict[str, CopilotSession] = {}
     for session in discover_copilot_sessions(targets=targets):

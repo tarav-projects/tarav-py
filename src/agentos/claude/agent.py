@@ -17,6 +17,7 @@ from agentos.claude.session import (
     ClaudeSession,
     ClaudeSessionRef,
     discover_claude_session_refs,
+    find_claude_session_ref_by_id,
     load_claude_session,
 )
 from agentos.claude.account_status import _claude_account_status_impl
@@ -46,6 +47,10 @@ class ClaudeAgent(AgentBase):
     def discover_session_refs(self) -> tuple[ClaudeSessionRef, ...]:
         direct_targets, _ = agent_session_paths(self)
         return discover_claude_session_refs(targets=direct_targets)
+
+    def find_session_ref_by_id(self, session_id: str) -> ClaudeSessionRef | None:
+        direct_targets, _ = agent_session_paths(self)
+        return find_claude_session_ref_by_id(targets=direct_targets, session_id=session_id)
 
     def load_session(self, session_ref: ClaudeSessionRef) -> ClaudeSession:
         return load_claude_session(session_ref)

@@ -18,6 +18,7 @@ from agentos.codex.session import (
     CodexSession,
     CodexSessionRef,
     discover_codex_session_refs,
+    find_codex_session_ref_by_id,
     load_codex_session,
 )
 from agentos.codex.account_status import _codex_account_status_impl
@@ -46,6 +47,12 @@ class CodexAgent(AgentBase):
 
     def discover_session_refs(self) -> tuple[CodexSessionRef, ...]:
         return discover_codex_session_refs(targets=self.session_discovery_targets())
+
+    def find_session_ref_by_id(self, session_id: str) -> CodexSessionRef | None:
+        return find_codex_session_ref_by_id(
+            targets=self.session_discovery_targets(),
+            session_id=session_id,
+        )
 
     def load_session(self, session_ref: CodexSessionRef) -> CodexSession:
         return load_codex_session(session_ref)

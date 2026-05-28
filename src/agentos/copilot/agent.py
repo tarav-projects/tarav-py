@@ -18,6 +18,7 @@ from agentos.copilot.session import (
     CopilotSession,
     CopilotSessionRef,
     discover_copilot_session_refs,
+    find_copilot_session_ref_by_id,
     load_copilot_session,
 )
 from agentos.copilot.account_status import _copilot_account_status_impl
@@ -47,6 +48,10 @@ class CopilotAgent(AgentBase):
     def discover_session_refs(self) -> tuple[CopilotSessionRef, ...]:
         direct_targets, _ = agent_session_paths(self)
         return discover_copilot_session_refs(targets=direct_targets)
+
+    def find_session_ref_by_id(self, session_id: str) -> CopilotSessionRef | None:
+        direct_targets, _ = agent_session_paths(self)
+        return find_copilot_session_ref_by_id(targets=direct_targets, session_id=session_id)
 
     def load_session(self, session_ref: CopilotSessionRef) -> CopilotSession:
         return load_copilot_session(session_ref)
