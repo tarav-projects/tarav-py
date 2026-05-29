@@ -32,6 +32,7 @@ _MONITOR_RESET_BAR_PALETTE = (
     "#0891b2",
     "#2563eb",
 )
+_MONITOR_REFRESH_PER_SECOND = 4
 
 
 @dataclass(frozen=True)
@@ -74,17 +75,8 @@ def dumps_monitor_json(frame: MonitorFrame, state: MonitorState) -> str:
 
 class RichMonitorRenderer:
     def __init__(self) -> None:
-        from rich.console import Console
-        from rich.live import Live
-
-        self.console = Console(force_terminal=sys.stdout.isatty())
-        self.live = Live(
-            "",
-            console=self.console,
-            refresh_per_second=4,
-            screen=True,
-            transient=False,
-        )
+        self.console = _monitor_console()
+        self.live = _monitor_live(self.console)
 
     def __enter__(self) -> RichMonitorRenderer:
         self.live.__enter__()
@@ -101,6 +93,25 @@ class RichMonitorRenderer:
                 frame, width=self.console.width, pad_bars=self.console.is_terminal
             )
         )
+
+
+def _monitor_console() -> Any:
+    from rich.console import Console
+
+    force_terminal = True if sys.stdout.isatty() else None
+    return Console(force_terminal=force_terminal)
+
+
+def _monitor_live(console: Any) -> Any:
+    from rich.live import Live
+
+    return Live(
+        "",
+        console=console,
+        refresh_per_second=_MONITOR_REFRESH_PER_SECOND,
+        screen=True,
+        transient=False,
+    )
 
 
 def rich_monitor_frame(
