@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -76,11 +77,12 @@ class RichMonitorRenderer:
         from rich.console import Console
         from rich.live import Live
 
-        self.console = Console()
+        self.console = Console(force_terminal=sys.stdout.isatty())
         self.live = Live(
             "",
             console=self.console,
             refresh_per_second=4,
+            screen=True,
             transient=False,
         )
 
