@@ -4,7 +4,7 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos.agent.account_registry import load_account, record_account_event, upsert_account, upsert_link
+from agentos.agent.account_registry import load_account, record_account_event, upsert_account
 
 CLAUDE_PROVIDER = "claude-code"
 CLAUDE_AUTH_KIND = "ambient-browser-login"
@@ -65,15 +65,6 @@ def link_claude_account_to_home(
     if not isinstance(auth_kinds, list) or CLAUDE_AUTH_KIND not in auth_kinds:
         raise CliError(f"agent accounts link is not supported for provider {CLAUDE_PROVIDER} account {normalized_account}")
     normalized_home = home.expanduser().resolve()
-    previous_link, link_record = upsert_link(
-        CLAUDE_PROVIDER,
-        normalized_home,
-        {
-            "kind": "claimed",
-            "account": normalized_account,
-            "auth_kind": CLAUDE_AUTH_KIND,
-        },
-    )
     record_account_event(
         event_type="agent.accounts.link",
         command="agent accounts link",
@@ -85,8 +76,6 @@ def link_claude_account_to_home(
             "home": str(normalized_home),
             "kind": "claimed",
             "force": force,
-            "previous_link": previous_link,
-            "link": link_record,
         },
     )
     return {
@@ -97,8 +86,6 @@ def link_claude_account_to_home(
         "home": str(normalized_home),
         "kind": "claimed",
         "force": force,
-        "previous_link": previous_link,
-        "link": link_record,
     }
 
 

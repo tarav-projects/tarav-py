@@ -14,7 +14,6 @@ from agentos.agent.account_reconcile import (
 )
 from agentos.agent.account_registry import (
     load_accounts,
-    load_links,
     record_account_event,
 )
 from agentos.agent.config import load_agent_configs
@@ -50,7 +49,7 @@ def reconcile_codex_accounts(
     home: Path | None = None,
     start_path: Path | str = ".",
     register_discovered: bool = True,
-    sync_stale_links: bool = True,
+    sync_homes: bool = True,
     check: bool = False,
     record_event: bool = True,
     argv: list[str] | tuple[str, ...] = (),
@@ -61,7 +60,7 @@ def reconcile_codex_accounts(
         home=home.expanduser().resolve() if home is not None else None,
         start_path=start_path,
         register_discovered=register_discovered,
-        sync_stale_links=sync_stale_links,
+        sync_homes=sync_homes,
         check=check,
         argv=tuple(argv),
     )
@@ -97,7 +96,7 @@ def discover_codex_reconcile_homes(
         home=home.expanduser().resolve() if home is not None else None,
         start_path=start_path,
         register_discovered=False,
-        sync_stale_links=False,
+        sync_homes=False,
         check=True,
     )
     return tuple(known_home.summary() for known_home in _known_codex_homes(request))
@@ -210,7 +209,7 @@ def _reconcile_codex_accounts(request: AccountReconcileRequest) -> AccountReconc
                     )
                 )
 
-    if request.sync_stale_links:
+    if request.sync_homes:
         inspected = tuple(_inspect_known_home(known_home) for known_home in known_homes)
         actions.extend(_sync_codex_homes(request, inspected, planned_active_artifacts=_planned_active_artifacts(actions)))
 
@@ -237,9 +236,8 @@ def _sync_codex_homes(
             continue
         if request.account is not None and sync_account != request.account:
             continue
-        link_state = _string_or_none(status.get("link_consistency"))
         classification = _string_or_none(status.get("classification"))
-        if link_state == "verified" and classification == "matching-active":
+        if classification == "matching-active" and _active_home_account(status) == sync_account:
             continue
         if not _may_sync_home(known_home, status):
             continue
@@ -249,7 +247,7 @@ def _sync_codex_homes(
         if request.check:
             actions.append(
                 AccountReconcileAction(
-                    kind="would_sync_linked_home",
+                    kind="would_sync_home",
                     account=sync_account,
                     home=str(known_home.home),
                     artifact_id=active_artifact_id,
@@ -263,13 +261,12 @@ def _sync_codex_homes(
         )
         actions.append(
             AccountReconcileAction(
-                kind="synced_linked_home",
+                kind="synced_home",
                 account=sync_account,
                 home=str(known_home.home),
                 artifact_id=active_artifact_id,
                 detail={
                     "auth_path": str(payload.get("auth_path")),
-                    "previous_link": payload.get("previous_link"),
                 },
             )
         )
@@ -278,8 +275,6 @@ def _sync_codex_homes(
 
 def _known_codex_homes(request: AccountReconcileRequest) -> tuple[_KnownHome, ...]:
     homes: dict[str, _KnownHome] = {}
-    for home in _linked_homes(request.account):
-        _add_known_home(homes, home)
     for home in _configured_homes(request.start_path):
         _add_known_home(homes, home)
     for account in _registered_accounts(request.account):
@@ -301,27 +296,6 @@ def _known_codex_homes(request: AccountReconcileRequest) -> tuple[_KnownHome, ..
     return tuple(homes[key] for key in sorted(homes))
 
 
-def _linked_homes(account: str | None) -> tuple[_KnownHome, ...]:
-    links = load_links(CODEX_PROVIDER).get("links")
-    if not isinstance(links, dict):
-        return ()
-    homes: list[_KnownHome] = []
-    for raw_home, link in links.items():
-        if not isinstance(raw_home, str) or not isinstance(link, dict):
-            continue
-        linked_account = _string_or_none(link.get("account"))
-        if account is not None and linked_account != account:
-            continue
-        homes.append(
-            _KnownHome(
-                home=Path(raw_home).expanduser().resolve(),
-                source="link",
-                account=linked_account,
-            )
-        )
-    return tuple(homes)
-
-
 def _configured_homes(start_path: Path | str) -> tuple[_KnownHome, ...]:
     homes: list[_KnownHome] = []
     for config in load_agent_configs(start_path=start_path):
@@ -331,6 +305,7 @@ def _configured_homes(start_path: Path | str) -> tuple[_KnownHome, ...]:
             _KnownHome(
                 home=config.home.expanduser().resolve(),
                 source="configured",
+                account=config.account.account if config.account is not None else None,
             )
         )
     return tuple(homes)
@@ -439,23 +414,35 @@ def _active_refresh_key(account: str) -> tuple[str, int]:
 
 
 def _sync_account_for_home(known_home: _KnownHome, status: dict[str, object]) -> str | None:
-    link = status.get("link")
-    if isinstance(link, dict):
-        linked_account = _string_or_none(link.get("account"))
-        if linked_account is not None:
-            return linked_account
-    if known_home.system_managed:
+    if known_home.system_managed or known_home.account is not None:
         return known_home.account
     return None
 
 
 def _may_sync_home(known_home: _KnownHome, status: dict[str, object]) -> bool:
-    if known_home.system_managed:
+    if known_home.system_managed or known_home.account is not None:
         return True
-    link = status.get("link")
-    if not isinstance(link, dict) or link.get("kind") != "artifact":
-        return False
-    return _string_or_none(status.get("link_consistency")) in {"missing", "stale"}
+    return False
+
+
+def _active_home_account(status: dict[str, object]) -> str | None:
+    if _string_or_none(status.get("classification")) != "matching-active":
+        return None
+    auth = status.get("auth")
+    matches = status.get("account_registry_matches")
+    if not isinstance(auth, dict) or not isinstance(matches, list):
+        return None
+    artifact_id = _string_or_none(auth.get("artifact_id"))
+    accounts = sorted(
+        account
+        for record in matches
+        if isinstance(record, dict)
+        and record.get("active_artifact_id") == artifact_id
+        and (account := _string_or_none(record.get("account"))) is not None
+    )
+    if len(accounts) == 1:
+        return accounts[0]
+    return None
 
 
 def _active_artifact_id(account: str) -> str | None:
@@ -499,7 +486,6 @@ def _scanned_home_summary(known_home: _KnownHome, status: dict[str, object]) -> 
     payload.update(
         {
             "classification": status.get("classification"),
-            "link_consistency": status.get("link_consistency"),
             "auth_path": status.get("auth_path"),
         }
     )
@@ -529,7 +515,6 @@ def _warning(
         message=message,
         detail={
             "classification": status.get("classification"),
-            "link_consistency": status.get("link_consistency"),
             "auth_path": status.get("auth_path"),
             "error": status.get("error"),
         },

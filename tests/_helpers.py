@@ -117,22 +117,44 @@ def write_global_routing_config(
 def _build_agent_payload(
     *,
     provider_configs: dict[str, dict[str, object]] | None = None,
-    provider_instances: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "instances": provider_instances or [],
-    }
+    payload: dict[str, object] = {}
     if provider_configs is not None:
         payload["providers"] = provider_configs
     return payload
+
+
+def write_agent_profiles(
+    agentos_home: Path,
+    profiles: list[dict[str, object]] | None,
+) -> None:
+    if profiles is None:
+        return
+    for profile in profiles:
+        profile_id = profile.get("id")
+        if not isinstance(profile_id, str):
+            raise AssertionError("test profile id must be a string")
+        write_text_file(
+            agentos_home / "profiles" / f"{profile_id}.json",
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    **profile,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+        )
 
 
 def write_global_config(
     path: Path,
     *,
     provider_configs: dict[str, dict[str, object]] | None = None,
-    provider_instances: list[dict[str, object]] | None = None,
+    provider_profiles: list[dict[str, object]] | None = None,
 ) -> None:
+    write_agent_profiles(path.parent, provider_profiles)
     write_text_file(
         path,
         json.dumps(
@@ -141,7 +163,6 @@ def write_global_config(
                 "schema_version": 1,
                 "agent": _build_agent_payload(
                     provider_configs=provider_configs,
-                    provider_instances=provider_instances,
                 ),
             }
         ),
@@ -152,7 +173,6 @@ def write_project_config(
     path: Path,
     *,
     provider_configs: dict[str, dict[str, object]] | None = None,
-    provider_instances: list[dict[str, object]] | None = None,
 ) -> None:
     write_text_file(
         path,
@@ -162,7 +182,6 @@ def write_project_config(
                 "schema_version": 1,
                 "agent": _build_agent_payload(
                     provider_configs=provider_configs,
-                    provider_instances=provider_instances,
                 ),
             }
         ),

@@ -17,6 +17,7 @@ from agentos.agent.config import (
     default_agent_configs,
     load_agent_configs,
     load_agent_provider_configs,
+    load_agent_profile,
 )
 from agentos.claude.agent import ClaudeAgent
 from agentos.codex.agent import CodexAgent
@@ -35,21 +36,6 @@ def load_configured_agents(*, start_path: Path | str = ".") -> tuple[Agent, ...]
         agent_from_config(agent_config)
         for agent_config in load_agent_configs(start_path=start_path)
     )
-
-
-def load_agent_configs_with_defaults(*, start_path: Path | str = ".") -> tuple[AgentConfig, ...]:
-    configured = load_agent_configs(start_path=start_path)
-    provider_configs = load_agent_provider_configs(start_path=start_path)
-    configured_providers = {config.provider for config in configured}
-    defaults = tuple(
-        agent_config_with_provider_config(
-            config,
-            provider_configs.get(config.provider),
-        )
-        for config in default_agent_configs()
-        if config.provider not in configured_providers
-    )
-    return (*configured, *defaults)
 
 
 def supported_default_run_provider_families() -> tuple[str, ...]:
@@ -113,7 +99,7 @@ def _default_registered_account_agent_config(
 
 def resolve_agent(
     *,
-    provider: str,
+    provider: str | None,
     profile: str | None,
     start_path: Path,
     home: Path | str | None = None,
@@ -130,44 +116,47 @@ def resolve_agent(
 
 def resolve_agent_config(
     *,
-    provider: str,
+    provider: str | None,
     profile: str | None,
     start_path: Path,
     home: Path | str | None = None,
 ) -> AgentConfig:
-    matching = [
-        agent_config
-        for agent_config in load_agent_configs_with_defaults(start_path=start_path)
-        if agent_config.provider == provider
-    ]
-    if not matching:
-        raise CliError(f"no agent config found for provider {provider}")
-
     if profile is not None:
-        for agent_config in matching:
-            if agent_config.instance_id == profile:
-                if home is not None:
-                    return agent_config_with_home_override(agent_config, home=home)
-                return agent_config
-        raise CliError(
-            f"no profile {profile!r} found for provider {provider}"
+        selected = _resolve_profile_config(
+            provider=provider,
+            profile=profile,
+            start_path=start_path,
         )
+        if home is not None:
+            return agent_config_with_home_override(selected, home=home)
+        return selected
 
-    configured_matching = tuple(agent_config for agent_config in matching if not agent_config.is_default)
-    if len(configured_matching) == 1:
-        selected = configured_matching[0]
-    elif len(configured_matching) > 1:
-        available = ", ".join(
-            agent_config.instance_id or "<default>" for agent_config in configured_matching
-        )
-        raise CliError(
-            f"provider {provider} is ambiguous; pass --profile (available: {available})"
-        )
-    else:
-        selected = matching[0]
+    if provider is None:
+        raise CliError("--profile is required unless --provider and --home are set")
+    if home is None:
+        raise CliError("--home is required when running without --profile")
 
-    if home is not None:
-        return agent_config_with_home_override(selected, home=home)
+    provider_configs = load_agent_provider_configs(start_path=start_path)
+    selected = _default_registered_account_agent_config(
+        provider=provider,
+        home=home,
+        provider_configs=provider_configs,
+    )
+    return selected
+
+
+def _resolve_profile_config(
+    *,
+    provider: str | None,
+    profile: str,
+    start_path: Path,
+) -> AgentConfig:
+    del start_path
+    selected = load_agent_profile(profile)
+    if provider is not None and selected.provider != provider:
+        raise CliError(
+            f"profile {profile!r} uses provider {selected.provider}, not {provider}"
+        )
     return selected
 
 
@@ -175,7 +164,6 @@ __all__ = [
     "agent_from_config",
     "build_registered_account_agent",
     "load_configured_agents",
-    "load_agent_configs_with_defaults",
     "resolve_agent",
     "resolve_agent_config",
     "supported_default_run_provider_families",

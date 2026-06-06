@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.path_validation import validate_string_for_path
+from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.primitives import (
     AgentConfig,
     AgentPingConfig,
@@ -137,9 +140,9 @@ class AgentConfigSource:
     field_prefix: str
 
 
-AGENT_INSTANCE_CONFIG_SOURCE = AgentConfigSource(
-    object_path=("agent", "instances"),
-    field_prefix="agent.instances",
+AGENT_PROFILE_CONFIG_SOURCE = AgentConfigSource(
+    object_path=(),
+    field_prefix="agent.profiles",
 )
 
 AGENT_PROVIDER_CONFIG_OBJECT_PATH = ("agent", "providers")
@@ -258,16 +261,104 @@ def _config_value_at_object_path(
 
 def load_agent_configs(*, start_path: Path | str = ".") -> tuple["AgentConfig", ...]:
     provider_configs = load_agent_provider_configs(start_path=start_path)
-    entries = load_agent_config_entries(
-        start_path=start_path,
-        sources=(AGENT_INSTANCE_CONFIG_SOURCE,),
-    )
+    profile_entries = load_agent_profile_entries()
     agent_configs = tuple(
         agent_config_from_config_entry(entry, provider_configs=provider_configs)
-        for entry in entries
+        for entry in profile_entries
     )
     _validate_unique_agent_config_ids(agent_configs)
     return agent_configs
+
+
+def profiles_root() -> Path:
+    return agentos_home_dir() / "profiles"
+
+
+def profile_path(name: str) -> Path:
+    normalized_name = validate_string_for_path(name, field_name="profile")
+    return profiles_root() / f"{normalized_name}.json"
+
+
+def load_agent_profile_entries() -> tuple[AgentConfigEntry, ...]:
+    root = profiles_root()
+    if not root.exists():
+        return ()
+    entries: list[AgentConfigEntry] = []
+    for index, path in enumerate(sorted(root.glob("*.json"))):
+        profile_name = path.stem
+        validate_string_for_path(profile_name, field_name="profile")
+        payload = _load_json_object(path, description="agent profile")
+        raw_id = payload.get("id")
+        if raw_id is None:
+            payload["id"] = profile_name
+        elif raw_id != profile_name:
+            raise CliError(f"agent profile id must match filename: {path}")
+        entries.append(
+            AgentConfigEntry(
+                field_prefix="agent.profiles",
+                index=index,
+                raw_instance=payload,
+            )
+        )
+    return tuple(entries)
+
+
+def load_agent_profile(name: str) -> AgentConfig:
+    provider_configs = load_agent_provider_configs()
+    path = profile_path(name)
+    if not path.exists():
+        raise CliError(f"agent profile not found: {name}")
+    payload = _load_json_object(path, description="agent profile")
+    profile_name = path.stem
+    raw_id = payload.get("id")
+    if raw_id is None:
+        payload["id"] = profile_name
+    elif raw_id != profile_name:
+        raise CliError(f"agent profile id must match filename: {path}")
+    return agent_config_from_config_entry(
+        AgentConfigEntry(
+            field_prefix="agent.profiles",
+            index=0,
+            raw_instance=payload,
+        ),
+        provider_configs=provider_configs,
+    )
+
+
+def write_agent_profile(config: AgentConfig) -> Path:
+    if config.instance_id is None:
+        raise CliError("agent profile id is required")
+    path = profile_path(config.instance_id)
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "id": config.instance_id,
+        "provider": config.provider,
+    }
+    if config.home is not None:
+        payload["home"] = str(config.home)
+    if config.account is not None:
+        payload["account"] = config.account.account
+    if config.default_model is not None:
+        payload["default_model"] = config.default_model
+    if config.run_args:
+        payload["run_args"] = list(config.run_args)
+    if config.env:
+        payload["env"] = {key: value for key, value in config.env}
+    if config.ping != default_agent_ping_config():
+        payload["ping"] = config.ping.summary()
+    _write_json_file(path, payload)
+    return path
+
+
+def update_agent_profile_account(name: str, account: str) -> tuple[AgentConfig, str | None, Path]:
+    config = load_agent_profile(name)
+    normalized_account = validate_string_for_path(account, field_name="account")
+    path = profile_path(name)
+    payload = _load_json_object(path, description="agent profile")
+    previous = config.account.account if config.account is not None else None
+    payload["account"] = normalized_account
+    _write_json_file(path, payload)
+    return load_agent_profile(name), previous, path
 
 
 def load_agent_provider_configs(
@@ -529,6 +620,7 @@ def agent_config_from_config_entry(
     raw_env = raw_instance.get("env")
     raw_timeout_sec = raw_instance.get("timeout_sec")
     raw_default_model = raw_instance.get("default_model")
+    raw_account = raw_instance.get("account")
     raw_model_flag = raw_instance.get("model_flag")
     raw_prompt_flag = raw_instance.get("prompt_flag")
     raw_ping = raw_instance.get("ping")
@@ -591,6 +683,11 @@ def agent_config_from_config_entry(
         )
     else:
         default_model = raw_default_model.strip()
+    account = _load_agent_account_context(
+        raw_account,
+        provider=provider_family.family,
+        field_name=entry.field_name("account"),
+    )
     if raw_model_flag is None:
         model_flag = _agent_default_model_flag(family_name)
     elif not isinstance(raw_model_flag, str) or not raw_model_flag.strip():
@@ -681,6 +778,7 @@ def agent_config_from_config_entry(
         cli_command=cli_command,
         run_args=run_args,
         env=env,
+        account=account,
         timeout_sec=timeout_sec,
         default_model=default_model,
         model_flag=model_flag,
@@ -698,13 +796,13 @@ def _validate_unique_agent_config_ids(agent_configs: tuple["AgentConfig", ...]) 
     seen_agent_configs: dict[str, AgentConfig] = {}
     for agent_config in agent_configs:
         if agent_config.instance_id is None:
-            raise CliError("agent.instances ids must not be empty")
+            raise CliError("agent profile ids must not be empty")
         existing = seen_agent_configs.get(agent_config.instance_id)
         if existing is None:
             seen_agent_configs[agent_config.instance_id] = agent_config
             continue
         raise CliError(
-            "agent.instances ids must be unique; "
+            "agent profile ids must be unique; "
             f"duplicate id {agent_config.instance_id} for providers "
             f"{existing.provider} and {agent_config.provider}"
         )
@@ -729,6 +827,41 @@ def _load_agent_cli_command(
     if provider_config is not None:
         return provider_config.cli_command
     return ()
+
+
+def _load_agent_account_context(
+    value: object,
+    *,
+    provider: str,
+    field_name: str,
+) -> AgentAccountContext | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        account = value.strip()
+        if not account:
+            raise CliError(f"{field_name} must be a non-empty string")
+        return AgentAccountContext(
+            provider=provider,
+            account=validate_string_for_path(account, field_name=field_name),
+        )
+    if not isinstance(value, dict):
+        raise CliError(f"{field_name} must be a string or JSON object")
+    raw_provider = value.get("provider", provider)
+    raw_account = value.get("account")
+    if not isinstance(raw_provider, str) or not raw_provider.strip():
+        raise CliError(f"{field_name}.provider must be a non-empty string")
+    if not isinstance(raw_account, str) or not raw_account.strip():
+        raise CliError(f"{field_name}.account must be a non-empty string")
+    normalized_provider = canonical_provider_family_for_name(raw_provider.strip())
+    if normalized_provider is None:
+        raise CliError(f"{field_name}.provider must be a supported provider")
+    if normalized_provider.family != provider:
+        raise CliError(f"{field_name}.provider must match profile provider {provider}")
+    return AgentAccountContext(
+        provider=provider,
+        account=validate_string_for_path(raw_account.strip(), field_name=f"{field_name}.account"),
+    )
 
 
 def _normalize_provider_home(home: object, *, field_name: str) -> str:
@@ -891,6 +1024,26 @@ def _expand_user_home(value: str) -> str:
     return value
 
 
+def _load_json_object(path: Path, *, description: str) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise CliError(f"invalid {description} JSON: {path}") from exc
+    if not isinstance(payload, dict):
+        raise CliError(f"{description} must be a JSON object: {path}")
+    return payload
+
+
+def _write_json_file(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.parent / f".{path.name}.agentos-tmp-{os.getpid()}"
+    temp_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temp_path, path)
+
+
 def _resolve_raw_paths(raw_paths: tuple[str, ...]) -> tuple[Path, ...]:
     return _unique_paths(
         tuple(Path(raw_path).expanduser().resolve() for raw_path in raw_paths)
@@ -919,10 +1072,12 @@ __all__ = [
     "canonical_provider_families",
     "canonical_provider_family_for_name",
     "ChatProviderSpec",
-    "AGENT_INSTANCE_CONFIG_SOURCE",
+    "AGENT_PROFILE_CONFIG_SOURCE",
     "default_agent_configs",
     "load_chat_config_documents",
     "load_agent_configs",
+    "load_agent_profile",
+    "load_agent_profile_entries",
     "load_unique_string_list",
     "load_agent_config_entries",
     "ProviderFamily",
@@ -939,6 +1094,10 @@ __all__ = [
     "agent_config_from_config_entry",
     "agent_config_entries_from_config",
     "load_agent_provider_configs",
+    "profile_path",
+    "profiles_root",
     "require_canonical_provider_family",
     "select_agent_configs",
+    "update_agent_profile_account",
+    "write_agent_profile",
 ]

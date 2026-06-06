@@ -51,14 +51,14 @@ def _codex_account_status_impl(
     reconciliation = reconcile_codex_accounts(
         account=agent.account.account,
         register_discovered=True,
-        sync_stale_links=True,
+        sync_homes=True,
         record_event=False,
     )
     home_status = inspect_codex_account_home(home=agent.home)
-    link_state = _string_or_none(home_status.get("link_consistency")) or "unknown"
+    auth_state = _string_or_none(home_status.get("classification")) or "unknown"
     expected_identity = _expected_identity(account_record)
     fetched_identity = _fetched_identity_from_home_status(home_status)
-    errors = list(_setup_errors(link_state=link_state, home_status=home_status))
+    errors = list(_setup_errors(auth_state=auth_state, home_status=home_status))
     identity_match = _identity_match(expected_identity, fetched_identity)
     if identity_match == "mismatched":
         errors.append(
@@ -132,7 +132,7 @@ def _codex_account_status_impl(
         home=agent.home,
         check_status=check_status,
         usage_status=usage_status,
-        link_state=link_state,
+        auth_state=auth_state,
         expected_identity=expected_identity,
         fetched_identity=fetched_identity,
         identity_match=identity_match,
@@ -191,18 +191,18 @@ def _identity_match(
 
 def _setup_errors(
     *,
-    link_state: str,
+    auth_state: str,
     home_status: Mapping[str, object],
 ) -> tuple[AccountStatusError, ...]:
     errors: list[AccountStatusError] = []
-    if link_state not in {"verified", "stale"}:
+    if auth_state not in {"matching-active", "registered", "known-account-new-hash"}:
         errors.append(
             AccountStatusError(
-                error_type="home_link_unusable",
-                message=f"codex account home link is not usable: {link_state}",
+                error_type="home_auth_unusable",
+                message=f"codex account home auth is not usable: {auth_state}",
                 detail={
                     "classification": home_status.get("classification"),
-                    "link_state": link_state,
+                    "auth_state": auth_state,
                     "home": home_status.get("home"),
                     "auth_path": home_status.get("auth_path"),
                     "error": home_status.get("error"),

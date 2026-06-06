@@ -173,7 +173,7 @@ class AccountStatus:
     home: Path
     check_status: AccountCheckStatus
     usage_status: AccountUsageStatus
-    link_state: str
+    auth_state: str
     expected_identity: AccountIdentity
     fetched_identity: AccountIdentity | None
     identity_match: AccountIdentityMatch
@@ -191,7 +191,7 @@ class AccountStatus:
             "home": str(self.home),
             "check_status": self.check_status,
             "usage_status": self.usage_status,
-            "link_state": self.link_state,
+            "auth_state": self.auth_state,
             "expected_identity": self.expected_identity.summary(),
             "fetched_identity": (
                 self.fetched_identity.summary()

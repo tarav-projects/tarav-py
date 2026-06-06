@@ -1,0 +1,344 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import pytest
+
+from agentos.agent.commands import _cmd_agent_ping, _cmd_agent_run
+from agentos.agent.run_runtime import AgentRunResult
+from agentos.codex.account_registry import (
+    inspect_codex_account_home,
+    link_codex_account_to_home,
+    read_codex_auth_info,
+    register_codex_account_from_auth_file,
+)
+from agentos.codex.agent import CodexAgent
+
+from _helpers import (
+    codex_auth_json,
+    isolate_agentos,
+    write_global_config,
+    write_text_file,
+)
+
+
+def test_agent_run_dry_run_reports_stale_codex_materialization_without_mutating(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    home = tmp_path / "codex-mm"
+    old_auth, active_auth = _make_stale_profile_home(tmp_path, home=home, account="mm")
+    write_global_config(
+        agentos_home / "config.json",
+        provider_configs=_provider_configs(),
+        provider_profiles=[_codex_profile(home)],
+    )
+    old_info = read_codex_auth_info(old_auth)
+
+    result = _cmd_agent_run(
+        _run_args(profile="codex-mm", prompt="hello", dry_run=True)
+    )
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "[agentos] would materialize codex auth for profile codex-mm from account mm" in output
+    assert "/bin/echo" in output
+    assert read_codex_auth_info(home / "auth.json").sha256 == old_info.sha256
+    assert read_codex_auth_info(active_auth).sha256 != old_info.sha256
+
+
+def test_agent_run_materializes_stale_codex_home_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    home = tmp_path / "codex-mm"
+    _, active_auth = _make_stale_profile_home(tmp_path, home=home, account="mm")
+    write_global_config(
+        agentos_home / "config.json",
+        provider_configs=_provider_configs(),
+        provider_profiles=[_codex_profile(home)],
+    )
+    active_info = read_codex_auth_info(active_auth)
+
+    monkeypatch.setattr(CodexAgent, "run", _fake_codex_run)
+
+    result = _cmd_agent_run(_run_args(profile="codex-mm", prompt="hello"))
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "[agentos] materialized codex auth for profile codex-mm from account mm" in output
+    assert read_codex_auth_info(home / "auth.json").sha256 == active_info.sha256
+
+
+def test_agent_run_materializes_stale_same_account_home_with_explicit_account(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    home = tmp_path / "codex-mm"
+    _, active_auth = _make_stale_profile_home(tmp_path, home=home, account="mm")
+    write_global_config(
+        agentos_home / "config.json",
+        provider_configs=_provider_configs(),
+        provider_profiles=[_codex_profile(home)],
+    )
+    active_info = read_codex_auth_info(active_auth)
+    monkeypatch.setattr(CodexAgent, "run", _fake_codex_run)
+
+    result = _cmd_agent_run(
+        _run_args(profile="codex-mm", account="mm", prompt="hello")
+    )
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "[agentos] materialized codex auth for profile codex-mm from account mm" in output
+    assert read_codex_auth_info(home / "auth.json").sha256 == active_info.sha256
+
+
+def test_agent_ping_uses_codex_account_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    home = tmp_path / "codex-mm"
+    _, active_auth = _make_stale_profile_home(tmp_path, home=home, account="mm")
+    write_global_config(
+        agentos_home / "config.json",
+        provider_configs=_provider_configs(),
+        provider_profiles=[_codex_profile(home)],
+    )
+    active_info = read_codex_auth_info(active_auth)
+    monkeypatch.setattr(CodexAgent, "run", _fake_codex_ping)
+
+    result = _cmd_agent_ping(_ping_args(profile="codex-mm"))
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "[agentos] materialized codex auth for profile codex-mm from account mm" in output
+    assert "pong model=gpt-5.4-mini" in output
+    assert read_codex_auth_info(home / "auth.json").sha256 == active_info.sha256
+
+
+def test_agent_run_does_not_mutate_codex_home_without_account(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    configured_home = tmp_path / "configured-codex"
+    override_home = tmp_path / "materialized-codex"
+    auth_file = tmp_path / "auth.json"
+    write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
+    write_global_config(
+        agentos_home / "config.json",
+        provider_configs=_provider_configs(),
+        provider_profiles=[_codex_profile(configured_home, account=None)],
+    )
+
+    result = _cmd_agent_run(
+        _run_args(
+            profile="codex-mm",
+            home=override_home,
+            prompt="hello",
+            dry_run=True,
+        )
+    )
+
+    assert result == 0
+    assert "[agentos]" not in capsys.readouterr().out
+    status = inspect_codex_account_home(home=override_home)
+    assert status["classification"] == "missing"
+
+
+def test_agent_run_materializes_codex_home_with_explicit_account(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    configured_home = tmp_path / "configured-codex"
+    override_home = tmp_path / "materialized-codex"
+    auth_file = tmp_path / "auth.json"
+    write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
+    write_global_config(
+        agentos_home / "config.json",
+        provider_configs=_provider_configs(),
+        provider_profiles=[_codex_profile(configured_home)],
+    )
+    monkeypatch.setattr(CodexAgent, "run", _fake_codex_run)
+
+    result = _cmd_agent_run(
+        _run_args(
+            profile="codex-mm",
+            home=override_home,
+            account="mm",
+            prompt="hello",
+        )
+    )
+
+    assert result == 0
+    assert "[agentos] materialized codex auth for profile codex-mm from account mm" in capsys.readouterr().out
+    status = inspect_codex_account_home(home=override_home)
+    assert status["classification"] == "matching-active"
+    assert status["auth"]["account_id"] == "acc_mm"
+    removed_registry_name = "links" + ".json"
+    assert not (agentos_home / "accounts" / "codex" / removed_registry_name).exists()
+
+
+def test_agent_run_dry_run_reports_explicit_account_materialization_without_mutating(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    configured_home = tmp_path / "configured-codex"
+    override_home = tmp_path / "materialized-codex"
+    auth_file = tmp_path / "auth.json"
+    write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
+    write_global_config(
+        agentos_home / "config.json",
+        provider_configs=_provider_configs(),
+        provider_profiles=[_codex_profile(configured_home)],
+    )
+
+    result = _cmd_agent_run(
+        _run_args(
+            profile="codex-mm",
+            home=override_home,
+            account="mm",
+            prompt="hello",
+            dry_run=True,
+        )
+    )
+
+    assert result == 0
+    assert "[agentos] would materialize codex auth for profile codex-mm from account mm" in capsys.readouterr().out
+    status = inspect_codex_account_home(home=override_home)
+    assert status["classification"] == "missing"
+
+
+def test_agent_run_materializes_when_explicit_account_differs_from_home_auth(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    home = tmp_path / "codex-br"
+    br_auth = tmp_path / "br-auth.json"
+    mm_auth = tmp_path / "mm-auth.json"
+    write_text_file(br_auth, codex_auth_json(account_id="acc_br"))
+    write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=br_auth, account="br")
+    register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
+    link_codex_account_to_home(home=home, account="br")
+    write_global_config(
+        agentos_home / "config.json",
+        provider_configs=_provider_configs(),
+        provider_profiles=[_codex_profile(home, profile_id="codex-br", account="br")],
+    )
+
+    result = _cmd_agent_run(
+        _run_args(
+            profile="codex-br",
+            account="mm",
+            prompt="hello",
+            dry_run=True,
+        )
+    )
+
+    assert result == 0
+
+
+def _make_stale_profile_home(
+    tmp_path: Path,
+    *,
+    home: Path,
+    account: str,
+) -> tuple[Path, Path]:
+    old_auth = tmp_path / f"{account}-old-auth.json"
+    active_auth = tmp_path / f"{account}-active-auth.json"
+    write_text_file(
+        old_auth,
+        codex_auth_json(account_id=f"acc_{account}", email=f"{account}-old@example.com"),
+    )
+    write_text_file(
+        active_auth,
+        codex_auth_json(
+            account_id=f"acc_{account}",
+            email=f"{account}-active@example.com",
+        ).replace("2026-05-12T17:00:07Z", "2026-05-23T17:00:07Z"),
+    )
+    register_codex_account_from_auth_file(auth_file=old_auth, account=account)
+    link_codex_account_to_home(home=home, account=account)
+    register_codex_account_from_auth_file(auth_file=active_auth, account=account)
+    return old_auth, active_auth
+
+
+def _provider_configs() -> dict[str, dict[str, object]]:
+    return {"codex": {"cli_command": ["/bin/echo"]}}
+
+
+def _codex_profile(
+    home: Path,
+    *,
+    profile_id: str = "codex-mm",
+    account: str | None = "mm",
+) -> dict[str, object]:
+    profile: dict[str, object] = {"id": profile_id, "provider": "codex", "home": str(home)}
+    if account is not None:
+        profile["account"] = account
+    return profile
+
+
+def _run_args(
+    *,
+    profile: str,
+    prompt: str,
+    home: Path | None = None,
+    account: str | None = None,
+    dry_run: bool = False,
+) -> argparse.Namespace:
+    return argparse.Namespace(
+        provider="codex",
+        profile=profile,
+        home=str(home) if home is not None else None,
+        account=account,
+        model=None,
+        project=None,
+        cwd=None,
+        argv=[],
+        prompt=prompt,
+        non_interactive=False,
+        dry_run=dry_run,
+    )
+
+
+def _ping_args(*, profile: str) -> argparse.Namespace:
+    return argparse.Namespace(
+        provider="codex",
+        profile=profile,
+        home=None,
+        account=None,
+        model=None,
+        project=None,
+        cwd=None,
+    )
+
+
+def _fake_codex_run(self, command_config, run_config) -> AgentRunResult:
+    del self, command_config, run_config
+    return AgentRunResult(exit_code=0)
+
+
+def _fake_codex_ping(self, command_config, run_config) -> AgentRunResult:
+    del self, command_config, run_config
+    return AgentRunResult(exit_code=0, stdout="745\n", stderr="")

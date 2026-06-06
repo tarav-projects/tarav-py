@@ -22,7 +22,7 @@ from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.process import run_process
 from agentos._core.project import agentos_home_dir
-from agentos.agent.account_registry import load_account, load_links
+from agentos.agent.account_registry import load_account
 from agentos.agent.account_status import (
     AccountIdentity,
     AccountIdentityMatch,
@@ -118,9 +118,8 @@ def _claude_account_status_impl(
     expected_identity = _expected_identity(account_record)
     home_config = _load_home_config(agent.home)
     fetched_identity = _fetched_identity_from_home_config(home_config)
-    link = _linked_home_record(agent)
-    link_state = _link_state(link=link, agent=agent)
-    errors = list(_setup_errors(agent=agent, link_state=link_state, link=link))
+    auth_state = "home-config" if home_config is not None else "home-missing-config"
+    errors = list(_setup_errors(agent=agent))
     identity_match = _identity_match(expected_identity, fetched_identity)
     if identity_match == "mismatched":
         errors.append(
@@ -191,7 +190,7 @@ def _claude_account_status_impl(
         home=agent.home,
         check_status=check_status,
         usage_status=usage_status,
-        link_state=link_state,
+        auth_state=auth_state,
         expected_identity=expected_identity,
         fetched_identity=fetched_identity,
         identity_match=identity_match,
@@ -201,7 +200,6 @@ def _claude_account_status_impl(
         errors=tuple(errors),
         usage_errors=tuple(usage_errors),
         raw={
-            "link": link,
             "oauth_account": (
                 home_config.get("oauthAccount")
                 if isinstance(home_config, dict)
@@ -261,30 +259,9 @@ def _identity_match(
     return "mismatched"
 
 
-def _linked_home_record(agent: Agent) -> dict[str, object] | None:
-    assert agent.home is not None
-    links = load_links(agent.provider).get("links")
-    if not isinstance(links, dict):
-        return None
-    link = links.get(str(agent.home.expanduser().resolve()))
-    return link if isinstance(link, dict) else None
-
-
-def _link_state(*, link: dict[str, object] | None, agent: Agent) -> str:
-    if link is None:
-        return "unlinked"
-    if link.get("kind") != "claimed":
-        return "unsupported-link"
-    if agent.account is None or link.get("account") != agent.account.account:
-        return "mismatched"
-    return "claimed-unverified"
-
-
 def _setup_errors(
     *,
     agent: Agent,
-    link_state: str,
-    link: dict[str, object] | None,
 ) -> tuple[AccountStatusError, ...]:
     errors: list[AccountStatusError] = []
     if agent.home is None:
@@ -300,18 +277,6 @@ def _setup_errors(
             AccountStatusError(
                 error_type="home_missing",
                 message=f"claude-code account home does not exist: {agent.home}",
-            )
-        )
-    if link_state != "claimed-unverified":
-        errors.append(
-            AccountStatusError(
-                error_type="home_link_unusable",
-                message=f"claude-code account home link is not usable: {link_state}",
-                detail={
-                    "link_state": link_state,
-                    "home": str(agent.home),
-                    "link": link,
-                },
             )
         )
     return tuple(errors)

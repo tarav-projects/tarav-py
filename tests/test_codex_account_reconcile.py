@@ -43,7 +43,7 @@ def test_codex_reconcile_registers_fresh_known_home_and_syncs_system_home(
     )
     write_global_config(
         agentos_home / "config.json",
-        provider_instances=[
+        provider_profiles=[
             {"id": "codex-br", "provider": "codex", "home": str(configured_home)}
         ],
     )
@@ -57,7 +57,7 @@ def test_codex_reconcile_registers_fresh_known_home_and_syncs_system_home(
     assert isinstance(actions, list)
     assert {action["kind"] for action in actions if isinstance(action, dict)} == {
         "registered_artifact",
-        "synced_linked_home",
+        "synced_home",
     }
     account_payload = read_json_file(agentos_home / "accounts" / "codex" / "accounts.json")
     assert account_payload["accounts"]["br"]["active_artifact_id"] == fresh_info.sha256
@@ -65,7 +65,6 @@ def test_codex_reconcile_registers_fresh_known_home_and_syncs_system_home(
     assert {artifact["artifact_id"] for artifact in artifacts} >= {fresh_info.sha256}
     system_status = inspect_codex_account_home(home=system_home)
     assert system_status["classification"] == "matching-active"
-    assert system_status["link_consistency"] == "verified"
     assert system_status["auth"]["artifact_id"] == fresh_info.sha256
 
 
@@ -78,7 +77,7 @@ def test_codex_reconcile_warns_and_skips_unknown_account_auth(
     write_text_file(configured_home / "auth.json", codex_auth_json(account_id="acc_unknown"))
     write_global_config(
         agentos_home / "config.json",
-        provider_instances=[
+        provider_profiles=[
             {"id": "codex-unknown", "provider": "codex", "home": str(configured_home)}
         ],
     )
@@ -94,7 +93,7 @@ def test_codex_reconcile_warns_and_skips_unknown_account_auth(
     assert not (agentos_home / "accounts" / "codex" / "artifacts.jsonl").exists()
 
 
-def test_codex_reconcile_does_not_activate_older_stale_linked_auth(
+def test_codex_reconcile_does_not_activate_older_stale_system_auth(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -126,7 +125,6 @@ def test_codex_reconcile_does_not_activate_older_stale_linked_auth(
     assert registered[0]["detail"]["activated"] is False
     system_status = inspect_codex_account_home(home=system_home)
     assert system_status["auth"]["artifact_id"] == active_info.sha256
-    assert system_status["link_consistency"] == "verified"
 
 
 def test_codex_reconcile_check_does_not_mutate(
@@ -143,7 +141,7 @@ def test_codex_reconcile_check_does_not_mutate(
     )
     write_global_config(
         agentos_home / "config.json",
-        provider_instances=[
+        provider_profiles=[
             {"id": "codex-br", "provider": "codex", "home": str(configured_home)}
         ],
     )
@@ -163,25 +161,22 @@ def test_codex_reconcile_discovers_only_known_homes(
     tmp_path: Path,
 ) -> None:
     _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
-    linked_home = tmp_path / "linked-codex"
     configured_home = tmp_path / "configured-codex"
     old_auth = tmp_path / "auth.json"
     write_text_file(old_auth, codex_auth_json(account_id="acc_br"))
     write_global_config(
         agentos_home / "config.json",
-        provider_instances=[
+        provider_profiles=[
             {"id": "codex-br", "provider": "codex", "home": str(configured_home)}
         ],
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
-    link_codex_account_to_home(home=linked_home, account="br")
 
     homes = discover_codex_reconcile_homes(start_path=tmp_path)
 
     discovered = {home["home"] for home in homes}
     assert discovered == {
         str(configured_home.resolve()),
-        str(linked_home.resolve()),
         str((agentos_home / "agent" / "homes" / "codex" / "br").resolve()),
     }
 
@@ -201,7 +196,7 @@ def test_codex_account_status_runs_reconciliation_before_usage(
     )
     write_global_config(
         agentos_home / "config.json",
-        provider_instances=[
+        provider_profiles=[
             {"id": "codex-br", "provider": "codex", "home": str(configured_home)}
         ],
     )

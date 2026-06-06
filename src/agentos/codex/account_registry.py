@@ -16,11 +16,9 @@ from agentos.agent.account_registry import (
     artifacts_dir,
     load_account,
     load_accounts,
-    load_links,
     record_account_event,
     read_artifacts,
     upsert_account,
-    upsert_link,
 )
 
 CODEX_AUTH_FILENAME = "auth.json"
@@ -127,6 +125,7 @@ def link_codex_account_to_home(
     home: Path,
     account: str,
     force: bool = False,
+    record_event: bool = True,
     argv: list[str] | tuple[str, ...] = (),
 ) -> dict[str, object]:
     normalized_home = home.expanduser().resolve()
@@ -140,7 +139,7 @@ def link_codex_account_to_home(
         raise CliError(f"codex account active artifact file does not exist: {source_auth}")
 
     try:
-        target_state = _inspect_target_before_link(
+        target_state = _inspect_target_before_materialization(
             auth_path,
             requested_account=normalized_account,
             force=force,
@@ -148,17 +147,6 @@ def link_codex_account_to_home(
         )
         _copy_auth_to_home(source_auth, auth_path)
         copied_info = read_codex_auth_info(auth_path)
-        previous_link, link_record = upsert_link(
-            CODEX_PROVIDER,
-            normalized_home,
-            {
-                "kind": "artifact",
-                "account": normalized_account,
-                "account_id": account_id,
-                "artifact_id": active_artifact_id,
-                "auth_path": str(auth_path),
-            },
-        )
         payload = {
             "provider": CODEX_PROVIDER,
             "account": normalized_account,
@@ -169,17 +157,16 @@ def link_codex_account_to_home(
             "force": force,
             "artifact_id": active_artifact_id,
             "copied_artifact_id": copied_info.sha256,
-            "target_before_link": target_state,
-            "previous_link": previous_link,
-            "link": link_record,
+            "target_before_materialization": target_state,
         }
-        record_account_event(
-            event_type="agent.accounts.link",
-            command="agent accounts link",
-            argv=argv,
-            status="ok",
-            payload=payload,
-        )
+        if record_event:
+            record_account_event(
+                event_type="agent.accounts.link",
+                command="agent accounts link",
+                argv=argv,
+                status="ok",
+                payload=payload,
+            )
         return {
             "status": "ok",
             "command": "agent accounts link",
@@ -191,9 +178,7 @@ def link_codex_account_to_home(
             "force": force,
             "source_auth_file": str(source_auth),
             "copied_auth": copied_info.safe_payload(),
-            "target_before_link": target_state,
-            "previous_link": previous_link,
-            "link": link_record,
+            "target_before_materialization": target_state,
         }
     except CliError as exc:
         _record_link_failure(
@@ -210,7 +195,6 @@ def link_codex_account_to_home(
 def inspect_codex_account_home(*, home: Path) -> dict[str, object]:
     normalized_home = home.expanduser().resolve()
     auth_path = _home_auth_path(normalized_home)
-    link = _link_for_home(normalized_home)
     base: dict[str, object] = {
         "status": "ok",
         "command": "agent accounts status",
@@ -218,18 +202,15 @@ def inspect_codex_account_home(*, home: Path) -> dict[str, object]:
         "home": str(normalized_home),
         "auth_path": str(auth_path),
         "path_kind": _path_kind(auth_path),
-        "link": link,
     }
     if not auth_path.exists() and not auth_path.is_symlink():
         base["classification"] = "missing"
-        base["link_consistency"] = "missing" if link is not None else "unlinked"
         return base
 
     try:
         info = read_codex_auth_info(auth_path)
     except CliError as exc:
         base["classification"] = "broken"
-        base["link_consistency"] = "broken" if link is not None else "unlinked-broken"
         base["error"] = str(exc)
         return base
 
@@ -251,7 +232,6 @@ def inspect_codex_account_home(*, home: Path) -> dict[str, object]:
         base["classification"] = "known-account-new-hash"
     else:
         base["classification"] = "unknown"
-    base["link_consistency"] = _codex_link_consistency(link, info)
     return base
 
 
@@ -286,7 +266,7 @@ def read_codex_auth_info(path: Path) -> CodexAuthInfo:
     )
 
 
-def _inspect_target_before_link(
+def _inspect_target_before_materialization(
     auth_path: Path,
     *,
     requested_account: str,
@@ -456,33 +436,6 @@ def _single_account_for_account_id(account_id: str) -> str | None:
             f"account_id {account_id} is registered as {', '.join(accounts)}"
         )
     return accounts[0]
-
-
-def _link_for_home(home: Path) -> dict[str, object] | None:
-    links = load_links(CODEX_PROVIDER).get("links")
-    if not isinstance(links, dict):
-        return None
-    link = links.get(str(home.expanduser().resolve()))
-    return link if isinstance(link, dict) else None
-
-
-def _codex_link_consistency(link: dict[str, object] | None, info: CodexAuthInfo) -> str:
-    if link is None:
-        return "unlinked"
-    if link.get("kind") != "artifact":
-        return "mismatched-kind"
-    artifact_id = _string_or_none(link.get("artifact_id"))
-    account = _string_or_none(link.get("account"))
-    if artifact_id == info.sha256:
-        return "verified"
-    if account is not None:
-        try:
-            account_record = load_account(CODEX_PROVIDER, account)
-        except CliError:
-            return "stale"
-        if account_record.get("account_id") == info.account_id:
-            return "stale"
-    return "mismatched"
 
 
 def _path_kind(path: Path) -> str:

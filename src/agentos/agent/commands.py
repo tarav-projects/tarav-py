@@ -12,7 +12,16 @@ from threading import Thread
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
 from agentos.agent.primitives import Agent
+from agentos.agent.account_registry import record_account_event
+from agentos.agent.config import (
+    load_agent_profile,
+    profile_path,
+    profiles_root,
+    update_agent_profile_account,
+)
+from agentos._core.path_validation import validate_string_for_path
 from agentos.agent.providers import load_configured_agents, resolve_agent
+from agentos.agent.run_preflight import run_agent_preflight
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.providers import canonical_provider_families
 
@@ -41,6 +50,8 @@ def _format_instance_line(agent: Agent) -> str:
         suffix_parts.append(agent.label)
     if agent.default_model is not None:
         suffix_parts.append(f"model={agent.default_model}")
+    if agent.account is not None:
+        suffix_parts.append(f"account={agent.account.account}")
     if agent.home is not None:
         suffix_parts.append(f"home={agent.home}")
 
@@ -78,6 +89,45 @@ def _cmd_agent_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_agent_profiles_show(args: argparse.Namespace) -> int:
+    path = profile_path(args.id)
+    if not path.exists():
+        raise CliError(f"agent profile not found: {args.id}")
+    print(path.read_text(), end="")
+    return 0
+
+
+def _agent_profile_template(profile_id: str) -> str:
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "id": profile_id,
+            "provider": "<provider>",
+            "label": "",
+            "home": "",
+            "cli_command": [],
+            "default_model": "",
+            "model_flag": "",
+            "run_args": [],
+            "env": {},
+        },
+        indent=2,
+    ) + "\n"
+
+
+def _cmd_agent_profiles_new(args: argparse.Namespace) -> int:
+    if args.id is None:
+        profile_id = "<id>"
+        path = profiles_root() / f"{profile_id}.json"
+    else:
+        validate_string_for_path(args.id, field_name="profile")
+        profile_id = args.id
+        path = profile_path(profile_id)
+    print(path)
+    print(_agent_profile_template(profile_id), end="")
+    return 0
+
+
 def _resolve_run_prompt(prompt: str | None, raw_argv: tuple[str, ...]) -> str | None:
     if prompt is not None and raw_argv:
         raise CliError("--prompt cannot be combined with provider arguments after --")
@@ -106,13 +156,25 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         argv=argv,
         interaction_mode=interaction_mode,
     )
+    config_start_path = _config_start_path(args)
+    preflight = run_agent_preflight(
+        agent=agent,
+        command_config=command_config,
+        start_path=config_start_path,
+        dry_run=args.dry_run,
+        source="agent.run",
+    )
 
     if args.dry_run:
         dry_result = agent.run_dry(command_config)
+        for line in preflight.lines:
+            print(line)
         for line in dry_result.lines:
             print(line)
         return 0
 
+    for line in preflight.lines:
+        print(line)
     result = agent.run(command_config, run_config)
     return result.exit_code
 
@@ -186,6 +248,14 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
     )
     if command_config.model is None and agent.ping.model is not None:
         command_config = replace(command_config, model=agent.ping.model)
+    preflight = run_agent_preflight(
+        agent=agent,
+        command_config=command_config,
+        start_path=_config_start_path(args),
+        source="agent.ping",
+    )
+    for line in preflight.lines:
+        print(line)
     started_at = time.perf_counter()
     result = agent.run(command_config, AgentRunConfig(cwd=cwd, process_mode="capture"))
     elapsed_ms = round((time.perf_counter() - started_at) * 1000)
@@ -291,6 +361,17 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
+    if args.profile is not None:
+        payload = _link_account_profile(args)
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(_format_agent_accounts_link(payload))
+        return 0
+    if args.provider is None:
+        raise CliError("agent accounts link requires --profile or --provider")
+    if args.home is None:
+        raise CliError("agent accounts link without --profile requires --home")
     if args.provider == "codex":
         from agentos.codex.account_registry import link_codex_account_to_home
 
@@ -334,6 +415,102 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
             print(_format_agent_accounts_link(payload))
         return 0
     raise CliError(f"agent accounts link is not supported for provider {args.provider}")
+
+
+def _link_account_profile(args: argparse.Namespace) -> dict[str, object]:
+    if args.home is not None:
+        raise CliError("agent accounts link --profile does not accept --home")
+    current_profile = load_agent_profile(args.profile)
+    if args.provider is not None and args.provider != current_profile.provider:
+        raise CliError(
+            f"profile {args.profile!r} uses provider {current_profile.provider}, not {args.provider}"
+        )
+    profile_config, previous_account, profile_path = update_agent_profile_account(
+        args.profile,
+        args.account,
+    )
+    if profile_config.home is None:
+        raise CliError(f"agent profile {args.profile!r} does not define home")
+
+    payload = _link_provider_account_to_home(
+        provider=profile_config.provider,
+        home=profile_config.home,
+        account=args.account,
+        force=args.force,
+        argv=getattr(args, "_agentos_argv", []),
+    )
+    record_account_event(
+        event_type="account.auth.materialized",
+        command="agent accounts link",
+        argv=getattr(args, "_agentos_argv", []),
+        status="ok",
+        payload={
+            "provider": profile_config.provider,
+            "profile": args.profile,
+            "home": str(profile_config.home),
+            "account": args.account,
+            "artifact_id": payload.get("artifact_id"),
+        },
+    )
+    record_account_event(
+        event_type="profile.account.changed",
+        command="agent accounts link",
+        argv=getattr(args, "_agentos_argv", []),
+        status="ok",
+        payload={
+            "provider": profile_config.provider,
+            "profile": args.profile,
+            "home": str(profile_config.home),
+            "from_account": previous_account,
+            "to_account": args.account,
+            "profile_path": str(profile_path),
+        },
+    )
+    return {
+        **payload,
+        "profile": args.profile,
+        "profile_path": str(profile_path),
+        "previous_profile_account": previous_account,
+    }
+
+
+def _link_provider_account_to_home(
+    *,
+    provider: str,
+    home: Path,
+    account: str,
+    force: bool,
+    argv: list[str] | tuple[str, ...],
+) -> dict[str, object]:
+    if provider == "codex":
+        from agentos.codex.account_registry import link_codex_account_to_home
+
+        return link_codex_account_to_home(
+            home=home,
+            account=account,
+            force=force,
+            record_event=False,
+            argv=argv,
+        )
+    if provider == "claude-code":
+        from agentos.claude.account_registry import link_claude_account_to_home
+
+        return link_claude_account_to_home(
+            home=home,
+            account=account,
+            force=force,
+            argv=argv,
+        )
+    if provider == "copilot-cli":
+        from agentos.copilot.account_registry import link_copilot_account_to_home
+
+        return link_copilot_account_to_home(
+            home=home,
+            account=account,
+            force=force,
+            argv=argv,
+        )
+    raise CliError(f"agent accounts link is not supported for provider {provider}")
 
 
 def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
@@ -423,9 +600,7 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
             print(_format_agent_accounts_status(payload))
         return 0
     if args.home is not None:
-        payload = _inspect_claimed_account_home(
-            provider=args.provider, home=Path(args.home)
-        )
+        payload = _inspect_account_home(provider=args.provider, home=Path(args.home))
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
         else:
@@ -493,24 +668,14 @@ def _start_monitor_enter_trigger_thread(loop) -> Thread:
     return thread
 
 
-def _inspect_claimed_account_home(*, provider: str, home: Path) -> dict[str, object]:
-    from agentos.agent.account_registry import load_links
-
+def _inspect_account_home(*, provider: str, home: Path) -> dict[str, object]:
     normalized_home = str(home.expanduser().resolve())
-    links = load_links(provider).get("links")
-    link = links.get(normalized_home) if isinstance(links, dict) else None
     return {
         "status": "ok",
         "command": "agent accounts status",
         "provider": provider,
         "home": normalized_home,
-        "classification": "claimed"
-        if isinstance(link, dict) and link.get("kind") == "claimed"
-        else "unlinked",
-        "link_consistency": "claimed-unverified"
-        if isinstance(link, dict) and link.get("kind") == "claimed"
-        else "unlinked",
-        "link": link if isinstance(link, dict) else None,
+        "classification": "exists" if Path(normalized_home).exists() else "missing",
     }
 
 
@@ -536,9 +701,6 @@ def _format_agent_accounts_status(payload: dict[str, object]) -> str:
     auth_path = payload.get("auth_path")
     if isinstance(auth_path, str):
         lines.insert(2, f"Auth file: {auth_path}")
-    link_consistency = payload.get("link_consistency")
-    if isinstance(link_consistency, str):
-        lines.append(f"Link: {link_consistency}")
     auth = payload.get("auth")
     if isinstance(auth, dict):
         lines.append(f"Account ID: {auth.get('account_id', '<unknown>')}")
@@ -566,12 +728,6 @@ def _format_agent_accounts_status(payload: dict[str, object]) -> str:
         )
         if accounts:
             lines.append(f"Known account aliases: {', '.join(accounts)}")
-    link = payload.get("link")
-    if isinstance(link, dict):
-        account = link.get("account")
-        kind = link.get("kind")
-        if isinstance(account, str) and isinstance(kind, str):
-            lines.append(f"Linked account: {account} ({kind})")
     return "\n".join(lines)
 
 
@@ -589,12 +745,9 @@ def _format_agent_accounts_registry_overview(payload: dict[str, object]) -> str:
             if not isinstance(item, dict):
                 continue
             lines.append(_format_agent_account_line(item))
-    links = payload.get("link_count")
     artifacts = payload.get("artifact_count")
     if isinstance(artifacts, int):
         lines.insert(4, f"Artifacts: {artifacts}")
-    if isinstance(links, int):
-        lines.insert(5, f"Links: {links}")
     return "\n".join(lines)
 
 
@@ -626,7 +779,7 @@ def _add_agent_run_target_args(
 ) -> None:
     parser.add_argument(
         "--provider",
-        required=True,
+        default=None,
         choices=_AGENT_PROVIDER_CHOICES,
         help=provider_help,
     )
@@ -727,11 +880,6 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Local AgentOS account alias to register.",
     )
     accounts_register_parser.add_argument(
-        "--home",
-        default=None,
-        help="Deprecated for account registration; use accounts link to associate a home.",
-    )
-    accounts_register_parser.add_argument(
         "--email",
         default=None,
         help="Account email metadata. Required for claude-code; optional fallback for codex.",
@@ -759,13 +907,18 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     accounts_link_parser.add_argument(
         "--provider",
-        required=True,
+        default=None,
         choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
         help="Provider family to link.",
     )
     accounts_link_parser.add_argument(
+        "--profile",
+        default=None,
+        help="Agent profile whose account binding should be updated and materialized.",
+    )
+    accounts_link_parser.add_argument(
         "--home",
-        required=True,
+        default=None,
         help="Provider home to receive auth.json.",
     )
     accounts_link_parser.add_argument(
@@ -882,6 +1035,37 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Print monitor state and frame as JSON.",
     )
     accounts_monitor_parser.set_defaults(handler=_cmd_agent_accounts_monitor)
+
+    profiles_parser = agent_subparsers.add_parser(
+        "profiles",
+        help="Manage agent profile files.",
+    )
+    profiles_subparsers = profiles_parser.add_subparsers(
+        dest="agent_profiles_command",
+        required=True,
+    )
+
+    profiles_show_parser = profiles_subparsers.add_parser(
+        "show",
+        help="Print the raw JSON of an agent profile file.",
+    )
+    profiles_show_parser.add_argument(
+        "--id",
+        required=True,
+        help="Agent profile id to show.",
+    )
+    profiles_show_parser.set_defaults(handler=_cmd_agent_profiles_show)
+
+    profiles_new_parser = profiles_subparsers.add_parser(
+        "new",
+        help="Scaffold a new agent profile file. Prints the template to stdout when --id is omitted.",
+    )
+    profiles_new_parser.add_argument(
+        "--id",
+        default=None,
+        help="Agent profile id to create. Omit to print the template to stdout.",
+    )
+    profiles_new_parser.set_defaults(handler=_cmd_agent_profiles_new)
 
     run_parser = agent_subparsers.add_parser(
         "run",

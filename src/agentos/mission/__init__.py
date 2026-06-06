@@ -1,1 +1,1 @@
-from .commands import register_mission_commands
+from .commands import register_mission_commands as register_mission_commands

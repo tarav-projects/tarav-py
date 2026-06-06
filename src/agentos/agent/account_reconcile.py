@@ -11,7 +11,7 @@ class AccountReconcileRequest:
     home: Path | None = None
     start_path: Path | str = "."
     register_discovered: bool = True
-    sync_stale_links: bool = True
+    sync_homes: bool = True
     check: bool = False
     argv: tuple[str, ...] = ()
 
@@ -84,4 +84,3 @@ class AccountReconcileResult:
             "warnings": [warning.summary() for warning in self.warnings],
             "active_artifacts": list(self.active_artifacts),
         }
-

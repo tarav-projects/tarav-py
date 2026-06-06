@@ -1151,7 +1151,7 @@ def _account_status_summary_from_usage_record(
         home=target.home,
         check_status="ok",
         usage_status="ok",
-        link_state="registry_latest",
+        auth_state="registry_latest",
         expected_identity=AccountIdentity(),
         fetched_identity=None,
         identity_match="unknown",

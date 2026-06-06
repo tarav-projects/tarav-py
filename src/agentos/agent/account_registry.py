@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 
 from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
-from agentos._core.project_command_log import record_activity_event
 from agentos.agent.session_utils import string_or_none
 
 ACCOUNT_REGISTRY_SCHEMA_VERSION = 1
-LINK_REGISTRY_SCHEMA_VERSION = 1
 
 
 def account_provider_root(provider: str) -> Path:
@@ -31,8 +30,18 @@ def artifacts_dir(provider: str) -> Path:
     return account_provider_root(provider) / "artifacts"
 
 
-def links_path(provider: str) -> Path:
-    return account_provider_root(provider) / "links.json"
+def account_events_root() -> Path:
+    return agentos_home_dir() / "accounts" / "events"
+
+
+def account_events_path(timestamp: str | None = None) -> Path:
+    event_time = timestamp or utc_now_iso()
+    normalized = event_time[:-1] + "+00:00" if event_time.endswith("Z") else event_time
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise CliError(f"invalid account event timestamp: {event_time}") from exc
+    return account_events_root() / f"{parsed.strftime('%Y%m%d')}.jsonl"
 
 
 def load_accounts(provider: str) -> dict[str, object]:
@@ -142,74 +151,25 @@ def append_artifact(provider: str, entry: dict[str, object]) -> tuple[dict[str, 
     return normalized_entry, True
 
 
-def load_links(provider: str) -> dict[str, object]:
-    normalized_provider = validate_string_for_path(provider, field_name="provider")
-    path = links_path(normalized_provider)
-    if not path.exists():
-        return _empty_links(normalized_provider)
-    payload = _load_json_object(path, description="link registry")
-    if payload.get("provider") != normalized_provider:
-        raise CliError(f"link registry provider does not match path: {path}")
-    links = payload.get("links")
-    if not isinstance(links, dict):
-        raise CliError(f"link registry field links must be a JSON object: {path}")
-    return payload
-
-
-def upsert_link(provider: str, home: Path, link: dict[str, object]) -> tuple[dict[str, object] | None, dict[str, object]]:
-    normalized_provider = validate_string_for_path(provider, field_name="provider")
-    normalized_home = str(home.expanduser().resolve())
-    registry = load_links(normalized_provider)
-    links = registry["links"]
-    if not isinstance(links, dict):
-        raise CliError(f"link registry field links must be a JSON object: {links_path(normalized_provider)}")
-    previous = links.get(normalized_home)
-    if previous is not None and not isinstance(previous, dict):
-        raise CliError(f"link registry entry must be a JSON object: {links_path(normalized_provider)}#{normalized_home}")
-    record = {
-        "provider": normalized_provider,
-        "home": normalized_home,
-        "updated_at": utc_now_iso(),
-        **{key: value for key, value in link.items() if value is not None},
-    }
-    links[normalized_home] = record
-    write_links(normalized_provider, registry)
-    return previous, record
-
-
-def write_links(provider: str, payload: dict[str, object]) -> None:
-    normalized_provider = validate_string_for_path(provider, field_name="provider")
-    payload["schema_version"] = LINK_REGISTRY_SCHEMA_VERSION
-    payload["provider"] = normalized_provider
-    if not isinstance(payload.get("links"), dict):
-        payload["links"] = {}
-    _write_json_file(links_path(normalized_provider), payload)
-
-
 def inspect_account_registry(provider: str | None = None) -> dict[str, object]:
     providers = [validate_string_for_path(provider, field_name="provider")] if provider is not None else _registered_providers()
     accounts: list[dict[str, object]] = []
     artifact_count = 0
-    link_count = 0
     provider_summaries: list[dict[str, object]] = []
     for provider_name in providers:
         account_payload = load_accounts(provider_name)
         provider_accounts = _account_records(account_payload)
         artifacts = read_artifacts(provider_name)
-        links = _link_records(load_links(provider_name))
         accounts.extend(provider_accounts)
         artifact_count += len(artifacts)
-        link_count += len(links)
         provider_summaries.append(
             {
                 "provider": provider_name,
                 "root": str(account_provider_root(provider_name)),
                 "account_count": len(provider_accounts),
                 "artifact_count": len(artifacts),
-                "link_count": len(links),
                 "accounts_path": str(accounts_path(provider_name)),
                 "artifacts_path": str(artifacts_path(provider_name)),
-                "links_path": str(links_path(provider_name)),
             }
         )
     return {
@@ -220,7 +180,6 @@ def inspect_account_registry(provider: str | None = None) -> dict[str, object]:
         "provider_count": len(providers),
         "account_count": len(accounts),
         "artifact_count": artifact_count,
-        "link_count": link_count,
         "providers": provider_summaries,
         "accounts": sorted(accounts, key=lambda item: (str(item.get("provider", "")), str(item.get("account", "")))),
     }
@@ -234,13 +193,26 @@ def record_account_event(
     status: str,
     payload: dict[str, object],
 ) -> None:
-    record_activity_event(
-        event_type=event_type,
-        command=command,
-        argv=argv,
-        status=status,
-        payload=payload,
-    )
+    provider = _required_string(payload, "provider")
+    event_time = utc_now_iso()
+    event = {
+        "time": event_time,
+        "event": event_type,
+        "provider": provider,
+        "source": command,
+        "argv": list(argv),
+        "status": status,
+        **_redacted_event_payload(payload),
+    }
+    path = account_events_path(event_time)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
+
+
+def _redacted_event_payload(payload: dict[str, object]) -> dict[str, object]:
+    blocked = {"auth", "copied_auth", "target_before_materialization"}
+    return {key: value for key, value in payload.items() if key not in blocked}
 
 
 def _account_records(payload: dict[str, object]) -> list[dict[str, object]]:
@@ -255,18 +227,15 @@ def _account_records(payload: dict[str, object]) -> list[dict[str, object]]:
     return records
 
 
-def _link_records(payload: dict[str, object]) -> list[dict[str, object]]:
-    links = payload.get("links")
-    if not isinstance(links, dict):
-        return []
-    return [link for link in links.values() if isinstance(link, dict)]
-
-
 def _registered_providers() -> list[str]:
     root = agentos_home_dir() / "accounts"
     if not root.exists():
         return []
-    return sorted(path.name for path in root.iterdir() if path.is_dir())
+    return sorted(
+        path.name
+        for path in root.iterdir()
+        if path.is_dir() and path.name != "events"
+    )
 
 
 def _validate_account_record(record: dict[str, object], *, provider: str, account: str) -> None:
@@ -279,14 +248,6 @@ def _empty_accounts(provider: str) -> dict[str, object]:
         "schema_version": ACCOUNT_REGISTRY_SCHEMA_VERSION,
         "provider": provider,
         "accounts": {},
-    }
-
-
-def _empty_links(provider: str) -> dict[str, object]:
-    return {
-        "schema_version": LINK_REGISTRY_SCHEMA_VERSION,
-        "provider": provider,
-        "links": {},
     }
 
 
@@ -316,17 +277,16 @@ def _required_string(payload: dict[str, object], field: str) -> str:
 
 __all__ = [
     "account_provider_root",
+    "account_events_path",
+    "account_events_root",
     "accounts_path",
     "append_artifact",
     "artifacts_dir",
     "artifacts_path",
     "inspect_account_registry",
-    "links_path",
     "load_account",
     "load_accounts",
-    "load_links",
     "record_account_event",
     "read_artifacts",
     "upsert_account",
-    "upsert_link",
 ]

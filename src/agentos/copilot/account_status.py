@@ -10,7 +10,7 @@ from typing import Any
 
 from agentos._core.errors import CliError
 from agentos._core.process import run_process
-from agentos.agent.account_registry import load_account, load_links
+from agentos.agent.account_registry import load_account
 from agentos.agent.account_status import (
     AccountIdentity,
     AccountIdentityMatch,
@@ -51,9 +51,8 @@ def _copilot_account_status_impl(
 
     account_record = load_account(agent.provider, agent.account.account)
     expected_identity = _expected_identity(account_record)
-    link = _linked_home_record(agent)
-    link_state = _link_state(link=link, agent=agent)
-    errors = list(_setup_errors(agent=agent, link_state=link_state, link=link))
+    auth_state = "home-present" if agent.home.exists() else "home-missing"
+    errors = list(_setup_errors(agent=agent))
 
     fetched_identity: AccountIdentity | None = None
     identity_match: AccountIdentityMatch = "unavailable"
@@ -144,7 +143,7 @@ def _copilot_account_status_impl(
         home=agent.home,
         check_status="error" if errors else "ok",
         usage_status=usage_status,
-        link_state=link_state,
+        auth_state=auth_state,
         expected_identity=expected_identity,
         fetched_identity=fetched_identity,
         identity_match=identity_match,
@@ -154,7 +153,6 @@ def _copilot_account_status_impl(
         errors=tuple(errors),
         usage_errors=tuple(usage_errors),
         raw={
-            "link": link,
             "usage": usage_payload,
             "usage_record": usage_record_metadata,
         },
@@ -198,30 +196,9 @@ def _identity_match(
     return "mismatched"
 
 
-def _linked_home_record(agent: Agent) -> dict[str, object] | None:
-    assert agent.home is not None
-    links = load_links(agent.provider).get("links")
-    if not isinstance(links, dict):
-        return None
-    link = links.get(str(agent.home.expanduser().resolve()))
-    return link if isinstance(link, dict) else None
-
-
-def _link_state(*, link: dict[str, object] | None, agent: Agent) -> str:
-    if link is None:
-        return "unlinked"
-    if link.get("kind") != "claimed":
-        return "unsupported-link"
-    if agent.account is None or link.get("account") != agent.account.account:
-        return "mismatched"
-    return "claimed-unverified"
-
-
 def _setup_errors(
     *,
     agent: Agent,
-    link_state: str,
-    link: dict[str, object] | None,
 ) -> tuple[AccountStatusError, ...]:
     errors: list[AccountStatusError] = []
     if agent.home is None:
@@ -237,18 +214,6 @@ def _setup_errors(
             AccountStatusError(
                 error_type="home_missing",
                 message=f"copilot-cli account home does not exist: {agent.home}",
-            )
-        )
-    if link_state != "claimed-unverified":
-        errors.append(
-            AccountStatusError(
-                error_type="home_link_unusable",
-                message=f"copilot-cli account home link is not usable: {link_state}",
-                detail={
-                    "link_state": link_state,
-                    "home": str(agent.home),
-                    "link": link,
-                },
             )
         )
     return tuple(errors)

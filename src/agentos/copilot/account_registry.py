@@ -8,7 +8,6 @@ from agentos.agent.account_registry import (
     load_account,
     record_account_event,
     upsert_account,
-    upsert_link,
 )
 
 
@@ -76,15 +75,6 @@ def link_copilot_account_to_home(
             f"{COPILOT_PROVIDER} account {normalized_account}"
         )
     normalized_home = home.expanduser().resolve()
-    previous_link, link_record = upsert_link(
-        COPILOT_PROVIDER,
-        normalized_home,
-        {
-            "kind": "claimed",
-            "account": normalized_account,
-            "auth_kind": COPILOT_AUTH_KIND,
-        },
-    )
     record_account_event(
         event_type="agent.accounts.link",
         command="agent accounts link",
@@ -96,8 +86,6 @@ def link_copilot_account_to_home(
             "home": str(normalized_home),
             "kind": "claimed",
             "force": force,
-            "previous_link": previous_link,
-            "link": link_record,
         },
     )
     return {
@@ -108,8 +96,6 @@ def link_copilot_account_to_home(
         "home": str(normalized_home),
         "kind": "claimed",
         "force": force,
-        "previous_link": previous_link,
-        "link": link_record,
     }
 
 
