@@ -20,6 +20,7 @@ from agentos.agent.config import (
     update_agent_profile_account,
 )
 from agentos._core.path_validation import validate_string_for_path
+from agentos.agent._cli_common import format_json_output
 from agentos.agent.providers import load_configured_agents, resolve_agent
 from agentos.agent.run_preflight import run_agent_preflight
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
@@ -74,7 +75,7 @@ def _cmd_agent_list(args: argparse.Namespace) -> int:
         payload = {
             "instances": [agent.summary() for agent in agents],
         }
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print(format_json_output(payload))
         return 0
 
     if not agents:
@@ -310,16 +311,14 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
         from agentos.codex.account_registry import register_codex_account_from_auth_file
 
         print(
-            json.dumps(
+            format_json_output(
                 register_codex_account_from_auth_file(
                     auth_file=Path(args.auth_file),
                     account=args.account,
                     email=args.email,
                     register_only=args.register_only,
                     argv=getattr(args, "_agentos_argv", []),
-                ),
-                indent=2,
-                sort_keys=True,
+                )
             )
         )
         return 0
@@ -364,7 +363,7 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
     if args.profile is not None:
         payload = _link_account_profile(args)
         if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(format_json_output(payload))
         else:
             print(_format_agent_accounts_link(payload))
         return 0
@@ -382,7 +381,7 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
             argv=getattr(args, "_agentos_argv", []),
         )
         if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(format_json_output(payload))
         else:
             print(_format_agent_accounts_link(payload))
         return 0
@@ -396,7 +395,7 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
             argv=getattr(args, "_agentos_argv", []),
         )
         if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(format_json_output(payload))
         else:
             print(_format_agent_accounts_link(payload))
         return 0
@@ -410,7 +409,7 @@ def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
             argv=getattr(args, "_agentos_argv", []),
         )
         if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(format_json_output(payload))
         else:
             print(_format_agent_accounts_link(payload))
         return 0
@@ -525,7 +524,7 @@ def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
             argv=getattr(args, "_agentos_argv", []),
         )
         if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(format_json_output(payload))
         else:
             print(_format_agent_accounts_reconcile(payload))
         return 0
@@ -595,14 +594,14 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
 
         payload = inspect_codex_account_home(home=Path(args.home))
         if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(format_json_output(payload))
         else:
             print(_format_agent_accounts_status(payload))
         return 0
     if args.home is not None:
         payload = _inspect_account_home(provider=args.provider, home=Path(args.home))
         if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print(format_json_output(payload))
         else:
             print(_format_agent_accounts_status(payload))
         return 0
@@ -686,7 +685,7 @@ def _cmd_agent_accounts_registry_status(
 
     payload = inspect_account_registry(provider)
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print(format_json_output(payload))
     else:
         print(_format_agent_accounts_registry_overview(payload))
     return 0

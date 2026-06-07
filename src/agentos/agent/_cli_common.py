@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import time
 from typing import Sequence
@@ -41,9 +42,7 @@ def optional_string_tuple(values: Sequence[str] | None) -> tuple[str, ...] | Non
 
 
 def format_json_output(payload: object) -> str:
-    import json
-
-    return json.dumps(payload, indent=2)
+    return json.dumps(payload, indent=2, sort_keys=True)
 
 
 __all__ = ["format_json_output", "normalize_updated_since", "optional_string_tuple"]
