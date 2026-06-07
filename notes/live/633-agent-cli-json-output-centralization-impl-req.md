@@ -59,4 +59,12 @@
 
 ## Impl.Log
 
-- (executer fills in)
+- Checkpoint commit: `b3d3684 chore: checkpoint before hugentics-codebase-cleaner` (captured the untracked Impl.Req itself; tree was otherwise clean).
+- Slice 1 executed:
+  - `src/agentos/agent/_cli_common.py`: lifted `import json` to module scope and changed `format_json_output` to `json.dumps(payload, indent=2, sort_keys=True)`.
+  - `src/agentos/agent/commands.py`: added `from agentos.agent._cli_common import format_json_output`. Replaced all 9 single-line `print(json.dumps(payload, indent=2, sort_keys=True))` sites.
+  - **Deviation (recorded, Gated/within-intent)**: discovered 3 additional multi-line `print(json.dumps(<call>, indent=2, sort_keys=True))` blocks at the codex / claude-code / copilot-cli account-registration branches (lines 313, 330, 346 in the pre-edit file). They follow the same convention and were folded into `format_json_output` as well — reversible and within the stated intent of removing duplicated `indent=2, sort_keys=True` literals in `commands.py`.
+  - `_agent_profile_template` (line 102) left untouched: it uses `indent=2` without `sort_keys` and appends `"\n"` — different formatting contract, explicitly excluded by the Impl.Req.
+- Slice 2 executed: `rm -rf src/agentos/tmp_folder` (only stale `__pycache__`; not git-tracked; no imports reference `agentos.tmp_folder`).
+- Verification: `uv run pytest -q` → **55 passed in 1.34s**.
+- Per executer policy, slice changes left uncommitted on top of the checkpoint commit for user review.

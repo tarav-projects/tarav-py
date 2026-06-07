@@ -276,7 +276,7 @@ class AgentBase:
     ) -> AgentRunResult:
         return execute_agent_command(
             self.build_command(command_config),
-            run_config=self._run_config_with_timeout(run_config),
+            run_config=self.resolve_run_config(run_config),
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
@@ -285,7 +285,7 @@ class AgentBase:
             lines=(*command.setup_lines, format_agent_command(command)),
         )
 
-    def _run_config_with_timeout(self, run_config: AgentRunConfig) -> AgentRunConfig:
+    def resolve_run_config(self, run_config: AgentRunConfig) -> AgentRunConfig:
         if run_config.timeout_sec is not None or self.timeout_sec is None:
             return run_config
         return AgentRunConfig(

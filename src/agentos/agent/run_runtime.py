@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -29,6 +29,7 @@ class AgentRunConfig:
 class AgentCommand:
     argv: tuple[str, ...]
     env_overrides: dict[str, str]
+    env_display_overrides: dict[str, str] = field(default_factory=dict)
     setup_lines: tuple[str, ...] = ()
 
 
@@ -106,10 +107,35 @@ def format_agent_command(command: AgentCommand) -> str:
         return shlex.join(command.argv)
 
     env_prefix = " ".join(
-        f"{key}={shlex.quote(value)}"
+        _format_env_assignment(command, key, value)
         for key, value in sorted(command.env_overrides.items())
     )
     return f"{env_prefix} {shlex.join(command.argv)}"
+
+
+def _format_env_assignment(command: AgentCommand, key: str, value: str) -> str:
+    if key in command.env_display_overrides:
+        return f"{key}={command.env_display_overrides[key]}"
+    return f"{key}={shlex.quote(value)}"
+
+
+def agent_command_with_env_overrides(
+    command: AgentCommand,
+    *,
+    env_overrides: dict[str, str],
+    env_display_overrides: dict[str, str],
+) -> AgentCommand:
+    if not env_overrides and not env_display_overrides:
+        return command
+    return AgentCommand(
+        argv=command.argv,
+        env_overrides={**command.env_overrides, **env_overrides},
+        env_display_overrides={
+            **command.env_display_overrides,
+            **env_display_overrides,
+        },
+        setup_lines=command.setup_lines,
+    )
 
 
 def execute_agent_command(
@@ -143,6 +169,7 @@ __all__ = [
     "AgentRunConfig",
     "AgentRunDryResult",
     "AgentRunResult",
+    "agent_command_with_env_overrides",
     "build_agent_command_argv",
     "execute_agent_command",
     "format_agent_command",

@@ -72,6 +72,16 @@ def load_account(provider: str, account: str) -> dict[str, object]:
     return account_record
 
 
+def account_exists(provider: str, account: str) -> bool:
+    normalized_provider = validate_string_for_path(provider, field_name="provider")
+    normalized_account = validate_string_for_path(account, field_name="account")
+    registry = load_accounts(normalized_provider)
+    accounts = registry["accounts"]
+    if not isinstance(accounts, dict):
+        return False
+    return isinstance(accounts.get(normalized_account), dict)
+
+
 def upsert_account(provider: str, account: str, updates: dict[str, object]) -> dict[str, object]:
     normalized_provider = validate_string_for_path(provider, field_name="provider")
     normalized_account = validate_string_for_path(account, field_name="account")
@@ -276,6 +286,7 @@ def _required_string(payload: dict[str, object], field: str) -> str:
 
 
 __all__ = [
+    "account_exists",
     "account_provider_root",
     "account_events_path",
     "account_events_root",

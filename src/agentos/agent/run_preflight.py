@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentos.agent.primitives import Agent
@@ -10,6 +10,8 @@ from agentos.agent.run_runtime import AgentCommandConfig
 @dataclass(frozen=True)
 class AgentRunPreflightResult:
     lines: tuple[str, ...] = ()
+    env_overrides: dict[str, str] = field(default_factory=dict)
+    env_display_overrides: dict[str, str] = field(default_factory=dict)
 
 
 def run_agent_preflight(
@@ -28,7 +30,38 @@ def run_agent_preflight(
             dry_run=dry_run,
             source=source,
         )
+    if agent.provider == "claude-code":
+        return _run_claude_preflight(
+            agent=agent,
+            command_config=command_config,
+        )
     return AgentRunPreflightResult()
+
+
+def _run_claude_preflight(
+    *,
+    agent: Agent,
+    command_config: AgentCommandConfig,
+) -> AgentRunPreflightResult:
+    requested_account = _normalized_account(command_config.account) or _agent_account(agent)
+    if requested_account is None:
+        return AgentRunPreflightResult()
+
+    from agentos.claude.account_registry import load_claude_oauth_token_for_account
+
+    token = load_claude_oauth_token_for_account(requested_account)
+    return AgentRunPreflightResult(
+        lines=(
+            _format_claude_preflight_line(
+                agent=agent,
+                account=requested_account,
+            ),
+        ),
+        env_overrides={"CLAUDE_CODE_OAUTH_TOKEN": token.token},
+        env_display_overrides={
+            "CLAUDE_CODE_OAUTH_TOKEN": token.safe_display_value(),
+        },
+    )
 
 
 def _run_codex_preflight(
@@ -278,6 +311,11 @@ def _agent_account(agent: Agent) -> str | None:
 def _format_preflight_line(*, action: str, agent: Agent, account: str) -> str:
     profile = agent.instance_id or "<default>"
     return f"[agentos] {action} codex auth for profile {profile} from account {account}"
+
+
+def _format_claude_preflight_line(*, agent: Agent, account: str) -> str:
+    profile = agent.instance_id or "<default>"
+    return f"[agentos] injected claude oauth token for profile {profile} from account {account}"
 
 
 __all__ = [

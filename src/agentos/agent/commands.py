@@ -24,6 +24,11 @@ from agentos.agent._cli_common import format_json_output
 from agentos.agent.providers import load_configured_agents, resolve_agent
 from agentos.agent.run_preflight import run_agent_preflight
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
+from agentos.agent.run_runtime import (
+    agent_command_with_env_overrides,
+    execute_agent_command,
+    format_agent_command,
+)
 from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(
@@ -165,18 +170,29 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         dry_run=args.dry_run,
         source="agent.run",
     )
-
     if args.dry_run:
         dry_result = agent.run_dry(command_config)
+        if _preflight_has_command_env(preflight):
+            command = _agent_command_with_preflight(agent, command_config, preflight)
+            dry_lines = (*command.setup_lines, format_agent_command(command))
+        else:
+            dry_lines = dry_result.lines
         for line in preflight.lines:
             print(line)
-        for line in dry_result.lines:
+        for line in dry_lines:
             print(line)
         return 0
 
     for line in preflight.lines:
         print(line)
-    result = agent.run(command_config, run_config)
+    if _preflight_has_command_env(preflight):
+        command = _agent_command_with_preflight(agent, command_config, preflight)
+        result = execute_agent_command(
+            command,
+            run_config=agent.resolve_run_config(run_config),
+        )
+    else:
+        result = agent.run(command_config, run_config)
     return result.exit_code
 
 
@@ -258,7 +274,16 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
     for line in preflight.lines:
         print(line)
     started_at = time.perf_counter()
-    result = agent.run(command_config, AgentRunConfig(cwd=cwd, process_mode="capture"))
+    if _preflight_has_command_env(preflight):
+        command = _agent_command_with_preflight(agent, command_config, preflight)
+        result = execute_agent_command(
+            command,
+            run_config=agent.resolve_run_config(
+                AgentRunConfig(cwd=cwd, process_mode="capture"),
+            ),
+        )
+    else:
+        result = agent.run(command_config, AgentRunConfig(cwd=cwd, process_mode="capture"))
     elapsed_ms = round((time.perf_counter() - started_at) * 1000)
     _validate_agent_ping_result(
         result,
@@ -268,6 +293,19 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         f"pong model={_agent_ping_model(agent, command_config)} elapsed_ms={elapsed_ms}"
     )
     return 0
+
+
+def _agent_command_with_preflight(agent, command_config, preflight):
+    command = agent.build_command(command_config)
+    return agent_command_with_env_overrides(
+        command,
+        env_overrides=preflight.env_overrides,
+        env_display_overrides=preflight.env_display_overrides,
+    )
+
+
+def _preflight_has_command_env(preflight) -> bool:
+    return bool(preflight.env_overrides or preflight.env_display_overrides)
 
 
 def _validate_agent_ping_result(
@@ -303,6 +341,8 @@ def _agent_ping_model(agent: Agent, command_config: AgentCommandConfig) -> str:
 
 
 def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
+    if args.oauth_token_file is not None and args.provider != "claude-code":
+        raise CliError("--oauth-token-file is only supported for provider claude-code")
     if args.provider == "codex":
         if args.auth_file is None:
             raise CliError(
@@ -326,15 +366,14 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
         from agentos.claude.account_registry import register_claude_account
 
         print(
-            json.dumps(
+            format_json_output(
                 register_claude_account(
                     account=args.account,
                     email=args.email,
                     label=args.label,
+                    oauth_token_file=args.oauth_token_file,
                     argv=getattr(args, "_agentos_argv", []),
-                ),
-                indent=2,
-                sort_keys=True,
+                )
             )
         )
         return 0
@@ -342,15 +381,13 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
         from agentos.copilot.account_registry import register_copilot_account
 
         print(
-            json.dumps(
+            format_json_output(
                 register_copilot_account(
                     account=args.account,
                     account_id=args.account_id,
                     label=args.label,
                     argv=getattr(args, "_agentos_argv", []),
-                ),
-                indent=2,
-                sort_keys=True,
+                )
             )
         )
         return 0
@@ -428,7 +465,7 @@ def _link_account_profile(args: argparse.Namespace) -> dict[str, object]:
         args.profile,
         args.account,
     )
-    if profile_config.home is None:
+    if profile_config.home is None and _provider_link_requires_home(profile_config.provider):
         raise CliError(f"agent profile {args.profile!r} does not define home")
 
     payload = _link_provider_account_to_home(
@@ -438,32 +475,35 @@ def _link_account_profile(args: argparse.Namespace) -> dict[str, object]:
         force=args.force,
         argv=getattr(args, "_agentos_argv", []),
     )
-    record_account_event(
-        event_type="account.auth.materialized",
-        command="agent accounts link",
-        argv=getattr(args, "_agentos_argv", []),
-        status="ok",
-        payload={
-            "provider": profile_config.provider,
-            "profile": args.profile,
-            "home": str(profile_config.home),
-            "account": args.account,
-            "artifact_id": payload.get("artifact_id"),
-        },
-    )
+    if _provider_link_requires_home(profile_config.provider):
+        record_account_event(
+            event_type="account.auth.materialized",
+            command="agent accounts link",
+            argv=getattr(args, "_agentos_argv", []),
+            status="ok",
+            payload={
+                "provider": profile_config.provider,
+                "profile": args.profile,
+                "home": str(profile_config.home),
+                "account": args.account,
+                "artifact_id": payload.get("artifact_id"),
+            },
+        )
+    profile_event_payload: dict[str, object] = {
+        "provider": profile_config.provider,
+        "profile": args.profile,
+        "from_account": previous_account,
+        "to_account": args.account,
+        "profile_path": str(profile_path),
+    }
+    if profile_config.home is not None:
+        profile_event_payload["home"] = str(profile_config.home)
     record_account_event(
         event_type="profile.account.changed",
         command="agent accounts link",
         argv=getattr(args, "_agentos_argv", []),
         status="ok",
-        payload={
-            "provider": profile_config.provider,
-            "profile": args.profile,
-            "home": str(profile_config.home),
-            "from_account": previous_account,
-            "to_account": args.account,
-            "profile_path": str(profile_path),
-        },
+        payload=profile_event_payload,
     )
     return {
         **payload,
@@ -476,7 +516,7 @@ def _link_account_profile(args: argparse.Namespace) -> dict[str, object]:
 def _link_provider_account_to_home(
     *,
     provider: str,
-    home: Path,
+    home: Path | None,
     account: str,
     force: bool,
     argv: list[str] | tuple[str, ...],
@@ -484,6 +524,8 @@ def _link_provider_account_to_home(
     if provider == "codex":
         from agentos.codex.account_registry import link_codex_account_to_home
 
+        if home is None:
+            raise CliError("codex account link requires home")
         return link_codex_account_to_home(
             home=home,
             account=account,
@@ -503,6 +545,8 @@ def _link_provider_account_to_home(
     if provider == "copilot-cli":
         from agentos.copilot.account_registry import link_copilot_account_to_home
 
+        if home is None:
+            raise CliError("copilot-cli account link requires home")
         return link_copilot_account_to_home(
             home=home,
             account=account,
@@ -510,6 +554,10 @@ def _link_provider_account_to_home(
             argv=argv,
         )
     raise CliError(f"agent accounts link is not supported for provider {provider}")
+
+
+def _provider_link_requires_home(provider: str) -> bool:
+    return provider != "claude-code"
 
 
 def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
@@ -543,6 +591,8 @@ def _format_agent_accounts_link(payload: dict[str, object]) -> str:
             f"(auth copied to {auth_path})."
         )
     if kind == "claimed":
+        if home is None:
+            return f"Linked {provider} account {account} (claimed login)."
         return (
             f"Linked {provider} account {account} to {home} "
             "(claimed login)."
@@ -872,6 +922,11 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "--auth-file",
         default=None,
         help="Provider auth file to register. Required for codex.",
+    )
+    accounts_register_parser.add_argument(
+        "--oauth-token-file",
+        default=None,
+        help="Claude OAuth token file to register. Use '-' to read from stdin. Claude-code only.",
     )
     accounts_register_parser.add_argument(
         "--account",
