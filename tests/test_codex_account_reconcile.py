@@ -16,14 +16,13 @@ from agentos.codex.account_reconcile import (
     reconcile_codex_accounts,
 )
 from agentos.codex.agent import CodexAgent
+from agentos.testing import AgentosTestEnvironment
 import agentos.codex.account_status as codex_account_status
 
 from _helpers import (
     codex_auth_json,
-    isolate_agentos,
     read_json_file,
     read_jsonl_file,
-    write_global_config,
     write_text_file,
 )
 
@@ -32,20 +31,21 @@ def test_codex_reconcile_registers_fresh_known_home_and_syncs_system_home(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
     configured_home = tmp_path / "codex-br"
     system_home = agentos_home / "agent" / "homes" / "codex" / "br"
     old_auth = tmp_path / "old-auth.json"
-    write_text_file(old_auth, codex_auth_json(account_id="acc_br", email="old@example.com"))
+    write_text_file(
+        old_auth, codex_auth_json(account_id="acc_br", email="old@example.com")
+    )
     write_text_file(
         configured_home / "auth.json",
         _newer_codex_auth_json(account_id="acc_br", email="fresh@example.com"),
     )
-    write_global_config(
-        agentos_home / "config.json",
-        provider_profiles=[
-            {"id": "codex-br", "provider": "codex", "home": str(configured_home)}
-        ],
+    environment.write_profiles(
+        [{"id": "codex-br", "provider": "codex", "home": str(configured_home)}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
     link_codex_account_to_home(home=system_home, account="br")
@@ -59,7 +59,9 @@ def test_codex_reconcile_registers_fresh_known_home_and_syncs_system_home(
         "registered_artifact",
         "synced_home",
     }
-    account_payload = read_json_file(agentos_home / "accounts" / "codex" / "accounts.json")
+    account_payload = read_json_file(
+        agentos_home / "accounts" / "codex" / "accounts.json"
+    )
     assert account_payload["accounts"]["br"]["active_artifact_id"] == fresh_info.sha256
     artifacts = read_jsonl_file(agentos_home / "accounts" / "codex" / "artifacts.jsonl")
     assert {artifact["artifact_id"] for artifact in artifacts} >= {fresh_info.sha256}
@@ -72,14 +74,15 @@ def test_codex_reconcile_warns_and_skips_unknown_account_auth(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
     configured_home = tmp_path / "codex-unknown"
-    write_text_file(configured_home / "auth.json", codex_auth_json(account_id="acc_unknown"))
-    write_global_config(
-        agentos_home / "config.json",
-        provider_profiles=[
-            {"id": "codex-unknown", "provider": "codex", "home": str(configured_home)}
-        ],
+    write_text_file(
+        configured_home / "auth.json", codex_auth_json(account_id="acc_unknown")
+    )
+    environment.write_profiles(
+        [{"id": "codex-unknown", "provider": "codex", "home": str(configured_home)}]
     )
 
     payload = reconcile_codex_accounts(start_path=tmp_path)
@@ -97,7 +100,9 @@ def test_codex_reconcile_does_not_activate_older_stale_system_auth(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
     system_home = agentos_home / "agent" / "homes" / "codex" / "br"
     active_auth = tmp_path / "active-auth.json"
     stale_auth = tmp_path / "stale-auth.json"
@@ -105,7 +110,9 @@ def test_codex_reconcile_does_not_activate_older_stale_system_auth(
         active_auth,
         _newer_codex_auth_json(account_id="acc_br", email="active@example.com"),
     )
-    write_text_file(stale_auth, codex_auth_json(account_id="acc_br", email="stale@example.com"))
+    write_text_file(
+        stale_auth, codex_auth_json(account_id="acc_br", email="stale@example.com")
+    )
     register_codex_account_from_auth_file(auth_file=active_auth, account="br")
     link_codex_account_to_home(home=system_home, account="br")
     write_text_file(system_home / "auth.json", stale_auth.read_text(encoding="utf-8"))
@@ -113,7 +120,9 @@ def test_codex_reconcile_does_not_activate_older_stale_system_auth(
 
     payload = reconcile_codex_accounts(start_path=tmp_path)
 
-    account_payload = read_json_file(agentos_home / "accounts" / "codex" / "accounts.json")
+    account_payload = read_json_file(
+        agentos_home / "accounts" / "codex" / "accounts.json"
+    )
     assert account_payload["accounts"]["br"]["active_artifact_id"] == active_info.sha256
     actions = payload["actions"]
     assert isinstance(actions, list)
@@ -131,19 +140,20 @@ def test_codex_reconcile_check_does_not_mutate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
     configured_home = tmp_path / "codex-br"
     old_auth = tmp_path / "old-auth.json"
-    write_text_file(old_auth, codex_auth_json(account_id="acc_br", email="old@example.com"))
+    write_text_file(
+        old_auth, codex_auth_json(account_id="acc_br", email="old@example.com")
+    )
     write_text_file(
         configured_home / "auth.json",
         _newer_codex_auth_json(account_id="acc_br", email="fresh@example.com"),
     )
-    write_global_config(
-        agentos_home / "config.json",
-        provider_profiles=[
-            {"id": "codex-br", "provider": "codex", "home": str(configured_home)}
-        ],
+    environment.write_profiles(
+        [{"id": "codex-br", "provider": "codex", "home": str(configured_home)}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
     old_info = read_codex_auth_info(old_auth)
@@ -152,7 +162,9 @@ def test_codex_reconcile_check_does_not_mutate(
 
     assert payload["check"] is True
     assert payload["action_count"] >= 2
-    account_payload = read_json_file(agentos_home / "accounts" / "codex" / "accounts.json")
+    account_payload = read_json_file(
+        agentos_home / "accounts" / "codex" / "accounts.json"
+    )
     assert account_payload["accounts"]["br"]["active_artifact_id"] == old_info.sha256
 
 
@@ -160,15 +172,14 @@ def test_codex_reconcile_discovers_only_known_homes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
     configured_home = tmp_path / "configured-codex"
     old_auth = tmp_path / "auth.json"
     write_text_file(old_auth, codex_auth_json(account_id="acc_br"))
-    write_global_config(
-        agentos_home / "config.json",
-        provider_profiles=[
-            {"id": "codex-br", "provider": "codex", "home": str(configured_home)}
-        ],
+    environment.write_profiles(
+        [{"id": "codex-br", "provider": "codex", "home": str(configured_home)}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
 
@@ -185,20 +196,21 @@ def test_codex_account_status_runs_reconciliation_before_usage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
     configured_home = tmp_path / "codex-br"
     system_home = agentos_home / "agent" / "homes" / "codex" / "br"
     old_auth = tmp_path / "old-auth.json"
-    write_text_file(old_auth, codex_auth_json(account_id="acc_br", email="old@example.com"))
+    write_text_file(
+        old_auth, codex_auth_json(account_id="acc_br", email="old@example.com")
+    )
     write_text_file(
         configured_home / "auth.json",
         _newer_codex_auth_json(account_id="acc_br", email="fresh@example.com"),
     )
-    write_global_config(
-        agentos_home / "config.json",
-        provider_profiles=[
-            {"id": "codex-br", "provider": "codex", "home": str(configured_home)}
-        ],
+    environment.write_profiles(
+        [{"id": "codex-br", "provider": "codex", "home": str(configured_home)}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
     link_codex_account_to_home(home=system_home, account="br")

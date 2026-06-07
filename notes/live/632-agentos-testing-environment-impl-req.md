@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** add a shared, pytest-independent `agentos.testing` module in `agentos-py` that constructs isolated Agentos homes and valid current Agentos configuration state, then migrate foundation, CLI, and Chatlas tests away from duplicated schema-writing helpers
-- **status:** ready for implementation
+- **status:** implemented
 - **source context:** research after `agentos-chatlas-py` E2E failures exposed an obsolete copied `agent.instances` fixture; user requested a general and useful test-utils module informed by how Agentos subsystems currently test Agentos
 - **owning project:** `agentos-py`
 - **migration projects:** `agentos-cli`, `agentos-chatlas-py`
@@ -122,7 +122,7 @@ Migration order is vertical: prove the shared surface in `agentos-py`, then cons
 - path: temporary root -> `AgentosTestEnvironment` -> constructed Agentos state -> production loader
 - observable: one supported API creates a valid profile-backed Agentos environment accepted by current loaders
 - check: focused `agentos.testing` tests and `agentos-py` full suite pass
-- status: not started
+- status: completed
 
 ### Slice 2 - Migrate `agentos-py` Tests To Their Public Test Surface
 
@@ -133,7 +133,7 @@ Migration order is vertical: prove the shared surface in `agentos-py`, then cons
 - path: foundation test -> `agentos.testing` -> foundation runtime behavior
 - observable: `agentos-py` tests use the same public test-construction API offered to downstream packages
 - check: `agentos-py` full suite passes; search shows no duplicate local home/profile/config/project-marker constructors
-- status: not started
+- status: completed
 
 ### Slice 3 - Migrate `agentos-cli` And Eradicate Legacy Named-Agent Fixtures
 
@@ -147,7 +147,7 @@ Migration order is vertical: prove the shared surface in `agentos-py`, then cons
 - path: CLI E2E test -> shared Agentos test environment -> profile-backed CLI execution
 - observable: CLI tests no longer encode `agent.instances` in any form, and profile-only runtime behavior is tested end to end
 - check: `agentos-cli` full suite passes; grep for `provider_instances`, the literal `agent.instances`, and `"instances"` as an `agent` payload key returns zero matches across `agentos-cli/tests/`; impl-log records each (a) rewrite and each (b) deletion
-- status: not started
+- status: completed
 
 ### Slice 4 - Migrate `agentos-chatlas-py` And Consolidate The Repaired Fixture
 
@@ -157,7 +157,7 @@ Migration order is vertical: prove the shared surface in `agentos-py`, then cons
 - path: Chatlas E2E test -> shared Agentos test environment -> `codex-work` profile -> Chatlas instance selection
 - observable: the repaired Chatlas E2E profile fixture is produced through the shared authority and cannot drift independently
 - check: `agentos-chatlas-py` full suite passes, including the previously failing Chatlas E2E tests
-- status: not started
+- status: completed
 
 ### Slice 5 - Cross-Package Grep Gate And Usage Contract
 
@@ -180,7 +180,7 @@ Migration order is vertical: prove the shared surface in `agentos-py`, then cons
   - no migrated local compatibility wrappers remain
   - every grep pattern above returns zero matches outside the documented exception sites
   - impl-log enumerates every test deleted under the (b) classification in Slices 3 and 4
-- status: not started
+- status: completed
 
 ## Risks And Deviation Triggers
 
@@ -210,3 +210,11 @@ Migration order is vertical: prove the shared surface in `agentos-py`, then cons
 - 2026-06-06: Impl.Req created after surveying Agentos Python package tests. Research found near-copy helper modules in `agentos-py`, `agentos-cli`, and `agentos-chatlas-py`, with schema drift between profile-file and legacy inline-instance construction.
 - 2026-06-06: Scope intentionally limited to Agentos-owned filesystem/configuration state. Provider artifacts, feature-package fixtures, pytest plugin behavior, and unrelated generic test helpers remain out of scope.
 - 2026-06-06: Sharpened anti-legacy stance to zero-tolerance: surviving `agent.instances` / `provider_instances` artifacts at any layer are defects, not constraints. Slice 3 adds a pre-classification step distinguishing tests to rewrite against profile-backed state from tests to delete outright. Slice 5 audit lifted from manual review to a mechanical grep gate with explicit forbidden patterns. Pre-flight requirement added: 629 and 630 must land before 632 locks the public `write_profile(...)` shape. Test-environment cleanup contract and intentional in-runtime distribution noted explicitly.
+- 2026-06-06: Pre-flight completed. Profile/account tests passed 20/20, active runtime searches found no legacy profile or link-registry paths, and checkpoint `800f313` landed the current 629/630 implementation before 632 edits.
+- 2026-06-06: Added pytest-independent `agentos.testing` with valid builders for isolated homes, global/project config, profiles, and project markers, plus explicit `write_raw_json` malformed-state escape hatch. Focused loader-backed and no-pytest-import tests pass.
+- 2026-06-06: Migrated `agentos-py` tests and removed duplicated Agentos-state constructors from its local `_helpers.py`.
+- 2026-06-06: Migrated `agentos-cli` tests to profile-backed shared state and removed duplicated Agentos-state constructors. Deleted `test_agent_run_uses_explicit_project_target_for_config_resolution`: it only tested removed project-local inline named-agent configuration and has no profile-only runtime equivalent.
+- 2026-06-06: Rewrote current CLI account-link scenarios against auth materialization state and absence of `links.json`; removed stale assertions tied to the deleted link registry.
+- 2026-06-06: Migrated `agentos-chatlas-py` E2E and tagger tests. The repaired `codex-work` fixture now uses `agentos.testing`; copied Agentos-state constructors were removed.
+- 2026-06-06: Execution deviation resolved: broad formatter runs introduced unrelated whitespace churn in migrated test files; the churn was removed while preserving the semantic migration.
+- 2026-06-06: Completion audit passed: `agentos-py` 55/55, `agentos-cli` 50/50, `agentos-chatlas-py` 100/100; changed-file lint and diff checks pass; duplicate-constructor search and the full mechanical grep gate return zero matches.

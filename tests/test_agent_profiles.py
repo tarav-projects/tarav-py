@@ -21,13 +21,12 @@ from agentos.codex.account_registry import (
     register_codex_account_from_auth_file,
 )
 from agentos.codex.agent import CodexAgent
+from agentos.testing import AgentosTestEnvironment
 
 from _helpers import (
     codex_auth_json,
-    isolate_agentos,
     read_json_file,
     read_jsonl_file,
-    write_global_config,
     write_text_file,
 )
 
@@ -36,13 +35,13 @@ def test_profile_file_loads_complete_agent_config(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "codex-mm"
-    write_global_config(agentos_home / "config.json", provider_configs=_provider_configs())
-    _write_profile(
-        agentos_home,
+    environment.write_global_config(agent={"providers": _provider_configs()})
+    environment.write_profile(
         "codex-mm",
-        {
+        **{
             "provider": "codex",
             "home": str(home),
             "account": "mm",
@@ -70,14 +69,16 @@ def test_profile_resolution_does_not_require_provider_and_asserts_provider(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
-    _write_profile(
-        agentos_home,
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    environment.write_profile(
         "codex-mm",
-        {"provider": "codex", "home": str(tmp_path / "codex-mm"), "account": "mm"},
+        **{"provider": "codex", "home": str(tmp_path / "codex-mm"), "account": "mm"},
     )
 
-    selected = resolve_agent_config(provider=None, profile="codex-mm", start_path=tmp_path)
+    selected = resolve_agent_config(
+        provider=None, profile="codex-mm", start_path=tmp_path
+    )
 
     assert selected.provider == "codex"
     with pytest.raises(CliError, match="uses provider codex, not claude-code"):
@@ -95,7 +96,9 @@ def test_profile_account_materialization_uses_profile_account(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
     home = tmp_path / "codex-mm"
     br_auth = tmp_path / "br-auth.json"
     mm_auth = tmp_path / "mm-auth.json"
@@ -104,11 +107,9 @@ def test_profile_account_materialization_uses_profile_account(
     register_codex_account_from_auth_file(auth_file=br_auth, account="br")
     register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
     link_codex_account_to_home(home=home, account="br")
-    write_global_config(agentos_home / "config.json", provider_configs=_provider_configs())
-    _write_profile(
-        agentos_home,
-        "codex-mm",
-        {"provider": "codex", "home": str(home), "account": "mm"},
+    environment.write_global_config(agent={"providers": _provider_configs()})
+    environment.write_profile(
+        "codex-mm", **{"provider": "codex", "home": str(home), "account": "mm"}
     )
     old_info = read_codex_auth_info(home / "auth.json")
 
@@ -124,7 +125,9 @@ def test_profile_account_materialization_uses_profile_account(
     assert read_codex_auth_info(home / "auth.json").sha256 == old_info.sha256
 
     monkeypatch.setattr(CodexAgent, "run", _fake_codex_run)
-    result = _cmd_agent_run(_run_args(provider=None, profile="codex-mm", prompt="hello"))
+    result = _cmd_agent_run(
+        _run_args(provider=None, profile="codex-mm", prompt="hello")
+    )
 
     assert result == 0
     assert (
@@ -150,7 +153,9 @@ def test_accounts_link_profile_updates_profile_and_writes_events(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
     home = tmp_path / "codex-mm"
     br_auth = tmp_path / "br-auth.json"
     mm_auth = tmp_path / "mm-auth.json"
@@ -158,10 +163,8 @@ def test_accounts_link_profile_updates_profile_and_writes_events(
     write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
     register_codex_account_from_auth_file(auth_file=br_auth, account="br")
     register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
-    _write_profile(
-        agentos_home,
-        "codex-mm",
-        {"provider": "codex", "home": str(home), "account": "br"},
+    environment.write_profile(
+        "codex-mm", **{"provider": "codex", "home": str(home), "account": "br"}
     )
 
     result = _cmd_agent_accounts_link(
@@ -200,28 +203,6 @@ def test_accounts_link_profile_updates_profile_and_writes_events(
 
 def _provider_configs() -> dict[str, dict[str, object]]:
     return {"codex": {"cli_command": ["/bin/echo"]}}
-
-
-def _write_profile(
-    agentos_home: Path,
-    name: str,
-    payload: dict[str, object],
-) -> Path:
-    path = agentos_home / "profiles" / f"{name}.json"
-    write_text_file(
-        path,
-        json.dumps(
-            {
-                "schema_version": 1,
-                "id": name,
-                **payload,
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-    )
-    return path
 
 
 def _account_events(agentos_home: Path) -> list[dict[str, object]]:

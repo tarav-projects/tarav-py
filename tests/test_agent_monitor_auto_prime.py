@@ -35,13 +35,13 @@ from agentos.agent.monitor.workflows import (
     AutoPrimeZeroLimitsWorkflow,
     LimitsTrackingWorkflow,
 )
+from agentos.testing import AgentosTestEnvironment
 
 
 def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
-    agentos_home = root / ".agentos"
-    agentos_home.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("AGENTOS_HOME", str(agentos_home))
-    return agentos_home
+    environment = AgentosTestEnvironment.create(root)
+    environment.apply_environment(monkeypatch.setenv)
+    return environment.agentos_home
 
 
 def _workflow(*, triggers: tuple[str, ...]) -> AutoPrimeZeroLimitsWorkflow:
@@ -246,9 +246,7 @@ def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
         == "burst non-primed/pinged"
     )
     assert (
-        monitor_workflows._auto_prime_status_part(
-            {"last_error": {"message": "failed"}}
-        )
+        monitor_workflows._auto_prime_status_part({"last_error": {"message": "failed"}})
         == "prime failed"
     )
     assert (
@@ -490,9 +488,7 @@ def test_auto_prime_verification_marks_persistent_uninitialized_ineffective(
             "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
             "uninitialized": True,
             "trigger_reasons": ("near_zero_full_window",),
-            "last_attempt_at": (
-                now - datetime.timedelta(seconds=601)
-            ).isoformat(),
+            "last_attempt_at": (now - datetime.timedelta(seconds=601)).isoformat(),
         }
     }
 

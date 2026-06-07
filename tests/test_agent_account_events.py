@@ -6,15 +6,18 @@ from pathlib import Path
 import pytest
 
 from agentos.agent.account_registry import account_events_path, record_account_event
+from agentos.testing import AgentosTestEnvironment
 
-from _helpers import isolate_agentos, read_jsonl_file
+from _helpers import read_jsonl_file
 
 
 def test_account_events_are_global_provider_tagged_daily_jsonl(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
 
     record_account_event(
         event_type="account.auth.materialized",
@@ -60,7 +63,9 @@ def test_account_events_path_uses_utc_date_from_timestamp(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _, agentos_home = isolate_agentos(monkeypatch, tmp_path)
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    agentos_home = environment.agentos_home
 
     path = account_events_path("2026-06-04T16:22:31Z")
 
