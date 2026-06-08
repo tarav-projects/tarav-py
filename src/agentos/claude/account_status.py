@@ -704,7 +704,7 @@ def _run_claude_statusline_refresh_session(
     settings_path: Path,
     timeout_sec: int,
 ) -> dict[str, Any]:
-    command = agent.build_command(
+    command = agent._build_command(
         AgentCommandConfig(
             argv=(
                 "--disable-slash-commands",

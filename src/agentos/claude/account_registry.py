@@ -175,6 +175,13 @@ def link_claude_account_to_home(
     return payload
 
 
+def has_claude_oauth_token_kind(account: str) -> bool:
+    normalized_account = validate_string_for_path(account, field_name="account")
+    account_record = load_account(CLAUDE_PROVIDER, normalized_account)
+    auth_kinds = account_record.get("auth_kinds")
+    return isinstance(auth_kinds, list) and CLAUDE_OAUTH_TOKEN_AUTH_KIND in auth_kinds
+
+
 def load_claude_oauth_token_for_account(
     account: str,
 ) -> ClaudeOAuthTokenMaterialization:

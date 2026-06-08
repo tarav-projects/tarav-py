@@ -319,7 +319,7 @@ def _fetch_account_usage_app_server_payload(agent: Agent) -> dict[str, Any]:
 
 
 def _build_codex_account_status_command(agent: Agent, *, argv: tuple[str, ...]):
-    return agent.build_command(AgentCommandConfig(argv=argv))
+    return agent._build_command(AgentCommandConfig(argv=argv))
 
 
 def _parse_codex_rate_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, ...]:

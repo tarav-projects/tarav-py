@@ -22,13 +22,7 @@ from agentos.agent.config import (
 from agentos._core.path_validation import validate_string_for_path
 from agentos.agent._cli_common import format_json_output
 from agentos.agent.providers import load_configured_agents, resolve_agent
-from agentos.agent.run_preflight import run_agent_preflight
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
-from agentos.agent.run_runtime import (
-    agent_command_with_env_overrides,
-    execute_agent_command,
-    format_agent_command,
-)
 from agentos.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(
@@ -163,37 +157,13 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         interaction_mode=interaction_mode,
     )
     _enforce_account_policy(agent, args.account)
-    config_start_path = _config_start_path(args)
-    preflight = run_agent_preflight(
-        agent=agent,
-        command_config=command_config,
-        start_path=config_start_path,
-        dry_run=args.dry_run,
-        source="agent.run",
-    )
     if args.dry_run:
         dry_result = agent.run_dry(command_config)
-        if _preflight_has_command_env(preflight):
-            command = _agent_command_with_preflight(agent, command_config, preflight)
-            dry_lines = (*command.setup_lines, format_agent_command(command))
-        else:
-            dry_lines = dry_result.lines
-        for line in preflight.lines:
-            print(line)
-        for line in dry_lines:
+        for line in dry_result.lines:
             print(line)
         return 0
 
-    for line in preflight.lines:
-        print(line)
-    if _preflight_has_command_env(preflight):
-        command = _agent_command_with_preflight(agent, command_config, preflight)
-        result = execute_agent_command(
-            command,
-            run_config=agent.resolve_run_config(run_config),
-        )
-    else:
-        result = agent.run(command_config, run_config)
+    result = agent.run(command_config, run_config)
     return result.exit_code
 
 
@@ -267,25 +237,8 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
     )
     if command_config.model is None and agent.ping.model is not None:
         command_config = replace(command_config, model=agent.ping.model)
-    preflight = run_agent_preflight(
-        agent=agent,
-        command_config=command_config,
-        start_path=_config_start_path(args),
-        source="agent.ping",
-    )
-    for line in preflight.lines:
-        print(line)
     started_at = time.perf_counter()
-    if _preflight_has_command_env(preflight):
-        command = _agent_command_with_preflight(agent, command_config, preflight)
-        result = execute_agent_command(
-            command,
-            run_config=agent.resolve_run_config(
-                AgentRunConfig(cwd=cwd, process_mode="capture"),
-            ),
-        )
-    else:
-        result = agent.run(command_config, AgentRunConfig(cwd=cwd, process_mode="capture"))
+    result = agent.run(command_config, AgentRunConfig(cwd=cwd, process_mode="capture"))
     elapsed_ms = round((time.perf_counter() - started_at) * 1000)
     _validate_agent_ping_result(
         result,
@@ -296,18 +249,6 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
     )
     return 0
 
-
-def _agent_command_with_preflight(agent, command_config, preflight):
-    command = agent.build_command(command_config)
-    return agent_command_with_env_overrides(
-        command,
-        env_overrides=preflight.env_overrides,
-        env_display_overrides=preflight.env_display_overrides,
-    )
-
-
-def _preflight_has_command_env(preflight) -> bool:
-    return bool(preflight.env_overrides or preflight.env_display_overrides)
 
 
 def _enforce_account_policy(agent: Agent, args_account: str | None) -> None:

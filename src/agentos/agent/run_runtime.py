@@ -38,6 +38,7 @@ class AgentRunResult:
     exit_code: int
     stdout: str | None = None
     stderr: str | None = None
+    preamble_lines: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

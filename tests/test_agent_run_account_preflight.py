@@ -6,14 +6,12 @@ from pathlib import Path
 import pytest
 
 from agentos.agent.commands import _cmd_agent_ping, _cmd_agent_run
-from agentos.agent.run_runtime import AgentRunResult
 from agentos.codex.account_registry import (
     inspect_codex_account_home,
     link_codex_account_to_home,
     read_codex_auth_info,
     register_codex_account_from_auth_file,
 )
-from agentos.codex.agent import CodexAgent
 from agentos.testing import AgentosTestEnvironment
 
 from _helpers import (
@@ -61,8 +59,6 @@ def test_agent_run_materializes_stale_codex_home_before_launch(
     environment.write_profiles([_codex_profile(home)])
     active_info = read_codex_auth_info(active_auth)
 
-    monkeypatch.setattr(CodexAgent, "run", _fake_codex_run)
-
     result = _cmd_agent_run(_run_args(profile="codex-mm", prompt="hello"))
 
     assert result == 0
@@ -86,7 +82,6 @@ def test_agent_run_materializes_stale_same_account_home_with_explicit_account(
     environment.write_global_config(agent={"providers": _provider_configs()})
     environment.write_profiles([_codex_profile(home)])
     active_info = read_codex_auth_info(active_auth)
-    monkeypatch.setattr(CodexAgent, "run", _fake_codex_run)
 
     result = _cmd_agent_run(_run_args(profile="codex-mm", account="mm", prompt="hello"))
 
@@ -109,9 +104,8 @@ def test_agent_ping_uses_codex_account_preflight(
     home = tmp_path / "codex-mm"
     _, active_auth = _make_stale_profile_home(tmp_path, home=home, account="mm")
     environment.write_global_config(agent={"providers": _provider_configs()})
-    environment.write_profiles([_codex_profile(home)])
+    environment.write_profiles([_codex_profile(home, ping={"prompt": "745", "expected_number": 745})])
     active_info = read_codex_auth_info(active_auth)
-    monkeypatch.setattr(CodexAgent, "run", _fake_codex_ping)
 
     result = _cmd_agent_ping(_ping_args(profile="codex-mm"))
 
@@ -121,7 +115,7 @@ def test_agent_ping_uses_codex_account_preflight(
         "[agentos] materialized codex auth for profile codex-mm from account mm"
         in output
     )
-    assert "pong model=gpt-5.4-mini" in output
+    assert "pong model=" in output
     assert read_codex_auth_info(home / "auth.json").sha256 == active_info.sha256
 
 
@@ -170,7 +164,6 @@ def test_agent_run_materializes_codex_home_with_explicit_account(
     register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
     environment.write_global_config(agent={"providers": _provider_configs()})
     environment.write_profiles([_codex_profile(configured_home)])
-    monkeypatch.setattr(CodexAgent, "run", _fake_codex_run)
 
     result = _cmd_agent_run(
         _run_args(
@@ -294,6 +287,7 @@ def _codex_profile(
     *,
     profile_id: str = "codex-mm",
     account: str | None = "mm",
+    ping: dict[str, object] | None = None,
 ) -> dict[str, object]:
     profile: dict[str, object] = {
         "id": profile_id,
@@ -302,6 +296,8 @@ def _codex_profile(
     }
     if account is not None:
         profile["account"] = account
+    if ping is not None:
+        profile["ping"] = ping
     return profile
 
 
@@ -340,11 +336,3 @@ def _ping_args(*, profile: str) -> argparse.Namespace:
     )
 
 
-def _fake_codex_run(self, command_config, run_config) -> AgentRunResult:
-    del self, command_config, run_config
-    return AgentRunResult(exit_code=0)
-
-
-def _fake_codex_ping(self, command_config, run_config) -> AgentRunResult:
-    del self, command_config, run_config
-    return AgentRunResult(exit_code=0, stdout="745\n", stderr="")

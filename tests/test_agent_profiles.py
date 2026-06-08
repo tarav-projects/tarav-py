@@ -14,14 +14,12 @@ from agentos.agent.commands import (
 from agentos.agent.config import load_agent_configs, profile_path, write_agent_profile
 from agentos.agent.primitives import AgentConfig
 from agentos.agent.providers import resolve_agent_config
-from agentos.agent.run_runtime import AgentRunResult
 from agentos.codex.account_registry import (
     inspect_codex_account_home,
     link_codex_account_to_home,
     read_codex_auth_info,
     register_codex_account_from_auth_file,
 )
-from agentos.codex.agent import CodexAgent
 from agentos.testing import AgentosTestEnvironment
 
 from _helpers import (
@@ -125,7 +123,6 @@ def test_profile_account_materialization_uses_profile_account(
     )
     assert read_codex_auth_info(home / "auth.json").sha256 == old_info.sha256
 
-    monkeypatch.setattr(CodexAgent, "run", _fake_codex_run)
     result = _cmd_agent_run(
         _run_args(provider=None, profile="codex-mm", prompt="hello")
     )
@@ -235,10 +232,6 @@ def _run_args(
         dry_run=dry_run,
     )
 
-
-def _fake_codex_run(self, command_config, run_config) -> AgentRunResult:
-    del self, command_config, run_config
-    return AgentRunResult(exit_code=0)
 
 
 def test_profile_account_policy_round_trip_writes_locked_omits_open(

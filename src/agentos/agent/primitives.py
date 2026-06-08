@@ -248,7 +248,8 @@ class AgentBase:
     def uri_key(self) -> str:
         return quote(self.fingerprint(), safe="")
 
-    def build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
+    def _build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
+        # Providers that do not support run must not override this — the raise is intentional.
         raise CliError(
             f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
         )
@@ -279,12 +280,12 @@ class AgentBase:
         run_config: AgentRunConfig,
     ) -> AgentRunResult:
         return execute_agent_command(
-            self.build_command(command_config),
+            self._build_command(command_config),
             run_config=self.resolve_run_config(run_config),
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
-        command = self.build_command(command_config)
+        command = self._build_command(command_config)
         return AgentRunDryResult(
             lines=(*command.setup_lines, format_agent_command(command)),
         )
@@ -379,8 +380,6 @@ class Agent(Protocol):
     def identity_key(self) -> tuple[object, ...]: ...
 
     def uri_key(self) -> str: ...
-
-    def build_command(self, command_config: AgentCommandConfig) -> AgentCommand: ...
 
     def run(
         self,

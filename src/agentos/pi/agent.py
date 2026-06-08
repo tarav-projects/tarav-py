@@ -48,7 +48,7 @@ class PiAgent(AgentBase):
     def load_session(self, session_ref: PiSessionRef) -> PiSession:
         return load_pi_session(session_ref)
 
-    def build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
+    def _build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
         if command_config.account is not None:
             raise CliError(f"--account is not supported for provider {self.provider}")
         return self._build_command_with_env(
