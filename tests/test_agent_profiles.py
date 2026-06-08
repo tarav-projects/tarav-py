@@ -11,7 +11,8 @@ from agentos.agent.commands import (
     _cmd_agent_accounts_link,
     _cmd_agent_run,
 )
-from agentos.agent.config import load_agent_configs, profile_path
+from agentos.agent.config import load_agent_configs, profile_path, write_agent_profile
+from agentos.agent.primitives import AgentConfig
 from agentos.agent.providers import resolve_agent_config
 from agentos.agent.run_runtime import AgentRunResult
 from agentos.codex.account_registry import (
@@ -238,3 +239,37 @@ def _run_args(
 def _fake_codex_run(self, command_config, run_config) -> AgentRunResult:
     del self, command_config, run_config
     return AgentRunResult(exit_code=0)
+
+
+def test_profile_account_policy_round_trip_writes_locked_omits_open(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    environment.write_global_config(agent={"providers": _provider_configs()})
+
+    write_agent_profile(
+        AgentConfig(
+            provider="claude-code",
+            instance_id="claude-locked",
+            cli_command=("claude",),
+            account_policy="locked",
+        )
+    )
+    write_agent_profile(
+        AgentConfig(
+            provider="claude-code",
+            instance_id="claude-default",
+            cli_command=("claude",),
+        )
+    )
+
+    locked_payload = read_json_file(profile_path("claude-locked"))
+    default_payload = read_json_file(profile_path("claude-default"))
+    assert locked_payload["account_policy"] == "locked"
+    assert "account_policy" not in default_payload
+
+    configs = {config.instance_id: config for config in load_agent_configs()}
+    assert configs["claude-locked"].account_policy == "locked"
+    assert configs["claude-default"].account_policy == "open"

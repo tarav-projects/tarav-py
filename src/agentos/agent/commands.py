@@ -162,6 +162,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         argv=argv,
         interaction_mode=interaction_mode,
     )
+    _enforce_account_policy(agent, args.account)
     config_start_path = _config_start_path(args)
     preflight = run_agent_preflight(
         agent=agent,
@@ -253,6 +254,7 @@ def _agent_run_config(*, cwd: Path) -> AgentRunConfig:
 
 def _cmd_agent_ping(args: argparse.Namespace) -> int:
     agent, cwd = _resolve_agent_run_target(args)
+    _enforce_account_policy(agent, args.account)
     if not agent.ping.enabled:
         raise CliError(
             f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
@@ -306,6 +308,25 @@ def _agent_command_with_preflight(agent, command_config, preflight):
 
 def _preflight_has_command_env(preflight) -> bool:
     return bool(preflight.env_overrides or preflight.env_display_overrides)
+
+
+def _enforce_account_policy(agent: Agent, args_account: str | None) -> None:
+    if agent.account_policy != "locked":
+        return
+    override = args_account.strip() if isinstance(args_account, str) else None
+    if not override:
+        return
+    profile_id = agent.instance_id or "<default>"
+    bound = agent.account.account if agent.account is not None else None
+    if bound is None:
+        raise CliError(
+            f"profile {profile_id} forbids --account override (no account bound)"
+        )
+    if override != bound:
+        raise CliError(
+            f"profile {profile_id} is locked to account {bound}; "
+            f"cannot use --account {override}"
+        )
 
 
 def _validate_agent_ping_result(

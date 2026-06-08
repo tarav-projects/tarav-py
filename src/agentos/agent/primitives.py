@@ -81,6 +81,7 @@ class AgentConfig:
     run_args: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
     account: AgentAccountContext | None = None
+    account_policy: str = "open"
     timeout_sec: int | None = None
     default_model: str | None = None
     model_flag: str | None = None
@@ -144,6 +145,7 @@ class AgentBase:
     run_args: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
     account: AgentAccountContext | None = None
+    account_policy: str = "open"
     timeout_sec: int | None = None
     default_model: str | None = None
     model_flag: str | None = None
@@ -179,6 +181,8 @@ class AgentBase:
             payload["env"] = {key: value for key, value in self.env}
         if self.account is not None:
             payload["account"] = self.account.summary()
+        if self.account_policy != "open":
+            payload["account_policy"] = self.account_policy
         if self.timeout_sec is not None:
             payload["timeout_sec"] = self.timeout_sec
         if self.default_model is not None:
@@ -316,6 +320,7 @@ def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
         "run_args": config.run_args,
         "env": config.env,
         "account": config.account,
+        "account_policy": config.account_policy,
         "timeout_sec": config.timeout_sec,
         "default_model": config.default_model,
         "model_flag": config.model_flag,
@@ -352,6 +357,7 @@ class Agent(Protocol):
     run_args: tuple[str, ...]
     env: tuple[tuple[str, str], ...]
     account: AgentAccountContext | None
+    account_policy: str
     timeout_sec: int | None
     default_model: str | None
     model_flag: str | None

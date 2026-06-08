@@ -338,6 +338,8 @@ def write_agent_profile(config: AgentConfig) -> Path:
         payload["home"] = str(config.home)
     if config.account is not None:
         payload["account"] = config.account.account
+    if config.account_policy != "open":
+        payload["account_policy"] = config.account_policy
     if config.default_model is not None:
         payload["default_model"] = config.default_model
     if config.run_args:
@@ -621,6 +623,7 @@ def agent_config_from_config_entry(
     raw_timeout_sec = raw_instance.get("timeout_sec")
     raw_default_model = raw_instance.get("default_model")
     raw_account = raw_instance.get("account")
+    raw_account_policy = raw_instance.get("account_policy")
     raw_model_flag = raw_instance.get("model_flag")
     raw_prompt_flag = raw_instance.get("prompt_flag")
     raw_ping = raw_instance.get("ping")
@@ -687,6 +690,10 @@ def agent_config_from_config_entry(
         raw_account,
         provider=provider_family.family,
         field_name=entry.field_name("account"),
+    )
+    account_policy = _load_agent_account_policy(
+        raw_account_policy,
+        field_name=entry.field_name("account_policy"),
     )
     if raw_model_flag is None:
         model_flag = _agent_default_model_flag(family_name)
@@ -779,6 +786,7 @@ def agent_config_from_config_entry(
         run_args=run_args,
         env=env,
         account=account,
+        account_policy=account_policy,
         timeout_sec=timeout_sec,
         default_model=default_model,
         model_flag=model_flag,
@@ -827,6 +835,19 @@ def _load_agent_cli_command(
     if provider_config is not None:
         return provider_config.cli_command
     return ()
+
+
+_ACCOUNT_POLICY_VALUES = ("open", "locked")
+
+
+def _load_agent_account_policy(value: object, *, field_name: str) -> str:
+    if value is None:
+        return "open"
+    if not isinstance(value, str) or value not in _ACCOUNT_POLICY_VALUES:
+        raise CliError(
+            f"{field_name} must be one of: {', '.join(_ACCOUNT_POLICY_VALUES)}"
+        )
+    return value
 
 
 def _load_agent_account_context(
