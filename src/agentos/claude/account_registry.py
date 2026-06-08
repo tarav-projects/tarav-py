@@ -65,10 +65,19 @@ def register_claude_account(
         if oauth_token_file is not None
         else None
     )
+    new_kind = (
+        CLAUDE_OAUTH_TOKEN_AUTH_KIND if token_info is not None else CLAUDE_AUTH_KIND
+    )
+    if existing is not None:
+        existing_kind = existing.get("auth_kind")
+        if isinstance(existing_kind, str) and existing_kind != new_kind:
+            raise CliError(
+                f"account {normalized_account} already registered with auth_kind {existing_kind}; "
+                "remove the account before re-registering with a different auth_kind"
+            )
     if token_info is None:
-        auth_kinds = _merged_auth_kinds(existing, CLAUDE_AUTH_KIND)
         updates: dict[str, object] = {
-            "auth_kinds": auth_kinds,
+            "auth_kind": CLAUDE_AUTH_KIND,
             "email": normalized_email,
             "label": _string_or_none(label),
         }
@@ -83,13 +92,8 @@ def register_claude_account(
             account=normalized_account,
             info=token_info,
         )
-        auth_kinds = _merged_auth_kinds(
-            existing,
-            CLAUDE_AUTH_KIND,
-            CLAUDE_OAUTH_TOKEN_AUTH_KIND,
-        )
         updates = {
-            "auth_kinds": auth_kinds,
+            "auth_kind": CLAUDE_OAUTH_TOKEN_AUTH_KIND,
             "active_artifact_id": token_info.artifact_id,
             "artifact_file": _artifact_relative_file(token_info.artifact_id),
             "email": normalized_email,
@@ -109,7 +113,7 @@ def register_claude_account(
             "provider": CLAUDE_PROVIDER,
             "account": normalized_account,
             "email": normalized_email,
-            "auth_kinds": auth_kinds,
+            "auth_kind": new_kind,
             "artifact_id": token_info.artifact_id if token_info is not None else None,
             "artifact_appended": artifact_appended,
         },
@@ -142,10 +146,7 @@ def link_claude_account_to_home(
     argv: list[str] | tuple[str, ...] = (),
 ) -> dict[str, object]:
     normalized_account = validate_string_for_path(account, field_name="account")
-    account_record = load_account(CLAUDE_PROVIDER, normalized_account)
-    auth_kinds = account_record.get("auth_kinds")
-    if not isinstance(auth_kinds, list) or CLAUDE_AUTH_KIND not in auth_kinds:
-        raise CliError(f"agent accounts link is not supported for provider {CLAUDE_PROVIDER} account {normalized_account}")
+    load_account(CLAUDE_PROVIDER, normalized_account)
     normalized_home = home.expanduser().resolve() if home is not None else None
     event_payload: dict[str, object] = {
         "provider": CLAUDE_PROVIDER,
@@ -178,8 +179,7 @@ def link_claude_account_to_home(
 def has_claude_oauth_token_kind(account: str) -> bool:
     normalized_account = validate_string_for_path(account, field_name="account")
     account_record = load_account(CLAUDE_PROVIDER, normalized_account)
-    auth_kinds = account_record.get("auth_kinds")
-    return isinstance(auth_kinds, list) and CLAUDE_OAUTH_TOKEN_AUTH_KIND in auth_kinds
+    return account_record.get("auth_kind") == CLAUDE_OAUTH_TOKEN_AUTH_KIND
 
 
 def load_claude_oauth_token_for_account(
@@ -187,11 +187,7 @@ def load_claude_oauth_token_for_account(
 ) -> ClaudeOAuthTokenMaterialization:
     normalized_account = validate_string_for_path(account, field_name="account")
     account_record = load_account(CLAUDE_PROVIDER, normalized_account)
-    auth_kinds = account_record.get("auth_kinds")
-    if (
-        not isinstance(auth_kinds, list)
-        or CLAUDE_OAUTH_TOKEN_AUTH_KIND not in auth_kinds
-    ):
+    if account_record.get("auth_kind") != CLAUDE_OAUTH_TOKEN_AUTH_KIND:
         raise CliError(
             "claude-code account has no oauth token artifact; register one with: "
             "agentos agent accounts register --provider claude-code "
@@ -278,22 +274,6 @@ def _load_account_or_none(account: str) -> dict[str, object] | None:
     if not account_exists(CLAUDE_PROVIDER, account):
         return None
     return load_account(CLAUDE_PROVIDER, account)
-
-
-def _merged_auth_kinds(
-    existing: dict[str, object] | None,
-    *auth_kinds: str,
-) -> list[str]:
-    merged: list[str] = []
-    existing_kinds = existing.get("auth_kinds") if existing is not None else None
-    if isinstance(existing_kinds, list):
-        for item in existing_kinds:
-            if isinstance(item, str) and item not in merged:
-                merged.append(item)
-    for item in auth_kinds:
-        if item not in merged:
-            merged.append(item)
-    return merged
 
 
 def _provider_root() -> Path:

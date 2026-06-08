@@ -78,6 +78,7 @@ class CodexAgent(AgentBase):
         command_config: AgentCommandConfig,
         run_config: AgentRunConfig,
     ) -> AgentRunResult:
+        self._check_account_policy(command_config)
         from agentos._core.project import normalize_project_target
         start_path = run_config.cwd
         preamble_lines = _run_codex_preflight(
@@ -99,6 +100,7 @@ class CodexAgent(AgentBase):
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
+        self._check_account_policy(command_config)
         from agentos._core.project import normalize_project_target
         start_path = Path.cwd().resolve()
         preamble_lines = _run_codex_preflight(

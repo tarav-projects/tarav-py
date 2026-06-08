@@ -251,6 +251,11 @@ def _registered_providers() -> list[str]:
 def _validate_account_record(record: dict[str, object], *, provider: str, account: str) -> None:
     if record.get("provider") != provider or record.get("account") != account:
         raise CliError(f"account registry entry does not match account: {accounts_path(provider)}#{account}")
+    auth_kind = record.get("auth_kind")
+    if not isinstance(auth_kind, str) or not auth_kind:
+        raise CliError(
+            f"account registry entry missing auth_kind: {accounts_path(provider)}#{account}"
+        )
 
 
 def _empty_accounts(provider: str) -> dict[str, object]:

@@ -317,7 +317,7 @@ def _write_account(
     existing: dict[str, object] | None,
 ) -> dict[str, object]:
     updates: dict[str, object] = {
-        "auth_kinds": [CODEX_AUTH_KIND],
+        "auth_kind": CODEX_AUTH_KIND,
         "account_id": info.account_id,
         "email": info.email,
         **info.metadata_payload(),

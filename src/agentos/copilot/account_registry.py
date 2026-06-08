@@ -32,7 +32,7 @@ def register_copilot_account(
         COPILOT_PROVIDER,
         normalized_account,
         {
-            "auth_kinds": [COPILOT_AUTH_KIND],
+            "auth_kind": COPILOT_AUTH_KIND,
             "active_artifact_id": None,
             "account_id": normalized_account_id,
             "label": _string_or_none(label),
@@ -68,8 +68,7 @@ def link_copilot_account_to_home(
 ) -> dict[str, object]:
     normalized_account = validate_string_for_path(account, field_name="account")
     account_record = load_account(COPILOT_PROVIDER, normalized_account)
-    auth_kinds = account_record.get("auth_kinds")
-    if not isinstance(auth_kinds, list) or COPILOT_AUTH_KIND not in auth_kinds:
+    if account_record.get("auth_kind") != COPILOT_AUTH_KIND:
         raise CliError(
             "agent accounts link is not supported for provider "
             f"{COPILOT_PROVIDER} account {normalized_account}"

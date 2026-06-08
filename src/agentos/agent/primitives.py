@@ -279,16 +279,36 @@ class AgentBase:
         command_config: AgentCommandConfig,
         run_config: AgentRunConfig,
     ) -> AgentRunResult:
+        self._check_account_policy(command_config)
         return execute_agent_command(
             self._build_command(command_config),
             run_config=self.resolve_run_config(run_config),
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
+        self._check_account_policy(command_config)
         command = self._build_command(command_config)
         return AgentRunDryResult(
             lines=(*command.setup_lines, format_agent_command(command)),
         )
+
+    def _check_account_policy(self, command_config: AgentCommandConfig) -> None:
+        if self.account_policy != "locked":
+            return
+        override = command_config.account.strip() if isinstance(command_config.account, str) else None
+        if not override:
+            return
+        profile_id = self.instance_id or "<default>"
+        bound = self.account.account if self.account is not None else None
+        if bound is None:
+            raise CliError(
+                f"profile {profile_id} forbids --account override (no account bound)"
+            )
+        if override != bound:
+            raise CliError(
+                f"profile {profile_id} is locked to account {bound}; "
+                f"cannot use --account {override}"
+            )
 
     def resolve_run_config(self, run_config: AgentRunConfig) -> AgentRunConfig:
         if run_config.timeout_sec is not None or self.timeout_sec is None:

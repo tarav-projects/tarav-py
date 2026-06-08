@@ -304,6 +304,26 @@ def test_provider_validate_profile_is_invoked(
         validate_provider_profile("claude-code", {"provider": "claude-code"})
 
 
+def test_locked_account_policy_enforced_on_direct_agent_run_call() -> None:
+    from agentos.claude.agent import ClaudeAgent
+    from agentos.agent.account_status import AgentAccountContext
+
+    agent = ClaudeAgent.from_config(
+        AgentConfig(
+            instance_id="claude-locked",
+            provider="claude-code",
+            cli_command=("claude",),
+            account=AgentAccountContext(provider="claude-code", account="browser-br"),
+            account_policy="locked",
+        )
+    )
+    with pytest.raises(CliError, match="locked to account browser-br"):
+        agent.run(
+            AgentCommandConfig(prompt="hello", account="claude-br-auth"),
+            AgentRunConfig(cwd="/tmp"),
+        )
+
+
 def test_no_run_provider_raises_on_run() -> None:
     from agentos.gemini.agent import GeminiAgent
 

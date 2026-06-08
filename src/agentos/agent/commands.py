@@ -156,7 +156,6 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         argv=argv,
         interaction_mode=interaction_mode,
     )
-    _enforce_account_policy(agent, args.account)
     if args.dry_run:
         dry_result = agent.run_dry(command_config)
         for line in dry_result.lines:
@@ -224,7 +223,6 @@ def _agent_run_config(*, cwd: Path) -> AgentRunConfig:
 
 def _cmd_agent_ping(args: argparse.Namespace) -> int:
     agent, cwd = _resolve_agent_run_target(args)
-    _enforce_account_policy(agent, args.account)
     if not agent.ping.enabled:
         raise CliError(
             f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
@@ -249,25 +247,6 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
     )
     return 0
 
-
-
-def _enforce_account_policy(agent: Agent, args_account: str | None) -> None:
-    if agent.account_policy != "locked":
-        return
-    override = args_account.strip() if isinstance(args_account, str) else None
-    if not override:
-        return
-    profile_id = agent.instance_id or "<default>"
-    bound = agent.account.account if agent.account is not None else None
-    if bound is None:
-        raise CliError(
-            f"profile {profile_id} forbids --account override (no account bound)"
-        )
-    if override != bound:
-        raise CliError(
-            f"profile {profile_id} is locked to account {bound}; "
-            f"cannot use --account {override}"
-        )
 
 
 def _validate_agent_ping_result(
@@ -772,9 +751,9 @@ def _format_agent_account_line(item: dict[str, object]) -> str:
     display_label = item.get("label")
     if isinstance(display_label, str):
         label += f" {display_label}"
-    auth_kinds = item.get("auth_kinds")
-    if isinstance(auth_kinds, list) and auth_kinds:
-        label += f" auth={','.join(str(kind) for kind in auth_kinds)}"
+    auth_kind = item.get("auth_kind")
+    if isinstance(auth_kind, str) and auth_kind:
+        label += f" auth={auth_kind}"
     active_sha = item.get("active_artifact_id")
     if isinstance(active_sha, str):
         label += f" active={active_sha[:12]}"
