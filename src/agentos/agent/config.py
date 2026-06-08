@@ -774,6 +774,8 @@ def agent_config_from_config_entry(
             sqlite_db_paths=resolved_sqlite_db_paths,
         )
 
+    validate_provider_profile(provider_family.family, raw_instance)
+
     return AgentConfig(
         provider=provider_family.family,
         instance_id=instance_id,
@@ -798,6 +800,29 @@ def agent_config_from_config_entry(
         identity_anchors=anchors,
         is_default=False,
     )
+
+
+def validate_provider_profile(provider: str, profile_json: dict[str, object]) -> None:
+    from agentos.claude.agent import validate_profile as _claude
+    from agentos.codex.agent import validate_profile as _codex
+    from agentos.copilot.agent import validate_profile as _copilot
+    from agentos.pi.agent import validate_profile as _pi
+    from agentos.gemini.agent import validate_profile as _gemini
+    from agentos.openclaw.agent import validate_profile as _openclaw
+    from agentos.opencode.agent import validate_profile as _opencode
+
+    _dispatch: dict[str, object] = {
+        "claude-code": _claude,
+        "codex": _codex,
+        "copilot-cli": _copilot,
+        "pi": _pi,
+        "gemini-cli": _gemini,
+        "openclaw": _openclaw,
+        "opencode": _opencode,
+    }
+    fn = _dispatch.get(provider)
+    if fn is not None:
+        fn(profile_json)  # type: ignore[call-arg]
 
 
 def _validate_unique_agent_config_ids(agent_configs: tuple["AgentConfig", ...]) -> None:
@@ -1097,6 +1122,7 @@ __all__ = [
     "default_agent_configs",
     "load_chat_config_documents",
     "load_agent_configs",
+    "validate_provider_profile",
     "load_agent_profile",
     "load_agent_profile_entries",
     "load_unique_string_list",

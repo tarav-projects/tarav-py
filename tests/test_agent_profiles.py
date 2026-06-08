@@ -13,6 +13,7 @@ from agentos.agent.commands import (
 )
 from agentos.agent.config import load_agent_configs, profile_path, write_agent_profile
 from agentos.agent.primitives import AgentConfig
+from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.agent.providers import resolve_agent_config
 from agentos.codex.account_registry import (
     inspect_codex_account_home,
@@ -266,3 +267,55 @@ def test_profile_account_policy_round_trip_writes_locked_omits_open(
     configs = {config.instance_id: config for config in load_agent_configs()}
     assert configs["claude-locked"].account_policy == "locked"
     assert configs["claude-default"].account_policy == "open"
+
+
+def test_provider_validate_profile_is_invoked(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from agentos.agent.config import validate_provider_profile
+    import agentos.claude.agent as claude_agent_module
+
+    calls: list[dict[str, object]] = []
+
+    def fake_validate(profile_json: dict[str, object]) -> None:
+        calls.append(dict(profile_json))
+
+    monkeypatch.setattr(claude_agent_module, "validate_profile", fake_validate)
+
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    environment.write_profile(
+        "claude-main",
+        **{"provider": "claude-code", "cli_command": ["claude"]},
+    )
+
+    configs = load_agent_configs()
+
+    assert len(configs) == 1
+    assert len(calls) == 1
+    assert calls[0]["provider"] == "claude-code"
+
+    def raising_validate(profile_json: dict[str, object]) -> None:
+        raise CliError("claude-specific validation failed")
+
+    monkeypatch.setattr(claude_agent_module, "validate_profile", raising_validate)
+    with pytest.raises(CliError, match="claude-specific validation failed"):
+        validate_provider_profile("claude-code", {"provider": "claude-code"})
+
+
+def test_no_run_provider_raises_on_run() -> None:
+    from agentos.gemini.agent import GeminiAgent
+
+    agent = GeminiAgent.from_config(
+        AgentConfig(
+            instance_id="gemini-test",
+            provider="gemini-cli",
+            cli_command=("gemini",),
+        )
+    )
+    with pytest.raises(CliError, match="does not support run"):
+        agent.run(
+            AgentCommandConfig(prompt="hello"),
+            AgentRunConfig(cwd="/tmp"),
+        )

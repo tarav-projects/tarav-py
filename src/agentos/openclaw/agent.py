@@ -45,4 +45,8 @@ class OpenclawAgent(AgentBase):
 
 
 
-__all__ = ["OpenclawAgent"]
+def validate_profile(profile_json: dict[str, object]) -> None:
+    pass
+
+
+__all__ = ["OpenclawAgent", "validate_profile"]

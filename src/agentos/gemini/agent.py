@@ -45,4 +45,8 @@ class GeminiAgent(AgentBase):
 
 
 
-__all__ = ["GeminiAgent"]
+def validate_profile(profile_json: dict[str, object]) -> None:
+    pass
+
+
+__all__ = ["GeminiAgent", "validate_profile"]

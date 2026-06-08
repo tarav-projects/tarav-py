@@ -57,4 +57,8 @@ class PiAgent(AgentBase):
         )
 
 
-__all__ = ["PiAgent"]
+def validate_profile(profile_json: dict[str, object]) -> None:
+    pass
+
+
+__all__ = ["PiAgent", "validate_profile"]

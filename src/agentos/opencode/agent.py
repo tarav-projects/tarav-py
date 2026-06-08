@@ -48,4 +48,8 @@ class OpencodeAgent(AgentBase):
 
 
 
-__all__ = ["OpencodeAgent"]
+def validate_profile(profile_json: dict[str, object]) -> None:
+    pass
+
+
+__all__ = ["OpencodeAgent", "validate_profile"]

@@ -83,4 +83,8 @@ class CopilotAgent(AgentBase):
         return env_overrides
 
 
-__all__ = ["CopilotAgent"]
+def validate_profile(profile_json: dict[str, object]) -> None:
+    pass
+
+
+__all__ = ["CopilotAgent", "validate_profile"]

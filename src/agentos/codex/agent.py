@@ -332,4 +332,8 @@ def _format_codex_preflight_line(action: str, agent: CodexAgent, account: str) -
     return f"[agentos] {action} codex auth for profile {profile} from account {account}"
 
 
-__all__ = ["CodexAgent"]
+def validate_profile(profile_json: dict[str, object]) -> None:
+    pass
+
+
+__all__ = ["CodexAgent", "validate_profile"]

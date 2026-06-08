@@ -176,4 +176,8 @@ def _format_claude_preamble_line(agent: ClaudeAgent, account: str) -> str:
     return f"[agentos] injected claude oauth token for profile {profile} from account {account}"
 
 
-__all__ = ["ClaudeAgent"]
+def validate_profile(profile_json: dict[str, object]) -> None:
+    pass
+
+
+__all__ = ["ClaudeAgent", "validate_profile"]
