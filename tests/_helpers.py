@@ -58,6 +58,46 @@ def codex_auth_json(
     )
 
 
+def write_claude_home(
+    home: Path,
+    *,
+    email: str,
+    account_uuid: str,
+    access_token: str = "secret-access",
+    refresh_token: str = "secret-refresh",
+) -> None:
+    write_text_file(
+        home / ".claude.json",
+        json.dumps(
+            {
+                "oauthAccount": {
+                    "accountUuid": account_uuid,
+                    "emailAddress": email,
+                    "displayName": "Browser BR",
+                    "organizationUuid": "org_br",
+                }
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+    )
+    write_text_file(
+        home / ".credentials.json",
+        json.dumps(
+            {
+                "claudeAiOauth": {
+                    "accessToken": access_token,
+                    "refreshToken": refresh_token,
+                }
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+    )
+
+
 def register_codex_args(auth_file: Path, *, account: str = "br") -> list[str]:
     return [
         "agent",

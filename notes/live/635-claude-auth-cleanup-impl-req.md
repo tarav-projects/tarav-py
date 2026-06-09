@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: ready for execution
+Status: implemented
 
 Source context:
 - The Claude ambient auth artifact implementation landed in `agentos-py` and now has focused tests.
@@ -53,7 +53,7 @@ Keep the behavior exactly the same and avoid new public API.
 
 ### Slice 1: Shared Claude test home helper
 
-Status: pending
+Status: completed
 
 Change:
 - Add `write_claude_home(...)` to `tests/_helpers.py`.
@@ -65,7 +65,7 @@ Validation:
 
 ### Slice 2: Reconcile fresh registration helper extraction
 
-Status: pending
+Status: completed
 
 Change:
 - Extract the fresh artifact registration block from `_reconcile_claude_accounts(...)` into focused private helpers.

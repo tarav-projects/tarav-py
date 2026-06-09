@@ -149,73 +149,13 @@ def _reconcile_claude_accounts(
             )
 
     if request.register_discovered:
-        for matched_account, candidates in sorted(fresh_by_account.items()):
-            registration_candidates = _dedupe_candidates_by_artifact_id(candidates)
-            selected = _select_activation_candidate(
-                matched_account,
-                registration_candidates,
+        actions.extend(
+            _register_fresh_artifacts(
+                request,
+                fresh_by_account=fresh_by_account,
+                warnings=warnings,
             )
-            if len(registration_candidates) > 1:
-                warnings.append(
-                    AccountReconcileWarning(
-                        kind="multiple_fresh_artifacts",
-                        account=matched_account,
-                        message=(
-                            "multiple fresh claude auth artifacts were observed; "
-                            "registered them without changing the active artifact"
-                        ),
-                        detail={
-                            "artifact_ids": [
-                                artifact_id
-                                for _, status in registration_candidates
-                                if (artifact_id := _artifact_id_from_status(status))
-                                is not None
-                            ],
-                        },
-                    )
-                )
-            for known_home, status in sorted(
-                registration_candidates,
-                key=lambda item: str(item[0].home),
-            ):
-                artifact_id = _artifact_id_from_status(status)
-                activate = selected is not None and (known_home, status) == selected
-                if request.check:
-                    actions.append(
-                        AccountReconcileAction(
-                            kind="would_register_artifact",
-                            account=matched_account,
-                            home=str(known_home.home),
-                            artifact_id=artifact_id,
-                        )
-                    )
-                    if activate:
-                        actions.append(
-                            AccountReconcileAction(
-                                kind="would_activate_artifact",
-                                account=matched_account,
-                                artifact_id=artifact_id,
-                            )
-                        )
-                    continue
-                payload = register_claude_ambient_auth_from_home(
-                    home=known_home.home,
-                    account=matched_account,
-                    register_only=not activate,
-                    argv=request.argv,
-                )
-                actions.append(
-                    AccountReconcileAction(
-                        kind="registered_artifact",
-                        account=matched_account,
-                        home=str(known_home.home),
-                        artifact_id=artifact_id,
-                        detail={
-                            "artifact_appended": bool(payload.get("artifact_appended")),
-                            "activated": activate,
-                        },
-                    )
-                )
+        )
 
     if request.sync_homes:
         inspected = tuple(_inspect_known_home(known_home) for known_home in known_homes)
@@ -238,6 +178,126 @@ def _reconcile_claude_accounts(
         active_artifacts=_active_artifacts(request.account),
         check=request.check,
     )
+
+
+def _register_fresh_artifacts(
+    request: AccountReconcileRequest,
+    *,
+    fresh_by_account: dict[str, list[tuple[_KnownHome, dict[str, object]]]],
+    warnings: list[AccountReconcileWarning],
+) -> list[AccountReconcileAction]:
+    actions: list[AccountReconcileAction] = []
+    for matched_account, candidates in sorted(fresh_by_account.items()):
+        registration_candidates = _dedupe_candidates_by_artifact_id(candidates)
+        selected = _select_activation_candidate(
+            matched_account,
+            registration_candidates,
+        )
+        if len(registration_candidates) > 1:
+            warnings.append(
+                _multiple_fresh_artifacts_warning(
+                    matched_account,
+                    registration_candidates,
+                )
+            )
+        actions.extend(
+            _register_candidate_actions(
+                request,
+                account=matched_account,
+                candidates=registration_candidates,
+                selected=selected,
+            )
+        )
+    return actions
+
+
+def _multiple_fresh_artifacts_warning(
+    account: str,
+    candidates: list[tuple[_KnownHome, dict[str, object]]],
+) -> AccountReconcileWarning:
+    return AccountReconcileWarning(
+        kind="multiple_fresh_artifacts",
+        account=account,
+        message=(
+            "multiple fresh claude auth artifacts were observed; "
+            "registered them without changing the active artifact"
+        ),
+        detail={
+            "artifact_ids": [
+                artifact_id
+                for _, status in candidates
+                if (artifact_id := _artifact_id_from_status(status)) is not None
+            ],
+        },
+    )
+
+
+def _register_candidate_actions(
+    request: AccountReconcileRequest,
+    *,
+    account: str,
+    candidates: list[tuple[_KnownHome, dict[str, object]]],
+    selected: tuple[_KnownHome, dict[str, object]] | None,
+) -> list[AccountReconcileAction]:
+    actions: list[AccountReconcileAction] = []
+    for known_home, status in sorted(candidates, key=lambda item: str(item[0].home)):
+        artifact_id = _artifact_id_from_status(status)
+        activate = selected is not None and (known_home, status) == selected
+        if request.check:
+            actions.extend(
+                _planned_register_candidate_actions(
+                    account=account,
+                    known_home=known_home,
+                    artifact_id=artifact_id,
+                    activate=activate,
+                )
+            )
+            continue
+        payload = register_claude_ambient_auth_from_home(
+            home=known_home.home,
+            account=account,
+            register_only=not activate,
+            argv=request.argv,
+        )
+        actions.append(
+            AccountReconcileAction(
+                kind="registered_artifact",
+                account=account,
+                home=str(known_home.home),
+                artifact_id=artifact_id,
+                detail={
+                    "artifact_appended": bool(payload.get("artifact_appended")),
+                    "activated": activate,
+                },
+            )
+        )
+    return actions
+
+
+def _planned_register_candidate_actions(
+    *,
+    account: str,
+    known_home: _KnownHome,
+    artifact_id: str | None,
+    activate: bool,
+) -> list[AccountReconcileAction]:
+    actions = [
+        AccountReconcileAction(
+            kind="would_register_artifact",
+            account=account,
+            home=str(known_home.home),
+            artifact_id=artifact_id,
+        )
+    ]
+    if activate:
+        actions.append(
+            AccountReconcileAction(
+                kind="would_activate_artifact",
+                account=account,
+                artifact_id=artifact_id,
+            )
+        )
+    return actions
 
 
 def _sync_claude_homes(

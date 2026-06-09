@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import stat
 from pathlib import Path
 
@@ -15,7 +14,7 @@ from agentos.claude.account_registry import (
 )
 from agentos.testing import AgentosTestEnvironment
 
-from _helpers import read_json_file, read_jsonl_file, write_text_file
+from _helpers import read_json_file, read_jsonl_file, write_claude_home
 
 
 def test_claude_ambient_auth_registration_stores_artifact_and_safe_registry(
@@ -26,7 +25,7 @@ def test_claude_ambient_auth_registration_stores_artifact_and_safe_registry(
     environment.apply_environment(monkeypatch.setenv)
     monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
     home = tmp_path / "claude-br"
-    _write_claude_home(home, email="br@example.com", account_uuid="acc_br")
+    write_claude_home(home, email="br@example.com", account_uuid="acc_br")
     register_claude_account(account="browser-br", email="br@example.com")
 
     payload = register_claude_ambient_auth_from_home(
@@ -82,7 +81,7 @@ def test_claude_ambient_auth_duplicate_registration_reuses_artifact_entry(
     environment.apply_environment(monkeypatch.setenv)
     monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
     home = tmp_path / "claude-br"
-    _write_claude_home(home, email="br@example.com", account_uuid="acc_br")
+    write_claude_home(home, email="br@example.com", account_uuid="acc_br")
     register_claude_account(account="browser-br", email="br@example.com")
 
     first = register_claude_ambient_auth_from_home(home=home, account="browser-br")
@@ -104,7 +103,7 @@ def test_claude_ambient_auth_registration_rejects_identity_mismatch(
     environment.apply_environment(monkeypatch.setenv)
     monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
     home = tmp_path / "claude-br"
-    _write_claude_home(home, email="other@example.com", account_uuid="acc_other")
+    write_claude_home(home, email="other@example.com", account_uuid="acc_other")
     register_claude_account(account="browser-br", email="br@example.com")
 
     with pytest.raises(CliError, match="email br@example.com"):
@@ -120,7 +119,7 @@ def test_claude_link_materializes_active_ambient_artifact(
     monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
     source_home = tmp_path / "claude-br"
     target_home = tmp_path / "managed-claude-br"
-    _write_claude_home(source_home, email="br@example.com", account_uuid="acc_br")
+    write_claude_home(source_home, email="br@example.com", account_uuid="acc_br")
     register_claude_account(account="browser-br", email="br@example.com")
     registered = register_claude_ambient_auth_from_home(
         home=source_home,
@@ -148,50 +147,10 @@ def test_claude_link_rejects_target_identity_mismatch_without_force(
     monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
     source_home = tmp_path / "claude-br"
     target_home = tmp_path / "managed-claude-br"
-    _write_claude_home(source_home, email="br@example.com", account_uuid="acc_br")
-    _write_claude_home(target_home, email="other@example.com", account_uuid="acc_other")
+    write_claude_home(source_home, email="br@example.com", account_uuid="acc_br")
+    write_claude_home(target_home, email="other@example.com", account_uuid="acc_other")
     register_claude_account(account="browser-br", email="br@example.com")
     register_claude_ambient_auth_from_home(home=source_home, account="browser-br")
 
     with pytest.raises(CliError, match="without --force"):
         link_claude_account_to_home(home=target_home, account="browser-br")
-
-
-def _write_claude_home(
-    home: Path,
-    *,
-    email: str,
-    account_uuid: str,
-    access_token: str = "secret-access",
-    refresh_token: str = "secret-refresh",
-) -> None:
-    write_text_file(
-        home / ".claude.json",
-        json.dumps(
-            {
-                "oauthAccount": {
-                    "accountUuid": account_uuid,
-                    "emailAddress": email,
-                    "displayName": "Browser BR",
-                    "organizationUuid": "org_br",
-                }
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-    )
-    write_text_file(
-        home / ".credentials.json",
-        json.dumps(
-            {
-                "claudeAiOauth": {
-                    "accessToken": access_token,
-                    "refreshToken": refresh_token,
-                }
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-    )

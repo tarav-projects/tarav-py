@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -16,7 +15,7 @@ from agentos.claude.account_reconcile import (
 )
 from agentos.testing import AgentosTestEnvironment
 
-from _helpers import read_json_file, read_jsonl_file, write_text_file
+from _helpers import read_json_file, read_jsonl_file, write_claude_home
 
 
 def test_claude_reconcile_registers_fresh_known_home_and_syncs_system_home(
@@ -29,7 +28,7 @@ def test_claude_reconcile_registers_fresh_known_home_and_syncs_system_home(
     agentos_home = environment.agentos_home
     configured_home = tmp_path / "claude-br"
     system_home = agentos_home / "agent" / "homes" / "claude-code" / "browser-br"
-    _write_claude_home(configured_home, email="br@example.com", account_uuid="acc_br")
+    write_claude_home(configured_home, email="br@example.com", account_uuid="acc_br")
     environment.write_profiles(
         [
             {
@@ -71,7 +70,7 @@ def test_claude_reconcile_warns_and_skips_unknown_account_auth(
     environment.apply_environment(monkeypatch.setenv)
     monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
     configured_home = tmp_path / "claude-unknown"
-    _write_claude_home(
+    write_claude_home(
         configured_home,
         email="unknown@example.com",
         account_uuid="acc_unknown",
@@ -108,7 +107,7 @@ def test_claude_reconcile_check_does_not_mutate(
     monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
     agentos_home = environment.agentos_home
     configured_home = tmp_path / "claude-br"
-    _write_claude_home(configured_home, email="br@example.com", account_uuid="acc_br")
+    write_claude_home(configured_home, email="br@example.com", account_uuid="acc_br")
     environment.write_profiles(
         [
             {
@@ -142,8 +141,8 @@ def test_claude_reconcile_dedupes_same_artifact_from_multiple_homes(
     agentos_home = environment.agentos_home
     configured_home = tmp_path / "claude-br"
     system_home = agentos_home / "agent" / "homes" / "claude-code" / "browser-br"
-    _write_claude_home(configured_home, email="br@example.com", account_uuid="acc_br")
-    _write_claude_home(system_home, email="br@example.com", account_uuid="acc_br")
+    write_claude_home(configured_home, email="br@example.com", account_uuid="acc_br")
+    write_claude_home(system_home, email="br@example.com", account_uuid="acc_br")
     environment.write_profiles(
         [
             {
@@ -203,43 +202,3 @@ def test_claude_reconcile_discovers_configured_and_system_homes(
             ).resolve()
         ),
     }
-
-
-def _write_claude_home(
-    home: Path,
-    *,
-    email: str,
-    account_uuid: str,
-    access_token: str = "secret-access",
-    refresh_token: str = "secret-refresh",
-) -> None:
-    write_text_file(
-        home / ".claude.json",
-        json.dumps(
-            {
-                "oauthAccount": {
-                    "accountUuid": account_uuid,
-                    "emailAddress": email,
-                    "displayName": "Browser BR",
-                    "organizationUuid": "org_br",
-                }
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-    )
-    write_text_file(
-        home / ".credentials.json",
-        json.dumps(
-            {
-                "claudeAiOauth": {
-                    "accessToken": access_token,
-                    "refreshToken": refresh_token,
-                }
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-    )
