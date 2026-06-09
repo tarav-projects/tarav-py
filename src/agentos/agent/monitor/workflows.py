@@ -51,6 +51,7 @@ from agentos.agent.monitor.models import (
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
     MonitorAccountRow,
+    MonitorColumnVariant,
     MonitorFrame,
     MonitorInfoRow,
     MonitorResetRow,
@@ -1279,8 +1280,7 @@ def _account_limit_rows(
             ratio=ratio,
         )
         row_label = "    usage/time"
-        label_variants: tuple[str, ...] = ()
-        value_variants: tuple[str, ...] = ()
+        variants: tuple[MonitorColumnVariant, ...] = ()
         burst_unit = _weekly_burst_unit_summary(
             provider=provider,
             limit=limit,
@@ -1291,12 +1291,17 @@ def _account_limit_rows(
         if burst_unit is not None:
             burst_value = burst_unit.get("value")
             if isinstance(burst_value, str):
-                label_variants = (
-                    "    usage/time [used]",
-                    "    time/usage [left]",
+                variants = (
+                    MonitorColumnVariant(
+                        label="    usage/time [used]",
+                        value=value,
+                    ),
+                    MonitorColumnVariant(
+                        label="    time/usage [left]",
+                        value=burst_value,
+                    ),
                 )
-                row_label = label_variants[0]
-                value_variants = (value, burst_value)
+                row_label = variants[0].label
         rows.append(
             MonitorUsageTimeRow(
                 label=row_label,
@@ -1305,8 +1310,7 @@ def _account_limit_rows(
                 used_percent=max(0, min(100, used_percent)),
                 elapsed_percent=max(0, min(100, elapsed_percent)),
                 ratio=ratio,
-                label_variants=label_variants,
-                value_variants=value_variants,
+                variants=variants,
                 burst_unit=burst_unit,
             )
         )

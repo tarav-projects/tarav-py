@@ -4,7 +4,9 @@ import argparse
 import json
 import re
 import sys
+import termios
 import time
+import tty
 from dataclasses import replace
 from pathlib import Path
 from threading import Thread
@@ -704,7 +706,7 @@ def _cmd_agent_accounts_monitor(args: argparse.Namespace) -> int:
 
         with RichMonitorRenderer() as renderer:
             if _should_listen_for_monitor_enter(args):
-                _start_monitor_enter_trigger_thread(loop)
+                _start_monitor_input_thread(loop)
             loop.run(on_tick=renderer.render, wait_for_first_frame=args.once)
         return 0
     except KeyboardInterrupt:
@@ -715,18 +717,39 @@ def _should_listen_for_monitor_enter(args: argparse.Namespace) -> bool:
     return not args.json and not args.once and sys.stdin.isatty()
 
 
-def _start_monitor_enter_trigger_thread(loop) -> Thread:
-    from agentos.agent.monitor import MONITOR_ENTER_ALARM
+def _start_monitor_input_thread(loop) -> Thread:
+    import select
 
-    def listen_for_enter() -> None:
-        while not loop.stop_requested.is_set():
-            line = sys.stdin.readline()
-            if line == "":
-                return
-            loop.set_alarm(MONITOR_ENTER_ALARM, remaining_ticks=0)
+    from agentos.agent.monitor import (
+        MONITOR_ENTER_ALARM,
+        MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
+    )
+
+    def listen_for_input() -> None:
+        stdin = sys.stdin
+        fd = stdin.fileno()
+        previous_attrs = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            while not loop.stop_requested.is_set():
+                readable, _, _ = select.select([stdin], [], [], 0.1)
+                if not readable:
+                    continue
+                char = stdin.read(1)
+                if char == "":
+                    return
+                if char in {"\n", "\r"}:
+                    loop.set_alarm(MONITOR_ENTER_ALARM, remaining_ticks=0)
+                elif char.lower() == "r":
+                    loop.set_alarm(
+                        MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
+                        remaining_ticks=0,
+                    )
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, previous_attrs)
 
     thread = Thread(
-        target=listen_for_enter,
+        target=listen_for_input,
         name="agentos-monitor-input",
         daemon=True,
     )

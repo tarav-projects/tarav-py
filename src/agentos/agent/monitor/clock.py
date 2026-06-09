@@ -8,6 +8,7 @@ from typing import Literal
 MonitorAlarmKind = Literal["one-shot", "periodic"]
 MONITOR_STARTUP_ALARM = "startup"
 MONITOR_ENTER_ALARM = "io.enter"
+MONITOR_USAGE_VARIANT_TOGGLE_ALARM = "io.usage-variant-toggle"
 LIMITS_TRACKING_PERIODIC_ALARM = "limits-tracking.periodic"
 AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM = "auto-prime-zero-limits.periodic"
 

@@ -14,6 +14,7 @@ from agentos.agent.monitor.clock import (
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
     MONITOR_STARTUP_ALARM,
+    MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
     MonitorClock,
     MonitorClockSnapshot,
 )
@@ -104,12 +105,18 @@ class MonitorLoop:
                 )
                 self.state.tick = self._clock_snapshot.tick
                 self._check_config_fingerprint()
-                if self._clock_snapshot.fired_alarm_names:
-                    self._queue_workflow_snapshot(self._clock_snapshot)
+                workflow_alarm_names = _workflow_alarm_names(
+                    self._clock_snapshot.fired_alarm_names
+                )
+                if workflow_alarm_names:
+                    self._queue_workflow_snapshot(
+                        self._snapshot_with_fired(workflow_alarm_names)
+                    )
                 if wait_for_first_frame and self.visible_frame.tick == 0:
                     self.working_frame_ready.wait()
                 self._publish_working_frame_if_ready()
                 self._prepare_visible_frame_for_render()
+                self._apply_display_alarms(self._clock_snapshot)
 
                 if on_tick is not None:
                     on_tick(self.visible_frame, self.state)
@@ -159,7 +166,7 @@ class MonitorLoop:
             self._workflow_condition.notify()
 
     def _prepare_visible_frame_for_render(self) -> None:
-        status_lines = [f"tick: {self.state.tick}"]
+        status_lines: list[str] = []
         if self._workflow_is_active():
             status_lines.append("workflow: fetching account data")
         if not self._has_visible_frame:
@@ -191,6 +198,10 @@ class MonitorLoop:
                 remaining_ticks=alarm.remaining_ticks,
                 period_ticks=alarm.period_ticks,
             )
+
+    def _apply_display_alarms(self, snapshot: MonitorClockSnapshot) -> None:
+        if snapshot.fired(MONITOR_USAGE_VARIANT_TOGGLE_ALARM):
+            self.visible_frame.toggle_usage_time_variants()
 
     def _workflow_is_active(self) -> bool:
         with self._workflow_condition:
@@ -410,6 +421,14 @@ def _workflow_period_seconds(
         if isinstance(refresh_interval_sec, int | float):
             return float(refresh_interval_sec)
     return None
+
+
+def _workflow_alarm_names(fired_alarm_names: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        name
+        for name in fired_alarm_names
+        if name != MONITOR_USAGE_VARIANT_TOGGLE_ALARM
+    )
 
 
 def _period_ticks_from_seconds(period_sec: float, *, interval_sec: float) -> int:

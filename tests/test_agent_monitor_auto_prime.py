@@ -21,7 +21,7 @@ from agentos.agent.monitor.config import (
     _target_limit_ids,
     load_monitor_workflow_configs,
 )
-from agentos.agent.monitor.loop import MonitorLoop
+from agentos.agent.monitor.loop import MonitorLoop, _workflow_alarm_names
 from agentos.agent.monitor.models import (
     AUTO_PRIME_PING_SUCCEEDED_STATUS,
     AUTO_PRIME_VERIFICATION_EFFECTIVE,
@@ -30,12 +30,17 @@ from agentos.agent.monitor.models import (
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
     MonitorAccountRow,
+    MonitorColumnVariant,
     MonitorFrame,
     MonitorRenderContext,
     MonitorState,
     MonitorTarget,
     MonitorUsageTimeRow,
     MonitorWorkflowConfig,
+)
+from agentos.agent.monitor.clock import (
+    LIMITS_TRACKING_PERIODIC_ALARM,
+    MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
 )
 from agentos.agent.monitor.render import format_monitor_frame, monitor_result_payload
 import agentos.agent.monitor.workflows as monitor_workflows
@@ -296,7 +301,7 @@ def test_monitor_account_row_renders_status_as_full_lane() -> None:
     assert row.summary()["status"] == "fresh"
 
 
-def test_usage_time_row_animates_unit_variants_every_five_ticks() -> None:
+def test_usage_time_row_variant_changes_only_when_toggled() -> None:
     row = MonitorUsageTimeRow(
         label="    usage/time [used]",
         value="63% / 40% = 1.6 [%]",
@@ -304,23 +309,28 @@ def test_usage_time_row_animates_unit_variants_every_five_ticks() -> None:
         used_percent=63,
         elapsed_percent=40,
         ratio=1.575,
-        label_variants=(
-            "    usage/time [used]",
-            "    time/usage [left]",
-        ),
-        value_variants=(
-            "63% / 40% = 1.6 [%]",
-            "20.2 / 2.4 = 8.6 [Burst]",
+        variants=(
+            MonitorColumnVariant(
+                label="    usage/time [used]",
+                value="63% / 40% = 1.6 [%]",
+            ),
+            MonitorColumnVariant(
+                label="    time/usage [left]",
+                value="20.2 / 2.4 = 8.6 [Burst]",
+            ),
         ),
     )
     context = MonitorRenderContext(row_indent="")
 
     assert "usage/time [used]" in row.render_frame(context)
     assert "63% / 40% = 1.6 [%]" in row.render_frame(context)
-    for _ in range(4):
+    for _ in range(5):
         row.step_animation()
     assert "63% / 40% = 1.6 [%]" in row.render_frame(context)
-    row.step_animation()
+    assert "usage/time [used]" in row.render_frame(context)
+
+    row.toggle_variant()
+
     assert "time/usage [left]" in row.render_frame(context)
     assert "20.2 / 2.4 = 8.6 [Burst]" in row.render_frame(context)
 
@@ -426,13 +436,15 @@ def test_limits_tracking_weekly_usage_time_animates_burst_units(
 
     assert "63% / 40% = 1.6 [%]" in format_monitor_frame(frame)
     assert isinstance(usage_row, dict)
-    assert usage_row["label_variants"] == [
-        "    usage/time [used]",
-        "    time/usage [left]",
-    ]
-    assert usage_row["value_variants"] == [
-        "63% / 40% = 1.6 [%]",
-        "20.2 / 2.4 = 8.6 [Burst]",
+    assert usage_row["variants"] == [
+        {
+            "label": "    usage/time [used]",
+            "value": "63% / 40% = 1.6 [%]",
+        },
+        {
+            "label": "    time/usage [left]",
+            "value": "20.2 / 2.4 = 8.6 [Burst]",
+        },
     ]
     assert usage_row["burst_unit"]["weekly_burst_percent"] == 15.7  # type: ignore[index]
     assert usage_row["burst_unit"]["usage_burst_units_left"] == pytest.approx(2.4, abs=0.05)  # type: ignore[index]
@@ -443,6 +455,12 @@ def test_limits_tracking_weekly_usage_time_animates_burst_units(
 
     for _ in range(5):
         frame.step_animations()
+
+    rendered = format_monitor_frame(frame)
+    assert "usage/time [used]" in rendered
+    assert "63% / 40% = 1.6 [%]" in rendered
+
+    frame.toggle_usage_time_variants()
 
     rendered = format_monitor_frame(frame)
     assert "time/usage [left]" in rendered
@@ -462,7 +480,7 @@ def test_limits_tracking_burst_limit_does_not_get_weekly_burst_unit_variant(
 
     usage_row = rows[0]
     assert isinstance(usage_row, MonitorUsageTimeRow)
-    assert usage_row.value_variants == ()
+    assert usage_row.variants == ()
     assert usage_row.burst_unit is None
 
 
@@ -485,7 +503,7 @@ def test_limits_tracking_unknown_provider_does_not_get_burst_unit_variant(
 
     usage_row = rows[0]
     assert isinstance(usage_row, MonitorUsageTimeRow)
-    assert usage_row.value_variants == ()
+    assert usage_row.variants == ()
     assert usage_row.burst_unit is None
 
 
@@ -943,6 +961,44 @@ def test_monitor_loop_surfaces_config_fingerprint_drift() -> None:
     assert isinstance(setup, dict)
     assert setup["config_stale"] is True
     assert setup["current_config_fingerprint"] == "new"
+
+
+def test_monitor_loop_usage_variant_toggle_alarm_changes_display_only() -> None:
+    loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
+    row = MonitorUsageTimeRow(
+        label="    usage/time [used]",
+        value="63% / 40% = 1.6 [%]",
+        suffix="Weekly",
+        used_percent=63,
+        elapsed_percent=40,
+        ratio=1.575,
+        variants=(
+            MonitorColumnVariant(
+                label="    usage/time [used]",
+                value="63% / 40% = 1.6 [%]",
+            ),
+            MonitorColumnVariant(
+                label="    time/usage [left]",
+                value="20.2 / 2.4 = 8.6 [Burst]",
+            ),
+        ),
+    )
+    loop.visible_frame.add_block("limits-tracking", rows=[row])
+    loop.clock.set_one_shot(MONITOR_USAGE_VARIANT_TOGGLE_ALARM, remaining_ticks=0)
+    snapshot = loop.clock.step()
+
+    loop._apply_display_alarms(snapshot)
+
+    assert "time/usage [left]" in format_monitor_frame(loop.visible_frame)
+    assert MONITOR_USAGE_VARIANT_TOGGLE_ALARM not in _workflow_alarm_names(
+        snapshot.fired_alarm_names
+    )
+
+
+def test_monitor_loop_usage_variant_toggle_alarm_does_not_hide_workflow_alarms() -> None:
+    assert _workflow_alarm_names(
+        (MONITOR_USAGE_VARIANT_TOGGLE_ALARM, LIMITS_TRACKING_PERIODIC_ALARM)
+    ) == (LIMITS_TRACKING_PERIODIC_ALARM,)
 
 
 def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() -> None:

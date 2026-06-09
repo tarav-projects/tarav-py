@@ -111,8 +111,7 @@ left_ratio = 3.2
   - `label`
   - `suffix`
 - Add semantic fields only if needed for JSON/debug visibility, for example:
-  - `label_variants`
-  - `value_variants`
+  - `variants`
   - `burst_unit`
   - `weekly_burst_percent`
   - `usage_burst_units_left`
@@ -265,9 +264,10 @@ agentos agent accounts monitor --max-ticks 12 --interval-sec 1
 
 - Created from the account-monitor design discussion. The accepted implementation treats Burst units as a display variant of Weekly `usage/time`, not a new workflow and not a provider capability change.
 - Implementation decision: the monitor value column was widened from 24 to 25 display cells so the requested `[Burst]` value shape fits as a static unit variant instead of immediately entering overflow scrolling.
-- Implementation decision: `MonitorUsageTimeRow` now owns optional `label_variants` and `value_variants`, selecting the active display every 5 draw ticks through existing row animation state. Percent fields remain canonical, and remaining Burst-unit metadata is exposed under `burst_unit` for JSON/debug verification.
+- Implementation decision: `MonitorUsageTimeRow` now owns optional paired `variants` for alternate label/value display. Percent fields remain canonical, and remaining Burst-unit metadata is exposed under `burst_unit` for JSON/debug verification.
 - Correction: the first implementation converted both Weekly usage and elapsed time by the same weekly/burst ratio, preserving the original ratio and not answering the user's question. The corrected implementation uses `[left]` semantics over remaining Weekly quota and remaining 5-hour Burst windows before Weekly reset.
 - Correction: the `[left]` ratio was then flipped to `time/usage` so values greater than `1` mean overuse / quota pressure, matching the intuition of the existing `[used]` pace ratio.
+- Correction: the used/left display switch is no longer automatic. Draw-tick animation remains for overflow marquee text, while usage type selection is a separate display toggle driven by the `r` key in the live monitor.
 - Validation deviation: `uv tool install --reinstall --editable .` failed because the current `agentos-py` package reports no executable entrypoints and `uv` removed the tool during reinstall. Corrective action was to reinstall the actual executable owner with `uv tool install --reinstall --editable ../agentos-cli`, which succeeded and installed `agentos`.
 - Validation completed:
   - `uv run pytest tests/test_agent_monitor_auto_prime.py -q` -> 22 passed.
@@ -277,4 +277,4 @@ agentos agent accounts monitor --max-ticks 12 --interval-sec 1
   - `agentos --version` -> `agentos 0.1.0`.
   - `agentos agent accounts monitor --once` -> passed after CLI reinstall.
   - `agentos agent accounts monitor --max-ticks 12 --interval-sec 1` -> passed after CLI reinstall.
-  - `agentos agent accounts monitor --once --json | rg -n 'label_variants|usage_burst_units_left|time_burst_units_left|left_ratio|\[left\]|\[Burst\]'` -> passed, showing live `time/usage [left]` Burst value variants with remaining usage/time fields.
+  - `agentos agent accounts monitor --once --json | rg -n 'variants|usage_burst_units_left|time_burst_units_left|left_ratio|\[left\]|\[Burst\]'` -> passed, showing live `time/usage [left]` Burst value variants with remaining usage/time fields.

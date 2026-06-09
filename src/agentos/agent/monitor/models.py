@@ -186,6 +186,18 @@ class MonitorInfoRow(_MonitorColumnRowMixin):
         return payload
 
 
+@dataclass(frozen=True)
+class MonitorColumnVariant:
+    label: str
+    value: str
+
+    def summary(self) -> dict[str, object]:
+        return {
+            "label": self.label,
+            "value": self.value,
+        }
+
+
 @dataclass
 class MonitorUsageTimeRow(_MonitorColumnRowMixin):
     label: str
@@ -194,9 +206,8 @@ class MonitorUsageTimeRow(_MonitorColumnRowMixin):
     used_percent: int
     elapsed_percent: int
     ratio: float | None
-    label_variants: tuple[str, ...] = ()
-    value_variants: tuple[str, ...] = ()
-    variant_interval_ticks: int = 5
+    variants: tuple[MonitorColumnVariant, ...] = ()
+    variant_index: int = 0
     burst_unit: dict[str, object] | None = None
     kind: Literal["usage_time"] = "usage_time"
     animation_tick: int = field(default=0, init=False, repr=False, compare=False)
@@ -213,19 +224,26 @@ class MonitorUsageTimeRow(_MonitorColumnRowMixin):
         )
 
     def _active_label(self) -> str:
-        if not self.label_variants:
+        variant = self._active_variant()
+        if variant is None:
             return self.label
-        return self.label_variants[self._active_variant_index() % len(self.label_variants)]
+        return variant.label
 
     def _active_value(self) -> str:
-        if not self.value_variants:
+        variant = self._active_variant()
+        if variant is None:
             return self.value
-        return self.value_variants[self._active_variant_index() % len(self.value_variants)]
+        return variant.value
 
-    def _active_variant_index(self) -> int:
-        interval = max(1, self.variant_interval_ticks)
-        variant_count = max(len(self.label_variants), len(self.value_variants), 1)
-        return (self.animation_tick // interval) % variant_count
+    def _active_variant(self) -> MonitorColumnVariant | None:
+        if not self.variants:
+            return None
+        return self.variants[self.variant_index % len(self.variants)]
+
+    def toggle_variant(self) -> None:
+        if not self.variants:
+            return
+        self.variant_index = (self.variant_index + 1) % len(self.variants)
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -237,11 +255,9 @@ class MonitorUsageTimeRow(_MonitorColumnRowMixin):
             "elapsed_percent": self.elapsed_percent,
             "ratio": self.ratio,
         }
-        if self.label_variants:
-            payload["label_variants"] = list(self.label_variants)
-        if self.value_variants:
-            payload["value_variants"] = list(self.value_variants)
-            payload["variant_interval_ticks"] = self.variant_interval_ticks
+        if self.variants:
+            payload["variants"] = [variant.summary() for variant in self.variants]
+            payload["variant_index"] = self.variant_index
         if self.burst_unit is not None:
             payload["burst_unit"] = dict(self.burst_unit)
         if self.suffix is not None:
@@ -383,6 +399,12 @@ class MonitorFrame:
             for row in monitor_block_rows(block):
                 row.step_animation()
 
+    def toggle_usage_time_variants(self) -> None:
+        for block in self.blocks:
+            for row in monitor_block_rows(block):
+                if isinstance(row, MonitorUsageTimeRow):
+                    row.toggle_variant()
+
     def inherit_animation_state_from(self, previous: MonitorFrame) -> None:
         for row, previous_row in zip(_frame_rows(self), _frame_rows(previous)):
             _inherit_row_animation_state(row, previous_row)
@@ -474,3 +496,7 @@ def _inherit_row_animation_state(row: MonitorRow, previous_row: MonitorRow) -> N
     if row.text != previous_row.text:
         return
     row.animation_tick = previous_row.animation_tick
+    if isinstance(row, MonitorUsageTimeRow) and isinstance(
+        previous_row, MonitorUsageTimeRow
+    ):
+        row.variant_index = previous_row.variant_index

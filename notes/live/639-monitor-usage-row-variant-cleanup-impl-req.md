@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** clean up the newly added monitor `usage/time` display-variant model by replacing parallel label/value variant tuples with a paired row-variant model.
-- **status:** ready for implementation.
+- **status:** implemented.
 - **source:** autonomous `hugentics-codebase-cleaner` pass after implementing Weekly Burst pressure display in the account monitor.
 - **goal:** reduce repeated/parallel state in `MonitorUsageTimeRow`, keep row animation semantics easier to reason about, and preserve the visible monitor behavior.
 - **strong constraint:** this is a narrow cleanup. Do not redesign monitor rendering, provider status parsing, or account monitor workflow scheduling.
@@ -69,7 +69,7 @@ time/usage [left]      | ... [Burst]                  | Weekly
 
 ### Slice 1 - Replace Parallel Variant Fields
 
-Status: pending.
+Status: implemented.
 
 - Add a paired monitor column variant model in `models.py`.
 - Change `MonitorUsageTimeRow` to use `variants`.
@@ -80,7 +80,7 @@ Status: pending.
 
 ### Slice 2 - Update Workflow Construction
 
-Status: pending.
+Status: implemented.
 
 - Update `_account_limit_rows(...)` in `workflows.py` to construct paired variants for Weekly Burst rows.
 - Preserve `burst_unit` metadata and percent canonical fields.
@@ -90,7 +90,7 @@ Status: pending.
 
 ### Slice 3 - Update Tests And Validation
 
-Status: pending.
+Status: implemented.
 
 - Update monitor tests to assert paired `variants` JSON instead of parallel arrays.
 - Run:
@@ -110,3 +110,11 @@ agentos agent accounts monitor --once --json | rg -n 'variants|time/usage \[left
 ## Impl.Log
 
 - Created by `hugentics-codebase-cleaner` to remove the parallel label/value variant shape introduced during Weekly Burst pressure implementation.
+- Implemented paired `MonitorColumnVariant` objects for usage-time row display variants, replacing parallel `label_variants` / `value_variants`.
+- Updated Weekly Burst pressure workflow construction to build paired variants for `[used]` and `[left]` displays.
+- Validation completed:
+  - `uv run pytest tests/test_agent_monitor_auto_prime.py -q` -> 24 passed.
+  - `uv run pytest tests/test_agent_account_registry.py tests/test_agent_monitor_auto_prime.py -q` -> 26 passed.
+  - `uv run ruff check src/agentos/agent/monitor tests/test_agent_monitor_auto_prime.py` -> passed.
+  - `agentos agent accounts monitor --once --json | rg -n 'variants|time/usage \[left\]|left_ratio|\[Burst\]'` -> passed.
+- Follow-up display-control change: usage-row variants no longer rotate on draw ticks. `r` now toggles the active variant through a display-only monitor alarm, while draw-tick animation remains available for overflow marquee text.
