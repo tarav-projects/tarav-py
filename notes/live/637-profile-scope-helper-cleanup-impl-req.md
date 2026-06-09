@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: ready for execution.
+Status: executed.
 
 Source context: post-implementation cleanup after profile schema moved from singular `account`/`home`/`account_policy` fields to scoped `accounts` and `homes` lists. The feature is working and verified, but account/home scope checks now repeat small pieces of knowledge across config loading, run resolution, base agent account checks, and monitor target validation.
 
@@ -101,4 +101,4 @@ Refresh the installed CLI only if source changes affect CLI behavior and smoke t
 
 ## Impl.Log
 
-- Pending execution.
+- 2026-06-09: Executed as designed. No deviations.

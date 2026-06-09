@@ -10,6 +10,7 @@ from agentos.agent.primitives import (
     Agent,
     AgentConfig,
 )
+from agentos.agent.profile_scope import select_allowed_home
 from agentos.agent.config import (
     AgentProviderConfig,
     agent_config_with_provider_config,
@@ -163,19 +164,11 @@ def _resolve_profile_config(
 def _profile_config_with_home_selection(
     config: AgentConfig, *, home: Path | str
 ) -> AgentConfig:
-    normalized_home = Path(home).expanduser().resolve()
-    if not config.homes:
-        profile_id = config.instance_id or "<default>"
-        raise CliError(f"profile {profile_id} does not allow home overrides")
-    allowed_homes = {str(allowed_home): allowed_home for allowed_home in config.homes}
-    selected_home = allowed_homes.get(str(normalized_home))
-    if selected_home is None:
-        profile_id = config.instance_id or "<default>"
-        allowed_display = ", ".join(sorted(allowed_homes))
-        raise CliError(
-            f"profile {profile_id} allows homes: {allowed_display}; "
-            f"cannot use --home {normalized_home}"
-        )
+    selected_home = select_allowed_home(
+        profile_id=config.instance_id or "<default>",
+        allowed_homes=config.homes,
+        home=home,
+    )
     return agent_config_with_home_override(config, home=selected_home)
 
 

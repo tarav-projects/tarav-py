@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus, AgentAccountContext
+from agentos.agent.profile_scope import validate_account_override
 from agentos.agent.run_runtime import (
     AgentCommand,
     AgentCommandConfig,
@@ -301,19 +302,11 @@ class AgentBase:
         )
 
     def _check_account_scope(self, command_config: AgentCommandConfig) -> None:
-        if not self.accounts:
-            return
-        override = command_config.account.strip() if isinstance(command_config.account, str) else None
-        if not override:
-            return
-        profile_id = self.instance_id or "<default>"
-        allowed = tuple(account.account for account in self.accounts)
-        if override not in allowed:
-            allowed_display = ", ".join(allowed)
-            raise CliError(
-                f"profile {profile_id} allows accounts: {allowed_display}; "
-                f"cannot use --account {override}"
-            )
+        validate_account_override(
+            profile_id=self.instance_id or "<default>",
+            allowed_accounts=self.accounts,
+            account=command_config.account,
+        )
 
     def resolve_run_config(self, run_config: AgentRunConfig) -> AgentRunConfig:
         if run_config.timeout_sec is not None or self.timeout_sec is None:

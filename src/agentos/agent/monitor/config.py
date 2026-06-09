@@ -15,6 +15,11 @@ from agentos.agent.config import (
     load_chat_config_documents,
     load_agent_profile,
 )
+from agentos.agent.profile_scope import (
+    allowed_account_ids,
+    allowed_home_paths,
+    format_allowed_values,
+)
 from agentos.agent.monitor.loop import MonitorLoop
 from agentos.agent.monitor.models import (
     AUTO_PRIME_SUPPORTED_TRIGGERS,
@@ -230,19 +235,17 @@ def _validate_profile_target(
         raise CliError(
             f"{field_name}.profile uses provider {config.provider}, not {provider}"
         )
-    allowed_accounts = {allowed.account for allowed in config.accounts}
+    allowed_accounts = set(allowed_account_ids(config.accounts))
     if allowed_accounts and account not in allowed_accounts:
-        allowed_display = ", ".join(sorted(allowed_accounts))
         raise CliError(
             f"{field_name}.account must be allowed by profile {profile}; "
-            f"allowed accounts: {allowed_display}"
+            f"allowed accounts: {format_allowed_values(allowed_accounts)}"
         )
-    allowed_homes = {str(allowed_home) for allowed_home in config.homes}
+    allowed_homes = set(allowed_home_paths(config.homes))
     if str(home) not in allowed_homes:
-        allowed_display = ", ".join(sorted(allowed_homes))
         raise CliError(
             f"{field_name}.home must be allowed by profile {profile}; "
-            f"allowed homes: {allowed_display}"
+            f"allowed homes: {format_allowed_values(allowed_homes)}"
         )
 
 
