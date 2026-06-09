@@ -3,9 +3,9 @@
 ## Impl.Abstract
 
 - **scope:** add a Weekly `usage/time` display variant in Burst units to the account monitor, reusing the existing monitor row animation framework.
-- **status:** ready for implementation.
+- **status:** implemented.
 - **source:** current account-monitor discussion after a 30-day usage-registry back-of-envelope computation showed stable empirical weekly/burst ratios: Codex around `15.7%` weekly per full Burst, Claude around `9.0%` weekly per full Burst.
-- **goal:** make Weekly quota pace easier to reason about by expressing both Weekly usage consumed and Weekly time elapsed in equivalent Burst units, while preserving the existing percent-based `usage/time` semantics.
+- **goal:** make Weekly quota pace easier to reason about by showing both used percent pace and remaining Weekly capacity/time in Burst units.
 - **strong constraint:** this is a monitor display/model change, not a new monitor workflow. The measure updates when `limits-tracking` refreshes account status. The display alternation is a row animation driven by monitor draw ticks, consistent with the existing animation design.
 
 ## Impl.Index
@@ -40,20 +40,20 @@
 weekly_used_percent / weekly_elapsed_percent = weekly_pace_ratio
 ```
 
-- Add a Burst-unit equivalent for Weekly limits:
+- Add a Burst-unit remaining-capacity equivalent for Weekly limits:
 
 ```text
-weekly_used_bursts = weekly_used_percent / weekly_burst_percent
-weekly_elapsed_bursts = weekly_elapsed_percent / weekly_burst_percent
-weekly_pace_ratio = weekly_used_bursts / weekly_elapsed_bursts
+usage_burst_units_left = (100 - weekly_used_percent) / weekly_burst_percent
+time_burst_units_left = seconds_until_weekly_reset / 5h
+left_ratio = time_burst_units_left / usage_burst_units_left
 ```
 
-- The Burst-unit row means:
+- The `[left]` Burst-unit row means:
 
 ```text
-how many Burst-equivalents of Weekly quota have been consumed
+how many full-Burst equivalents of Weekly quota remain
 /
-how many Burst-equivalents of Weekly time have passed
+how many 5-hour Burst windows remain before Weekly reset
 ```
 
 - Example:
@@ -61,18 +61,18 @@ how many Burst-equivalents of Weekly time have passed
 ```text
 weekly_burst_percent = 15.7
 weekly_used_percent = 63
-weekly_elapsed_percent = 40
+hours_until_weekly_reset = 38.5
 
-weekly_used_bursts = 4.0
-weekly_elapsed_bursts = 2.5
-weekly_pace_ratio = 1.6
+usage_burst_units_left = 2.4
+time_burst_units_left = 7.7
+left_ratio = 3.2
 ```
 
 - User-facing display should alternate the Weekly `usage/time` units every 5 draw ticks:
 
 ```text
-    usage/time          |  63% /  40% = 1.6 [%]        | Weekly
-    usage/time          | 4.0 / 2.5 = 1.6 [Burst]      | Weekly
+    usage/time [used]   |  63% /  40% = 1.6 [%]        | Weekly
+    time/usage [left]   | 7.7 / 2.4 = 3.2 [Burst]      | Weekly
 ```
 
 - The alternation is a row-display animation, not a workflow refresh. The computed semantic values are refreshed only when `limits-tracking` refreshes the account status.
@@ -111,12 +111,13 @@ weekly_pace_ratio = 1.6
   - `label`
   - `suffix`
 - Add semantic fields only if needed for JSON/debug visibility, for example:
-  - `unit_variants`
-  - `active_unit`
+  - `label_variants`
+  - `value_variants`
   - `burst_unit`
   - `weekly_burst_percent`
-  - `used_burst_units`
-  - `elapsed_burst_units`
+  - `usage_burst_units_left`
+  - `time_burst_units_left`
+  - `left_ratio`
 - The raw state/frame summary should expose enough data to verify the Burst-unit calculation without parsing rendered text.
 - Do not replace percent values with Burst values in semantic fields. Percent remains canonical; Burst units are derived display data.
 
@@ -125,7 +126,7 @@ weekly_pace_ratio = 1.6
 - Keep the current label and suffix:
 
 ```text
-label:  "    usage/time"
+label:  "    usage/time [used]" / "    time/usage [left]"
 suffix: "Weekly"
 ```
 
@@ -138,11 +139,11 @@ suffix: "Weekly"
 - Burst-unit display should use one decimal place for Burst values:
 
 ```text
-4.0 / 2.5 = 1.6 [Burst]
+7.7 / 2.4 = 3.2 [Burst]
 ```
 
 - Ratio formatting should match the current `usage/time` ratio formatting unless implementation needs minor width tuning.
-- If elapsed percent is zero, both percent and Burst-unit displays should use the existing `n/a` ratio behavior.
+- If remaining usage quota is zero, the Burst-unit `[left]` display should use the existing `n/a` ratio behavior.
 
 ### No.Legacy.Allowed
 
@@ -158,7 +159,7 @@ suffix: "Weekly"
 
 ### Slice 1 - Add Weekly Burst Ratio Support
 
-Status: pending.
+Status: implemented.
 
 - Add a small provider-ratio lookup near monitor workflow rendering code or monitor display helpers.
 - Support only `codex` and `claude-code`.
@@ -170,32 +171,32 @@ Status: pending.
 
 ### Slice 2 - Compute Burst-Unit Usage/Time Variants
 
-Status: pending.
+Status: implemented.
 
 - In `_account_limit_rows(...)`, when the current limit is Weekly and a provider ratio is available, compute:
-  - `used_burst_units`
-  - `elapsed_burst_units`
-  - the same `usage/time` ratio already computed from percent values
+  - `usage_burst_units_left`
+  - `time_burst_units_left`
+  - `left_ratio`
 - Preserve percent values as canonical row metadata.
 - Add focused helper functions for:
   - detecting Weekly limit
   - formatting Burst-unit usage/time values
   - building display variants
 - Check:
-  - `63% / 40%` with Codex ratio `15.7` formats as about `4.0 / 2.5 = 1.6 [Burst]`
-  - ratio remains unchanged between percent and Burst-unit display
-  - zero elapsed time still formats as `n/a`
+  - remaining Weekly percent with Codex ratio `15.7` formats as about `7.7 / 2.4 = 3.2 [Burst]` when 38.5 hours remain
+  - Burst-unit ratio compares remaining Burst windows against remaining usage capacity so values greater than `1` mean quota pressure / overuse
+  - zero remaining usage quota formats as `n/a`
 
 ### Slice 3 - Add Unit-Variant Row Animation
 
-Status: pending.
+Status: implemented.
 
-- Extend `MonitorUsageTimeRow` or add a narrow monitor row display-variant mechanism so one semantic row can render multiple unit variants.
+- Extend `MonitorUsageTimeRow` or add a narrow monitor row display-variant mechanism so one semantic row can render multiple label/value variants.
 - Use a 5-draw-tick phase:
 
 ```text
-ticks 0-4:  percent variant
-ticks 5-9:  Burst-unit variant
+ticks 0-4:  usage/time [used] percent variant
+ticks 5-9:  time/usage [left] Burst-unit variant
 repeat
 ```
 
@@ -208,11 +209,11 @@ repeat
 
 ### Slice 4 - Render And JSON Tests
 
-Status: pending.
+Status: implemented.
 
 - Add monitor rendering tests around `limits-tracking` frame output:
-  - percent Weekly variant appears
-  - Burst-unit Weekly variant appears after animation ticks
+  - `[used]` percent Weekly variant appears
+  - `[left]` Burst-unit Weekly variant appears after animation ticks
   - Burst limit rows do not gain the Burst-unit weekly variant
   - unsupported providers do not gain the Burst-unit variant
 - Add JSON/frame summary assertions if semantic Burst-unit fields are added.
@@ -220,7 +221,7 @@ Status: pending.
 
 ### Slice 5 - Validation
 
-Status: pending.
+Status: implemented.
 
 - Run focused monitor tests:
 
@@ -254,7 +255,7 @@ agentos agent accounts monitor --max-ticks 12 --interval-sec 1
 ```
 
 - Acceptance signals:
-  - Weekly `usage/time` can be read in percent units and Burst units.
+  - Weekly `usage/time` can be read in `[used]` percent units and `[left]` Burst units.
   - The Burst-unit display uses provider-specific empirical ratios.
   - The display alternates every 5 draw ticks using the existing animation framework.
   - The measure updates only on `limits-tracking` account-status refresh.
@@ -263,3 +264,17 @@ agentos agent accounts monitor --max-ticks 12 --interval-sec 1
 ## Impl.Log
 
 - Created from the account-monitor design discussion. The accepted implementation treats Burst units as a display variant of Weekly `usage/time`, not a new workflow and not a provider capability change.
+- Implementation decision: the monitor value column was widened from 24 to 25 display cells so the requested `[Burst]` value shape fits as a static unit variant instead of immediately entering overflow scrolling.
+- Implementation decision: `MonitorUsageTimeRow` now owns optional `label_variants` and `value_variants`, selecting the active display every 5 draw ticks through existing row animation state. Percent fields remain canonical, and remaining Burst-unit metadata is exposed under `burst_unit` for JSON/debug verification.
+- Correction: the first implementation converted both Weekly usage and elapsed time by the same weekly/burst ratio, preserving the original ratio and not answering the user's question. The corrected implementation uses `[left]` semantics over remaining Weekly quota and remaining 5-hour Burst windows before Weekly reset.
+- Correction: the `[left]` ratio was then flipped to `time/usage` so values greater than `1` mean overuse / quota pressure, matching the intuition of the existing `[used]` pace ratio.
+- Validation deviation: `uv tool install --reinstall --editable .` failed because the current `agentos-py` package reports no executable entrypoints and `uv` removed the tool during reinstall. Corrective action was to reinstall the actual executable owner with `uv tool install --reinstall --editable ../agentos-cli`, which succeeded and installed `agentos`.
+- Validation completed:
+  - `uv run pytest tests/test_agent_monitor_auto_prime.py -q` -> 22 passed.
+  - `uv run pytest tests/test_agent_account_registry.py tests/test_agent_monitor_auto_prime.py -q` -> 24 passed.
+  - `uv run ruff check src/agentos/agent/monitor tests/test_agent_monitor_auto_prime.py` -> passed.
+  - `uv tool install --reinstall --editable ../agentos-cli` -> passed.
+  - `agentos --version` -> `agentos 0.1.0`.
+  - `agentos agent accounts monitor --once` -> passed after CLI reinstall.
+  - `agentos agent accounts monitor --max-ticks 12 --interval-sec 1` -> passed after CLI reinstall.
+  - `agentos agent accounts monitor --once --json | rg -n 'label_variants|usage_burst_units_left|time_burst_units_left|left_ratio|\[left\]|\[Burst\]'` -> passed, showing live `time/usage [left]` Burst value variants with remaining usage/time fields.

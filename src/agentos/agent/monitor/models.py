@@ -33,7 +33,7 @@ AUTO_PRIME_VERIFICATION_INEFFECTIVE = "ineffective"
 @dataclass(frozen=True)
 class MonitorRenderContext:
     label_width: int = 24
-    value_width: int = 24
+    value_width: int = 25
     suffix_width: int = 12
     row_indent: str = "  "
 
@@ -194,8 +194,38 @@ class MonitorUsageTimeRow(_MonitorColumnRowMixin):
     used_percent: int
     elapsed_percent: int
     ratio: float | None
+    label_variants: tuple[str, ...] = ()
+    value_variants: tuple[str, ...] = ()
+    variant_interval_ticks: int = 5
+    burst_unit: dict[str, object] | None = None
     kind: Literal["usage_time"] = "usage_time"
     animation_tick: int = field(default=0, init=False, repr=False, compare=False)
+
+    def render_frame(
+        self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
+    ) -> str:
+        return _render_column_row(
+            label=self._active_label(),
+            value=self._active_value(),
+            suffix=self.suffix,
+            animation_tick=self.animation_tick,
+            context=context,
+        )
+
+    def _active_label(self) -> str:
+        if not self.label_variants:
+            return self.label
+        return self.label_variants[self._active_variant_index() % len(self.label_variants)]
+
+    def _active_value(self) -> str:
+        if not self.value_variants:
+            return self.value
+        return self.value_variants[self._active_variant_index() % len(self.value_variants)]
+
+    def _active_variant_index(self) -> int:
+        interval = max(1, self.variant_interval_ticks)
+        variant_count = max(len(self.label_variants), len(self.value_variants), 1)
+        return (self.animation_tick // interval) % variant_count
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -207,6 +237,13 @@ class MonitorUsageTimeRow(_MonitorColumnRowMixin):
             "elapsed_percent": self.elapsed_percent,
             "ratio": self.ratio,
         }
+        if self.label_variants:
+            payload["label_variants"] = list(self.label_variants)
+        if self.value_variants:
+            payload["value_variants"] = list(self.value_variants)
+            payload["variant_interval_ticks"] = self.variant_interval_ticks
+        if self.burst_unit is not None:
+            payload["burst_unit"] = dict(self.burst_unit)
         if self.suffix is not None:
             payload["suffix"] = self.suffix
         return payload

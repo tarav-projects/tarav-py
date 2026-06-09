@@ -80,6 +80,10 @@ from agentos.copilot.account_status import (
 
 _PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 _AUTO_PRIME_VERIFICATION_TIMEOUT_SEC = 900.0
+_WEEKLY_BURST_PERCENT_BY_PROVIDER = {
+    "codex": 15.7,
+    "claude-code": 9.0,
+}
 
 
 class LimitsTrackingWorkflow:
@@ -1198,7 +1202,7 @@ def _target_rows(
         )
         return rows
     if isinstance(account_status, dict):
-        limit_rows = _account_limit_rows(account_status)
+        limit_rows = _account_limit_rows(account_status, provider=target.provider)
         if limit_rows:
             rows.extend(limit_rows)
             fetch_error_row = _fetch_error_row(account_status)
@@ -1248,7 +1252,9 @@ def _account_status_parts(
     return tuple(parts)
 
 
-def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
+def _account_limit_rows(
+    account_status: dict[str, Any], *, provider: str
+) -> list[MonitorRow]:
     limits = account_status.get("limits")
     if not isinstance(limits, list):
         return []
@@ -1267,18 +1273,41 @@ def _account_limit_rows(account_status: dict[str, Any]) -> list[MonitorRow]:
             continue
         label = _limit_label(limit, usage_over_time)
         ratio = _usage_time_ratio(used_percent, elapsed_percent)
+        value = _usage_time_value(
+            used_percent=used_percent,
+            elapsed_percent=elapsed_percent,
+            ratio=ratio,
+        )
+        row_label = "    usage/time"
+        label_variants: tuple[str, ...] = ()
+        value_variants: tuple[str, ...] = ()
+        burst_unit = _weekly_burst_unit_summary(
+            provider=provider,
+            limit=limit,
+            usage_over_time=usage_over_time,
+            used_percent=used_percent,
+            recorded_at=now,
+        )
+        if burst_unit is not None:
+            burst_value = burst_unit.get("value")
+            if isinstance(burst_value, str):
+                label_variants = (
+                    "    usage/time [used]",
+                    "    time/usage [left]",
+                )
+                row_label = label_variants[0]
+                value_variants = (value, burst_value)
         rows.append(
             MonitorUsageTimeRow(
-                label="    usage/time",
-                value=_usage_time_value(
-                    used_percent=used_percent,
-                    elapsed_percent=elapsed_percent,
-                    ratio=ratio,
-                ),
+                label=row_label,
+                value=value,
                 suffix=label,
                 used_percent=max(0, min(100, used_percent)),
                 elapsed_percent=max(0, min(100, elapsed_percent)),
                 ratio=ratio,
+                label_variants=label_variants,
+                value_variants=value_variants,
+                burst_unit=burst_unit,
             )
         )
         reset_columns = _reset_columns(usage_over_time, recorded_at=now)
@@ -1515,8 +1544,87 @@ def _usage_time_value(
 ) -> str:
     return (
         f"{_format_usage_percent_plain(used_percent)} / {_format_usage_percent_plain(elapsed_percent)}"
-        f" = {_format_usage_time_ratio_text(ratio)}"
+        f" = {_format_usage_time_ratio_text(ratio)} [%]"
     )
+
+
+def _weekly_burst_unit_summary(
+    *,
+    provider: str,
+    limit: dict[str, Any],
+    usage_over_time: dict[str, object],
+    used_percent: int,
+    recorded_at: datetime.datetime,
+) -> dict[str, object] | None:
+    weekly_burst_percent = _WEEKLY_BURST_PERCENT_BY_PROVIDER.get(provider)
+    if weekly_burst_percent is None or not _is_weekly_limit(limit, usage_over_time):
+        return None
+    time_burst_units_left = _remaining_burst_windows(
+        usage_over_time,
+        recorded_at=recorded_at,
+    )
+    if time_burst_units_left is None:
+        return None
+    usage_burst_units_left = max(0, 100 - min(100, used_percent)) / weekly_burst_percent
+    left_ratio = _usage_time_left_ratio(
+        usage_burst_units_left=usage_burst_units_left,
+        time_burst_units_left=time_burst_units_left,
+    )
+    return {
+        "unit": "Burst",
+        "weekly_burst_percent": weekly_burst_percent,
+        "usage_burst_units_left": usage_burst_units_left,
+        "time_burst_units_left": time_burst_units_left,
+        "left_ratio": left_ratio,
+        "value": _usage_time_burst_unit_value(
+            usage_burst_units_left=usage_burst_units_left,
+            time_burst_units_left=time_burst_units_left,
+            ratio=left_ratio,
+        ),
+    }
+
+
+def _is_weekly_limit(
+    limit: dict[str, Any], usage_over_time: dict[str, object]
+) -> bool:
+    limit_id = _string_value(limit.get("limit_id"))
+    if limit_id == "weekly":
+        return True
+    return _int_value(usage_over_time.get("period_duration_mins")) == 10_080
+
+
+def _usage_time_burst_unit_value(
+    *,
+    usage_burst_units_left: float,
+    time_burst_units_left: float,
+    ratio: float | None,
+) -> str:
+    return (
+        f"{time_burst_units_left:.1f} / {usage_burst_units_left:.1f}"
+        f" = {_format_usage_time_ratio_text(ratio)} [Burst]"
+    )
+
+
+def _remaining_burst_windows(
+    usage_over_time: dict[str, object], *, recorded_at: datetime.datetime
+) -> float | None:
+    period_ends_at = _parse_datetime(_string_value(usage_over_time.get("period_ends_at")))
+    if period_ends_at is None:
+        period_ends_at = _parse_datetime(_string_value(usage_over_time.get("resets_at")))
+    if period_ends_at is None:
+        return None
+    remaining_seconds = max(0.0, (period_ends_at - recorded_at).total_seconds())
+    return remaining_seconds / (300 * 60)
+
+
+def _usage_time_left_ratio(
+    *,
+    usage_burst_units_left: float,
+    time_burst_units_left: float,
+) -> float | None:
+    if usage_burst_units_left <= 0:
+        return None
+    return time_burst_units_left / usage_burst_units_left
 
 
 def _limits_summary(account_status: dict[str, Any]) -> str:
