@@ -517,6 +517,21 @@ def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
         else:
             print(_format_agent_accounts_reconcile(payload))
         return 0
+    if args.provider == "claude-code":
+        from agentos.claude.account_reconcile import reconcile_claude_accounts
+
+        payload = reconcile_claude_accounts(
+            account=args.account,
+            home=Path(args.home) if args.home is not None else None,
+            start_path=_config_start_path(args),
+            check=args.check,
+            argv=getattr(args, "_agentos_argv", []),
+        )
+        if args.json:
+            print(format_json_output(payload))
+        else:
+            print(_format_agent_accounts_reconcile(payload))
+        return 0
     raise CliError(f"agent accounts reconcile is not supported for provider {args.provider}")
 
 
@@ -527,9 +542,20 @@ def _format_agent_accounts_link(payload: dict[str, object]) -> str:
     kind = payload.get("kind")
     if kind == "artifact":
         auth_path = payload.get("auth_path")
+        artifact_id = payload.get("artifact_id")
+        if isinstance(auth_path, str):
+            return (
+                f"Linked {provider} account {account} to {home} "
+                f"(auth copied to {auth_path})."
+            )
+        if isinstance(artifact_id, str):
+            return (
+                f"Linked {provider} account {account} to {home} "
+                f"(artifact {artifact_id[:12]} materialized)."
+            )
         return (
             f"Linked {provider} account {account} to {home} "
-            f"(auth copied to {auth_path})."
+            "(artifact materialized)."
         )
     if kind == "claimed":
         if home is None:

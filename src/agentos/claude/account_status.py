@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import datetime
-import hashlib
 import json
 import os
 import pty
 import re
 import select
 import subprocess
-import sys
 import tempfile
 import time
 import urllib.error
@@ -20,7 +18,6 @@ from typing import Any
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
-from agentos._core.process import run_process
 from agentos._core.project import agentos_home_dir
 from agentos.agent.account_registry import load_account
 from agentos.agent.account_status import (
@@ -40,6 +37,11 @@ from agentos.agent.account_usage_fallback import (
 from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
+from agentos.claude.account_registry import (
+    CLAUDE_AUTH_KIND,
+    read_claude_secure_storage,
+    register_claude_ambient_auth_from_home,
+)
 
 
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
@@ -50,7 +52,6 @@ CLAUDE_STATUSLINE_USAGE_SOURCE = "statusline_rate_limits"
 CLAUDE_USAGE_GET_THROTTLE_SCHEMA_VERSION = 1
 CLAUDE_USAGE_GET_THROTTLE_MARGIN_SEC = 300
 CLAUDE_OAUTH_BETA_HEADER = "oauth-2025-04-20"
-CLAUDE_CREDENTIALS_SERVICE_SUFFIX = "-credentials"
 CLAUDE_USAGE_REFRESH_PROMPT = "Reply with OK."
 CLAUDE_USAGE_REFRESH_MODEL = "haiku"
 CLAUDE_REFRESH_TRUST_CONFIRM_DELAY_SEC = 0.75
@@ -140,6 +141,7 @@ def _claude_account_status_impl(
 
     check_status = "error" if errors else "ok"
     auth_summary: str | None = None
+    auth_artifact_record: dict[str, object] | None = None
     if check_status == "error":
         usage_status = "unavailable"
         usage_summary = None
@@ -183,6 +185,12 @@ def _claude_account_status_impl(
                 or CLAUDE_STATUSLINE_USAGE_SOURCE,
                 payload=usage_record_payload,
             )
+        auth_artifact_record = _refresh_claude_ambient_auth_artifact(
+            agent,
+            account_record=account_record,
+            usage_status=usage_status,
+            usage_record_metadata=usage_record_metadata,
+        )
 
     return AccountStatus(
         provider=agent.provider,
@@ -207,6 +215,7 @@ def _claude_account_status_impl(
             ),
             "usage": usage_payload,
             "usage_record": usage_record_metadata,
+            "auth_artifact_record": auth_artifact_record,
         },
     )
 
@@ -319,6 +328,50 @@ def _usage_record_source(usage_record_metadata: Mapping[str, Any] | None) -> str
         return None
     source = usage_record_metadata.get("source")
     return source if isinstance(source, str) and source else None
+
+
+def _refresh_claude_ambient_auth_artifact(
+    agent: Agent,
+    *,
+    account_record: dict[str, object],
+    usage_status: str,
+    usage_record_metadata: Mapping[str, Any] | None,
+) -> dict[str, object] | None:
+    if account_record.get("auth_kind") != CLAUDE_AUTH_KIND:
+        return None
+    if agent.home is None or agent.account is None:
+        return None
+    if usage_status != "ok":
+        return None
+    if _usage_record_source(usage_record_metadata) != CLAUDE_STATUSLINE_USAGE_SOURCE:
+        return None
+    if (
+        isinstance(usage_record_metadata, Mapping)
+        and usage_record_metadata.get("status") == USAGE_RECORD_STATUS_REGISTRY_FALLBACK
+    ):
+        return None
+    try:
+        payload = register_claude_ambient_auth_from_home(
+            home=agent.home,
+            account=agent.account.account,
+        )
+    except CliError as exc:
+        return {
+            "status": "error",
+            "message": str(exc),
+        }
+    auth = payload.get("auth")
+    account_payload = payload.get("account_record")
+    return {
+        "status": "ok",
+        "artifact_id": auth.get("artifact_id") if isinstance(auth, dict) else None,
+        "artifact_appended": bool(payload.get("artifact_appended")),
+        "active_artifact_id": (
+            account_payload.get("active_artifact_id")
+            if isinstance(account_payload, dict)
+            else None
+        ),
+    }
 
 
 def _account_usage_statusline(
@@ -565,7 +618,7 @@ def _claude_oauth_access_token(agent: Agent) -> str:
             error_type="home_missing",
             message="claude-code account_status requires an agent home",
         )
-    storage_data = _read_claude_secure_storage(agent.home)
+    storage_data = read_claude_secure_storage(agent.home)
     oauth_data = storage_data.get("claudeAiOauth")
     if not isinstance(oauth_data, dict):
         raise AccountStatusError(
@@ -579,63 +632,6 @@ def _claude_oauth_access_token(agent: Agent) -> str:
             message="claude-code OAuth access token is missing",
         )
     return access_token
-
-
-def _read_claude_secure_storage(home: Path) -> dict[str, Any]:
-    if sys.platform == "darwin":
-        keychain_data = _read_claude_keychain_storage(home)
-        if keychain_data is not None:
-            return keychain_data
-    credentials_path = home / ".credentials.json"
-    if credentials_path.is_file():
-        try:
-            payload = json.loads(credentials_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise AccountStatusError(
-                error_type="oauth_storage_invalid",
-                message=f"invalid claude-code credentials file: {exc}",
-            ) from exc
-        if isinstance(payload, dict):
-            return payload
-    raise AccountStatusError(
-        error_type="oauth_storage_missing",
-        message="claude-code OAuth secure storage was not found",
-    )
-
-
-def _read_claude_keychain_storage(home: Path) -> dict[str, Any] | None:
-    for service_name in _claude_keychain_service_names(home):
-        result = run_process(
-            (
-                "security",
-                "find-generic-password",
-                "-a",
-                os.environ.get("USER", ""),
-                "-s",
-                service_name,
-                "-w",
-            ),
-            mode="capture",
-            timeout_sec=DEFAULT_USAGE_GET_TIMEOUT_SEC,
-        )
-        if result.exit_code != 0:
-            continue
-        raw = result.stdout or ""
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict):
-            return payload
-    return None
-
-
-def _claude_keychain_service_names(home: Path) -> tuple[str, ...]:
-    home_hash = hashlib.sha256(str(home).encode("utf-8")).hexdigest()[:8]
-    return (
-        f"Claude Code{CLAUDE_CREDENTIALS_SERVICE_SUFFIX}-{home_hash}",
-        f"Claude Code{CLAUDE_CREDENTIALS_SERVICE_SUFFIX}",
-    )
 
 
 def _read_http_error_detail(exc: urllib.error.HTTPError) -> dict[str, object]:

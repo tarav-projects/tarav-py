@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: ready for execution
+Status: implemented
 
 Source context:
 - User wants a Claude Code account identity system analogous to Codex `auth.json` artifact collection, but based on Claude Code secure storage / Keychain state.
@@ -192,7 +192,7 @@ Design consequence:
 
 ### Slice 1: Claude ambient credential info and artifact registration
 
-Status: pending
+Status: completed
 
 Change:
 - Extend `src/agentos/claude/account_registry.py` with dataclasses/functions for ambient auth:
@@ -217,7 +217,7 @@ Validation:
 
 ### Slice 2: Claude ambient materialization to a home
 
-Status: pending
+Status: completed
 
 Change:
 - Add materialization helpers for writing an active ambient artifact to a Claude home:
@@ -239,7 +239,7 @@ Validation:
 
 ### Slice 3: Claude reconcile command
 
-Status: pending
+Status: completed
 
 Change:
 - Add `src/agentos/claude/account_reconcile.py`.
@@ -262,7 +262,7 @@ Validation:
 
 ### Slice 4: Account-status success refresh
 
-Status: pending
+Status: completed
 
 Change:
 - In `_claude_account_status_impl(...)`, after successful `ambient-browser-login` statusLine usage, register the secure-storage artifact from the same `agent.home` and activate it if identity matches the registered account.
@@ -281,7 +281,7 @@ Validation:
 
 ### Slice 5: Optional ClaudeAgent.run post-success hook
 
-Status: pending
+Status: completed
 
 Change:
 - Add a narrow post-success hook in `ClaudeAgent.run(...)` for registered `ambient-browser-login` accounts.
@@ -337,3 +337,5 @@ agentos agent accounts monitor --once --json
 ## Impl.Log
 
 - 2026-06-09: Impl.Req created from discussion after successfully copying Claude Code browser-login secure-storage payloads between path-hashed Keychain services for `browser-br`. No implementation performed in this artifact creation pass.
+- 2026-06-09: Implementation decision: Claude ambient artifact ids hash only the reusable artifact body (`identity` plus `secure_storage`), while source home/storage observation metadata is kept in `artifacts.jsonl`. This preserves content-addressed deduplication when the same credential payload is observed from multiple homes.
+- 2026-06-09: Implementation decision: Claude reconcile deduplicates fresh candidates by artifact id before warning or activation. Multiple homes carrying the same credential can activate that single artifact; multiple distinct artifact ids for one account still warn and do not silently choose an active artifact.

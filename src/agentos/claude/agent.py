@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
     AgentBase,
@@ -92,6 +93,8 @@ class ClaudeAgent(AgentBase):
             env_overrides={**self._run_env_overrides(), **env_overrides},
         )
         base_result = execute_agent_command(command, run_config=self.resolve_run_config(run_config))
+        if base_result.exit_code == 0:
+            self._refresh_ambient_auth_after_successful_run(requested_account)
         return AgentRunResult(
             exit_code=base_result.exit_code,
             stdout=base_result.stdout,
@@ -118,7 +121,7 @@ class ClaudeAgent(AgentBase):
                 }
                 preamble_lines.append(_format_claude_preamble_line(self, requested_account))
 
-        from agentos.agent.run_runtime import AgentCommand, agent_command_with_env_overrides
+        from agentos.agent.run_runtime import agent_command_with_env_overrides
         base_command = self._build_command_with_env(
             self._claude_command_config(command_config),
             env_overrides=self._run_env_overrides(),
@@ -153,6 +156,21 @@ class ClaudeAgent(AgentBase):
         if self.account.provider != self.provider:
             return None
         return (self.account.account or "").strip() or None
+
+    def _refresh_ambient_auth_after_successful_run(self, account: str | None) -> None:
+        if account is None or self.home is None:
+            return
+        try:
+            from agentos.claude.account_registry import (
+                has_claude_oauth_token_kind,
+                register_claude_ambient_auth_from_home,
+            )
+
+            if has_claude_oauth_token_kind(account):
+                return
+            register_claude_ambient_auth_from_home(home=self.home, account=account)
+        except CliError:
+            return
 
     def _claude_command_config(self, command_config: AgentCommandConfig) -> AgentCommandConfig:
         if command_config.interaction_mode != "non_interactive":
