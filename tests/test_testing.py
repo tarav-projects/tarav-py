@@ -29,7 +29,7 @@ def test_environment_builds_loader_valid_agentos_state(
     environment.write_profile(
         "codex-work",
         provider="codex",
-        home=str(tmp_path / "codex-home"),
+        homes=[str(tmp_path / "codex-home")],
     )
     project_root = tmp_path / "project"
     project_root.mkdir()

@@ -13,6 +13,7 @@ from agentos.agent.config import (
     AgentConfigSource,
     agent_config_entries_from_config,
     load_chat_config_documents,
+    load_agent_profile,
 )
 from agentos.agent.monitor.loop import MonitorLoop
 from agentos.agent.monitor.models import (
@@ -169,25 +170,46 @@ def _load_targets(
             raw_target, "account", field_name=f"{target_field}.account"
         )
         load_account(provider, account)
+        profile = _optional_string(
+            raw_target, "profile", field_name=f"{target_field}.profile"
+        )
+        home = _target_home(
+            raw_target,
+            provider=provider,
+            account=account,
+            profile=profile,
+            field_name=f"{target_field}.home",
+        )
+        if profile is not None:
+            _validate_profile_target(
+                profile=profile,
+                provider=provider,
+                account=account,
+                home=home,
+                field_name=target_field,
+            )
         targets.append(
             MonitorTarget(
                 provider=provider,
                 account=account,
-                home=_target_home(
-                    raw_target,
-                    provider=provider,
-                    account=account,
-                    field_name=f"{target_field}.home",
-                ),
+                home=home,
+                profile=profile,
             )
         )
     return tuple(targets)
 
 
 def _target_home(
-    raw_target: dict[str, object], *, provider: str, account: str, field_name: str
+    raw_target: dict[str, object],
+    *,
+    provider: str,
+    account: str,
+    profile: str | None,
+    field_name: str,
 ) -> Path:
     raw_home = raw_target.get("home")
+    if profile is not None and raw_home is None:
+        raise CliError(f"{field_name} is required when profile is set")
     if raw_home is None:
         return agentos_home_dir() / "agent" / "homes" / provider / account
     if not isinstance(raw_home, str) or not raw_home.strip():
@@ -195,8 +217,48 @@ def _target_home(
     return Path(raw_home).expanduser().resolve()
 
 
+def _validate_profile_target(
+    *,
+    profile: str,
+    provider: str,
+    account: str,
+    home: Path,
+    field_name: str,
+) -> None:
+    config = load_agent_profile(profile)
+    if config.provider != provider:
+        raise CliError(
+            f"{field_name}.profile uses provider {config.provider}, not {provider}"
+        )
+    allowed_accounts = {allowed.account for allowed in config.accounts}
+    if allowed_accounts and account not in allowed_accounts:
+        allowed_display = ", ".join(sorted(allowed_accounts))
+        raise CliError(
+            f"{field_name}.account must be allowed by profile {profile}; "
+            f"allowed accounts: {allowed_display}"
+        )
+    allowed_homes = {str(allowed_home) for allowed_home in config.homes}
+    if str(home) not in allowed_homes:
+        allowed_display = ", ".join(sorted(allowed_homes))
+        raise CliError(
+            f"{field_name}.home must be allowed by profile {profile}; "
+            f"allowed homes: {allowed_display}"
+        )
+
+
 def _required_string(payload: dict[str, object], key: str, *, field_name: str) -> str:
     value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise CliError(f"{field_name} must be a non-empty string")
+    return validate_string_for_path(value, field_name=field_name)
+
+
+def _optional_string(
+    payload: dict[str, object], key: str, *, field_name: str
+) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
     if not isinstance(value, str) or not value.strip():
         raise CliError(f"{field_name} must be a non-empty string")
     return validate_string_for_path(value, field_name=field_name)

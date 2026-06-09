@@ -334,12 +334,10 @@ def write_agent_profile(config: AgentConfig) -> Path:
         "id": config.instance_id,
         "provider": config.provider,
     }
-    if config.home is not None:
-        payload["home"] = str(config.home)
-    if config.account is not None:
-        payload["account"] = config.account.account
-    if config.account_policy != "open":
-        payload["account_policy"] = config.account_policy
+    if config.homes:
+        payload["homes"] = [str(home) for home in config.homes]
+    if config.accounts:
+        payload["accounts"] = [account.account for account in config.accounts]
     if config.default_model is not None:
         payload["default_model"] = config.default_model
     if config.run_args:
@@ -358,7 +356,12 @@ def update_agent_profile_account(name: str, account: str) -> tuple[AgentConfig, 
     path = profile_path(name)
     payload = _load_json_object(path, description="agent profile")
     previous = config.account.account if config.account is not None else None
-    payload["account"] = normalized_account
+    existing_accounts = [
+        item.account
+        for item in config.accounts
+        if item.account != normalized_account
+    ]
+    payload["accounts"] = [normalized_account, *existing_accounts]
     _write_json_file(path, payload)
     return load_agent_profile(name), previous, path
 
@@ -537,6 +540,7 @@ def default_agent_configs(
             AgentConfig(
                 provider=provider_spec.family,
                 home=home,
+                homes=(home,),
                 direct_targets=_unique_paths(tuple(direct_targets)),
                 grep_targets=_unique_paths(tuple(grep_targets)),
                 sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
@@ -567,6 +571,7 @@ def agent_config_with_home_override(
     return replace(
         config,
         home=normalized_home,
+        homes=config.homes or (normalized_home,),
         direct_targets=_unique_paths(tuple(direct_targets)),
         grep_targets=_unique_paths(tuple(grep_targets or direct_targets)),
         sqlite_db_paths=_unique_paths(tuple(sqlite_db_paths)),
@@ -612,7 +617,8 @@ def agent_config_from_config_entry(
     else:
         label = raw_label.strip()
 
-    home = raw_instance.get("home")
+    _reject_removed_profile_fields(entry, raw_instance)
+    raw_homes = raw_instance.get("homes")
     raw_direct_paths = raw_instance.get("direct_paths")
     raw_grep_paths = raw_instance.get("grep_paths")
     raw_sqlite_db_paths = raw_instance.get("sqlite_db_paths")
@@ -622,8 +628,7 @@ def agent_config_from_config_entry(
     raw_env = raw_instance.get("env")
     raw_timeout_sec = raw_instance.get("timeout_sec")
     raw_default_model = raw_instance.get("default_model")
-    raw_account = raw_instance.get("account")
-    raw_account_policy = raw_instance.get("account_policy")
+    raw_accounts = raw_instance.get("accounts")
     raw_model_flag = raw_instance.get("model_flag")
     raw_prompt_flag = raw_instance.get("prompt_flag")
     raw_ping = raw_instance.get("ping")
@@ -686,15 +691,12 @@ def agent_config_from_config_entry(
         )
     else:
         default_model = raw_default_model.strip()
-    account = _load_agent_account_context(
-        raw_account,
+    accounts = _load_agent_account_contexts(
+        raw_accounts,
         provider=provider_family.family,
-        field_name=entry.field_name("account"),
+        field_name=entry.field_name("accounts"),
     )
-    account_policy = _load_agent_account_policy(
-        raw_account_policy,
-        field_name=entry.field_name("account_policy"),
-    )
+    account = accounts[0] if accounts else None
     if raw_model_flag is None:
         model_flag = _agent_default_model_flag(family_name)
     elif not isinstance(raw_model_flag, str) or not raw_model_flag.strip():
@@ -733,27 +735,24 @@ def agent_config_from_config_entry(
     resolved_sqlite_db_paths: tuple[Path, ...] = ()
     anchors: tuple[ProviderHomeAnchor, ...] = ()
 
-    if home is not None:
+    homes = _load_provider_homes(
+        raw_homes,
+        provider_spec=provider_spec,
+        field_name=entry.field_name("homes"),
+    )
+
+    if homes:
         if provider_spec is None:
             raise CliError(
                 f"{entry.item_path()} does not support home-based configuration for provider {family_name}"
             )
         if direct_paths or grep_paths or sqlite_db_paths:
             raise CliError(
-                f"{entry.item_path()} must define either home or explicit paths, not both"
+                f"{entry.item_path()} must define either homes or explicit paths, not both"
             )
 
         home_spec = provider_spec.home_spec
-        normalized_home = (
-            Path(
-                _normalize_provider_home(
-                    home,
-                    field_name=entry.field_name("home"),
-                )
-            )
-            .expanduser()
-            .resolve()
-        )
+        normalized_home = homes[0]
         home_direct_paths, home_grep_paths, home_sqlite_db_paths = (
             home_spec.build_paths(home=normalized_home)
         )
@@ -781,6 +780,7 @@ def agent_config_from_config_entry(
         instance_id=instance_id,
         label=label,
         home=normalized_home,
+        homes=homes,
         direct_targets=resolved_direct_targets,
         grep_targets=resolved_grep_targets,
         sqlite_db_paths=resolved_sqlite_db_paths,
@@ -788,7 +788,7 @@ def agent_config_from_config_entry(
         run_args=run_args,
         env=env,
         account=account,
-        account_policy=account_policy,
+        accounts=accounts,
         timeout_sec=timeout_sec,
         default_model=default_model,
         model_flag=model_flag,
@@ -862,17 +862,77 @@ def _load_agent_cli_command(
     return ()
 
 
-_ACCOUNT_POLICY_VALUES = ("open", "locked")
+def _reject_removed_profile_fields(
+    entry: AgentConfigEntry, raw_instance: dict[str, object]
+) -> None:
+    for field_name in ("account", "account_policy", "home"):
+        if field_name in raw_instance:
+            raise CliError(
+                f"{entry.field_name(field_name)} is no longer supported; "
+                f"use {'accounts' if field_name != 'home' else 'homes'}"
+            )
 
 
-def _load_agent_account_policy(value: object, *, field_name: str) -> str:
+def _load_agent_account_contexts(
+    value: object,
+    *,
+    provider: str,
+    field_name: str,
+) -> tuple[AgentAccountContext, ...]:
     if value is None:
-        return "open"
-    if not isinstance(value, str) or value not in _ACCOUNT_POLICY_VALUES:
-        raise CliError(
-            f"{field_name} must be one of: {', '.join(_ACCOUNT_POLICY_VALUES)}"
+        return ()
+    if not isinstance(value, list) or not value:
+        raise CliError(f"{field_name} must be a non-empty JSON array")
+    accounts: list[AgentAccountContext] = []
+    seen_accounts: set[str] = set()
+    for index, raw_item in enumerate(value):
+        account = _load_agent_account_context(
+            raw_item,
+            provider=provider,
+            field_name=f"{field_name}[{index}]",
         )
-    return value
+        if account is None:
+            raise CliError(f"{field_name}[{index}] must define an account")
+        if account.account in seen_accounts:
+            raise CliError(
+                f"{field_name} must be unique; duplicate account {account.account}"
+            )
+        seen_accounts.add(account.account)
+        accounts.append(account)
+    return tuple(accounts)
+
+
+def _load_provider_homes(
+    value: object,
+    *,
+    provider_spec: ChatProviderSpec | None,
+    field_name: str,
+) -> tuple[Path, ...]:
+    if value is None:
+        return ()
+    if provider_spec is None:
+        raise CliError(f"{field_name} is not supported for this provider")
+    if not isinstance(value, list) or not value:
+        raise CliError(f"{field_name} must be a non-empty JSON array")
+    homes: list[Path] = []
+    seen_homes: set[str] = set()
+    for index, raw_item in enumerate(value):
+        normalized_home = (
+            Path(
+                _normalize_provider_home(
+                    raw_item,
+                    field_name=f"{field_name}[{index}]",
+                )
+            )
+            .expanduser()
+            .resolve()
+        )
+        key = str(normalized_home)
+        if key in seen_homes:
+            raise CliError(f"{field_name} must be unique; duplicate home {key}")
+        seen_homes.add(key)
+        homes.append(normalized_home)
+    return tuple(homes)
 
 
 def _load_agent_account_context(

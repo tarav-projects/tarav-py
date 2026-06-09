@@ -128,7 +128,7 @@ def resolve_agent_config(
             start_path=start_path,
         )
         if home is not None:
-            return agent_config_with_home_override(selected, home=home)
+            return _profile_config_with_home_selection(selected, home=home)
         return selected
 
     if provider is None:
@@ -158,6 +158,25 @@ def _resolve_profile_config(
             f"profile {profile!r} uses provider {selected.provider}, not {provider}"
         )
     return selected
+
+
+def _profile_config_with_home_selection(
+    config: AgentConfig, *, home: Path | str
+) -> AgentConfig:
+    normalized_home = Path(home).expanduser().resolve()
+    if not config.homes:
+        profile_id = config.instance_id or "<default>"
+        raise CliError(f"profile {profile_id} does not allow home overrides")
+    allowed_homes = {str(allowed_home): allowed_home for allowed_home in config.homes}
+    selected_home = allowed_homes.get(str(normalized_home))
+    if selected_home is None:
+        profile_id = config.instance_id or "<default>"
+        allowed_display = ", ".join(sorted(allowed_homes))
+        raise CliError(
+            f"profile {profile_id} allows homes: {allowed_display}; "
+            f"cannot use --home {normalized_home}"
+        )
+    return agent_config_with_home_override(config, home=selected_home)
 
 
 __all__ = [

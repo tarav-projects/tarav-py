@@ -46,13 +46,17 @@ class MonitorTarget:
     provider: str
     account: str
     home: Path
+    profile: str | None = None
 
     def summary(self) -> dict[str, str]:
-        return {
+        payload = {
             "provider": self.provider,
             "account": self.account,
             "home": str(self.home),
         }
+        if self.profile is not None:
+            payload["profile"] = self.profile
+        return payload
 
 
 @dataclass(frozen=True)

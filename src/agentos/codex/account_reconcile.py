@@ -446,15 +446,16 @@ def _known_codex_homes(request: AccountReconcileRequest) -> tuple[_KnownHome, ..
 def _configured_homes(start_path: Path | str) -> tuple[_KnownHome, ...]:
     homes: list[_KnownHome] = []
     for config in load_agent_configs(start_path=start_path):
-        if config.provider != CODEX_PROVIDER or config.home is None:
+        if config.provider != CODEX_PROVIDER:
             continue
-        homes.append(
-            _KnownHome(
-                home=config.home.expanduser().resolve(),
-                source="configured",
-                account=config.account.account if config.account is not None else None,
+        for home in config.homes:
+            homes.append(
+                _KnownHome(
+                    home=home.expanduser().resolve(),
+                    source="configured",
+                    account=config.account.account if config.account is not None else None,
+                )
             )
-        )
     return tuple(homes)
 
 

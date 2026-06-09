@@ -77,11 +77,12 @@ class AgentConfig:
     instance_id: str | None = None
     label: str | None = None
     home: Path | None = None
+    homes: tuple[Path, ...] = ()
     cli_command: tuple[str, ...] = ()
     run_args: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
     account: AgentAccountContext | None = None
-    account_policy: str = "open"
+    accounts: tuple[AgentAccountContext, ...] = ()
     timeout_sec: int | None = None
     default_model: str | None = None
     model_flag: str | None = None
@@ -116,6 +117,7 @@ class AgentConfig:
             self.provider,
             self.instance_id,
             str(self.home) if self.home is not None else None,
+            tuple(str(home) for home in self.homes),
             tuple(str(path) for path in self.direct_targets),
             tuple(str(path) for path in self.grep_targets),
             tuple(str(path) for path in self.sqlite_db_paths),
@@ -123,6 +125,7 @@ class AgentConfig:
             self.run_args,
             self.env,
             self.account,
+            self.accounts,
             self.timeout_sec,
             self.default_model,
             self.model_flag,
@@ -141,11 +144,12 @@ class AgentBase:
     instance_id: str | None = None
     label: str | None = None
     home: Path | None = None
+    homes: tuple[Path, ...] = ()
     cli_command: tuple[str, ...] = ()
     run_args: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
     account: AgentAccountContext | None = None
-    account_policy: str = "open"
+    accounts: tuple[AgentAccountContext, ...] = ()
     timeout_sec: int | None = None
     default_model: str | None = None
     model_flag: str | None = None
@@ -173,6 +177,8 @@ class AgentBase:
             payload["label"] = self.label
         if self.home is not None:
             payload["home"] = str(self.home)
+        if self.homes:
+            payload["homes"] = [str(home) for home in self.homes]
         if self.cli_command:
             payload["cli_command"] = list(self.cli_command)
         if self.run_args:
@@ -181,8 +187,8 @@ class AgentBase:
             payload["env"] = {key: value for key, value in self.env}
         if self.account is not None:
             payload["account"] = self.account.summary()
-        if self.account_policy != "open":
-            payload["account_policy"] = self.account_policy
+        if self.accounts:
+            payload["accounts"] = [account.summary() for account in self.accounts]
         if self.timeout_sec is not None:
             payload["timeout_sec"] = self.timeout_sec
         if self.default_model is not None:
@@ -229,6 +235,7 @@ class AgentBase:
             self.provider,
             self.instance_id,
             str(self.home) if self.home is not None else None,
+            tuple(str(home) for home in self.homes),
             tuple(str(path) for path in self.direct_targets),
             tuple(str(path) for path in self.grep_targets),
             tuple(str(path) for path in self.sqlite_db_paths),
@@ -236,6 +243,7 @@ class AgentBase:
             self.run_args,
             self.env,
             self.account,
+            self.accounts,
             self.timeout_sec,
             self.default_model,
             self.model_flag,
@@ -279,34 +287,31 @@ class AgentBase:
         command_config: AgentCommandConfig,
         run_config: AgentRunConfig,
     ) -> AgentRunResult:
-        self._check_account_policy(command_config)
+        self._check_account_scope(command_config)
         return execute_agent_command(
             self._build_command(command_config),
             run_config=self.resolve_run_config(run_config),
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
-        self._check_account_policy(command_config)
+        self._check_account_scope(command_config)
         command = self._build_command(command_config)
         return AgentRunDryResult(
             lines=(*command.setup_lines, format_agent_command(command)),
         )
 
-    def _check_account_policy(self, command_config: AgentCommandConfig) -> None:
-        if self.account_policy != "locked":
+    def _check_account_scope(self, command_config: AgentCommandConfig) -> None:
+        if not self.accounts:
             return
         override = command_config.account.strip() if isinstance(command_config.account, str) else None
         if not override:
             return
         profile_id = self.instance_id or "<default>"
-        bound = self.account.account if self.account is not None else None
-        if bound is None:
+        allowed = tuple(account.account for account in self.accounts)
+        if override not in allowed:
+            allowed_display = ", ".join(allowed)
             raise CliError(
-                f"profile {profile_id} forbids --account override (no account bound)"
-            )
-        if override != bound:
-            raise CliError(
-                f"profile {profile_id} is locked to account {bound}; "
+                f"profile {profile_id} allows accounts: {allowed_display}; "
                 f"cannot use --account {override}"
             )
 
@@ -337,11 +342,12 @@ def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
         "instance_id": config.instance_id,
         "label": config.label,
         "home": config.home,
+        "homes": config.homes,
         "cli_command": config.cli_command,
         "run_args": config.run_args,
         "env": config.env,
         "account": config.account,
-        "account_policy": config.account_policy,
+        "accounts": config.accounts,
         "timeout_sec": config.timeout_sec,
         "default_model": config.default_model,
         "model_flag": config.model_flag,
@@ -374,11 +380,12 @@ class Agent(Protocol):
     instance_id: str | None
     label: str | None
     home: Path | None
+    homes: tuple[Path, ...]
     cli_command: tuple[str, ...]
     run_args: tuple[str, ...]
     env: tuple[tuple[str, str], ...]
     account: AgentAccountContext | None
-    account_policy: str
+    accounts: tuple[AgentAccountContext, ...]
     timeout_sec: int | None
     default_model: str | None
     model_flag: str | None

@@ -149,8 +149,8 @@ def test_agent_ping_records_claude_verified_auth_source(
             {
                 "id": "claude-br",
                 "provider": "claude-code",
-                "home": str(home),
-                "account": "browser-br",
+                "homes": [str(home)],
+                "accounts": ["browser-br"],
                 "ping": {"prompt": "745", "expected_number": 745},
             }
         ]
@@ -189,7 +189,9 @@ def test_agent_run_does_not_mutate_codex_home_without_account(
     write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
     register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
     environment.write_global_config(agent={"providers": _provider_configs()})
-    environment.write_profiles([_codex_profile(configured_home, account=None)])
+    environment.write_profiles(
+        [_codex_profile(configured_home, extra_homes=[override_home], account=None)]
+    )
 
     result = _cmd_agent_run(
         _run_args(
@@ -220,7 +222,7 @@ def test_agent_run_materializes_codex_home_with_explicit_account(
     write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
     register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
     environment.write_global_config(agent={"providers": _provider_configs()})
-    environment.write_profiles([_codex_profile(configured_home)])
+    environment.write_profiles([_codex_profile(configured_home, extra_homes=[override_home])])
 
     result = _cmd_agent_run(
         _run_args(
@@ -256,7 +258,7 @@ def test_agent_run_dry_run_reports_explicit_account_materialization_without_muta
     write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
     register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
     environment.write_global_config(agent={"providers": _provider_configs()})
-    environment.write_profiles([_codex_profile(configured_home)])
+    environment.write_profiles([_codex_profile(configured_home, extra_homes=[override_home])])
 
     result = _cmd_agent_run(
         _run_args(
@@ -293,7 +295,7 @@ def test_agent_run_materializes_when_explicit_account_differs_from_home_auth(
     link_codex_account_to_home(home=home, account="br")
     environment.write_global_config(agent={"providers": _provider_configs()})
     environment.write_profiles(
-        [_codex_profile(home, profile_id="codex-br", account="br")]
+        [_codex_profile(home, profile_id="codex-br", accounts=["br", "mm"])]
     )
 
     result = _cmd_agent_run(
@@ -347,15 +349,19 @@ def _codex_profile(
     *,
     profile_id: str = "codex-mm",
     account: str | None = "mm",
+    accounts: list[str] | None = None,
+    extra_homes: list[Path] | None = None,
     ping: dict[str, object] | None = None,
 ) -> dict[str, object]:
     profile: dict[str, object] = {
         "id": profile_id,
         "provider": "codex",
-        "home": str(home),
+        "homes": [str(home), *(str(extra_home) for extra_home in extra_homes or [])],
     }
-    if account is not None:
-        profile["account"] = account
+    if accounts is not None:
+        profile["accounts"] = accounts
+    elif account is not None:
+        profile["accounts"] = [account]
     if ping is not None:
         profile["ping"] = ping
     return profile

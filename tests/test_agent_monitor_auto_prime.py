@@ -4,6 +4,9 @@ import datetime
 import json
 from pathlib import Path
 
+import pytest
+
+from agentos._core.errors import CliError
 from agentos.agent.monitor.auto_prime_registry import (
     AUTO_PRIME_EVENT_ATTEMPT_STARTED,
     AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
@@ -13,7 +16,11 @@ from agentos.agent.monitor.auto_prime_registry import (
     AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE,
     auto_prime_event_registry_path,
 )
-from agentos.agent.monitor.config import _auto_prime_triggers, _target_limit_ids
+from agentos.agent.monitor.config import (
+    _auto_prime_triggers,
+    _target_limit_ids,
+    load_monitor_workflow_configs,
+)
 from agentos.agent.monitor.loop import MonitorLoop
 from agentos.agent.monitor.models import (
     AUTO_PRIME_PING_SUCCEEDED_STATUS,
@@ -99,6 +106,95 @@ def _source_state(
         "home": "/tmp/codex-jp",
         "account_status": account_status,
     }
+
+
+def test_monitor_profile_target_accepts_explicit_scoped_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-jp"
+    auth_file = tmp_path / "auth.json"
+    write_text_file(auth_file, codex_auth_json(account_id="acc_jp"))
+    register_codex_account_from_auth_file(
+        auth_file=auth_file,
+        account="jp",
+    )
+    environment.write_profile(
+        "codex-jp",
+        provider="codex",
+        accounts=["jp"],
+        homes=[str(home)],
+    )
+    environment.write_global_config(
+        agent={
+            "accounts": {
+                "monitor": [
+                    {
+                        "workflow": AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
+                        "targets": [
+                            {
+                                "profile": "codex-jp",
+                                "provider": "codex",
+                                "account": "jp",
+                                "home": str(home),
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    configs = load_monitor_workflow_configs(start_path=tmp_path)
+
+    assert configs[0].targets[0].profile == "codex-jp"
+    assert configs[0].targets[0].home == home.resolve()
+
+
+def test_monitor_profile_target_rejects_unscoped_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    allowed_home = tmp_path / "codex-jp"
+    blocked_home = tmp_path / "codex-blocked"
+    auth_file = tmp_path / "auth.json"
+    write_text_file(auth_file, codex_auth_json(account_id="acc_jp"))
+    register_codex_account_from_auth_file(
+        auth_file=auth_file,
+        account="jp",
+    )
+    environment.write_profile(
+        "codex-jp",
+        provider="codex",
+        accounts=["jp"],
+        homes=[str(allowed_home)],
+    )
+    environment.write_global_config(
+        agent={
+            "accounts": {
+                "monitor": [
+                    {
+                        "workflow": AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
+                        "targets": [
+                            {
+                                "profile": "codex-jp",
+                                "provider": "codex",
+                                "account": "jp",
+                                "home": str(blocked_home),
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    with pytest.raises(CliError, match="home must be allowed"):
+        load_monitor_workflow_configs(start_path=tmp_path)
 
 
 def _limit(

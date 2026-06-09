@@ -41,8 +41,8 @@ def test_claude_reconcile_registers_fresh_known_home_without_activating(
             {
                 "id": "claude-br",
                 "provider": "claude-code",
-                "home": str(configured_home),
-                "account": "browser-br",
+                "homes": [str(configured_home)],
+                "accounts": ["browser-br"],
             }
         ]
     )
@@ -87,7 +87,7 @@ def test_claude_reconcile_warns_and_skips_unknown_account_auth(
             {
                 "id": "claude-unknown",
                 "provider": "claude-code",
-                "home": str(configured_home),
+                "homes": [str(configured_home)],
             }
         ]
     )
@@ -120,8 +120,8 @@ def test_claude_reconcile_check_does_not_mutate(
             {
                 "id": "claude-br",
                 "provider": "claude-code",
-                "home": str(configured_home),
-                "account": "browser-br",
+                "homes": [str(configured_home)],
+                "accounts": ["browser-br"],
             }
         ]
     )
@@ -155,8 +155,8 @@ def test_claude_reconcile_dedupes_same_artifact_from_multiple_homes(
             {
                 "id": "claude-br",
                 "provider": "claude-code",
-                "home": str(configured_home),
-                "account": "browser-br",
+                "homes": [str(configured_home)],
+                "accounts": ["browser-br"],
             }
         ]
     )
@@ -201,8 +201,8 @@ def test_claude_reconcile_activates_verified_artifact_and_syncs_stale_home(
             {
                 "id": "claude-br",
                 "provider": "claude-code",
-                "home": str(configured_home),
-                "account": "browser-br",
+                "homes": [str(configured_home)],
+                "accounts": ["browser-br"],
             }
         ]
     )
@@ -258,8 +258,8 @@ def test_claude_reconcile_ping_verifies_successful_candidate(
             {
                 "id": "claude-br",
                 "provider": "claude-code",
-                "home": str(home),
-                "account": "browser-br",
+                "homes": [str(home)],
+                "accounts": ["browser-br"],
             }
         ]
     )
@@ -302,8 +302,8 @@ def test_claude_reconcile_check_ping_does_not_run_provider(
             {
                 "id": "claude-br",
                 "provider": "claude-code",
-                "home": str(home),
-                "account": "browser-br",
+                "homes": [str(home)],
+                "accounts": ["browser-br"],
             }
         ]
     )
@@ -341,8 +341,8 @@ def test_claude_reconcile_discovers_configured_and_system_homes(
             {
                 "id": "claude-br",
                 "provider": "claude-code",
-                "home": str(configured_home),
-                "account": "browser-br",
+                "homes": [str(configured_home)],
+                "accounts": ["browser-br"],
             }
         ]
     )

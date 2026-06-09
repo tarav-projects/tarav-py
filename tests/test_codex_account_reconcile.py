@@ -50,7 +50,7 @@ def test_codex_reconcile_registers_fresh_known_home_without_activating(
         _newer_codex_auth_json(account_id="acc_br", email="fresh@example.com"),
     )
     environment.write_profiles(
-        [{"id": "codex-br", "provider": "codex", "home": str(configured_home)}]
+        [{"id": "codex-br", "provider": "codex", "homes": [str(configured_home)]}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
     link_codex_account_to_home(home=system_home, account="br")
@@ -86,7 +86,7 @@ def test_codex_reconcile_warns_and_skips_unknown_account_auth(
         configured_home / "auth.json", codex_auth_json(account_id="acc_unknown")
     )
     environment.write_profiles(
-        [{"id": "codex-unknown", "provider": "codex", "home": str(configured_home)}]
+        [{"id": "codex-unknown", "provider": "codex", "homes": [str(configured_home)]}]
     )
 
     payload = reconcile_codex_accounts(start_path=tmp_path)
@@ -157,7 +157,7 @@ def test_codex_reconcile_check_does_not_mutate(
         _newer_codex_auth_json(account_id="acc_br", email="fresh@example.com"),
     )
     environment.write_profiles(
-        [{"id": "codex-br", "provider": "codex", "home": str(configured_home)}]
+        [{"id": "codex-br", "provider": "codex", "homes": [str(configured_home)]}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
     old_info = read_codex_auth_info(old_auth)
@@ -226,7 +226,7 @@ def test_codex_reconcile_activates_verified_artifact_and_syncs_stale_home(
         _newer_codex_auth_json(account_id="acc_br", email="fresh@example.com"),
     )
     environment.write_profiles(
-        [{"id": "codex-br", "provider": "codex", "home": str(configured_home)}]
+        [{"id": "codex-br", "provider": "codex", "homes": [str(configured_home)]}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
     link_codex_account_to_home(home=system_home, account="br")
@@ -272,7 +272,7 @@ def test_codex_reconcile_ping_verifies_successful_candidate(
     home = tmp_path / "codex-br"
     write_text_file(home / "auth.json", codex_auth_json(account_id="acc_br", email="br@example.com"))
     environment.write_profiles(
-        [{"id": "codex-br", "provider": "codex", "home": str(home), "account": "br"}]
+        [{"id": "codex-br", "provider": "codex", "homes": [str(home)], "accounts": ["br"]}]
     )
     register_codex_account_from_auth_file(
         auth_file=home / "auth.json",
@@ -311,7 +311,7 @@ def test_codex_reconcile_check_ping_does_not_run_provider(
     home = tmp_path / "codex-br"
     write_text_file(home / "auth.json", codex_auth_json(account_id="acc_br", email="br@example.com"))
     environment.write_profiles(
-        [{"id": "codex-br", "provider": "codex", "home": str(home), "account": "br"}]
+        [{"id": "codex-br", "provider": "codex", "homes": [str(home)], "accounts": ["br"]}]
     )
     register_codex_account_from_auth_file(
         auth_file=home / "auth.json",
@@ -347,7 +347,7 @@ def test_codex_reconcile_discovers_only_known_homes(
     old_auth = tmp_path / "auth.json"
     write_text_file(old_auth, codex_auth_json(account_id="acc_br"))
     environment.write_profiles(
-        [{"id": "codex-br", "provider": "codex", "home": str(configured_home)}]
+        [{"id": "codex-br", "provider": "codex", "homes": [str(configured_home)]}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
 
@@ -378,7 +378,7 @@ def test_codex_account_status_runs_reconciliation_before_usage(
         _newer_codex_auth_json(account_id="acc_br", email="fresh@example.com"),
     )
     environment.write_profiles(
-        [{"id": "codex-br", "provider": "codex", "home": str(configured_home)}]
+        [{"id": "codex-br", "provider": "codex", "homes": [str(configured_home)]}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
     link_codex_account_to_home(home=system_home, account="br")

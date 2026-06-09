@@ -72,7 +72,7 @@ class ClaudeAgent(AgentBase):
         command_config: AgentCommandConfig,
         run_config: AgentRunConfig,
     ) -> AgentRunResult:
-        self._check_account_policy(command_config)
+        self._check_account_scope(command_config)
         requested_account = self._resolved_account(command_config)
         preamble_lines: tuple[str, ...] = ()
         env_overrides: dict[str, str] = {}
@@ -106,7 +106,7 @@ class ClaudeAgent(AgentBase):
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
-        self._check_account_policy(command_config)
+        self._check_account_scope(command_config)
         requested_account = self._resolved_account(command_config)
         env_overrides: dict[str, str] = {}
         env_display_overrides: dict[str, str] = {}
