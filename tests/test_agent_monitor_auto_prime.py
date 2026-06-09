@@ -35,7 +35,15 @@ from agentos.agent.monitor.workflows import (
     AutoPrimeZeroLimitsWorkflow,
     LimitsTrackingWorkflow,
 )
+from agentos.agent.account_status import AgentAccountContext
+from agentos.agent.primitives import AgentPingConfig
+from agentos.agent.run_runtime import AgentRunResult
+import agentos.claude.account_registry as claude_account_registry
+from agentos.claude.account_registry import register_claude_account
+from agentos.codex.account_registry import register_codex_account_from_auth_file
 from agentos.testing import AgentosTestEnvironment
+
+from _helpers import codex_auth_json, read_json_file, read_jsonl_file, write_claude_home, write_text_file
 
 
 def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
@@ -548,6 +556,79 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
     ]
 
 
+def test_auto_prime_ping_records_claude_verified_auth_source(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
+    home = tmp_path / "claude-br"
+    write_claude_home(home, email="br@example.com", account_uuid="acc_br")
+    register_claude_account(account="browser-br", email="br@example.com")
+    monkeypatch.setattr(
+        monitor_workflows,
+        "build_registered_account_agent",
+        lambda **kwargs: _FakeClaudePrimeAgent(home=Path(kwargs["home"])),
+    )
+
+    monitor_workflows._run_account_prime_ping(
+        {
+            "provider": "claude-code",
+            "account": "browser-br",
+            "home": str(home),
+        }
+    )
+
+    account_payload = read_json_file(
+        environment.agentos_home / "accounts" / "claude-code" / "accounts.json"
+    )
+    artifact_id = account_payload["accounts"]["browser-br"]["active_artifact_id"]
+    verifications = read_jsonl_file(
+        environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
+    )
+    assert verifications[-1]["artifact_id"] == artifact_id
+    assert verifications[-1]["source"] == "monitor.auto_prime"
+
+
+def test_auto_prime_ping_records_codex_verified_auth_source(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-br"
+    write_text_file(home / "auth.json", codex_auth_json(account_id="acc_br", email="br@example.com"))
+    register_codex_account_from_auth_file(
+        auth_file=home / "auth.json",
+        account="br",
+        register_only=True,
+    )
+    monkeypatch.setattr(
+        monitor_workflows,
+        "build_registered_account_agent",
+        lambda **kwargs: _FakeCodexPrimeAgent(home=Path(kwargs["home"])),
+    )
+
+    monitor_workflows._run_account_prime_ping(
+        {
+            "provider": "codex",
+            "account": "br",
+            "home": str(home),
+        }
+    )
+
+    account_payload = read_json_file(
+        environment.agentos_home / "accounts" / "codex" / "accounts.json"
+    )
+    artifact_id = account_payload["accounts"]["br"]["active_artifact_id"]
+    verifications = read_jsonl_file(
+        environment.agentos_home / "accounts" / "codex" / "verifications.jsonl"
+    )
+    assert verifications[-1]["artifact_id"] == artifact_id
+    assert verifications[-1]["source"] == "monitor.auto_prime"
+
+
 def test_auto_prime_decisions_only_include_configured_limits() -> None:
     now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
     workflow = _workflow(triggers=("near_zero_full_window",))
@@ -648,3 +729,29 @@ def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() 
     assert loop.visible_frame.blocks[1]["title"] == (
         "auto-prime-zero-limits | next in 8 ticks | reset 0 ticks ago"
     )
+
+
+class _FakeClaudePrimeAgent:
+    provider = "claude-code"
+    instance_id = "claude-br"
+    account = AgentAccountContext(provider="claude-code", account="browser-br")
+    ping = AgentPingConfig(expected_number=745)
+
+    def __init__(self, *, home: Path) -> None:
+        self.home = home
+
+    def run(self, command_config, run_config) -> AgentRunResult:
+        return AgentRunResult(exit_code=0, stdout="745")
+
+
+class _FakeCodexPrimeAgent:
+    provider = "codex"
+    instance_id = "codex-br"
+    account = AgentAccountContext(provider="codex", account="br")
+    ping = AgentPingConfig(expected_number=745)
+
+    def __init__(self, *, home: Path) -> None:
+        self.home = home
+
+    def run(self, command_config, run_config) -> AgentRunResult:
+        return AgentRunResult(exit_code=0, stdout="745")

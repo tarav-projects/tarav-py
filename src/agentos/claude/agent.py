@@ -93,8 +93,11 @@ class ClaudeAgent(AgentBase):
             env_overrides={**self._run_env_overrides(), **env_overrides},
         )
         base_result = execute_agent_command(command, run_config=self.resolve_run_config(run_config))
-        if base_result.exit_code == 0:
-            self._refresh_ambient_auth_after_successful_run(requested_account)
+        if base_result.exit_code == 0 and command_config.credential_success_source is not None:
+            self._refresh_ambient_auth_after_successful_run(
+                requested_account,
+                source=command_config.credential_success_source,
+            )
         return AgentRunResult(
             exit_code=base_result.exit_code,
             stdout=base_result.stdout,
@@ -157,18 +160,27 @@ class ClaudeAgent(AgentBase):
             return None
         return (self.account.account or "").strip() or None
 
-    def _refresh_ambient_auth_after_successful_run(self, account: str | None) -> None:
+    def _refresh_ambient_auth_after_successful_run(
+        self,
+        account: str | None,
+        *,
+        source: str,
+    ) -> None:
         if account is None or self.home is None:
             return
         try:
             from agentos.claude.account_registry import (
                 has_claude_oauth_token_kind,
-                register_claude_ambient_auth_from_home,
+                promote_verified_claude_ambient_auth_from_home,
             )
 
             if has_claude_oauth_token_kind(account):
                 return
-            register_claude_ambient_auth_from_home(home=self.home, account=account)
+            promote_verified_claude_ambient_auth_from_home(
+                home=self.home,
+                account=account,
+                source=source,
+            )
         except CliError:
             return
 
@@ -182,6 +194,7 @@ class ClaudeAgent(AgentBase):
             model=command_config.model,
             account=command_config.account,
             interaction_mode=command_config.interaction_mode,
+            credential_success_source=command_config.credential_success_source,
         )
 
     def _run_env_overrides(self) -> dict[str, str]:

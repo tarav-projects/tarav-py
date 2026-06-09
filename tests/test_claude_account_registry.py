@@ -9,6 +9,7 @@ import agentos.claude.account_registry as claude_account_registry
 from agentos._core.errors import CliError
 from agentos.claude.account_registry import (
     link_claude_account_to_home,
+    promote_verified_claude_ambient_auth_from_home,
     register_claude_account,
     register_claude_ambient_auth_from_home,
 )
@@ -93,6 +94,48 @@ def test_claude_ambient_auth_duplicate_registration_reuses_artifact_entry(
     assert len(artifacts) == 1
     assert first["artifact_entry"] == second["artifact_entry"]
     assert second["artifact_appended"] is False
+
+
+def test_claude_verified_promotion_records_evidence_and_active_pointer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
+    home = tmp_path / "claude-br"
+    write_claude_home(home, email="br@example.com", account_uuid="acc_br")
+    register_claude_account(account="browser-br", email="br@example.com")
+
+    payload = promote_verified_claude_ambient_auth_from_home(
+        home=home,
+        account="browser-br",
+        source="agent.ping",
+    )
+
+    account_payload = read_json_file(
+        environment.agentos_home / "accounts" / "claude-code" / "accounts.json"
+    )
+    account = account_payload["accounts"]["browser-br"]
+    artifact_id = payload["artifact_id"]
+    assert account["active_artifact_id"] == artifact_id
+    assert account["last_verified_source"] == "agent.ping"
+    verifications = read_jsonl_file(
+        environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
+    )
+    assert verifications == [
+        {
+            **verifications[0],
+            "account": "browser-br",
+            "artifact_id": artifact_id,
+            "auth_kind": "ambient-browser-login",
+            "home": str(home.resolve()),
+            "provider": "claude-code",
+            "source": "agent.ping",
+            "storage_kind": "credentials-json",
+        }
+    ]
+    assert "secure_storage" not in verifications[0]
 
 
 def test_claude_ambient_auth_registration_rejects_identity_mismatch(

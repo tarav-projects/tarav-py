@@ -26,6 +26,10 @@ def artifacts_path(provider: str) -> Path:
     return account_provider_root(provider) / "artifacts.jsonl"
 
 
+def verifications_path(provider: str) -> Path:
+    return account_provider_root(provider) / "verifications.jsonl"
+
+
 def artifacts_dir(provider: str) -> Path:
     return account_provider_root(provider) / "artifacts"
 
@@ -161,6 +165,53 @@ def append_artifact(provider: str, entry: dict[str, object]) -> tuple[dict[str, 
     return normalized_entry, True
 
 
+def read_verifications(provider: str) -> list[dict[str, object]]:
+    normalized_provider = validate_string_for_path(provider, field_name="provider")
+    path = verifications_path(normalized_provider)
+    if not path.exists():
+        return []
+    entries: list[dict[str, object]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise CliError(f"invalid verification registry JSONL at {path}:{line_number}") from exc
+        if not isinstance(payload, dict):
+            raise CliError(f"verification registry entry must be a JSON object: {path}:{line_number}")
+        if payload.get("provider") != normalized_provider:
+            raise CliError(f"verification registry provider does not match path: {path}:{line_number}")
+        _validate_verification_entry(payload)
+        entries.append(payload)
+    return entries
+
+
+def append_verification(provider: str, entry: dict[str, object]) -> dict[str, object]:
+    normalized_provider = validate_string_for_path(provider, field_name="provider")
+    account = _required_string(entry, "account")
+    artifact_id = _required_string(entry, "artifact_id")
+    auth_kind = _required_string(entry, "auth_kind")
+    source = _required_string(entry, "source")
+    verified_at = string_or_none(entry.get("verified_at")) or utc_now_iso()
+    normalized_entry = {
+        "recorded_at": utc_now_iso(),
+        **entry,
+        "provider": normalized_provider,
+        "account": account,
+        "artifact_id": artifact_id,
+        "auth_kind": auth_kind,
+        "source": source,
+        "verified_at": verified_at,
+    }
+    _validate_verification_entry(normalized_entry)
+    path = verifications_path(normalized_provider)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(normalized_entry, sort_keys=True, separators=(",", ":")) + "\n")
+    return normalized_entry
+
+
 def inspect_account_registry(provider: str | None = None) -> dict[str, object]:
     providers = [validate_string_for_path(provider, field_name="provider")] if provider is not None else _registered_providers()
     accounts: list[dict[str, object]] = []
@@ -170,6 +221,7 @@ def inspect_account_registry(provider: str | None = None) -> dict[str, object]:
         account_payload = load_accounts(provider_name)
         provider_accounts = _account_records(account_payload)
         artifacts = read_artifacts(provider_name)
+        verifications = read_verifications(provider_name)
         accounts.extend(provider_accounts)
         artifact_count += len(artifacts)
         provider_summaries.append(
@@ -178,8 +230,10 @@ def inspect_account_registry(provider: str | None = None) -> dict[str, object]:
                 "root": str(account_provider_root(provider_name)),
                 "account_count": len(provider_accounts),
                 "artifact_count": len(artifacts),
+                "verification_count": len(verifications),
                 "accounts_path": str(accounts_path(provider_name)),
                 "artifacts_path": str(artifacts_path(provider_name)),
+                "verifications_path": str(verifications_path(provider_name)),
             }
         )
     return {
@@ -290,6 +344,40 @@ def _required_string(payload: dict[str, object], field: str) -> str:
     return value.strip()
 
 
+_SECRET_VERIFICATION_KEYS = {
+    "auth",
+    "secure_storage",
+    "credentials",
+    "credential",
+    "access_token",
+    "accessToken",
+    "refresh_token",
+    "refreshToken",
+    "id_token",
+    "idToken",
+    "token",
+}
+
+
+def _validate_verification_entry(entry: dict[str, object]) -> None:
+    for field in ("provider", "account", "artifact_id", "auth_kind", "source", "verified_at"):
+        _required_string(entry, field)
+    _reject_secret_verification_payload(entry)
+
+
+def _reject_secret_verification_payload(value: object, *, path: str = "$") -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if not isinstance(key, str):
+                continue
+            if key in _SECRET_VERIFICATION_KEYS:
+                raise CliError(f"verification entry contains secret-bearing field: {path}.{key}")
+            _reject_secret_verification_payload(child, path=f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _reject_secret_verification_payload(child, path=f"{path}[{index}]")
+
+
 __all__ = [
     "account_exists",
     "account_provider_root",
@@ -297,6 +385,7 @@ __all__ = [
     "account_events_root",
     "accounts_path",
     "append_artifact",
+    "append_verification",
     "artifacts_dir",
     "artifacts_path",
     "inspect_account_registry",
@@ -304,5 +393,7 @@ __all__ = [
     "load_accounts",
     "record_account_event",
     "read_artifacts",
+    "read_verifications",
     "upsert_account",
+    "verifications_path",
 ]

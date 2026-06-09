@@ -79,7 +79,6 @@ class CodexAgent(AgentBase):
         run_config: AgentRunConfig,
     ) -> AgentRunResult:
         self._check_account_policy(command_config)
-        from agentos._core.project import normalize_project_target
         start_path = run_config.cwd
         preamble_lines = _run_codex_preflight(
             self,
@@ -92,6 +91,12 @@ class CodexAgent(AgentBase):
             print(line)
         command = self._build_command(command_config)
         base_result = execute_agent_command(command, run_config=self.resolve_run_config(run_config))
+        if base_result.exit_code == 0 and command_config.credential_success_source is not None:
+            self._refresh_auth_after_successful_run(
+                command_config,
+                source=command_config.credential_success_source,
+                start_path=start_path,
+            )
         return AgentRunResult(
             exit_code=base_result.exit_code,
             stdout=base_result.stdout,
@@ -101,7 +106,6 @@ class CodexAgent(AgentBase):
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
         self._check_account_policy(command_config)
-        from agentos._core.project import normalize_project_target
         start_path = Path.cwd().resolve()
         preamble_lines = _run_codex_preflight(
             self,
@@ -138,6 +142,7 @@ class CodexAgent(AgentBase):
             model=command_config.model,
             account=command_config.account,
             interaction_mode=command_config.interaction_mode,
+            credential_success_source=command_config.credential_success_source,
         )
 
     def _run_env_overrides(self) -> dict[str, str]:
@@ -145,6 +150,33 @@ class CodexAgent(AgentBase):
         if self.home is not None:
             env_overrides[CODEX_HOME_ENV_VAR] = str(self.home)
         return env_overrides
+
+    def _refresh_auth_after_successful_run(
+        self,
+        command_config: AgentCommandConfig,
+        *,
+        source: str,
+        start_path: Path,
+    ) -> None:
+        if self.home is None:
+            return
+        account = _normalized_account(command_config.account) or _agent_account(self)
+        if account is None:
+            status = _safe_inspect_codex_home(self.home)
+            account = _active_home_account(status) if status is not None else None
+        if account is None:
+            return
+        try:
+            from agentos.codex.account_registry import promote_verified_codex_auth_from_home
+
+            promote_verified_codex_auth_from_home(
+                home=self.home,
+                account=account,
+                source=source,
+                start_path=start_path,
+            )
+        except Exception:
+            return
 
 
 def _run_codex_preflight(
@@ -278,6 +310,15 @@ def _record_materialized_event(
             "artifact_id": artifact_id,
         },
     )
+
+
+def _safe_inspect_codex_home(home: Path) -> dict[str, object] | None:
+    try:
+        from agentos.codex.account_registry import inspect_codex_account_home
+
+        return inspect_codex_account_home(home=home)
+    except Exception:
+        return None
 
 
 def _payload_string(payload: dict[str, object], key: str) -> str | None:

@@ -16,6 +16,7 @@ class AgentCommandConfig:
     model: str | None = None
     account: str | None = None
     interaction_mode: Literal["interactive", "non_interactive"] = "interactive"
+    credential_success_source: str | None = "agent.run"
 
 
 @dataclass(frozen=True)

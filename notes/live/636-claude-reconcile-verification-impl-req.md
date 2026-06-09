@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-Status: ready for execution
+Status: implemented
 
 Source context:
 - Claude ambient auth artifacts now exist for `ambient-browser-login` accounts.
@@ -180,7 +180,7 @@ Keep `link_claude_account_to_home(...)` materialization behavior, but only call 
 
 ### Slice 1: Provider-neutral verification ledger
 
-Status: pending
+Status: completed
 
 Change:
 - Add account verification ledger helpers near `src/agentos/agent/account_registry.py` or a focused adjacent module.
@@ -200,7 +200,7 @@ Validation:
 
 ### Slice 2: Claude verified promotion core API
 
-Status: pending
+Status: completed
 
 Change:
 - Add a Claude helper such as `promote_verified_claude_ambient_auth_from_home(...)`.
@@ -221,7 +221,7 @@ Validation:
 
 ### Slice 3: Passive Claude reconcile consumes verification evidence
 
-Status: pending
+Status: completed
 
 Change:
 - Update `reconcile_claude_accounts(...)` so passive reconcile registers every observed new artifact, but activation is driven by verification ledger evidence.
@@ -242,7 +242,7 @@ Validation:
 
 ### Slice 4: Reconcile ping verification mode
 
-Status: pending
+Status: completed
 
 Change:
 - Extend core `reconcile_claude_accounts(...)` with a ping/verify option.
@@ -265,7 +265,7 @@ Validation:
 
 ### Slice 5: Successful run, ping, status, and monitor evidence integration
 
-Status: pending
+Status: completed
 
 Change:
 - Replace Claude post-run direct artifact registration with the verified promotion helper.
@@ -288,7 +288,7 @@ Validation:
 
 ### Slice 6: Local smoke and command refresh
 
-Status: pending
+Status: completed
 
 Change:
 - Refresh installed CLI if command parser changes: install from `agentos-cli`, not `agentos-py`.
@@ -348,3 +348,4 @@ agentos agent accounts reconcile --provider claude-code --check --ping --json
 ## Impl.Log
 
 - 2026-06-09: Impl.Req created from user-approved reconcile semantics: collect all observed credentials, verify only through real successful provider calls, and make active mean latest verified successful credential. No implementation performed in this design pass.
+- 2026-06-09: Implementation executed after checkpoint `b0cae2e`. No scope-changing deviations. Safe smoke checks showed pre-existing active Claude artifacts report `active_verified: false` until a new successful run/ping/status writes verification evidence.

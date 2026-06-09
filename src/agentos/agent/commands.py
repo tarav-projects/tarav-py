@@ -233,6 +233,7 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         argv=agent.ping.argv,
         interaction_mode="non_interactive",
     )
+    command_config = replace(command_config, credential_success_source=None)
     if command_config.model is None and agent.ping.model is not None:
         command_config = replace(command_config, model=agent.ping.model)
     started_at = time.perf_counter()
@@ -242,10 +243,54 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         result,
         expected_number=agent.ping.expected_number,
     )
+    _record_agent_credential_success(
+        agent,
+        command_config=command_config,
+        source="agent.ping",
+    )
     print(
         f"pong model={_agent_ping_model(agent, command_config)} elapsed_ms={elapsed_ms}"
     )
     return 0
+
+
+def _record_agent_credential_success(
+    agent: Agent,
+    *,
+    command_config: AgentCommandConfig,
+    source: str,
+) -> None:
+    if agent.home is None:
+        return
+    account = command_config.account
+    if account is None and agent.account is not None and agent.account.provider == agent.provider:
+        account = agent.account.account
+    if account is None:
+        return
+    try:
+        if agent.provider == "claude-code":
+            from agentos.claude.account_registry import (
+                has_claude_oauth_token_kind,
+                promote_verified_claude_ambient_auth_from_home,
+            )
+
+            if has_claude_oauth_token_kind(account):
+                return
+            promote_verified_claude_ambient_auth_from_home(
+                home=agent.home,
+                account=account,
+                source=source,
+            )
+        elif agent.provider == "codex":
+            from agentos.codex.account_registry import promote_verified_codex_auth_from_home
+
+            promote_verified_codex_auth_from_home(
+                home=agent.home,
+                account=account,
+                source=source,
+            )
+    except CliError:
+        return
 
 
 
@@ -502,6 +547,8 @@ def _provider_link_requires_home(provider: str) -> bool:
 
 
 def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
+    if args.ping and args.provider not in {"claude-code", "codex"}:
+        raise CliError("--ping is only supported for provider claude-code or codex")
     if args.provider == "codex":
         from agentos.codex.account_reconcile import reconcile_codex_accounts
 
@@ -510,6 +557,7 @@ def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
             home=Path(args.home) if args.home is not None else None,
             start_path=_config_start_path(args),
             check=args.check,
+            ping=args.ping,
             argv=getattr(args, "_agentos_argv", []),
         )
         if args.json:
@@ -525,6 +573,7 @@ def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
             home=Path(args.home) if args.home is not None else None,
             start_path=_config_start_path(args),
             check=args.check,
+            ping=args.ping,
             argv=getattr(args, "_agentos_argv", []),
         )
         if args.json:
@@ -991,6 +1040,11 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "--check",
         action="store_true",
         help="Report intended actions without mutating account storage or homes.",
+    )
+    accounts_reconcile_parser.add_argument(
+        "--ping",
+        action="store_true",
+        help="For claude-code, run live ping verification before activating credentials.",
     )
     accounts_reconcile_parser.add_argument(
         "--json",

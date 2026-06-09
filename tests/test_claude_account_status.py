@@ -17,7 +17,7 @@ from agentos.claude.account_registry import register_claude_account
 from agentos.claude.agent import ClaudeAgent
 from agentos.testing import AgentosTestEnvironment
 
-from _helpers import read_json_file, write_claude_home
+from _helpers import read_json_file, read_jsonl_file, write_claude_home
 
 
 def test_claude_account_status_success_refreshes_ambient_auth_artifact(
@@ -66,6 +66,11 @@ def test_claude_account_status_success_refreshes_ambient_auth_artifact(
     )
     artifact_id = account_payload["accounts"]["browser-br"]["active_artifact_id"]
     assert auth_record["artifact_id"] == artifact_id
+    verifications = read_jsonl_file(
+        environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
+    )
+    assert verifications[-1]["artifact_id"] == artifact_id
+    assert verifications[-1]["source"] == "account.status"
 
 
 def test_claude_successful_run_refreshes_ambient_auth_artifact(
@@ -97,4 +102,10 @@ def test_claude_successful_run_refreshes_ambient_auth_artifact(
     account_payload = read_json_file(
         environment.agentos_home / "accounts" / "claude-code" / "accounts.json"
     )
-    assert account_payload["accounts"]["browser-br"]["active_artifact_id"] is not None
+    artifact_id = account_payload["accounts"]["browser-br"]["active_artifact_id"]
+    assert artifact_id is not None
+    verifications = read_jsonl_file(
+        environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
+    )
+    assert verifications[-1]["artifact_id"] == artifact_id
+    assert verifications[-1]["source"] == "agent.run"

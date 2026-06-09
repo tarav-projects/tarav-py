@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 
+import agentos.claude.agent as claude_agent_module
 from agentos.agent.commands import _cmd_agent_ping, _cmd_agent_run
+from agentos.agent.run_runtime import AgentRunResult
+from agentos.claude.account_registry import register_claude_account
 from agentos.codex.account_registry import (
     inspect_codex_account_home,
     link_codex_account_to_home,
@@ -16,6 +19,9 @@ from agentos.testing import AgentosTestEnvironment
 
 from _helpers import (
     codex_auth_json,
+    read_json_file,
+    read_jsonl_file,
+    write_claude_home,
     write_text_file,
 )
 
@@ -117,6 +123,57 @@ def test_agent_ping_uses_codex_account_preflight(
     )
     assert "pong model=" in output
     assert read_codex_auth_info(home / "auth.json").sha256 == active_info.sha256
+    verifications = read_jsonl_file(
+        environment.agentos_home / "accounts" / "codex" / "verifications.jsonl"
+    )
+    assert verifications[-1]["artifact_id"] == active_info.sha256
+    assert verifications[-1]["source"] == "agent.ping"
+
+
+def test_agent_ping_records_claude_verified_auth_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    import agentos.claude.account_registry as claude_account_registry
+
+    monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
+    home = tmp_path / "claude-br"
+    write_claude_home(home, email="br@example.com", account_uuid="acc_br")
+    register_claude_account(account="browser-br", email="br@example.com")
+    environment.write_global_config(agent={"providers": _provider_configs()})
+    environment.write_profiles(
+        [
+            {
+                "id": "claude-br",
+                "provider": "claude-code",
+                "home": str(home),
+                "account": "browser-br",
+                "ping": {"prompt": "745", "expected_number": 745},
+            }
+        ]
+    )
+    monkeypatch.setattr(
+        claude_agent_module,
+        "execute_agent_command",
+        lambda command, *, run_config: AgentRunResult(exit_code=0, stdout="745"),
+    )
+
+    result = _cmd_agent_ping(_ping_args(profile="claude-br", provider="claude-code"))
+
+    assert result == 0
+    assert "pong model=" in capsys.readouterr().out
+    account_payload = read_json_file(
+        environment.agentos_home / "accounts" / "claude-code" / "accounts.json"
+    )
+    artifact_id = account_payload["accounts"]["browser-br"]["active_artifact_id"]
+    verifications = read_jsonl_file(
+        environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
+    )
+    assert verifications[-1]["artifact_id"] == artifact_id
+    assert verifications[-1]["source"] == "agent.ping"
 
 
 def test_agent_run_does_not_mutate_codex_home_without_account(
@@ -279,7 +336,10 @@ def _make_stale_profile_home(
 
 
 def _provider_configs() -> dict[str, dict[str, object]]:
-    return {"codex": {"cli_command": ["/bin/echo"]}}
+    return {
+        "claude-code": {"cli_command": ["claude"]},
+        "codex": {"cli_command": ["/bin/echo"]},
+    }
 
 
 def _codex_profile(
@@ -324,9 +384,9 @@ def _run_args(
     )
 
 
-def _ping_args(*, profile: str) -> argparse.Namespace:
+def _ping_args(*, profile: str, provider: str = "codex") -> argparse.Namespace:
     return argparse.Namespace(
-        provider="codex",
+        provider=provider,
         profile=profile,
         home=None,
         account=None,
@@ -334,5 +394,3 @@ def _ping_args(*, profile: str) -> argparse.Namespace:
         project=None,
         cwd=None,
     )
-
-

@@ -27,7 +27,10 @@ from agentos.agent.account_usage_fallback import (
 from agentos.agent.primitives import Agent
 from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
-from agentos.codex.account_registry import inspect_codex_account_home
+from agentos.codex.account_registry import (
+    inspect_codex_account_home,
+    promote_verified_codex_auth_from_home,
+)
 from agentos.codex.account_reconcile import reconcile_codex_accounts
 
 
@@ -79,6 +82,7 @@ def _codex_account_status_impl(
 
     check_status = "error" if errors else "ok"
     auth_summary: str | None = None
+    auth_artifact_record: dict[str, object] | None = None
     if check_status == "error":
         usage_status = "unavailable"
         usage_summary = None
@@ -125,6 +129,11 @@ def _codex_account_status_impl(
                 source=CODEX_APP_SERVER_USAGE_SOURCE,
                 payload=usage_record_payload,
             )
+        auth_artifact_record = _refresh_codex_auth_artifact(
+            agent,
+            usage_status=usage_status,
+            usage_record_metadata=usage_record_metadata,
+        )
 
     return AccountStatus(
         provider=agent.provider,
@@ -148,12 +157,61 @@ def _codex_account_status_impl(
             else None,
             "usage": usage_payload,
             "usage_record": usage_record_metadata,
+            "auth_artifact_record": auth_artifact_record,
         },
     )
 
 
+def _refresh_codex_auth_artifact(
+    agent: Agent,
+    *,
+    usage_status: str,
+    usage_record_metadata: Mapping[str, Any] | None,
+) -> dict[str, object] | None:
+    if agent.home is None or agent.account is None:
+        return None
+    if usage_status != "ok":
+        return None
+    if _usage_record_source(usage_record_metadata) != CODEX_APP_SERVER_USAGE_SOURCE:
+        return None
+    if (
+        isinstance(usage_record_metadata, Mapping)
+        and usage_record_metadata.get("status") == USAGE_RECORD_STATUS_REGISTRY_FALLBACK
+    ):
+        return None
+    try:
+        payload = promote_verified_codex_auth_from_home(
+            home=agent.home,
+            account=agent.account.account,
+            source="account.status",
+        )
+    except CliError as exc:
+        return {
+            "status": "error",
+            "message": str(exc),
+        }
+    account_payload = payload.get("account_record")
+    return {
+        "status": "ok",
+        "artifact_id": payload.get("artifact_id"),
+        "artifact_appended": bool(payload.get("artifact_appended")),
+        "active_artifact_id": (
+            account_payload.get("active_artifact_id")
+            if isinstance(account_payload, dict)
+            else None
+        ),
+    }
+
+
 def _reconciliation_has_activity(payload: Mapping[str, object]) -> bool:
     return bool(payload.get("actions") or payload.get("warnings"))
+
+
+def _usage_record_source(usage_record_metadata: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(usage_record_metadata, Mapping):
+        return None
+    source = usage_record_metadata.get("source")
+    return source if isinstance(source, str) and source else None
 
 
 def _expected_identity(account_record: dict[str, object]) -> AccountIdentity:

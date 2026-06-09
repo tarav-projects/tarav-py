@@ -13,6 +13,7 @@ from agentos._core.path_validation import validate_string_for_path
 from agentos.agent.account_registry import (
     account_provider_root,
     append_artifact,
+    append_verification,
     artifacts_dir,
     load_account,
     load_accounts,
@@ -118,6 +119,94 @@ def register_codex_account_from_auth_file(
         },
     )
     return result
+
+
+def promote_verified_codex_auth_from_home(
+    *,
+    home: Path,
+    account: str,
+    source: str,
+    start_path: Path | str = ".",
+    sync_homes: bool = True,
+    argv: list[str] | tuple[str, ...] = (),
+) -> dict[str, object]:
+    normalized_home = home.expanduser().resolve()
+    normalized_account = validate_string_for_path(account, field_name="account")
+    normalized_source = validate_string_for_path(source, field_name="source")
+    registration = register_codex_account_from_auth_file(
+        auth_file=_home_auth_path(normalized_home),
+        account=normalized_account,
+        register_only=True,
+        argv=argv,
+    )
+    auth = registration.get("auth")
+    if not isinstance(auth, dict):
+        raise CliError("codex auth registration did not return auth metadata")
+    artifact_id = _require_payload_string(auth, "artifact_id")
+    verification = append_verification(
+        CODEX_PROVIDER,
+        {
+            "account": normalized_account,
+            "artifact_id": artifact_id,
+            "auth_kind": CODEX_AUTH_KIND,
+            "home": str(normalized_home),
+            "source": normalized_source,
+        },
+    )
+    info = read_codex_auth_info(_home_auth_path(normalized_home))
+    account_record = upsert_account(
+        CODEX_PROVIDER,
+        normalized_account,
+        {
+            "auth_kind": CODEX_AUTH_KIND,
+            "account_id": info.account_id,
+            "email": info.email,
+            **info.metadata_payload(),
+            "active_artifact_id": artifact_id,
+            "artifact_file": _artifact_relative_file(artifact_id),
+            "last_verified_at": verification["verified_at"],
+            "last_verified_source": normalized_source,
+        },
+    )
+    synced_homes: list[dict[str, object]] = []
+    sync_warnings: list[dict[str, object]] = []
+    if sync_homes:
+        synced_homes, sync_warnings = _sync_known_homes_from_verified_artifact(
+            account=normalized_account,
+            source_home=normalized_home,
+            start_path=start_path,
+            argv=argv,
+        )
+    record_account_event(
+        event_type="agent.accounts.verify",
+        command=normalized_source,
+        argv=argv,
+        status="ok",
+        payload={
+            "provider": CODEX_PROVIDER,
+            "account": normalized_account,
+            "auth_kind": CODEX_AUTH_KIND,
+            "home": str(normalized_home),
+            "artifact_id": artifact_id,
+            "source": normalized_source,
+            "verified_at": verification["verified_at"],
+            "artifact_appended": bool(registration.get("artifact_appended")),
+            "synced_count": len(synced_homes),
+            "sync_warning_count": len(sync_warnings),
+        },
+    )
+    return {
+        "status": "ok",
+        "provider": CODEX_PROVIDER,
+        "account": normalized_account,
+        "home": str(normalized_home),
+        "artifact_id": artifact_id,
+        "artifact_appended": bool(registration.get("artifact_appended")),
+        "verification": verification,
+        "account_record": account_record,
+        "synced_homes": synced_homes,
+        "sync_warnings": sync_warnings,
+    }
 
 
 def link_codex_account_to_home(
@@ -343,6 +432,7 @@ def _append_artifact_entry(
     entry: dict[str, object] = {
         "account": account,
         "artifact_id": info.sha256,
+        "auth_kind": CODEX_AUTH_KIND,
         "account_id": info.account_id,
         "file": _artifact_relative_file(info.sha256),
         "source_auth_file": str(source_auth_file),
@@ -503,6 +593,52 @@ def _require_account_string(account: dict[str, object], field: str) -> str:
     return value.strip()
 
 
+def _require_payload_string(payload: dict[str, object], field: str) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise CliError(f"codex payload field {field} must be a non-empty string")
+    return value.strip()
+
+
+def _sync_known_homes_from_verified_artifact(
+    *,
+    account: str,
+    source_home: Path,
+    start_path: Path | str,
+    argv: list[str] | tuple[str, ...],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    from agentos.codex.account_reconcile import discover_codex_reconcile_homes
+
+    synced_homes: list[dict[str, object]] = []
+    warnings: list[dict[str, object]] = []
+    for home_summary in discover_codex_reconcile_homes(
+        account=account,
+        start_path=start_path,
+    ):
+        raw_home = home_summary.get("home")
+        if not isinstance(raw_home, str):
+            continue
+        target_home = Path(raw_home).expanduser().resolve()
+        if target_home == source_home:
+            continue
+        try:
+            payload = link_codex_account_to_home(
+                home=target_home,
+                account=account,
+                argv=argv,
+            )
+        except CliError as exc:
+            warnings.append({"home": str(target_home), "message": str(exc)})
+            continue
+        synced_homes.append(
+            {
+                "home": str(target_home),
+                "artifact_id": payload.get("artifact_id"),
+            }
+        )
+    return synced_homes, warnings
+
+
 def _jwt_claims(tokens: dict[str, object]) -> dict[str, object]:
     claims: dict[str, object] = {}
     for key in ("id_token", "access_token"):
@@ -549,6 +685,7 @@ def _string_or_none(value: object) -> str | None:
 
 __all__ = [
     "link_codex_account_to_home",
+    "promote_verified_codex_auth_from_home",
     "read_codex_auth_info",
     "register_codex_account_from_auth_file",
     "inspect_codex_account_home",

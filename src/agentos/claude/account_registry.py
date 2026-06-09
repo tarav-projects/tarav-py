@@ -14,6 +14,7 @@ from agentos._core.process import run_process
 from agentos.agent.account_registry import (
     account_exists,
     append_artifact,
+    append_verification,
     artifacts_dir,
     load_account,
     load_accounts,
@@ -480,6 +481,90 @@ def register_claude_ambient_auth_from_home(
         },
     )
     return result
+
+
+def promote_verified_claude_ambient_auth_from_home(
+    *,
+    home: Path,
+    account: str,
+    source: str,
+    start_path: Path | str = ".",
+    sync_homes: bool = True,
+    argv: list[str] | tuple[str, ...] = (),
+) -> dict[str, object]:
+    normalized_account = validate_string_for_path(account, field_name="account")
+    normalized_source = validate_string_for_path(source, field_name="source")
+    registration = register_claude_ambient_auth_from_home(
+        home=home,
+        account=normalized_account,
+        register_only=True,
+        argv=argv,
+    )
+    auth = registration.get("auth")
+    if not isinstance(auth, dict):
+        raise CliError("claude ambient auth registration did not return auth metadata")
+    artifact_id = _require_payload_string(auth, "artifact_id")
+    verification = append_verification(
+        CLAUDE_PROVIDER,
+        {
+            "account": normalized_account,
+            "artifact_id": artifact_id,
+            "auth_kind": CLAUDE_AUTH_KIND,
+            "home": str(Path(home).expanduser().resolve()),
+            "source": normalized_source,
+            "storage_kind": auth.get("storage_kind"),
+        },
+    )
+    account_record = upsert_account(
+        CLAUDE_PROVIDER,
+        normalized_account,
+        {
+            "auth_kind": CLAUDE_AUTH_KIND,
+            "active_artifact_id": artifact_id,
+            "artifact_file": _ambient_artifact_relative_file(artifact_id),
+            "last_verified_at": verification["verified_at"],
+            "last_verified_source": normalized_source,
+        },
+    )
+    synced_homes: list[dict[str, object]] = []
+    sync_warnings: list[dict[str, object]] = []
+    if sync_homes:
+        synced_homes, sync_warnings = _sync_known_homes_from_verified_artifact(
+            account=normalized_account,
+            source_home=Path(home).expanduser().resolve(),
+            start_path=start_path,
+            argv=argv,
+        )
+    record_account_event(
+        event_type="agent.accounts.verify",
+        command=normalized_source,
+        argv=argv,
+        status="ok",
+        payload={
+            "provider": CLAUDE_PROVIDER,
+            "account": normalized_account,
+            "auth_kind": CLAUDE_AUTH_KIND,
+            "home": str(Path(home).expanduser().resolve()),
+            "artifact_id": artifact_id,
+            "source": normalized_source,
+            "verified_at": verification["verified_at"],
+            "artifact_appended": bool(registration.get("artifact_appended")),
+            "synced_count": len(synced_homes),
+            "sync_warning_count": len(sync_warnings),
+        },
+    )
+    return {
+        "status": "ok",
+        "provider": CLAUDE_PROVIDER,
+        "account": normalized_account,
+        "home": str(Path(home).expanduser().resolve()),
+        "artifact_id": artifact_id,
+        "artifact_appended": bool(registration.get("artifact_appended")),
+        "verification": verification,
+        "account_record": account_record,
+        "synced_homes": synced_homes,
+        "sync_warnings": sync_warnings,
+    }
 
 
 def inspect_claude_account_home(*, home: Path) -> dict[str, object]:
@@ -1009,6 +1094,57 @@ def _require_account_string(account: dict[str, object], field: str) -> str:
     return value.strip()
 
 
+def _require_payload_string(payload: dict[str, object], field: str) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise CliError(f"claude-code payload field {field} must be a non-empty string")
+    return value.strip()
+
+
+def _sync_known_homes_from_verified_artifact(
+    *,
+    account: str,
+    source_home: Path,
+    start_path: Path | str,
+    argv: list[str] | tuple[str, ...],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    from agentos.claude.account_reconcile import discover_claude_reconcile_homes
+
+    synced_homes: list[dict[str, object]] = []
+    warnings: list[dict[str, object]] = []
+    for home_summary in discover_claude_reconcile_homes(
+        account=account,
+        start_path=start_path,
+    ):
+        raw_home = home_summary.get("home")
+        if not isinstance(raw_home, str):
+            continue
+        target_home = Path(raw_home).expanduser().resolve()
+        if target_home == source_home:
+            continue
+        try:
+            payload = link_claude_account_to_home(
+                home=target_home,
+                account=account,
+                argv=argv,
+            )
+        except CliError as exc:
+            warnings.append(
+                {
+                    "home": str(target_home),
+                    "message": str(exc),
+                }
+            )
+            continue
+        synced_homes.append(
+            {
+                "home": str(target_home),
+                "artifact_id": payload.get("artifact_id"),
+            }
+        )
+    return synced_homes, warnings
+
+
 def _string_or_none(value: object) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
@@ -1027,6 +1163,7 @@ __all__ = [
     "link_claude_account_to_home",
     "load_claude_ambient_auth_for_account",
     "load_claude_oauth_token_for_account",
+    "promote_verified_claude_ambient_auth_from_home",
     "read_claude_ambient_auth_info",
     "read_claude_home_config",
     "read_claude_oauth_token_info",

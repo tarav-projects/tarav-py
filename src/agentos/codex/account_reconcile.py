@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
@@ -15,14 +16,22 @@ from agentos.agent.account_reconcile import (
 from agentos.agent.account_registry import (
     load_accounts,
     record_account_event,
+    read_artifacts,
+    read_verifications,
+    upsert_account,
 )
 from agentos.agent.config import load_agent_configs
+from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.codex.account_registry import (
+    CODEX_AUTH_KIND,
     CODEX_PROVIDER,
     inspect_codex_account_home,
     link_codex_account_to_home,
+    promote_verified_codex_auth_from_home,
     register_codex_account_from_auth_file,
 )
+
+_PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 
 
 @dataclass(frozen=True)
@@ -50,6 +59,7 @@ def reconcile_codex_accounts(
     start_path: Path | str = ".",
     register_discovered: bool = True,
     sync_homes: bool = True,
+    ping: bool = False,
     check: bool = False,
     record_event: bool = True,
     argv: list[str] | tuple[str, ...] = (),
@@ -61,6 +71,7 @@ def reconcile_codex_accounts(
         start_path=start_path,
         register_discovered=register_discovered,
         sync_homes=sync_homes,
+        ping=ping,
         check=check,
         argv=tuple(argv),
     )
@@ -79,6 +90,7 @@ def reconcile_codex_accounts(
                 "scanned_count": len(result.scanned_homes),
                 "action_count": len(result.actions),
                 "warning_count": len(result.warnings),
+                "ping": request.ping,
             },
         )
     return payload
@@ -147,27 +159,8 @@ def _reconcile_codex_accounts(request: AccountReconcileRequest) -> AccountReconc
 
     if request.register_discovered:
         for matched_account, candidates in sorted(fresh_by_account.items()):
-            selected = _select_activation_candidate(matched_account, candidates)
-            if len(candidates) > 1:
-                warnings.append(
-                    AccountReconcileWarning(
-                        kind="multiple_fresh_artifacts",
-                        account=matched_account,
-                        message="multiple fresh codex auth artifacts were observed; selected newest metadata",
-                        detail={
-                            "artifact_ids": [
-                                _artifact_id_from_status(status)
-                                for _, status in candidates
-                                if _artifact_id_from_status(status) is not None
-                            ],
-                            "selected_artifact_id": _artifact_id_from_status(selected[1])
-                            if selected is not None
-                            else _active_artifact_id(matched_account),
-                        },
-                    )
-                )
             for known_home, status in sorted(
-                candidates,
+                _dedupe_candidates_by_artifact_id(candidates),
                 key=lambda item: str(item[0].home),
             ):
                 artifact_id = _artifact_id_from_status(status)
@@ -180,19 +173,11 @@ def _reconcile_codex_accounts(request: AccountReconcileRequest) -> AccountReconc
                             artifact_id=artifact_id,
                         )
                     )
-                    if selected is not None and (known_home, status) == selected:
-                        actions.append(
-                            AccountReconcileAction(
-                                kind="would_activate_artifact",
-                                account=matched_account,
-                                artifact_id=artifact_id,
-                            )
-                        )
                     continue
                 payload = register_codex_account_from_auth_file(
                     auth_file=Path(str(status["auth_path"])),
                     account=matched_account,
-                    register_only=selected is None or (known_home, status) != selected,
+                    register_only=True,
                     argv=request.argv,
                 )
                 actions.append(
@@ -203,15 +188,37 @@ def _reconcile_codex_accounts(request: AccountReconcileRequest) -> AccountReconc
                         artifact_id=artifact_id,
                         detail={
                             "artifact_appended": bool(payload.get("artifact_appended")),
-                            "activated": selected is not None
-                            and (known_home, status) == selected,
+                            "activated": False,
                         },
                     )
                 )
 
+    actions.extend(
+        _activate_verified_artifacts(
+            request,
+            fresh_by_account=fresh_by_account,
+        )
+    )
+
+    if request.ping:
+        actions.extend(
+            _ping_verify_candidates(
+                request,
+                inspected=inspected,
+                warnings=warnings,
+            )
+        )
+
     if request.sync_homes:
         inspected = tuple(_inspect_known_home(known_home) for known_home in known_homes)
-        actions.extend(_sync_codex_homes(request, inspected, planned_active_artifacts=_planned_active_artifacts(actions)))
+        actions.extend(
+            _sync_codex_homes(
+                request,
+                inspected,
+                planned_active_artifacts=_planned_active_artifacts(actions),
+                warnings=warnings,
+            )
+        )
 
     return AccountReconcileResult(
         provider=CODEX_PROVIDER,
@@ -228,8 +235,10 @@ def _sync_codex_homes(
     inspected: tuple[tuple[_KnownHome, dict[str, object]], ...],
     *,
     planned_active_artifacts: dict[str, str],
+    warnings: list[AccountReconcileWarning],
 ) -> list[AccountReconcileAction]:
     actions: list[AccountReconcileAction] = []
+    warned_unverified: set[str] = set()
     for known_home, status in inspected:
         sync_account = _sync_account_for_home(known_home, status)
         if sync_account is None:
@@ -243,6 +252,21 @@ def _sync_codex_homes(
             continue
         active_artifact_id = planned_active_artifacts.get(sync_account) or _active_artifact_id(sync_account)
         if active_artifact_id is None:
+            continue
+        if active_artifact_id not in _verified_artifacts_for_account(sync_account):
+            if sync_account not in warned_unverified:
+                warnings.append(
+                    AccountReconcileWarning(
+                        kind="active_artifact_unverified",
+                        account=sync_account,
+                        message=(
+                            "codex active artifact has no verification evidence; "
+                            "skipping automatic home sync"
+                        ),
+                        detail={"artifact_id": active_artifact_id},
+                    )
+                )
+                warned_unverified.add(sync_account)
             continue
         if request.check:
             actions.append(
@@ -270,6 +294,129 @@ def _sync_codex_homes(
                 },
             )
         )
+    return actions
+
+
+def _activate_verified_artifacts(
+    request: AccountReconcileRequest,
+    *,
+    fresh_by_account: dict[str, list[tuple[_KnownHome, dict[str, object]]]],
+) -> list[AccountReconcileAction]:
+    actions: list[AccountReconcileAction] = []
+    observed_artifacts = _observed_artifacts_by_account(fresh_by_account)
+    for account, verification in _latest_verified_artifacts(request.account).items():
+        artifact_id = _string_or_none(verification.get("artifact_id"))
+        if artifact_id is None:
+            continue
+        if not _artifact_is_registered(account, artifact_id) and artifact_id not in observed_artifacts.get(account, set()):
+            continue
+        if _active_artifact_id(account) == artifact_id:
+            continue
+        if request.check:
+            actions.append(
+                AccountReconcileAction(
+                    kind="would_activate_verified_artifact",
+                    account=account,
+                    artifact_id=artifact_id,
+                    detail={
+                        "verified_at": verification.get("verified_at"),
+                        "source": verification.get("source"),
+                    },
+                )
+            )
+            continue
+        upsert_account(
+            CODEX_PROVIDER,
+            account,
+            {
+                "auth_kind": CODEX_AUTH_KIND,
+                "active_artifact_id": artifact_id,
+                "artifact_file": f"artifacts/{artifact_id}.auth.json",
+                "last_verified_at": verification.get("verified_at"),
+                "last_verified_source": verification.get("source"),
+            },
+        )
+        actions.append(
+            AccountReconcileAction(
+                kind="activated_verified_artifact",
+                account=account,
+                artifact_id=artifact_id,
+                detail={
+                    "verified_at": verification.get("verified_at"),
+                    "source": verification.get("source"),
+                },
+            )
+        )
+    return actions
+
+
+def _ping_verify_candidates(
+    request: AccountReconcileRequest,
+    *,
+    inspected: tuple[tuple[_KnownHome, dict[str, object]], ...],
+    warnings: list[AccountReconcileWarning],
+) -> list[AccountReconcileAction]:
+    actions: list[AccountReconcileAction] = []
+    for account, candidates in _ping_candidates_by_account(request, inspected).items():
+        for known_home, status in _dedupe_candidates_by_artifact_id(candidates):
+            artifact_id = _artifact_id_from_status(status)
+            if artifact_id is None:
+                continue
+            if request.check:
+                actions.append(
+                    AccountReconcileAction(
+                        kind="would_ping",
+                        account=account,
+                        home=str(known_home.home),
+                        artifact_id=artifact_id,
+                    )
+                )
+                continue
+            try:
+                _run_reconcile_ping(
+                    account=account,
+                    home=known_home.home,
+                    start_path=request.start_path,
+                )
+                payload = promote_verified_codex_auth_from_home(
+                    home=known_home.home,
+                    account=account,
+                    source="accounts.reconcile.ping",
+                    start_path=request.start_path,
+                    sync_homes=False,
+                    argv=request.argv,
+                )
+            except CliError as exc:
+                warnings.append(
+                    AccountReconcileWarning(
+                        kind="ping_verification_failed",
+                        account=account,
+                        home=str(known_home.home),
+                        message=str(exc),
+                        detail={"artifact_id": artifact_id},
+                    )
+                )
+                actions.append(
+                    AccountReconcileAction(
+                        kind="ping_failed",
+                        account=account,
+                        home=str(known_home.home),
+                        artifact_id=artifact_id,
+                    )
+                )
+                continue
+            actions.append(
+                AccountReconcileAction(
+                    kind="verified_artifact",
+                    account=account,
+                    home=str(known_home.home),
+                    artifact_id=str(payload.get("artifact_id") or artifact_id),
+                    detail={
+                        "source": "accounts.reconcile.ping",
+                        "artifact_appended": bool(payload.get("artifact_appended")),
+                    },
+                )
+            )
     return actions
 
 
@@ -370,33 +517,94 @@ def _single_matching_account(status: dict[str, object]) -> str | None:
     return accounts[0]
 
 
-def _select_activation_candidate(
-    account: str,
+def _dedupe_candidates_by_artifact_id(
     candidates: list[tuple[_KnownHome, dict[str, object]]],
-) -> tuple[_KnownHome, dict[str, object]] | None:
-    selected = max(
-        candidates,
-        key=lambda item: (
-            _last_refresh_from_status(item[1]) or "",
-            _jwt_iat_from_status(item[1]) or -1,
-            _mtime_from_status(item[1]) or -1.0,
-            str(item[0].home),
+) -> list[tuple[_KnownHome, dict[str, object]]]:
+    deduped: dict[str, tuple[_KnownHome, dict[str, object]]] = {}
+    for known_home, status in sorted(candidates, key=lambda item: str(item[0].home)):
+        artifact_id = _artifact_id_from_status(status)
+        if artifact_id is None:
+            continue
+        deduped.setdefault(artifact_id, (known_home, status))
+    return [deduped[artifact_id] for artifact_id in sorted(deduped)]
+
+
+def _ping_candidates_by_account(
+    request: AccountReconcileRequest,
+    inspected: tuple[tuple[_KnownHome, dict[str, object]], ...],
+) -> dict[str, list[tuple[_KnownHome, dict[str, object]]]]:
+    candidates: dict[str, list[tuple[_KnownHome, dict[str, object]]]] = {}
+    for known_home, status in inspected:
+        artifact_id = _artifact_id_from_status(status)
+        if artifact_id is None:
+            continue
+        account = known_home.account or _single_matching_account(status) or _active_home_account(status)
+        if account is None:
+            continue
+        if request.account is not None and account != request.account:
+            continue
+        candidates.setdefault(account, []).append((known_home, status))
+    return candidates
+
+
+def _run_reconcile_ping(
+    *,
+    account: str,
+    home: Path,
+    start_path: Path | str,
+) -> None:
+    agent = _build_registered_account_agent(
+        provider=CODEX_PROVIDER,
+        account=account,
+        home=home,
+        start_path=start_path,
+    )
+    if not agent.ping.enabled:
+        raise CliError(
+            f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
+        )
+    result = agent.run(
+        AgentCommandConfig(
+            prompt=agent.ping.prompt,
+            argv=agent.ping.argv,
+            model=agent.ping.model,
+            account=None,
+            interaction_mode="non_interactive",
+            credential_success_source=None,
         ),
+        AgentRunConfig(cwd=Path.cwd().resolve(), process_mode="capture"),
     )
-    current_key = _active_refresh_key(account)
-    selected_key = (
-        _last_refresh_from_status(selected[1]) or "",
-        _jwt_iat_from_status(selected[1]) or -1,
-    )
-    if _active_artifact_id(account) is None or selected_key > current_key:
-        return selected
-    return None
+    _validate_reconcile_ping_result(result, expected_number=agent.ping.expected_number)
+
+
+def _build_registered_account_agent(**kwargs):
+    from agentos.agent.providers import build_registered_account_agent
+
+    return build_registered_account_agent(**kwargs)
+
+
+def _validate_reconcile_ping_result(result, *, expected_number: int | None) -> None:
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    if result.exit_code != 0:
+        detail = output.strip()
+        suffix = f": {detail}" if detail else ""
+        raise CliError(
+            f"agent ping failed: provider command exited with {result.exit_code}{suffix}"
+        )
+    if expected_number is None:
+        return
+    numbers = [int(match.group(0)) for match in _PING_NUMBER_PATTERN.finditer(output)]
+    if expected_number not in numbers:
+        raise CliError(
+            f"agent ping failed: expected numeric answer {expected_number} "
+            "was not present in provider output"
+        )
 
 
 def _planned_active_artifacts(actions: list[AccountReconcileAction]) -> dict[str, str]:
     planned: dict[str, str] = {}
     for action in actions:
-        if action.kind != "would_activate_artifact":
+        if action.kind not in {"would_activate_verified_artifact", "activated_verified_artifact", "verified_artifact"}:
             continue
         if action.account is None or action.artifact_id is None:
             continue
@@ -404,13 +612,54 @@ def _planned_active_artifacts(actions: list[AccountReconcileAction]) -> dict[str
     return planned
 
 
-def _active_refresh_key(account: str) -> tuple[str, int]:
-    record = _account_record(account)
-    if record is None:
-        return "", -1
-    last_refresh = _string_or_none(record.get("last_refresh")) or ""
-    jwt_iat = record.get("jwt_iat")
-    return last_refresh, jwt_iat if isinstance(jwt_iat, int) else -1
+def _observed_artifacts_by_account(
+    fresh_by_account: dict[str, list[tuple[_KnownHome, dict[str, object]]]],
+) -> dict[str, set[str]]:
+    observed: dict[str, set[str]] = {}
+    for account, candidates in fresh_by_account.items():
+        artifact_ids = {
+            artifact_id
+            for _, status in candidates
+            if (artifact_id := _artifact_id_from_status(status)) is not None
+        }
+        if artifact_ids:
+            observed[account] = artifact_ids
+    return observed
+
+
+def _latest_verified_artifacts(account: str | None) -> dict[str, dict[str, object]]:
+    latest: dict[str, dict[str, object]] = {}
+    for record in read_verifications(CODEX_PROVIDER):
+        if record.get("auth_kind") != CODEX_AUTH_KIND:
+            continue
+        record_account = _string_or_none(record.get("account"))
+        if record_account is None:
+            continue
+        if account is not None and record_account != account:
+            continue
+        existing = latest.get(record_account)
+        if existing is None or str(record.get("verified_at", "")) >= str(existing.get("verified_at", "")):
+            latest[record_account] = record
+    return latest
+
+
+def _verified_artifacts_for_account(account: str) -> set[str]:
+    return {
+        artifact_id
+        for record in read_verifications(CODEX_PROVIDER)
+        if record.get("auth_kind") == CODEX_AUTH_KIND
+        and record.get("account") == account
+        and (artifact_id := _string_or_none(record.get("artifact_id"))) is not None
+    }
+
+
+def _artifact_is_registered(account: str, artifact_id: str) -> bool:
+    return any(
+        entry.get("account") == account
+        and entry.get("artifact_id") == artifact_id
+        and entry.get("auth_kind") in {None, CODEX_AUTH_KIND}
+        for entry in read_artifacts(CODEX_PROVIDER)
+    )
 
 
 def _sync_account_for_home(known_home: _KnownHome, status: dict[str, object]) -> str | None:
@@ -462,10 +711,14 @@ def _active_artifacts(account: str | None) -> tuple[dict[str, object], ...]:
             continue
         if account is not None and raw_account != account:
             continue
+        verified_artifacts = _verified_artifacts_for_account(raw_account)
         payloads.append(
             {
                 "account": raw_account,
                 "active_artifact_id": record.get("active_artifact_id"),
+                "active_verified": record.get("active_artifact_id") in verified_artifacts,
+                "last_verified_at": record.get("last_verified_at"),
+                "last_verified_source": record.get("last_verified_source"),
                 "account_id": record.get("account_id"),
                 "email": record.get("email"),
             }

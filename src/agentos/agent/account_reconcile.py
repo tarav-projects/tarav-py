@@ -12,6 +12,7 @@ class AccountReconcileRequest:
     start_path: Path | str = "."
     register_discovered: bool = True
     sync_homes: bool = True
+    ping: bool = False
     check: bool = False
     argv: tuple[str, ...] = ()
 

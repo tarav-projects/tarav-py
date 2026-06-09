@@ -1978,12 +1978,43 @@ def _run_account_prime_ping(source_target_state: dict[str, object]) -> None:
         model=agent.ping.model,
         account=None,
         interaction_mode="non_interactive",
+        credential_success_source=None,
     )
     result = agent.run(
         command_config,
         AgentRunConfig(cwd=Path.cwd().resolve(), process_mode="capture"),
     )
     _validate_prime_ping_result(result, expected_number=agent.ping.expected_number)
+    _record_prime_ping_credential_success(agent)
+
+
+def _record_prime_ping_credential_success(agent) -> None:
+    if agent.home is None or agent.account is None:
+        return
+    try:
+        if agent.provider == "claude-code":
+            from agentos.claude.account_registry import (
+                has_claude_oauth_token_kind,
+                promote_verified_claude_ambient_auth_from_home,
+            )
+
+            if has_claude_oauth_token_kind(agent.account.account):
+                return
+            promote_verified_claude_ambient_auth_from_home(
+                home=agent.home,
+                account=agent.account.account,
+                source="monitor.auto_prime",
+            )
+        elif agent.provider == "codex":
+            from agentos.codex.account_registry import promote_verified_codex_auth_from_home
+
+            promote_verified_codex_auth_from_home(
+                home=agent.home,
+                account=agent.account.account,
+                source="monitor.auto_prime",
+            )
+    except CliError:
+        return
 
 
 def _validate_prime_ping_result(result, *, expected_number: int | None) -> None:

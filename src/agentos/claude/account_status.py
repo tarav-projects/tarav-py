@@ -39,8 +39,8 @@ from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
 from agentos.claude.account_registry import (
     CLAUDE_AUTH_KIND,
+    promote_verified_claude_ambient_auth_from_home,
     read_claude_secure_storage,
-    register_claude_ambient_auth_from_home,
 )
 
 
@@ -351,20 +351,20 @@ def _refresh_claude_ambient_auth_artifact(
     ):
         return None
     try:
-        payload = register_claude_ambient_auth_from_home(
+        payload = promote_verified_claude_ambient_auth_from_home(
             home=agent.home,
             account=agent.account.account,
+            source="account.status",
         )
     except CliError as exc:
         return {
             "status": "error",
             "message": str(exc),
         }
-    auth = payload.get("auth")
     account_payload = payload.get("account_record")
     return {
         "status": "ok",
-        "artifact_id": auth.get("artifact_id") if isinstance(auth, dict) else None,
+        "artifact_id": payload.get("artifact_id"),
         "artifact_appended": bool(payload.get("artifact_appended")),
         "active_artifact_id": (
             account_payload.get("active_artifact_id")
