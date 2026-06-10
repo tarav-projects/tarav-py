@@ -301,7 +301,7 @@ def test_monitor_account_row_renders_status_as_full_lane() -> None:
     assert row.summary()["status"] == "fresh"
 
 
-def test_usage_time_row_variant_changes_only_when_toggled() -> None:
+def test_usage_time_row_variant_follows_render_context() -> None:
     row = MonitorUsageTimeRow(
         label="    usage/time [used]",
         value="63% / 40% = 1.6 [%]",
@@ -320,19 +320,18 @@ def test_usage_time_row_variant_changes_only_when_toggled() -> None:
             ),
         ),
     )
-    context = MonitorRenderContext(row_indent="")
+    used_context = MonitorRenderContext(row_indent="")
+    left_context = MonitorRenderContext(row_indent="", usage_variant="left")
 
-    assert "usage/time [used]" in row.render_frame(context)
-    assert "63% / 40% = 1.6 [%]" in row.render_frame(context)
+    assert "usage/time [used]" in row.render_frame(used_context)
+    assert "63% / 40% = 1.6 [%]" in row.render_frame(used_context)
     for _ in range(5):
         row.step_animation()
-    assert "63% / 40% = 1.6 [%]" in row.render_frame(context)
-    assert "usage/time [used]" in row.render_frame(context)
+    assert "63% / 40% = 1.6 [%]" in row.render_frame(used_context)
+    assert "usage/time [used]" in row.render_frame(used_context)
 
-    row.toggle_variant()
-
-    assert "time/usage [left]" in row.render_frame(context)
-    assert "20.2 / 2.4 = 8.6 [Burst]" in row.render_frame(context)
+    assert "time/usage [left]" in row.render_frame(left_context)
+    assert "20.2 / 2.4 = 8.6 [Burst]" in row.render_frame(left_context)
 
 
 def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
@@ -460,9 +459,9 @@ def test_limits_tracking_weekly_usage_time_animates_burst_units(
     assert "usage/time [used]" in rendered
     assert "63% / 40% = 1.6 [%]" in rendered
 
-    frame.toggle_usage_time_variants()
+    state.data["monitor_display"] = {"usage_variant": "left"}
 
-    rendered = format_monitor_frame(frame)
+    rendered = format_monitor_frame(frame, state)
     assert "time/usage [left]" in rendered
     assert "20.2 / 2.4 = 8.6 [Burst]" in rendered
 
@@ -965,6 +964,7 @@ def test_monitor_loop_surfaces_config_fingerprint_drift() -> None:
 
 def test_monitor_loop_usage_variant_toggle_alarm_changes_display_only() -> None:
     loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
+    assert loop.state.data["monitor_display"] == {"usage_variant": "used"}
     row = MonitorUsageTimeRow(
         label="    usage/time [used]",
         value="63% / 40% = 1.6 [%]",
@@ -989,10 +989,24 @@ def test_monitor_loop_usage_variant_toggle_alarm_changes_display_only() -> None:
 
     loop._apply_display_alarms(snapshot)
 
-    assert "time/usage [left]" in format_monitor_frame(loop.visible_frame)
+    assert loop.state.data["monitor_display"] == {"usage_variant": "left"}
+    assert "time/usage [left]" in format_monitor_frame(
+        loop.visible_frame, loop.state
+    )
+    refreshed_frame = MonitorFrame()
+    refreshed_frame.add_block("limits-tracking", rows=[row])
+    assert "time/usage [left]" in format_monitor_frame(refreshed_frame, loop.state)
     assert MONITOR_USAGE_VARIANT_TOGGLE_ALARM not in _workflow_alarm_names(
         snapshot.fired_alarm_names
     )
+
+    loop.clock.set_one_shot(MONITOR_USAGE_VARIANT_TOGGLE_ALARM, remaining_ticks=0)
+    snapshot = loop.clock.step()
+
+    loop._apply_display_alarms(snapshot)
+
+    assert loop.state.data["monitor_display"] == {"usage_variant": "used"}
+    assert "usage/time [used]" in format_monitor_frame(loop.visible_frame, loop.state)
 
 
 def test_monitor_loop_usage_variant_toggle_alarm_does_not_hide_workflow_alarms() -> None:

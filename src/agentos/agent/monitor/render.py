@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from agentos.agent.monitor.models import (
-    DEFAULT_MONITOR_RENDER_CONTEXT,
     MonitorFrame,
     MonitorRenderContext,
     MonitorResetRow,
@@ -65,8 +64,8 @@ def monitor_result_payload(
     }
 
 
-def format_monitor_frame(frame: MonitorFrame) -> str:
-    return "\n".join(row.text for row in _monitor_render_rows(frame))
+def format_monitor_frame(frame: MonitorFrame, state: MonitorState | None = None) -> str:
+    return "\n".join(row.text for row in _monitor_render_rows(frame, state=state))
 
 
 def dumps_monitor_json(frame: MonitorFrame, state: MonitorState) -> str:
@@ -86,11 +85,12 @@ class RichMonitorRenderer:
         self.live.__exit__(exc_type, exc, traceback)
 
     def render(self, frame: MonitorFrame, state: MonitorState) -> None:
-        del state
-
         self.live.update(
             rich_monitor_frame(
-                frame, width=self.console.width, pad_bars=self.console.is_terminal
+                frame,
+                state=state,
+                width=self.console.width,
+                pad_bars=self.console.is_terminal,
             )
         )
 
@@ -115,11 +115,15 @@ def _monitor_live(console: Any) -> Any:
 
 
 def rich_monitor_frame(
-    frame: MonitorFrame, *, width: int, pad_bars: bool = False
+    frame: MonitorFrame,
+    *,
+    state: MonitorState | None = None,
+    width: int,
+    pad_bars: bool = False,
 ) -> Any:
     from rich.text import Text
 
-    rows = _monitor_render_rows(frame)
+    rows = _monitor_render_rows(frame, state=state)
     bar_width = _monitor_bar_width(rows, fallback_width=width)
     rendered = Text(overflow="fold")
     for index, row in enumerate(rows):
@@ -136,7 +140,10 @@ def rich_monitor_frame(
 
 def _monitor_render_rows(
     frame: MonitorFrame,
+    *,
+    state: MonitorState | None = None,
 ) -> list[_MonitorRenderTextRow | _MonitorRenderBarRow]:
+    context = _monitor_render_context(state)
     rows: list[_MonitorRenderTextRow | _MonitorRenderBarRow] = [
         _MonitorRenderTextRow("Agent accounts monitor"),
         _MonitorRenderTextRow(f"Tick: {frame.tick}"),
@@ -160,17 +167,28 @@ def _monitor_render_rows(
                 ]
             )
         block_rows = monitor_block_rows(block)
-        rows.extend(_monitor_render_block_rows(block_rows))
+        rows.extend(_monitor_render_block_rows(block_rows, context=context))
     return rows
 
 
 def _monitor_render_block_rows(
     rows: list[MonitorRow],
+    *,
+    context: MonitorRenderContext,
 ) -> list[_MonitorRenderTextRow | _MonitorRenderBarRow]:
-    return [
-        _monitor_render_row(row, context=DEFAULT_MONITOR_RENDER_CONTEXT)
-        for row in rows
-    ]
+    return [_monitor_render_row(row, context=context) for row in rows]
+
+
+def _monitor_render_context(state: MonitorState | None) -> MonitorRenderContext:
+    if state is None:
+        return MonitorRenderContext()
+    display_state = state.data.get("monitor_display")
+    if not isinstance(display_state, dict):
+        return MonitorRenderContext()
+    usage_variant = display_state.get("usage_variant")
+    if usage_variant != "left":
+        return MonitorRenderContext()
+    return MonitorRenderContext(usage_variant="left")
 
 
 def _monitor_render_row(

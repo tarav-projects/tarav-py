@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** replace per-row usage display toggles with one global monitor display state for the Weekly `%` / `Burst` usage type.
-- **status:** ready for implementation.
+- **status:** implemented.
 - **source:** follow-up from Weekly Burst pressure monitor work and the key-toggle discussion. The current implementation makes `r` toggle each visible row's local `variant_index`; the accepted design is simpler: one global state variable flips, and every eligible usage row renders from that mode.
 - **goal:** make `%` / `Burst` usage-type selection a monitor-level display mode, not row-local animation state.
 - **strong constraint:** eliminate automatic usage-type switching. Draw-tick animation remains only for overflow/marquee text; pressing `r` is the only usage-type toggle path.
@@ -96,7 +96,7 @@ used -> left -> used
 
 ### Slice 1 - Add Global Display State
 
-Status: pending.
+Status: complete.
 
 - Add helper functions or methods in `MonitorLoop` for:
   - reading current usage variant
@@ -110,7 +110,7 @@ Status: pending.
 
 ### Slice 2 - Move Variant Selection Into Render Context
 
-Status: pending.
+Status: complete.
 
 - Extend `MonitorRenderContext` with a usage-variant field.
 - Update render paths to pass the current global usage variant.
@@ -122,7 +122,7 @@ Status: pending.
 
 ### Slice 3 - Keep `r` As Display-Only Toggle
 
-Status: pending.
+Status: complete.
 
 - Update `MonitorLoop._apply_display_alarms(...)` to toggle global state.
 - Preserve `_workflow_alarm_names(...)` filtering.
@@ -134,7 +134,7 @@ Status: pending.
 
 ### Slice 4 - Tests And Validation
 
-Status: pending.
+Status: complete.
 
 - Update monitor tests to assert global state behavior:
   - default JSON/render mode is `usage/time [used]`
@@ -159,3 +159,4 @@ agentos agent accounts monitor --once --json | rg -n 'monitor_display|usage_vari
 ## Impl.Log
 
 - Created from the monitor display-mode discussion. The target is to simplify the current row-local toggle implementation into one global monitor display variable flipped by `r`.
+- 2026-06-09: Executed as designed. No deviations recorded. Validation commands listed in Slice 4 passed.

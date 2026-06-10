@@ -21,6 +21,7 @@ from agentos.agent.monitor.clock import (
 from agentos.agent.monitor.models import (
     MonitorFrame,
     MonitorState,
+    MonitorUsageVariant,
 )
 
 
@@ -87,6 +88,7 @@ class MonitorLoop:
         self._has_visible_frame = False
         self._limits_tracking_adaptive_alarm: _AdaptivePeriodicAlarmState | None = None
         self._configure_initial_alarms()
+        self._initialize_display_state()
         self._write_monitor_setup_state()
 
     def run(
@@ -201,7 +203,32 @@ class MonitorLoop:
 
     def _apply_display_alarms(self, snapshot: MonitorClockSnapshot) -> None:
         if snapshot.fired(MONITOR_USAGE_VARIANT_TOGGLE_ALARM):
-            self.visible_frame.toggle_usage_time_variants()
+            self._toggle_usage_variant()
+
+    def _initialize_display_state(self) -> None:
+        self._monitor_display_state()
+
+    def _current_usage_variant(self) -> MonitorUsageVariant:
+        display_state = self._monitor_display_state()
+        variant = display_state.get("usage_variant")
+        if variant == "left":
+            return "left"
+        return "used"
+
+    def _toggle_usage_variant(self) -> None:
+        display_state = self._monitor_display_state()
+        display_state["usage_variant"] = (
+            "left" if self._current_usage_variant() == "used" else "used"
+        )
+
+    def _monitor_display_state(self) -> dict[str, object]:
+        display_state = self.state.data.get("monitor_display")
+        if not isinstance(display_state, dict):
+            display_state = {}
+            self.state.data["monitor_display"] = display_state
+        if display_state.get("usage_variant") not in {"used", "left"}:
+            display_state["usage_variant"] = "used"
+        return display_state
 
     def _workflow_is_active(self) -> bool:
         with self._workflow_condition:
