@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1034,10 +1035,31 @@ def _strategies_attempted(
 def _discover_direct_provider_sessions(context: ProviderAgentContext) -> list[ProviderSessionRefEntry]:
     if not hasattr(context.agent, "discover_session_refs"):
         return []
+    discovery_agent = _agent_with_discoverable_direct_targets(context)
+    if discovery_agent is None:
+        return []
     return [
         ProviderSessionRefEntry(context=context, session_ref=session_ref)
-        for session_ref in context.agent.discover_session_refs()
+        for session_ref in discovery_agent.discover_session_refs()
     ]
+
+
+def _agent_with_discoverable_direct_targets(context: ProviderAgentContext) -> Agent | None:
+    direct_targets = _discoverable_direct_targets(context)
+    if context.direct_targets and not direct_targets:
+        return None
+    if direct_targets == context.direct_targets:
+        return context.agent
+    return replace(
+        context.agent,
+        home=None,
+        direct_targets=direct_targets,
+        sqlite_db_paths=context.sqlite_db_paths,
+    )
+
+
+def _discoverable_direct_targets(context: ProviderAgentContext) -> tuple[Path, ...]:
+    return tuple(target for target in context.direct_targets if not target.is_symlink())
 
 
 def _find_direct_provider_sessions(

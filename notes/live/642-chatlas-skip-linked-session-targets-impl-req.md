@@ -92,7 +92,7 @@ Do not add migration code for old indexed rows; cleanup of existing duplicates i
 
 ### Slice 1 - Add Linked Direct Target Filter
 
-Status: pending.
+Status: complete.
 
 Add a focused helper in `src/agentos/agent/sessions.py`, expected shape:
 
@@ -119,7 +119,7 @@ Check:
 
 ### Slice 2 - Preserve Normal Claude Discovery
 
-Status: pending.
+Status: complete.
 
 Ensure the same test module proves non-linked Claude `projects` discovery still works.
 
@@ -138,7 +138,7 @@ Check:
 
 ### Slice 3 - Chatlas Boundary Smoke
 
-Status: pending.
+Status: complete.
 
 Run a read-only Chatlas/provider discovery smoke against the current linked home setup if feasible.
 
@@ -173,3 +173,5 @@ If the actual adjacent test filename differs, use the current nearest session-di
 ## Impl.Log
 
 - 2026-06-09: Created from the linked Claude homes / Chatlas duplicate-indexing discussion. The design intentionally skips symlinked native session roots at discovery time instead of adding Chatlas-specific dedupe or raw archive path special cases.
+- 2026-06-09: Executed with a focused `tests/test_agent_sessions.py` because no adjacent session-discovery test module existed. The implementation filters linked direct targets in `agentos.agent.sessions` and runs provider discovery through a temporary agent copy only when filtering is needed, because provider agents recompute home-derived paths internally.
+- 2026-06-09: Validation passed: `uv run pytest tests/test_agent_sessions.py -q`, `uv run pytest tests/test_agent_session_copy.py tests/test_agent_sessions.py -q`, `uv run ruff check src/agentos/agent tests/test_agent_sessions.py`, and `git diff --check`. Read-only smoke against constructed `~/.claude-br` Claude context confirmed `projects_is_symlink=True` and `session_count=0`.
