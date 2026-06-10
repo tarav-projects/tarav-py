@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1050,9 +1049,7 @@ def _agent_with_discoverable_direct_targets(context: ProviderAgentContext) -> Ag
         return None
     if direct_targets == context.direct_targets:
         return context.agent
-    return replace(
-        context.agent,
-        home=None,
+    return context.agent.with_session_discovery_paths(
         direct_targets=direct_targets,
         sqlite_db_paths=context.sqlite_db_paths,
     )

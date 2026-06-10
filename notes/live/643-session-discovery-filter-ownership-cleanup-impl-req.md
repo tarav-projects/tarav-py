@@ -68,7 +68,7 @@ Do not leave two parallel filtered-agent construction paths.
 
 ### Slice 1 - Move Filtered Agent Copy To Primitives
 
-Status: pending.
+Status: complete.
 
 Change:
 
@@ -90,7 +90,7 @@ RED.GREEN.Test.Suite:
 
 ### Slice 2 - Cover Mixed Direct Targets
 
-Status: pending.
+Status: complete.
 
 Change:
 
@@ -110,7 +110,7 @@ RED.GREEN.Test.Suite:
 
 ### Slice 3 - Validation
 
-Status: pending.
+Status: complete.
 
 Run:
 
@@ -132,3 +132,5 @@ git diff --check
 ## Impl.Log
 
 - 2026-06-09: Created by autonomous codebase cleanup after implementing linked session target skipping. Cleanup target is intentionally narrow: ownership of temporary discovery-agent construction and missing mixed-target test coverage.
+- 2026-06-09: Implemented by adding `AgentBase.with_session_discovery_paths(...)` and making shared session discovery call that primitive-owned helper instead of importing `dataclasses.replace`.
+- 2026-06-09: Added mixed linked/non-linked Claude direct-target coverage. Focused validation passed for `tests/test_agent_sessions.py` and Ruff before final validation.

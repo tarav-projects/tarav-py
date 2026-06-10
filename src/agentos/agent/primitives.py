@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeVar
 from urllib.parse import quote
 
 from agentos._core.errors import CliError
@@ -21,6 +21,8 @@ from agentos.agent.run_runtime import (
 )
 from agentos.providers import ProviderHomeAnchor
 from agentos.providers import require_canonical_provider_spec
+
+AgentSelf = TypeVar("AgentSelf", bound="AgentBase")
 
 
 @dataclass(frozen=True)
@@ -257,6 +259,19 @@ class AgentBase:
     def uri_key(self) -> str:
         return quote(self.fingerprint(), safe="")
 
+    def with_session_discovery_paths(
+        self: AgentSelf,
+        *,
+        direct_targets: tuple[Path, ...],
+        sqlite_db_paths: tuple[Path, ...],
+    ) -> AgentSelf:
+        return replace(
+            self,
+            home=None,
+            direct_targets=direct_targets,
+            sqlite_db_paths=sqlite_db_paths,
+        )
+
     def _build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
         # Providers that do not support run must not override this — the raise is intentional.
         raise CliError(
@@ -400,6 +415,13 @@ class Agent(Protocol):
     def identity_key(self) -> tuple[object, ...]: ...
 
     def uri_key(self) -> str: ...
+
+    def with_session_discovery_paths(
+        self,
+        *,
+        direct_targets: tuple[Path, ...],
+        sqlite_db_paths: tuple[Path, ...],
+    ) -> Agent: ...
 
     def run(
         self,
