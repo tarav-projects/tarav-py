@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** add an `agentos agent sessions copy` command for copying a provider-native chat session between provider homes, starting with Claude Code project transcript files.
-- **status:** ready for implementation.
+- **status:** implemented.
 - **source:** user wants to test moving one Claude Code chat from `~/.claude-br` into `~/.claude` so the destination home/account can load or resume the session. The accepted command shape is:
 
 ```sh
@@ -112,7 +112,7 @@ Do not route this through Chatlas. Chatlas archives/exports sessions; this comma
 
 ### Slice 1 - Add Core Copy Planner
 
-Status: pending.
+Status: complete.
 
 Create a small core module, expected path:
 
@@ -146,7 +146,7 @@ Check:
 
 ### Slice 2 - Implement Claude Transcript Copy
 
-Status: pending.
+Status: complete.
 
 Add Claude-specific copy planning either inside `agentos.agent.session_copy` or in an adjacent `agentos.claude.session_copy` helper.
 
@@ -171,7 +171,7 @@ Check:
 
 ### Slice 3 - Add `agentos agent sessions copy`
 
-Status: pending.
+Status: complete.
 
 Update `src/agentos/agent/commands.py`:
 
@@ -202,7 +202,7 @@ Check:
 
 ### Slice 4 - End-To-End Smoke Against Real Homes
 
-Status: pending.
+Status: complete.
 
 After unit tests pass, run a real dry-run against the user's current test case:
 
@@ -229,7 +229,7 @@ git diff --check
 Refresh installed CLI after implementation:
 
 ```sh
-uv tool install --reinstall --editable .
+uv tool install --reinstall --editable ../agentos-cli
 ```
 
 ## Acceptance Signals
@@ -245,3 +245,4 @@ uv tool install --reinstall --editable .
 ## Impl.Log
 
 - 2026-06-09: Created from the accepted command proposal for moving a Claude Code native session transcript between homes. The first implementation is intentionally transcript-only so the portability test is small, reversible, and easy to inspect.
+- 2026-06-09: Implemented. Deviation: current packaging owns the `agentos` executable in `agentos-cli`, not `agentos-py`; the direct `uv tool install --reinstall --editable .` from `agentos-py` failed with no entrypoints, then reinstalling from `agentos-cli` succeeded. Deviation: the plan referenced removed `tests/test_agent_account_registry_commands.py`; validation used current adjacent tests instead.
