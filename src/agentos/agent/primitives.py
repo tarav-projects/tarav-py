@@ -97,8 +97,6 @@ class AgentConfig:
     grep_targets: tuple[Path, ...] = ()
     sqlite_db_paths: tuple[Path, ...] = ()
     identity_anchors: tuple[ProviderHomeAnchor, ...] = ()
-    chatlas_includes: tuple[str, ...] = ()
-    chatlas_excludes: tuple[str, ...] = ()
 
     def computed_fingerprint(self) -> str:
         if self.fingerprint_override is not None:
@@ -134,8 +132,6 @@ class AgentConfig:
             self.model_flag,
             self.prompt_flag,
             self.ping,
-            self.chatlas_includes,
-            self.chatlas_excludes,
         )
 
     def uri_key(self) -> str:
@@ -164,8 +160,6 @@ class AgentBase:
     grep_targets: tuple[Path, ...] = ()
     sqlite_db_paths: tuple[Path, ...] = ()
     identity_anchors: tuple[ProviderHomeAnchor, ...] = ()
-    chatlas_includes: tuple[str, ...] = ()
-    chatlas_excludes: tuple[str, ...] = ()
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -212,10 +206,6 @@ class AgentBase:
             payload["identity_anchors"] = [
                 anchor.summary() for anchor in self.identity_anchors
             ]
-        if self.chatlas_includes:
-            payload["chatlas_includes"] = list(self.chatlas_includes)
-        if self.chatlas_excludes:
-            payload["chatlas_excludes"] = list(self.chatlas_excludes)
         return payload
 
     def fingerprint(self) -> str:
@@ -252,8 +242,6 @@ class AgentBase:
             self.model_flag,
             self.prompt_flag,
             self.ping,
-            self.chatlas_includes,
-            self.chatlas_excludes,
         )
 
     def uri_key(self) -> str:
@@ -367,8 +355,6 @@ def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
         "grep_targets": config.grep_targets,
         "sqlite_db_paths": config.sqlite_db_paths,
         "identity_anchors": config.identity_anchors,
-        "chatlas_includes": config.chatlas_includes,
-        "chatlas_excludes": config.chatlas_excludes,
     }
 
 
@@ -405,8 +391,6 @@ class Agent(Protocol):
     grep_targets: tuple[Path, ...]
     sqlite_db_paths: tuple[Path, ...]
     identity_anchors: tuple[ProviderHomeAnchor, ...]
-    chatlas_includes: tuple[str, ...]
-    chatlas_excludes: tuple[str, ...]
 
     def summary(self) -> dict[str, object]: ...
 

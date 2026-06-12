@@ -418,7 +418,7 @@ def _interpolate_hex_color(left_color: str, right_color: str, fraction: float) -
     normalized_fraction = min(1.0, max(0.0, fraction))
     channels = tuple(
         round(left_channel + ((right_channel - left_channel) * normalized_fraction))
-        for left_channel, right_channel in zip(left_rgb, right_rgb)
+        for left_channel, right_channel in zip(left_rgb, right_rgb, strict=True)
     )
     return f"#{channels[0]:02x}{channels[1]:02x}{channels[2]:02x}"
 

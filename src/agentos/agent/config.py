@@ -633,8 +633,6 @@ def agent_config_from_config_entry(
     raw_prompt_flag = raw_instance.get("prompt_flag")
     raw_ping = raw_instance.get("ping")
     raw_fingerprint = raw_instance.get("fingerprint")
-    raw_includes = raw_instance.get("includes")
-    raw_excludes = raw_instance.get("excludes")
 
     if raw_sqlite_db_path is not None and raw_sqlite_db_paths is not None:
         raise CliError(
@@ -720,14 +718,6 @@ def agent_config_from_config_entry(
         raise CliError(f"{entry.field_name('fingerprint')} must be a non-empty string")
     else:
         fingerprint_override = raw_fingerprint.strip()
-    includes = _load_optional_string_tuple(
-        raw_includes,
-        field_name=entry.field_name("includes"),
-    )
-    excludes = _load_optional_string_tuple(
-        raw_excludes,
-        field_name=entry.field_name("excludes"),
-    )
 
     normalized_home: Path | None = None
     resolved_direct_targets: tuple[Path, ...] = ()
@@ -795,8 +785,6 @@ def agent_config_from_config_entry(
         prompt_flag=prompt_flag,
         ping=ping,
         fingerprint_override=fingerprint_override,
-        chatlas_includes=includes,
-        chatlas_excludes=excludes,
         identity_anchors=anchors,
         is_default=False,
     )

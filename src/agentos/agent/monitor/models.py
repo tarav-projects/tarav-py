@@ -401,7 +401,8 @@ class MonitorFrame:
                 row.step_animation()
 
     def inherit_animation_state_from(self, previous: MonitorFrame) -> None:
-        for row, previous_row in zip(_frame_rows(self), _frame_rows(previous)):
+        # Frames may differ in row count; pair what overlaps.
+        for row, previous_row in zip(_frame_rows(self), _frame_rows(previous), strict=False):
             _inherit_row_animation_state(row, previous_row)
 
 

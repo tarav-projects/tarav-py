@@ -95,7 +95,7 @@ class AgentosProjectHandler:
         return self
 
     def validate(self) -> "AgentosProjectHandler":
-        self.project_json
+        self._project_json = self.project_json
         return self
 
 
