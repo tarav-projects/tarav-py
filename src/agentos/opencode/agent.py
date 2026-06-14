@@ -3,9 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agentos.agent.primitives import (
-    AgentBase,
     AgentConfig,
-    agent_base_kwargs_for_provider,
+    adapter_kwargs_from_config,
     agent_session_paths,
 )
 from agentos.opencode.session import (
@@ -20,21 +19,18 @@ OPENCODE_PROVIDER = "opencode"
 
 
 @dataclass(frozen=True)
-class OpencodeAgent(AgentBase):
+class OpencodeAgent(AgentConfig):
+    provider: str = OPENCODE_PROVIDER
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> OpencodeAgent:
         return cls(
-            **agent_base_kwargs_for_provider(
+            **adapter_kwargs_from_config(
                 config,
                 provider=OPENCODE_PROVIDER,
                 agent_name="OpenCode.Agent",
             )
         )
-
-    @property
-    def provider(self) -> str:
-        return OPENCODE_PROVIDER
 
     def discover_session_refs(self) -> tuple[OpencodeSessionRef, ...]:
         direct_targets, sqlite_db_paths = agent_session_paths(self)

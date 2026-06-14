@@ -191,9 +191,12 @@ Use this pattern when it improves agent navigation and natural placement without
 
 ## Relationship To Current Implementation
 
-The current `ProviderInstance` shape is transitional. It mixes configured actor data, launch config, home topology, session discovery, account behavior, and Chatlas behavior.
+The implementation follows `Agentos.Agent.Adapter` (see `agentos-pkg` index `104-index.md#Agentos.Agent.Adapter`, the canonical surface). There is no `ProviderInstance` or broad `AgentBase`/`Agent` shape:
 
-The target direction is to reduce `ProviderInstance` into a config/input bridge while moving durable model responsibility toward provider-native agents, provider-native sessions, and explicit normalizers.
+- `AgentConfig` is the single field surface. Each provider adapter (`ClaudeAgent`, `CodexAgent`, …) subclasses `AgentConfig` and overrides the `provider` default.
+- Capabilities are small typed protocols a concrete adapter may satisfy: `AgentAdapter` (base identity), `RunCapable`, `AccountStatusCapable`, `SessionDiscoveryCapable`. Run behavior lives in `RunnableMixin`, mixed into runnable adapters only; session-only providers simply do not satisfy `RunCapable`/`AccountStatusCapable`.
+- Profile identity is named `profile_id` (the value behind `~/.agentos/profiles/<id>.json`).
+- Session/diagnostic internals use adapter vocabulary (`adapter_fingerprint`, `adapter_uri_key`, `adapter_summary`). The session-index JSON keys `provider_instance_*` are retained as a documented external compatibility boundary consumed by `agentos-chatlas-py` and persisted indexes.
 
 ## Related Concepts
 

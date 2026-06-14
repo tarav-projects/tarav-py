@@ -10,8 +10,8 @@ from urllib.parse import unquote
 from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
-from agentos.agent.primitives import SessionSource
-from agentos.agent.providers import Agent, agent_from_config, load_configured_agents
+from agentos.agent.primitives import AgentConfig, SessionDiscoveryCapable, SessionSource
+from agentos.agent.providers import agent_from_config, load_configured_agents
 from agentos.agent.config import (
     canonical_chat_provider_specs,
     default_agent_configs,
@@ -43,10 +43,10 @@ SESSION_SORT_CHOICES = {"lexical", "newest", "oldest"}
 
 @dataclass(frozen=True)
 class ProviderAgentContext:
-    agent: Agent
-    instance_fingerprint: str
-    instance_identity_key: tuple[object, ...]
-    instance_uri_key: str
+    agent: AgentConfig
+    adapter_fingerprint: str
+    profile_identity_key: tuple[object, ...]
+    adapter_uri_key: str
     direct_targets: tuple[Path, ...]
     direct_existing_targets: tuple[Path, ...]
     direct_missing_targets: tuple[Path, ...]
@@ -62,7 +62,7 @@ class ProviderAgentContext:
         return self.agent.provider
 
     @property
-    def instance_summary(self) -> dict[str, Any]:
+    def adapter_summary(self) -> dict[str, Any]:
         return self.agent.summary()
 
 
@@ -90,7 +90,7 @@ class ProviderSessionRefEntry:
     def record_identity_key(self) -> tuple[object, ...]:
         return (
             self.provider,
-            self.context.instance_identity_key,
+            self.context.profile_identity_key,
             self.session_id,
         )
 
@@ -147,7 +147,7 @@ class ProviderSessionRefEntry:
     def query_fields(self) -> tuple[tuple[str, str], ...]:
         fields = [
             ("uri", self.uri),
-            ("provider_instance_fingerprint", self.context.instance_fingerprint),
+            ("provider_instance_fingerprint", self.context.adapter_fingerprint),
             ("session_id", self.session_id),
         ]
         display_name = self.display_name()
@@ -193,7 +193,7 @@ class ProviderSessionRefEntry:
 @dataclass(frozen=True)
 class SessionRefUriQuery:
     provider_family: str
-    instance_fingerprint_prefix: str
+    adapter_fingerprint_prefix: str
     session_id: str
 
 
@@ -202,7 +202,7 @@ def _build_session_ref_uri(entry: ProviderSessionRefEntry) -> str:
 
     return (
         f"agentos://chat-session/{quote(entry.provider, safe='')}/"
-        f"{entry.context.instance_uri_key}/"
+        f"{entry.context.adapter_uri_key}/"
         f"{quote(entry.session_id, safe='')}"
     )
 
@@ -235,7 +235,7 @@ def supported_provider_families() -> tuple[ProviderFamily, ...]:
     return tuple(families)
 
 
-def configured_session_agents(*, start_path: Path | str = ".") -> tuple[Agent, ...]:
+def configured_session_agents(*, start_path: Path | str = ".") -> tuple[AgentConfig, ...]:
     supported_families = {provider_handler.family for provider_handler in supported_provider_families()}
     agents = tuple(
         agent
@@ -266,14 +266,14 @@ def _provider_family_for_name(family_name: str) -> ProviderFamily | None:
 
 
 def _dedupe_agents(
-    agents: tuple[Agent, ...],
-) -> tuple[Agent, ...]:
-    unique_instances: dict[tuple[object, ...], Agent] = {}
+    agents: tuple[AgentConfig, ...],
+) -> tuple[AgentConfig, ...]:
+    unique_adapters: dict[tuple[object, ...], AgentConfig] = {}
     for agent in agents:
         key = agent.identity_key()
-        if key not in unique_instances:
-            unique_instances[key] = agent
-    return tuple(unique_instances.values())
+        if key not in unique_adapters:
+            unique_adapters[key] = agent
+    return tuple(unique_adapters.values())
 
 
 def list_chat_sessions(
@@ -541,7 +541,7 @@ def format_chat_session_resolved_stats_markdown(payload: dict[str, object]) -> s
 
         fingerprint = session.get("provider_instance_fingerprint")
         if fingerprint is not None:
-            lines.append(f"- Provider instance: {fingerprint}")
+            lines.append(f"- Agent adapter: {fingerprint}")
 
         session_id = session.get("session_id")
         if session_id is not None:
@@ -722,7 +722,7 @@ def _iter_provider_context_groups(
 
 
 def _provider_agent_context_from_agent(
-    agent: Agent,
+    agent: AgentConfig,
 ) -> ProviderAgentContext:
     provider_handler = _provider_family_for_name(agent.provider)
     if provider_handler is None:
@@ -732,9 +732,9 @@ def _provider_agent_context_from_agent(
     sqlite_db_paths = agent.sqlite_db_paths
     return ProviderAgentContext(
         agent=agent,
-        instance_fingerprint=agent.fingerprint(),
-        instance_identity_key=agent.identity_key(),
-        instance_uri_key=agent.uri_key(),
+        adapter_fingerprint=agent.fingerprint(),
+        profile_identity_key=agent.identity_key(),
+        adapter_uri_key=agent.uri_key(),
         direct_targets=agent.direct_targets,
         direct_existing_targets=tuple(target for target in direct_targets if target.exists()),
         direct_missing_targets=tuple(target for target in direct_targets if not target.exists()),
@@ -797,7 +797,7 @@ def _build_provider_payload(
         "provider": provider_family,
         "provider_family": provider_family,
         "provider_instance_count": len(contexts),
-        "provider_instances": [context.instance_summary for context in contexts],
+        "provider_instances": [context.adapter_summary for context in contexts],
         "candidate_targets": [str(path) for path in candidate_targets],
         "searched_targets": [str(path) for path in searched_targets],
         "missing_targets": [str(path) for path in missing_targets],
@@ -940,7 +940,7 @@ def _build_common_session_stats(
     payload = {
         "provider": session.provider,
         "uri": session.uri,
-        "provider_instance_fingerprint": session.context.instance_fingerprint,
+        "provider_instance_fingerprint": session.context.adapter_fingerprint,
         "session_id": session.session_id,
         "display_name": _session_display_name(session),
         "display_name_field": _session_display_field_name(session),
@@ -997,12 +997,12 @@ def _parse_chat_session_uri(query: str) -> SessionRefUriQuery | None:
     if len(parts) != 3:
         return None
 
-    provider_family, instance_fingerprint_prefix, session_id = (unquote(part) for part in parts)
-    if not provider_family or not instance_fingerprint_prefix or not session_id:
+    provider_family, adapter_fingerprint_prefix, session_id = (unquote(part) for part in parts)
+    if not provider_family or not adapter_fingerprint_prefix or not session_id:
         return None
     return SessionRefUriQuery(
         provider_family=provider_family,
-        instance_fingerprint_prefix=instance_fingerprint_prefix.lower(),
+        adapter_fingerprint_prefix=adapter_fingerprint_prefix.lower(),
         session_id=session_id,
     )
 
@@ -1014,7 +1014,7 @@ def _session_matches_uri_query(
     return (
         session.provider_family == uri_query.provider_family
         and session.session_id == uri_query.session_id
-        and session.context.instance_fingerprint.startswith(uri_query.instance_fingerprint_prefix)
+        and session.context.adapter_fingerprint.startswith(uri_query.adapter_fingerprint_prefix)
     )
 
 
@@ -1032,7 +1032,7 @@ def _strategies_attempted(
 
 
 def _discover_direct_provider_sessions(context: ProviderAgentContext) -> list[ProviderSessionRefEntry]:
-    if not hasattr(context.agent, "discover_session_refs"):
+    if not isinstance(context.agent, SessionDiscoveryCapable):
         return []
     discovery_agent = _agent_with_discoverable_direct_targets(context)
     if discovery_agent is None:
@@ -1043,7 +1043,7 @@ def _discover_direct_provider_sessions(context: ProviderAgentContext) -> list[Pr
     ]
 
 
-def _agent_with_discoverable_direct_targets(context: ProviderAgentContext) -> Agent | None:
+def _agent_with_discoverable_direct_targets(context: ProviderAgentContext) -> AgentConfig | None:
     direct_targets = _discoverable_direct_targets(context)
     if context.direct_targets and not direct_targets:
         return None
@@ -1067,7 +1067,7 @@ def _find_direct_provider_sessions(
     if uri_query is not None:
         if context.provider != uri_query.provider_family:
             return []
-        if not context.instance_fingerprint.startswith(uri_query.instance_fingerprint_prefix):
+        if not context.adapter_fingerprint.startswith(uri_query.adapter_fingerprint_prefix):
             return []
         return [
             session
@@ -1124,7 +1124,7 @@ def _session_findings(
         enriched["matched_value"] = query
         enriched["session_id"] = session.session_id
         enriched["uri"] = session.uri
-        enriched["provider_instance_fingerprint"] = session.context.instance_fingerprint
+        enriched["provider_instance_fingerprint"] = session.context.adapter_fingerprint
         enriched["native"] = _session_native_payload(session)
         findings.append(enriched)
 

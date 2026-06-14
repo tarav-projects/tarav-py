@@ -3,9 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agentos.agent.primitives import (
-    AgentBase,
     AgentConfig,
-    agent_base_kwargs_for_provider,
+    adapter_kwargs_from_config,
     agent_session_paths,
 )
 from agentos.openclaw.session import (
@@ -20,21 +19,18 @@ OPENCLAW_PROVIDER = "openclaw"
 
 
 @dataclass(frozen=True)
-class OpenclawAgent(AgentBase):
+class OpenclawAgent(AgentConfig):
+    provider: str = OPENCLAW_PROVIDER
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> OpenclawAgent:
         return cls(
-            **agent_base_kwargs_for_provider(
+            **adapter_kwargs_from_config(
                 config,
                 provider=OPENCLAW_PROVIDER,
                 agent_name="OpenClaw.Agent",
             )
         )
-
-    @property
-    def provider(self) -> str:
-        return OPENCLAW_PROVIDER
 
     def discover_session_refs(self) -> tuple[OpenclawSessionRef, ...]:
         direct_targets, _ = agent_session_paths(self)

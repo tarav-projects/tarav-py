@@ -50,7 +50,7 @@ class AgentRunDryResult:
 def build_agent_command_argv(
     command_config: AgentCommandConfig,
     *,
-    instance_id: str | None,
+    profile_id: str | None,
     provider: str,
     cli_command: tuple[str, ...],
     run_args: tuple[str, ...],
@@ -66,7 +66,7 @@ def build_agent_command_argv(
     if effective_model is not None:
         if model_flag is None:
             raise CliError(
-                f"agent {instance_id or '<default>'} for provider {provider} does not define model_flag"
+                f"agent {profile_id or '<default>'} for provider {provider} does not define model_flag"
             )
         command.extend([model_flag, effective_model])
     command.extend(command_config.argv)

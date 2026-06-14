@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agentos.agent.primitives import (
-    AgentBase,
     AgentConfig,
-    agent_base_kwargs_for_provider,
+    RunnableMixin,
+    adapter_kwargs_from_config,
     agent_session_paths,
 )
 from agentos.agent.run_runtime import (
@@ -25,21 +25,18 @@ PI_PROVIDER = "pi"
 
 
 @dataclass(frozen=True)
-class PiAgent(AgentBase):
+class PiAgent(RunnableMixin, AgentConfig):
+    provider: str = PI_PROVIDER
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> PiAgent:
         return cls(
-            **agent_base_kwargs_for_provider(
+            **adapter_kwargs_from_config(
                 config,
                 provider=PI_PROVIDER,
                 agent_name="Pi.Agent",
             )
         )
-
-    @property
-    def provider(self) -> str:
-        return PI_PROVIDER
 
     def discover_session_refs(self) -> tuple[PiSessionRef, ...]:
         direct_targets, _ = agent_session_paths(self)

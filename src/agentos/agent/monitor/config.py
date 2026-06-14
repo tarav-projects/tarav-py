@@ -69,7 +69,7 @@ def load_monitor_workflow_configs(
         for entry in agent_config_entries_from_config(
             config_document, source=MONITOR_CONFIG_SOURCE
         ):
-            raw_config = entry.raw_instance
+            raw_config = entry.raw_profile
             workflow_name = _required_string(
                 raw_config, "workflow", field_name=entry.field_name("workflow")
             )

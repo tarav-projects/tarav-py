@@ -24,7 +24,7 @@ from agentos.agent.account_usage_fallback import (
     AccountUsageReadResult,
     account_usage_registry_fallback,
 )
-from agentos.agent.primitives import Agent
+from agentos.agent.primitives import AgentConfig
 from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
 from agentos.codex.account_registry import (
@@ -40,7 +40,7 @@ CODEX_APP_SERVER_USAGE_SOURCE = "app_server"
 
 
 def _codex_account_status_impl(
-    agent: Agent,
+    agent: AgentConfig,
     *,
     record_usage: bool = True,
     fallback_to_usage_registry: bool = True,
@@ -163,7 +163,7 @@ def _codex_account_status_impl(
 
 
 def _refresh_codex_auth_artifact(
-    agent: Agent,
+    agent: AgentConfig,
     *,
     usage_status: str,
     usage_record_metadata: Mapping[str, Any] | None,
@@ -273,7 +273,7 @@ def _setup_errors(
 # Codex usage data may grow additional sources. Keep each implementation
 # isolated while we evaluate which one should become the long-term capability.
 def _account_usage_app_server(
-    agent: Agent,
+    agent: AgentConfig,
 ) -> AccountUsageReadResult:
     try:
         payload = _fetch_account_usage_app_server_payload(agent)
@@ -296,7 +296,7 @@ def _account_usage_app_server(
         )
 
 
-def _fetch_account_usage_app_server_payload(agent: Agent) -> dict[str, Any]:
+def _fetch_account_usage_app_server_payload(agent: AgentConfig) -> dict[str, Any]:
     command = _build_codex_account_status_command(agent, argv=CODEX_APP_SERVER_ARGV)
     timeout_sec = _account_timeout_sec(agent)
     try:
@@ -376,7 +376,7 @@ def _fetch_account_usage_app_server_payload(agent: Agent) -> dict[str, Any]:
         _terminate_process(process)
 
 
-def _build_codex_account_status_command(agent: Agent, *, argv: tuple[str, ...]):
+def _build_codex_account_status_command(agent: AgentConfig, *, argv: tuple[str, ...]):
     return agent._build_command(AgentCommandConfig(argv=argv))
 
 
@@ -591,7 +591,7 @@ def _process_environment(env_overrides: Mapping[str, str]) -> dict[str, str]:
     return env
 
 
-def _account_timeout_sec(agent: Agent) -> int:
+def _account_timeout_sec(agent: AgentConfig) -> int:
     return agent.timeout_sec or DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC
 
 

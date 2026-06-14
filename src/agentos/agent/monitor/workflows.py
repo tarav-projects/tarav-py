@@ -2082,7 +2082,7 @@ def _run_account_prime_ping(source_target_state: dict[str, object]) -> None:
     )
     if not agent.ping.enabled:
         raise CliError(
-            f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
+            f"agent {agent.profile_id or '<default>'} for provider {agent.provider} has ping disabled"
         )
     command_config = AgentCommandConfig(
         prompt=agent.ping.prompt,

@@ -13,7 +13,7 @@ from threading import Thread
 
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
-from agentos.agent.primitives import Agent
+from agentos.agent.primitives import AgentConfig, RunCapable
 from agentos.agent.account_registry import record_account_event
 from agentos.agent.config import (
     load_agent_profile,
@@ -38,17 +38,17 @@ def _list_configured_agents(
     *,
     provider: str | None,
     start_path: Path,
-) -> tuple[Agent, ...]:
-    instances = load_configured_agents(start_path=start_path)
+) -> tuple[AgentConfig, ...]:
+    agents = load_configured_agents(start_path=start_path)
     if provider is None:
-        return instances
-    return tuple(instance for instance in instances if instance.provider == provider)
+        return agents
+    return tuple(agent for agent in agents if agent.provider == provider)
 
 
-def _format_instance_line(agent: Agent) -> str:
-    instance_id = agent.instance_id or "<default>"
-    suffix_parts: list[str] = [f"id={instance_id}"]
-    if agent.label is not None and agent.label != agent.instance_id:
+def _format_instance_line(agent: AgentConfig) -> str:
+    profile_id = agent.profile_id or "<default>"
+    suffix_parts: list[str] = [f"id={profile_id}"]
+    if agent.label is not None and agent.label != agent.profile_id:
         suffix_parts.append(agent.label)
     if agent.default_model is not None:
         suffix_parts.append(f"model={agent.default_model}")
@@ -74,7 +74,7 @@ def _cmd_agent_list(args: argparse.Namespace) -> int:
     )
     if args.json:
         payload = {
-            "instances": [agent.summary() for agent in agents],
+            "agents": [agent.summary() for agent in agents],
         }
         print(format_json_output(payload))
         return 0
@@ -169,7 +169,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _resolve_agent_run_target(args: argparse.Namespace) -> tuple[Agent, Path]:
+def _resolve_agent_run_target(args: argparse.Namespace) -> tuple[AgentConfig, Path]:
     config_start_path = _config_start_path(args)
     cwd = Path(args.cwd).expanduser().resolve() if args.cwd else Path.cwd().resolve()
     agent = resolve_agent(
@@ -178,6 +178,8 @@ def _resolve_agent_run_target(args: argparse.Namespace) -> tuple[Agent, Path]:
         start_path=config_start_path,
         home=args.home,
     )
+    if not isinstance(agent, RunCapable):
+        raise CliError(f"provider {agent.provider} does not support run")
     return agent, cwd
 
 
@@ -187,7 +189,7 @@ def _resolve_agent_run(
     prompt: str | None,
     argv: tuple[str, ...],
     interaction_mode: str = "interactive",
-) -> tuple[Agent, AgentCommandConfig, AgentRunConfig]:
+) -> tuple[AgentConfig, AgentCommandConfig, AgentRunConfig]:
     agent, cwd = _resolve_agent_run_target(args)
     return (
         agent,
@@ -228,7 +230,7 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
     agent, cwd = _resolve_agent_run_target(args)
     if not agent.ping.enabled:
         raise CliError(
-            f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
+            f"agent {agent.profile_id or '<default>'} for provider {agent.provider} has ping disabled"
         )
     command_config = _agent_command_config(
         args,
@@ -258,7 +260,7 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
 
 
 def _record_agent_credential_success(
-    agent: Agent,
+    agent: AgentConfig,
     *,
     command_config: AgentCommandConfig,
     source: str,
@@ -325,7 +327,7 @@ def _agent_ping_output(stdout: str | None, stderr: str | None) -> str:
     return "\n".join(part for part in (stdout, stderr) if part)
 
 
-def _agent_ping_model(agent: Agent, command_config: AgentCommandConfig) -> str:
+def _agent_ping_model(agent: AgentConfig, command_config: AgentCommandConfig) -> str:
     return command_config.model or agent.default_model or "<provider-default>"
 
 

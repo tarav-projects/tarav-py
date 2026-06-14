@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, runtime_checkable
 from urllib.parse import quote
 
 from agentos._core.errors import CliError
@@ -22,7 +22,7 @@ from agentos.agent.run_runtime import (
 from agentos.providers import ProviderHomeAnchor
 from agentos.providers import require_canonical_provider_spec
 
-AgentSelf = TypeVar("AgentSelf", bound="AgentBase")
+AgentConfigSelf = TypeVar("AgentConfigSelf", bound="AgentConfig")
 
 
 @dataclass(frozen=True)
@@ -76,8 +76,15 @@ def default_agent_ping_config() -> AgentPingConfig:
 
 @dataclass(frozen=True)
 class AgentConfig:
+    """Single field surface for every agent adapter.
+
+    Provider adapters subclass this and override the ``provider`` default;
+    capability behavior is added by ``RunnableMixin`` and provider methods,
+    not by re-declaring these fields.
+    """
+
     provider: str
-    instance_id: str | None = None
+    profile_id: str | None = None
     label: str | None = None
     home: Path | None = None
     homes: tuple[Path, ...] = ()
@@ -98,7 +105,7 @@ class AgentConfig:
     sqlite_db_paths: tuple[Path, ...] = ()
     identity_anchors: tuple[ProviderHomeAnchor, ...] = ()
 
-    def computed_fingerprint(self) -> str:
+    def fingerprint(self) -> str:
         if self.fingerprint_override is not None:
             return self.fingerprint_override
         return agent_identity_fingerprint(
@@ -116,7 +123,7 @@ class AgentConfig:
             )
         return (
             self.provider,
-            self.instance_id,
+            self.profile_id,
             str(self.home) if self.home is not None else None,
             tuple(str(home) for home in self.homes),
             tuple(str(path) for path in self.direct_targets),
@@ -135,31 +142,7 @@ class AgentConfig:
         )
 
     def uri_key(self) -> str:
-        return quote(self.computed_fingerprint(), safe="")
-
-
-@dataclass(frozen=True)
-class AgentBase:
-    instance_id: str | None = None
-    label: str | None = None
-    home: Path | None = None
-    homes: tuple[Path, ...] = ()
-    cli_command: tuple[str, ...] = ()
-    run_args: tuple[str, ...] = ()
-    env: tuple[tuple[str, str], ...] = ()
-    account: AgentAccountContext | None = None
-    accounts: tuple[AgentAccountContext, ...] = ()
-    timeout_sec: int | None = None
-    default_model: str | None = None
-    model_flag: str | None = None
-    prompt_flag: str | None = None
-    ping: AgentPingConfig = field(default_factory=default_agent_ping_config)
-    is_default: bool = False
-    fingerprint_override: str | None = None
-    direct_targets: tuple[Path, ...] = ()
-    grep_targets: tuple[Path, ...] = ()
-    sqlite_db_paths: tuple[Path, ...] = ()
-    identity_anchors: tuple[ProviderHomeAnchor, ...] = ()
+        return quote(self.fingerprint(), safe="")
 
     def summary(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -168,8 +151,8 @@ class AgentBase:
         }
         if self.fingerprint_override is not None:
             payload["fingerprint"] = self.fingerprint_override
-        if self.instance_id is not None:
-            payload["instance_id"] = self.instance_id
+        if self.profile_id is not None:
+            payload["profile_id"] = self.profile_id
         if self.label is not None:
             payload["label"] = self.label
         if self.home is not None:
@@ -208,51 +191,12 @@ class AgentBase:
             ]
         return payload
 
-    def fingerprint(self) -> str:
-        if self.fingerprint_override is not None:
-            return self.fingerprint_override
-        return agent_identity_fingerprint(
-            provider=self.provider,
-            anchors=self.identity_anchors,
-            direct_targets=self.direct_targets,
-            sqlite_db_paths=self.sqlite_db_paths,
-        )
-
-    def identity_key(self) -> tuple[object, ...]:
-        if self.identity_anchors:
-            return (
-                self.provider,
-                tuple(anchor.identity_key() for anchor in self.identity_anchors),
-            )
-        return (
-            self.provider,
-            self.instance_id,
-            str(self.home) if self.home is not None else None,
-            tuple(str(home) for home in self.homes),
-            tuple(str(path) for path in self.direct_targets),
-            tuple(str(path) for path in self.grep_targets),
-            tuple(str(path) for path in self.sqlite_db_paths),
-            self.cli_command,
-            self.run_args,
-            self.env,
-            self.account,
-            self.accounts,
-            self.timeout_sec,
-            self.default_model,
-            self.model_flag,
-            self.prompt_flag,
-            self.ping,
-        )
-
-    def uri_key(self) -> str:
-        return quote(self.fingerprint(), safe="")
-
     def with_session_discovery_paths(
-        self: AgentSelf,
+        self: AgentConfigSelf,
         *,
         direct_targets: tuple[Path, ...],
         sqlite_db_paths: tuple[Path, ...],
-    ) -> AgentSelf:
+    ) -> AgentConfigSelf:
         return replace(
             self,
             home=None,
@@ -260,11 +204,14 @@ class AgentBase:
             sqlite_db_paths=sqlite_db_paths,
         )
 
-    def _build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
-        # Providers that do not support run must not override this — the raise is intentional.
-        raise CliError(
-            f"agent {self.instance_id or '<default>'} for provider {self.provider} does not support run"
-        )
+
+class RunnableMixin:
+    """Run behavior shared by adapters that satisfy ``RunCapable``.
+
+    Mixed into runnable provider adapters only. Each runnable adapter defines
+    ``_build_command``; session-only adapters do not mix this in and therefore
+    expose no ``run`` capability.
+    """
 
     def _build_command_with_env(
         self,
@@ -275,7 +222,7 @@ class AgentBase:
         return AgentCommand(
             argv=build_agent_command_argv(
                 command_config,
-                instance_id=self.instance_id,
+                profile_id=self.profile_id,
                 provider=self.provider,
                 cli_command=self.cli_command,
                 run_args=self.run_args,
@@ -306,7 +253,7 @@ class AgentBase:
 
     def _check_account_scope(self, command_config: AgentCommandConfig) -> None:
         validate_account_override(
-            profile_id=self.instance_id or "<default>",
+            profile_id=self.profile_id or "<default>",
             allowed_accounts=self.accounts,
             account=command_config.account,
         )
@@ -320,79 +267,12 @@ class AgentBase:
             timeout_sec=self.timeout_sec,
         )
 
-    def account_status(
-        self,
-        *,
-        record_usage: bool = True,
-        fallback_to_usage_registry: bool = True,
-    ) -> AccountStatus:
-        del record_usage, fallback_to_usage_registry
-        raise CliError(
-            f"agent {self.instance_id or '<default>'} for provider {self.provider} "
-            "does not support account_status"
-        )
 
+@runtime_checkable
+class AgentAdapter(Protocol):
+    """Smallest common adapter contract: identity and summary."""
 
-def agent_base_kwargs_from_config(config: AgentConfig) -> dict[str, object]:
-    return {
-        "instance_id": config.instance_id,
-        "label": config.label,
-        "home": config.home,
-        "homes": config.homes,
-        "cli_command": config.cli_command,
-        "run_args": config.run_args,
-        "env": config.env,
-        "account": config.account,
-        "accounts": config.accounts,
-        "timeout_sec": config.timeout_sec,
-        "default_model": config.default_model,
-        "model_flag": config.model_flag,
-        "prompt_flag": config.prompt_flag,
-        "ping": config.ping,
-        "is_default": config.is_default,
-        "fingerprint_override": config.fingerprint_override,
-        "direct_targets": config.direct_targets,
-        "grep_targets": config.grep_targets,
-        "sqlite_db_paths": config.sqlite_db_paths,
-        "identity_anchors": config.identity_anchors,
-    }
-
-
-def agent_base_kwargs_for_provider(
-    config: AgentConfig,
-    *,
-    provider: str,
-    agent_name: str,
-) -> dict[str, object]:
-    if config.provider != provider:
-        raise CliError(f"cannot build {agent_name} from provider {config.provider}")
-    return agent_base_kwargs_from_config(config)
-
-
-class Agent(Protocol):
     provider: str
-    instance_id: str | None
-    label: str | None
-    home: Path | None
-    homes: tuple[Path, ...]
-    cli_command: tuple[str, ...]
-    run_args: tuple[str, ...]
-    env: tuple[tuple[str, str], ...]
-    account: AgentAccountContext | None
-    accounts: tuple[AgentAccountContext, ...]
-    timeout_sec: int | None
-    default_model: str | None
-    model_flag: str | None
-    prompt_flag: str | None
-    ping: AgentPingConfig
-    is_default: bool
-    fingerprint_override: str | None
-    direct_targets: tuple[Path, ...]
-    grep_targets: tuple[Path, ...]
-    sqlite_db_paths: tuple[Path, ...]
-    identity_anchors: tuple[ProviderHomeAnchor, ...]
-
-    def summary(self) -> dict[str, object]: ...
 
     def fingerprint(self) -> str: ...
 
@@ -400,13 +280,11 @@ class Agent(Protocol):
 
     def uri_key(self) -> str: ...
 
-    def with_session_discovery_paths(
-        self,
-        *,
-        direct_targets: tuple[Path, ...],
-        sqlite_db_paths: tuple[Path, ...],
-    ) -> Agent: ...
+    def summary(self) -> dict[str, object]: ...
 
+
+@runtime_checkable
+class RunCapable(Protocol):
     def run(
         self,
         command_config: AgentCommandConfig,
@@ -415,12 +293,33 @@ class Agent(Protocol):
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult: ...
 
+
+@runtime_checkable
+class AccountStatusCapable(Protocol):
     def account_status(
         self,
         *,
         record_usage: bool = True,
         fallback_to_usage_registry: bool = True,
     ) -> AccountStatus: ...
+
+
+@runtime_checkable
+class SessionDiscoveryCapable(Protocol):
+    def discover_session_refs(self) -> tuple[object, ...]: ...
+
+    def load_session(self, session_ref: object) -> object: ...
+
+
+def adapter_kwargs_from_config(
+    config: AgentConfig,
+    *,
+    provider: str,
+    agent_name: str,
+) -> dict[str, object]:
+    if config.provider != provider:
+        raise CliError(f"cannot build {agent_name} from provider {config.provider}")
+    return {f.name: getattr(config, f.name) for f in fields(AgentConfig)}
 
 
 def provider_session_paths(
@@ -438,7 +337,7 @@ def provider_session_paths(
     return tuple(direct_targets), tuple(sqlite_db_paths)
 
 
-def agent_session_paths(agent: Agent) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+def agent_session_paths(agent: AgentConfig) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
     direct_targets, sqlite_db_paths = provider_session_paths(agent.provider, agent.home)
     return (
         tuple(dict.fromkeys((*direct_targets, *agent.direct_targets))),
@@ -473,14 +372,16 @@ def agent_identity_fingerprint(
 
 
 __all__ = [
-    "Agent",
+    "AccountStatusCapable",
     "AgentAccountContext",
-    "AgentBase",
+    "AgentAdapter",
     "AgentConfig",
     "AgentPingConfig",
+    "RunCapable",
+    "RunnableMixin",
+    "SessionDiscoveryCapable",
     "SessionSource",
-    "agent_base_kwargs_for_provider",
-    "agent_base_kwargs_from_config",
+    "adapter_kwargs_from_config",
     "agent_identity_fingerprint",
     "default_agent_ping_config",
     "agent_session_paths",

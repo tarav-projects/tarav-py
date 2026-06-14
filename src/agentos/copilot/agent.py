@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agentos.agent.primitives import (
-    AgentBase,
     AgentConfig,
-    agent_base_kwargs_for_provider,
+    RunnableMixin,
+    adapter_kwargs_from_config,
     agent_session_paths,
 )
 from agentos.agent.run_runtime import (
@@ -29,21 +29,18 @@ COPILOT_HOME_ENV_VAR = "COPILOT_HOME"
 
 
 @dataclass(frozen=True)
-class CopilotAgent(AgentBase):
+class CopilotAgent(RunnableMixin, AgentConfig):
+    provider: str = COPILOT_PROVIDER
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> CopilotAgent:
         return cls(
-            **agent_base_kwargs_for_provider(
+            **adapter_kwargs_from_config(
                 config,
                 provider=COPILOT_PROVIDER,
                 agent_name="Copilot.Agent",
             )
         )
-
-    @property
-    def provider(self) -> str:
-        return COPILOT_PROVIDER
 
     def discover_session_refs(self) -> tuple[CopilotSessionRef, ...]:
         direct_targets, _ = agent_session_paths(self)

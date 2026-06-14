@@ -50,7 +50,7 @@ def test_environment_builds_loader_valid_agentos_state(
         load_global_config(environment.agentos_home / "config.json")["class"]
         == "agentos.global.config"
     )
-    assert load_agent_configs()[0].instance_id == "codex-work"
+    assert load_agent_configs()[0].profile_id == "codex-work"
     assert load_project_marker(marker_path)["project_name"] == "Testing project"
     assert load_project_config(config_path)["class"] == "agentos.project.config"
     (project_root / "nested").mkdir()

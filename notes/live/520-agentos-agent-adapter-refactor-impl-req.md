@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** refactor `agentos-py` agent infrastructure toward `Agentos.Agent.Adapter` while preserving current runner, monitor, account, profile, and Chatlas/session functionality.
-- **status:** ready for implementation.
+- **status:** implemented (2026-06-13). See `Impl.Log` for execution notes and deviations.
 - **source:** 2026-06-13 design discussion and code alignment report after removing legacy `agent.instances`.
 - **goal:** keep Agentos behavior at the same functional level while (1) removing the structural duplication and faked polymorphism in the agent primitive layer, (2) letting each provider adapter declare only the capabilities it actually implements, and (3) renaming the relevant objects and fields to express the `Agentos.Agent.Adapter` model directly in code.
 - **primary structural debt (the real reason for this refactor):** the agent primitive layer carries one broad shape three times — `AgentConfig`, `AgentBase`, and the `Agent` protocol each restate the same ~21-field surface — and fakes capability support by having `AgentBase.run`/`account_status`/`_build_command` raise "does not support". This contradicts the stated concept model (`102-Agentos.Agent.Model.md`), where providers need not share fields and only satisfy the tasks they support.
@@ -44,7 +44,7 @@
   - callers depend on the narrowest protocol they need; a provider that lacks a capability simply does not satisfy that protocol, and the unsupported path fails at the call site / capability resolution, not via a raising stub buried in a base class.
   - **`<Something>` is frozen to provider for this refactor.** Concrete provider classes (`<Provider>.Agent`) are the first and only adapter family delivered here. Subsystem-/capability-/workflow-shaped adapters (e.g. `Account.Monitor.Agent`) remain valid design directions but are explicitly out of scope; do not build them now.
   - **naming is decided:** base contract is `AgentAdapter`; capability facets use the `*Capable` suffix (`RunCapable`, `AccountStatusCapable`, `SessionDiscoveryCapable`). The base names the adapter; facets name traits. Concrete classes stay `<Provider>.Agent` (`ClaudeAgent`, `CodexAgent`, …). Do not reintroduce `*Agent` for protocols.
-  - **`AgentBase` is removed.** It is neither kept as a data carrier (that preserves the duplication being killed) nor as a behavior-only base (the capability protocols remove the need for an inheritance layer). `AgentConfig` becomes the single field surface; concrete adapters hold/compose an `AgentConfig` and expose hot fields (`provider`, `home`, `account`, `profile_id`, `env`, …) via read-through accessors; shared behavior (command build, account-scope check, run-config resolution, fingerprint/identity/summary) moves to module-level helpers operating on the config.
+  - **`AgentBase` is removed.** `AgentConfig` becomes the single field surface. **Executed mechanic (refined at exec time):** concrete adapters *subclass* `AgentConfig` and override the `provider` field default (`provider` stays a per-class constant; `AgentConfig` itself keeps `provider` required so loaders are unaffected). This keeps `agent.<field>` access working with zero call-site churn (~250 sites avoided) and lets session-only providers simply not define `run`/`account_status` (capability absent, not a raising stub). Run behavior lives in a `RunnableMixin` mixed into runnable adapters only; identity/summary helpers live on `AgentConfig`. This was chosen over the originally-worded "composition + read-through accessors" because `provider` must remain a class constant (tests construct `ClaudeAgent(instance_id=…)` with no provider) and read-through accessors for all ~21 fields would merely re-list the field surface as properties. The intent is identical: one field surface, no faked polymorphism, capability-shaped contracts.
   - if any of these decisions proves wrong during implementation, record the deviation in `Impl.Log` rather than silently diverging.
 
 ### Current.State
@@ -125,7 +125,7 @@
 
 ### Slice 1 - Collapse Field-Surface Duplication And Remove Raising Stubs
 
-Status: pending.
+Status: done.
 
 This slice precedes the capability protocols on purpose (see `Accepted.Direction` sequencing). Reduce the god-base first.
 
@@ -148,7 +148,7 @@ RED.GREEN.Test.Suite:
 
 ### Slice 2 - Establish Adapter Capability Contracts
 
-Status: pending.
+Status: done.
 
 Change:
 
@@ -168,7 +168,7 @@ RED.GREEN.Test.Suite:
 
 ### Slice 3 - Rename Objects And Profile Identity To Adapter Vocabulary
 
-Status: pending.
+Status: done.
 
 This slice executes the `Rename targets` deliverable. Behavior is already preserved by Slices 1-2; this is vocabulary alignment.
 
@@ -191,7 +191,7 @@ RED.GREEN.Test.Suite:
 
 ### Slice 4 - Runner Adapter Boundary
 
-Status: pending.
+Status: done.
 
 Change:
 
@@ -211,7 +211,7 @@ RED.GREEN.Test.Suite:
 
 ### Slice 5 - Account And Monitor Adapter Boundary
 
-Status: pending.
+Status: done.
 
 Change:
 
@@ -232,7 +232,7 @@ RED.GREEN.Test.Suite:
 
 ### Slice 6 - Chatlas And Session Discovery Adapter Boundary
 
-Status: pending.
+Status: done.
 
 Change:
 
@@ -255,7 +255,7 @@ RED.GREEN.Test.Suite:
 
 ### Slice 7 - Provider-Specific Adapter Modules
 
-Status: pending.
+Status: done.
 
 Change:
 
@@ -275,7 +275,7 @@ RED.GREEN.Test.Suite:
 
 ### Slice 8 - Documentation And Index Realignment
 
-Status: pending.
+Status: done.
 
 Change:
 
@@ -295,7 +295,7 @@ Checks:
 
 ### Slice 9 - No Legacy Sweep And Full Validation
 
-Status: pending.
+Status: done.
 
 Change:
 
@@ -359,3 +359,12 @@ agentos agent sessions list --json
 - 2026-06-13: Created from in-chat implementation design after code alignment review. User explicitly allowed large refactors and requested the plan preserve existing Agentos functionality while reaching a cleaner and healthier model across runners, monitor, accounts, profiles, and Chatlas/session subsystems.
 - 2026-06-13: Revised after architecture review. Reframed the core problem as the three-way field duplication (`AgentConfig`/`AgentBase`/`Agent` protocol) plus raise-on-unsupported faked polymorphism. Added `Design.Considerations` and `Open.Decisions.Resolved` (capabilities = structural protocols; `<Something>` frozen to provider for this change). Made object renaming an explicit deliverable (`Rename targets`). Resequenced: collapse duplication + remove raising stubs (Slice 1) before introducing capability protocols (Slice 2); object/field renames in Slice 3. Flipped doc realignment to treat `agentos-pkg` index as canonical and local notes as downstream.
 - 2026-06-13: Resolved the two remaining open mechanics on user request. Naming decided: base contract `AgentAdapter`, capability facets `*Capable` (`RunCapable`/`AccountStatusCapable`/`SessionDiscoveryCapable`), concrete classes stay `<Provider>.Agent`. `AgentBase` decided removed (not kept as carrier or behavior base): `AgentConfig` is the single field surface, adapters compose it with read-through accessors, shared behavior moves to module-level helpers.
+- 2026-06-13 (exec): DEVIATION from the "composition + read-through accessors" mechanic. On contact with the code: `provider` must stay a class constant (tests build `ClaudeAgent(instance_id=…)` with no provider) and ~250 call sites read `agent.<field>` directly, so composition/accessors would either re-list the field surface as ~21 properties or churn ~250 sites. Executed instead: provider adapters **subclass `AgentConfig`** and override the `provider` field default; run behavior in a `RunnableMixin` mixed into runnable adapters only; identity/summary on `AgentConfig`; `AgentBase`, `agent_base_kwargs_*`, and the broad `Agent` protocol field-list deleted. Same acceptance signals (one field surface, no raising stubs, capability protocols), lower risk. Validated the dataclass default-override + mixin pattern before adopting.
+- 2026-06-13 (exec, completion): All slices implemented. Final state: agentos-py 115 tests pass, ruff clean, compileall ok, `git diff --check` clean; agentos-pkg index linter 14/14. Smoke: `agent list --json` (top key now `agents`, 14 entries), `agent accounts monitor --once --json`, dry-run all work. Execution notes / deviations beyond the composition one above:
+  - **Slices 1+2 executed together.** Removing the broad `Agent` protocol requires its capability-protocol replacement to exist as the annotation type, so the protocols were introduced in the same change as the god-base removal. Slice-1 and slice-2 RED/GREEN tests both added (`test_session_only_provider_has_no_run_or_account_status_capability`, `test_capability_protocols_match_provider_capability_matrix`).
+  - **General `Agent` annotations → `AgentConfig`**, not a capability protocol, in providers.py/sessions.py/commands.py/account_status impls. Every adapter is an `AgentConfig`, and these sites mostly read config fields; capability-protocol narrowing was applied only at the two reachable boundaries (runner→`RunCapable`, session discovery→`SessionDiscoveryCapable`). No mypy gate, so annotations are advisory.
+  - **Slice 5 (monitor): no runtime capability guard added.** The only `account_status()` call site is the monitor, which builds agents solely via `build_registered_account_agent` (claude/codex/copilot — all `AccountStatusCapable`). An unsupported agent there is unreachable, so a guard would be error-handling for an impossible case (against general-practices). The runner guard (Slice 4) was added because a session-only provider IS reachable via `agentos agent run --profile <gemini>`. The account-status boundary is instead pinned by the 7-provider capability-matrix test.
+  - **Slice 6 (cross-repo compatibility boundary).** `agentos-chatlas-py` (separate repo) consumes agentos-py public surfaces: it imported the `Agent` symbol and uses `AgentConfig.instance_id`, and reads the `provider_instance_fingerprint` session-index JSON key across 13 files (persisted index data). Decisions: (a) **preserved** the `provider_instance_fingerprint` / `provider_instances` / `provider_instance_count` JSON key strings as a documented external compatibility boundary (internal fields renamed to `adapter_*`; renaming the keys would orphan persisted indexes — migration is out of scope); (b) **migrated** the chatlas Python consumers in the same change (per Accepted.Direction): `Agent`→`AgentConfig` (2 imports, 3 annotations) and `agent.instance_id`/`AgentConfig(instance_id=)`→`profile_id` (6 sites), plus 3 chatlas test assertions. **`agentos-chatlas-py` now has uncommitted changes** (separate repo, outside this checkpoint) — surface for review.
+  - **Pre-existing unrelated failure:** `agentos-chatlas-py` `test_chatlas_gc_dry_run_and_apply_moves_old_archived_sources` fails identically on pristine code (confirmed by stash diff) — its setup never calls the `write_codex_work_profile` helper, so `--instance codex-work` matches nothing. Not caused by this refactor; left as-is (out of scope). All other chatlas tests pass (117).
+  - **Stale plan artifact:** the smoke-check `agentos agent sessions list --json` references a non-existent subcommand (only `agent sessions copy` exists). Not a regression; session behavior is covered green by `test_agent_sessions.py` + `test_agent_session_copy.py`.
+  - Implementation left **uncommitted** for review per workflow (checkpoint `ceac78c` is the rollback floor).

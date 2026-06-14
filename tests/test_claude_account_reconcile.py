@@ -367,7 +367,7 @@ def test_claude_reconcile_discovers_configured_and_system_homes(
 
 class _FakePingAgent:
     provider = "claude-code"
-    instance_id = "claude-br"
+    profile_id = "claude-br"
     account = AgentAccountContext(provider="claude-code", account="browser-br")
     ping = AgentPingConfig(expected_number=745)
 

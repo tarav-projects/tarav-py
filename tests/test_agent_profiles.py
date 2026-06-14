@@ -56,7 +56,7 @@ def test_profile_file_loads_complete_agent_config(
 
     assert len(configs) == 1
     config = configs[0]
-    assert config.instance_id == "codex-mm"
+    assert config.profile_id == "codex-mm"
     assert config.provider == "codex"
     assert config.home == home.resolve()
     assert config.homes == (home.resolve(),)
@@ -295,7 +295,7 @@ def test_profile_accounts_and_homes_round_trip(
     write_agent_profile(
         AgentConfig(
             provider="claude-code",
-            instance_id="claude-br",
+            profile_id="claude-br",
             cli_command=("claude",),
             home=home,
             homes=(home,),
@@ -310,7 +310,7 @@ def test_profile_accounts_and_homes_round_trip(
     assert "account" not in payload
     assert "account_policy" not in payload
 
-    configs = {config.instance_id: config for config in load_agent_configs()}
+    configs = {config.profile_id: config for config in load_agent_configs()}
     assert configs["claude-br"].homes == (home.resolve(),)
     assert configs["claude-br"].accounts == ()
 
@@ -378,7 +378,7 @@ def test_profile_account_scope_enforced_on_direct_agent_run_call() -> None:
 
     agent = ClaudeAgent.from_config(
         AgentConfig(
-            instance_id="claude-locked",
+            profile_id="claude-locked",
             provider="claude-code",
             cli_command=("claude",),
             account=AgentAccountContext(provider="claude-code", account="browser-br"),
@@ -392,18 +392,82 @@ def test_profile_account_scope_enforced_on_direct_agent_run_call() -> None:
         )
 
 
-def test_no_run_provider_raises_on_run() -> None:
+def test_session_only_provider_has_no_run_or_account_status_capability() -> None:
     from agentos.gemini.agent import GeminiAgent
 
     agent = GeminiAgent.from_config(
         AgentConfig(
-            instance_id="gemini-test",
+            profile_id="gemini-test",
             provider="gemini-cli",
             cli_command=("gemini",),
         )
     )
+    assert not hasattr(agent, "run")
+    assert not hasattr(agent, "run_dry")
+    assert not hasattr(agent, "account_status")
+
+
+@pytest.mark.parametrize(
+    ("provider", "agent_import", "expect_run", "expect_account_status"),
+    [
+        ("claude-code", "agentos.claude.agent:ClaudeAgent", True, True),
+        ("codex", "agentos.codex.agent:CodexAgent", True, True),
+        ("copilot-cli", "agentos.copilot.agent:CopilotAgent", True, True),
+        ("pi", "agentos.pi.agent:PiAgent", True, False),
+        ("gemini-cli", "agentos.gemini.agent:GeminiAgent", False, False),
+        ("opencode", "agentos.opencode.agent:OpencodeAgent", False, False),
+        ("openclaw", "agentos.openclaw.agent:OpenclawAgent", False, False),
+    ],
+)
+def test_capability_protocols_match_provider_capability_matrix(
+    provider: str,
+    agent_import: str,
+    expect_run: bool,
+    expect_account_status: bool,
+) -> None:
+    import importlib
+
+    from agentos.agent.primitives import (
+        AccountStatusCapable,
+        AgentAdapter,
+        RunCapable,
+        SessionDiscoveryCapable,
+    )
+
+    module_name, class_name = agent_import.split(":")
+    agent_cls = getattr(importlib.import_module(module_name), class_name)
+    agent = agent_cls.from_config(
+        AgentConfig(profile_id="cap-test", provider=provider, cli_command=("cli",))
+    )
+
+    # every adapter satisfies the base contract and session discovery
+    assert isinstance(agent, AgentAdapter)
+    assert isinstance(agent, SessionDiscoveryCapable)
+    assert isinstance(agent, RunCapable) is expect_run
+    assert isinstance(agent, AccountStatusCapable) is expect_account_status
+
+
+def test_run_on_session_only_provider_fails_with_capability_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    environment.write_profile(
+        "gemini-x",
+        **{
+            "provider": "gemini-cli",
+            "homes": [str(tmp_path / "gemini")],
+            "cli_command": ["gemini"],
+        },
+    )
+
     with pytest.raises(CliError, match="does not support run"):
-        agent.run(
-            AgentCommandConfig(prompt="hello"),
-            AgentRunConfig(cwd="/tmp"),
+        _cmd_agent_run(
+            _run_args(
+                provider=None,
+                profile="gemini-x",
+                prompt="hello",
+                dry_run=True,
+            )
         )

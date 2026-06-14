@@ -7,7 +7,6 @@ from agentos._core.errors import CliError
 from agentos.agent.account_registry import load_account
 from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.primitives import (
-    Agent,
     AgentConfig,
 )
 from agentos.agent.profile_scope import select_allowed_home
@@ -32,7 +31,7 @@ from agentos.pi.agent import PiAgent
 DEFAULT_RUN_PROVIDER_FAMILIES = ("claude-code", "codex", "copilot-cli", "pi")
 
 
-def load_configured_agents(*, start_path: Path | str = ".") -> tuple[Agent, ...]:
+def load_configured_agents(*, start_path: Path | str = ".") -> tuple[AgentConfig, ...]:
     return tuple(
         agent_from_config(agent_config)
         for agent_config in load_agent_configs(start_path=start_path)
@@ -43,7 +42,7 @@ def supported_default_run_provider_families() -> tuple[str, ...]:
     return DEFAULT_RUN_PROVIDER_FAMILIES
 
 
-def agent_from_config(config: AgentConfig) -> Agent:
+def agent_from_config(config: AgentConfig) -> AgentConfig:
     if config.provider == "codex":
         return CodexAgent.from_config(config)
     if config.provider == "claude-code":
@@ -67,7 +66,7 @@ def build_registered_account_agent(
     account: str,
     home: Path | str,
     start_path: Path | str = ".",
-) -> Agent:
+) -> AgentConfig:
     account_record = load_account(provider, account)
     account_context = AgentAccountContext(
         provider=str(account_record["provider"]),
@@ -104,7 +103,7 @@ def resolve_agent(
     profile: str | None,
     start_path: Path,
     home: Path | str | None = None,
-) -> Agent:
+) -> AgentConfig:
     return agent_from_config(
         resolve_agent_config(
             provider=provider,
@@ -165,7 +164,7 @@ def _profile_config_with_home_selection(
     config: AgentConfig, *, home: Path | str
 ) -> AgentConfig:
     selected_home = select_allowed_home(
-        profile_id=config.instance_id or "<default>",
+        profile_id=config.profile_id or "<default>",
         allowed_homes=config.homes,
         home=home,
     )

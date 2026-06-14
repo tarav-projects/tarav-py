@@ -5,9 +5,9 @@ from pathlib import Path
 
 from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
-    AgentBase,
     AgentConfig,
-    agent_base_kwargs_for_provider,
+    RunnableMixin,
+    adapter_kwargs_from_config,
     agent_session_paths,
 )
 from agentos.agent.run_runtime import (
@@ -34,21 +34,18 @@ CODEX_HOME_ENV_VAR = "CODEX_HOME"
 
 
 @dataclass(frozen=True)
-class CodexAgent(AgentBase):
+class CodexAgent(RunnableMixin, AgentConfig):
+    provider: str = CODEX_PROVIDER
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> CodexAgent:
         return cls(
-            **agent_base_kwargs_for_provider(
+            **adapter_kwargs_from_config(
                 config,
                 provider=CODEX_PROVIDER,
                 agent_name="Codex.Agent",
             )
         )
-
-    @property
-    def provider(self) -> str:
-        return CODEX_PROVIDER
 
     def discover_session_refs(self) -> tuple[CodexSessionRef, ...]:
         return discover_codex_session_refs(targets=self.session_discovery_targets())
@@ -304,7 +301,7 @@ def _record_materialized_event(
         status="ok",
         payload={
             "provider": agent.provider,
-            "profile": agent.instance_id,
+            "profile": agent.profile_id,
             "home": str(agent.home),
             "account": account,
             "artifact_id": artifact_id,
@@ -371,7 +368,7 @@ def _agent_account(agent: CodexAgent) -> str | None:
 
 
 def _format_codex_preflight_line(action: str, agent: CodexAgent, account: str) -> str:
-    profile = agent.instance_id or "<default>"
+    profile = agent.profile_id or "<default>"
     return f"[agentos] {action} codex auth for profile {profile} from account {account}"
 
 

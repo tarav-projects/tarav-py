@@ -63,7 +63,7 @@ def _claude_context(home: Path, *, direct_targets: tuple[Path, ...] | None = Non
     agent = ClaudeAgent.from_config(
         AgentConfig(
             provider="claude-code",
-            instance_id=home.name,
+            profile_id=home.name,
             home=home,
             direct_targets=direct_targets,
         )

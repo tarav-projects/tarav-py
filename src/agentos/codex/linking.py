@@ -86,7 +86,7 @@ def resolve_codex_mux_default_profile(raw_default_profile: object):
 def _resolve_codex_mux_profile_home(profile) -> Path:
     if profile.home is None:
         raise CliError(
-            f"codex profile {profile.instance_id!r} must define home for codex.mux.default_profile"
+            f"codex profile {profile.profile_id!r} must define home for codex.mux.default_profile"
         )
     return profile.home
 
@@ -94,7 +94,7 @@ def _resolve_codex_mux_profile_home(profile) -> Path:
 def _resolve_codex_mux_profile_executable(profile) -> str:
     if not profile.cli_command:
         raise CliError(
-            f"codex profile {profile.instance_id!r} must define cli_command for codex.mux.default_profile"
+            f"codex profile {profile.profile_id!r} must define cli_command for codex.mux.default_profile"
         )
     return profile.cli_command[0]
 

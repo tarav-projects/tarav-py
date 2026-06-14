@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
-    AgentBase,
     AgentConfig,
-    agent_base_kwargs_for_provider,
+    RunnableMixin,
+    adapter_kwargs_from_config,
     agent_session_paths,
 )
 from agentos.agent.run_runtime import (
@@ -33,21 +33,18 @@ CLAUDE_CONFIG_DIR_ENV_VAR = "CLAUDE_CONFIG_DIR"
 
 
 @dataclass(frozen=True)
-class ClaudeAgent(AgentBase):
+class ClaudeAgent(RunnableMixin, AgentConfig):
+    provider: str = CLAUDE_PROVIDER
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> ClaudeAgent:
         return cls(
-            **agent_base_kwargs_for_provider(
+            **adapter_kwargs_from_config(
                 config,
                 provider=CLAUDE_PROVIDER,
                 agent_name="Claude.Agent",
             )
         )
-
-    @property
-    def provider(self) -> str:
-        return CLAUDE_PROVIDER
 
     def discover_session_refs(self) -> tuple[ClaudeSessionRef, ...]:
         direct_targets, _ = agent_session_paths(self)
@@ -205,7 +202,7 @@ class ClaudeAgent(AgentBase):
 
 
 def _format_claude_preamble_line(agent: ClaudeAgent, account: str) -> str:
-    profile = agent.instance_id or "<default>"
+    profile = agent.profile_id or "<default>"
     return f"[agentos] injected claude oauth token for profile {profile} from account {account}"
 
 

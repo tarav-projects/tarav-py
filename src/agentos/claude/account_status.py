@@ -34,7 +34,7 @@ from agentos.agent.account_usage_fallback import (
     AccountUsageReadResult,
     account_usage_registry_fallback,
 )
-from agentos.agent.primitives import Agent
+from agentos.agent.primitives import AgentConfig
 from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
 from agentos.claude.account_registry import (
@@ -83,7 +83,7 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 @dataclass
 class _ClaudeStatusLineRunLog:
-    agent: Agent
+    agent: AgentConfig
     argv: tuple[str, ...]
     cwd: Path
     capture_path: Path
@@ -105,7 +105,7 @@ class _ClaudeStatusLineRunLog:
 
 
 def _claude_account_status_impl(
-    agent: Agent,
+    agent: AgentConfig,
     *,
     record_usage: bool = True,
     fallback_to_usage_registry: bool = True,
@@ -270,7 +270,7 @@ def _identity_match(
 
 def _setup_errors(
     *,
-    agent: Agent,
+    agent: AgentConfig,
 ) -> tuple[AccountStatusError, ...]:
     errors: list[AccountStatusError] = []
     if agent.home is None:
@@ -294,7 +294,7 @@ def _setup_errors(
 # Claude usage data has multiple possible sources. Keep each implementation
 # isolated while we evaluate which one should become the long-term capability.
 def _account_usage_GET(
-    agent: Agent,
+    agent: AgentConfig,
 ) -> AccountUsageReadResult:
     throttle_error = _load_claude_usage_get_throttle(agent)
     if throttle_error is not None:
@@ -331,7 +331,7 @@ def _usage_record_source(usage_record_metadata: Mapping[str, Any] | None) -> str
 
 
 def _refresh_claude_ambient_auth_artifact(
-    agent: Agent,
+    agent: AgentConfig,
     *,
     account_record: dict[str, object],
     usage_status: str,
@@ -375,7 +375,7 @@ def _refresh_claude_ambient_auth_artifact(
 
 
 def _account_usage_statusline(
-    agent: Agent,
+    agent: AgentConfig,
     *,
     cleanup_transcript: bool = False,
 ) -> AccountUsageReadResult:
@@ -446,7 +446,7 @@ def _account_usage_statusline(
         )
 
 
-def _fetch_claude_usage_payload(agent: Agent) -> dict[str, Any]:
+def _fetch_claude_usage_payload(agent: AgentConfig) -> dict[str, Any]:
     access_token = _claude_oauth_access_token(agent)
     timeout_sec = agent.timeout_sec or DEFAULT_USAGE_GET_TIMEOUT_SEC
     request = urllib.request.Request(
@@ -503,7 +503,7 @@ def _usage_auth_summary(
     return "Claude usage API read"
 
 
-def _account_name(agent: Agent) -> str:
+def _account_name(agent: AgentConfig) -> str:
     if agent.account is None:
         raise AccountStatusError(
             error_type="account_missing",
@@ -512,7 +512,7 @@ def _account_name(agent: Agent) -> str:
     return agent.account.account
 
 
-def _claude_usage_get_throttle_path(agent: Agent) -> Path:
+def _claude_usage_get_throttle_path(agent: AgentConfig) -> Path:
     provider = validate_string_for_path(agent.provider, field_name="provider")
     account = validate_string_for_path(_account_name(agent), field_name="account")
     return (
@@ -525,7 +525,7 @@ def _claude_usage_get_throttle_path(agent: Agent) -> Path:
     )
 
 
-def _load_claude_usage_get_throttle(agent: Agent) -> AccountStatusError | None:
+def _load_claude_usage_get_throttle(agent: AgentConfig) -> AccountStatusError | None:
     throttle_path = _claude_usage_get_throttle_path(agent)
     if not throttle_path.is_file():
         return None
@@ -558,7 +558,7 @@ def _load_claude_usage_get_throttle(agent: Agent) -> AccountStatusError | None:
     )
 
 
-def _write_claude_usage_get_throttle(agent: Agent, error: AccountStatusError) -> None:
+def _write_claude_usage_get_throttle(agent: AgentConfig, error: AccountStatusError) -> None:
     if error.exit_code != 429:
         return
     retry_after_sec = _optional_positive_retry_after_sec(error.detail.get("retry_after_sec"))
@@ -591,14 +591,14 @@ def _write_claude_usage_get_throttle(agent: Agent, error: AccountStatusError) ->
     os.replace(temp_path, throttle_path)
 
 
-def _clear_claude_usage_get_throttle(agent: Agent) -> None:
+def _clear_claude_usage_get_throttle(agent: AgentConfig) -> None:
     try:
         _claude_usage_get_throttle_path(agent).unlink()
     except FileNotFoundError:
         return
 
 
-def _claude_usage_get_throttle_matches(agent: Agent, payload: Mapping[str, Any]) -> bool:
+def _claude_usage_get_throttle_matches(agent: AgentConfig, payload: Mapping[str, Any]) -> bool:
     return (
         payload.get("schema_version") == CLAUDE_USAGE_GET_THROTTLE_SCHEMA_VERSION
         and payload.get("provider") == agent.provider
@@ -612,7 +612,7 @@ def _optional_error_exit_code(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-def _claude_oauth_access_token(agent: Agent) -> str:
+def _claude_oauth_access_token(agent: AgentConfig) -> str:
     if agent.home is None:
         raise AccountStatusError(
             error_type="home_missing",
@@ -683,7 +683,7 @@ def _optional_positive_retry_after_sec(value: object) -> int | None:
     return value
 
 
-def _claude_statusline_workspace(agent: Agent) -> Path:
+def _claude_statusline_workspace(agent: AgentConfig) -> Path:
     if agent.home is None:
         raise AccountStatusError(
             error_type="home_missing",
@@ -693,7 +693,7 @@ def _claude_statusline_workspace(agent: Agent) -> Path:
 
 
 def _run_claude_statusline_refresh_session(
-    agent: Agent,
+    agent: AgentConfig,
     *,
     cwd: Path,
     capture_path: Path,
@@ -1024,7 +1024,7 @@ def _read_claude_statusline_invalid_capture(
     return payload, "capture payload is missing rate_limits"
 
 
-def _account_name_or_none(agent: Agent) -> str | None:
+def _account_name_or_none(agent: AgentConfig) -> str | None:
     if agent.account is None:
         return None
     return agent.account.account
@@ -1357,7 +1357,7 @@ def _terminate_pty_process(process: subprocess.Popen[bytes], master_fd: int) -> 
 
 
 def _cleanup_claude_statusline_transcript(
-    *, agent: Agent, statusline_payload: Mapping[str, Any]
+    *, agent: AgentConfig, statusline_payload: Mapping[str, Any]
 ) -> None:
     if agent.home is None:
         return

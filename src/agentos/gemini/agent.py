@@ -3,9 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agentos.agent.primitives import (
-    AgentBase,
     AgentConfig,
-    agent_base_kwargs_for_provider,
+    adapter_kwargs_from_config,
     agent_session_paths,
 )
 from agentos.gemini.session import (
@@ -20,21 +19,18 @@ GEMINI_PROVIDER = "gemini-cli"
 
 
 @dataclass(frozen=True)
-class GeminiAgent(AgentBase):
+class GeminiAgent(AgentConfig):
+    provider: str = GEMINI_PROVIDER
 
     @classmethod
     def from_config(cls, config: AgentConfig) -> GeminiAgent:
         return cls(
-            **agent_base_kwargs_for_provider(
+            **adapter_kwargs_from_config(
                 config,
                 provider=GEMINI_PROVIDER,
                 agent_name="Gemini.Agent",
             )
         )
-
-    @property
-    def provider(self) -> str:
-        return GEMINI_PROVIDER
 
     def discover_session_refs(self) -> tuple[GeminiSessionRef, ...]:
         direct_targets, _ = agent_session_paths(self)

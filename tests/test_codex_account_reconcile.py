@@ -428,7 +428,7 @@ def _newer_codex_auth_json(*, account_id: str, email: str) -> str:
 
 class _FakePingAgent:
     provider = "codex"
-    instance_id = "codex-br"
+    profile_id = "codex-br"
     account = AgentAccountContext(provider="codex", account="br")
     ping = AgentPingConfig(expected_number=745)
 

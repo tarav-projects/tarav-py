@@ -562,7 +562,7 @@ def _run_reconcile_ping(
     )
     if not agent.ping.enabled:
         raise CliError(
-            f"agent {agent.instance_id or '<default>'} for provider {agent.provider} has ping disabled"
+            f"agent {agent.profile_id or '<default>'} for provider {agent.provider} has ping disabled"
         )
     result = agent.run(
         AgentCommandConfig(

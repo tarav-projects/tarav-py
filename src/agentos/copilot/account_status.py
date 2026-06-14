@@ -25,7 +25,7 @@ from agentos.agent.account_usage_fallback import (
     AccountUsageReadResult,
     account_usage_registry_fallback,
 )
-from agentos.agent.primitives import Agent
+from agentos.agent.primitives import AgentConfig
 from agentos.agent.usage_registry import append_usage_record
 
 
@@ -39,7 +39,7 @@ COPILOT_GITHUB_API_VERSION = "2025-04-01"
 
 
 def _copilot_account_status_impl(
-    agent: Agent,
+    agent: AgentConfig,
     *,
     record_usage: bool = True,
     fallback_to_usage_registry: bool = True,
@@ -198,7 +198,7 @@ def _identity_match(
 
 def _setup_errors(
     *,
-    agent: Agent,
+    agent: AgentConfig,
 ) -> tuple[AccountStatusError, ...]:
     errors: list[AccountStatusError] = []
     if agent.home is None:
@@ -222,7 +222,7 @@ def _setup_errors(
 # Copilot usage data may grow additional sources. Keep each implementation
 # isolated while we evaluate which one should become the long-term capability.
 def _account_usage_internal_user(
-    agent: Agent,
+    agent: AgentConfig,
 ) -> AccountUsageReadResult:
     try:
         payload = _fetch_copilot_internal_user_payload(agent)
@@ -245,7 +245,7 @@ def _account_usage_internal_user(
         )
 
 
-def _fetch_copilot_internal_user_payload(agent: Agent) -> dict[str, Any]:
+def _fetch_copilot_internal_user_payload(agent: AgentConfig) -> dict[str, Any]:
     token = _read_github_cli_auth_token(agent)
     request = urllib.request.Request(
         COPILOT_USAGE_API_URL,
@@ -288,7 +288,7 @@ def _fetch_copilot_internal_user_payload(agent: Agent) -> dict[str, Any]:
     return payload
 
 
-def _read_github_cli_auth_token(agent: Agent) -> str:
+def _read_github_cli_auth_token(agent: AgentConfig) -> str:
     try:
         result = run_process(
             ("gh", "auth", "token"),
@@ -619,7 +619,7 @@ def _limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:
     return ", ".join(parts) or None
 
 
-def _account_name(agent: Agent) -> str:
+def _account_name(agent: AgentConfig) -> str:
     if agent.account is None:
         raise AccountStatusError(
             error_type="account_missing",
@@ -628,7 +628,7 @@ def _account_name(agent: Agent) -> str:
     return agent.account.account
 
 
-def _account_timeout_sec(agent: Agent) -> int:
+def _account_timeout_sec(agent: AgentConfig) -> int:
     return agent.timeout_sec or DEFAULT_COPILOT_USAGE_TIMEOUT_SEC
 
 

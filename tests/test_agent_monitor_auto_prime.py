@@ -1055,7 +1055,7 @@ def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() 
 
 class _FakeClaudePrimeAgent:
     provider = "claude-code"
-    instance_id = "claude-br"
+    profile_id = "claude-br"
     account = AgentAccountContext(provider="claude-code", account="browser-br")
     ping = AgentPingConfig(expected_number=745)
 
@@ -1068,7 +1068,7 @@ class _FakeClaudePrimeAgent:
 
 class _FakeCodexPrimeAgent:
     provider = "codex"
-    instance_id = "codex-br"
+    profile_id = "codex-br"
     account = AgentAccountContext(provider="codex", account="br")
     ping = AgentPingConfig(expected_number=745)
 

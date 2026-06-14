@@ -158,7 +158,7 @@ class AgentProviderConfig:
 class AgentConfigEntry:
     field_prefix: str
     index: int
-    raw_instance: dict[str, object]
+    raw_profile: dict[str, object]
 
     def item_path(self) -> str:
         return f"{self.field_prefix}[{self.index}]"
@@ -190,23 +190,23 @@ def agent_config_entries_from_config(
     *,
     source: AgentConfigSource,
 ) -> tuple[AgentConfigEntry, ...]:
-    raw_instances = _config_value_at_object_path(config, object_path=source.object_path)
-    if raw_instances is None:
+    raw_profiles = _config_value_at_object_path(config, object_path=source.object_path)
+    if raw_profiles is None:
         return ()
-    if not isinstance(raw_instances, list):
+    if not isinstance(raw_profiles, list):
         raise CliError(
             f"config field {'.'.join(source.object_path)} must be a JSON array"
         )
 
     entries: list[AgentConfigEntry] = []
-    for index, raw_instance in enumerate(raw_instances):
-        if not isinstance(raw_instance, dict):
+    for index, raw_profile in enumerate(raw_profiles):
+        if not isinstance(raw_profile, dict):
             raise CliError(f"{source.field_prefix}[{index}] must be a JSON object")
         entries.append(
             AgentConfigEntry(
                 field_prefix=source.field_prefix,
                 index=index,
-                raw_instance=raw_instance,
+                raw_profile=raw_profile,
             )
         )
     return tuple(entries)
@@ -297,7 +297,7 @@ def load_agent_profile_entries() -> tuple[AgentConfigEntry, ...]:
             AgentConfigEntry(
                 field_prefix="agent.profiles",
                 index=index,
-                raw_instance=payload,
+                raw_profile=payload,
             )
         )
     return tuple(entries)
@@ -319,19 +319,19 @@ def load_agent_profile(name: str) -> AgentConfig:
         AgentConfigEntry(
             field_prefix="agent.profiles",
             index=0,
-            raw_instance=payload,
+            raw_profile=payload,
         ),
         provider_configs=provider_configs,
     )
 
 
 def write_agent_profile(config: AgentConfig) -> Path:
-    if config.instance_id is None:
+    if config.profile_id is None:
         raise CliError("agent profile id is required")
-    path = profile_path(config.instance_id)
+    path = profile_path(config.profile_id)
     payload: dict[str, object] = {
         "schema_version": 1,
-        "id": config.instance_id,
+        "id": config.profile_id,
         "provider": config.provider,
     }
     if config.homes:
@@ -430,13 +430,13 @@ def agent_provider_config_field_name(provider: str, field: str) -> str:
 def select_agent_configs(
     configured_agent_configs: tuple["AgentConfig", ...],
     *,
-    selected_instance_ids: tuple[str, ...] | None,
+    selected_profile_ids: tuple[str, ...] | None,
     supported_families: set[str],
     selector_field_name: str,
-    unsupported_instance_label: str,
+    unsupported_profile_label: str,
     default_to_supported_families: bool,
 ) -> tuple["AgentConfig", ...]:
-    if selected_instance_ids is None:
+    if selected_profile_ids is None:
         if not default_to_supported_families:
             return ()
         return tuple(
@@ -446,35 +446,35 @@ def select_agent_configs(
         )
 
     agent_configs_by_id = {
-        agent_config.instance_id: agent_config
+        agent_config.profile_id: agent_config
         for agent_config in configured_agent_configs
-        if agent_config.instance_id is not None
+        if agent_config.profile_id is not None
     }
     missing_ids = [
-        instance_id
-        for instance_id in selected_instance_ids
-        if instance_id not in agent_configs_by_id
+        profile_id
+        for profile_id in selected_profile_ids
+        if profile_id not in agent_configs_by_id
     ]
     if missing_ids:
         suffix = "s" if len(missing_ids) != 1 else ""
         raise CliError(
-            f"{selector_field_name} references unknown configured instance id{suffix}: "
+            f"{selector_field_name} references unknown configured profile id{suffix}: "
             f"{', '.join(missing_ids)}"
         )
 
     unsupported_ids = [
-        instance_id
-        for instance_id in selected_instance_ids
-        if agent_configs_by_id[instance_id].provider not in supported_families
+        profile_id
+        for profile_id in selected_profile_ids
+        if agent_configs_by_id[profile_id].provider not in supported_families
     ]
     if unsupported_ids:
         suffix = "s" if len(unsupported_ids) != 1 else ""
         raise CliError(
-            f"{selector_field_name} references unsupported {unsupported_instance_label} "
-            f"instance id{suffix}: {', '.join(unsupported_ids)}"
+            f"{selector_field_name} references unsupported {unsupported_profile_label} "
+            f"profile id{suffix}: {', '.join(unsupported_ids)}"
         )
     return tuple(
-        agent_configs_by_id[instance_id] for instance_id in selected_instance_ids
+        agent_configs_by_id[profile_id] for profile_id in selected_profile_ids
     )
 
 
@@ -513,7 +513,7 @@ def default_agent_configs(
     *,
     supports_session_discovery_only: bool = False,
 ) -> tuple["AgentConfig", ...]:
-    instances: list[AgentConfig] = []
+    agent_configs: list[AgentConfig] = []
     for provider_spec in canonical_chat_provider_specs():
         if (
             supports_session_discovery_only
@@ -536,7 +536,7 @@ def default_agent_configs(
         sqlite_db_paths.extend(home_sqlite_db_paths)
         anchors.extend(home_spec.build_anchors(home=home))
 
-        instances.append(
+        agent_configs.append(
             AgentConfig(
                 provider=provider_spec.family,
                 home=home,
@@ -553,7 +553,7 @@ def default_agent_configs(
                 is_default=True,
             )
         )
-    return tuple(instances)
+    return tuple(agent_configs)
 
 
 def agent_config_with_home_override(
@@ -584,8 +584,8 @@ def agent_config_from_config_entry(
     *,
     provider_configs: dict[str, AgentProviderConfig] | None = None,
 ) -> "AgentConfig":
-    raw_instance = entry.raw_instance
-    family_name = raw_instance.get("provider")
+    raw_profile = entry.raw_profile
+    family_name = raw_profile.get("provider")
     if not isinstance(family_name, str) or not family_name:
         raise CliError(f"{entry.field_name('provider')} is required")
 
@@ -601,38 +601,38 @@ def agent_config_from_config_entry(
             f"{entry.field_name('provider')} must be one of: {supported_providers}"
         )
 
-    raw_instance_id = raw_instance.get("id")
-    if not isinstance(raw_instance_id, str) or not raw_instance_id.strip():
+    raw_profile_id = raw_profile.get("id")
+    if not isinstance(raw_profile_id, str) or not raw_profile_id.strip():
         raise CliError(f"{entry.field_name('id')} is required")
-    instance_id = validate_string_for_path(
-        raw_instance_id.strip(),
+    profile_id = validate_string_for_path(
+        raw_profile_id.strip(),
         field_name=entry.field_name("id"),
     )
 
-    raw_label = raw_instance.get("label")
+    raw_label = raw_profile.get("label")
     if raw_label is None:
-        label = instance_id
+        label = profile_id
     elif not isinstance(raw_label, str) or not raw_label.strip():
         raise CliError(f"{entry.field_name('label')} must be a non-empty string")
     else:
         label = raw_label.strip()
 
-    _reject_removed_profile_fields(entry, raw_instance)
-    raw_homes = raw_instance.get("homes")
-    raw_direct_paths = raw_instance.get("direct_paths")
-    raw_grep_paths = raw_instance.get("grep_paths")
-    raw_sqlite_db_paths = raw_instance.get("sqlite_db_paths")
-    raw_sqlite_db_path = raw_instance.get("sqlite_db_path")
-    raw_cli_command = raw_instance.get("cli_command")
-    raw_run_args = raw_instance.get("run_args")
-    raw_env = raw_instance.get("env")
-    raw_timeout_sec = raw_instance.get("timeout_sec")
-    raw_default_model = raw_instance.get("default_model")
-    raw_accounts = raw_instance.get("accounts")
-    raw_model_flag = raw_instance.get("model_flag")
-    raw_prompt_flag = raw_instance.get("prompt_flag")
-    raw_ping = raw_instance.get("ping")
-    raw_fingerprint = raw_instance.get("fingerprint")
+    _reject_removed_profile_fields(entry, raw_profile)
+    raw_homes = raw_profile.get("homes")
+    raw_direct_paths = raw_profile.get("direct_paths")
+    raw_grep_paths = raw_profile.get("grep_paths")
+    raw_sqlite_db_paths = raw_profile.get("sqlite_db_paths")
+    raw_sqlite_db_path = raw_profile.get("sqlite_db_path")
+    raw_cli_command = raw_profile.get("cli_command")
+    raw_run_args = raw_profile.get("run_args")
+    raw_env = raw_profile.get("env")
+    raw_timeout_sec = raw_profile.get("timeout_sec")
+    raw_default_model = raw_profile.get("default_model")
+    raw_accounts = raw_profile.get("accounts")
+    raw_model_flag = raw_profile.get("model_flag")
+    raw_prompt_flag = raw_profile.get("prompt_flag")
+    raw_ping = raw_profile.get("ping")
+    raw_fingerprint = raw_profile.get("fingerprint")
 
     if raw_sqlite_db_path is not None and raw_sqlite_db_paths is not None:
         raise CliError(
@@ -763,11 +763,11 @@ def agent_config_from_config_entry(
             sqlite_db_paths=resolved_sqlite_db_paths,
         )
 
-    validate_provider_profile(provider_family.family, raw_instance)
+    validate_provider_profile(provider_family.family, raw_profile)
 
     return AgentConfig(
         provider=provider_family.family,
-        instance_id=instance_id,
+        profile_id=profile_id,
         label=label,
         home=normalized_home,
         homes=homes,
@@ -816,15 +816,15 @@ def validate_provider_profile(provider: str, profile_json: dict[str, object]) ->
 def _validate_unique_agent_config_ids(agent_configs: tuple["AgentConfig", ...]) -> None:
     seen_agent_configs: dict[str, AgentConfig] = {}
     for agent_config in agent_configs:
-        if agent_config.instance_id is None:
+        if agent_config.profile_id is None:
             raise CliError("agent profile ids must not be empty")
-        existing = seen_agent_configs.get(agent_config.instance_id)
+        existing = seen_agent_configs.get(agent_config.profile_id)
         if existing is None:
-            seen_agent_configs[agent_config.instance_id] = agent_config
+            seen_agent_configs[agent_config.profile_id] = agent_config
             continue
         raise CliError(
             "agent profile ids must be unique; "
-            f"duplicate id {agent_config.instance_id} for providers "
+            f"duplicate id {agent_config.profile_id} for providers "
             f"{existing.provider} and {agent_config.provider}"
         )
 
@@ -851,10 +851,10 @@ def _load_agent_cli_command(
 
 
 def _reject_removed_profile_fields(
-    entry: AgentConfigEntry, raw_instance: dict[str, object]
+    entry: AgentConfigEntry, raw_profile: dict[str, object]
 ) -> None:
     for field_name in ("account", "account_policy", "home"):
-        if field_name in raw_instance:
+        if field_name in raw_profile:
             raise CliError(
                 f"{entry.field_name(field_name)} is no longer supported; "
                 f"use {'accounts' if field_name != 'home' else 'homes'}"
