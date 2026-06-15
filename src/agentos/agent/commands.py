@@ -772,6 +772,7 @@ def _add_agent_run_target_args(
         help="Provider home override for this run.",
     )
     parser.add_argument(
+        "-a",
         "--account",
         default=None,
         help="Provider account/auth identity for this run.",

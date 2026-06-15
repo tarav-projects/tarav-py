@@ -29,16 +29,16 @@ Provider-specific normalizers should conceptually normalize from `<Provider>.Ses
 
 ```text
 session.std.model is the source
-export views are projections
+inline views are projections
 raw provider data is not parsed by view code
-export views are filtered standard models, not new models
+inline views are filtered standard models, not new models
 ```
 
-`agentos chatlas export` may expose smaller views for callers that do not need the full standard model, such as visible transcript, replay, event tape, or tool-call summaries. Those views must be derived from `session.std.model`, preferably from `chat.events[]` and existing standard projections. View code should not parse provider-native raw artifacts directly; if a view needs a fact that is only available in raw data, that is evidence that the standard model may need a new provider-neutral field or projection.
+`agentos chatlas views inline` may expose smaller views for callers that do not need the full standard model, such as visible transcript, replay, event tape, or tool-call summaries. Those views must be derived from `session.std.model`, preferably from `chat.events[]` and existing standard projections. View code should not parse provider-native raw artifacts directly; if a view needs a fact that is only available in raw data, that is evidence that the standard model may need a new provider-neutral field or projection.
 
-Raw artifacts remain available for audit, debugging, and loss recovery through `source_refs` and raw export commands, but they are not the normal dependency for product-facing export views.
+Raw artifacts remain available for audit, debugging, and loss recovery through `source_refs` and raw export commands, but they are not the normal dependency for product-facing inline views.
 
-Export views must keep the `agentos.chatlas.session_model` envelope and vocabulary. A view may omit sections, omit records, or filter arrays, but it should not introduce a parallel export-view schema or a separate top-level model class. A top-level `view` field is allowed as export metadata, but the rest of the payload must remain the same standard-model vocabulary. For example, a transcript view is still a session model with a filtered `chat.messages`/`chat.events` surface, not an `agentos.chatlas.export_view` object.
+Inline views must keep the `agentos.chatlas.session_model` envelope and vocabulary. A view may omit sections, omit records, or filter arrays, but it should not introduce a parallel inline-view schema or a separate top-level model class. A top-level `view` field is allowed as view metadata, but the rest of the payload must remain the same standard-model vocabulary. For example, a transcript view is still a session model with a filtered `chat.messages`/`chat.events` surface, not an `agentos.chatlas.inline_view` object.
 
 ## Envelope
 Required top-level fields:

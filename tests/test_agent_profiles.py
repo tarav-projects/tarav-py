@@ -9,6 +9,7 @@ from agentos._core.errors import CliError
 from agentos.agent.commands import (
     _cmd_agent_accounts_materialize,
     _cmd_agent_run,
+    register_agent_commands,
 )
 from agentos.agent.config import load_agent_configs, profile_path, write_agent_profile
 from agentos.agent.primitives import AgentConfig
@@ -94,6 +95,28 @@ def test_profile_resolution_does_not_require_provider_and_asserts_provider(
         )
     with pytest.raises(CliError, match="--home is required"):
         resolve_agent_config(provider="codex", profile=None, start_path=tmp_path)
+
+
+def test_agent_run_account_short_option_parses() -> None:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    register_agent_commands(subparsers)
+
+    args = parser.parse_args(
+        [
+            "agent",
+            "run",
+            "--profile",
+            "codex-main",
+            "-a",
+            "mm",
+            "--prompt",
+            "hello",
+        ]
+    )
+
+    assert args.account == "mm"
+    assert args.profile == "codex-main"
 
 
 def test_profile_home_override_must_be_in_profile_homes(

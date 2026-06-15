@@ -93,7 +93,7 @@ Use a focused evidence set:
 - Chatlas dataset confirmation when useful:
   - `agentos chatlas update`
   - `agentos chatlas query`
-  - `agentos chatlas export`
+  - `agentos chatlas views inline`
 
 Prefer a small, explicit evidence set. The goal is not exhaustive crawling. The goal is enough evidence to defend the retention recommendation.
 

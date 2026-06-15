@@ -1,6 +1,6 @@
 ---
 name: agentos-chatlas-usage
-description: Use when Codex needs to work with chat session data in `agentos` through the maintained Chatlas dataset rather than live provider debug commands. Trigger for Chatlas tasks such as refreshing the dataset, querying sessions, resolving one session by id/URI/name/native field, inspecting provider stats, exporting standard-model views, or exporting raw artifacts.
+description: Use when Codex needs to work with chat session data in `agentos` through the maintained Chatlas dataset rather than live provider debug commands. Trigger for Chatlas tasks such as refreshing the dataset, querying sessions, resolving one session by id/URI/name/native field, inspecting provider stats, reading inline standard-model views, or exporting raw artifacts.
 ---
 
 # Chatlas Usage
@@ -14,7 +14,7 @@ Prefer `agentos chatlas ...` for normal session workflows. Use `agentos chat deb
 - Refresh dataset: `agentos chatlas update`
 - Inventory/query sessions: `agentos chatlas query`
 - Aggregate dataset stats: `agentos chatlas stats`
-- Export standard-model views: `agentos chatlas export`
+- Print inline standard-model views: `agentos chatlas views inline`
 - Export raw artifacts: `agentos chatlas raw path` / `agentos chatlas raw export`
 
 ## Working Rules
@@ -61,17 +61,17 @@ Use these flags intentionally:
 - `--compact`: return identifier-oriented session rows
 - `--extractable`: keep only sessions whose primary artifact can be extracted
 
-## Export Workflow
+## Inline View Workflow
 
-Use `agentos chatlas export` after resolution when the task needs a standard-model session view rather than just metadata.
+Use `agentos chatlas views inline` after resolution when the task needs a standard-model session view rather than just metadata.
 
 ```bash
-agentos chatlas export "<query>" --view full --format json
-agentos chatlas export "<query>" --view transcript --format json
-agentos chatlas export "<query>" --view user --format json
-agentos chatlas export "<query>" --view replay --format json
-agentos chatlas export "<query>" --view events --format json
-agentos chatlas export "<query>" --view zip-transcript --format json
+agentos chatlas views inline "<query>" --view full --format json
+agentos chatlas views inline "<query>" --view transcript --format json
+agentos chatlas views inline "<query>" --view user --format json
+agentos chatlas views inline "<query>" --view replay --format json
+agentos chatlas views inline "<query>" --view events --format json
+agentos chatlas views inline "<query>" --view zip-transcript --format json
 agentos chatlas raw path "<query>"
 agentos chatlas raw export "<query>" --format json
 ```

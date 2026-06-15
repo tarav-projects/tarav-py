@@ -95,10 +95,10 @@ Reply with the exact `session_id` or `uri` to continue.
 Extract the structured transcript view with:
 
 ```bash
-agentos chatlas export "<resolved-uri>" --view zip-transcript --format json
+agentos chatlas views inline "<resolved-uri>" --view zip-transcript --format json
 ```
 
-Use JSON `zip-transcript` extraction unless the user explicitly asks for another supported export view.
+Use JSON `zip-transcript` extraction unless the user explicitly asks for another supported inline view.
 
 Interpret the export as the Chatlas session model:
 
@@ -202,7 +202,7 @@ Add a short provenance header before the first transcript turn when the informat
 source-session-id: <session-id>
 source-session-uri: <resolved-uri>
 resolved-via: agentos chatlas query --include-match
-extracted-via: agentos chatlas export --view zip-transcript --format json
+extracted-via: agentos chatlas views inline --view zip-transcript --format json
 ```
 
 When both a session id and URI are available, include both. Treat these as first-class provenance data, not optional decoration.
