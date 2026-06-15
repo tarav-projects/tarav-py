@@ -32,6 +32,13 @@ from agentos.providers import (
 )
 from agentos.home.providers import home_provider_for_name
 
+AGENT_ACCOUNT_POLICY_PROFILE_DEFAULT = "profile-default"
+AGENT_ACCOUNT_POLICY_HOME_CURRENT = "home-current"
+AGENT_ACCOUNT_POLICIES = (
+    AGENT_ACCOUNT_POLICY_PROFILE_DEFAULT,
+    AGENT_ACCOUNT_POLICY_HOME_CURRENT,
+)
+
 
 @dataclass(frozen=True)
 class ChatProviderSpec:
@@ -338,6 +345,8 @@ def write_agent_profile(config: AgentConfig) -> Path:
         payload["homes"] = [str(home) for home in config.homes]
     if config.accounts:
         payload["accounts"] = [account.account for account in config.accounts]
+    if config.account_policy != AGENT_ACCOUNT_POLICY_PROFILE_DEFAULT:
+        payload["account_policy"] = config.account_policy
     if config.default_model is not None:
         payload["default_model"] = config.default_model
     if config.run_args:
@@ -629,6 +638,7 @@ def agent_config_from_config_entry(
     raw_timeout_sec = raw_profile.get("timeout_sec")
     raw_default_model = raw_profile.get("default_model")
     raw_accounts = raw_profile.get("accounts")
+    raw_account_policy = raw_profile.get("account_policy")
     raw_model_flag = raw_profile.get("model_flag")
     raw_prompt_flag = raw_profile.get("prompt_flag")
     raw_ping = raw_profile.get("ping")
@@ -695,6 +705,10 @@ def agent_config_from_config_entry(
         field_name=entry.field_name("accounts"),
     )
     account = accounts[0] if accounts else None
+    account_policy = _load_agent_account_policy(
+        raw_account_policy,
+        field_name=entry.field_name("account_policy"),
+    )
     if raw_model_flag is None:
         model_flag = _agent_default_model_flag(family_name)
     elif not isinstance(raw_model_flag, str) or not raw_model_flag.strip():
@@ -779,6 +793,7 @@ def agent_config_from_config_entry(
         env=env,
         account=account,
         accounts=accounts,
+        account_policy=account_policy,
         timeout_sec=timeout_sec,
         default_model=default_model,
         model_flag=model_flag,
@@ -853,12 +868,24 @@ def _load_agent_cli_command(
 def _reject_removed_profile_fields(
     entry: AgentConfigEntry, raw_profile: dict[str, object]
 ) -> None:
-    for field_name in ("account", "account_policy", "home"):
+    for field_name in ("account", "home"):
         if field_name in raw_profile:
             raise CliError(
                 f"{entry.field_name(field_name)} is no longer supported; "
                 f"use {'accounts' if field_name != 'home' else 'homes'}"
             )
+
+
+def _load_agent_account_policy(value: object, *, field_name: str) -> str:
+    if value is None:
+        return AGENT_ACCOUNT_POLICY_PROFILE_DEFAULT
+    allowed = ", ".join(AGENT_ACCOUNT_POLICIES)
+    if not isinstance(value, str) or not value.strip():
+        raise CliError(f"{field_name} must be one of: {allowed}")
+    normalized = value.strip()
+    if normalized not in AGENT_ACCOUNT_POLICIES:
+        raise CliError(f"{field_name} must be one of: {allowed}")
+    return normalized
 
 
 def _load_agent_account_contexts(
@@ -1181,6 +1208,9 @@ __all__ = [
     "AgentProviderConfig",
     "AgentConfigSource",
     "AgentConfig",
+    "AGENT_ACCOUNT_POLICIES",
+    "AGENT_ACCOUNT_POLICY_HOME_CURRENT",
+    "AGENT_ACCOUNT_POLICY_PROFILE_DEFAULT",
     "agent_config_with_provider_config",
     "agent_config_with_home_override",
     "agent_provider_config_field_name",

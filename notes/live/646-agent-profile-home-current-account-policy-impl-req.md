@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** add a profile-level account policy that lets selected profiles run with the currently materialized provider-home auth when no explicit account is passed, while still validating that auth against Agentos account state and preserving explicit `--account` / `-a` materialization behavior
-- **status:** proposed
+- **status:** implemented
 - **source:** 2026-06-15 follow-up to `notes/live/645-agent-account-auth-interface-redesign-impl-req.md`; user wants the default `accounts[0]` behavior preserved globally, but wants an opt-in profile policy for shared homes such as `codex-main` where plain `acodex` should keep using the current `~/.codex/auth.json` if it is valid instead of overwriting it with the profile default
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/agent/config.py`, `src/agentos/agent/primitives.py`, `src/agentos/codex/agent.py`, `src/agentos/codex/account_registry.py`, `tests/test_agent_profiles.py`, `tests/test_agent_run_account_preflight.py`
@@ -236,3 +236,6 @@ uv run pytest -q
 ## Impl.Log
 
 - 2026-06-15: Created from user-approved design direction. The accepted model preserves default `accounts[0]` behavior globally and adds opt-in `account_policy: "home-current"` for shared mutable homes; home-current validates current auth but does not overwrite invalid auth with the profile default.
+- 2026-06-15: Implemented in `agentos-py`. Added `AgentConfig.account_policy`, profile parsing/validation, profile template/list integration, and Codex `home-current` prepare-run validation for recognized allowed current home auth.
+- 2026-06-15: Local runtime profile files such as `~/.agentos/profiles/codex-main.json` were not mutated because the execution plan required explicit user intent for local config changes.
+- 2026-06-15: Verification passed: focused profile/Codex reconcile suites, Ruff over touched agent/Codex/tests surfaces, full `uv run pytest -q`, and editable `agentos-cli` reinstall.

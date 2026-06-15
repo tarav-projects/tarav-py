@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import agentos.claude.agent as claude_agent_module
+from agentos._core.errors import CliError
 from agentos.agent.commands import _cmd_agent_ping, _cmd_agent_run
 from agentos.agent.run_runtime import AgentRunResult
 from agentos.claude.account_registry import register_claude_account
@@ -310,6 +311,144 @@ def test_agent_run_materializes_when_explicit_account_differs_from_home_auth(
     assert result == 0
 
 
+def test_agent_run_home_current_uses_allowed_current_codex_home_without_materializing_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-main"
+    br_auth = tmp_path / "br-auth.json"
+    mm_auth = tmp_path / "mm-auth.json"
+    write_text_file(br_auth, codex_auth_json(account_id="acc_br"))
+    write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=br_auth, account="br")
+    register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
+    link_codex_account_to_home(home=home, account="br")
+    br_info = read_codex_auth_info(home / "auth.json")
+    environment.write_global_config(agent={"providers": _provider_configs()})
+    environment.write_profiles(
+        [
+            _codex_profile(
+                home,
+                profile_id="codex-main",
+                accounts=["mm", "br"],
+                account_policy="home-current",
+            )
+        ]
+    )
+
+    result = _cmd_agent_run(
+        _run_args(profile="codex-main", prompt="hello", dry_run=True)
+    )
+
+    assert result == 0
+    assert "[agentos]" not in capsys.readouterr().out
+    assert read_codex_auth_info(home / "auth.json").sha256 == br_info.sha256
+
+
+def test_agent_run_home_current_missing_codex_home_auth_errors_without_materializing_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-main"
+    mm_auth = tmp_path / "mm-auth.json"
+    write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
+    environment.write_global_config(agent={"providers": _provider_configs()})
+    environment.write_profiles(
+        [
+            _codex_profile(
+                home,
+                profile_id="codex-main",
+                accounts=["mm"],
+                account_policy="home-current",
+            )
+        ]
+    )
+
+    with pytest.raises(CliError, match="current codex home auth is missing"):
+        _cmd_agent_run(_run_args(profile="codex-main", prompt="hello", dry_run=True))
+
+    assert inspect_codex_account_home(home=home)["classification"] == "missing"
+
+
+def test_agent_run_home_current_rejects_current_codex_home_auth_outside_profile_accounts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-main"
+    br_auth = tmp_path / "br-auth.json"
+    mm_auth = tmp_path / "mm-auth.json"
+    write_text_file(br_auth, codex_auth_json(account_id="acc_br"))
+    write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=br_auth, account="br")
+    register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
+    link_codex_account_to_home(home=home, account="br")
+    environment.write_global_config(agent={"providers": _provider_configs()})
+    environment.write_profiles(
+        [
+            _codex_profile(
+                home,
+                profile_id="codex-main",
+                accounts=["mm"],
+                account_policy="home-current",
+            )
+        ]
+    )
+
+    with pytest.raises(CliError, match="not allowed by profile codex-main"):
+        _cmd_agent_run(_run_args(profile="codex-main", prompt="hello", dry_run=True))
+
+
+def test_agent_run_home_current_explicit_account_still_materializes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-main"
+    br_auth = tmp_path / "br-auth.json"
+    mm_auth = tmp_path / "mm-auth.json"
+    write_text_file(br_auth, codex_auth_json(account_id="acc_br"))
+    write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=br_auth, account="br")
+    register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
+    link_codex_account_to_home(home=home, account="mm")
+    environment.write_global_config(agent={"providers": _provider_configs()})
+    environment.write_profiles(
+        [
+            _codex_profile(
+                home,
+                profile_id="codex-main",
+                accounts=["mm", "br"],
+                account_policy="home-current",
+            )
+        ]
+    )
+
+    result = _cmd_agent_run(
+        _run_args(
+            profile="codex-main",
+            account="br",
+            prompt="hello",
+            dry_run=True,
+        )
+    )
+
+    assert result == 0
+    assert (
+        "[agentos] would materialize codex auth for profile codex-main from account br"
+        in capsys.readouterr().out
+    )
+
+
 def _make_stale_profile_home(
     tmp_path: Path,
     *,
@@ -352,6 +491,7 @@ def _codex_profile(
     accounts: list[str] | None = None,
     extra_homes: list[Path] | None = None,
     ping: dict[str, object] | None = None,
+    account_policy: str | None = None,
 ) -> dict[str, object]:
     profile: dict[str, object] = {
         "id": profile_id,
@@ -364,6 +504,8 @@ def _codex_profile(
         profile["accounts"] = [account]
     if ping is not None:
         profile["ping"] = ping
+    if account_policy is not None:
+        profile["account_policy"] = account_policy
     return profile
 
 

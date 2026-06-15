@@ -67,6 +67,52 @@ def test_profile_file_loads_complete_agent_config(
     assert config.cli_command == ("/bin/echo",)
 
 
+def test_profile_file_loads_home_current_account_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-main"
+    environment.write_global_config(agent={"providers": _provider_configs()})
+    environment.write_profile(
+        "codex-main",
+        **{
+            "provider": "codex",
+            "homes": [str(home)],
+            "accounts": ["jp", "mm"],
+            "account_policy": "home-current",
+        },
+    )
+
+    config = load_agent_configs()[0]
+
+    assert config.account_policy == "home-current"
+    assert config.account is not None
+    assert config.account.account == "jp"
+    assert config.summary()["account_policy"] == "home-current"
+
+
+def test_profile_file_rejects_unknown_account_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    environment.write_profile(
+        "codex-main",
+        **{
+            "provider": "codex",
+            "homes": [str(tmp_path / "codex-main")],
+            "accounts": ["jp", "mm"],
+            "account_policy": "legacy-link",
+        },
+    )
+
+    with pytest.raises(CliError, match="account_policy"):
+        load_agent_configs()
+
+
 def test_profile_resolution_does_not_require_provider_and_asserts_provider(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -378,7 +424,6 @@ def test_profile_rejects_removed_account_home_policy_fields(
 
     for field_name, value in {
         "account": "mm",
-        "account_policy": "locked",
         "home": str(tmp_path / "codex-mm"),
     }.items():
         environment.write_profile(

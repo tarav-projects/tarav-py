@@ -98,6 +98,7 @@ class AgentConfig:
     env: tuple[tuple[str, str], ...] = ()
     account: AgentAccountContext | None = None
     accounts: tuple[AgentAccountContext, ...] = ()
+    account_policy: str = "profile-default"
     timeout_sec: int | None = None
     default_model: str | None = None
     model_flag: str | None = None
@@ -139,6 +140,7 @@ class AgentConfig:
             self.env,
             self.account,
             self.accounts,
+            self.account_policy,
             self.timeout_sec,
             self.default_model,
             self.model_flag,
@@ -174,6 +176,8 @@ class AgentConfig:
             payload["account"] = self.account.summary()
         if self.accounts:
             payload["accounts"] = [account.summary() for account in self.accounts]
+        if self.account_policy != "profile-default":
+            payload["account_policy"] = self.account_policy
         if self.timeout_sec is not None:
             payload["timeout_sec"] = self.timeout_sec
         if self.default_model is not None:

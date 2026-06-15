@@ -51,6 +51,8 @@ def _format_instance_line(agent: AgentConfig) -> str:
         suffix_parts.append(f"model={agent.default_model}")
     if agent.account is not None:
         suffix_parts.append(f"account={agent.account.account}")
+    if agent.account_policy != "profile-default":
+        suffix_parts.append(f"account_policy={agent.account_policy}")
     if agent.home is not None:
         suffix_parts.append(f"home={agent.home}")
 
@@ -104,6 +106,7 @@ def _agent_profile_template(profile_id: str) -> str:
             "provider": "<provider>",
             "label": "",
             "accounts": [],
+            "account_policy": "profile-default",
             "homes": [],
             "cli_command": [],
             "default_model": "",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
     AgentConfig,
@@ -212,6 +213,13 @@ def prepare_codex_run(
     status = inspect_codex_account_home(home=agent.home)
     home_account = _active_home_account(status)
     profile_account = _agent_account(agent)
+    if command_config.account is None and agent.account_policy == "home-current":
+        return _prepare_home_current_codex_run(
+            agent=agent,
+            status=status,
+            start_path=start_path,
+            dry_run=dry_run,
+        )
     requested_account = _normalized_account(command_config.account) or profile_account
 
     if requested_account is not None:
@@ -251,6 +259,85 @@ def prepare_codex_run(
     if home_account is None:
         return ()
     return _sync_codex_materialized_home(agent=agent, account=home_account, start_path=start_path, dry_run=dry_run, source=source)
+
+
+def _prepare_home_current_codex_run(
+    *,
+    agent: CodexAgent,
+    status: dict[str, object],
+    start_path: Path,
+    dry_run: bool,
+) -> tuple[str, ...]:
+    classification = _status_classification(status)
+    if classification == "missing":
+        raise CliError(
+            f"current codex home auth is missing for profile {agent.profile_id or '<default>'}"
+        )
+    if classification == "broken":
+        error = _payload_string(status, "error")
+        suffix = f": {error}" if error is not None else ""
+        raise CliError(
+            f"current codex home auth is broken for profile {agent.profile_id or '<default>'}{suffix}"
+        )
+    if classification == "unknown":
+        raise CliError(
+            f"current codex home auth is unknown for profile {agent.profile_id or '<default>'}"
+        )
+
+    account = _recognized_home_current_account(status)
+    if account is None:
+        raise CliError(
+            f"current codex home auth is ambiguous for profile {agent.profile_id or '<default>'}"
+        )
+    _check_home_current_account_allowed(agent, account)
+
+    if classification == "known-account-new-hash":
+        from agentos.codex.account_reconcile import reconcile_codex_accounts
+
+        reconcile_codex_accounts(
+            account=account,
+            home=agent.home,
+            start_path=start_path,
+            register_discovered=True,
+            sync_homes=False,
+            check=dry_run,
+            record_event=False,
+        )
+    return ()
+
+
+def _recognized_home_current_account(status: dict[str, object]) -> str | None:
+    active_account = _active_home_account(status)
+    if active_account is not None:
+        return active_account
+    classification = _status_classification(status)
+    if classification not in {"registered", "known-account-new-hash"}:
+        return None
+    matches = status.get("account_registry_matches")
+    if not isinstance(matches, list):
+        return None
+    accounts = sorted(
+        account
+        for record in matches
+        if isinstance(record, dict)
+        and (account := _payload_string(record, "account")) is not None
+    )
+    if len(accounts) == 1:
+        return accounts[0]
+    return None
+
+
+def _check_home_current_account_allowed(agent: CodexAgent, account: str) -> None:
+    allowed_accounts = sorted(
+        allowed.account
+        for allowed in agent.accounts
+        if allowed.provider == agent.provider
+    )
+    if allowed_accounts and account not in allowed_accounts:
+        raise CliError(
+            f"current codex home auth account {account} is not allowed by profile "
+            f"{agent.profile_id or '<default>'}"
+        )
 
 
 def _sync_codex_materialized_home(
