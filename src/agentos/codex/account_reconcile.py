@@ -281,6 +281,7 @@ def _sync_codex_homes(
         payload = link_codex_account_to_home(
             home=known_home.home,
             account=sync_account,
+            record_event=False,
             argv=request.argv,
         )
         actions.append(

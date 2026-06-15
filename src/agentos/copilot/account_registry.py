@@ -70,13 +70,13 @@ def link_copilot_account_to_home(
     account_record = load_account(COPILOT_PROVIDER, normalized_account)
     if account_record.get("auth_kind") != COPILOT_AUTH_KIND:
         raise CliError(
-            "agent accounts link is not supported for provider "
+            "agent accounts materialize is not supported for provider "
             f"{COPILOT_PROVIDER} account {normalized_account}"
         )
     normalized_home = home.expanduser().resolve()
     record_account_event(
-        event_type="agent.accounts.link",
-        command="agent accounts link",
+        event_type="account.auth.materialized",
+        command="agent accounts materialize",
         argv=argv,
         status="ok",
         payload={
@@ -89,7 +89,7 @@ def link_copilot_account_to_home(
     )
     return {
         "status": "ok",
-        "command": "agent accounts link",
+        "command": "agent accounts materialize",
         "provider": COPILOT_PROVIDER,
         "account": normalized_account,
         "home": str(normalized_home),

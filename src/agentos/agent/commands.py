@@ -14,12 +14,9 @@ from threading import Thread
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
 from agentos.agent.primitives import AgentConfig, RunCapable
-from agentos.agent.account_registry import record_account_event
 from agentos.agent.config import (
-    load_agent_profile,
     profile_path,
     profiles_root,
-    update_agent_profile_account,
 )
 from agentos._core.path_validation import validate_string_for_path
 from agentos.agent._cli_common import format_json_output
@@ -387,168 +384,25 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
     )
 
 
-def _cmd_agent_accounts_link(args: argparse.Namespace) -> int:
-    if args.profile is not None:
-        payload = _link_account_profile(args)
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(_format_agent_accounts_link(payload))
-        return 0
-    if args.provider is None:
-        raise CliError("agent accounts link requires --profile or --provider")
-    if args.home is None:
-        raise CliError("agent accounts link without --profile requires --home")
+def _cmd_agent_accounts_materialize(args: argparse.Namespace) -> int:
     if args.provider == "codex":
-        from agentos.codex.account_registry import link_codex_account_to_home
+        from agentos.codex.account_registry import materialize_codex_account_to_home
 
-        payload = link_codex_account_to_home(
+        payload = materialize_codex_account_to_home(
             home=Path(args.home),
             account=args.account,
             force=args.force,
+            check=args.check,
             argv=getattr(args, "_agentos_argv", []),
         )
         if args.json:
             print(format_json_output(payload))
         else:
-            print(_format_agent_accounts_link(payload))
+            print(_format_agent_accounts_materialize(payload))
         return 0
-    if args.provider == "claude-code":
-        from agentos.claude.account_registry import link_claude_account_to_home
-
-        payload = link_claude_account_to_home(
-            home=Path(args.home),
-            account=args.account,
-            force=args.force,
-            argv=getattr(args, "_agentos_argv", []),
-        )
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(_format_agent_accounts_link(payload))
-        return 0
-    if args.provider == "copilot-cli":
-        from agentos.copilot.account_registry import link_copilot_account_to_home
-
-        payload = link_copilot_account_to_home(
-            home=Path(args.home),
-            account=args.account,
-            force=args.force,
-            argv=getattr(args, "_agentos_argv", []),
-        )
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(_format_agent_accounts_link(payload))
-        return 0
-    raise CliError(f"agent accounts link is not supported for provider {args.provider}")
-
-
-def _link_account_profile(args: argparse.Namespace) -> dict[str, object]:
-    if args.home is not None:
-        raise CliError("agent accounts link --profile does not accept --home")
-    current_profile = load_agent_profile(args.profile)
-    if args.provider is not None and args.provider != current_profile.provider:
-        raise CliError(
-            f"profile {args.profile!r} uses provider {current_profile.provider}, not {args.provider}"
-        )
-    profile_config, previous_account, profile_path = update_agent_profile_account(
-        args.profile,
-        args.account,
+    raise CliError(
+        f"agent accounts materialize is not supported for provider {args.provider}"
     )
-    if profile_config.home is None and _provider_link_requires_home(profile_config.provider):
-        raise CliError(f"agent profile {args.profile!r} does not define home")
-
-    payload = _link_provider_account_to_home(
-        provider=profile_config.provider,
-        home=profile_config.home,
-        account=args.account,
-        force=args.force,
-        argv=getattr(args, "_agentos_argv", []),
-    )
-    if _provider_link_requires_home(profile_config.provider):
-        record_account_event(
-            event_type="account.auth.materialized",
-            command="agent accounts link",
-            argv=getattr(args, "_agentos_argv", []),
-            status="ok",
-            payload={
-                "provider": profile_config.provider,
-                "profile": args.profile,
-                "home": str(profile_config.home),
-                "account": args.account,
-                "artifact_id": payload.get("artifact_id"),
-            },
-        )
-    profile_event_payload: dict[str, object] = {
-        "provider": profile_config.provider,
-        "profile": args.profile,
-        "from_account": previous_account,
-        "to_account": args.account,
-        "profile_path": str(profile_path),
-    }
-    if profile_config.home is not None:
-        profile_event_payload["home"] = str(profile_config.home)
-    record_account_event(
-        event_type="profile.account.changed",
-        command="agent accounts link",
-        argv=getattr(args, "_agentos_argv", []),
-        status="ok",
-        payload=profile_event_payload,
-    )
-    return {
-        **payload,
-        "profile": args.profile,
-        "profile_path": str(profile_path),
-        "previous_profile_account": previous_account,
-    }
-
-
-def _link_provider_account_to_home(
-    *,
-    provider: str,
-    home: Path | None,
-    account: str,
-    force: bool,
-    argv: list[str] | tuple[str, ...],
-) -> dict[str, object]:
-    if provider == "codex":
-        from agentos.codex.account_registry import link_codex_account_to_home
-
-        if home is None:
-            raise CliError("codex account link requires home")
-        return link_codex_account_to_home(
-            home=home,
-            account=account,
-            force=force,
-            record_event=False,
-            argv=argv,
-        )
-    if provider == "claude-code":
-        from agentos.claude.account_registry import link_claude_account_to_home
-
-        return link_claude_account_to_home(
-            home=home,
-            account=account,
-            force=force,
-            argv=argv,
-        )
-    if provider == "copilot-cli":
-        from agentos.copilot.account_registry import link_copilot_account_to_home
-
-        if home is None:
-            raise CliError("copilot-cli account link requires home")
-        return link_copilot_account_to_home(
-            home=home,
-            account=account,
-            force=force,
-            argv=argv,
-        )
-    raise CliError(f"agent accounts link is not supported for provider {provider}")
-
-
-def _provider_link_requires_home(provider: str) -> bool:
-    return provider != "claude-code"
 
 
 def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
@@ -589,38 +443,24 @@ def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
     raise CliError(f"agent accounts reconcile is not supported for provider {args.provider}")
 
 
-def _format_agent_accounts_link(payload: dict[str, object]) -> str:
+def _format_agent_accounts_materialize(payload: dict[str, object]) -> str:
     provider = payload.get("provider")
     account = payload.get("account")
     home = payload.get("home")
-    kind = payload.get("kind")
-    if kind == "artifact":
-        auth_path = payload.get("auth_path")
-        artifact_id = payload.get("artifact_id")
-        if isinstance(auth_path, str):
-            return (
-                f"Linked {provider} account {account} to {home} "
-                f"(auth copied to {auth_path})."
-            )
-        if isinstance(artifact_id, str):
-            return (
-                f"Linked {provider} account {account} to {home} "
-                f"(artifact {artifact_id[:12]} materialized)."
-            )
+    auth_path = payload.get("auth_path")
+    artifact_id = payload.get("artifact_id")
+    prefix = "Would materialize" if payload.get("check") else "Materialized"
+    if isinstance(auth_path, str):
         return (
-            f"Linked {provider} account {account} to {home} "
-            "(artifact materialized)."
+            f"{prefix} {provider} account {account} to {home} "
+            f"(auth copied to {auth_path})."
         )
-    if kind == "claimed":
-        if home is None:
-            return f"Linked {provider} account {account} (claimed login)."
+    if isinstance(artifact_id, str):
         return (
-            f"Linked {provider} account {account} to {home} "
-            "(claimed login)."
+            f"{prefix} {provider} account {account} to {home} "
+            f"(artifact {artifact_id[:12]})."
         )
-    return (
-        f"Linked {provider} account {account} to {home}."
-    )
+    return f"{prefix} {provider} account {account} to {home}."
 
 
 def _format_agent_accounts_reconcile(payload: dict[str, object]) -> str:
@@ -1044,46 +884,46 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     accounts_register_parser.set_defaults(handler=_cmd_agent_accounts_register)
 
-    accounts_link_parser = accounts_subparsers.add_parser(
-        "link",
-        help="Copy a managed provider account auth file to a provider home.",
+    accounts_materialize_parser = accounts_subparsers.add_parser(
+        "materialize",
+        help="Materialize a managed provider account credential into a provider runtime target.",
     )
-    accounts_link_parser.add_argument(
+    accounts_materialize_parser.add_argument(
         "--provider",
-        default=None,
+        required=True,
         choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
-        help="Provider family to link.",
+        help="Provider family to materialize.",
     )
-    accounts_link_parser.add_argument(
-        "--profile",
-        default=None,
-        help="Agent profile whose account binding should be updated and materialized.",
-    )
-    accounts_link_parser.add_argument(
+    accounts_materialize_parser.add_argument(
         "--home",
-        default=None,
-        help="Provider home to receive auth.json.",
+        required=True,
+        help="Provider home to receive credential materialization.",
     )
-    accounts_link_parser.add_argument(
+    accounts_materialize_parser.add_argument(
         "--account",
         required=True,
-        help="Local AgentOS account alias to link.",
+        help="Local AgentOS account alias to materialize.",
     )
-    accounts_link_parser.add_argument(
+    accounts_materialize_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Report intended materialization without mutating the provider home.",
+    )
+    accounts_materialize_parser.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite unknown or broken target-home auth state.",
+        help="Overwrite unknown or broken target-home auth state when supported.",
     )
-    accounts_link_parser.add_argument(
+    accounts_materialize_parser.add_argument(
         "--json",
         action="store_true",
         help="Output as JSON.",
     )
-    accounts_link_parser.set_defaults(handler=_cmd_agent_accounts_link)
+    accounts_materialize_parser.set_defaults(handler=_cmd_agent_accounts_materialize)
 
     accounts_reconcile_parser = accounts_subparsers.add_parser(
         "reconcile",
-        help="Register fresh known auth files and sync stale linked account homes.",
+        help="Register fresh known auth files and sync stale materialized homes.",
     )
     accounts_reconcile_parser.add_argument(
         "--provider",

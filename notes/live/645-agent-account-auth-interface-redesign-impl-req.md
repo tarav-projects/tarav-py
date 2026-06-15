@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** redesign the `agentos agent` account/auth interface so runtime state is resolved only from profile + CLI args, provider auth preparation is capability-backed, and Codex/Claude account mechanics use explicit inspect/register/reconcile/materialize operations instead of the user-facing "link" mental model
-- **status:** proposed
+- **status:** implemented
 - **source:** 2026-06-15 discussion after diagnosing `acodex` materializing `codex-main` from the first configured account and clarifying that `accounts[0]` is intentional profile default behavior
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/agent/commands.py`, `src/agentos/agent/config.py`, `src/agentos/agent/primitives.py`, `src/agentos/agent/profile_scope.py`, `src/agentos/agent/account_reconcile.py`, `src/agentos/codex/agent.py`, `src/agentos/codex/account_registry.py`, `src/agentos/codex/account_reconcile.py`, `src/agentos/claude/agent.py`, `src/agentos/claude/account_registry.py`, `src/agentos/claude/account_reconcile.py`, tests under `tests/`
@@ -433,3 +433,7 @@ uv run pytest -q
 ## Impl.Log
 
 - 2026-06-15: Created from user-approved design direction. The key accepted decision is that all run state is profile + CLI args; account/auth management is a provider-owned subsystem used by runners; `link` should be demoted or removed as a runtime mental model.
+- 2026-06-15: Executed in `agentos-py`. Added the shared prepare-run result surface, moved Codex/Claude run preparation behind provider prepare-run methods, added `agent accounts materialize`, removed the user-facing `agent accounts link` command path, and updated account-management docs.
+- 2026-06-15: Decided not to add `agent profiles account set` in this execution because profile default mutation was optional in the plan and normal operation is now `agent run --profile ... --account ...`; no current test or caller required the extra profile-owned mutation command.
+- 2026-06-15: Verification passed: focused account/profile/provider suites, Ruff over touched code and tests, full `uv run pytest -q`, installed CLI help smoke for `agent accounts` and `agent accounts materialize`.
+- 2026-06-15: Installation note: per current workspace split, `agentos-py` no longer provides the executable. Refreshing the installed command must use editable `agentos-cli`, which aggregates `agentos-py`.

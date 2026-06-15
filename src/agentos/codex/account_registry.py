@@ -250,15 +250,15 @@ def link_codex_account_to_home(
         }
         if record_event:
             record_account_event(
-                event_type="agent.accounts.link",
-                command="agent accounts link",
+                event_type="account.auth.materialized",
+                command="agent accounts materialize",
                 argv=argv,
                 status="ok",
                 payload=payload,
             )
         return {
             "status": "ok",
-            "command": "agent accounts link",
+            "command": "agent accounts materialize",
             "provider": CODEX_PROVIDER,
             "account": normalized_account,
             "home": str(normalized_home),
@@ -279,6 +279,65 @@ def link_codex_account_to_home(
             payload={"force": force},
         )
         raise
+
+
+def materialize_codex_account_to_home(
+    *,
+    home: Path,
+    account: str,
+    force: bool = False,
+    check: bool = False,
+    argv: list[str] | tuple[str, ...] = (),
+) -> dict[str, object]:
+    normalized_home = home.expanduser().resolve()
+    normalized_account = validate_string_for_path(account, field_name="account")
+    auth_path = _home_auth_path(normalized_home)
+    account_record = load_account(CODEX_PROVIDER, normalized_account)
+    active_artifact_id = _require_account_string(account_record, "active_artifact_id")
+    account_id = _require_account_string(account_record, "account_id")
+    source_auth = _artifact_path(active_artifact_id)
+    if not source_auth.is_file():
+        raise CliError(f"codex account active artifact file does not exist: {source_auth}")
+
+    target_state = _inspect_target_before_materialization(
+        auth_path,
+        requested_account=normalized_account,
+        force=force,
+        argv=argv,
+    )
+    base_payload = {
+        "status": "ok",
+        "command": "agent accounts materialize",
+        "provider": CODEX_PROVIDER,
+        "account": normalized_account,
+        "account_id": account_id,
+        "home": str(normalized_home),
+        "auth_path": str(auth_path),
+        "kind": "artifact",
+        "force": force,
+        "check": check,
+        "artifact_id": active_artifact_id,
+        "source_auth_file": str(source_auth),
+        "target_before_materialization": target_state,
+    }
+    if check:
+        return base_payload
+
+    _copy_auth_to_home(source_auth, auth_path)
+    copied_info = read_codex_auth_info(auth_path)
+    payload = {
+        **base_payload,
+        "copied_auth": copied_info.safe_payload(),
+        "copied_artifact_id": copied_info.sha256,
+    }
+    record_account_event(
+        event_type="account.auth.materialized",
+        command="agent accounts materialize",
+        argv=argv,
+        status="ok",
+        payload=payload,
+    )
+    return payload
 
 
 def inspect_codex_account_home(*, home: Path) -> dict[str, object]:
@@ -555,8 +614,8 @@ def _record_link_failure(
     payload: dict[str, object],
 ) -> None:
     record_account_event(
-        event_type="agent.accounts.link",
-        command="agent accounts link",
+        event_type="account.auth.materialized",
+        command="agent accounts materialize",
         argv=argv,
         status="error",
         payload={
@@ -685,6 +744,7 @@ def _string_or_none(value: object) -> str | None:
 
 __all__ = [
     "link_codex_account_to_home",
+    "materialize_codex_account_to_home",
     "promote_verified_codex_auth_from_home",
     "read_codex_auth_info",
     "register_codex_account_from_auth_file",

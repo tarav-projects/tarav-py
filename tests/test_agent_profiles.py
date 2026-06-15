@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import pytest
 
 from agentos._core.errors import CliError
 from agentos.agent.commands import (
-    _cmd_agent_accounts_link,
+    _cmd_agent_accounts_materialize,
     _cmd_agent_run,
 )
 from agentos.agent.config import load_agent_configs, profile_path, write_agent_profile
@@ -189,37 +188,31 @@ def test_profile_account_materialization_uses_profile_account(
     materialized_events = [
         event for event in events if event["event"] == "account.auth.materialized"
     ]
-    assert materialized_events[-1]["source"] == "agent.run"
-    assert materialized_events[-1]["provider"] == "codex"
-    assert materialized_events[-1]["profile"] == "codex-mm"
-    assert materialized_events[-1]["account"] == "mm"
+    run_events = [
+        event for event in materialized_events if event["source"] == "agent.run"
+    ]
+    assert run_events[-1]["provider"] == "codex"
+    assert run_events[-1]["profile"] == "codex-mm"
+    assert run_events[-1]["account"] == "mm"
 
 
-def test_accounts_link_profile_updates_profile_and_writes_events(
+def test_accounts_materialize_codex_check_does_not_mutate_home(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
-    agentos_home = environment.agentos_home
     home = tmp_path / "codex-mm"
-    br_auth = tmp_path / "br-auth.json"
-    mm_auth = tmp_path / "mm-auth.json"
-    write_text_file(br_auth, codex_auth_json(account_id="acc_br"))
-    write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
-    register_codex_account_from_auth_file(auth_file=br_auth, account="br")
-    register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
-    environment.write_profile(
-        "codex-mm",
-        **{"provider": "codex", "homes": [str(home)], "accounts": ["br"]},
-    )
+    auth_file = tmp_path / "mm-auth.json"
+    write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
 
-    result = _cmd_agent_accounts_link(
+    result = _cmd_agent_accounts_materialize(
         argparse.Namespace(
-            provider=None,
-            profile="codex-mm",
-            home=None,
+            provider="codex",
+            home=str(home),
             account="mm",
+            check=True,
             force=False,
             json=False,
             _agentos_argv=[],
@@ -227,25 +220,62 @@ def test_accounts_link_profile_updates_profile_and_writes_events(
     )
 
     assert result == 0
-    assert read_json_file(profile_path("codex-mm"))["accounts"] == ["mm", "br"]
+    assert inspect_codex_account_home(home=home)["classification"] == "missing"
+    assert not any(
+        event["event"] == "account.auth.materialized"
+        for event in _account_events(environment.agentos_home)
+    )
+
+
+def test_accounts_materialize_codex_writes_home_and_event(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-mm"
+    auth_file = tmp_path / "mm-auth.json"
+    write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
+    register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
+
+    result = _cmd_agent_accounts_materialize(
+        argparse.Namespace(
+            provider="codex",
+            home=str(home),
+            account="mm",
+            check=False,
+            force=False,
+            json=False,
+            _agentos_argv=[],
+        )
+    )
+
+    assert result == 0
     status = inspect_codex_account_home(home=home)
     assert status["classification"] == "matching-active"
-    assert status["auth"]["account_id"] == "acc_mm"
-    removed_registry_name = "links" + ".json"
-    assert not (agentos_home / "accounts" / "codex" / removed_registry_name).exists()
-    events = _account_events(agentos_home)
-    event_names = [event["event"] for event in events]
-    assert "account.auth.materialized" in event_names
-    assert "profile.account.changed" in event_names
-    profile_events = [
-        event for event in events if event["event"] == "profile.account.changed"
-    ]
-    assert profile_events[-1]["provider"] == "codex"
-    assert profile_events[-1]["profile"] == "codex-mm"
-    assert profile_events[-1]["from_account"] == "br"
-    assert profile_events[-1]["to_account"] == "mm"
-    assert "tokens" not in json.dumps(events)
-    assert "secret-refresh-token" not in json.dumps(events)
+    events = _account_events(environment.agentos_home)
+    assert events[-1]["event"] == "account.auth.materialized"
+    assert events[-1]["source"] == "agent accounts materialize"
+    assert events[-1]["provider"] == "codex"
+    assert events[-1]["account"] == "mm"
+
+
+def test_accounts_materialize_unsupported_provider_errors() -> None:
+    with pytest.raises(
+        CliError,
+        match="agent accounts materialize is not supported for provider claude-code",
+    ):
+        _cmd_agent_accounts_materialize(
+            argparse.Namespace(
+                provider="claude-code",
+                home="/tmp/claude",
+                account="browser-mm",
+                check=False,
+                force=False,
+                json=False,
+                _agentos_argv=[],
+            )
+        )
 
 
 def _provider_configs() -> dict[str, dict[str, object]]:

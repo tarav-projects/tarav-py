@@ -19,6 +19,7 @@ from agentos.agent.run_runtime import (
     execute_agent_command,
     format_agent_command,
 )
+from agentos.agent.run_prepare import AgentRunPrepareRequest, AgentRunPrepareResult
 from agentos.codex.session import (
     CodexSession,
     CodexSessionRef,
@@ -77,14 +78,16 @@ class CodexAgent(RunnableMixin, AgentConfig):
     ) -> AgentRunResult:
         self._check_account_scope(command_config)
         start_path = run_config.cwd
-        preamble_lines = _run_codex_preflight(
-            self,
-            command_config=command_config,
-            start_path=start_path,
-            dry_run=False,
-            source="agent.run",
+        prepare_result = self.prepare_run(
+            AgentRunPrepareRequest(
+                agent=self,
+                command_config=command_config,
+                start_path=start_path,
+                dry_run=False,
+                source="agent.run",
+            )
         )
-        for line in preamble_lines:
+        for line in prepare_result.preamble_lines:
             print(line)
         command = self._build_command(command_config)
         base_result = execute_agent_command(command, run_config=self.resolve_run_config(run_config))
@@ -98,23 +101,37 @@ class CodexAgent(RunnableMixin, AgentConfig):
             exit_code=base_result.exit_code,
             stdout=base_result.stdout,
             stderr=base_result.stderr,
-            preamble_lines=tuple(preamble_lines),
+            preamble_lines=prepare_result.preamble_lines,
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
         self._check_account_scope(command_config)
-        start_path = Path.cwd().resolve()
-        preamble_lines = _run_codex_preflight(
-            self,
-            command_config=command_config,
-            start_path=start_path,
-            dry_run=True,
-            source="agent.run",
+        prepare_result = self.prepare_run(
+            AgentRunPrepareRequest(
+                agent=self,
+                command_config=command_config,
+                start_path=Path.cwd().resolve(),
+                dry_run=True,
+                source="agent.run",
+            )
         )
         command = self._build_command(command_config)
         return AgentRunDryResult(
-            lines=(*preamble_lines, *command.setup_lines, format_agent_command(command)),
+            lines=(*prepare_result.preamble_lines, *command.setup_lines, format_agent_command(command)),
         )
+
+    def prepare_run(
+        self,
+        request: AgentRunPrepareRequest,
+    ) -> AgentRunPrepareResult:
+        preamble_lines = prepare_codex_run(
+            self,
+            command_config=request.command_config,
+            start_path=request.start_path,
+            dry_run=request.dry_run,
+            source=request.source,
+        )
+        return AgentRunPrepareResult(preamble_lines=preamble_lines)
 
     def account_status(
         self,
@@ -176,7 +193,7 @@ class CodexAgent(RunnableMixin, AgentConfig):
             return
 
 
-def _run_codex_preflight(
+def prepare_codex_run(
     agent: CodexAgent,
     *,
     command_config: AgentCommandConfig,
@@ -198,7 +215,18 @@ def _run_codex_preflight(
     requested_account = _normalized_account(command_config.account) or profile_account
 
     if requested_account is not None:
-        if profile_account is not None and _status_classification(status) != "matching-active":
+        synced_lines = _sync_codex_materialized_home(
+            agent=agent,
+            account=requested_account,
+            start_path=start_path,
+            dry_run=dry_run,
+            source=source,
+        )
+        if synced_lines:
+            return synced_lines
+        status = inspect_codex_account_home(home=agent.home)
+        home_account = _active_home_account(status)
+        if _status_classification(status) != "matching-active":
             if dry_run:
                 return (_format_codex_preflight_line("would materialize", agent, requested_account),)
             payload = link_codex_account_to_home(
@@ -214,17 +242,18 @@ def _run_codex_preflight(
             payload = link_codex_account_to_home(
                 home=agent.home,
                 account=requested_account,
+                record_event=False,
             )
             _record_materialized_event(agent=agent, account=str(payload.get("account", requested_account)), artifact_id=_payload_string(payload, "artifact_id"), source=source)
             return (_format_codex_preflight_line("materialized", agent, str(payload.get("account", requested_account))),)
-        return _sync_codex_linked_home(agent=agent, account=requested_account, start_path=start_path, dry_run=dry_run, source=source)
+        return ()
 
     if home_account is None:
         return ()
-    return _sync_codex_linked_home(agent=agent, account=home_account, start_path=start_path, dry_run=dry_run, source=source)
+    return _sync_codex_materialized_home(agent=agent, account=home_account, start_path=start_path, dry_run=dry_run, source=source)
 
 
-def _sync_codex_linked_home(
+def _sync_codex_materialized_home(
     *,
     agent: CodexAgent,
     account: str,

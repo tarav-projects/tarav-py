@@ -19,6 +19,11 @@ from agentos.agent.run_runtime import (
     execute_agent_command,
     format_agent_command,
 )
+from agentos.agent.run_prepare import (
+    AgentRunPrepareRequest,
+    AgentRunPrepareResult,
+    empty_agent_run_prepare_result,
+)
 from agentos.providers import ProviderHomeAnchor
 from agentos.providers import require_canonical_provider_spec
 
@@ -239,17 +244,66 @@ class RunnableMixin:
         run_config: AgentRunConfig,
     ) -> AgentRunResult:
         self._check_account_scope(command_config)
-        return execute_agent_command(
-            self._build_command(command_config),
+        prepare_result = self.prepare_run(
+            AgentRunPrepareRequest(
+                agent=self,
+                command_config=command_config,
+                start_path=run_config.cwd,
+                dry_run=False,
+                source=command_config.credential_success_source or "agent.run",
+            )
+        )
+        for line in prepare_result.preamble_lines:
+            print(line)
+        command = self._build_command(command_config)
+        if prepare_result.env_overrides or prepare_result.env_display_overrides:
+            from agentos.agent.run_runtime import agent_command_with_env_overrides
+
+            command = agent_command_with_env_overrides(
+                command,
+                env_overrides=prepare_result.env_overrides,
+                env_display_overrides=prepare_result.env_display_overrides,
+            )
+        result = execute_agent_command(
+            command,
             run_config=self.resolve_run_config(run_config),
+        )
+        return AgentRunResult(
+            exit_code=result.exit_code,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            preamble_lines=prepare_result.preamble_lines,
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
         self._check_account_scope(command_config)
-        command = self._build_command(command_config)
-        return AgentRunDryResult(
-            lines=(*command.setup_lines, format_agent_command(command)),
+        prepare_result = self.prepare_run(
+            AgentRunPrepareRequest(
+                agent=self,
+                command_config=command_config,
+                start_path=Path.cwd().resolve(),
+                dry_run=True,
+                source="agent.run",
+            )
         )
+        command = self._build_command(command_config)
+        if prepare_result.env_overrides or prepare_result.env_display_overrides:
+            from agentos.agent.run_runtime import agent_command_with_env_overrides
+
+            command = agent_command_with_env_overrides(
+                command,
+                env_overrides=prepare_result.env_overrides,
+                env_display_overrides=prepare_result.env_display_overrides,
+            )
+        return AgentRunDryResult(
+            lines=(*prepare_result.preamble_lines, *command.setup_lines, format_agent_command(command)),
+        )
+
+    def prepare_run(
+        self,
+        request: AgentRunPrepareRequest,
+    ) -> AgentRunPrepareResult:
+        return empty_agent_run_prepare_result()
 
     def _check_account_scope(self, command_config: AgentCommandConfig) -> None:
         validate_account_override(

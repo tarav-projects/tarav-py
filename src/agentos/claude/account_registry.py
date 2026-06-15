@@ -243,8 +243,8 @@ def link_claude_account_to_home(
             )
         except CliError as exc:
             record_account_event(
-                event_type="agent.accounts.link",
-                command="agent accounts link",
+                event_type="account.auth.materialized",
+                command="agent accounts materialize",
                 argv=argv,
                 status="error",
                 payload={
@@ -269,15 +269,15 @@ def link_claude_account_to_home(
             "identity": identity_state,
         }
         record_account_event(
-            event_type="agent.accounts.link",
-            command="agent accounts link",
+            event_type="account.auth.materialized",
+            command="agent accounts materialize",
             argv=argv,
             status="ok",
             payload=event_payload,
         )
         return {
             "status": "ok",
-            "command": "agent accounts link",
+            "command": "agent accounts materialize",
             "provider": CLAUDE_PROVIDER,
             "account": normalized_account,
             "home": str(normalized_home),
@@ -298,15 +298,15 @@ def link_claude_account_to_home(
     if normalized_home is not None:
         event_payload["home"] = str(normalized_home)
     record_account_event(
-        event_type="agent.accounts.link",
-        command="agent accounts link",
+        event_type="account.auth.materialized",
+        command="agent accounts materialize",
         argv=argv,
         status="ok",
         payload=event_payload,
     )
     payload: dict[str, object] = {
         "status": "ok",
-        "command": "agent accounts link",
+        "command": "agent accounts materialize",
         "provider": CLAUDE_PROVIDER,
         "account": normalized_account,
         "kind": "claimed",
@@ -361,7 +361,7 @@ def load_claude_ambient_auth_for_account(
     if account_record.get("auth_kind") != CLAUDE_AUTH_KIND:
         raise CliError(
             "claude-code account has no ambient browser-login artifact; register one "
-            "from a logged-in home before linking or reconciling"
+            "from a logged-in home before materializing or reconciling"
         )
     active_artifact_id = _require_account_string(
         account_record,

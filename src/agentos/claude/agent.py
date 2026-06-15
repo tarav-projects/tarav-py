@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
@@ -18,6 +19,7 @@ from agentos.agent.run_runtime import (
     execute_agent_command,
     format_agent_command,
 )
+from agentos.agent.run_prepare import AgentRunPrepareRequest, AgentRunPrepareResult
 from agentos.claude.session import (
     ClaudeSession,
     ClaudeSessionRef,
@@ -71,23 +73,24 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
     ) -> AgentRunResult:
         self._check_account_scope(command_config)
         requested_account = self._resolved_account(command_config)
-        preamble_lines: tuple[str, ...] = ()
-        env_overrides: dict[str, str] = {}
-        if requested_account is not None:
-            from agentos.claude.account_registry import (
-                has_claude_oauth_token_kind,
-                load_claude_oauth_token_for_account,
+        prepare_result = self.prepare_run(
+            AgentRunPrepareRequest(
+                agent=self,
+                command_config=command_config,
+                start_path=run_config.cwd,
+                dry_run=False,
+                source="agent.run",
             )
-            if has_claude_oauth_token_kind(requested_account):
-                token = load_claude_oauth_token_for_account(requested_account)
-                env_overrides = {"CLAUDE_CODE_OAUTH_TOKEN": token.token}
-                preamble_line = _format_claude_preamble_line(self, requested_account)
-                preamble_lines = (preamble_line,)
-                print(preamble_line)
+        )
+        for line in prepare_result.preamble_lines:
+            print(line)
 
         command = self._build_command_with_env(
             self._claude_command_config(command_config),
-            env_overrides={**self._run_env_overrides(), **env_overrides},
+            env_overrides={
+                **self._run_env_overrides(),
+                **prepare_result.env_overrides,
+            },
         )
         base_result = execute_agent_command(command, run_config=self.resolve_run_config(run_config))
         if base_result.exit_code == 0 and command_config.credential_success_source is not None:
@@ -99,27 +102,20 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
             exit_code=base_result.exit_code,
             stdout=base_result.stdout,
             stderr=base_result.stderr,
-            preamble_lines=preamble_lines,
+            preamble_lines=prepare_result.preamble_lines,
         )
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult:
         self._check_account_scope(command_config)
-        requested_account = self._resolved_account(command_config)
-        env_overrides: dict[str, str] = {}
-        env_display_overrides: dict[str, str] = {}
-        preamble_lines: list[str] = []
-        if requested_account is not None:
-            from agentos.claude.account_registry import (
-                has_claude_oauth_token_kind,
-                load_claude_oauth_token_for_account,
+        prepare_result = self.prepare_run(
+            AgentRunPrepareRequest(
+                agent=self,
+                command_config=command_config,
+                start_path=Path.cwd().resolve(),
+                dry_run=True,
+                source="agent.run",
             )
-            if has_claude_oauth_token_kind(requested_account):
-                token = load_claude_oauth_token_for_account(requested_account)
-                env_overrides = {"CLAUDE_CODE_OAUTH_TOKEN": token.token}
-                env_display_overrides = {
-                    "CLAUDE_CODE_OAUTH_TOKEN": token.safe_display_value(),
-                }
-                preamble_lines.append(_format_claude_preamble_line(self, requested_account))
+        )
 
         from agentos.agent.run_runtime import agent_command_with_env_overrides
         base_command = self._build_command_with_env(
@@ -128,11 +124,35 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
         )
         command = agent_command_with_env_overrides(
             base_command,
-            env_overrides=env_overrides,
-            env_display_overrides=env_display_overrides,
+            env_overrides=prepare_result.env_overrides,
+            env_display_overrides=prepare_result.env_display_overrides,
         )
         return AgentRunDryResult(
-            lines=(*preamble_lines, *command.setup_lines, format_agent_command(command)),
+            lines=(*prepare_result.preamble_lines, *command.setup_lines, format_agent_command(command)),
+        )
+
+    def prepare_run(
+        self,
+        request: AgentRunPrepareRequest,
+    ) -> AgentRunPrepareResult:
+        requested_account = self._resolved_account(request.command_config)
+        if requested_account is None:
+            return AgentRunPrepareResult()
+        from agentos.claude.account_registry import (
+            has_claude_oauth_token_kind,
+            load_claude_oauth_token_for_account,
+        )
+
+        if not has_claude_oauth_token_kind(requested_account):
+            return AgentRunPrepareResult()
+        token = load_claude_oauth_token_for_account(requested_account)
+        env_display_overrides = {}
+        if request.dry_run:
+            env_display_overrides["CLAUDE_CODE_OAUTH_TOKEN"] = token.safe_display_value()
+        return AgentRunPrepareResult(
+            preamble_lines=(_format_claude_preamble_line(self, requested_account),),
+            env_overrides={"CLAUDE_CODE_OAUTH_TOKEN": token.token},
+            env_display_overrides=env_display_overrides,
         )
 
     def account_status(
