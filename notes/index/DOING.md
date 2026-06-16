@@ -1,3 +1,0 @@
-## File edition
-- there is any strong library for file edition?
-- I mean, like vscode edition workflow...
