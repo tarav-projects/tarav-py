@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** remove active legacy "link" account-auth code and terminology from `agentos-py` after the account command surface moved to `materialize`; keep historical notes untouched unless they are active docs
-- **status:** proposed
+- **status:** implemented
 - **source:** 2026-06-15 `$hugentics-codebase-cleaner` request with `NO.LEGACY.CODE` after implementing `account_policy: "home-current"`
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/codex/account_registry.py`, `src/agentos/codex/account_reconcile.py`, `src/agentos/codex/agent.py`, `src/agentos/claude/account_registry.py`, `src/agentos/claude/account_reconcile.py`, `src/agentos/copilot/account_registry.py`, `src/agentos/codex/linking.py`, `src/agentos/agent/link_runtime.py`, `tests/`, `README.md`
@@ -136,3 +136,5 @@ uv run ruff check src/agentos tests
 ## Impl.Log
 
 - 2026-06-15: Created from codebase-cleaner scan. Scope is deliberately narrow: remove active legacy link naming and dead link runtime modules without broad account-auth redesign.
+- 2026-06-15: Implemented. Active provider account helpers now use `materialize_*_account_to_home`, legacy link runtime modules were removed, and active README examples use profile/materialize command names.
+- 2026-06-15: Verification passed: focused account/provider tests, active legacy-link search, `uv run pytest -q`, and `uv run ruff check src/agentos tests`.

@@ -215,7 +215,7 @@ def register_claude_account(
     return payload
 
 
-def link_claude_account_to_home(
+def materialize_claude_account_to_home(
     *,
     account: str,
     home: Path | None = None,
@@ -1123,7 +1123,7 @@ def _sync_known_homes_from_verified_artifact(
         if target_home == source_home:
             continue
         try:
-            payload = link_claude_account_to_home(
+            payload = materialize_claude_account_to_home(
                 home=target_home,
                 account=account,
                 argv=argv,
@@ -1160,7 +1160,7 @@ __all__ = [
     "ClaudeSecureStorageInfo",
     "claude_keychain_service_names",
     "inspect_claude_account_home",
-    "link_claude_account_to_home",
+    "materialize_claude_account_to_home",
     "load_claude_ambient_auth_for_account",
     "load_claude_oauth_token_for_account",
     "promote_verified_claude_ambient_auth_from_home",

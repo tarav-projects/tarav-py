@@ -26,7 +26,7 @@ from agentos.codex.account_registry import (
     CODEX_AUTH_KIND,
     CODEX_PROVIDER,
     inspect_codex_account_home,
-    link_codex_account_to_home,
+    materialize_codex_account_to_home,
     promote_verified_codex_auth_from_home,
     register_codex_account_from_auth_file,
 )
@@ -278,7 +278,7 @@ def _sync_codex_homes(
                 )
             )
             continue
-        payload = link_codex_account_to_home(
+        payload = materialize_codex_account_to_home(
             home=known_home.home,
             account=sync_account,
             record_event=False,

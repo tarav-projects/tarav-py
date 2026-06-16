@@ -17,7 +17,7 @@ from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.agent.providers import resolve_agent_config
 from agentos.codex.account_registry import (
     inspect_codex_account_home,
-    link_codex_account_to_home,
+    materialize_codex_account_to_home,
     read_codex_auth_info,
     register_codex_account_from_auth_file,
 )
@@ -220,7 +220,7 @@ def test_profile_account_materialization_uses_profile_account(
     write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
     register_codex_account_from_auth_file(auth_file=br_auth, account="br")
     register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
-    link_codex_account_to_home(home=home, account="br")
+    materialize_codex_account_to_home(home=home, account="br")
     environment.write_global_config(agent={"providers": _provider_configs()})
     environment.write_profile(
         "codex-mm",

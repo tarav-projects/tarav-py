@@ -8,7 +8,7 @@ import pytest
 import agentos.claude.account_registry as claude_account_registry
 from agentos._core.errors import CliError
 from agentos.claude.account_registry import (
-    link_claude_account_to_home,
+    materialize_claude_account_to_home,
     promote_verified_claude_ambient_auth_from_home,
     register_claude_account,
     register_claude_ambient_auth_from_home,
@@ -169,7 +169,7 @@ def test_claude_link_materializes_active_ambient_artifact(
         account="browser-br",
     )
 
-    payload = link_claude_account_to_home(home=target_home, account="browser-br")
+    payload = materialize_claude_account_to_home(home=target_home, account="browser-br")
 
     assert payload["kind"] == "artifact"
     assert payload["artifact_id"] == registered["auth"]["artifact_id"]
@@ -196,4 +196,4 @@ def test_claude_link_rejects_target_identity_mismatch_without_force(
     register_claude_ambient_auth_from_home(home=source_home, account="browser-br")
 
     with pytest.raises(CliError, match="without --force"):
-        link_claude_account_to_home(home=target_home, account="browser-br")
+        materialize_claude_account_to_home(home=target_home, account="browser-br")

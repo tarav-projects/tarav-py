@@ -207,7 +207,7 @@ def prepare_codex_run(
 
     from agentos.codex.account_registry import (
         inspect_codex_account_home,
-        link_codex_account_to_home,
+        materialize_codex_account_to_home,
     )
 
     status = inspect_codex_account_home(home=agent.home)
@@ -237,7 +237,7 @@ def prepare_codex_run(
         if _status_classification(status) != "matching-active":
             if dry_run:
                 return (_format_codex_preflight_line("would materialize", agent, requested_account),)
-            payload = link_codex_account_to_home(
+            payload = materialize_codex_account_to_home(
                 home=agent.home,
                 account=requested_account,
                 record_event=False,
@@ -247,7 +247,7 @@ def prepare_codex_run(
         if home_account != requested_account:
             if dry_run:
                 return (_format_codex_preflight_line("would materialize", agent, requested_account),)
-            payload = link_codex_account_to_home(
+            payload = materialize_codex_account_to_home(
                 home=agent.home,
                 account=requested_account,
                 record_event=False,

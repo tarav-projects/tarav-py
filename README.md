@@ -84,8 +84,8 @@ Quick examples:
 ```sh
 agentos agent list
 agentos agent list --project
-agentos agent run --provider codex --instance work -- "inspect this repo"
-agentos agent run --provider codex --instance work --project /path/to/repo --cwd /tmp/work -- "do the task"
+agentos agent run --profile work -- "inspect this repo"
+agentos agent run --profile work --project /path/to/repo --cwd /tmp/work -- "do the task"
 ```
 
 ### Agent Accounts
@@ -97,7 +97,7 @@ Codex accounts are file-backed:
 
 ```sh
 agentos agent accounts register --provider codex --account br --auth-file ~/.codex-br/auth.json
-agentos agent accounts link --provider codex --account br --home ~/.codex
+agentos agent accounts materialize --provider codex --account br --home ~/.codex
 agentos agent accounts status --provider codex --home ~/.codex
 ```
 

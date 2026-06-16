@@ -27,7 +27,7 @@ from agentos.claude.account_registry import (
     CLAUDE_AUTH_KIND,
     CLAUDE_PROVIDER,
     inspect_claude_account_home,
-    link_claude_account_to_home,
+    materialize_claude_account_to_home,
     promote_verified_claude_ambient_auth_from_home,
     register_claude_ambient_auth_from_home,
 )
@@ -502,7 +502,7 @@ def _sync_claude_homes(
                 )
             )
             continue
-        payload = link_claude_account_to_home(
+        payload = materialize_claude_account_to_home(
             home=known_home.home,
             account=sync_account,
             argv=request.argv,

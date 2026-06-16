@@ -59,7 +59,7 @@ def register_copilot_account(
     }
 
 
-def link_copilot_account_to_home(
+def materialize_copilot_account_to_home(
     *,
     account: str,
     home: Path,
@@ -104,4 +104,4 @@ def _string_or_none(value: object) -> str | None:
     return None
 
 
-__all__ = ["link_copilot_account_to_home", "register_copilot_account"]
+__all__ = ["materialize_copilot_account_to_home", "register_copilot_account"]

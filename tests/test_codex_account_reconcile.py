@@ -13,7 +13,7 @@ from agentos.codex.account_registry import (
     inspect_codex_account_home,
     read_codex_auth_info,
     register_codex_account_from_auth_file,
-    link_codex_account_to_home,
+    materialize_codex_account_to_home,
     promote_verified_codex_auth_from_home,
 )
 from agentos.codex.account_reconcile import (
@@ -53,7 +53,7 @@ def test_codex_reconcile_registers_fresh_known_home_without_activating(
         [{"id": "codex-br", "provider": "codex", "homes": [str(configured_home)]}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
-    link_codex_account_to_home(home=system_home, account="br")
+    materialize_codex_account_to_home(home=system_home, account="br")
     fresh_info = read_codex_auth_info(configured_home / "auth.json")
 
     payload = reconcile_codex_accounts(start_path=tmp_path)
@@ -118,7 +118,7 @@ def test_codex_reconcile_does_not_activate_older_stale_system_auth(
         stale_auth, codex_auth_json(account_id="acc_br", email="stale@example.com")
     )
     register_codex_account_from_auth_file(auth_file=active_auth, account="br")
-    link_codex_account_to_home(home=system_home, account="br")
+    materialize_codex_account_to_home(home=system_home, account="br")
     write_text_file(system_home / "auth.json", stale_auth.read_text(encoding="utf-8"))
     active_info = read_codex_auth_info(active_auth)
 
@@ -229,7 +229,7 @@ def test_codex_reconcile_activates_verified_artifact_and_syncs_stale_home(
         [{"id": "codex-br", "provider": "codex", "homes": [str(configured_home)]}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
-    link_codex_account_to_home(home=system_home, account="br")
+    materialize_codex_account_to_home(home=system_home, account="br")
     registered = register_codex_account_from_auth_file(
         auth_file=configured_home / "auth.json",
         account="br",
@@ -381,7 +381,7 @@ def test_codex_account_status_runs_reconciliation_before_usage(
         [{"id": "codex-br", "provider": "codex", "homes": [str(configured_home)]}]
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
-    link_codex_account_to_home(home=system_home, account="br")
+    materialize_codex_account_to_home(home=system_home, account="br")
     system_info = read_codex_auth_info(system_home / "auth.json")
 
     monkeypatch.setattr(

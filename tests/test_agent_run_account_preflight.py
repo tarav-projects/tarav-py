@@ -12,7 +12,7 @@ from agentos.agent.run_runtime import AgentRunResult
 from agentos.claude.account_registry import register_claude_account
 from agentos.codex.account_registry import (
     inspect_codex_account_home,
-    link_codex_account_to_home,
+    materialize_codex_account_to_home,
     read_codex_auth_info,
     register_codex_account_from_auth_file,
 )
@@ -293,7 +293,7 @@ def test_agent_run_materializes_when_explicit_account_differs_from_home_auth(
     write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
     register_codex_account_from_auth_file(auth_file=br_auth, account="br")
     register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
-    link_codex_account_to_home(home=home, account="br")
+    materialize_codex_account_to_home(home=home, account="br")
     environment.write_global_config(agent={"providers": _provider_configs()})
     environment.write_profiles(
         [_codex_profile(home, profile_id="codex-br", accounts=["br", "mm"])]
@@ -325,7 +325,7 @@ def test_agent_run_home_current_uses_allowed_current_codex_home_without_material
     write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
     register_codex_account_from_auth_file(auth_file=br_auth, account="br")
     register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
-    link_codex_account_to_home(home=home, account="br")
+    materialize_codex_account_to_home(home=home, account="br")
     br_info = read_codex_auth_info(home / "auth.json")
     environment.write_global_config(agent={"providers": _provider_configs()})
     environment.write_profiles(
@@ -389,7 +389,7 @@ def test_agent_run_home_current_rejects_current_codex_home_auth_outside_profile_
     write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
     register_codex_account_from_auth_file(auth_file=br_auth, account="br")
     register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
-    link_codex_account_to_home(home=home, account="br")
+    materialize_codex_account_to_home(home=home, account="br")
     environment.write_global_config(agent={"providers": _provider_configs()})
     environment.write_profiles(
         [
@@ -420,7 +420,7 @@ def test_agent_run_home_current_explicit_account_still_materializes(
     write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
     register_codex_account_from_auth_file(auth_file=br_auth, account="br")
     register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
-    link_codex_account_to_home(home=home, account="mm")
+    materialize_codex_account_to_home(home=home, account="mm")
     environment.write_global_config(agent={"providers": _provider_configs()})
     environment.write_profiles(
         [
@@ -471,7 +471,7 @@ def _make_stale_profile_home(
         ).replace("2026-05-12T17:00:07Z", "2026-05-23T17:00:07Z"),
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account=account)
-    link_codex_account_to_home(home=home, account=account)
+    materialize_codex_account_to_home(home=home, account=account)
     register_codex_account_from_auth_file(auth_file=active_auth, account=account)
     return old_auth, active_auth
 
