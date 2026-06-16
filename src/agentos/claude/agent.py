@@ -60,9 +60,8 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
         return load_claude_session(session_ref)
 
     def _build_command(self, command_config: AgentCommandConfig) -> AgentCommand:
-        effective_config = self._claude_command_config(command_config)
         return self._build_command_with_env(
-            effective_config,
+            command_config,
             env_overrides=self._run_env_overrides(),
         )
 
@@ -86,7 +85,7 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
             print(line)
 
         command = self._build_command_with_env(
-            self._claude_command_config(command_config),
+            command_config,
             env_overrides={
                 **self._run_env_overrides(),
                 **prepare_result.env_overrides,
@@ -119,7 +118,7 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
 
         from agentos.agent.run_runtime import agent_command_with_env_overrides
         base_command = self._build_command_with_env(
-            self._claude_command_config(command_config),
+            command_config,
             env_overrides=self._run_env_overrides(),
         )
         command = agent_command_with_env_overrides(
@@ -200,19 +199,6 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
             )
         except CliError:
             return
-
-    def _claude_command_config(self, command_config: AgentCommandConfig) -> AgentCommandConfig:
-        if command_config.interaction_mode != "non_interactive":
-            return command_config
-        extra_argv = ("--dangerously-skip-permissions",)
-        return AgentCommandConfig(
-            prompt=command_config.prompt,
-            argv=extra_argv + command_config.argv,
-            model=command_config.model,
-            account=command_config.account,
-            interaction_mode=command_config.interaction_mode,
-            credential_success_source=command_config.credential_success_source,
-        )
 
     def _run_env_overrides(self) -> dict[str, str]:
         env_overrides = dict(self.env)

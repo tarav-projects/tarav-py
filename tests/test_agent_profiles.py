@@ -11,16 +11,24 @@ from agentos.agent.commands import (
     _cmd_agent_run,
     register_agent_commands,
 )
+from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.config import load_agent_configs, profile_path, write_agent_profile
 from agentos.agent.primitives import AgentConfig
+from agentos.agent.run_prepare import AgentRunPrepareRequest
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.agent.providers import resolve_agent_config
+import agentos.claude.account_registry as claude_account_registry
+from agentos.claude.agent import ClaudeAgent
+from agentos.claude.account_registry import ClaudeOAuthTokenMaterialization
+from agentos.codex.agent import CodexAgent
 from agentos.codex.account_registry import (
     inspect_codex_account_home,
     materialize_codex_account_to_home,
     read_codex_auth_info,
     register_codex_account_from_auth_file,
 )
+from agentos.copilot.agent import CopilotAgent
+from agentos.pi.agent import PiAgent
 from agentos.testing import AgentosTestEnvironment
 
 from _helpers import (
@@ -29,6 +37,17 @@ from _helpers import (
     read_jsonl_file,
     write_text_file,
 )
+
+
+HARNESS_INJECTED_ENV_ALLOWLIST = {
+    "codex": {"CODEX_HOME"},
+    "claude-code": {"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN"},
+    "copilot-cli": {"COPILOT_HOME"},
+    "pi": set(),
+    "gemini-cli": set(),
+    "opencode": set(),
+    "openclaw": set(),
+}
 
 
 def test_profile_file_loads_complete_agent_config(
@@ -163,6 +182,118 @@ def test_agent_run_account_short_option_parses() -> None:
 
     assert args.account == "mm"
     assert args.profile == "codex-main"
+
+
+@pytest.mark.parametrize(
+    ("provider", "agent_cls"),
+    [
+        ("codex", CodexAgent),
+        ("claude-code", ClaudeAgent),
+        ("copilot-cli", CopilotAgent),
+        ("pi", PiAgent),
+    ],
+)
+def test_minimal_command_env_only_contains_harness_injected_allowlist(
+    tmp_path: Path,
+    provider: str,
+    agent_cls: type,
+) -> None:
+    agent = agent_cls.from_config(
+        AgentConfig(
+            provider=provider,
+            profile_id=f"{provider}-minimal",
+            home=tmp_path / provider,
+            cli_command=("/bin/echo",),
+        )
+    )
+
+    command = agent._build_command(AgentCommandConfig(prompt="hello"))
+
+    assert set(command.env_overrides) <= HARNESS_INJECTED_ENV_ALLOWLIST[provider]
+
+
+def test_profile_env_is_config_injected_not_harness_injected(tmp_path: Path) -> None:
+    agent = CodexAgent.from_config(
+        AgentConfig(
+            provider="codex",
+            profile_id="codex-config-env",
+            home=tmp_path / "codex-home",
+            cli_command=("/bin/echo",),
+            env=(("AGENTOS_TEST_CONFIG_ENV", "1"),),
+        )
+    )
+
+    command = agent._build_command(AgentCommandConfig(prompt="hello"))
+
+    assert command.env_overrides["AGENTOS_TEST_CONFIG_ENV"] == "1"
+    harness_env = set(command.env_overrides) - {"AGENTOS_TEST_CONFIG_ENV"}
+    assert harness_env <= HARNESS_INJECTED_ENV_ALLOWLIST["codex"]
+
+
+def test_claude_managed_credential_env_is_harness_injected(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        claude_account_registry,
+        "has_claude_oauth_token_kind",
+        lambda account: account == "browser-token",
+    )
+    monkeypatch.setattr(
+        claude_account_registry,
+        "load_claude_oauth_token_for_account",
+        lambda account: ClaudeOAuthTokenMaterialization(
+            account=account,
+            artifact_id="a" * 64,
+            token="secret-token",
+            artifact_file="token.txt",
+        ),
+    )
+    agent = ClaudeAgent.from_config(
+        AgentConfig(
+            provider="claude-code",
+            profile_id="claude-token",
+            home=tmp_path / "claude-home",
+            cli_command=("/bin/echo",),
+            account=AgentAccountContext(
+                provider="claude-code",
+                account="browser-token",
+            ),
+        )
+    )
+
+    prepare_result = agent.prepare_run(
+        AgentRunPrepareRequest(
+            agent=agent,
+            command_config=AgentCommandConfig(prompt="hello"),
+            start_path=tmp_path,
+            dry_run=False,
+            source="agent.run",
+        )
+    )
+
+    assert prepare_result.env_overrides == {
+        "CLAUDE_CODE_OAUTH_TOKEN": "secret-token"
+    }
+    assert set(prepare_result.env_overrides) <= HARNESS_INJECTED_ENV_ALLOWLIST[
+        "claude-code"
+    ]
+
+
+def test_claude_non_interactive_does_not_author_permission_policy() -> None:
+    agent = ClaudeAgent.from_config(
+        AgentConfig(
+            provider="claude-code",
+            profile_id="claude-non-interactive",
+            cli_command=("/bin/echo",),
+        )
+    )
+
+    command = agent._build_command(
+        AgentCommandConfig(prompt="hello", interaction_mode="non_interactive")
+    )
+
+    assert "--dangerously-skip-permissions" not in command.argv
 
 
 def test_profile_home_override_must_be_in_profile_homes(

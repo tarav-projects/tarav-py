@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** add a tested `Harness.Injected.ENV` allowlist for agent command construction, classify profile env as `Config.Injected.ENV`, and move any current non-allowlisted hardcoded run-affecting env values out of provider code and into explicit profile/config surfaces
-- **status:** proposed
+- **status:** implemented
 - **source:** 2026-06-16 design alignment after adding `Harness.Injected.ENV` and `Config.Injected.ENV` to the Agentos index; user request: "profiles + args, no hidden config" and "any other non HARNESS_INJECTED_ENV_ALLOWLIST env variable currently hardcode, move them to profiles"
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/claude/agent.py`, `src/agentos/codex/agent.py`, `src/agentos/copilot/agent.py`, `src/agentos/claude/account_status.py`, `tests/test_agent_profiles.py`, `tests/test_agent_run_account_preflight.py`, optional local profiles under `~/.agentos/profiles`
@@ -203,3 +203,4 @@ uv run pytest tests/test_claude_account_status.py tests/test_agent_profiles.py -
 ## Impl.Log
 
 - 2026-06-16: Created from design alignment around `Harness.Injected.ENV` / `Config.Injected.ENV`. Current evidence identifies `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_OAUTH_TOKEN`, and `COPILOT_HOME` as harness env, and two Claude account-status disable env values as non-allowlisted hidden policy env.
+- 2026-06-16: Executed in Autonomous mode. Decision: keep the two Claude disable-policy env values for local Claude profiles by declaring them in profile `env`; this preserves local statusline behavior as `Config.Injected.ENV`. Decision: remove the Claude non-interactive hidden `--dangerously-skip-permissions` injection in this implementation because the change was local and covered by focused tests; local Claude profiles carry that permission policy explicitly where desired. Validation note: full `uv run pytest -q` passed; full `uv run ruff check .` remains blocked by pre-existing `_DEPRECATED/` and `dev/account-usage.py` lint errors, while scoped `uv run ruff check src/agentos/claude tests` passed.

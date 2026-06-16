@@ -20,6 +20,29 @@ from agentos.testing import AgentosTestEnvironment
 from _helpers import read_json_file, read_jsonl_file, write_claude_home
 
 
+def test_claude_statusline_env_does_not_author_policy_env() -> None:
+    env = claude_account_status._claude_statusline_process_environment(
+        {"CLAUDE_CONFIG_DIR": "/tmp/claude-home"}
+    )
+
+    assert env["CLAUDE_CONFIG_DIR"] == "/tmp/claude-home"
+    assert "CLAUDE_CODE_DISABLE_AUTO_MEMORY" not in env
+    assert "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" not in env
+
+
+def test_claude_statusline_env_preserves_config_declared_policy_env() -> None:
+    env = claude_account_status._claude_statusline_process_environment(
+        {
+            "CLAUDE_CONFIG_DIR": "/tmp/claude-home",
+            "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "configured",
+        }
+    )
+
+    assert env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "0"
+    assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "configured"
+
+
 def test_claude_account_status_success_refreshes_ambient_auth_artifact(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

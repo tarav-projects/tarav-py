@@ -1388,8 +1388,6 @@ def _claude_statusline_process_environment(env_overrides: Mapping[str, str]) -> 
         if _allow_claude_statusline_parent_env(key)
     }
     env.update(env_overrides)
-    env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
-    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
     return env
 
 
