@@ -178,6 +178,11 @@ def _resolve_agent_run_target(args: argparse.Namespace) -> tuple[AgentConfig, Pa
         start_path=config_start_path,
         home=args.home,
     )
+    if agent.profile_id is None:
+        raise CliError(
+            "provider command runtime requires --profile; "
+            "--provider/--home default runtime is disabled"
+        )
     if not isinstance(agent, RunCapable):
         raise CliError(f"provider {agent.provider} does not support run")
     return agent, cwd
@@ -767,7 +772,7 @@ def _add_agent_run_target_args(
     parser.add_argument(
         "--profile",
         default=None,
-        help="Configured agent profile id. Optional when provider resolution is unambiguous.",
+        help="Configured agent profile id.",
     )
     parser.add_argument(
         "--home",

@@ -279,10 +279,16 @@ def test_codex_reconcile_ping_verifies_successful_candidate(
         account="br",
         register_only=True,
     )
+    calls: list[dict[str, object]] = []
+
+    def fake_resolve_account_runtime_agent(**kwargs):
+        calls.append(kwargs)
+        return _FakePingAgent(home=Path(kwargs["home"]), stdout="745")
+
     monkeypatch.setattr(
         codex_account_reconcile,
-        "_build_registered_account_agent",
-        lambda **kwargs: _FakePingAgent(home=Path(kwargs["home"]), stdout="745"),
+        "resolve_account_runtime_agent",
+        fake_resolve_account_runtime_agent,
     )
 
     payload = reconcile_codex_accounts(start_path=tmp_path, ping=True)
@@ -300,6 +306,15 @@ def test_codex_reconcile_ping_verifies_successful_candidate(
         environment.agentos_home / "accounts" / "codex" / "verifications.jsonl"
     )
     assert verifications[-1]["source"] == "accounts.reconcile.ping"
+    assert calls == [
+        {
+            "provider": "codex",
+            "account": "br",
+            "home": home,
+            "profile": "codex-br",
+            "start_path": tmp_path,
+        }
+    ]
 
 
 def test_codex_reconcile_check_ping_does_not_run_provider(
@@ -319,13 +334,13 @@ def test_codex_reconcile_check_ping_does_not_run_provider(
         register_only=True,
     )
 
-    def fail_build_registered_account_agent(**kwargs):
+    def fail_resolve_account_runtime_agent(**kwargs):
         raise AssertionError("check ping must not build a live agent")
 
     monkeypatch.setattr(
         codex_account_reconcile,
-        "_build_registered_account_agent",
-        fail_build_registered_account_agent,
+        "resolve_account_runtime_agent",
+        fail_resolve_account_runtime_agent,
     )
 
     payload = reconcile_codex_accounts(start_path=tmp_path, ping=True, check=True)

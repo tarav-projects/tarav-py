@@ -62,8 +62,9 @@ def load_monitor_workflow_configs(
     *, start_path: Path | str = "."
 ) -> tuple[MonitorWorkflowConfig, ...]:
     configs: list[MonitorWorkflowConfig] = []
+    resolved_start_path = Path(start_path).expanduser().resolve()
     loaded_at = datetime.datetime.now(tz=datetime.UTC).isoformat()
-    config_documents = load_chat_config_documents(start_path=start_path)
+    config_documents = load_chat_config_documents(start_path=resolved_start_path)
     fingerprint = _config_documents_fingerprint(config_documents)
     for config_document in config_documents:
         for entry in agent_config_entries_from_config(
@@ -118,6 +119,7 @@ def load_monitor_workflow_configs(
                     if workflow_name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
                     else None,
                     raw_config=dict(raw_config),
+                    start_path=resolved_start_path,
                     loaded_at=loaded_at,
                     config_fingerprint=fingerprint,
                 )

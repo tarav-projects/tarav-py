@@ -264,10 +264,16 @@ def test_claude_reconcile_ping_verifies_successful_candidate(
         ]
     )
     register_claude_account(account="browser-br", email="br@example.com")
+    calls: list[dict[str, object]] = []
+
+    def fake_resolve_account_runtime_agent(**kwargs):
+        calls.append(kwargs)
+        return _FakePingAgent(home=Path(kwargs["home"]), stdout="745")
+
     monkeypatch.setattr(
         claude_account_reconcile,
-        "build_registered_account_agent",
-        lambda **kwargs: _FakePingAgent(home=Path(kwargs["home"]), stdout="745"),
+        "resolve_account_runtime_agent",
+        fake_resolve_account_runtime_agent,
     )
 
     payload = reconcile_claude_accounts(start_path=tmp_path, ping=True)
@@ -286,6 +292,15 @@ def test_claude_reconcile_ping_verifies_successful_candidate(
         environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
     )
     assert verifications[-1]["source"] == "accounts.reconcile.ping"
+    assert calls == [
+        {
+            "provider": "claude-code",
+            "account": "browser-br",
+            "home": home,
+            "profile": "claude-br",
+            "start_path": tmp_path,
+        }
+    ]
 
 
 def test_claude_reconcile_check_ping_does_not_run_provider(
@@ -309,13 +324,13 @@ def test_claude_reconcile_check_ping_does_not_run_provider(
     )
     register_claude_account(account="browser-br", email="br@example.com")
 
-    def fail_build_registered_account_agent(**kwargs):
+    def fail_resolve_account_runtime_agent(**kwargs):
         raise AssertionError("check ping must not build a live agent")
 
     monkeypatch.setattr(
         claude_account_reconcile,
-        "build_registered_account_agent",
-        fail_build_registered_account_agent,
+        "resolve_account_runtime_agent",
+        fail_resolve_account_runtime_agent,
     )
 
     payload = reconcile_claude_accounts(start_path=tmp_path, ping=True, check=True)

@@ -10,6 +10,7 @@ from agentos.agent.primitives import (
     AgentConfig,
 )
 from agentos.agent.profile_scope import select_allowed_home
+from agentos.agent.profile_scope import validate_account_override
 from agentos.agent.config import (
     AgentProviderConfig,
     agent_config_with_provider_config,
@@ -60,11 +61,12 @@ def agent_from_config(config: AgentConfig) -> AgentConfig:
     raise CliError(f"unsupported configured agent provider {config.provider}")
 
 
-def build_registered_account_agent(
+def resolve_account_runtime_agent(
     *,
     provider: str,
     account: str,
     home: Path | str,
+    profile: str | None,
     start_path: Path | str = ".",
 ) -> AgentConfig:
     account_record = load_account(provider, account)
@@ -72,13 +74,59 @@ def build_registered_account_agent(
         provider=str(account_record["provider"]),
         account=str(account_record["account"]),
     )
-    provider_configs = load_agent_provider_configs(start_path=start_path)
-    config = _default_registered_account_agent_config(
+    selected_profile = profile
+    if selected_profile is None:
+        selected_profile = _infer_account_runtime_profile(
+            provider=account_context.provider,
+            account=account_context.account,
+            home=home,
+            start_path=start_path,
+        )
+    config = resolve_agent_config(
         provider=account_context.provider,
+        profile=selected_profile,
+        start_path=Path(start_path),
         home=home,
-        provider_configs=provider_configs,
+    )
+    validate_account_override(
+        profile_id=config.profile_id or "<default>",
+        allowed_accounts=config.accounts,
+        account=account_context.account,
     )
     return agent_from_config(replace(config, account=account_context))
+
+
+def _infer_account_runtime_profile(
+    *,
+    provider: str,
+    account: str,
+    home: Path | str,
+    start_path: Path | str,
+) -> str:
+    normalized_home = Path(home).expanduser().resolve()
+    matches = [
+        config
+        for config in load_agent_configs(start_path=start_path)
+        if config.provider == provider
+        and any(path.expanduser().resolve() == normalized_home for path in config.homes)
+        and any(context.account == account for context in config.accounts)
+    ]
+    if len(matches) == 1:
+        profile_id = matches[0].profile_id
+        if profile_id is not None:
+            return profile_id
+    if not matches:
+        raise CliError(
+            "provider command runtime requires --profile or exactly one configured "
+            f"profile matching {provider}/{account} at {normalized_home}"
+        )
+    profile_ids = ", ".join(
+        sorted(config.profile_id or "<default>" for config in matches)
+    )
+    raise CliError(
+        f"provider command runtime for {provider}/{account} at {normalized_home} "
+        f"matches multiple profiles: {profile_ids}; pass --profile"
+    )
 
 
 def _default_registered_account_agent_config(
@@ -173,9 +221,9 @@ def _profile_config_with_home_selection(
 
 __all__ = [
     "agent_from_config",
-    "build_registered_account_agent",
     "load_configured_agents",
     "resolve_agent",
+    "resolve_account_runtime_agent",
     "resolve_agent_config",
     "supported_default_run_provider_families",
 ]

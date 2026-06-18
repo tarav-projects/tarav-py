@@ -68,6 +68,7 @@ class MonitorWorkflowConfig:
     targets: tuple[MonitorTarget, ...]
     refresh_interval_sec: float
     raw_config: dict[str, object]
+    start_path: Path | None = None
     target_limit_ids: dict[str, tuple[str, ...]] = field(default_factory=dict)
     triggers: dict[str, tuple[str, ...]] = field(default_factory=dict)
     retry_cooldown_sec: float | None = None

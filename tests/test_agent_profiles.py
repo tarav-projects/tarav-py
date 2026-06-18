@@ -21,10 +21,10 @@ from agentos.agent.run_runtime import (
     AgentCommandConfig,
     AgentRunConfig,
 )
-from agentos.agent.providers import resolve_agent_config
+from agentos.agent.providers import resolve_account_runtime_agent, resolve_agent_config
 import agentos.claude.account_registry as claude_account_registry
 from agentos.claude.agent import ClaudeAgent
-from agentos.claude.account_registry import ClaudeOAuthTokenMaterialization
+from agentos.claude.account_registry import ClaudeOAuthTokenMaterialization, register_claude_account
 from agentos.codex.agent import CodexAgent
 from agentos.codex.account_registry import (
     inspect_codex_account_home,
@@ -154,6 +154,171 @@ def test_profile_resolution_does_not_require_provider_and_asserts_provider(
         )
     with pytest.raises(CliError, match="--home is required"):
         resolve_agent_config(provider="codex", profile=None, start_path=tmp_path)
+
+
+def test_account_runtime_agent_uses_profile_env_and_account_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "claude-br"
+    register_claude_account(account="browser-br", email="br@example.com")
+    environment.write_profile(
+        "claude-br",
+        provider="claude-code",
+        cli_command=["/bin/echo"],
+        homes=[str(home)],
+        accounts=["browser-br"],
+        run_args=["--dangerously-skip-permissions"],
+        env={
+            "DISABLE_AUTOUPDATER": "1",
+            "DISABLE_UPDATES": "1",
+        },
+    )
+
+    agent = resolve_account_runtime_agent(
+        provider="claude-code",
+        account="browser-br",
+        home=home,
+        profile="claude-br",
+        start_path=tmp_path,
+    )
+
+    assert agent.profile_id == "claude-br"
+    assert agent.account == AgentAccountContext(
+        provider="claude-code",
+        account="browser-br",
+    )
+    assert agent.cli_command == ("/bin/echo",)
+    assert agent.run_args == ("--dangerously-skip-permissions",)
+    assert dict(agent.env) == {
+        "DISABLE_AUTOUPDATER": "1",
+        "DISABLE_UPDATES": "1",
+    }
+
+
+def test_account_runtime_agent_rejects_profile_account_out_of_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "claude-br"
+    register_claude_account(account="browser-br", email="br@example.com")
+    environment.write_profile(
+        "claude-jp",
+        provider="claude-code",
+        homes=[str(home)],
+        accounts=["browser-jp"],
+    )
+
+    with pytest.raises(CliError, match="allows accounts: browser-jp"):
+        resolve_account_runtime_agent(
+            provider="claude-code",
+            account="browser-br",
+            home=home,
+            profile="claude-jp",
+            start_path=tmp_path,
+        )
+
+
+def test_account_runtime_agent_infers_unique_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-br"
+    auth_file = tmp_path / "auth.json"
+    write_text_file(auth_file, codex_auth_json(account_id="acc_br"))
+    register_codex_account_from_auth_file(auth_file=auth_file, account="br")
+    environment.write_profile(
+        "codex-br",
+        provider="codex",
+        homes=[str(home)],
+        accounts=["br"],
+        env={"AGENTOS_RUNTIME_TEST": "1"},
+    )
+
+    agent = resolve_account_runtime_agent(
+        provider="codex",
+        account="br",
+        home=home,
+        profile=None,
+        start_path=tmp_path,
+    )
+
+    assert agent.profile_id == "codex-br"
+    assert dict(agent.env) == {"AGENTOS_RUNTIME_TEST": "1"}
+    assert agent.account == AgentAccountContext(provider="codex", account="br")
+
+
+def test_account_runtime_agent_requires_unique_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-br"
+    auth_file = tmp_path / "auth.json"
+    write_text_file(auth_file, codex_auth_json(account_id="acc_br"))
+    register_codex_account_from_auth_file(auth_file=auth_file, account="br")
+    environment.write_profile(
+        "codex-br-a",
+        provider="codex",
+        homes=[str(home)],
+        accounts=["br"],
+    )
+    environment.write_profile(
+        "codex-br-b",
+        provider="codex",
+        homes=[str(home)],
+        accounts=["br"],
+    )
+
+    with pytest.raises(CliError, match="matches multiple profiles"):
+        resolve_account_runtime_agent(
+            provider="codex",
+            account="br",
+            home=home,
+            profile=None,
+            start_path=tmp_path,
+        )
+
+    with pytest.raises(CliError, match="requires --profile"):
+        resolve_account_runtime_agent(
+            provider="codex",
+            account="br",
+            home=tmp_path / "unconfigured",
+            profile=None,
+            start_path=tmp_path,
+        )
+
+
+def test_agent_run_rejects_provider_home_without_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+
+    with pytest.raises(CliError, match="requires --profile"):
+        _cmd_agent_run(
+            argparse.Namespace(
+                provider="codex",
+                profile=None,
+                home=str(tmp_path / "codex-home"),
+                account=None,
+                model=None,
+                project=None,
+                cwd=None,
+                argv=[],
+                prompt="hello",
+                non_interactive=False,
+                dry_run=True,
+            )
+        )
 
 
 def test_agent_run_account_short_option_parses() -> None:

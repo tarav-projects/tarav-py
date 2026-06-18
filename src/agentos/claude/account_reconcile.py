@@ -21,7 +21,6 @@ from agentos.agent.account_registry import (
     upsert_account,
 )
 from agentos.agent.config import load_agent_configs
-from agentos.agent.providers import build_registered_account_agent
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.claude.account_registry import (
     CLAUDE_AUTH_KIND,
@@ -40,6 +39,7 @@ class _KnownHome:
     home: Path
     source: str
     account: str | None = None
+    profile: str | None = None
     system_managed: bool = False
 
     def summary(self) -> dict[str, object]:
@@ -50,6 +50,8 @@ class _KnownHome:
         }
         if self.account is not None:
             payload["account"] = self.account
+        if self.profile is not None:
+            payload["profile"] = self.profile
         return payload
 
 
@@ -339,6 +341,7 @@ def _ping_verify_candidates(
                 _run_reconcile_ping(
                     account=account,
                     home=known_home.home,
+                    profile=known_home.profile,
                     start_path=request.start_path,
                 )
                 payload = promote_verified_claude_ambient_auth_from_home(
@@ -405,12 +408,14 @@ def _run_reconcile_ping(
     *,
     account: str,
     home: Path,
+    profile: str | None,
     start_path: Path | str,
 ) -> None:
-    agent = build_registered_account_agent(
+    agent = resolve_account_runtime_agent(
         provider=CLAUDE_PROVIDER,
         account=account,
         home=home,
+        profile=profile,
         start_path=start_path,
     )
     if not agent.ping.enabled:
@@ -429,6 +434,12 @@ def _run_reconcile_ping(
         AgentRunConfig(cwd=Path.cwd().resolve(), process_mode="capture"),
     )
     _validate_reconcile_ping_result(result, expected_number=agent.ping.expected_number)
+
+
+def resolve_account_runtime_agent(**kwargs):
+    from agentos.agent.providers import resolve_account_runtime_agent as resolve_agent
+
+    return resolve_agent(**kwargs)
 
 
 def _validate_reconcile_ping_result(result, *, expected_number: int | None) -> None:
@@ -557,6 +568,7 @@ def _configured_homes(start_path: Path | str) -> tuple[_KnownHome, ...]:
                     home=home.expanduser().resolve(),
                     source="configured",
                     account=config.account.account if config.account is not None else None,
+                    profile=config.profile_id,
                 )
             )
     return tuple(homes)
@@ -589,6 +601,7 @@ def _add_known_home(homes: dict[str, _KnownHome], known_home: _KnownHome) -> Non
         home=normalized_home,
         source=known_home.source,
         account=known_home.account,
+        profile=known_home.profile,
         system_managed=known_home.system_managed,
     )
     if existing is None:
@@ -600,8 +613,19 @@ def _add_known_home(homes: dict[str, _KnownHome], known_home: _KnownHome) -> Non
             sorted(set(existing.source.split(",") + candidate.source.split(",")))
         ),
         account=existing.account or candidate.account,
+        profile=_merge_optional_profile(existing.profile, candidate.profile),
         system_managed=existing.system_managed or candidate.system_managed,
     )
+
+
+def _merge_optional_profile(left: str | None, right: str | None) -> str | None:
+    if left == right:
+        return left
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return None
 
 
 def _inspect_known_home(known_home: _KnownHome) -> tuple[_KnownHome, dict[str, object]]:

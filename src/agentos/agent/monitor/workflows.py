@@ -62,7 +62,7 @@ from agentos.agent.monitor.models import (
     MonitorUsageTimeRow,
     MonitorWorkflowConfig,
 )
-from agentos.agent.providers import build_registered_account_agent
+from agentos.agent.providers import resolve_account_runtime_agent
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.agent.usage_registry import latest_usage_record
 from agentos.claude.account_status import (
@@ -234,7 +234,7 @@ class LimitsTrackingWorkflow:
         existing = target_states.get(target_key)
         if isinstance(existing, dict):
             return existing
-        target_state = _new_target_state(target)
+        target_state = _new_target_state(target, start_path=self.config.start_path)
         target_states[target_key] = target_state
         return target_state
 
@@ -246,8 +246,12 @@ class LimitsTrackingWorkflow:
         tick: int,
     ) -> None:
         try:
-            agent = build_registered_account_agent(
-                provider=target.provider, account=target.account, home=target.home
+            agent = resolve_account_runtime_agent(
+                provider=target.provider,
+                account=target.account,
+                home=target.home,
+                profile=target.profile,
+                start_path=_runtime_start_path(self.config.start_path),
             )
             account_status = agent.account_status()
         except Exception as exc:
@@ -1037,6 +1041,7 @@ def _merge_limits_tracking_configs(
         name=LIMITS_TRACKING_WORKFLOW,
         targets=tuple(targets),
         refresh_interval_sec=refresh_interval_sec,
+        start_path=configs[0].start_path,
         loaded_at=configs[0].loaded_at,
         config_fingerprint=configs[0].config_fingerprint,
         raw_config={
@@ -1081,6 +1086,7 @@ def _merge_auto_prime_configs(
         name=AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
         targets=tuple(targets),
         refresh_interval_sec=interval_sec,
+        start_path=configs[0].start_path,
         retry_cooldown_sec=retry_cooldown_sec,
         target_limit_ids=target_limit_ids,
         triggers=triggers,
@@ -1101,14 +1107,21 @@ def _target_key(target: MonitorTarget) -> str:
     return f"{target.provider}/{target.account}@{target.home}"
 
 
-def _new_target_state(target: MonitorTarget) -> dict[str, object]:
-    return {
+def _new_target_state(
+    target: MonitorTarget, *, start_path: Path | None = None
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "provider": target.provider,
         "account": target.account,
         "home": str(target.home),
         "status": "pending",
         "refresh_count": 0,
     }
+    if target.profile is not None:
+        payload["profile"] = target.profile
+    if start_path is not None:
+        payload["start_path"] = str(start_path)
+    return payload
 
 
 def _target_refresh_count(target_state: dict[str, object]) -> int:
@@ -1116,6 +1129,12 @@ def _target_refresh_count(target_state: dict[str, object]) -> int:
     if isinstance(count, int):
         return count
     return 0
+
+
+def _runtime_start_path(start_path: Path | None) -> Path:
+    if start_path is not None:
+        return start_path
+    return Path.cwd().resolve()
 
 
 def _usage_record_source_for_target(target: MonitorTarget) -> str | None:
@@ -2075,10 +2094,14 @@ def _run_account_prime_ping(source_target_state: dict[str, object]) -> None:
     provider = _required_target_string(source_target_state, "provider")
     account = _required_target_string(source_target_state, "account")
     home = Path(_required_target_string(source_target_state, "home"))
-    agent = build_registered_account_agent(
+    profile = _string_value(source_target_state.get("profile"))
+    start_path = Path(_string_value(source_target_state.get("start_path")) or ".")
+    agent = resolve_account_runtime_agent(
         provider=provider,
         account=account,
         home=home,
+        profile=profile,
+        start_path=start_path,
     )
     if not agent.ping.enabled:
         raise CliError(

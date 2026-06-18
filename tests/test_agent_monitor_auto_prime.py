@@ -203,6 +203,69 @@ def test_monitor_profile_target_rejects_unscoped_home(
         load_monitor_workflow_configs(start_path=tmp_path)
 
 
+def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeAccountStatus:
+        def summary(self) -> dict[str, object]:
+            return {
+                "limits": [],
+                "raw": {"profile_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
+            }
+
+    class FakeAgent:
+        def account_status(self) -> FakeAccountStatus:
+            return FakeAccountStatus()
+
+    def fake_resolve_account_runtime_agent(**kwargs) -> FakeAgent:
+        calls.append(kwargs)
+        return FakeAgent()
+
+    monkeypatch.setattr(
+        monitor_workflows,
+        "resolve_account_runtime_agent",
+        fake_resolve_account_runtime_agent,
+    )
+    home = tmp_path / "claude-br"
+    target = MonitorTarget(
+        provider="claude-code",
+        account="browser-br",
+        home=home,
+        profile="claude-br",
+    )
+    workflow = LimitsTrackingWorkflow(
+        MonitorWorkflowConfig(
+            name=LIMITS_TRACKING_WORKFLOW,
+            targets=(target,),
+            refresh_interval_sec=60,
+            raw_config={},
+            start_path=tmp_path,
+        )
+    )
+    target_state = workflow._target_state({}, target=target, target_key="target")
+
+    workflow._refresh_target(target_state, target=target, tick=7)
+
+    assert calls == [
+        {
+            "provider": "claude-code",
+            "account": "browser-br",
+            "home": home,
+            "profile": "claude-br",
+            "start_path": tmp_path,
+        }
+    ]
+    assert target_state["profile"] == "claude-br"
+    assert target_state["start_path"] == str(tmp_path)
+    assert target_state["account_status"] == {
+        "limits": [],
+        "raw": {"profile_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
+    }
+
+
 def _limit(
     *,
     used_percent: int,
@@ -837,7 +900,7 @@ def test_auto_prime_ping_records_claude_verified_auth_source(
     register_claude_account(account="browser-br", email="br@example.com")
     monkeypatch.setattr(
         monitor_workflows,
-        "build_registered_account_agent",
+        "resolve_account_runtime_agent",
         lambda **kwargs: _FakeClaudePrimeAgent(home=Path(kwargs["home"])),
     )
 
@@ -860,6 +923,44 @@ def test_auto_prime_ping_records_claude_verified_auth_source(
     assert verifications[-1]["source"] == "monitor.auto_prime"
 
 
+def test_auto_prime_ping_uses_profile_resolved_runtime_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[dict[str, object]] = []
+    home = tmp_path / "codex-br"
+
+    def fake_resolve_account_runtime_agent(**kwargs) -> _FakeCodexPrimeAgent:
+        calls.append(kwargs)
+        return _FakeCodexPrimeAgent(home=Path(kwargs["home"]))
+
+    monkeypatch.setattr(
+        monitor_workflows,
+        "resolve_account_runtime_agent",
+        fake_resolve_account_runtime_agent,
+    )
+
+    monitor_workflows._run_account_prime_ping(
+        {
+            "provider": "codex",
+            "account": "br",
+            "home": str(home),
+            "profile": "codex-br",
+            "start_path": str(tmp_path),
+        }
+    )
+
+    assert calls == [
+        {
+            "provider": "codex",
+            "account": "br",
+            "home": home,
+            "profile": "codex-br",
+            "start_path": tmp_path,
+        }
+    ]
+
+
 def test_auto_prime_ping_records_codex_verified_auth_source(
     monkeypatch,
     tmp_path: Path,
@@ -875,7 +976,7 @@ def test_auto_prime_ping_records_codex_verified_auth_source(
     )
     monkeypatch.setattr(
         monitor_workflows,
-        "build_registered_account_agent",
+        "resolve_account_runtime_agent",
         lambda **kwargs: _FakeCodexPrimeAgent(home=Path(kwargs["home"])),
     )
 
