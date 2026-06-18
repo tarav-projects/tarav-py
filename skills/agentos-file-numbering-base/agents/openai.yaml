@@ -1,4 +1,0 @@
-interface:
-  display_name: "agentos-file-numbering-base"
-  short_description: "Defines Agentos numeric file numbering."
-  default_prompt: "Use $agentos-file-numbering-base to define or review numeric filename protocols."

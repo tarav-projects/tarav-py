@@ -1,4 +1,0 @@
-interface:
-  display_name: "codebase-general-cleanup"
-  short_description: "Commit-first in-place code cleanup"
-  default_prompt: "Use $codebase-general-cleanup to improve this repository in place, making a safety commit before any edits and summarizing the changes at the end."

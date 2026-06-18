@@ -1,4 +1,0 @@
-interface:
-  display_name: "agentos-session-status"
-  short_description: "Reconnect with session state and todo list"
-  default_prompt: "Use $session-status to show the current session todo list and context so the user can reconnect quickly."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "agentos-skills-miner-ingenier"
-  short_description: "Mine sources to design better skills"
-  default_prompt: "Use $skills-miner-ingenier to mine relevant local and external sources, discuss the findings, and then create or upgrade the target skill when I say to apply them."

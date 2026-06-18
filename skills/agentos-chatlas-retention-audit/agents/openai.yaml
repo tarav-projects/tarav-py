@@ -1,4 +1,0 @@
-interface:
-  display_name: "agentos-chatlas-retention-audit"
-  short_description: "Audit Chatlas raw retention against provider homes and prior reports."
-  default_prompt: "Use $agentos-chatlas-retention-audit to compare previous reports, current provider-home artifacts, and Chatlas raw archive policy, then write a new raw-retention audit report."
