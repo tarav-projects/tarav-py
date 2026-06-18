@@ -1,11 +1,15 @@
 ---
 name: agentos-file-numbering-base
-description: Define, review, or extend Agentos numeric filename protocols and prefix allocation workflow. Use when adding a new numbered artifact type, checking which files determine the next `NNN-` prefix, deciding prefix floors or reserved ranges, or verifying whether gaps and renumbering are allowed.
+description: Define, review, or extend Agentos numeric filename protocols and prefix allocation workflow. USE WHEN adding a new numbered artifact type, checking which files determine the next `NNN-` prefix, deciding prefix floors or reserved ranges, or verifying whether gaps and renumbering are allowed.
 ---
 
 # Agentos File Numbering Base
 
 Minimal protocol for Agentos-managed numeric filename workflows.
+
+This is a `Batchy.Skill`. Load `agentos-skills-base` for the full convention.
+
+- `-h` / `--help` prints this skill's help into the chat instead of running; it takes no arguments.
 
 ## Scope
 

@@ -1,11 +1,15 @@
 ---
 name: agentos-live-note-base
-description: Define the live-note protocol for path and filename conventions. Use when the user mentions `live-note` or needs the canonical live-note location and numbering workflow. Uses `agentos` to allocate the next live-note prefix.
+description: Define the live-note protocol for path and filename conventions. USE WHEN the user mentions `live-note` or needs the canonical live-note location and numbering workflow. Uses `agentos` to allocate the next live-note prefix.
 ---
 
 # Agentos Live Note Base
 
 Minimal protocol for live notes.
+
+This is a `Batchy.Skill`. Load `agentos-skills-base` for the full convention.
+
+- `-h` / `--help` prints this skill's help into the chat instead of running; it takes no arguments.
 
 ## Scope
 - This skill defines only live-note location and naming.

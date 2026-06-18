@@ -9,6 +9,10 @@ Guide development of Flutter apps so they are testable on real Android devices u
 
 This skill is for development guidance, review, and implementation planning. It does not replace test frameworks. Its purpose is to make the app itself reliably observable and operable through Android device tooling.
 
+This is a `Batchy.Skill`. Load `agentos-skills-base` for the full convention.
+
+- `-h` / `--help` prints this skill's help into the chat instead of running; it takes no arguments.
+
 ## Use This Skill When
 
 - The user wants an app to be testable on a real Android device.

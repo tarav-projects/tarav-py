@@ -1,11 +1,15 @@
 ---
 name: agentos-live-scripts-base
-description: Define the live-scripts protocol for path and filename conventions under `dev/live`. Use when the user mentions `live-scripts`, or when proposing, creating, or reviewing rolling interface/design scripts used as product-surface drafts in any project language or runtime.
+description: Define the live-scripts protocol for path and filename conventions under `dev/live`. USE WHEN the user mentions `live-scripts`, or when proposing, creating, or reviewing rolling interface/design scripts used as product-surface drafts in any project language or runtime.
 ---
 
 # Agentos Live Scripts Base
 
 Minimal protocol for live scripts.
+
+This is a `Batchy.Skill`. Load `agentos-skills-base` for the full convention.
+
+- `-h` / `--help` prints this skill's help into the chat instead of running; it takes no arguments.
 
 ## Scope
 - Define only live-script location and naming.
