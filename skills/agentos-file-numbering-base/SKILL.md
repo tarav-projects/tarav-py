@@ -7,7 +7,7 @@ description: Define, review, or extend Agentos numeric filename protocols and pr
 
 Minimal protocol for Agentos-managed numeric filename workflows.
 
-This is a `Batchy.Skill`. Load `agentos-skills-base` for the full convention.
+This is a `Batchy.Skill`. Load `agentos-batchy-skills` for the full convention.
 
 - `-h` / `--help` prints this skill's help into the chat instead of running; it takes no arguments.
 

@@ -11,7 +11,7 @@ Reconnect the user with the current session state. Maintain a running todo list 
 
 This skill is a **semantic guide**, not a rigid template. The user may append directions after invocation (e.g., `/agentos-session-status what's left?`) — adapt the output weight accordingly.
 
-This is a `Batchy.Skill`. Load `agentos-skills-base` for the full convention.
+This is a `Batchy.Skill`. Load `agentos-batchy-skills` for the full convention.
 
 - `-h` / `--help` prints this skill's help into the chat instead of running; it takes no arguments — append free direction to steer the report weight.
 

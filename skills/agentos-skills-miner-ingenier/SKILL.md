@@ -7,7 +7,7 @@ description: Mine local and external sources to discover reusable patterns, exam
 
 Mine sources to improve skill design. This skill owns the whole loop: research, discussion, and eventual application.
 
-This is a `Batchy.Skill` — called like a terminal command. Load `agentos-skills-base` for the full convention.
+This is a `Batchy.Skill` — called like a terminal command. Load `agentos-batchy-skills` for the full convention.
 
 - `-h` / `--help` prints the help into the chat instead of running (`Batchy.Skill.Help`).
 - supplied flags resolve to the `Skill.Arg` names below; a bare idea or skill path is `--target`.

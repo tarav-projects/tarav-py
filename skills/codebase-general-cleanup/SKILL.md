@@ -9,7 +9,7 @@ Improve the current repository directly. Do not stop at an audit unless blocked.
 
 Default assumption: backward compatibility is not a goal unless the user explicitly asks for it. If an old abstraction, interface, or implementation should be replaced, replace it instead of preserving it behind compatibility layers.
 
-This is a `Batchy.Skill` — called like a terminal command. Load `agentos-skills-base` for the full convention.
+This is a `Batchy.Skill` — called like a terminal command. Load `agentos-batchy-skills` for the full convention.
 
 - `-h` / `--help` prints the help into the chat instead of running (`Batchy.Skill.Help`).
 - supplied flags resolve to the `Skill.Arg` names below; a bare path is `--codebase`.

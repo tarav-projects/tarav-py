@@ -7,7 +7,7 @@ description: Define the live-note protocol for path and filename conventions. US
 
 Minimal protocol for live notes.
 
-This is a `Batchy.Skill`. Load `agentos-skills-base` for the full convention.
+This is a `Batchy.Skill`. Load `agentos-batchy-skills` for the full convention.
 
 - `-h` / `--help` prints this skill's help into the chat instead of running; it takes no arguments.
 

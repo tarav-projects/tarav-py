@@ -8,7 +8,7 @@ allowed-tools: Bash(git status *, git rev-parse *, git add *, git diff *, git di
 
 Commit changes in existing Git repositories using a deterministic semantic multi-commit flow.
 
-This is a `Batchy.Skill` — called like a terminal command. Load `agentos-skills-base` for the full convention.
+This is a `Batchy.Skill` — called like a terminal command. Load `agentos-batchy-skills` for the full convention.
 
 - `-h` / `--help` prints the help into the chat instead of running (`Batchy.Skill.Help`).
 - supplied flags resolve to the `Skill.Arg` names below; a bare path is `--repo`.
