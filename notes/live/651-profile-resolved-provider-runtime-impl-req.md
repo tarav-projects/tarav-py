@@ -112,7 +112,7 @@ Implementation direction:
 - Store `profile` in monitor target state.
 - In limits-tracking refresh, use `resolve_account_runtime_agent(...)` with `target.profile`.
 - In auto-prime ping, use the same resolver with the profile carried in source target state.
-- Preserve monitor setup validation, but add runtime tests proving the profile env reaches `account_status()` and `run()`.
+- Preserve monitor setup validation, but add runtime tests proving profile-resolved config reaches `account_status()` and `run()`; provider home env remains harness-derived from selected `home`.
 - Prefer adding profile to target state summaries so monitor JSON exposes which profile was used.
 
 ### Reconcile.Ping.Profile
@@ -254,7 +254,7 @@ uv run pytest tests/test_claude_account_reconcile.py tests/test_codex_account_re
 
 Target test additions:
 
-- configured Claude/Codex home ping preserves profile env.
+- configured Claude/Codex home ping preserves profile config and uses harness-derived provider home env.
 - configured profile ping preserves profile-specific `ping` settings.
 - `--check --ping` still does not build a live agent.
 - no-profile/no-unique-profile ping candidate is skipped or fails with a clear safe diagnostic, not an unprofiled provider run.
@@ -333,9 +333,9 @@ agentos agent accounts monitor --max-ticks 8 --interval-sec 10 --json
 ## Acceptance.Signals
 
 - Every active code path that calls `agent.run(...)` or `agent.account_status(...)` uses a profile-resolved agent.
-- Monitor limits tracking preserves target profile env and policy.
-- Monitor auto-prime preserves target profile env and ping settings.
-- Claude and Codex reconcile `--ping` preserve configured profile env and ping settings.
+- Monitor limits tracking preserves target profile config and policy env.
+- Monitor auto-prime preserves target profile config, harness-derived provider home env, and ping settings.
+- Claude and Codex reconcile `--ping` preserve configured profile policy env, harness-derived provider home env, and ping settings.
 - No provider command path uses unprofiled `build_registered_account_agent(...)`.
 - Runtime without an explicit or uniquely inferred profile fails before provider command execution.
 - Claude statusline env contains profile-declared `DISABLE_AUTOUPDATER` and `DISABLE_UPDATES` when run for local Claude profiles that declare those values.

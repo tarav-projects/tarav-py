@@ -17,6 +17,9 @@ from agentos.agent.primitives import AgentConfig
 from agentos.agent.run_prepare import AgentRunPrepareRequest
 from agentos.agent.run_runtime import (
     CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR,
+    CLAUDE_CONFIG_DIR_ENV_VAR,
+    CODEX_HOME_ENV_VAR,
+    COPILOT_HOME_ENV_VAR,
     HARNESS_INJECTED_ENV_ALLOWLIST,
     AgentCommandConfig,
     AgentRunConfig,
@@ -385,8 +388,36 @@ def test_profile_env_is_config_injected_not_harness_injected(tmp_path: Path) -> 
     command = agent._build_command(AgentCommandConfig(prompt="hello"))
 
     assert command.env_overrides["AGENTOS_TEST_CONFIG_ENV"] == "1"
+    assert command.env_overrides[CODEX_HOME_ENV_VAR] == str(tmp_path / "codex-home")
     harness_env = set(command.env_overrides) - {"AGENTOS_TEST_CONFIG_ENV"}
     assert harness_env <= HARNESS_INJECTED_ENV_ALLOWLIST["codex"]
+
+
+@pytest.mark.parametrize(
+    ("provider", "env_key"),
+    [
+        ("codex", CODEX_HOME_ENV_VAR),
+        ("claude-code", CLAUDE_CONFIG_DIR_ENV_VAR),
+        ("copilot-cli", COPILOT_HOME_ENV_VAR),
+    ],
+)
+def test_profile_env_rejects_harness_injected_home_keys(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    provider: str,
+    env_key: str,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    environment.write_profile(
+        "blocked-harness-env",
+        provider=provider,
+        homes=[str(tmp_path / "home")],
+        env={env_key: str(tmp_path / "home")},
+    )
+
+    with pytest.raises(CliError, match=f"env.{env_key}.*harness-injected"):
+        load_agent_configs()
 
 
 def test_claude_managed_credential_env_is_harness_injected(

@@ -14,6 +14,7 @@ from agentos.agent.primitives import (
     AgentPingConfig,
     default_agent_ping_config,
 )
+from agentos.agent.run_runtime import HARNESS_INJECTED_ENV_ALLOWLIST
 from agentos._core.project import (
     agentos_home_dir,
     find_agentos_project_root,
@@ -679,6 +680,11 @@ def agent_config_from_config_entry(
         raw_env,
         field_name=entry.field_name("env"),
     )
+    _reject_harness_injected_env(
+        env,
+        provider=provider_family.family,
+        field_name=entry.field_name("env"),
+    )
     if raw_timeout_sec is None:
         timeout_sec = None
     elif (
@@ -1102,6 +1108,21 @@ def _load_string_mapping(
             raise CliError(f"{field_name}.{key} must be a string")
         items.append((key, _expand_user_home(item)))
     return tuple(items)
+
+
+def _reject_harness_injected_env(
+    env: tuple[tuple[str, str], ...],
+    *,
+    provider: str,
+    field_name: str,
+) -> None:
+    reserved = HARNESS_INJECTED_ENV_ALLOWLIST.get(provider, frozenset())
+    for key, _ in env:
+        if key in reserved:
+            raise CliError(
+                f"{field_name}.{key} is harness-injected; "
+                "Agentos derives it from the selected home or account state"
+            )
 
 
 def _load_optional_string_tuple(value: object, *, field_name: str) -> tuple[str, ...]:

@@ -213,7 +213,7 @@ def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
         def summary(self) -> dict[str, object]:
             return {
                 "limits": [],
-                "raw": {"profile_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
+                "raw": {"claude_policy_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
             }
 
     class FakeAgent:
@@ -262,7 +262,7 @@ def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
     assert target_state["start_path"] == str(tmp_path)
     assert target_state["account_status"] == {
         "limits": [],
-        "raw": {"profile_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
+        "raw": {"claude_policy_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
     }
 
 

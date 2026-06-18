@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** clean up the Agentos agent profile/env boundary so harness-injected provider home env keys cannot be declared as profile config env
-- **status:** proposed
+- **status:** implemented
 - **source:** cleanup run after fixing profile-resolved provider runtime; user clarified that `CODEX_HOME` must be injected by runtime from selected `home`, not stored beside `homes` in profile `env`
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/agent/config.py`, `src/agentos/agent/run_runtime.py`, `tests/test_agent_profiles.py`, `notes/live/651-profile-resolved-provider-runtime-impl-req.md`
