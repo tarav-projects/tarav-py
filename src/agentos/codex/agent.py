@@ -17,6 +17,7 @@ from agentos.agent.run_runtime import (
     AgentRunConfig,
     AgentRunDryResult,
     AgentRunResult,
+    CODEX_HOME_ENV_VAR,
     execute_agent_command,
     format_agent_command,
 )
@@ -32,7 +33,6 @@ from agentos.codex.account_status import _codex_account_status_impl
 
 
 CODEX_PROVIDER = "codex"
-CODEX_HOME_ENV_VAR = "CODEX_HOME"
 
 
 @dataclass(frozen=True)

@@ -11,6 +11,7 @@ from agentos.agent.primitives import (
 from agentos.agent.run_runtime import (
     AgentCommand,
     AgentCommandConfig,
+    COPILOT_HOME_ENV_VAR,
 )
 from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus
@@ -25,7 +26,6 @@ from agentos.copilot.account_status import _copilot_account_status_impl
 
 
 COPILOT_PROVIDER = "copilot-cli"
-COPILOT_HOME_ENV_VAR = "COPILOT_HOME"
 
 
 @dataclass(frozen=True)

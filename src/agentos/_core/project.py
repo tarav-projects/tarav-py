@@ -135,6 +135,41 @@ def find_agentos_project_roots_under(root: Path | str) -> list[Path]:
     return sorted(project_roots)
 
 
+def find_agentos_project_roots_within(
+    root: Path | str,
+    *,
+    max_depth: int,
+) -> list[Path]:
+    """Discover agentos project roots at or below ``root``, bounded by ``max_depth``.
+
+    ``root`` itself is depth 0; a project at ``<root>/a/b`` is depth 2. ``max_depth``
+    of 0 inspects only ``root``. Dotted and symlinked directories are not descended.
+    """
+    if max_depth < 0:
+        raise CliError(f"project discovery max_depth must be non-negative: {max_depth}")
+
+    search_root = Path(root).expanduser().resolve()
+    if not search_root.exists():
+        raise CliError(f"project discovery root does not exist: {search_root}")
+    if not search_root.is_dir():
+        raise CliError(f"project discovery root is not a directory: {search_root}")
+
+    project_roots: set[Path] = set()
+    frontier: list[tuple[Path, int]] = [(search_root, 0)]
+    while frontier:
+        directory, depth = frontier.pop()
+        if project_marker_path(directory).is_file():
+            project_roots.add(directory)
+        if depth >= max_depth:
+            continue
+        for child in sorted(directory.iterdir(), key=lambda path: path.name):
+            if child.name.startswith(".") or child.is_symlink() or not child.is_dir():
+                continue
+            frontier.append((child, depth + 1))
+
+    return sorted(project_roots)
+
+
 def normalize_project_target(project_path: Path | str = ".") -> Path:
     current = Path(project_path).expanduser().resolve()
     if current.is_file():

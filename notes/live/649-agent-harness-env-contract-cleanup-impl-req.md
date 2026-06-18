@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** centralize the `Harness.Injected.ENV` allowlist and provider harness env key names in production code, then point tests and adapters at that single contract
-- **status:** proposed
+- **status:** implemented
 - **source:** cleanup pass after `648-agent-harness-injected-env-allowlist-impl-req.md`; current code has the allowlist only in `tests/test_agent_profiles.py` while provider adapters define related env key constants locally
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/agent/run_runtime.py`, `src/agentos/claude/agent.py`, `src/agentos/codex/agent.py`, `src/agentos/copilot/agent.py`, `tests/test_agent_profiles.py`
@@ -116,3 +116,4 @@ uv run pytest -q
 ## Impl.Log
 
 - 2026-06-16: Created by `hugentics-codebase-cleaner` after preparing `agentos-py` with commit `64f5230 feat: enforce harness env injection boundaries`.
+- 2026-06-16: Executed as written in Autonomous mode. No design deviations. Validation passed with focused profile/status/preflight tests, focused ruff, `uv run pytest -q`, duplicate env-name search, dry-run command check, and `git diff --check`.

@@ -15,7 +15,12 @@ from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.config import load_agent_configs, profile_path, write_agent_profile
 from agentos.agent.primitives import AgentConfig
 from agentos.agent.run_prepare import AgentRunPrepareRequest
-from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
+from agentos.agent.run_runtime import (
+    CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR,
+    HARNESS_INJECTED_ENV_ALLOWLIST,
+    AgentCommandConfig,
+    AgentRunConfig,
+)
 from agentos.agent.providers import resolve_agent_config
 import agentos.claude.account_registry as claude_account_registry
 from agentos.claude.agent import ClaudeAgent
@@ -37,17 +42,6 @@ from _helpers import (
     read_jsonl_file,
     write_text_file,
 )
-
-
-HARNESS_INJECTED_ENV_ALLOWLIST = {
-    "codex": {"CODEX_HOME"},
-    "claude-code": {"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN"},
-    "copilot-cli": {"COPILOT_HOME"},
-    "pi": set(),
-    "gemini-cli": set(),
-    "opencode": set(),
-    "openclaw": set(),
-}
 
 
 def test_profile_file_loads_complete_agent_config(
@@ -272,9 +266,7 @@ def test_claude_managed_credential_env_is_harness_injected(
         )
     )
 
-    assert prepare_result.env_overrides == {
-        "CLAUDE_CODE_OAUTH_TOKEN": "secret-token"
-    }
+    assert prepare_result.env_overrides == {CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR: "secret-token"}
     assert set(prepare_result.env_overrides) <= HARNESS_INJECTED_ENV_ALLOWLIST[
         "claude-code"
     ]

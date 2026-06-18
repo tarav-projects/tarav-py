@@ -6,7 +6,11 @@ import sys
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos._core.project import add_explicit_project_arguments, require_explicit_agentos_project
+from agentos._core.project import (
+    add_explicit_project_arguments,
+    find_agentos_project_roots_within,
+    require_explicit_agentos_project,
+)
 from agentos._core.project_command_log import record_project_command_from_args
 from agentos.skills.routing import (
     SKILLS_IMPORT_MODE_DEPOT_LINKING,
@@ -186,7 +190,7 @@ def _emit_selection_warnings(selection) -> None:
         print(f"warning: {warning}", file=sys.stderr)
 
 
-def _record_skills_project_command(args: argparse.Namespace) -> None:
+def _record_skills_project_command(args: argparse.Namespace):
     project = require_explicit_agentos_project(
         project=args.project,
         project_base=args.project_base,
@@ -196,6 +200,7 @@ def _record_skills_project_command(args: argparse.Namespace) -> None:
         project=project,
         args=args,
     )
+    return project
 
 
 def _cmd_skills_list(args: argparse.Namespace) -> int:
@@ -219,7 +224,18 @@ def _cmd_skills_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_single_import_result(result, *, force: bool) -> None:
+    _emit_selection_warnings(result.selection)
+    if result.selection.profile_name is None or not result.selection.depot_roots:
+        print(NO_IMPORTED_SKILLS_MESSAGE)
+        return
+    print(_format_selected_skills_import(result, force=force))
+
+
 def _cmd_skills_import(args: argparse.Namespace) -> int:
+    if args.recursive:
+        return _cmd_skills_import_recursive(args)
+
     _record_skills_project_command(args)
     result = import_selected_skills(
         Path.cwd(),
@@ -227,13 +243,44 @@ def _cmd_skills_import(args: argparse.Namespace) -> int:
         force=args.force,
         mode=args.mode,
     )
-    _emit_selection_warnings(result.selection)
+    _print_single_import_result(result, force=args.force)
+    return 0
 
-    if result.selection.profile_name is None or not result.selection.depot_roots:
-        print(NO_IMPORTED_SKILLS_MESSAGE)
-        return 0
 
-    print(_format_selected_skills_import(result, force=args.force))
+def _cmd_skills_import_recursive(args: argparse.Namespace) -> int:
+    base_project = _record_skills_project_command(args)
+    project_roots = find_agentos_project_roots_within(
+        base_project.root,
+        max_depth=args.depth,
+    )
+
+    failures: list[tuple[Path, str]] = []
+    for index, project_root in enumerate(project_roots):
+        if index:
+            print()
+        print(f"=== {project_root} ===")
+        try:
+            result = import_selected_skills(
+                project_root,
+                project=project_root,
+                force=args.force,
+                mode=args.mode,
+            )
+        except CliError as exc:
+            failures.append((project_root, str(exc)))
+            print(f"error: {exc}", file=sys.stderr)
+            continue
+        _print_single_import_result(result, force=args.force)
+
+    print()
+    print(
+        f"Recursive skills import: {len(project_roots)} project(s), "
+        f"{len(failures)} failed (depth {args.depth})"
+    )
+    if failures:
+        for project_root, message in failures:
+            print(f"- {project_root}: {message}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -339,6 +386,24 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Delete existing symlinks in every resolved depot, then recreate the "
             "imported symlink set. Conflicting non-symlink entries still error."
+        ),
+    )
+    skills_import_parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "Import into the resolved project and every descendant agentos project "
+            "found within --depth levels. Failures are reported without aborting the run."
+        ),
+    )
+    skills_import_parser.add_argument(
+        "--depth",
+        type=int,
+        default=5,
+        help=(
+            "Maximum descendant depth scanned with --recursive. The resolved project "
+            "is depth 0; a project at <root>/a/b is depth 2. 0 imports only the "
+            "resolved project. Default: 5. Ignored without --recursive."
         ),
     )
     skills_import_parser.add_argument(

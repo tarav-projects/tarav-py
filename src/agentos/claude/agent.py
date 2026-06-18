@@ -16,6 +16,8 @@ from agentos.agent.run_runtime import (
     AgentRunConfig,
     AgentRunDryResult,
     AgentRunResult,
+    CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR,
+    CLAUDE_CONFIG_DIR_ENV_VAR,
     execute_agent_command,
     format_agent_command,
 )
@@ -31,7 +33,6 @@ from agentos.claude.account_status import _claude_account_status_impl
 
 
 CLAUDE_PROVIDER = "claude-code"
-CLAUDE_CONFIG_DIR_ENV_VAR = "CLAUDE_CONFIG_DIR"
 
 
 @dataclass(frozen=True)
@@ -147,10 +148,10 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
         token = load_claude_oauth_token_for_account(requested_account)
         env_display_overrides = {}
         if request.dry_run:
-            env_display_overrides["CLAUDE_CODE_OAUTH_TOKEN"] = token.safe_display_value()
+            env_display_overrides[CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR] = token.safe_display_value()
         return AgentRunPrepareResult(
             preamble_lines=(_format_claude_preamble_line(self, requested_account),),
-            env_overrides={"CLAUDE_CODE_OAUTH_TOKEN": token.token},
+            env_overrides={CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR: token.token},
             env_display_overrides=env_display_overrides,
         )
 

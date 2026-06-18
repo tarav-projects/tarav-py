@@ -9,6 +9,23 @@ from agentos._core.errors import CliError
 from agentos._core.process import ProcessError, ProcessMode, run_process
 
 
+CODEX_HOME_ENV_VAR = "CODEX_HOME"
+CLAUDE_CONFIG_DIR_ENV_VAR = "CLAUDE_CONFIG_DIR"
+CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR = "CLAUDE_CODE_OAUTH_TOKEN"
+COPILOT_HOME_ENV_VAR = "COPILOT_HOME"
+HARNESS_INJECTED_ENV_ALLOWLIST = {
+    "codex": frozenset({CODEX_HOME_ENV_VAR}),
+    "claude-code": frozenset(
+        {CLAUDE_CONFIG_DIR_ENV_VAR, CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR}
+    ),
+    "copilot-cli": frozenset({COPILOT_HOME_ENV_VAR}),
+    "pi": frozenset(),
+    "gemini-cli": frozenset(),
+    "opencode": frozenset(),
+    "openclaw": frozenset(),
+}
+
+
 @dataclass(frozen=True)
 class AgentCommandConfig:
     prompt: str | None = None
@@ -171,6 +188,11 @@ __all__ = [
     "AgentRunConfig",
     "AgentRunDryResult",
     "AgentRunResult",
+    "CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR",
+    "CLAUDE_CONFIG_DIR_ENV_VAR",
+    "CODEX_HOME_ENV_VAR",
+    "COPILOT_HOME_ENV_VAR",
+    "HARNESS_INJECTED_ENV_ALLOWLIST",
     "agent_command_with_env_overrides",
     "build_agent_command_argv",
     "execute_agent_command",
