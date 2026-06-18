@@ -7,9 +7,12 @@ from pathlib import Path
 
 from agentos._core.errors import CliError
 from agentos._core.project import (
+    AgentosProjectHandler,
     add_explicit_project_arguments,
     find_agentos_project_roots_within,
+    normalize_project_target,
     require_explicit_agentos_project,
+    require_explicit_project_selector,
 )
 from agentos._core.project_command_log import record_project_command_from_args
 from agentos.skills.routing import (
@@ -190,7 +193,7 @@ def _emit_selection_warnings(selection) -> None:
         print(f"warning: {warning}", file=sys.stderr)
 
 
-def _record_skills_project_command(args: argparse.Namespace):
+def _record_skills_project_command(args: argparse.Namespace) -> AgentosProjectHandler:
     project = require_explicit_agentos_project(
         project=args.project,
         project_base=args.project_base,
@@ -248,18 +251,35 @@ def _cmd_skills_import(args: argparse.Namespace) -> int:
 
 
 def _cmd_skills_import_recursive(args: argparse.Namespace) -> int:
-    base_project = _record_skills_project_command(args)
-    project_roots = find_agentos_project_roots_within(
-        base_project.root,
-        max_depth=args.depth,
+    require_explicit_project_selector(
+        args.project,
+        args.project_base,
+        command_name="agentos skills",
     )
+    scan_root = normalize_project_target(
+        args.project if args.project is not None else Path.cwd()
+    )
+    if args.project_base is not None and scan_root.name != args.project_base:
+        raise CliError(
+            "project base assertion failed: "
+            f"expected {args.project_base!r}, resolved {scan_root.name!r} at {scan_root}"
+        )
 
-    failures: list[tuple[Path, str]] = []
+    # A non-project scan root is not an error in recursive mode: it simply
+    # contributes no project, and discovery continues into its descendants
+    # up to --depth.
+    project_roots = find_agentos_project_roots_within(scan_root, max_depth=args.depth)
+
+    failures: list[Path] = []
     for index, project_root in enumerate(project_roots):
         if index:
             print()
         print(f"=== {project_root} ===")
         try:
+            record_project_command_from_args(
+                project=AgentosProjectHandler(project_root),
+                args=args,
+            )
             result = import_selected_skills(
                 project_root,
                 project=project_root,
@@ -267,7 +287,7 @@ def _cmd_skills_import_recursive(args: argparse.Namespace) -> int:
                 mode=args.mode,
             )
         except CliError as exc:
-            failures.append((project_root, str(exc)))
+            failures.append(project_root)
             print(f"error: {exc}", file=sys.stderr)
             continue
         _print_single_import_result(result, force=args.force)
@@ -277,11 +297,7 @@ def _cmd_skills_import_recursive(args: argparse.Namespace) -> int:
         f"Recursive skills import: {len(project_roots)} project(s), "
         f"{len(failures)} failed (depth {args.depth})"
     )
-    if failures:
-        for project_root, message in failures:
-            print(f"- {project_root}: {message}", file=sys.stderr)
-        return 1
-    return 0
+    return 1 if failures else 0
 
 
 def _cmd_skills_status(args: argparse.Namespace) -> int:
@@ -392,8 +408,9 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
         "--recursive",
         action="store_true",
         help=(
-            "Import into the resolved project and every descendant agentos project "
-            "found within --depth levels. Failures are reported without aborting the run."
+            "Import into every agentos project found at or below the resolved target "
+            "within --depth levels. The target itself need not be a project (it is "
+            "skipped if it is not). Failures are reported without aborting the run."
         ),
     )
     skills_import_parser.add_argument(
