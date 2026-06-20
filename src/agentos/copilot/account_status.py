@@ -27,6 +27,7 @@ from agentos.agent.account_usage_fallback import (
 )
 from agentos.agent.primitives import AgentConfig
 from agentos.agent.usage_registry import append_usage_record
+from agentos.copilot.account_registry import record_copilot_account_verified
 
 
 DEFAULT_COPILOT_USAGE_TIMEOUT_SEC = 15
@@ -135,6 +136,17 @@ def _copilot_account_status_impl(
                 home=agent.home,
                 source=COPILOT_INTERNAL_USER_USAGE_SOURCE,
                 payload=usage_record_payload,
+            )
+        if (
+            not errors
+            and usage_status == "ok"
+            and fetched_identity is not None
+            and fetched_identity.provider_account_id is not None
+        ):
+            record_copilot_account_verified(
+                account=agent.account.account,
+                login=fetched_identity.provider_account_id,
+                name=fetched_identity.label,
             )
 
     return AccountStatus(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos.agent.account_registry import (
@@ -12,7 +13,39 @@ from agentos.agent.account_registry import (
 
 
 COPILOT_PROVIDER = "copilot-cli"
-COPILOT_AUTH_KIND = "github-cli-token"
+COPILOT_AUTH_KIND = "gh-auth-token"
+
+
+def record_copilot_account_verified(
+    *,
+    account: str,
+    login: str,
+    name: str | None = None,
+    source: str = "account.status",
+    verified_at: str | None = None,
+) -> dict[str, object]:
+    """Stamp a metadata-only freshness trail onto a copilot account record.
+
+    Copilot auth is ambient via ``gh`` and is never materialized, so there is
+    no artifact to promote. A successful live status leaves only useful,
+    non-secret metadata on the account record: the observed ``login`` plus
+    ``last_verified_at`` / ``last_verified_source``. No token, no artifact, no
+    ``verifications.jsonl`` entry (that ledger is artifact-keyed).
+    """
+    normalized_account = validate_string_for_path(account, field_name="account")
+    normalized_login = _string_or_none(login)
+    if normalized_login is None:
+        raise CliError("copilot account verification requires a login identity")
+    updates: dict[str, object] = {
+        "auth_kind": COPILOT_AUTH_KIND,
+        "account_id": normalized_login,
+        "last_verified_at": verified_at or utc_now_iso(),
+        "last_verified_source": source,
+    }
+    display_name = _string_or_none(name)
+    if display_name is not None:
+        updates["display_name"] = display_name
+    return upsert_account(COPILOT_PROVIDER, normalized_account, updates)
 
 
 def register_copilot_account(
@@ -104,4 +137,8 @@ def _string_or_none(value: object) -> str | None:
     return None
 
 
-__all__ = ["materialize_copilot_account_to_home", "register_copilot_account"]
+__all__ = [
+    "materialize_copilot_account_to_home",
+    "record_copilot_account_verified",
+    "register_copilot_account",
+]
