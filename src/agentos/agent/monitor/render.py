@@ -34,15 +34,41 @@ _MONITOR_RESET_BAR_PALETTE = (
 _MONITOR_REFRESH_PER_SECOND = 4
 
 
+def _normalize_cell_text(text: str) -> str:
+    """Make any cell text safe to print as a single TUI row.
+
+    Line breaks (and other control characters) corrupt the live layout and the
+    cell-width measurement used for usage bars, so the renderer normalizes the
+    text itself instead of trusting callers to pre-clean it. Line breaks and
+    tabs collapse to a single space; remaining control characters are dropped.
+    """
+
+    cleaned: list[str] = []
+    for char in text:
+        if char in "\n\r\t":
+            cleaned.append(" ")
+        elif ord(char) < 0x20 or ord(char) == 0x7F:
+            continue
+        else:
+            cleaned.append(char)
+    return "".join(cleaned)
+
+
 @dataclass(frozen=True)
 class _MonitorRenderTextRow:
     text: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "text", _normalize_cell_text(self.text))
 
 
 @dataclass(frozen=True)
 class _MonitorRenderBarRow:
     row: MonitorUsageTimeRow | MonitorResetRow
     text: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "text", _normalize_cell_text(self.text))
 
 
 def monitor_result_payload(
