@@ -110,7 +110,6 @@ def _agent_profile_template(profile_id: str) -> str:
             "homes": [],
             "cli_command": [],
             "default_model": "",
-            "model_flag": "",
             "run_args": [],
             "env": {},
         },

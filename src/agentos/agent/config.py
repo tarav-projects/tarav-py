@@ -81,30 +81,6 @@ def _agent_default_ping_model(family_name: str) -> str | None:
     return None
 
 
-def _agent_default_model_flag(family_name: str) -> str | None:
-    if family_name == "claude-code":
-        return "--model"
-    if family_name == "codex":
-        return "--model"
-    if family_name == "copilot-cli":
-        return "--model"
-    if family_name == "opencode":
-        return "--model"
-    if family_name == "pi":
-        return "--model"
-    return None
-
-
-def _agent_default_prompt_flag(family_name: str) -> str | None:
-    if family_name == "claude-code":
-        return "-p"
-    if family_name == "copilot-cli":
-        return "-p"
-    if family_name == "pi":
-        return "-p"
-    return None
-
-
 def canonical_chat_provider_specs() -> tuple[ChatProviderSpec, ...]:
     return _CANONICAL_CHAT_PROVIDER_SPECS
 
@@ -557,8 +533,6 @@ def default_agent_configs(
                 cli_command=(),
                 run_args=_agent_default_run_args(provider_spec.family),
                 default_model=_agent_default_model(provider_spec.family),
-                model_flag=_agent_default_model_flag(provider_spec.family),
-                prompt_flag=_agent_default_prompt_flag(provider_spec.family),
                 identity_anchors=tuple(anchors),
                 is_default=True,
             )
@@ -640,8 +614,6 @@ def agent_config_from_config_entry(
     raw_default_model = raw_profile.get("default_model")
     raw_accounts = raw_profile.get("accounts")
     raw_account_policy = raw_profile.get("account_policy")
-    raw_model_flag = raw_profile.get("model_flag")
-    raw_prompt_flag = raw_profile.get("prompt_flag")
     raw_ping = raw_profile.get("ping")
     raw_fingerprint = raw_profile.get("fingerprint")
 
@@ -715,18 +687,6 @@ def agent_config_from_config_entry(
         raw_account_policy,
         field_name=entry.field_name("account_policy"),
     )
-    if raw_model_flag is None:
-        model_flag = _agent_default_model_flag(family_name)
-    elif not isinstance(raw_model_flag, str) or not raw_model_flag.strip():
-        raise CliError(f"{entry.field_name('model_flag')} must be a non-empty string")
-    else:
-        model_flag = raw_model_flag.strip()
-    if raw_prompt_flag is None:
-        prompt_flag = _agent_default_prompt_flag(family_name)
-    elif not isinstance(raw_prompt_flag, str) or not raw_prompt_flag.strip():
-        raise CliError(f"{entry.field_name('prompt_flag')} must be a non-empty string")
-    else:
-        prompt_flag = raw_prompt_flag.strip()
     ping = _load_agent_ping_config(
         raw_ping,
         field_name=entry.field_name("ping"),
@@ -802,8 +762,6 @@ def agent_config_from_config_entry(
         account_policy=account_policy,
         timeout_sec=timeout_sec,
         default_model=default_model,
-        model_flag=model_flag,
-        prompt_flag=prompt_flag,
         ping=ping,
         fingerprint_override=fingerprint_override,
         identity_anchors=anchors,

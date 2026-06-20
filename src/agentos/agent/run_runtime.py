@@ -7,6 +7,37 @@ from typing import Literal
 
 from agentos._core.errors import CliError
 from agentos._core.process import ProcessError, ProcessMode, run_process
+from agentos.providers import canonical_provider_family_for_name
+
+# Provider CLI invocation constants: how each provider's command line accepts a
+# model and a prompt. These are fixed properties of each provider's CLI contract
+# (a provider implementation detail), not user configuration — so they live here
+# in the command builder, never in a profile.
+_PROVIDER_MODEL_FLAG: dict[str, str] = {
+    "claude-code": "--model",
+    "codex": "--model",
+    "copilot-cli": "--model",
+    "opencode": "--model",
+    "pi": "--model",
+}
+_PROVIDER_PROMPT_FLAG: dict[str, str] = {
+    "claude-code": "-p",
+    "copilot-cli": "-p",
+    "pi": "-p",
+}
+
+
+def provider_model_flag(provider: str) -> str | None:
+    return _PROVIDER_MODEL_FLAG.get(_provider_family(provider))
+
+
+def provider_prompt_flag(provider: str) -> str | None:
+    return _PROVIDER_PROMPT_FLAG.get(_provider_family(provider))
+
+
+def _provider_family(provider: str) -> str:
+    family = canonical_provider_family_for_name(provider)
+    return family.family if family is not None else provider
 
 
 CODEX_HOME_ENV_VAR = "CODEX_HOME"
@@ -67,13 +98,10 @@ class AgentRunDryResult:
 def build_agent_command_argv(
     command_config: AgentCommandConfig,
     *,
-    profile_id: str | None,
     provider: str,
     cli_command: tuple[str, ...],
     run_args: tuple[str, ...],
     default_model: str | None,
-    model_flag: str | None,
-    prompt_flag: str | None,
 ) -> tuple[str, ...]:
     if not cli_command:
         raise CliError(_missing_provider_cli_command_message(provider))
@@ -81,13 +109,15 @@ def build_agent_command_argv(
     command = [*cli_command, *run_args]
     effective_model = command_config.model or default_model
     if effective_model is not None:
+        model_flag = provider_model_flag(provider)
         if model_flag is None:
             raise CliError(
-                f"agent {profile_id or '<default>'} for provider {provider} does not define model_flag"
+                f"provider {provider} does not support a model flag"
             )
         command.extend([model_flag, effective_model])
     command.extend(command_config.argv)
     if command_config.prompt is not None:
+        prompt_flag = provider_prompt_flag(provider)
         if prompt_flag is None:
             command.append(command_config.prompt)
         else:

@@ -101,8 +101,6 @@ class AgentConfig:
     account_policy: str = "profile-default"
     timeout_sec: int | None = None
     default_model: str | None = None
-    model_flag: str | None = None
-    prompt_flag: str | None = None
     ping: AgentPingConfig = field(default_factory=default_agent_ping_config)
     is_default: bool = False
     fingerprint_override: str | None = None
@@ -143,8 +141,6 @@ class AgentConfig:
             self.account_policy,
             self.timeout_sec,
             self.default_model,
-            self.model_flag,
-            self.prompt_flag,
             self.ping,
         )
 
@@ -182,10 +178,6 @@ class AgentConfig:
             payload["timeout_sec"] = self.timeout_sec
         if self.default_model is not None:
             payload["default_model"] = self.default_model
-        if self.model_flag is not None:
-            payload["model_flag"] = self.model_flag
-        if self.prompt_flag is not None:
-            payload["prompt_flag"] = self.prompt_flag
         if self.ping != default_agent_ping_config():
             payload["ping"] = self.ping.summary()
         if self.direct_targets:
@@ -231,13 +223,10 @@ class RunnableMixin:
         return AgentCommand(
             argv=build_agent_command_argv(
                 command_config,
-                profile_id=self.profile_id,
                 provider=self.provider,
                 cli_command=self.cli_command,
                 run_args=self.run_args,
                 default_model=self.default_model,
-                model_flag=self.model_flag,
-                prompt_flag=self.prompt_flag,
             ),
             env_overrides=env_overrides,
         )
