@@ -62,6 +62,7 @@ from agentos.agent.monitor.models import (
     MonitorUsageTimeRow,
     MonitorWorkflowConfig,
 )
+from agentos.agent.monitor_log import append_monitor_log_event
 from agentos.agent.providers import resolve_account_runtime_agent
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.agent.usage_registry import latest_usage_record
@@ -81,6 +82,9 @@ from agentos.copilot.account_status import (
 
 _PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 _AUTO_PRIME_VERIFICATION_TIMEOUT_SEC = 900.0
+# Fallback staleness threshold when no refresh interval is available. A usage
+# record older than this counts as "stale" for target_transition logging.
+_DEFAULT_STALE_THRESHOLD_SEC = 600.0
 _WEEKLY_BURST_PERCENT_BY_PROVIDER = {
     "codex": 15.7,
     "claude-code": 9.0,
@@ -141,9 +145,60 @@ class LimitsTrackingWorkflow:
                 target_states, target=target, target_key=target_key
             )
             if should_refresh:
+                prior = self._effective_target_state(target_state)
                 self._refresh_target(target_state, target=target, tick=frame.tick)
+                new = self._effective_target_state(target_state)
+                self._maybe_log_transition(
+                    target, prior=prior, new=new, tick=frame.tick
+                )
 
         self._write_frame_block(frame, state=state, workflow_state=workflow_state)
+
+    def _stale_threshold_sec(self) -> float:
+        interval = self.config.refresh_interval_sec
+        if isinstance(interval, int | float) and interval > 0:
+            return 2.0 * float(interval)
+        return _DEFAULT_STALE_THRESHOLD_SEC
+
+    def _effective_target_state(
+        self, target_state: dict[str, object]
+    ) -> dict[str, object]:
+        status = _string_value(target_state.get("status"))
+        has_error = target_state.get("error") is not None
+        staleness: str | None = None
+        account_status = target_state.get("account_status")
+        if isinstance(account_status, dict):
+            raw = account_status.get("raw")
+            usage_record = raw.get("usage_record") if isinstance(raw, dict) else None
+            age_sec = (
+                _int_value(usage_record.get("age_sec"))
+                if isinstance(usage_record, dict)
+                else None
+            )
+            if age_sec is not None:
+                staleness = (
+                    "stale" if age_sec > self._stale_threshold_sec() else "fresh"
+                )
+        return {"status": status, "has_error": has_error, "staleness": staleness}
+
+    def _maybe_log_transition(
+        self,
+        target: MonitorTarget,
+        *,
+        prior: dict[str, object],
+        new: dict[str, object],
+        tick: int,
+    ) -> None:
+        if new == prior:
+            return
+        append_monitor_log_event(
+            event="target_transition",
+            tick=tick,
+            provider=target.provider,
+            account=target.account,
+            home=target.home,
+            payload={"from": prior, "to": new},
+        )
 
     def _prime_target_from_usage_registry(
         self,
@@ -195,6 +250,17 @@ class LimitsTrackingWorkflow:
                         "message": str(exc),
                     },
                 }
+            )
+            append_monitor_log_event(
+                event="target_refresh_error",
+                provider=target.provider,
+                account=target.account,
+                home=target.home,
+                payload={
+                    "source": "usage_registry_parse",
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                },
             )
             return
         target_state.update(
@@ -266,6 +332,18 @@ class LimitsTrackingWorkflow:
                         "message": str(exc),
                     },
                 }
+            )
+            append_monitor_log_event(
+                event="target_refresh_error",
+                tick=tick,
+                provider=target.provider,
+                account=target.account,
+                home=target.home,
+                payload={
+                    "source": "account_status",
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                },
             )
             return
         target_state.update(
@@ -808,6 +886,36 @@ class AutoPrimeZeroLimitsWorkflow:
             decision
         ) >= _decision_priority(existing):
             target_state["last_decision"] = decision
+        self._log_decision_error(target_state, decision=decision, action=action)
+
+    @staticmethod
+    def _log_decision_error(
+        target_state: dict[str, object],
+        *,
+        decision: dict[str, object],
+        action: str,
+    ) -> None:
+        event = {
+            "ping failed": "auto_prime_failed",
+            "retry": "auto_prime_retry_blocked",
+        }.get(action)
+        if event is None:
+            return
+        append_monitor_log_event(
+            event=event,
+            tick=decision.get("tick") if isinstance(decision.get("tick"), int) else None,
+            provider=_string_value(target_state.get("provider")),
+            account=_string_value(target_state.get("account")),
+            home=_string_value(target_state.get("home")),
+            payload={
+                "limit_id": decision.get("limit_id"),
+                "classification": decision.get("classification"),
+                "period_key": decision.get("period_key"),
+                "trigger_reasons": list(decision.get("trigger_reasons", ()))
+                or None,
+                "retry_after_monotonic": decision.get("retry_after_monotonic"),
+            },
+        )
 
     def _verify_existing_primes(
         self,

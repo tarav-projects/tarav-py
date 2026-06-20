@@ -23,6 +23,7 @@ from agentos.agent.monitor.models import (
     MonitorState,
     MonitorUsageVariant,
 )
+from agentos.agent.monitor_log import append_monitor_log_event
 
 
 @dataclass
@@ -339,6 +340,16 @@ class MonitorLoop:
                     "message": str(error),
                 }
             )
+        append_monitor_log_event(
+            event="workflow_error",
+            tick=frame.tick,
+            payload={
+                "workflow": workflow.name,
+                "phase": phase,
+                "error_type": type(error).__name__,
+                "message": str(error),
+            },
+        )
 
     def _configure_initial_alarms(self) -> None:
         self.clock.set_one_shot(MONITOR_STARTUP_ALARM, remaining_ticks=0)
@@ -356,12 +367,20 @@ class MonitorLoop:
         self._arm_limits_tracking_periodic_alarm()
 
     def _write_monitor_setup_state(self) -> None:
+        workflow_names = [workflow.name for workflow in self.workflows]
         self.state.data["monitor_setup"] = {
             "loaded_at": datetime.datetime.now(tz=datetime.UTC).isoformat(),
-            "workflow_names": [workflow.name for workflow in self.workflows],
+            "workflow_names": workflow_names,
             "config_fingerprint": self.config_fingerprint,
             "config_stale": False,
         }
+        append_monitor_log_event(
+            event="monitor_start",
+            payload={
+                "workflow_names": workflow_names,
+                "config_fingerprint": self.config_fingerprint,
+            },
+        )
 
     def _check_config_fingerprint(self) -> None:
         if self.config_fingerprint is None or self.config_fingerprint_loader is None:
@@ -378,6 +397,15 @@ class MonitorLoop:
             return
         setup = self.state.data.get("monitor_setup")
         if isinstance(setup, dict):
+            if not setup.get("config_stale"):
+                append_monitor_log_event(
+                    event="config_stale",
+                    tick=self.state.tick,
+                    payload={
+                        "config_fingerprint": self.config_fingerprint,
+                        "current_config_fingerprint": current_fingerprint,
+                    },
+                )
             setup["config_stale"] = True
             setup["current_config_fingerprint"] = current_fingerprint
             setup["warning"] = "monitor config changed; restart required to reload workflows"
