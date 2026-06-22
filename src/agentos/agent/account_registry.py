@@ -334,10 +334,16 @@ def _registered_providers() -> list[str]:
 def _validate_account_record(record: dict[str, object], *, provider: str, account: str) -> None:
     if record.get("provider") != provider or record.get("account") != account:
         raise CliError(f"account registry entry does not match account: {accounts_path(provider)}#{account}")
+    # Shape-tolerant during the strangler cutover: the old shape carries an
+    # account-level ``auth_kind``; the new nested shape carries an ``auth_methods``
+    # map instead. Accept either so migrated and not-yet-migrated providers coexist.
     auth_kind = record.get("auth_kind")
-    if not isinstance(auth_kind, str) or not auth_kind:
+    auth_methods = record.get("auth_methods")
+    has_old_shape = isinstance(auth_kind, str) and bool(auth_kind)
+    has_new_shape = isinstance(auth_methods, dict)
+    if not has_old_shape and not has_new_shape:
         raise CliError(
-            f"account registry entry missing auth_kind: {accounts_path(provider)}#{account}"
+            f"account registry entry missing auth_kind/auth_methods: {accounts_path(provider)}#{account}"
         )
 
 

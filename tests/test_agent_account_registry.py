@@ -96,3 +96,34 @@ def test_archive_account_registry_skips_when_no_registry(
 
     result = archive_account_registry(label="t1")
     assert result["status"] == "empty"
+
+
+def test_load_account_accepts_old_and_new_shape(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from agentos.agent.account_registry import load_account
+
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+
+    write_accounts(
+        "codex",
+        {
+            "provider": "codex",
+            "accounts": {
+                # old shape — account-level auth_kind
+                "old": {"provider": "codex", "account": "old", "auth_kind": "auth-json"},
+                # new shape — no account-level auth_kind, nested auth_methods instead
+                "new": {
+                    "provider": "codex",
+                    "account": "new",
+                    "auth_methods": {"auth-json": {"active_artifact_id": None}},
+                },
+            },
+        },
+    )
+
+    assert load_account("codex", "old")["auth_kind"] == "auth-json"
+    new_record = load_account("codex", "new")
+    assert "auth_methods" in new_record

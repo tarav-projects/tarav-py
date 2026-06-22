@@ -4,7 +4,7 @@
 
 - **scope:** rebuild the agentos account-management system to reflect the settled `Account.Management` design. Disconnect every *implicit* home-writing and auto-activation path; keep exactly two motion classes — **automatic capture** and **explicit operations** (activation, materialize). Introduce the `Auth.Method` class as the provider seam and the new nested registry model (`Provider.Account → Auth.Method → Auth.Data.Artifact`).
 - **out of scope (this rebuild):** verification / ping (the only writer of `Valid.Credentials` evidence) — deferred to a later explicit path; freshness-based / conditional / automatic activation policies — only explicit set/rotate now; usage monitor's *usage* logic (only its implicit promote calls are touched); data migration of the old registry shape (we back it up now, migrate later); copilot stays metadata-only.
-- **status:** in progress. Slice 0 (backup helper) done + green. Plan **re-sliced** as a strangler buildout after the executer hit a big-bang wall (see `Strangler.Buildout` + `Impl.Log` 2026-06-21). Remaining slices 1–9 are each independently green.
+- **status:** in progress. **Phase A complete (Slices 0–5, all green)** — the new subsystem is built additively and isolated; full suite 181 passed, ruff clean, zero live behavior touched. **Phase B (Slices 6–8, per-provider cutover) and Phase C (Slice 9, teardown) remain** — the integration work, recommended as focused follow-up passes (see `Impl.Log` 2026-06-21 executer Phase A).
 - **design source:** `agentos-pkg` index `Account.Management` (`agentos-md/skills/agentos-pkg/index/104-index.md`) + full sub-blocks in `agentos-md/skills/agentos-pkg/appendix/Account.Management-appendix.md`. That appendix is the authority for every concept named here (`Account.Model`, `Account.Model:Auth.Method`, `Account.Identity`, `Auth.Data`, `Auth.Data.Artifact`, `Account.Registry`, `Credential.Capture`, `Capture.Over.Materialization`, `Unknown.Account`, `Active.Auth.Artifact`, `Active.Auth.Artifact.Rotation`, `Active.Auth.Drift`, `Materializable.Account`, `Keep.Up.With.Rotation`).
 
 ## Impl.Index
@@ -76,30 +76,35 @@
 - **relax** `_validate_account_record` (`agent/account_registry.py:305-312`) to accept records **with or without** an account-level `auth_kind` (old and new shapes both load). One shared edit, done first, so migrated and not-yet-migrated providers coexist on the loader through Phase B.
 - observable: the abstract `Auth.Method` + a test double resolve their capability surface; `load_account` accepts both an old record (account-level `auth_kind`) and a new one (none).
 - check: **RED.GREEN** — loader accepts both shapes; a fake `Auth.Method` satisfies the protocol. No live path changes.
+- status: **done** — `agent/auth_method.py` (`AuthData` content-addressed + `AuthMethod` ABC); `_validate_account_record` shape-tolerant. Tests `tests/test_agent_auth_method.py` + loader test (green; 45-test account/reconcile sweep green).
 
 #### Slice 2 — new nested `Account.Model` read/write layer
 
 - provider-agnostic nested model: `Provider.Account → auth_methods → Auth.Data.Artifact` + per-method `Active.Auth.Artifact` pointer; content-addressed artifacts; secrets only in payload files. New read/write functions (not the old `upsert_account`). Not imported by any live path.
 - observable: a nested account round-trips to disk; an artifact dedups by content hash; the per-method active pointer sets/reads.
 - check: **RED.GREEN** — nested round-trip; dedup; secrets never in index/ledger surfaces. Isolated temp home.
+- status: **done** — `agent/account_model.py` (composes existing storage primitives, not `upsert_account`); `tests/test_agent_account_model.py` green.
 
 #### Slice 3 — `Credential.Capture` primitive (provider-agnostic core)
 
 - core capture: given an extracted `Account.Identity` + payload from an `Auth.Method`, classify known vs `Unknown.Account` and append. Never rejects — classifies. Salvage the observe-and-archive intent from the old reconcile capture sub-logic (`codex/account_reconcile.py:636`); discard sync/promote. Driven by a test-double method.
 - observable: known-id capture appends then dedups under the account; unmatched-but-identified lands in the provider `Unknown.Account` keeping the id; a capture error is swallowed.
 - check: **RED.GREEN** — the three behaviors above with a fake `Auth.Method`.
+- status: **done** — `agent/credential_capture.py` (`capture_from_home` + `_safe`; `UNKNOWN_ACCOUNT` bucket; orphan keeps `extracted_provider_account_id`); `tests/test_agent_credential_capture.py` green.
 
 #### Slice 4 — explicit activation primitive
 
 - registry-only set/rotate of the per-method `Active.Auth.Artifact`. No home write.
 - observable: set moves the pointer; rotate moves it; no home mutation.
 - check: **RED.GREEN** — set/rotate update only the pointer; assert no home touched.
+- status: **done** — `set_active_artifact` in `agent/account_model.py` (set+rotate, validates artifact known, registry-only); tests in `tests/test_agent_account_model.py` green.
 
 #### Slice 5 — explicit materialize primitive
 
 - `Auth.Method.materialize`: write a given artifact's `Auth.Data` into a home. Pure write — no read-back, sync, or promote.
 - observable: materialize writes the payload into the home and nothing else.
 - check: **RED.GREEN** — home holds the payload after; registry/active pointer unchanged; no other writes. Driven by a test-double method.
+- status: **done** — `agent/credential_materialize.py` (`materialize_active`: resolve active → `Auth.Method.materialize`, pure write); `tests/test_agent_credential_materialize.py` green.
 
 ### Phase B — cut over one provider at a time (each provider green; others untouched)
 
@@ -154,5 +159,6 @@
 - 2026-06-21: Impl-Req captured from the in-chat `Account.Management` design session (impl-designer, Interactive). Locked: unbundle reconcile (salvage capture only), `Auth.Method` class backbone, nested registry model, capture automatic via host commands (resolves the design's one open `meta` question), explicit-only activation + materialize, backup-then-defer-migration, transitional fail-fast run/status. Verification/ping and advanced activation policies explicitly deferred.
 - 2026-06-21 (executer, Autonomous): Slice 0 implemented and green (`archive_account_registry`, 2 tests; full account-registry suite 6 passed, ruff clean). Git checkpoint `52f17dc` on `main` captured the repo as found (it also swept up unrelated pre-existing edits to monitor/reconcile from prior session work).
   - **DEVIATION / staging decision:** Slices 1–5 are not independent vertical slices — they are one big-bang cutover. Slice 1's nested-shape change (`auth_methods` map, per-method active pointer) breaks every provider registry, `account_status`, `reconcile`, the run preflight, the monitor, and ~10 test files *at once*; there is no intermediate green state until the whole cutover completes. Executing that volume in a single autonomous pass would produce a large unverifiable change and a broken tree, violating `Vertical.Slice` / `No.Regression`. Stopped at the green Slice-0 floor and surfaced for staged execution rather than bulldozing. Recommend running Slices 1→5 as focused follow-up passes (Slice 1 = `Auth.Method` classes + nested model + relax the `_validate_account_record` gate, built additively to stay green before the Slice-5 cutover).
+- 2026-06-21 (executer, Autonomous, Phase A): Slices 1–5 implemented test-first, all green; full suite **181 passed**, ruff clean. New isolated modules: `agent/auth_method.py`, `agent/account_model.py`, `agent/credential_capture.py`, `agent/credential_materialize.py`; `_validate_account_record` relaxed to accept both shapes. **No live path touched** — the strangler buildout held (every slice green, no big-bang). Phase B/C (provider cutovers + teardown) are the integration work and are left as focused follow-up passes per the redesign; the new subsystem they consume is now complete and proven. No deviations.
 - 2026-06-21 (impl-designer realignment): re-sliced the plan as a `Strangler.Buildout` to fix the executer's big-bang wall. Old Slices 1–5 flipped the on-disk shape under live code with no intermediate green state. New shape: Phase A (Slices 1–5) builds the new subsystem as isolated, additive modules (test-only, live registry untouched); Phase B (Slices 6–8) cuts over one provider at a time on a shape-tolerant loader; Phase C (Slice 9) deletes reconcile/monitor-promote/dead code once unreferenced. Key enabling move: relax `_validate_account_record` first so old+new records coexist; per-provider cutover is safe because `accounts/<provider>/` storage is provider-scoped. Intent unchanged — only the slicing and the coexistence strategy changed.
 - 2026-06-21: deeper codebase scan refined the plan. Found the load chokepoint `_validate_account_record` (account-level `auth_kind`) gates every `load_account` — promoted to the mandatory Slice 1 edit. Confirmed run-resolution (`resolve_account_runtime_agent`), `monitor/config.py:179`, and `profile_scope.py` are shape-safe (read only provider/account), shrinking the "old-shape readers" risk to that one gate. Added concrete `No.Legacy` test disposition to Slice 5 (delete reconcile tests; rewrite preflight/auto-prime/status/registry tests).
