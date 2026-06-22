@@ -51,6 +51,14 @@
 - **Transitional run/status behavior:** with implicit healing removed, a run/status against a stale/missing home **fails fast / uses the home as-is**. This is a temporary stopgap, **not** a design constraint — proper re-trigger points get designed later.
 - **No.Legacy (end state):** the *final* tree has no reconcile, no implicit triggers, no compat shims (per `agentos-py/AGENTS.md`). The only transitional tolerance is the shape-relaxed loader (Slice 1), which exists solely to keep Phase B green and is not a permanent dual-shape shim — once all providers are migrated, only the new shape is produced.
 
+### Deferred (later materialization redesign)
+
+- the materialization system is **not** being redesigned in this rebuild — Slices 4–5 ship the minimal explicit primitive only.
+- per-home `materialized_artifact_id` tracking (surfaced by the account-management skill's `registry-consistency.md` "Better System Direction") is deferred to that later redesign — it is what `Active.Auth.Drift` will compare against.
+- preview direction (later): **log all materialization commands** so we retain an audit trail of what was materialized where.
+- the codex Verify.Probe for the deferred verification path is `account/rateLimits/read` via `codex app-server` (per the skill's `account-monitor.md` / `registry-consistency.md`).
+- the account-management skill references describe the OLD registry shape; they need an update pass once the rebuild lands (Phase C cleanup).
+
 ### Open.Feedback.To.Design
 
 - `Credential.Capture` automatic-vs-explicit was the one design `meta` open question; this rebuild resolves it as **automatic, invoked from host commands** (not self-firing). Recorded here; the index `meta` line can be updated when this lands.
