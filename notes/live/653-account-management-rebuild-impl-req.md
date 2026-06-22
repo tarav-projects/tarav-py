@@ -137,11 +137,13 @@
 - claude `Auth.Method` subclass (Keychain-backed `ambient-auth`: identity + read/serialize + materialize).
 - route claude registry + `account_status` + run (`claude/agent.py:191-196`) through the new model + capture; remove the `promote_verified_claude_ambient_auth_from_home` calls (run + status `claude/account_status.py:354`).
 - observable / check: **RED.GREEN** mirror of Slice 6 for claude; rewrite `tests/test_claude_account_*`. claude no longer imports `claude/account_reconcile.py`.
+- status: **materialization removal DONE.** claude `account_status` is now read-only — removed the status-time promote (`_refresh_claude_ambient_auth_artifact` deleted; `auth_artifact_record` stays `None`); rewrote `test_claude_account_status_is_read_only`. **Implementation-detail exception:** claude's run path has **no** home-materialization to remove — it ENV-injects the OAuth token (`Config.Injected.ENV`) for oauth-token accounts and uses the home Keychain as-is for ambient accounts. Remaining (deferred, like codex): post-run promote→capture flip (verification-coupled), `Auth.Method` subclass + new-model routing.
 
 #### Slice 8 — copilot cutover
 
 - copilot `Auth.Method` subclass: `gh-auth-token`, **non-materializable** (reference-only). Route copilot status/registry through the new model as a metadata-only account (no stored secret, no artifact payload).
 - observable / check: **RED.GREEN** — a copilot account exists with a non-materializable method and no payload; status read-only. Rewrite `tests/test_copilot_account_status.py`.
+- status: **materialization removal — N/A (metadata-only exception).** copilot is non-materializable: no home, no credential artifact, no promote/sync to remove. Its only status-time write is `record_copilot_account_verified` (observed account metadata — no home, no secret, no active flip), which is **capture-like** (recording observed identity) and therefore allowed by the design. Nothing stripped. Remaining (deferred): the `Auth.Method` subclass + new-model routing.
 
 ### Phase C — teardown (dead paths removed; green)
 
