@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from agentos._core.clock import utc_now_iso
@@ -14,8 +15,36 @@ from agentos.agent.session_utils import string_or_none
 ACCOUNT_REGISTRY_SCHEMA_VERSION = 1
 
 
+def account_registry_root() -> Path:
+    return agentos_home_dir() / "accounts"
+
+
+def account_archive_root() -> Path:
+    return agentos_home_dir() / "archive"
+
+
+def archive_account_registry(*, label: str | None = None) -> dict[str, object]:
+    """Back up the whole account registry tree before destructive rebuild work.
+
+    Append-only and idempotent: copies ``~/.agentos/accounts`` into
+    ``~/.agentos/archive/accounts-<label>``. Never clobbers an existing
+    archive and never mutates the source.
+    """
+
+    source = account_registry_root()
+    archive_label = label or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    destination = account_archive_root() / f"accounts-{archive_label}"
+    if not source.exists():
+        return {"status": "empty", "source": str(source), "destination": str(destination)}
+    if destination.exists():
+        return {"status": "exists", "source": str(source), "destination": str(destination)}
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination)
+    return {"status": "archived", "source": str(source), "destination": str(destination)}
+
+
 def account_provider_root(provider: str) -> Path:
-    return agentos_home_dir() / "accounts" / validate_string_for_path(provider, field_name="provider")
+    return account_registry_root() / validate_string_for_path(provider, field_name="provider")
 
 
 def accounts_path(provider: str) -> Path:
@@ -379,8 +408,11 @@ def _reject_secret_verification_payload(value: object, *, path: str = "$") -> No
 
 
 __all__ = [
+    "account_archive_root",
     "account_exists",
     "account_provider_root",
+    "account_registry_root",
+    "archive_account_registry",
     "account_events_path",
     "account_events_root",
     "accounts_path",
