@@ -6,6 +6,7 @@ import pytest
 
 import agentos.claude.account_registry as claude_account_registry
 import agentos.claude.account_reconcile as claude_account_reconcile
+from agentos._core.errors import CliError
 from agentos.agent.account_registry import append_verification
 from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.primitives import AgentPingConfig
@@ -242,6 +243,68 @@ def test_claude_reconcile_activates_verified_artifact_and_syncs_stale_home(
     configured_status = inspect_claude_account_home(home=configured_home)
     assert configured_status["classification"] == "matching-active"
     assert configured_status["auth"]["artifact_id"] == verified_artifact_id
+
+
+def test_claude_reconcile_refuses_to_overwrite_unknown_credential_on_sync(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
+    agentos_home = environment.agentos_home
+    configured_home = tmp_path / "claude-br"
+    system_home = agentos_home / "agent" / "homes" / "claude-code" / "browser-br"
+    # The bound configured home currently holds a VALID but UNREGISTERED
+    # credential (different account) -> classification "unknown".
+    write_claude_home(
+        configured_home,
+        email="stranger@example.com",
+        account_uuid="acc_stranger",
+        access_token="uncaptured-secret",
+    )
+    write_claude_home(
+        system_home,
+        email="br@example.com",
+        account_uuid="acc_br",
+        access_token="working-access",
+    )
+    environment.write_profiles(
+        [
+            {
+                "id": "claude-br",
+                "provider": "claude-code",
+                "homes": [str(configured_home)],
+                "accounts": ["browser-br"],
+            }
+        ]
+    )
+    register_claude_account(account="browser-br", email="br@example.com")
+    registered = register_claude_ambient_auth_from_home(
+        home=system_home,
+        account="browser-br",
+        register_only=True,
+    )
+    verified_artifact_id = registered["auth"]["artifact_id"]
+    append_verification(
+        "claude-code",
+        {
+            "account": "browser-br",
+            "artifact_id": verified_artifact_id,
+            "auth_kind": "ambient-browser-login",
+            "home": str(system_home),
+            "source": "agent.ping",
+            "verified_at": "2026-06-09T00:00:00Z",
+        },
+    )
+
+    with pytest.raises(CliError, match="refusing to overwrite an unregistered"):
+        reconcile_claude_accounts(start_path=tmp_path)
+
+    # The uncaptured credential must be left untouched.
+    configured_status = inspect_claude_account_home(home=configured_home)
+    assert configured_status["classification"] == "unknown"
+    assert configured_status["auth"]["artifact_id"] != verified_artifact_id
 
 
 def test_claude_reconcile_ping_verifies_successful_candidate(

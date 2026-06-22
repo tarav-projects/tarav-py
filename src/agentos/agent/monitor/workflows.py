@@ -85,6 +85,9 @@ _AUTO_PRIME_VERIFICATION_TIMEOUT_SEC = 900.0
 # Fallback staleness threshold when no refresh interval is available. A usage
 # record older than this counts as "stale" for target_transition logging.
 _DEFAULT_STALE_THRESHOLD_SEC = 600.0
+# While an error/fallback condition persists, re-log it at most once per this
+# interval (a heartbeat), so a stuck account does not spam one line per tick.
+_ERROR_HEARTBEAT_SEC = 3600.0
 _WEEKLY_BURST_PERCENT_BY_PROVIDER = {
     "codex": 15.7,
     "claude-code": 9.0,
@@ -98,6 +101,8 @@ class LimitsTrackingWorkflow:
     def __init__(self, config: MonitorWorkflowConfig) -> None:
         self.config = config
         self.refresh_interval_sec = config.refresh_interval_sec
+        # Wall clock for the error heartbeat; injectable so tests do not sleep.
+        self._error_clock = time.time
 
     def setup(
         self,
@@ -114,6 +119,7 @@ class LimitsTrackingWorkflow:
                 target_states, target=target, target_key=target_key
             )
             self._prime_target_from_usage_registry(target_state, target=target)
+            self._maybe_log_error(target, target_state, tick=frame.tick)
 
         self._write_frame_block(frame, state=state, workflow_state=workflow_state)
 
@@ -151,6 +157,7 @@ class LimitsTrackingWorkflow:
                 self._maybe_log_transition(
                     target, prior=prior, new=new, tick=frame.tick
                 )
+                self._maybe_log_error(target, target_state, tick=frame.tick)
 
         self._write_frame_block(frame, state=state, workflow_state=workflow_state)
 
@@ -165,21 +172,32 @@ class LimitsTrackingWorkflow:
     ) -> dict[str, object]:
         status = _string_value(target_state.get("status"))
         has_error = target_state.get("error") is not None
-        staleness: str | None = None
-        account_status = target_state.get("account_status")
-        if isinstance(account_status, dict):
-            raw = account_status.get("raw")
-            usage_record = raw.get("usage_record") if isinstance(raw, dict) else None
-            age_sec = (
-                _int_value(usage_record.get("age_sec"))
-                if isinstance(usage_record, dict)
-                else None
-            )
-            if age_sec is not None:
-                staleness = (
-                    "stale" if age_sec > self._stale_threshold_sec() else "fresh"
-                )
+        staleness = self._staleness_class(target_state.get("account_status"))
         return {"status": status, "has_error": has_error, "staleness": staleness}
+
+    def _staleness_class(self, account_status: object) -> str | None:
+        # Classify from the usage record's status, not age alone: a successful
+        # live fetch ("fresh") carries no age_sec, so age-only classification
+        # would mislabel it None and flap on every refresh. Age is only
+        # meaningful for the registry-backed records that carry it.
+        if not isinstance(account_status, dict):
+            return None
+        raw = account_status.get("raw")
+        usage_record = raw.get("usage_record") if isinstance(raw, dict) else None
+        if not isinstance(usage_record, dict):
+            return None
+        record_status = _string_value(usage_record.get("status"))
+        if record_status == USAGE_RECORD_STATUS_FRESH:
+            return "fresh"
+        if record_status in (
+            USAGE_RECORD_STATUS_REGISTRY_LATEST,
+            USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
+        ):
+            age_sec = _int_value(usage_record.get("age_sec"))
+            if age_sec is None:
+                return None
+            return "stale" if age_sec > self._stale_threshold_sec() else "fresh"
+        return None
 
     def _maybe_log_transition(
         self,
@@ -199,6 +217,81 @@ class LimitsTrackingWorkflow:
             home=target.home,
             payload={"from": prior, "to": new},
         )
+
+    def _maybe_log_error(
+        self,
+        target: MonitorTarget,
+        target_state: dict[str, object],
+        *,
+        tick: int,
+    ) -> None:
+        # Log error/fallback conditions on change + heartbeat, not every tick.
+        signature, event, payload = self._error_signal(target_state)
+        last = target_state.get("last_error_emit")
+        last = last if isinstance(last, dict) else None
+        if signature is None:
+            if last is not None:
+                target_state["last_error_emit"] = None
+            return
+        now = self._error_clock()
+        if last is not None and last.get("signature") == signature:
+            last_at = last.get("at")
+            if isinstance(last_at, int | float) and (now - last_at) < _ERROR_HEARTBEAT_SEC:
+                return
+        append_monitor_log_event(
+            event=event,
+            tick=tick,
+            provider=target.provider,
+            account=target.account,
+            home=target.home,
+            payload=payload,
+        )
+        target_state["last_error_emit"] = {"signature": signature, "at": now}
+
+    def _error_signal(
+        self, target_state: dict[str, object]
+    ) -> tuple[tuple[str, str | None] | None, str, dict[str, object]]:
+        # A hard refresh exception captured on the target.
+        error = target_state.get("error")
+        if isinstance(error, dict):
+            error_type = _string_value(error.get("type"))
+            return (
+                ("refresh_error", error_type),
+                "target_refresh_error",
+                {
+                    "source": "account_status",
+                    "error_type": error_type,
+                    "message": _string_value(error.get("message")),
+                },
+            )
+        account_status = target_state.get("account_status")
+        if not isinstance(account_status, dict):
+            return (None, "", {})
+        raw = account_status.get("raw")
+        usage_record = raw.get("usage_record") if isinstance(raw, dict) else None
+        if isinstance(usage_record, dict):
+            record_status = _string_value(usage_record.get("status"))
+            if record_status == USAGE_RECORD_STATUS_REGISTRY_FALLBACK:
+                live_error = usage_record.get("live_error")
+                live_error = live_error if isinstance(live_error, dict) else {}
+                error_type = _string_value(live_error.get("type"))
+                return (
+                    ("stale_fallback", error_type),
+                    "stale_fallback_served",
+                    {
+                        "source": _string_value(usage_record.get("source")),
+                        "age_sec": _int_value(usage_record.get("age_sec")),
+                        "live_error_type": error_type,
+                        "live_error_message": _string_value(live_error.get("message")),
+                    },
+                )
+        if _string_value(account_status.get("usage_status")) == "error":
+            return (
+                ("refresh_error", "usage_error"),
+                "target_refresh_error",
+                {"source": "account_status", "error_type": "usage_error", "message": None},
+            )
+        return (None, "", {})
 
     def _prime_target_from_usage_registry(
         self,
@@ -250,17 +343,6 @@ class LimitsTrackingWorkflow:
                         "message": str(exc),
                     },
                 }
-            )
-            append_monitor_log_event(
-                event="target_refresh_error",
-                provider=target.provider,
-                account=target.account,
-                home=target.home,
-                payload={
-                    "source": "usage_registry_parse",
-                    "error_type": type(exc).__name__,
-                    "message": str(exc),
-                },
             )
             return
         target_state.update(
@@ -332,18 +414,6 @@ class LimitsTrackingWorkflow:
                         "message": str(exc),
                     },
                 }
-            )
-            append_monitor_log_event(
-                event="target_refresh_error",
-                tick=tick,
-                provider=target.provider,
-                account=target.account,
-                home=target.home,
-                payload={
-                    "source": "account_status",
-                    "error_type": type(exc).__name__,
-                    "message": str(exc),
-                },
             )
             return
         target_state.update(

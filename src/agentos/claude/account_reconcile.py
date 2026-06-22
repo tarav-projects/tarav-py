@@ -478,6 +478,14 @@ def _sync_claude_homes(
         classification = _string_or_none(status.get("classification"))
         if classification == "matching-active" and _active_home_account(status) == sync_account:
             continue
+        if classification == "unknown":
+            raise CliError(
+                "claude-code reconcile refusing to overwrite an unregistered "
+                "credential during home sync; capture it before syncing "
+                f"(home={known_home.home}, account={sync_account}). "
+                "The home holds a valid credential that matches no registered "
+                "account, so syncing would destroy an uncaptured credential."
+            )
         active_artifact_id = (
             planned_active_artifacts.get(sync_account) or _active_artifact_id(sync_account)
         )

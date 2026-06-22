@@ -3,8 +3,6 @@ from __future__ import annotations
 import datetime
 from pathlib import Path
 
-from agentos.agent.account_status import AccountStatusError
-from agentos.agent.account_usage_fallback import account_usage_registry_fallback
 from agentos.agent.monitor.workflows import AutoPrimeZeroLimitsWorkflow
 from agentos.agent.monitor_log import (
     MONITOR_LOG_CLASS,
@@ -12,7 +10,6 @@ from agentos.agent.monitor_log import (
     append_monitor_log_event,
     monitor_log_dir,
 )
-from agentos.agent.usage_registry import append_usage_record
 from agentos.testing import AgentosTestEnvironment
 
 from _helpers import read_jsonl_file
@@ -102,58 +99,6 @@ def test_append_is_best_effort_on_unserializable_payload(monkeypatch, tmp_path):
 # --- Slice 2: error events --------------------------------------------------
 
 
-def test_stale_fallback_served_is_logged(monkeypatch, tmp_path):
-    home = _set_fake_agentos_home(monkeypatch, tmp_path) / "browser-br"
-    home.mkdir(parents=True, exist_ok=True)
-    append_usage_record(
-        provider="claude-code",
-        account="browser-br",
-        home=home,
-        source="claude-statusline",
-        payload={"rate_limits": {"five_hour": {"used_percentage": 1}}},
-    )
-
-    result = account_usage_registry_fallback(
-        provider="claude-code",
-        account="browser-br",
-        home=home,
-        source="claude-statusline",
-        parser=lambda payload: (),
-        live_error=AccountStatusError(error_type="timeout", message="live timed out"),
-        fallback_to_usage_registry=True,
-    )
-
-    # The fallback still serves the cached payload.
-    assert result[2] == {"rate_limits": {"five_hour": {"used_percentage": 1}}}
-    served = _events(_log_file(), "stale_fallback_served")
-    assert len(served) == 1
-    payload = served[0]["payload"]
-    assert served[0]["provider"] == "claude-code"
-    assert served[0]["account"] == "browser-br"
-    assert payload["live_error_type"] == "timeout"
-    assert payload["age_sec"] is not None
-
-
-def test_refresh_error_logged_when_no_fallback_record(monkeypatch, tmp_path):
-    home = _set_fake_agentos_home(monkeypatch, tmp_path) / "browser-br"
-    home.mkdir(parents=True, exist_ok=True)
-
-    account_usage_registry_fallback(
-        provider="claude-code",
-        account="browser-br",
-        home=home,
-        source="claude-statusline",
-        parser=lambda payload: (),
-        live_error=AccountStatusError(error_type="http_error", message="500"),
-        fallback_to_usage_registry=True,
-    )
-
-    errors = _events(_log_file(), "target_refresh_error")
-    assert len(errors) == 1
-    assert errors[0]["payload"]["reason"] == "no_registry_record"
-    assert errors[0]["payload"]["error_type"] == "http_error"
-
-
 def test_auto_prime_failed_and_retry_blocked_are_logged(monkeypatch, tmp_path):
     _set_fake_agentos_home(monkeypatch, tmp_path)
     target_state = {"provider": "codex", "account": "jp", "home": "/h"}
@@ -230,12 +175,43 @@ def _limits_workflow(refresh_interval_sec=60.0):
     return LimitsTrackingWorkflow(config)
 
 
-def _state_with_age(age_sec):
+def _state_with_age(age_sec, status="registry_latest"):
     return {
         "status": "ok",
         "error": None,
-        "account_status": {"raw": {"usage_record": {"age_sec": age_sec}}},
+        "account_status": {
+            "raw": {"usage_record": {"status": status, "age_sec": age_sec}}
+        },
     }
+
+
+def _state_fresh():
+    # A successful live fetch: fresh-status record carries no age_sec.
+    return {
+        "status": "ok",
+        "error": None,
+        "account_status": {"raw": {"usage_record": {"status": "fresh"}}},
+    }
+
+
+def test_live_fresh_record_classifies_fresh_not_none(monkeypatch, tmp_path):
+    _set_fake_agentos_home(monkeypatch, tmp_path)
+    workflow = _limits_workflow()
+
+    effective = workflow._effective_target_state(_state_fresh())
+    assert effective["staleness"] == "fresh"
+
+
+def test_no_transition_on_consecutive_fresh_refreshes(monkeypatch, tmp_path):
+    _set_fake_agentos_home(monkeypatch, tmp_path)
+    workflow = _limits_workflow()
+    target = workflow.config.targets[0]
+
+    prior = workflow._effective_target_state(_state_fresh())
+    new = workflow._effective_target_state(_state_fresh())
+    workflow._maybe_log_transition(target, prior=prior, new=new, tick=5)
+
+    assert _events(_log_file(), "target_transition") == []
 
 
 def test_target_transition_logged_on_fresh_to_stale(monkeypatch, tmp_path):
@@ -266,3 +242,81 @@ def test_no_transition_logged_when_unchanged(monkeypatch, tmp_path):
     workflow._maybe_log_transition(target, prior=same, new=dict(same), tick=5)
 
     assert _events(_log_file(), "target_transition") == []
+
+
+# --- Slice 2: error/fallback throttle (change + heartbeat) -------------------
+
+
+def _fallback_state(age_sec=99999, err_type="timeout", source="claude-statusline"):
+    return {
+        "status": "ok",
+        "error": None,
+        "account_status": {
+            "usage_status": "ok",
+            "raw": {
+                "usage_record": {
+                    "status": "registry_fallback",
+                    "age_sec": age_sec,
+                    "source": source,
+                    "live_error": {"type": err_type, "message": "boom"},
+                }
+            },
+        },
+    }
+
+
+def test_persistent_stale_fallback_logs_once(monkeypatch, tmp_path):
+    _set_fake_agentos_home(monkeypatch, tmp_path)
+    wf = _limits_workflow()
+    wf._error_clock = lambda: 1000.0
+    target = wf.config.targets[0]
+    ts = _fallback_state()
+
+    for t in range(4):
+        wf._maybe_log_error(target, ts, tick=t)
+
+    served = _events(_log_file(), "stale_fallback_served")
+    assert len(served) == 1
+    assert isinstance(served[0]["payload"]["age_sec"], int)
+    assert served[0]["payload"]["live_error_type"] == "timeout"
+
+
+def test_stale_fallback_reemits_after_heartbeat(monkeypatch, tmp_path):
+    _set_fake_agentos_home(monkeypatch, tmp_path)
+    wf = _limits_workflow()
+    now = [1000.0]
+    wf._error_clock = lambda: now[0]
+    target = wf.config.targets[0]
+    ts = _fallback_state()
+
+    wf._maybe_log_error(target, ts, tick=0)
+    wf._maybe_log_error(target, ts, tick=1)  # within heartbeat -> suppressed
+    now[0] += 3601.0
+    wf._maybe_log_error(target, ts, tick=2)  # heartbeat elapsed -> re-emit
+
+    assert len(_events(_log_file(), "stale_fallback_served")) == 2
+
+
+def test_stale_fallback_reemits_on_signature_change(monkeypatch, tmp_path):
+    _set_fake_agentos_home(monkeypatch, tmp_path)
+    wf = _limits_workflow()
+    wf._error_clock = lambda: 1000.0
+    target = wf.config.targets[0]
+
+    wf._maybe_log_error(target, _fallback_state(err_type="timeout"), tick=0)
+    wf._maybe_log_error(target, _fallback_state(err_type="usage_api_http_error"), tick=1)
+
+    assert len(_events(_log_file(), "stale_fallback_served")) == 2
+
+
+def test_recovery_clears_then_reemits(monkeypatch, tmp_path):
+    _set_fake_agentos_home(monkeypatch, tmp_path)
+    wf = _limits_workflow()
+    wf._error_clock = lambda: 1000.0
+    target = wf.config.targets[0]
+
+    wf._maybe_log_error(target, _fallback_state(), tick=0)  # error -> 1
+    wf._maybe_log_error(target, _state_fresh(), tick=1)  # healthy -> clears, no line
+    wf._maybe_log_error(target, _fallback_state(), tick=2)  # error again -> 2
+
+    assert len(_events(_log_file(), "stale_fallback_served")) == 2
