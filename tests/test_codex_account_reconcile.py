@@ -375,10 +375,11 @@ def test_codex_reconcile_discovers_only_known_homes(
     }
 
 
-def test_codex_account_status_runs_reconciliation_before_usage(
+def test_codex_account_status_is_read_only(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    # account_status must never mutate: no implicit reconcile/sync, no active-promote.
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     agentos_home = environment.agentos_home
@@ -397,7 +398,6 @@ def test_codex_account_status_runs_reconciliation_before_usage(
     )
     register_codex_account_from_auth_file(auth_file=old_auth, account="br")
     materialize_codex_account_to_home(home=system_home, account="br")
-    system_info = read_codex_auth_info(system_home / "auth.json")
 
     monkeypatch.setattr(
         codex_account_status,
@@ -424,14 +424,9 @@ def test_codex_account_status_runs_reconciliation_before_usage(
     ).account_status(record_usage=False)
 
     assert status.check_status == "ok"
-    assert status.raw["home_status"]["auth"]["artifact_id"] == system_info.sha256
-    reconciliation = status.raw["reconciliation"]
-    assert isinstance(reconciliation, dict)
-    assert reconciliation["action_count"] >= 1
-    auth_record = status.raw["auth_artifact_record"]
-    assert isinstance(auth_record, dict)
-    assert auth_record["status"] == "ok"
-    assert auth_record["artifact_id"] == system_info.sha256
+    # read-only: neither implicit reconcile nor active-promote ran
+    assert status.raw["reconciliation"] is None
+    assert status.raw["auth_artifact_record"] is None
 
 
 def _newer_codex_auth_json(*, account_id: str, email: str) -> str:
