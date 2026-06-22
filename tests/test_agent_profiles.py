@@ -524,11 +524,13 @@ def test_profile_home_override_must_be_in_profile_homes(
         )
 
 
-def test_profile_account_materialization_uses_profile_account(
+def test_profile_account_run_does_not_materialize(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    # A run no longer auto-materializes the profile account into the home. The
+    # run uses the home as-is; only explicit `agent accounts materialize` writes.
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     agentos_home = environment.agentos_home
@@ -545,43 +547,24 @@ def test_profile_account_materialization_uses_profile_account(
         "codex-mm",
         **{"provider": "codex", "homes": [str(home)], "accounts": ["mm"]},
     )
-    old_info = read_codex_auth_info(home / "auth.json")
-
-    result = _cmd_agent_run(
-        _run_args(provider=None, profile="codex-mm", prompt="hello", dry_run=True)
-    )
-
-    assert result == 0
-    assert (
-        "[agentos] would materialize codex auth for profile codex-mm from account mm"
-        in capsys.readouterr().out
-    )
-    assert read_codex_auth_info(home / "auth.json").sha256 == old_info.sha256
+    # home holds br auth; profile account is mm — pre-rebuild this would materialize.
+    br_info = read_codex_auth_info(home / "auth.json")
 
     result = _cmd_agent_run(
         _run_args(provider=None, profile="codex-mm", prompt="hello")
     )
 
     assert result == 0
-    assert (
-        "[agentos] materialized codex auth for profile codex-mm from account mm"
-        in capsys.readouterr().out
-    )
-    status = inspect_codex_account_home(home=home)
-    assert status["classification"] == "matching-active"
-    assert status["auth"]["account_id"] == "acc_mm"
-    removed_registry_name = "links" + ".json"
-    assert not (agentos_home / "accounts" / "codex" / removed_registry_name).exists()
+    assert "materialize codex auth" not in capsys.readouterr().out
+    # the home keeps its existing (br) auth — no materialization to mm
+    assert read_codex_auth_info(home / "auth.json").sha256 == br_info.sha256
     events = _account_events(agentos_home)
-    materialized_events = [
-        event for event in events if event["event"] == "account.auth.materialized"
+    materialized_run_events = [
+        event
+        for event in events
+        if event["event"] == "account.auth.materialized" and event["source"] == "agent.run"
     ]
-    run_events = [
-        event for event in materialized_events if event["source"] == "agent.run"
-    ]
-    assert run_events[-1]["provider"] == "codex"
-    assert run_events[-1]["profile"] == "codex-mm"
-    assert run_events[-1]["account"] == "mm"
+    assert materialized_run_events == []
 
 
 def test_accounts_materialize_codex_check_does_not_mutate_home(

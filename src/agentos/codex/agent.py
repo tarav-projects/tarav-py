@@ -202,72 +202,25 @@ def prepare_codex_run(
     dry_run: bool,
     source: str,
 ) -> tuple[str, ...]:
+    # No auto-materialization: the run uses the home as-is. The only path that
+    # writes a home is the explicit `agentos agent accounts materialize`
+    # (`Capture.Over.Materialization`). The home-current policy still validates
+    # that the home auth is usable and account-allowed (fail-fast, no mutation).
     if agent.home is None:
         return ()
-
-    from agentos.codex.account_registry import (
-        inspect_codex_account_home,
-        materialize_codex_account_to_home,
-    )
-
-    status = inspect_codex_account_home(home=agent.home)
-    home_account = _active_home_account(status)
-    profile_account = _agent_account(agent)
     if command_config.account is None and agent.account_policy == "home-current":
-        return _prepare_home_current_codex_run(
-            agent=agent,
-            status=status,
-            start_path=start_path,
-            dry_run=dry_run,
-        )
-    requested_account = _normalized_account(command_config.account) or profile_account
+        from agentos.codex.account_registry import inspect_codex_account_home
 
-    if requested_account is not None:
-        synced_lines = _sync_codex_materialized_home(
-            agent=agent,
-            account=requested_account,
-            start_path=start_path,
-            dry_run=dry_run,
-            source=source,
-        )
-        if synced_lines:
-            return synced_lines
         status = inspect_codex_account_home(home=agent.home)
-        home_account = _active_home_account(status)
-        if _status_classification(status) != "matching-active":
-            if dry_run:
-                return (_format_codex_preflight_line("would materialize", agent, requested_account),)
-            payload = materialize_codex_account_to_home(
-                home=agent.home,
-                account=requested_account,
-                record_event=False,
-            )
-            _record_materialized_event(agent=agent, account=str(payload.get("account", requested_account)), artifact_id=_payload_string(payload, "artifact_id"), source=source)
-            return (_format_codex_preflight_line("materialized", agent, str(payload.get("account", requested_account))),)
-        if home_account != requested_account:
-            if dry_run:
-                return (_format_codex_preflight_line("would materialize", agent, requested_account),)
-            payload = materialize_codex_account_to_home(
-                home=agent.home,
-                account=requested_account,
-                record_event=False,
-            )
-            _record_materialized_event(agent=agent, account=str(payload.get("account", requested_account)), artifact_id=_payload_string(payload, "artifact_id"), source=source)
-            return (_format_codex_preflight_line("materialized", agent, str(payload.get("account", requested_account))),)
-        return ()
-
-    if home_account is None:
-        return ()
-    return _sync_codex_materialized_home(agent=agent, account=home_account, start_path=start_path, dry_run=dry_run, source=source)
+        _validate_home_current_codex_run(agent=agent, status=status)
+    return ()
 
 
-def _prepare_home_current_codex_run(
+def _validate_home_current_codex_run(
     *,
     agent: CodexAgent,
     status: dict[str, object],
-    start_path: Path,
-    dry_run: bool,
-) -> tuple[str, ...]:
+) -> None:
     classification = _status_classification(status)
     if classification == "missing":
         raise CliError(
@@ -290,20 +243,6 @@ def _prepare_home_current_codex_run(
             f"current codex home auth is ambiguous for profile {agent.profile_id or '<default>'}"
         )
     _check_home_current_account_allowed(agent, account)
-
-    if classification == "known-account-new-hash":
-        from agentos.codex.account_reconcile import reconcile_codex_accounts
-
-        reconcile_codex_accounts(
-            account=account,
-            home=agent.home,
-            start_path=start_path,
-            register_discovered=True,
-            sync_homes=False,
-            check=dry_run,
-            record_event=False,
-        )
-    return ()
 
 
 def _recognized_home_current_account(status: dict[str, object]) -> str | None:
@@ -338,91 +277,6 @@ def _check_home_current_account_allowed(agent: CodexAgent, account: str) -> None
             f"current codex home auth account {account} is not allowed by profile "
             f"{agent.profile_id or '<default>'}"
         )
-
-
-def _sync_codex_materialized_home(
-    *,
-    agent: CodexAgent,
-    account: str,
-    start_path: Path,
-    dry_run: bool,
-    source: str,
-) -> tuple[str, ...]:
-    if agent.home is None:
-        return ()
-
-    from agentos.codex.account_reconcile import reconcile_codex_accounts
-
-    payload = reconcile_codex_accounts(
-        account=account,
-        home=agent.home,
-        start_path=start_path,
-        register_discovered=True,
-        sync_homes=True,
-        check=dry_run,
-        record_event=False,
-    )
-    if not _payload_has_home_sync_action(payload):
-        return ()
-    if not dry_run:
-        _record_materialized_event(
-            agent=agent,
-            account=account,
-            artifact_id=_synced_artifact_id(payload),
-            source=source,
-        )
-    action = "would refresh" if dry_run else "refreshed"
-    return (_format_codex_preflight_line(action, agent, account),)
-
-
-def _payload_has_home_sync_action(payload: dict[str, object]) -> bool:
-    actions = payload.get("actions")
-    if not isinstance(actions, list):
-        return False
-    return any(
-        isinstance(action, dict)
-        and action.get("kind") in {"would_sync_home", "synced_home"}
-        for action in actions
-    )
-
-
-def _synced_artifact_id(payload: dict[str, object]) -> str | None:
-    actions = payload.get("actions")
-    if not isinstance(actions, list):
-        return None
-    for action in actions:
-        if not isinstance(action, dict) or action.get("kind") != "synced_home":
-            continue
-        artifact_id = _payload_string(action, "artifact_id")
-        if artifact_id is not None:
-            return artifact_id
-    return None
-
-
-def _record_materialized_event(
-    *,
-    agent: CodexAgent,
-    account: str,
-    artifact_id: str | None,
-    source: str,
-) -> None:
-    if agent.home is None:
-        return
-    from agentos.agent.account_registry import record_account_event
-
-    record_account_event(
-        event_type="account.auth.materialized",
-        command=source,
-        argv=(),
-        status="ok",
-        payload={
-            "provider": agent.provider,
-            "profile": agent.profile_id,
-            "home": str(agent.home),
-            "account": account,
-            "artifact_id": artifact_id,
-        },
-    )
 
 
 def _safe_inspect_codex_home(home: Path) -> dict[str, object] | None:
@@ -481,11 +335,6 @@ def _agent_account(agent: CodexAgent) -> str | None:
     if agent.account.provider != agent.provider:
         return None
     return _normalized_account(agent.account.account)
-
-
-def _format_codex_preflight_line(action: str, agent: CodexAgent, account: str) -> str:
-    profile = agent.profile_id or "<default>"
-    return f"[agentos] {action} codex auth for profile {profile} from account {account}"
 
 
 def validate_profile(profile_json: dict[str, object]) -> None:
