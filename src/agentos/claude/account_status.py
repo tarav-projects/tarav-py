@@ -37,11 +37,7 @@ from agentos.agent.account_usage_fallback import (
 from agentos.agent.primitives import AgentConfig
 from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
-from agentos.claude.account_registry import (
-    CLAUDE_AUTH_KIND,
-    promote_verified_claude_ambient_auth_from_home,
-    read_claude_secure_storage,
-)
+from agentos.claude.account_registry import read_claude_secure_storage
 
 
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
@@ -185,12 +181,8 @@ def _claude_account_status_impl(
                 or CLAUDE_STATUSLINE_USAGE_SOURCE,
                 payload=usage_record_payload,
             )
-        auth_artifact_record = _refresh_claude_ambient_auth_artifact(
-            agent,
-            account_record=account_record,
-            usage_status=usage_status,
-            usage_record_metadata=usage_record_metadata,
-        )
+        # account_status is read-only: no active-promote. Capture is handled by
+        # the run path, not by status. auth_artifact_record stays None.
 
     return AccountStatus(
         provider=agent.provider,
@@ -330,48 +322,6 @@ def _usage_record_source(usage_record_metadata: Mapping[str, Any] | None) -> str
     return source if isinstance(source, str) and source else None
 
 
-def _refresh_claude_ambient_auth_artifact(
-    agent: AgentConfig,
-    *,
-    account_record: dict[str, object],
-    usage_status: str,
-    usage_record_metadata: Mapping[str, Any] | None,
-) -> dict[str, object] | None:
-    if account_record.get("auth_kind") != CLAUDE_AUTH_KIND:
-        return None
-    if agent.home is None or agent.account is None:
-        return None
-    if usage_status != "ok":
-        return None
-    if _usage_record_source(usage_record_metadata) != CLAUDE_STATUSLINE_USAGE_SOURCE:
-        return None
-    if (
-        isinstance(usage_record_metadata, Mapping)
-        and usage_record_metadata.get("status") == USAGE_RECORD_STATUS_REGISTRY_FALLBACK
-    ):
-        return None
-    try:
-        payload = promote_verified_claude_ambient_auth_from_home(
-            home=agent.home,
-            account=agent.account.account,
-            source="account.status",
-        )
-    except CliError as exc:
-        return {
-            "status": "error",
-            "message": str(exc),
-        }
-    account_payload = payload.get("account_record")
-    return {
-        "status": "ok",
-        "artifact_id": payload.get("artifact_id"),
-        "artifact_appended": bool(payload.get("artifact_appended")),
-        "active_artifact_id": (
-            account_payload.get("active_artifact_id")
-            if isinstance(account_payload, dict)
-            else None
-        ),
-    }
 
 
 def _account_usage_statusline(

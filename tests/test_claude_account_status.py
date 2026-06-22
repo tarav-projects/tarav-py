@@ -43,10 +43,11 @@ def test_claude_statusline_env_preserves_config_declared_policy_env() -> None:
     assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "configured"
 
 
-def test_claude_account_status_success_refreshes_ambient_auth_artifact(
+def test_claude_account_status_is_read_only(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    # account_status must not mutate: no active-promote, no verification write.
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
@@ -81,19 +82,18 @@ def test_claude_account_status_success_refreshes_ambient_auth_artifact(
     ).account_status(record_usage=False)
 
     assert status.usage_status == "ok"
-    auth_record = status.raw["auth_artifact_record"]
-    assert isinstance(auth_record, dict)
-    assert auth_record["status"] == "ok"
-    account_payload = read_json_file(
-        environment.agentos_home / "accounts" / "claude-code" / "accounts.json"
-    )
-    artifact_id = account_payload["accounts"]["browser-br"]["active_artifact_id"]
-    assert auth_record["artifact_id"] == artifact_id
-    verifications = read_jsonl_file(
+    # read-only: no active-promote ran
+    assert status.raw["auth_artifact_record"] is None
+    # status wrote no verification evidence
+    verifications_path = (
         environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
     )
-    assert verifications[-1]["artifact_id"] == artifact_id
-    assert verifications[-1]["source"] == "account.status"
+    status_verifications = (
+        [v for v in read_jsonl_file(verifications_path) if v.get("source") == "account.status"]
+        if verifications_path.exists()
+        else []
+    )
+    assert status_verifications == []
 
 
 def test_claude_successful_run_refreshes_ambient_auth_artifact(
