@@ -20,8 +20,6 @@ from agentos.testing import AgentosTestEnvironment
 
 from _helpers import (
     codex_auth_json,
-    read_json_file,
-    read_jsonl_file,
     write_claude_home,
     write_text_file,
 )
@@ -114,11 +112,13 @@ def test_agent_ping_codex_uses_home_as_is_without_materializing(
     assert read_codex_auth_info(home / "auth.json").sha256 == old_info.sha256
 
 
-def test_agent_ping_records_claude_verified_auth_source(
+def test_agent_ping_claude_does_not_auto_promote(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    # New model: claude ping/run is read-only toward the registry — no automatic
+    # post-run promote/verification. (Old auto-promote path removed in 654.)
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     import agentos.claude.account_registry as claude_account_registry
@@ -149,15 +149,10 @@ def test_agent_ping_records_claude_verified_auth_source(
 
     assert result == 0
     assert "pong model=" in capsys.readouterr().out
-    account_payload = read_json_file(
-        environment.agentos_home / "accounts" / "claude-code" / "accounts.json"
-    )
-    artifact_id = account_payload["accounts"]["browser-br"]["active_artifact_id"]
-    verifications = read_jsonl_file(
+    # no automatic verification/promotion was recorded by the ping
+    assert not (
         environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
-    )
-    assert verifications[-1]["artifact_id"] == artifact_id
-    assert verifications[-1]["source"] == "agent.ping"
+    ).exists()
 
 
 def test_agent_run_does_not_mutate_codex_home_without_account(

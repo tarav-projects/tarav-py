@@ -1,0 +1,182 @@
+"""Readers (and minimal writers) for the redesigned `Auth.Registry`.
+
+Settings/state are physically split under ``~/.agentos/accounts/<provider>/``:
+
+- ``accounts.json`` — settings: ``{provider, accounts: {<account-id>: {identity, auth_methods: {<method>: {class}}}}}``.
+- ``registry/`` — state: ``active.json`` (``{"<account-id>/<method>": <artifact_id>}``),
+  ``captures.jsonl`` (one record per capture), ``artifacts/<sha256>`` (content-addressed payloads, secrets here only).
+
+The pair ``{captures.jsonl record + artifact}`` reconstructs a full `Auth.Data`.
+This module is provider-agnostic; provider specifics live in the `Auth.Method`.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+from agentos._core.clock import utc_now_iso
+from agentos.agent.account_registry import account_provider_root
+from agentos.agent.account_status import AccountIdentity
+from agentos.agent.auth_method import AuthData
+
+
+# --- paths ---
+
+def settings_path(provider: str) -> Path:
+    return account_provider_root(provider) / "accounts.json"
+
+
+def registry_root(provider: str) -> Path:
+    return account_provider_root(provider) / "registry"
+
+
+def active_path(provider: str) -> Path:
+    return registry_root(provider) / "active.json"
+
+
+def captures_path(provider: str) -> Path:
+    return registry_root(provider) / "captures.jsonl"
+
+
+def artifact_path(provider: str, artifact_id: str) -> Path:
+    return registry_root(provider) / "artifacts" / artifact_id
+
+
+# --- settings (read) ---
+
+def load_settings(provider: str) -> dict[str, object]:
+    path = settings_path(provider)
+    if not path.is_file():
+        return {"provider": provider, "accounts": {}}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return {"provider": provider, "accounts": {}}
+    return payload
+
+
+def _accounts(provider: str) -> dict[str, dict[str, object]]:
+    accounts = load_settings(provider).get("accounts")
+    if not isinstance(accounts, dict):
+        return {}
+    return {k: v for k, v in accounts.items() if isinstance(k, str) and isinstance(v, dict)}
+
+
+def resolve_account_by_identity(provider: str, identity: AccountIdentity) -> str | None:
+    """Return the account-id whose settings identity matches, or None (orphan)."""
+
+    target = identity.provider_account_id
+    if target is None:
+        return None
+    for account_id, record in _accounts(provider).items():
+        ident = record.get("identity")
+        if not isinstance(ident, dict):
+            continue
+        # provider-shaped id field: codex `provider_account_id`, claude `account_uuid`
+        known = ident.get("provider_account_id") or ident.get("account_uuid")
+        if known == target:
+            return account_id
+    return None
+
+
+def method_class(provider: str, account_id: str, method: str) -> str | None:
+    record = _accounts(provider).get(account_id)
+    if not isinstance(record, dict):
+        return None
+    methods = record.get("auth_methods")
+    if not isinstance(methods, dict):
+        return None
+    spec = methods.get(method)
+    return spec.get("class") if isinstance(spec, dict) else None
+
+
+# --- state (read) ---
+
+def load_active(provider: str) -> dict[str, str]:
+    path = active_path(provider)
+    if not path.is_file():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return {}
+    return {k: v for k, v in payload.items() if isinstance(k, str) and isinstance(v, str)}
+
+
+def active_artifact_id(provider: str, account_id: str, method: str) -> str | None:
+    return load_active(provider).get(f"{account_id}/{method}")
+
+
+def read_artifact(provider: str, artifact_id: str) -> AuthData | None:
+    path = artifact_path(provider, artifact_id)
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return AuthData(payload=payload) if isinstance(payload, dict) else None
+
+
+# --- state (write) — minimal, for capture/activation ---
+
+def store_artifact(provider: str, auth_data: AuthData) -> str:
+    """Content-address and persist a payload blob (mode 600); return its id."""
+
+    artifact_id = auth_data.content_id()
+    path = artifact_path(provider, artifact_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(
+            json.dumps(dict(auth_data.payload), sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        os.chmod(path, 0o600)
+    return artifact_id
+
+
+def append_capture(
+    provider: str,
+    *,
+    account: str,
+    method: str,
+    auth_class: str,
+    auth_ref: AccountIdentity,
+    artifact_id: str | None,
+) -> dict[str, object]:
+    record: dict[str, object] = {
+        "ts": utc_now_iso(),
+        "account": account,
+        "method": method,
+        "class": auth_class,
+        "auth_ref": auth_ref.summary(),
+        "artifact_id": artifact_id,
+    }
+    path = captures_path(provider)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, separators=(",", ":")) + "\n")
+    return record
+
+
+def set_active(provider: str, account_id: str, method: str, artifact_id: str) -> None:
+    active = load_active(provider)
+    active[f"{account_id}/{method}"] = artifact_id
+    path = active_path(provider)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(active, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+__all__ = [
+    "settings_path",
+    "registry_root",
+    "active_path",
+    "captures_path",
+    "artifact_path",
+    "load_settings",
+    "resolve_account_by_identity",
+    "method_class",
+    "load_active",
+    "active_artifact_id",
+    "read_artifact",
+    "store_artifact",
+    "append_capture",
+    "set_active",
+]

@@ -277,20 +277,7 @@ def _record_agent_credential_success(
     if account is None:
         return
     try:
-        if agent.provider == "claude-code":
-            from agentos.claude.account_registry import (
-                has_claude_oauth_token_kind,
-                promote_verified_claude_ambient_auth_from_home,
-            )
-
-            if has_claude_oauth_token_kind(account):
-                return
-            promote_verified_claude_ambient_auth_from_home(
-                home=agent.home,
-                account=account,
-                source=source,
-            )
-        elif agent.provider == "codex":
+        if agent.provider == "codex":
             from agentos.codex.account_registry import promote_verified_codex_auth_from_home
 
             promote_verified_codex_auth_from_home(
@@ -357,21 +344,6 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
             )
         )
         return 0
-    if args.provider == "claude-code":
-        from agentos.claude.account_registry import register_claude_account
-
-        print(
-            format_json_output(
-                register_claude_account(
-                    account=args.account,
-                    email=args.email,
-                    label=args.label,
-                    oauth_token_file=args.oauth_token_file,
-                    argv=getattr(args, "_agentos_argv", []),
-                )
-            )
-        )
-        return 0
     if args.provider == "copilot-cli":
         from agentos.copilot.account_registry import register_copilot_account
 
@@ -419,22 +391,6 @@ def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
         from agentos.codex.account_reconcile import reconcile_codex_accounts
 
         payload = reconcile_codex_accounts(
-            account=args.account,
-            home=Path(args.home) if args.home is not None else None,
-            start_path=_config_start_path(args),
-            check=args.check,
-            ping=args.ping,
-            argv=getattr(args, "_agentos_argv", []),
-        )
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(_format_agent_accounts_reconcile(payload))
-        return 0
-    if args.provider == "claude-code":
-        from agentos.claude.account_reconcile import reconcile_claude_accounts
-
-        payload = reconcile_claude_accounts(
             account=args.account,
             home=Path(args.home) if args.home is not None else None,
             start_path=_config_start_path(args),
@@ -504,6 +460,19 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
         if args.home is not None:
             raise CliError("agent accounts status --home requires --provider")
         return _cmd_agent_accounts_registry_status(args, provider=None)
+
+    if args.provider == "claude-code":
+        from agentos.agent.account_status_report import (
+            build_status_report,
+            format_status_report,
+        )
+
+        payload = build_status_report(args.provider)
+        if args.json:
+            print(format_json_output(payload))
+        else:
+            print(format_status_report(payload))
+        return 0
 
     if args.provider == "codex":
         if args.home is None:

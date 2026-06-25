@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Goal:** land an end-to-end `agentos agent accounts status` for **claude-code only**, built on the redesigned account-management model (settings/state split + `Auth.Registry` state store), and remove the now-dead claude account paths.
-- **Status:** not started.
+- **Status:** Slices 1–3 complete — claude `status` e2e green on the live machine (`~/.claude-om` → `aligned`, other claude homes → `drift`). Slice 4 partial — CLI-surface teardown done; deeper claude auto-promote removal deferred (see `Impl.Log`). Full suite: 196 passed.
 - **Scope (in):**
   - `ClaudeAuthMethod` implementing the `AuthMethod` ABC read-side (`read_auth_data`, `extract_identity`) — lifting the existing working claude home readers.
   - New registry readers: the new-shape `accounts.json` (settings) and `registry/active.json` (state).
@@ -109,4 +109,10 @@ Order: 1 → 2 → 3 (e2e green) → 4 (teardown). Reach the first observable en
 
 ## Impl.Log
 
-- (empty — implementer appends deviations, open-space decisions, blockers; nothing that's visible in the diff)
+- **Open-space decision (Slice 1) — cross-home keychain.** The lifted `read_claude_secure_storage_info` includes a generic `Claude Code-credentials` Keychain service that resolves *another* home's credential (it leaked a token into test output). `ClaudeAuthMethod` therefore reads **home-scoped** only: the hash-specific Keychain service (`_read_home_secret`) + in-home `.credentials.json`, dropping the generic fallback — otherwise a logged-out home would falsely resolve to the default home's account, breaking `undeterminable`.
+- **Deviation (Slice 4) — teardown narrower than the Impl.Index assumed.** `promote_verified_claude_ambient_auth_from_home`, `has_claude_oauth_token_kind`, `reconcile_claude_accounts`, and `claude/account_reconcile.py` are **not** claude-isolated dead code: they are still called by `claude/agent.py` (the claude run path) and `monitor/workflows.py` (parked). Removed only the safe CLI-surface paths — the `register`/`reconcile` claude dispatch branches and the `commands.py` `_record_agent_credential_success` claude post-run promote branch. Did **not** delete the shared modules/functions.
+- **Deferred.** The deeper claude auto-promote (claude `run`/`ping` writing the registry via `claude/agent.py`, and the monitor promote) is genuine "automatic" behavior to kill under the new model, but its removal is entangled with the **parked** monitor and the claude run path — out of the claude-`status` scope. Needs its own slice/Impl.Req.
+- **Park, not disable.** `monitor` was left **untouched** per the user's "don't touch it yet" (the Impl.Index said "disable"; honored the stronger user directive). It reads the old `accounts.json` shape, so it will error if run until reworked.
+- **Test rewritten (`No.Legacy`).** `test_agent_ping_records_claude_verified_auth_source` asserted the removed auto-promote (claude ping writing `verifications.jsonl`); replaced with `test_agent_ping_claude_does_not_auto_promote` asserting the new read-only contract.
+- **Live data fix.** Re-produced the `om/browser` artifact self-contained (`{claudeAiOauth + oauthAccount}`, hash `d3dbd439…`); removed the stale secret-only blob `5c293b44…`.
+- **Environment note (not from this work).** `uv tool install --reinstall --editable .` fails with "Failed to install entrypoints" — a pre-existing packaging quirk. The editable `agentos` CLI still reflects all source changes (verified live).
