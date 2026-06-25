@@ -241,43 +241,6 @@ def append_verification(provider: str, entry: dict[str, object]) -> dict[str, ob
     return normalized_entry
 
 
-def inspect_account_registry(provider: str | None = None) -> dict[str, object]:
-    providers = [validate_string_for_path(provider, field_name="provider")] if provider is not None else _registered_providers()
-    accounts: list[dict[str, object]] = []
-    artifact_count = 0
-    provider_summaries: list[dict[str, object]] = []
-    for provider_name in providers:
-        account_payload = load_accounts(provider_name)
-        provider_accounts = _account_records(account_payload)
-        artifacts = read_artifacts(provider_name)
-        verifications = read_verifications(provider_name)
-        accounts.extend(provider_accounts)
-        artifact_count += len(artifacts)
-        provider_summaries.append(
-            {
-                "provider": provider_name,
-                "root": str(account_provider_root(provider_name)),
-                "account_count": len(provider_accounts),
-                "artifact_count": len(artifacts),
-                "verification_count": len(verifications),
-                "accounts_path": str(accounts_path(provider_name)),
-                "artifacts_path": str(artifacts_path(provider_name)),
-                "verifications_path": str(verifications_path(provider_name)),
-            }
-        )
-    return {
-        "status": "ok",
-        "command": "agent accounts status",
-        "provider": provider,
-        "root": str(agentos_home_dir() / "accounts"),
-        "provider_count": len(providers),
-        "account_count": len(accounts),
-        "artifact_count": artifact_count,
-        "providers": provider_summaries,
-        "accounts": sorted(accounts, key=lambda item: (str(item.get("provider", "")), str(item.get("account", "")))),
-    }
-
-
 def record_account_event(
     *,
     event_type: str,
@@ -426,7 +389,6 @@ __all__ = [
     "append_verification",
     "artifacts_dir",
     "artifacts_path",
-    "inspect_account_registry",
     "load_account",
     "load_accounts",
     "record_account_event",

@@ -456,43 +456,31 @@ def _format_agent_accounts_reconcile(payload: dict[str, object]) -> str:
 
 
 def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
-    if args.provider is None:
-        if args.home is not None:
-            raise CliError("agent accounts status --home requires --provider")
-        return _cmd_agent_accounts_registry_status(args, provider=None)
+    from agentos.agent.account_status_report import (
+        build_status_report,
+        format_status_report,
+    )
 
-    if args.provider == "claude-code":
-        from agentos.agent.account_status_report import (
-            build_status_report,
-            format_status_report,
-        )
+    providers = (
+        (args.provider,) if args.provider is not None else _AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES
+    )
+    home_filter = (
+        str(Path(args.home).expanduser().resolve()) if args.home is not None else None
+    )
 
-        payload = build_status_report(args.provider)
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(format_status_report(payload))
-        return 0
+    reports = []
+    for provider in providers:
+        payload = build_status_report(provider)
+        if home_filter is not None:
+            homes = [h for h in payload["homes"] if h.get("home") == home_filter]
+            payload = {**payload, "homes": homes}
+        reports.append(payload)
 
-    if args.provider == "codex":
-        if args.home is None:
-            return _cmd_agent_accounts_registry_status(args, provider=args.provider)
-        from agentos.codex.account_registry import inspect_codex_account_home
-
-        payload = inspect_codex_account_home(home=Path(args.home))
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(_format_agent_accounts_status(payload))
-        return 0
-    if args.home is not None:
-        payload = _inspect_account_home(provider=args.provider, home=Path(args.home))
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(_format_agent_accounts_status(payload))
-        return 0
-    return _cmd_agent_accounts_registry_status(args, provider=args.provider)
+    if args.json:
+        print(format_json_output(reports[0] if args.provider is not None else {"reports": reports}))
+    else:
+        print("\n".join(format_status_report(p) for p in reports))
+    return 0
 
 
 def _cmd_agent_accounts_monitor(args: argparse.Namespace) -> int:
@@ -621,109 +609,6 @@ def _payload_actions(payload: dict[str, object]) -> list[dict[str, object]]:
         return []
     return [action for action in actions if isinstance(action, dict)]
 
-
-def _inspect_account_home(*, provider: str, home: Path) -> dict[str, object]:
-    normalized_home = str(home.expanduser().resolve())
-    return {
-        "status": "ok",
-        "command": "agent accounts status",
-        "provider": provider,
-        "home": normalized_home,
-        "classification": "exists" if Path(normalized_home).exists() else "missing",
-    }
-
-
-def _cmd_agent_accounts_registry_status(
-    args: argparse.Namespace, *, provider: str | None
-) -> int:
-    from agentos.agent.account_registry import inspect_account_registry
-
-    payload = inspect_account_registry(provider)
-    if args.json:
-        print(format_json_output(payload))
-    else:
-        print(_format_agent_accounts_registry_overview(payload))
-    return 0
-
-
-def _format_agent_accounts_status(payload: dict[str, object]) -> str:
-    lines = [
-        f"Provider: {payload.get('provider', '<unknown>')}",
-        f"Home: {payload.get('home', '<unknown>')}",
-        f"Status: {payload.get('classification', '<unknown>')}",
-    ]
-    auth_path = payload.get("auth_path")
-    if isinstance(auth_path, str):
-        lines.insert(2, f"Auth file: {auth_path}")
-    auth = payload.get("auth")
-    if isinstance(auth, dict):
-        lines.append(f"Account ID: {auth.get('account_id', '<unknown>')}")
-        email = auth.get("email")
-        if isinstance(email, str):
-            lines.append(f"Email: {email}")
-        sha256 = auth.get("sha256")
-        if isinstance(sha256, str):
-            lines.append(f"SHA256: {sha256}")
-    error = payload.get("error")
-    if isinstance(error, str):
-        lines.append(f"Error: {error}")
-    registry_matches = payload.get("artifact_registry_matches")
-    if isinstance(registry_matches, list):
-        lines.append(f"Registered artifact matches: {len(registry_matches)}")
-    account_matches = payload.get("account_registry_matches")
-    if isinstance(account_matches, list):
-        accounts = sorted(
-            {
-                account
-                for item in account_matches
-                if isinstance(item, dict)
-                and isinstance((account := item.get("account")), str)
-            }
-        )
-        if accounts:
-            lines.append(f"Known account aliases: {', '.join(accounts)}")
-    return "\n".join(lines)
-
-
-def _format_agent_accounts_registry_overview(payload: dict[str, object]) -> str:
-    lines = [
-        "Agent accounts",
-        f"Root: {payload.get('root', '<unknown>')}",
-        f"Providers: {payload.get('provider_count', 0)}",
-        f"Accounts: {payload.get('account_count', 0)}",
-    ]
-    accounts = payload.get("accounts")
-    if isinstance(accounts, list) and accounts:
-        lines.append("Registered accounts:")
-        for item in accounts:
-            if not isinstance(item, dict):
-                continue
-            lines.append(_format_agent_account_line(item))
-    artifacts = payload.get("artifact_count")
-    if isinstance(artifacts, int):
-        lines.insert(4, f"Artifacts: {artifacts}")
-    return "\n".join(lines)
-
-
-def _format_agent_account_line(item: dict[str, object]) -> str:
-    provider = item.get("provider", "<unknown>")
-    account = item.get("account", "<unknown>")
-    label = f"  - {provider}/{account}"
-    email = item.get("email")
-    if isinstance(email, str):
-        label += f" <{email}>"
-    display_label = item.get("label")
-    if isinstance(display_label, str):
-        label += f" {display_label}"
-    auth_kind = item.get("auth_kind")
-    if isinstance(auth_kind, str) and auth_kind:
-        label += f" auth={auth_kind}"
-    active_sha = item.get("active_artifact_id")
-    if isinstance(active_sha, str):
-        label += f" active={active_sha[:12]}"
-    elif active_sha is None:
-        label += " active=<none>"
-    return label
 
 
 def _add_agent_run_target_args(
