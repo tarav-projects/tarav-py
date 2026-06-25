@@ -632,15 +632,16 @@ def test_accounts_materialize_codex_writes_home_and_event(
 
 
 def test_accounts_materialize_unsupported_provider_errors() -> None:
+    # claude-code is now supported on the new model; copilot-cli is not.
     with pytest.raises(
         CliError,
-        match="agent accounts materialize is not supported for provider claude-code",
+        match="agent accounts materialize is not supported for provider copilot-cli",
     ):
         _cmd_agent_accounts_materialize(
             argparse.Namespace(
-                provider="claude-code",
-                home="/tmp/claude",
-                account="browser-mm",
+                provider="copilot-cli",
+                home="/tmp/copilot",
+                account="jp/gh-token",
                 check=False,
                 force=False,
                 json=False,

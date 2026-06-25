@@ -26,7 +26,25 @@ from agentos.agent.auth_method import AuthData, AuthMethod
 from agentos.claude.account_registry import (
     DEFAULT_CLAUDE_KEYCHAIN_TIMEOUT_SEC,
     claude_keychain_service_names,
+    write_claude_secure_storage,
 )
+
+
+def _write_oauth_account(home: Path, oauth_account: dict[str, object]) -> None:
+    """Set oauthAccount in <home>/.claude.json, preserving the file's other keys."""
+    path = home / ".claude.json"
+    cfg: dict[str, object] = {}
+    if path.is_file():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                cfg = loaded
+        except (OSError, ValueError):
+            cfg = {}
+    cfg["oauthAccount"] = oauth_account
+    tmp = path.with_name(path.name + ".agentos-tmp")
+    tmp.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _read_oauth_account(home: Path) -> dict[str, object] | None:
@@ -117,9 +135,17 @@ class ClaudeAuthMethod(AuthMethod):
         )
 
     def materialize(self, auth_data: AuthData, home: Path) -> None:
-        raise NotImplementedError(
-            "ClaudeAuthMethod.materialize is out of scope — account management is read-only here"
-        )
+        # Claude's Auth.Data spans two home locations, so write both: the whole
+        # secret (every payload key except the identity) to secure storage, and
+        # oauthAccount to .claude.json. Writing only claudeAiOauth would leave the
+        # home reading back a different content_id (extra secret keys do occur).
+        home = home.expanduser()
+        home.mkdir(parents=True, exist_ok=True)
+        oauth_account = auth_data.payload.get("oauthAccount")
+        secret = {k: v for k, v in auth_data.payload.items() if k != "oauthAccount"}
+        write_claude_secure_storage(home=home, payload=secret)
+        if isinstance(oauth_account, dict):
+            _write_oauth_account(home, oauth_account)
 
 
 def _str(value: object) -> str | None:

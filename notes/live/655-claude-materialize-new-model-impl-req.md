@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Goal:** implement `Auth.Data.Materialization` on the new account model — write an account's **active** `Auth.Data` into a provider home so an agent logs in — for **claude-code**, wire it to `agent accounts materialize`, and **eliminate the legacy materialize CLI path** (`No.Legacy.Allowed`).
-- **Status:** not started. The procedure is already proven by hand this session (all 7 claude homes materialized to `aligned`); this Impl.Req turns that hand-script into the real `ClaudeAuthMethod.materialize` + CLI, test-covered.
+- **Status:** Slices 1–2 complete — `ClaudeAuthMethod.materialize` + `agent accounts materialize` (claude, new model) implemented and verified live (`--check` read-only; real run on `browser-om` → `aligned`). Slice 3 partial — the live materialize CLI path is new-model-only; removal of the CLI-dead legacy claude-reconcile cluster is deferred (see `Impl.Log`). Full suite: 200 passed.
 - **Scope (in):**
   - implement `ClaudeAuthMethod.materialize(auth_data, home)` (currently raises `NotImplementedError`).
   - reimplement `agent accounts materialize` on the new model: read the account's active artifact from `Auth.Registry`, materialize it into the target home via the provider `AuthMethod`. **Capture-first** (`Capture.Over.Materialization`).
@@ -82,4 +82,7 @@ Order: 1 → 2 (CLI e2e) → 3 (claude legacy sweep). Claude only — ignore oth
 
 ## Impl.Log
 
-- (empty — implementer appends deviations, open-space decisions, blockers; nothing diff-visible)
+- **Deviation (Slice 3) — legacy claude materialize deferred, not removed.** Found `materialize_claude_account_to_home` in `claude/account_registry.py`, reachable via `_sync_known_homes_from_verified_artifact` + `claude/account_reconcile.py` (+ its tests). That whole claude-reconcile cluster is **CLI-dead since 654** (no reconcile branch wired) but still cross-wired internally. Removing it cleanly is the claude-reconcile teardown — too entangled to pull into an `--AUTO` materialize run safely. The Impl.Req scoped Slice 3 to *unreachable* vestigial helpers; this one is reachable-but-dead-cluster. Result: the **live** materialize CLI path is new-model-only (`No.Legacy` satisfied on the path reimplemented); the legacy function removal is deferred to the claude-reconcile teardown.
+- **Obsolete test repointed.** `test_accounts_materialize_unsupported_provider_errors` asserted claude materialize raises "not supported" — now false. Repointed to `copilot-cli` (genuinely unsupported); the new claude behavior is covered by `tests/test_agent_accounts_materialize.py`.
+- **Open-space decision.** Added `auth_registry.is_captured(...)` to dedup capture-first records (so re-materializing an already-archived snapshot doesn't append a duplicate capture row).
+- **Live verification.** `agent accounts materialize --provider claude-code --account om/browser --home …/browser-om` — `--check` mutated nothing; the real run wrote and `status` reported `aligned`; capture-first recorded (deduped to the same id since the home was already aligned).

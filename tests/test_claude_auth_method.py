@@ -78,7 +78,25 @@ def test_read_auth_data_none_when_identity_absent(tmp_path: Path) -> None:
     assert method.read_auth_data(_make_home(tmp_path, with_identity=False)) is None
 
 
-def test_materialize_not_implemented(tmp_path: Path) -> None:
+def test_materialize_round_trips_to_aligned(tmp_path: Path) -> None:
     method = ClaudeAuthMethod()
-    with pytest.raises(NotImplementedError):
-        method.materialize(AuthData(payload={}), tmp_path / "x")
+    home = tmp_path / "target-home"
+    # artifact carries an EXTRA secret key beyond claudeAiOauth — materialize must
+    # write the whole secret, not just claudeAiOauth, or the read-back diverges.
+    artifact = AuthData(
+        payload={
+            "claudeAiOauth": {"accessToken": "tok", "refreshToken": "ref"},
+            "extraSecret": {"k": "v"},
+            "oauthAccount": {"accountUuid": "u-1", "emailAddress": "e@x.com", "displayName": "E"},
+        }
+    )
+
+    method.materialize(artifact, home)
+
+    back = method.read_auth_data(home)
+    assert back is not None
+    # the home now reads back exactly the active artifact → aligned
+    assert back.content_id() == artifact.content_id()
+    # identity landed in .claude.json
+    cfg = json.loads((home / ".claude.json").read_text())
+    assert cfg["oauthAccount"]["accountUuid"] == "u-1"

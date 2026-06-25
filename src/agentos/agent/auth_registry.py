@@ -156,6 +156,19 @@ def append_capture(
     return record
 
 
+def is_captured(provider: str, account: str, method: str, artifact_id: str) -> bool:
+    path = captures_path(provider)
+    if not path.is_file():
+        return False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        if (r.get("account"), r.get("method"), r.get("artifact_id")) == (account, method, artifact_id):
+            return True
+    return False
+
+
 def set_active(provider: str, account_id: str, method: str, artifact_id: str) -> None:
     active = load_active(provider)
     active[f"{account_id}/{method}"] = artifact_id
@@ -178,5 +191,6 @@ __all__ = [
     "read_artifact",
     "store_artifact",
     "append_capture",
+    "is_captured",
     "set_active",
 ]

@@ -364,6 +364,9 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_accounts_materialize(args: argparse.Namespace) -> int:
+    if args.provider == "claude-code":
+        return _materialize_claude(args)
+
     if args.provider == "codex":
         from agentos.codex.account_registry import materialize_codex_account_to_home
 
@@ -382,6 +385,60 @@ def _cmd_agent_accounts_materialize(args: argparse.Namespace) -> int:
     raise CliError(
         f"agent accounts materialize is not supported for provider {args.provider}"
     )
+
+
+def _materialize_claude(args: argparse.Namespace) -> int:
+    from agentos.agent import auth_registry as R
+    from agentos.claude.auth_method import ClaudeAuthMethod
+
+    provider = "claude-code"
+    account_id, sep, method = args.account.partition("/")
+    if not sep or not account_id or not method:
+        raise CliError("claude materialize requires --account <account-id>/<method>")
+
+    active_id = R.active_artifact_id(provider, account_id, method)
+    if active_id is None:
+        raise CliError(f"no active artifact for {provider} {args.account}")
+    artifact = R.read_artifact(provider, active_id)
+    if artifact is None:
+        raise CliError(f"active artifact payload not found: {active_id}")
+
+    home = Path(args.home)
+    auth_method = ClaudeAuthMethod()
+
+    # Capture.Over.Materialization: archive whatever is live in the home first.
+    captured_id = None
+    live = auth_method.read_auth_data(home)
+    if live is not None:
+        captured_id = R.store_artifact(provider, live)
+        identity = auth_method.extract_identity(live)
+        if identity is not None and not R.is_captured(provider, account_id, method, captured_id):
+            R.append_capture(
+                provider, account=account_id, method=method,
+                auth_class=auth_method.name, auth_ref=identity, artifact_id=captured_id,
+            )
+
+    if not args.check:
+        auth_method.materialize(artifact, home)
+
+    payload = {
+        "command": "agent accounts materialize",
+        "provider": provider,
+        "account": args.account,
+        "home": str(home),
+        "active_artifact_id": active_id,
+        "captured_artifact_id": captured_id,
+        "status": "check" if args.check else "materialized",
+    }
+    if args.json:
+        print(format_json_output(payload))
+    else:
+        verb = "Would materialize" if args.check else "Materialized"
+        line = f"{verb} {provider} {args.account} -> {home} (artifact {active_id[:12]})"
+        if captured_id is not None:
+            line += f"; captured-first {captured_id[:12]}"
+        print(line)
+    return 0
 
 
 def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
