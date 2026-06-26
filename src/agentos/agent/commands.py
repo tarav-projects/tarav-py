@@ -364,6 +364,61 @@ def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
+    from agentos.agent.auth_method_registry import providers_with_auth_methods
+    from agentos.agent.capture import capture_all_homes
+    from agentos.agent.rotation import RotateResult, rotate, rotate_all
+
+    dry_run = getattr(args, "dry_run", False)
+    no_capture = getattr(args, "no_capture", False)
+    if args.account is not None and args.provider is None:
+        raise CliError("agent accounts rotate --account requires --provider")
+    providers = (args.provider,) if args.provider is not None else providers_with_auth_methods()
+
+    results: list[RotateResult] = []
+    for provider in providers:
+        # Capture-first (homes read-only) so a just-refreshed home enters the pool
+        # before we pick the head; --no-capture rotates the existing pool only.
+        if not no_capture:
+            capture_all_homes(provider, dry_run=dry_run)
+        if args.account is not None:
+            account_id, sep, method = args.account.partition("/")
+            if not sep or not account_id or not method:
+                raise CliError("agent accounts rotate requires --account <account-id>/<method>")
+            results.append(rotate(provider, account_id, method, dry_run=dry_run))
+        else:
+            results.extend(rotate_all(provider, dry_run=dry_run))
+
+    changed = sum(1 for r in results if r.changed)
+    if args.json:
+        payload = {
+            "command": "agent accounts rotate",
+            "providers": list(providers),
+            "dry_run": dry_run,
+            "rotated": [
+                {"provider": r.provider, "account": r.account, "method": r.method,
+                 "previous_active": r.previous_active, "new_active": r.new_active,
+                 "changed": r.changed, "skipped": r.skipped}
+                for r in results
+            ],
+            "changed": changed,
+        }
+        print(format_json_output(payload))
+    else:
+        for r in results:
+            if r.skipped:
+                state = "skipped"
+            elif r.changed:
+                prefix = "[dry-run] would rotate" if dry_run else "rotated"
+                state = f"{prefix} {(r.previous_active or '-')[:12]} -> {(r.new_active or '-')[:12]}"
+            else:
+                state = "unchanged"
+            print(f"{r.provider} {r.account}/{r.method}: {state}")
+        verb = "Would change" if dry_run else "Changed"
+        print(f"{verb} {changed} active pointer(s) across {len(results)} account/method(s).")
+    return 0
+
+
 def _cmd_agent_accounts_activate(args: argparse.Namespace) -> int:
     from agentos.agent import auth_registry as R
 
@@ -718,6 +773,28 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     accounts_activate_parser.add_argument("--artifact", required=True, help="Artifact id to activate.")
     accounts_activate_parser.add_argument("--json", action="store_true", help="Output as JSON.")
     accounts_activate_parser.set_defaults(handler=_cmd_agent_accounts_activate)
+
+    accounts_rotate_parser = accounts_subparsers.add_parser(
+        "rotate",
+        help="Activate the head-of-line captured artifact per account/method. Captures first; homes read-only.",
+    )
+    accounts_rotate_parser.add_argument(
+        "--provider", choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family. Without it, rotate every provider with an auth-method.",
+    )
+    accounts_rotate_parser.add_argument(
+        "--account", help="Scope to one account as <account-id>/<method> (requires --provider).",
+    )
+    accounts_rotate_parser.add_argument(
+        "--no-capture", dest="no_capture", action="store_true",
+        help="Rotate the existing capture pool only; do not capture homes first.",
+    )
+    accounts_rotate_parser.add_argument(
+        "--dry-run", dest="dry_run", action="store_true",
+        help="Report the intended active flips without writing (read-only).",
+    )
+    accounts_rotate_parser.add_argument("--json", action="store_true", help="Output as JSON.")
+    accounts_rotate_parser.set_defaults(handler=_cmd_agent_accounts_rotate)
 
     accounts_materialize_parser = accounts_subparsers.add_parser(
         "materialize",

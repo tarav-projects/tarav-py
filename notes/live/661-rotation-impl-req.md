@@ -12,7 +12,7 @@
   - a **CLI verb** `agent accounts rotate` that **captures first** (homes
     read-only, via the existing global capture) and then rotates, with flags to
     skip capture and to preview.
-- **Status:** READY (not started).
+- **Status:** COMPLETE.
 - **Source context:** Design discussion (this session). Motivated by the live
   `agent accounts status`: capture keeps up (660) but the active pointer is frozen,
   so refreshed homes read as `drift` (e.g. claude `om/browser`, `jp/browser`).
@@ -141,4 +141,25 @@ endpoint fast), then provider rank overrides, then the sweep + CLI. Each slice i
 
 ## Impl.Log
 
-- (empty — not started)
+- All 3 slices RED→GREEN. Suite 164→176 (+12), lint clean.
+- Deviation (Slice 1 ranking tie-break): the plan said default rank = earliest
+  `ts` (registration date), tie-break `captured_at` then `artifact_id`.
+  `utc_now_iso()` is **second-granularity**, so same-second captures tie and
+  `artifact_id` ordering is arbitrary. Changed to: per-artifact `captured_at` =
+  its **most recent** capture `ts`, and the deterministic tie-break is the
+  **capture-sequence index** (file order in `captures.jsonl`) — "most recently
+  captured wins". Providers' fine-grained `exp`/`expiresAt` rarely tie, so this
+  only governs the default path.
+- Deviation (Slice 1 tests): both real providers override `rotation_rank`, so the
+  ABC default is unreachable through a real provider. Retargeted the primitive
+  mechanics tests to real codex payloads (with `exp`); covered the ABC default via
+  a minimal stub `AuthMethod` and added an explicit capture-sequence tie-break test.
+- Live finding (not a deviation): `agent accounts rotate --dry-run` reports **0
+  changes** — for every claude account the active artifact already holds the
+  highest `expiresAt` in the pool (verified). So rotation is correctly a no-op and
+  the remaining `status` drift is **stale homes** (older than active) → the
+  materialize axis. This is exactly the deferred `drift:home-older` follow-up; the
+  qualified-drift status work would surface it.
+- `--dry-run` limitation (by design): capture-first also runs dry, so a
+  just-refreshed-but-uncaptured home is not in the pool during a preview; the
+  preview reflects the existing pool. A real run captures first, then rotates.

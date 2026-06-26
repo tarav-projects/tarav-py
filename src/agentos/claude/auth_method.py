@@ -147,6 +147,12 @@ class ClaudeAuthMethod(AuthMethod):
         if isinstance(oauth_account, dict):
             _write_oauth_account(home, oauth_account)
 
+    def rotation_rank(self, auth_data: AuthData, captured_at: float) -> float | None:
+        # Head-of-line by the OAuth token expiry (claudeAiOauth.expiresAt, ms).
+        oauth = auth_data.payload.get("claudeAiOauth")
+        expires_at = oauth.get("expiresAt") if isinstance(oauth, dict) else None
+        return float(expires_at) if isinstance(expires_at, int | float) else None
+
 
 def _str(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None

@@ -244,6 +244,25 @@ def orphan_captures(provider: str) -> list[dict[str, object]]:
     return records
 
 
+def captures_for(provider: str, account: str, method: str) -> list[dict[str, object]]:
+    """Capture records for one ``account/method``, in capture (file) order.
+
+    The capture pool a rotation ranks over — `_unknown` is reachable only by
+    passing it explicitly (callers rotate declared accounts, never the bucket)."""
+
+    path = captures_path(provider)
+    if not path.is_file():
+        return []
+    records: list[dict[str, object]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if isinstance(record, dict) and record.get("account") == account and record.get("method") == method:
+            records.append(record)
+    return records
+
+
 def set_active(provider: str, account_id: str, method: str, artifact_id: str) -> None:
     if account_id == UNKNOWN_ACCOUNT:
         raise CliError(
@@ -275,5 +294,6 @@ __all__ = [
     "append_capture",
     "is_captured",
     "orphan_captures",
+    "captures_for",
     "set_active",
 ]

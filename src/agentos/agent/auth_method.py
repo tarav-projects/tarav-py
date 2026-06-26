@@ -41,7 +41,7 @@ class AuthMethod(ABC):
     """Capability surface for one credential class.
 
     Subclasses set the class attributes and implement the three capabilities.
-    `verify` and freshness derivation are reserved for a later rebuild.
+    `verify` is reserved for a later rebuild.
     """
 
     name: ClassVar[str]
@@ -59,6 +59,16 @@ class AuthMethod(ABC):
     @abstractmethod
     def materialize(self, auth_data: AuthData, home: Path) -> None:
         """Write a credential's `Auth.Data` into a home. Pure write — no read-back/sync/promote."""
+
+    def rotation_rank(self, auth_data: AuthData, captured_at: float) -> float | None:
+        """The head-of-line key for rotation — higher means "should be active".
+
+        Read only from registry-resident data: the stored `Auth.Data` payload and
+        the artifact's capture time (epoch seconds). The default ranks by capture
+        time; providers override with a payload date (e.g. token expiry). Return
+        None to opt this artifact out of automatic rotation (manual only)."""
+
+        return captured_at
 
 
 __all__ = ["AuthData", "AuthMethod"]
