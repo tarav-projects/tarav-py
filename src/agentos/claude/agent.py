@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
     AgentConfig,
@@ -16,7 +15,6 @@ from agentos.agent.run_runtime import (
     AgentRunConfig,
     AgentRunDryResult,
     AgentRunResult,
-    CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR,
     CLAUDE_CONFIG_DIR_ENV_VAR,
     execute_agent_command,
     format_agent_command,
@@ -72,7 +70,6 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
         run_config: AgentRunConfig,
     ) -> AgentRunResult:
         self._check_account_scope(command_config)
-        requested_account = self._resolved_account(command_config)
         prepare_result = self.prepare_run(
             AgentRunPrepareRequest(
                 agent=self,
@@ -93,11 +90,6 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
             },
         )
         base_result = execute_agent_command(command, run_config=self.resolve_run_config(run_config))
-        if base_result.exit_code == 0 and command_config.credential_success_source is not None:
-            self._refresh_ambient_auth_after_successful_run(
-                requested_account,
-                source=command_config.credential_success_source,
-            )
         return AgentRunResult(
             exit_code=base_result.exit_code,
             stdout=base_result.stdout,
@@ -135,25 +127,11 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
         self,
         request: AgentRunPrepareRequest,
     ) -> AgentRunPrepareResult:
-        requested_account = self._resolved_account(request.command_config)
-        if requested_account is None:
-            return AgentRunPrepareResult()
-        from agentos.claude.account_registry import (
-            has_claude_oauth_token_kind,
-            load_claude_oauth_token_for_account,
-        )
-
-        if not has_claude_oauth_token_kind(requested_account):
-            return AgentRunPrepareResult()
-        token = load_claude_oauth_token_for_account(requested_account)
-        env_display_overrides = {}
-        if request.dry_run:
-            env_display_overrides[CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR] = token.safe_display_value()
-        return AgentRunPrepareResult(
-            preamble_lines=(_format_claude_preamble_line(self, requested_account),),
-            env_overrides={CLAUDE_CODE_OAUTH_TOKEN_ENV_VAR: token.token},
-            env_display_overrides=env_display_overrides,
-        )
+        # The run surface is disconnected from the account/auth credential system
+        # (Impl.Req 658): claude runs against the home (keychain) as-is. The
+        # oauth-token-env method's env-injection is removed (unused; needs
+        # redesign). Account-scope is still checked by `_check_account_scope`.
+        return AgentRunPrepareResult()
 
     def account_status(
         self,
@@ -177,40 +155,11 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
             return None
         return (self.account.account or "").strip() or None
 
-    def _refresh_ambient_auth_after_successful_run(
-        self,
-        account: str | None,
-        *,
-        source: str,
-    ) -> None:
-        if account is None or self.home is None:
-            return
-        try:
-            from agentos.claude.account_registry import (
-                has_claude_oauth_token_kind,
-                promote_verified_claude_ambient_auth_from_home,
-            )
-
-            if has_claude_oauth_token_kind(account):
-                return
-            promote_verified_claude_ambient_auth_from_home(
-                home=self.home,
-                account=account,
-                source=source,
-            )
-        except CliError:
-            return
-
     def _run_env_overrides(self) -> dict[str, str]:
         env_overrides = dict(self.env)
         if self.home is not None:
             env_overrides[CLAUDE_CONFIG_DIR_ENV_VAR] = str(self.home)
         return env_overrides
-
-
-def _format_claude_preamble_line(agent: ClaudeAgent, account: str) -> str:
-    profile = agent.profile_id or "<default>"
-    return f"[agentos] injected claude oauth token for profile {profile} from account {account}"
 
 
 def validate_profile(profile_json: dict[str, object]) -> None:

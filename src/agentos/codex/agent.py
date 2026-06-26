@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus
 from agentos.agent.primitives import (
     AgentConfig,
@@ -168,139 +167,11 @@ def prepare_codex_run(
     dry_run: bool,
     source: str,
 ) -> tuple[str, ...]:
-    # No auto-materialization: the run uses the home as-is. The only path that
-    # writes a home is the explicit `agentos agent accounts materialize`
-    # (`Capture.Over.Materialization`). The home-current policy still validates
-    # that the home auth is usable and account-allowed (fail-fast, no mutation).
-    if agent.home is None:
-        return ()
-    if command_config.account is None and agent.account_policy == "home-current":
-        from agentos.codex.account_registry import inspect_codex_account_home
-
-        status = inspect_codex_account_home(home=agent.home)
-        _validate_home_current_codex_run(agent=agent, status=status)
+    # The run surface is disconnected from the account/auth credential system
+    # (Impl.Req 658): the run launches against the home as-is. Account-scope is
+    # still checked by `_check_account_scope` (profile config). Re-integrating a
+    # home-current credential check on the new model is a later redesign.
     return ()
-
-
-def _validate_home_current_codex_run(
-    *,
-    agent: CodexAgent,
-    status: dict[str, object],
-) -> None:
-    classification = _status_classification(status)
-    if classification == "missing":
-        raise CliError(
-            f"current codex home auth is missing for profile {agent.profile_id or '<default>'}"
-        )
-    if classification == "broken":
-        error = _payload_string(status, "error")
-        suffix = f": {error}" if error is not None else ""
-        raise CliError(
-            f"current codex home auth is broken for profile {agent.profile_id or '<default>'}{suffix}"
-        )
-    if classification == "unknown":
-        raise CliError(
-            f"current codex home auth is unknown for profile {agent.profile_id or '<default>'}"
-        )
-
-    account = _recognized_home_current_account(status)
-    if account is None:
-        raise CliError(
-            f"current codex home auth is ambiguous for profile {agent.profile_id or '<default>'}"
-        )
-    _check_home_current_account_allowed(agent, account)
-
-
-def _recognized_home_current_account(status: dict[str, object]) -> str | None:
-    active_account = _active_home_account(status)
-    if active_account is not None:
-        return active_account
-    classification = _status_classification(status)
-    if classification not in {"registered", "known-account-new-hash"}:
-        return None
-    matches = status.get("account_registry_matches")
-    if not isinstance(matches, list):
-        return None
-    accounts = sorted(
-        account
-        for record in matches
-        if isinstance(record, dict)
-        and (account := _payload_string(record, "account")) is not None
-    )
-    if len(accounts) == 1:
-        return accounts[0]
-    return None
-
-
-def _check_home_current_account_allowed(agent: CodexAgent, account: str) -> None:
-    allowed_accounts = sorted(
-        allowed.account
-        for allowed in agent.accounts
-        if allowed.provider == agent.provider
-    )
-    if allowed_accounts and account not in allowed_accounts:
-        raise CliError(
-            f"current codex home auth account {account} is not allowed by profile "
-            f"{agent.profile_id or '<default>'}"
-        )
-
-
-def _safe_inspect_codex_home(home: Path) -> dict[str, object] | None:
-    try:
-        from agentos.codex.account_registry import inspect_codex_account_home
-
-        return inspect_codex_account_home(home=home)
-    except Exception:
-        return None
-
-
-def _payload_string(payload: dict[str, object], key: str) -> str | None:
-    value = payload.get(key)
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return value.strip()
-
-
-def _active_home_account(status: dict[str, object]) -> str | None:
-    if _status_classification(status) != "matching-active":
-        return None
-    matches = status.get("account_registry_matches")
-    auth = status.get("auth")
-    if not isinstance(matches, list) or not isinstance(auth, dict):
-        return None
-    artifact_id = _payload_string(auth, "artifact_id")
-    accounts = sorted(
-        account
-        for record in matches
-        if isinstance(record, dict)
-        and record.get("active_artifact_id") == artifact_id
-        and (account := _payload_string(record, "account")) is not None
-    )
-    if len(accounts) == 1:
-        return accounts[0]
-    return None
-
-
-def _status_classification(status: dict[str, object]) -> str | None:
-    value = status.get("classification")
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return value.strip()
-
-
-def _normalized_account(account: str | None) -> str | None:
-    if account is None:
-        return None
-    normalized = account.strip()
-    return normalized or None
-
-
-def _agent_account(agent: CodexAgent) -> str | None:
-    if agent.account is None:
-        return None
-    if agent.account.provider != agent.provider:
-        return None
-    return _normalized_account(agent.account.account)
 
 
 def validate_profile(profile_json: dict[str, object]) -> None:

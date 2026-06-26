@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-import agentos.claude.agent as claude_agent_module
 import agentos.claude.account_registry as claude_account_registry
 import agentos.claude.account_status as claude_account_status
 from agentos.agent.account_status import (
@@ -12,12 +11,11 @@ from agentos.agent.account_status import (
     AgentAccountContext,
     fresh_usage_record_metadata,
 )
-from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig, AgentRunResult
 from agentos.claude.account_registry import register_claude_account
 from agentos.claude.agent import ClaudeAgent
 from agentos.testing import AgentosTestEnvironment
 
-from _helpers import read_json_file, read_jsonl_file, write_claude_home
+from _helpers import read_jsonl_file, write_claude_home
 
 
 def test_claude_statusline_env_does_not_author_policy_env() -> None:
@@ -96,39 +94,3 @@ def test_claude_account_status_is_read_only(
     assert status_verifications == []
 
 
-def test_claude_successful_run_refreshes_ambient_auth_artifact(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
-    environment.apply_environment(monkeypatch.setenv)
-    monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
-    home = tmp_path / "claude-br"
-    write_claude_home(home, email="br@example.com", account_uuid="acc_br")
-    register_claude_account(account="browser-br", email="br@example.com")
-    monkeypatch.setattr(
-        claude_agent_module,
-        "execute_agent_command",
-        lambda command, *, run_config: AgentRunResult(exit_code=0, stdout="ok"),
-    )
-
-    result = ClaudeAgent(
-        home=home,
-        cli_command=("claude",),
-        account=AgentAccountContext(provider="claude-code", account="browser-br"),
-    ).run(
-        AgentCommandConfig(prompt="hello", interaction_mode="non_interactive"),
-        AgentRunConfig(cwd=tmp_path),
-    )
-
-    assert result.exit_code == 0
-    account_payload = read_json_file(
-        environment.agentos_home / "accounts" / "claude-code" / "accounts.json"
-    )
-    artifact_id = account_payload["accounts"]["browser-br"]["active_artifact_id"]
-    assert artifact_id is not None
-    verifications = read_jsonl_file(
-        environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
-    )
-    assert verifications[-1]["artifact_id"] == artifact_id
-    assert verifications[-1]["source"] == "agent.run"
