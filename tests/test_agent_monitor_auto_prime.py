@@ -51,12 +51,10 @@ from agentos.agent.monitor.workflows import (
 from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.primitives import AgentPingConfig
 from agentos.agent.run_runtime import AgentRunResult
-import agentos.claude.account_registry as claude_account_registry
-from agentos.claude.account_registry import register_claude_account
-from agentos.codex.account_registry import register_codex_account_from_auth_file
+import agentos.claude.keychain as claude_keychain
 from agentos.testing import AgentosTestEnvironment
 
-from _helpers import codex_auth_json, write_claude_home, write_text_file
+from _helpers import codex_auth_json, write_claude_home, write_text_file, seed_claude_account, seed_codex_account
 
 
 def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
@@ -123,10 +121,7 @@ def test_monitor_profile_target_accepts_explicit_scoped_home(
     home = tmp_path / "codex-jp"
     auth_file = tmp_path / "auth.json"
     write_text_file(auth_file, codex_auth_json(account_id="acc_jp"))
-    register_codex_account_from_auth_file(
-        auth_file=auth_file,
-        account="jp",
-    )
+    seed_codex_account("jp")
     environment.write_profile(
         "codex-jp",
         provider="codex",
@@ -169,10 +164,7 @@ def test_monitor_profile_target_rejects_unscoped_home(
     blocked_home = tmp_path / "codex-blocked"
     auth_file = tmp_path / "auth.json"
     write_text_file(auth_file, codex_auth_json(account_id="acc_jp"))
-    register_codex_account_from_auth_file(
-        auth_file=auth_file,
-        account="jp",
-    )
+    seed_codex_account("jp")
     environment.write_profile(
         "codex-jp",
         provider="codex",
@@ -894,10 +886,10 @@ def test_auto_prime_ping_records_claude_verified_auth_source(
 ) -> None:
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
-    monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
+    monkeypatch.setattr(claude_keychain.sys, "platform", "linux")
     home = tmp_path / "claude-br"
     write_claude_home(home, email="br@example.com", account_uuid="acc_br")
-    register_claude_account(account="browser-br", email="br@example.com")
+    seed_claude_account("browser-br", account_uuid="acc_browser-br")
     monkeypatch.setattr(
         monitor_workflows,
         "resolve_account_runtime_agent",
@@ -965,11 +957,7 @@ def test_auto_prime_ping_records_codex_verified_auth_source(
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "codex-br"
     write_text_file(home / "auth.json", codex_auth_json(account_id="acc_br", email="br@example.com"))
-    register_codex_account_from_auth_file(
-        auth_file=home / "auth.json",
-        account="br",
-        register_only=True,
-    )
+    seed_codex_account("br")
     monkeypatch.setattr(
         monitor_workflows,
         "resolve_account_runtime_agent",

@@ -19,7 +19,7 @@ from typing import Any
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
-from agentos.agent.account_registry import load_account
+from agentos.agent import auth_registry
 from agentos.agent.account_status import (
     AccountIdentity,
     AccountIdentityMatch,
@@ -37,7 +37,7 @@ from agentos.agent.account_usage_fallback import (
 from agentos.agent.primitives import AgentConfig
 from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
-from agentos.claude.account_registry import read_claude_secure_storage
+from agentos.claude.keychain import read_claude_secure_storage
 
 
 DEFAULT_USAGE_STATUS_TIMEOUT_SEC = 45
@@ -111,8 +111,10 @@ def _claude_account_status_impl(
     if agent.home is None:
         raise CliError("claude-code account_status requires an agent home")
 
-    account_record = load_account(agent.provider, agent.account.account)
-    expected_identity = _expected_identity(account_record)
+    expected_identity = (
+        auth_registry.expected_identity(agent.provider, agent.account.account)
+        or AccountIdentity()
+    )
     home_config = _load_home_config(agent.home)
     fetched_identity = _fetched_identity_from_home_config(home_config)
     auth_state = "home-config" if home_config is not None else "home-missing-config"
@@ -212,12 +214,6 @@ def _claude_account_status_impl(
     )
 
 
-def _expected_identity(account_record: dict[str, object]) -> AccountIdentity:
-    return AccountIdentity(
-        email=_string_or_none(account_record.get("email")),
-        label=_string_or_none(account_record.get("label")),
-        raw=account_record,
-    )
 
 
 def _load_home_config(home: Path) -> dict[str, object] | None:

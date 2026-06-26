@@ -24,13 +24,7 @@ from agentos.agent.run_runtime import (
 )
 from agentos.agent.providers import resolve_account_runtime_agent, resolve_agent_config
 from agentos.claude.agent import ClaudeAgent
-from agentos.claude.account_registry import register_claude_account
 from agentos.codex.agent import CodexAgent
-from agentos.codex.account_registry import (
-    materialize_codex_account_to_home,
-    read_codex_auth_info,
-    register_codex_account_from_auth_file,
-)
 from agentos.copilot.agent import CopilotAgent
 from agentos.pi.agent import PiAgent
 from agentos.testing import AgentosTestEnvironment
@@ -40,6 +34,8 @@ from _helpers import (
     read_json_file,
     read_jsonl_file,
     write_text_file,
+    seed_claude_account,
+    seed_codex_account,
 )
 
 
@@ -162,7 +158,7 @@ def test_account_runtime_agent_uses_profile_env_and_account_scope(
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "claude-br"
-    register_claude_account(account="browser-br", email="br@example.com")
+    seed_claude_account("browser-br", account_uuid="acc_browser-br")
     environment.write_profile(
         "claude-br",
         provider="claude-code",
@@ -204,7 +200,7 @@ def test_account_runtime_agent_rejects_profile_account_out_of_scope(
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "claude-br"
-    register_claude_account(account="browser-br", email="br@example.com")
+    seed_claude_account("browser-br", account_uuid="acc_browser-br")
     environment.write_profile(
         "claude-jp",
         provider="claude-code",
@@ -231,7 +227,7 @@ def test_account_runtime_agent_infers_unique_profile(
     home = tmp_path / "codex-br"
     auth_file = tmp_path / "auth.json"
     write_text_file(auth_file, codex_auth_json(account_id="acc_br"))
-    register_codex_account_from_auth_file(auth_file=auth_file, account="br")
+    seed_codex_account("br", account_id="acc_br")
     environment.write_profile(
         "codex-br",
         provider="codex",
@@ -262,7 +258,7 @@ def test_account_runtime_agent_requires_unique_profile(
     home = tmp_path / "codex-br"
     auth_file = tmp_path / "auth.json"
     write_text_file(auth_file, codex_auth_json(account_id="acc_br"))
-    register_codex_account_from_auth_file(auth_file=auth_file, account="br")
+    seed_codex_account("br", account_id="acc_br")
     environment.write_profile(
         "codex-br-a",
         provider="codex",
@@ -474,47 +470,6 @@ def test_profile_home_override_must_be_in_profile_homes(
         )
 
 
-def test_profile_account_run_does_not_materialize(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    # A run no longer auto-materializes the profile account into the home. The
-    # run uses the home as-is; only explicit `agent accounts materialize` writes.
-    environment = AgentosTestEnvironment.create(tmp_path)
-    environment.apply_environment(monkeypatch.setenv)
-    agentos_home = environment.agentos_home
-    home = tmp_path / "codex-mm"
-    br_auth = tmp_path / "br-auth.json"
-    mm_auth = tmp_path / "mm-auth.json"
-    write_text_file(br_auth, codex_auth_json(account_id="acc_br"))
-    write_text_file(mm_auth, codex_auth_json(account_id="acc_mm"))
-    register_codex_account_from_auth_file(auth_file=br_auth, account="br")
-    register_codex_account_from_auth_file(auth_file=mm_auth, account="mm")
-    materialize_codex_account_to_home(home=home, account="br")
-    environment.write_global_config(agent={"providers": _provider_configs()})
-    environment.write_profile(
-        "codex-mm",
-        **{"provider": "codex", "homes": [str(home)], "accounts": ["mm"]},
-    )
-    # home holds br auth; profile account is mm — pre-rebuild this would materialize.
-    br_info = read_codex_auth_info(home / "auth.json")
-
-    result = _cmd_agent_run(
-        _run_args(provider=None, profile="codex-mm", prompt="hello")
-    )
-
-    assert result == 0
-    assert "materialize codex auth" not in capsys.readouterr().out
-    # the home keeps its existing (br) auth — no materialization to mm
-    assert read_codex_auth_info(home / "auth.json").sha256 == br_info.sha256
-    events = _account_events(agentos_home)
-    materialized_run_events = [
-        event
-        for event in events
-        if event["event"] == "account.auth.materialized" and event["source"] == "agent.run"
-    ]
-    assert materialized_run_events == []
 
 
 def test_accounts_materialize_unsupported_provider_errors() -> None:

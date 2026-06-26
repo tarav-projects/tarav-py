@@ -11,6 +11,35 @@ def write_text_file(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def seed_account(
+    provider: str, account: str, *, identity: dict[str, Any], method: str, auth_class: str
+) -> None:
+    """Declare an account in the new-model settings `accounts.json` (test setup)."""
+    from agentos._core.project import agentos_home_dir
+
+    prov = agentos_home_dir() / "accounts" / provider
+    prov.mkdir(parents=True, exist_ok=True)
+    path = prov / "accounts.json"
+    data = json.loads(path.read_text()) if path.exists() else {"provider": provider, "accounts": {}}
+    data["accounts"][account] = {"identity": identity, "auth_methods": {method: {"class": auth_class}}}
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def seed_codex_account(account: str, *, account_id: str = "acc_123") -> None:
+    seed_account("codex", account, identity={"provider_account_id": account_id},
+                 method="file", auth_class="auth-json")
+
+
+def seed_claude_account(account: str, *, account_uuid: str = "acc_uuid", email: str = "x@e.com") -> None:
+    seed_account("claude-code", account, identity={"account_uuid": account_uuid, "email": email},
+                 method="browser", auth_class="ambient-browser-login")
+
+
+def seed_copilot_account(account: str, *, login: str = "josePereiro") -> None:
+    seed_account("copilot-cli", account, identity={"provider_account_id": login},
+                 method="gh-token", auth_class="gh-auth-token")
+
+
 def read_json_file(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 

@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.agent.account_registry import load_account
+from agentos.agent import auth_registry
 from agentos.agent.account_status import (
     AccountIdentity,
     AccountIdentityMatch,
@@ -27,7 +27,6 @@ from agentos.agent.account_usage_fallback import (
 from agentos.agent.primitives import AgentConfig
 from agentos.agent.run_runtime import AgentCommandConfig
 from agentos.agent.usage_registry import append_usage_record
-from agentos.codex.account_registry import inspect_codex_account_home
 
 
 DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
@@ -46,11 +45,17 @@ def _codex_account_status_impl(
     if agent.home is None:
         raise CliError("codex account_status requires an agent home")
 
-    account_record = load_account(agent.provider, agent.account.account)
-    home_status = inspect_codex_account_home(home=agent.home)
-    auth_state = _string_or_none(home_status.get("classification")) or "unknown"
-    expected_identity = _expected_identity(account_record)
-    fetched_identity = _fetched_identity_from_home_status(home_status)
+    from agentos.codex.auth_method import CodexAuthMethod
+
+    expected_identity = (
+        auth_registry.expected_identity(agent.provider, agent.account.account)
+        or AccountIdentity()
+    )
+    method = CodexAuthMethod()
+    auth_data = method.read_auth_data(agent.home)
+    auth_state = "logged-in" if auth_data is not None else "missing"
+    fetched_identity = method.extract_identity(auth_data) if auth_data is not None else None
+    home_status: dict[str, object] = {"classification": auth_state, "home": str(agent.home)}
     errors = list(_setup_errors(auth_state=auth_state, home_status=home_status))
     identity_match = _identity_match(expected_identity, fetched_identity)
     if identity_match == "mismatched":
@@ -147,26 +152,6 @@ def _codex_account_status_impl(
     )
 
 
-def _expected_identity(account_record: dict[str, object]) -> AccountIdentity:
-    return AccountIdentity(
-        provider_account_id=_string_or_none(account_record.get("account_id")),
-        email=_string_or_none(account_record.get("email")),
-        label=_string_or_none(account_record.get("label")),
-        raw=account_record,
-    )
-
-
-def _fetched_identity_from_home_status(home_status: Mapping[str, object]) -> AccountIdentity | None:
-    auth = home_status.get("auth")
-    if not isinstance(auth, dict):
-        return None
-    return AccountIdentity(
-        provider_account_id=_string_or_none(auth.get("account_id")),
-        email=_string_or_none(auth.get("email")),
-        raw=auth,
-    )
-
-
 def _identity_match(
     expected_identity: AccountIdentity,
     fetched_identity: AccountIdentity | None,
@@ -186,17 +171,14 @@ def _setup_errors(
     home_status: Mapping[str, object],
 ) -> tuple[AccountStatusError, ...]:
     errors: list[AccountStatusError] = []
-    if auth_state not in {"matching-active", "registered", "known-account-new-hash"}:
+    if auth_state != "logged-in":
         errors.append(
             AccountStatusError(
                 error_type="home_auth_unusable",
                 message=f"codex account home auth is not usable: {auth_state}",
                 detail={
-                    "classification": home_status.get("classification"),
                     "auth_state": auth_state,
                     "home": home_status.get("home"),
-                    "auth_path": home_status.get("auth_path"),
-                    "error": home_status.get("error"),
                 },
             )
         )

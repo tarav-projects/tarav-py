@@ -108,6 +108,21 @@ def account_exists(provider: str, account_id: str) -> bool:
     return account_id in _accounts(provider)
 
 
+def expected_identity(provider: str, account_id: str) -> AccountIdentity | None:
+    """The account's declared `Account.Identity` from settings (provider-shaped)."""
+
+    record = _accounts(provider).get(account_id)
+    ident = record.get("identity") if isinstance(record, dict) else None
+    if not isinstance(ident, dict):
+        return None
+    return AccountIdentity(
+        provider_account_id=ident.get("provider_account_id") or ident.get("account_uuid"),
+        email=ident.get("email"),
+        label=ident.get("label") or ident.get("display_name"),
+        raw=ident,
+    )
+
+
 # --- state (read) ---
 
 def load_active(provider: str) -> dict[str, str]:

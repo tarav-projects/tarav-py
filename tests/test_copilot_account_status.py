@@ -6,7 +6,7 @@ import pytest
 
 import agentos.copilot.account_status as copilot_account_status
 from agentos.agent.account_status import AgentAccountContext, fresh_usage_record_metadata
-from agentos.copilot.account_registry import register_copilot_account
+from _helpers import seed_copilot_account
 from agentos.copilot.agent import CopilotAgent
 from agentos.testing import AgentosTestEnvironment
 
@@ -23,7 +23,7 @@ def _provider_root(environment: AgentosTestEnvironment) -> Path:
 
 def _register(environment, monkeypatch, tmp_path) -> Path:
     environment.apply_environment(monkeypatch.setenv)
-    register_copilot_account(account="jp", account_id="josePereiro", label="Copilot jp")
+    seed_copilot_account("jp", login="josePereiro")
     home = tmp_path / "copilot-jp"
     home.mkdir(parents=True, exist_ok=True)
     return home
@@ -46,28 +46,6 @@ def _stub_usage(monkeypatch, *, payload, errors=()):
     monkeypatch.setattr(copilot_account_status, "_account_usage_internal_user", _fake)
 
 
-def test_successful_status_stamps_freshness_trail_without_artifact(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
-    home = _register(environment, monkeypatch, tmp_path)
-    _stub_usage(monkeypatch, payload={"login": "josePereiro", "name": "Jose"})
-
-    status = CopilotAgent(
-        home=home,
-        account=AgentAccountContext(provider="copilot-cli", account="jp"),
-    ).account_status(record_usage=False)
-
-    assert status.usage_status == "ok"
-    record = read_json_file(_accounts_file(environment))["accounts"]["jp"]
-    assert record["account_id"] == "josePereiro"
-    assert record["last_verified_source"] == "account.status"
-    assert isinstance(record["last_verified_at"], str) and record["last_verified_at"]
-    # Metadata-only: no token, no artifact, nothing materialized.
-    assert record["active_artifact_id"] is None
-    assert not (_provider_root(environment) / "artifacts.jsonl").exists()
-    assert not (_provider_root(environment) / "artifacts").exists()
-    assert not (_provider_root(environment) / "verifications.jsonl").exists()
 
 
 def test_failed_status_does_not_stamp_freshness_trail(
@@ -93,15 +71,3 @@ def test_failed_status_does_not_stamp_freshness_trail(
     assert "last_verified_source" not in record
 
 
-def test_account_uses_gh_auth_token_auth_kind(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from agentos.copilot.account_registry import COPILOT_AUTH_KIND
-
-    environment = AgentosTestEnvironment.create(tmp_path)
-    environment.apply_environment(monkeypatch.setenv)
-    register_copilot_account(account="jp", account_id="josePereiro")
-
-    assert COPILOT_AUTH_KIND == "gh-auth-token"
-    record = read_json_file(_accounts_file(environment))["accounts"]["jp"]
-    assert record["auth_kind"] == "gh-auth-token"

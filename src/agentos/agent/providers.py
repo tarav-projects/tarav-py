@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos.agent.account_registry import load_account
+from agentos.agent import auth_registry
 from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.primitives import (
     AgentConfig,
@@ -69,11 +69,9 @@ def resolve_account_runtime_agent(
     profile: str | None,
     start_path: Path | str = ".",
 ) -> AgentConfig:
-    account_record = load_account(provider, account)
-    account_context = AgentAccountContext(
-        provider=str(account_record["provider"]),
-        account=str(account_record["account"]),
-    )
+    if not auth_registry.account_exists(provider, account):
+        raise CliError(f"agent account is not registered: {provider}.{account}")
+    account_context = AgentAccountContext(provider=provider, account=account)
     selected_profile = profile
     if selected_profile is None:
         selected_profile = _infer_account_runtime_profile(

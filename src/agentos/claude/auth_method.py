@@ -23,7 +23,7 @@ from agentos._core.errors import CliError
 from agentos._core.process import run_process
 from agentos.agent.account_status import AccountIdentity
 from agentos.agent.auth_method import AuthData, AuthMethod
-from agentos.claude.account_registry import (
+from agentos.claude.keychain import (
     DEFAULT_CLAUDE_KEYCHAIN_TIMEOUT_SEC,
     claude_keychain_service_names,
     write_claude_secure_storage,

@@ -10,7 +10,7 @@ from typing import Any
 
 from agentos._core.errors import CliError
 from agentos._core.process import run_process
-from agentos.agent.account_registry import load_account
+from agentos.agent import auth_registry
 from agentos.agent.account_status import (
     AccountIdentity,
     AccountIdentityMatch,
@@ -27,7 +27,6 @@ from agentos.agent.account_usage_fallback import (
 )
 from agentos.agent.primitives import AgentConfig
 from agentos.agent.usage_registry import append_usage_record
-from agentos.copilot.account_registry import record_copilot_account_verified
 
 
 DEFAULT_COPILOT_USAGE_TIMEOUT_SEC = 15
@@ -50,8 +49,10 @@ def _copilot_account_status_impl(
     if agent.home is None:
         raise CliError("copilot-cli account_status requires an agent home")
 
-    account_record = load_account(agent.provider, agent.account.account)
-    expected_identity = _expected_identity(account_record)
+    expected_identity = (
+        auth_registry.expected_identity(agent.provider, agent.account.account)
+        or AccountIdentity()
+    )
     auth_state = "home-present" if agent.home.exists() else "home-missing"
     errors = list(_setup_errors(agent=agent))
 
@@ -137,18 +138,6 @@ def _copilot_account_status_impl(
                 source=COPILOT_INTERNAL_USER_USAGE_SOURCE,
                 payload=usage_record_payload,
             )
-        if (
-            not errors
-            and usage_status == "ok"
-            and fetched_identity is not None
-            and fetched_identity.provider_account_id is not None
-        ):
-            record_copilot_account_verified(
-                account=agent.account.account,
-                login=fetched_identity.provider_account_id,
-                name=fetched_identity.label,
-            )
-
     return AccountStatus(
         provider=agent.provider,
         account=agent.account.account,
@@ -168,15 +157,6 @@ def _copilot_account_status_impl(
             "usage": usage_payload,
             "usage_record": usage_record_metadata,
         },
-    )
-
-
-def _expected_identity(account_record: dict[str, object]) -> AccountIdentity:
-    return AccountIdentity(
-        provider_account_id=_string_or_none(account_record.get("account_id")),
-        email=_string_or_none(account_record.get("email")),
-        label=_string_or_none(account_record.get("label")),
-        raw=account_record,
     )
 
 

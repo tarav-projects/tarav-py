@@ -4,18 +4,17 @@ from pathlib import Path
 
 import pytest
 
-import agentos.claude.account_registry as claude_account_registry
+import agentos.claude.keychain as claude_keychain
 import agentos.claude.account_status as claude_account_status
 from agentos.agent.account_status import (
     AccountLimit,
     AgentAccountContext,
     fresh_usage_record_metadata,
 )
-from agentos.claude.account_registry import register_claude_account
 from agentos.claude.agent import ClaudeAgent
 from agentos.testing import AgentosTestEnvironment
 
-from _helpers import read_jsonl_file, write_claude_home
+from _helpers import read_jsonl_file, seed_claude_account, write_claude_home
 
 
 def test_claude_statusline_env_does_not_author_policy_env() -> None:
@@ -48,10 +47,10 @@ def test_claude_account_status_is_read_only(
     # account_status must not mutate: no active-promote, no verification write.
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
-    monkeypatch.setattr(claude_account_registry.sys, "platform", "linux")
+    monkeypatch.setattr(claude_keychain.sys, "platform", "linux")
     home = tmp_path / "claude-br"
     write_claude_home(home, email="br@example.com", account_uuid="acc_br")
-    register_claude_account(account="browser-br", email="br@example.com")
+    seed_claude_account("browser-br", account_uuid="acc_br", email="br@example.com")
 
     monkeypatch.setattr(
         claude_account_status,
