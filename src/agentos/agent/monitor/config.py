@@ -8,7 +8,7 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
-from agentos.agent.account_registry import load_account
+from agentos.agent import auth_registry
 from agentos.agent.config import (
     AgentConfigSource,
     agent_config_entries_from_config,
@@ -173,10 +173,18 @@ def _load_targets(
         provider = _required_string(
             raw_target, "provider", field_name=f"{target_field}.provider"
         )
-        account = _required_string(
-            raw_target, "account", field_name=f"{target_field}.account"
+        raw_account = raw_target.get("account")
+        if not isinstance(raw_account, str) or not raw_account.strip():
+            raise CliError(f"{target_field}.account must be a non-empty string")
+        # targets are addressed <account-id>/<method>; the monitor tracks usage
+        # per account, so it keys on the (path-safe) account-id.
+        account = validate_string_for_path(
+            raw_account.split("/", 1)[0], field_name=f"{target_field}.account"
         )
-        load_account(provider, account)
+        if not auth_registry.account_exists(provider, account):
+            raise CliError(
+                f"{target_field}.account references unknown account: {provider}/{account}"
+            )
         profile = _optional_string(
             raw_target, "profile", field_name=f"{target_field}.profile"
         )

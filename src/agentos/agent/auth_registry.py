@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 
 from agentos._core.clock import utc_now_iso
-from agentos.agent.account_registry import account_provider_root
+from agentos.agent.account_paths import account_provider_root
 from agentos.agent.account_status import AccountIdentity
 from agentos.agent.auth_method import AuthData
 
@@ -89,6 +89,23 @@ def method_class(provider: str, account_id: str, method: str) -> str | None:
         return None
     spec = methods.get(method)
     return spec.get("class") if isinstance(spec, dict) else None
+
+
+def method_for_class(provider: str, account_id: str, auth_class: str) -> str | None:
+    """The method name whose declared class matches — capture routes by class."""
+
+    record = _accounts(provider).get(account_id)
+    methods = record.get("auth_methods") if isinstance(record, dict) else None
+    if not isinstance(methods, dict):
+        return None
+    for name, spec in methods.items():
+        if isinstance(spec, dict) and spec.get("class") == auth_class:
+            return name
+    return None
+
+
+def account_exists(provider: str, account_id: str) -> bool:
+    return account_id in _accounts(provider)
 
 
 # --- state (read) ---

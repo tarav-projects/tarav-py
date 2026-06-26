@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Goal:** remove every path through the **old credential system** (capture/activate/materialize/register/reconcile/promote) anywhere in agentos, so the **only** connected surface to account credentials is the new `agent accounts {capture,activate,materialize,status}` CLI on the new model (`auth_registry` + `AuthMethod`). Disconnect the old consumers (monitor, run path); the deep re-integration of those onto the new model is a **later** redesign.
-- **Status:** not started. The new model is built and proven (654–657); this is the teardown + the two missing CLI verbs.
+- **Status:** core landed — new surface complete + clearest old paths severed (Slices 1–3; full suite 206). **Next:** Slice 3b — run-surface disconnection, now decided + concretely specified (sever the 3 run-path credential touchpoints; keep `_check_account_scope` + `account_status`). **Deferred** after that: claude-keychain extraction + the Slice 4 mass deletion.
 - **Scope (in):**
   - **build** `agent accounts capture` + `agent accounts activate` (new model, generic over `AuthMethod`) — completes the connected surface.
   - **extract** the shared primitives the new model borrows from old files so the old files can be deleted.
@@ -41,7 +41,11 @@
 - **CLI `register`** — remove the `register` subcommand (parser + `_cmd_agent_accounts_register` + `register_codex_account_from_auth_file` / `register_copilot_account` call sites). Old capture entry; the new `capture` replaces it.
 - **Monitor auto-promote** — remove `_record_prime_ping_credential_success`'s promote (the only remaining live caller of `promote_verified_*`). Auto-prime keeps pinging; credential auto-capture is **disconnected** (re-added as a new-model workflow in the deferred redesign).
 - **Monitor `load_account`** — `config.py` validates targets with `load_account` (broken on new shape). Repoint to a new `auth_registry.account_exists(provider, account_id)`, parsing the migrated `account/method` target into its account-id.
-- **Run path** — `codex/agent.py` `inspect_codex_account_home` and `claude/agent.py` `account_registry` calls (home-current / account-scope validation) read the old registry. Repoint to a minimal new-model read (`AuthMethod.read_auth_data` + `auth_registry`) **or** disconnect the old call if the validation is non-essential — the bridge must not pull in old-registry code. Keep run working; do not redesign the policy here.
+- **Run path — DISCONNECT (decided), do not repoint.** The run flow has exactly three reads/writes into the old credential surface; **sever all three** so the run launches the provider CLI against the home as-is. `_check_account_scope` (config-only `validate_account_override`) and `account_status()` (usage; not called during run) are **kept** — they are not the credential surface. Re-integration onto the new model is a later redesign. The three:
+    1. **codex home-current validation** — `codex/agent.py` `prepare_codex_run` → `inspect_codex_account_home` + `_validate_home_current_codex_run` (+ helpers). Remove; codex run uses the home as-is.
+    2. **claude token env-injection** — `claude/agent.py` `prepare_run` → `has_claude_oauth_token_kind` + `load_claude_oauth_token_for_account` → `CLAUDE_CODE_OAUTH_TOKEN` env. Make `prepare_run` return empty. **The `oauth-token-env` method is unused live** (no profile/monitor/config references `*/token`; only `br` even declares it). Token-method run breaks until redesigned — accepted.
+    3. **claude post-run auto-promote** — `claude/agent.py` `_refresh_ambient_auth_after_successful_run` + its call site. Remove (last claude auto-capture; "no automatic").
+  - after all three, `codex/agent.py` and `claude/agent.py` no longer import/read/write the old `account_registry` credential functions — clearing the last live readers of `inspect_codex_account_home`, the claude token loaders, and the claude post-run promote.
 
 ### Old.Modules.Deletion
 
@@ -73,6 +77,12 @@ Order: extract → build → sever → delete. Keep the suite green between slic
 - **observable result:** `agent accounts register` is gone; monitor config validates on the new settings; monitor auto-prime runs with no old-registry call; codex/claude run (dry-run) works with no old-credential read.
 - **check (RED→GREEN where behavior is asserted):** monitor config-load test over the migrated `account/method` targets passes; a run/ping smoke (dry-run) green; grep shows no live entry point importing an old credential function.
 
+### Slice 3b — disconnect the run surface (decided)
+- **changes:** sever the three run-path credential touchpoints (see `Severance.Map`): codex `prepare_codex_run` home-current validation; claude `prepare_run` token env-injection (→ empty result); claude `_refresh_ambient_auth_after_successful_run` post-run promote (+ call site). Keep `_check_account_scope` and `account_status()`. Remove now-orphaned imports/helpers in `codex/agent.py` / `claude/agent.py`.
+- **path exercised:** `agent run` / `agent ping` (codex + claude) — launch against the home as-is, no account/auth-registry read or write.
+- **observable result:** a codex run/ping and a claude (browser) run/ping work with no old-`account_registry` call; `codex/agent.py`+`claude/agent.py` import no old credential function; token-method claude run no longer injects env (unused).
+- **check (RED→GREEN where behavior is asserted):** rewrite the codex home-current preflight tests and any claude token-run / auto-promote tests to the "runs home as-is, no registry" contract; a run/ping dry-run smoke is green; grep shows no run-path import of an old credential function.
+
 ### Slice 4 — delete old modules + realign tests
 - **changes:** delete the old credential modules/functions per `Old.Modules.Deletion`; rewrite/remove their tests.
 - **observable result:** grep finds no references to the deleted symbols outside their own (removed) files; the kept usage/status system + new model still import cleanly.
@@ -91,4 +101,8 @@ Order: extract → build → sever → delete. Keep the suite green between slic
 
 ## Impl.Log
 
-- (empty — implementer appends deviations, open-space decisions, blockers; nothing diff-visible)
+- **Scope deviation — staged the teardown.** The full Impl.Req (extract 2 clusters + 2 CLI verbs + sever 3 subsystems + delete ~9k lines across 8 files + rewrite ~dozens of provider credential test setups) is too large to land safely-verifiable in one autonomous pass. Executed the high-value, suite-green core: **Slice 1** path-helper extraction (`account_paths.py`; `auth_registry` repointed; old `account_registry` re-exports), **Slice 2** `capture`+`activate` CLI (+ `auth_registry.method_for_class`/`account_exists`, `auth_method_registry.auth_methods_for_provider`), **Slice 3** clean severances (remove `register` subcommand+handler; remove monitor `_record_prime_ping_credential_success` promote; repoint monitor `load_account` → `auth_registry.account_exists`). **Deferred:** the claude-keychain extraction, the run-path old-registry reads (`codex/agent.py` `inspect_codex_account_home`, `claude/agent.py` registry calls), and the **Slice 4 mass deletion** — entangled with ~dozens of provider test setups (`register_*`/`materialize_*` helpers) and the kept usage/status system; needs its own focused pass.
+- **Latent breakage found + fixed (open-space).** The profile→`account/method` migration done earlier this session had broken the **live** config loaders (which path-validate account names): monitor `_load_targets` (`_required_string`) and the agent-context `_load_agent_account_context` both rejected `jp/file`. Both now parse the account-id (`<account-id>/<method>` → `<account-id>`); status keeps using the raw `account/method` from profiles for its candidate gate (unaffected). Live monitor config now loads (3 workflows).
+- **Tests rewritten (`No.Legacy`).** Two `test_agent_monitor_auto_prime.py` tests asserted the removed monitor auto-promote (`verifications.jsonl`, source `monitor.auto_prime`); rewritten to assert no auto-promotion.
+- **Goal status (honest).** New surface `capture/activate/materialize/status` complete and live-verified; `register` CLI + monitor auto-capture severed. NOT yet fully "only the new CLI connected" — the **run path still reads the old registry** (deferred), and the old credential modules/functions still exist (still used by test setups; deferred deletion). The clearest old *write* paths are gone; the remaining old *reads* + dead code are the next focused pass.
+- **Live verification.** `capture --provider codex --home ~/.codex-br` archives (dedup); `activate --provider codex --account br/file --artifact <id>` sets the pointer and rejects a missing artifact; monitor config loads on the migrated `account/method` targets.

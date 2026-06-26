@@ -2,49 +2,22 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from agentos._core.clock import utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
+from agentos.agent.account_paths import (
+    account_archive_root,
+    account_provider_root,
+    account_registry_root,
+    archive_account_registry,
+)
 from agentos.agent.session_utils import string_or_none
 
 ACCOUNT_REGISTRY_SCHEMA_VERSION = 1
-
-
-def account_registry_root() -> Path:
-    return agentos_home_dir() / "accounts"
-
-
-def account_archive_root() -> Path:
-    return agentos_home_dir() / "archive"
-
-
-def archive_account_registry(*, label: str | None = None) -> dict[str, object]:
-    """Back up the whole account registry tree before destructive rebuild work.
-
-    Append-only and idempotent: copies ``~/.agentos/accounts`` into
-    ``~/.agentos/archive/accounts-<label>``. Never clobbers an existing
-    archive and never mutates the source.
-    """
-
-    source = account_registry_root()
-    archive_label = label or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    destination = account_archive_root() / f"accounts-{archive_label}"
-    if not source.exists():
-        return {"status": "empty", "source": str(source), "destination": str(destination)}
-    if destination.exists():
-        return {"status": "exists", "source": str(source), "destination": str(destination)}
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
-    return {"status": "archived", "source": str(source), "destination": str(destination)}
-
-
-def account_provider_root(provider: str) -> Path:
-    return account_registry_root() / validate_string_for_path(provider, field_name="provider")
 
 
 def accounts_path(provider: str) -> Path:

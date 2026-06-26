@@ -56,7 +56,7 @@ from agentos.claude.account_registry import register_claude_account
 from agentos.codex.account_registry import register_codex_account_from_auth_file
 from agentos.testing import AgentosTestEnvironment
 
-from _helpers import codex_auth_json, read_json_file, read_jsonl_file, write_claude_home, write_text_file
+from _helpers import codex_auth_json, write_claude_home, write_text_file
 
 
 def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
@@ -912,15 +912,11 @@ def test_auto_prime_ping_records_claude_verified_auth_source(
         }
     )
 
-    account_payload = read_json_file(
-        environment.agentos_home / "accounts" / "claude-code" / "accounts.json"
-    )
-    artifact_id = account_payload["accounts"]["browser-br"]["active_artifact_id"]
-    verifications = read_jsonl_file(
+    # Auto-prime no longer auto-promotes credentials into the old registry
+    # (disconnected in 658; new-model capture workflow is a deferred re-integration).
+    assert not (
         environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
-    )
-    assert verifications[-1]["artifact_id"] == artifact_id
-    assert verifications[-1]["source"] == "monitor.auto_prime"
+    ).exists()
 
 
 def test_auto_prime_ping_uses_profile_resolved_runtime_agent(
@@ -988,15 +984,10 @@ def test_auto_prime_ping_records_codex_verified_auth_source(
         }
     )
 
-    account_payload = read_json_file(
-        environment.agentos_home / "accounts" / "codex" / "accounts.json"
-    )
-    artifact_id = account_payload["accounts"]["br"]["active_artifact_id"]
-    verifications = read_jsonl_file(
+    # Auto-prime no longer auto-promotes credentials into the old registry (658).
+    assert not (
         environment.agentos_home / "accounts" / "codex" / "verifications.jsonl"
-    )
-    assert verifications[-1]["artifact_id"] == artifact_id
-    assert verifications[-1]["source"] == "monitor.auto_prime"
+    ).exists()
 
 
 def test_auto_prime_decisions_only_include_configured_limits() -> None:

@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+from pathlib import Path
+
+import pytest
+
+from agentos.agent.commands import _cmd_agent_accounts_activate, _cmd_agent_accounts_capture
+from agentos.testing import AgentosTestEnvironment
+
+UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
+
+
+def _jwt(payload: dict[str, object]) -> str:
+    def seg(obj: dict[str, object]) -> str:
+        return base64.urlsafe_b64encode(json.dumps(obj).encode()).decode().rstrip("=")
+
+    return f"{seg({'alg': 'none'})}.{seg(payload)}.sig"
+
+
+def _auth_json(uuid: str) -> dict[str, object]:
+    access = _jwt({"https://api.openai.com/auth": {"chatgpt_account_id": uuid}, "email": "x@e.com"})
+    return {"tokens": {"access_token": access, "id_token": _jwt({}), "account_id": uuid}}
+
+
+def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from agentos._core.project import agentos_home_dir
+
+    prov = agentos_home_dir() / "accounts" / "codex"
+    prov.mkdir(parents=True, exist_ok=True)
+    (prov / "accounts.json").write_text(json.dumps({
+        "provider": "codex",
+        "accounts": {"br": {"identity": {"provider_account_id": UUID},
+                            "auth_methods": {"file": {"class": "auth-json"}}}},
+    }))
+
+
+def _home(tmp_path: Path, name: str, uuid: str) -> Path:
+    h = tmp_path / name
+    h.mkdir()
+    (h / "auth.json").write_text(json.dumps(_auth_json(uuid)))
+    return h
+
+
+def test_capture_files_by_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _env(monkeypatch, tmp_path)
+    home = _home(tmp_path, "codex-br", UUID)
+
+    assert _cmd_agent_accounts_capture(argparse.Namespace(
+        provider="codex", home=str(home), json=False, _agentos_argv=[])) == 0
+
+    from agentos.agent import auth_registry as R
+    rec = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
+    assert rec["account"] == "br" and rec["method"] == "file"
+    assert R.read_artifact("codex", rec["artifact_id"]) is not None
+
+
+def test_capture_orphan_to_unknown_account(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _env(monkeypatch, tmp_path)
+    home = _home(tmp_path, "stray", "ffffffff-0000-0000-0000-000000000000")
+
+    _cmd_agent_accounts_capture(argparse.Namespace(
+        provider="codex", home=str(home), json=False, _agentos_argv=[]))
+
+    from agentos.agent import auth_registry as R
+    rec = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
+    assert rec["account"] == "unknown"  # Unknown.Account bucket
+
+
+def test_activate_sets_pointer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos.agent import auth_registry as R
+    from agentos.agent.auth_method import AuthData
+
+    artifact_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID)))
+
+    assert _cmd_agent_accounts_activate(argparse.Namespace(
+        provider="codex", account="br/file", artifact=artifact_id, json=False, _agentos_argv=[])) == 0
+    assert R.active_artifact_id("codex", "br", "file") == artifact_id
+
+
+def test_activate_rejects_missing_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos._core.errors import CliError
+
+    with pytest.raises(CliError):
+        _cmd_agent_accounts_activate(argparse.Namespace(
+            provider="codex", account="br/file", artifact="deadbeef", json=False, _agentos_argv=[]))

@@ -290,53 +290,66 @@ def _agent_ping_model(agent: AgentConfig, command_config: AgentCommandConfig) ->
     return command_config.model or agent.default_model or "<provider-default>"
 
 
-def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
-    if args.oauth_token_file is not None and args.provider != "claude-code":
-        raise CliError("--oauth-token-file is only supported for provider claude-code")
-    if args.provider == "codex":
-        if args.auth_file is None:
-            raise CliError(
-                "agent accounts register --provider codex requires --auth-file"
-            )
-        from agentos.codex.account_registry import register_codex_account_from_auth_file
-
-        print(
-            format_json_output(
-                register_codex_account_from_auth_file(
-                    auth_file=Path(args.auth_file),
-                    account=args.account,
-                    email=args.email,
-                    register_only=args.register_only,
-                    argv=getattr(args, "_agentos_argv", []),
-                )
-            )
-        )
-        return 0
-    if args.provider == "copilot-cli":
-        from agentos.copilot.account_registry import register_copilot_account
-
-        print(
-            format_json_output(
-                register_copilot_account(
-                    account=args.account,
-                    account_id=args.account_id,
-                    label=args.label,
-                    argv=getattr(args, "_agentos_argv", []),
-                )
-            )
-        )
-        return 0
-    raise CliError(
-        f"agent accounts register is not supported for provider {args.provider}"
-    )
-
-
 def _cmd_agent_accounts_materialize(args: argparse.Namespace) -> int:
     if args.provider in ("claude-code", "codex"):
         return _materialize_account(args, args.provider)
     raise CliError(
         f"agent accounts materialize is not supported for provider {args.provider}"
     )
+
+
+def _cmd_agent_accounts_capture(args: argparse.Namespace) -> int:
+    from agentos.agent import auth_registry as R
+    from agentos.agent.auth_method_registry import auth_methods_for_provider
+
+    provider = args.provider
+    home = Path(args.home)
+    for auth_method in auth_methods_for_provider(provider):
+        auth = auth_method.read_auth_data(home)
+        if auth is None:
+            continue
+        identity = auth_method.extract_identity(auth)
+        account = (
+            R.resolve_account_by_identity(provider, identity) if identity is not None else None
+        )
+        if account is not None:
+            method = R.method_for_class(provider, account, auth_method.name) or auth_method.name
+        else:
+            account, method = "unknown", auth_method.name  # Unknown.Account bucket
+        artifact_id = R.store_artifact(provider, auth)
+        if not R.is_captured(provider, account, method, artifact_id):
+            R.append_capture(
+                provider, account=account, method=method,
+                auth_class=auth_method.name, auth_ref=identity, artifact_id=artifact_id,
+            )
+        payload = {"command": "agent accounts capture", "provider": provider,
+                   "home": str(home), "account": account, "method": method,
+                   "artifact_id": artifact_id}
+        if args.json:
+            print(format_json_output(payload))
+        else:
+            print(f"Captured {provider} {account}/{method} <- {home} (artifact {artifact_id[:12]})")
+        return 0
+    raise CliError(f"no Auth.Data could be read from home: {home}")
+
+
+def _cmd_agent_accounts_activate(args: argparse.Namespace) -> int:
+    from agentos.agent import auth_registry as R
+
+    provider = args.provider
+    account_id, sep, method = args.account.partition("/")
+    if not sep or not account_id or not method:
+        raise CliError(f"{provider} activate requires --account <account-id>/<method>")
+    if R.read_artifact(provider, args.artifact) is None:
+        raise CliError(f"artifact not found in registry: {args.artifact}")
+    R.set_active(provider, account_id, method, args.artifact)
+    payload = {"command": "agent accounts activate", "provider": provider,
+               "account": args.account, "artifact_id": args.artifact}
+    if args.json:
+        print(format_json_output(payload))
+    else:
+        print(f"Activated {provider} {args.account} -> {args.artifact[:12]}")
+    return 0
 
 
 def _materialize_account(args: argparse.Namespace, provider: str) -> int:
@@ -640,52 +653,32 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         required=True,
     )
 
-    accounts_register_parser = accounts_subparsers.add_parser(
-        "register",
-        help="Register a provider account in managed account storage.",
+    accounts_capture_parser = accounts_subparsers.add_parser(
+        "capture",
+        help="Capture (archive) the Auth.Data present in a provider home. Read-only on the home.",
     )
-    accounts_register_parser.add_argument(
-        "--provider",
-        required=True,
-        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
-        help="Provider family to register.",
+    accounts_capture_parser.add_argument(
+        "--provider", required=True, choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family.",
     )
-    accounts_register_parser.add_argument(
-        "--auth-file",
-        default=None,
-        help="Provider auth file to register. Required for codex.",
+    accounts_capture_parser.add_argument("--home", required=True, help="Provider home to capture from.")
+    accounts_capture_parser.add_argument("--json", action="store_true", help="Output as JSON.")
+    accounts_capture_parser.set_defaults(handler=_cmd_agent_accounts_capture)
+
+    accounts_activate_parser = accounts_subparsers.add_parser(
+        "activate",
+        help="Set a captured artifact as the active Auth.Data for an account/method.",
     )
-    accounts_register_parser.add_argument(
-        "--oauth-token-file",
-        default=None,
-        help="Claude OAuth token file to register. Use '-' to read from stdin. Claude-code only.",
+    accounts_activate_parser.add_argument(
+        "--provider", required=True, choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family.",
     )
-    accounts_register_parser.add_argument(
-        "--account",
-        required=True,
-        help="Local AgentOS account alias to register.",
+    accounts_activate_parser.add_argument(
+        "--account", required=True, help="Target account as <account-id>/<method>.",
     )
-    accounts_register_parser.add_argument(
-        "--email",
-        default=None,
-        help="Account email metadata. Required for claude-code; optional fallback for codex.",
-    )
-    accounts_register_parser.add_argument(
-        "--account-id",
-        default=None,
-        help="Provider account id metadata. Required for copilot-cli.",
-    )
-    accounts_register_parser.add_argument(
-        "--label",
-        default=None,
-        help="Human label for the account.",
-    )
-    accounts_register_parser.add_argument(
-        "--register-only",
-        action="store_true",
-        help="Register the auth artifact without making it the account's active artifact. Codex only.",
-    )
-    accounts_register_parser.set_defaults(handler=_cmd_agent_accounts_register)
+    accounts_activate_parser.add_argument("--artifact", required=True, help="Artifact id to activate.")
+    accounts_activate_parser.add_argument("--json", action="store_true", help="Output as JSON.")
+    accounts_activate_parser.set_defaults(handler=_cmd_agent_accounts_activate)
 
     accounts_materialize_parser = accounts_subparsers.add_parser(
         "materialize",
