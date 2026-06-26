@@ -309,13 +309,9 @@ def _cmd_agent_accounts_capture(args: argparse.Namespace) -> int:
         if auth is None:
             continue
         identity = auth_method.extract_identity(auth)
-        account = (
-            R.resolve_account_by_identity(provider, identity) if identity is not None else None
-        )
-        if account is not None:
-            method = R.method_for_class(provider, account, auth_method.name) or auth_method.name
-        else:
-            account, method = "unknown", auth_method.name  # Unknown.Account bucket
+        # Capture never rejects: a known identity files under its account/method,
+        # an identifiable orphan files under the Unknown.Account bucket.
+        account, method = R.capture_target(provider, identity, auth_method.name)
         artifact_id = R.store_artifact(provider, auth)
         if not R.is_captured(provider, account, method, artifact_id):
             R.append_capture(

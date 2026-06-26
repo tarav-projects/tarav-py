@@ -7,7 +7,7 @@
   Lift the crude inline orphan fallback in the capture command into a total
   resolver on `auth_registry`, add the reserved-bucket reader, and guard the
   bucket against activation / runnability.
-- **Status:** READY (not started).
+- **Status:** COMPLETE.
 - **Source context:** Design discussion (this session) grounding on the index
   concept `Unknown.Account` (`agentos-md/.../appendix/Account.Management-appendix.md:183`)
   and `Auth.Data.Capture` ("classifies, never rejects", line 143). Follows the
@@ -128,4 +128,17 @@ then the guards. `RED.GREEN.Test.Suite` drives each slice test-first.
 
 ## Impl.Log
 
-- (empty — not started)
+- All 4 slices executed RED→GREEN in order. Suite 145→151 (+6), lint clean.
+- Risk resolved (not a deviation): `CodexAuthMethod.name == "auth-json"` and
+  `ClaudeAuthMethod.name == "ambient-browser-login"` — i.e. `auth_method.name`
+  *is* the auth_class for both providers, so the orphan method axis (= auth_class)
+  is well-defined. Confirmed before Slice 1.
+- Slice 4 decision in open space: `account_exists(UNKNOWN_ACCOUNT)` was already
+  False (the bucket is never written to settings), so no code change was needed —
+  the guard there is a lock-in test only. The `set_active` rejection is the one
+  new guard.
+- Acceptance: the live `agent accounts capture` mutation signal was covered by the
+  command-level test (`test_capture_orphan_to_unknown_account`) rather than run
+  against the live registry, to avoid polluting it with a throwaway orphan. The
+  CLI path is unchanged except the resolver call, so the test exercises the same
+  code.

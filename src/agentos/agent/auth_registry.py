@@ -17,9 +17,17 @@ import os
 from pathlib import Path
 
 from agentos._core.clock import utc_now_iso
+from agentos._core.errors import CliError
 from agentos.agent.account_paths import account_provider_root
 from agentos.agent.account_status import AccountIdentity
 from agentos.agent.auth_method import AuthData
+
+
+# The reserved per-provider `Provider.Account` where capture files an
+# identifiable orphan it cannot bind to a declared account. Leading ``_`` cannot
+# collide with a user account-id. It is a registry-state bucket only: never
+# declared in settings, never runnable, never activated.
+UNKNOWN_ACCOUNT = "_unknown"
 
 
 # --- paths ---
@@ -78,6 +86,23 @@ def resolve_account_by_identity(provider: str, identity: AccountIdentity) -> str
         if known == target:
             return account_id
     return None
+
+
+def capture_target(
+    provider: str, identity: AccountIdentity | None, auth_class: str
+) -> tuple[str, str]:
+    """Resolve where a captured `Auth.Data` is filed — never rejects.
+
+    Known identity → ``(account_id, method)`` for the declared account. An
+    identifiable orphan (``identity`` is None, or extracts but maps to no
+    account) → ``(UNKNOWN_ACCOUNT, auth_class)``: the orphan's method axis is the
+    auth_class, since no user-given method name exists. Return is never None.
+    """
+
+    account = resolve_account_by_identity(provider, identity) if identity is not None else None
+    if account is None:
+        return (UNKNOWN_ACCOUNT, auth_class)
+    return (account, method_for_class(provider, account, auth_class) or auth_class)
 
 
 def method_class(provider: str, account_id: str, method: str) -> str | None:
@@ -201,7 +226,30 @@ def is_captured(provider: str, account: str, method: str, artifact_id: str) -> b
     return False
 
 
+def orphan_captures(provider: str) -> list[dict[str, object]]:
+    """Capture records filed under `Unknown.Account` — the place to check for an
+    auth-method that could not be bound to a declared account. Each record keeps
+    its extracted ``auth_ref`` identity, the basis for later adoption."""
+
+    path = captures_path(provider)
+    if not path.is_file():
+        return []
+    records: list[dict[str, object]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if isinstance(record, dict) and record.get("account") == UNKNOWN_ACCOUNT:
+            records.append(record)
+    return records
+
+
 def set_active(provider: str, account_id: str, method: str, artifact_id: str) -> None:
+    if account_id == UNKNOWN_ACCOUNT:
+        raise CliError(
+            f"the {UNKNOWN_ACCOUNT} bucket cannot be activated — adopt the orphan "
+            "into a declared account first"
+        )
     active = load_active(provider)
     active[f"{account_id}/{method}"] = artifact_id
     path = active_path(provider)
@@ -210,6 +258,8 @@ def set_active(provider: str, account_id: str, method: str, artifact_id: str) ->
 
 
 __all__ = [
+    "UNKNOWN_ACCOUNT",
+    "capture_target",
     "settings_path",
     "registry_root",
     "active_path",
@@ -224,5 +274,6 @@ __all__ = [
     "store_artifact",
     "append_capture",
     "is_captured",
+    "orphan_captures",
     "set_active",
 ]

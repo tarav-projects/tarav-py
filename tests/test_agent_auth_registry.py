@@ -8,10 +8,13 @@ import pytest
 from agentos.agent.account_status import AccountIdentity
 from agentos.agent.auth_method import AuthData
 from agentos.agent.auth_registry import (
+    UNKNOWN_ACCOUNT,
     active_artifact_id,
     append_capture,
+    capture_target,
     load_active,
     method_class,
+    orphan_captures,
     resolve_account_by_identity,
     set_active,
     store_artifact,
@@ -59,6 +62,32 @@ def test_resolve_account_by_identity_matches_claude_account_uuid(
     assert resolve_account_by_identity("claude-code", unknown) is None
 
 
+def test_capture_target_known_identity_routes_to_account_method(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos._core.project import agentos_home_dir
+
+    _write_settings(agentos_home_dir() / "accounts" / "claude-code")
+
+    known = AccountIdentity(provider_account_id="973c403b-615a-47da-bc34-32ddc13a2e65")
+    assert capture_target("claude-code", known, "ambient-browser-login") == ("om", "browser")
+
+
+def test_capture_target_orphan_routes_to_unknown_bucket(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+
+    unmatched = AccountIdentity(provider_account_id="not-a-known-uuid")
+    assert capture_target("claude-code", unmatched, "ambient-browser-login") == (
+        UNKNOWN_ACCOUNT,
+        "ambient-browser-login",
+    )
+    # a None identity is still an orphan, never a rejection
+    assert capture_target("claude-code", None, "auth-json") == (UNKNOWN_ACCOUNT, "auth-json")
+
+
 def test_active_pointer_round_trip_keyed_by_account_method(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -72,6 +101,55 @@ def test_active_pointer_round_trip_keyed_by_account_method(
     assert load_active("claude-code") == {"om/browser": artifact_id}
     # live-read content_id of an identical payload equals the stored artifact id
     assert auth.content_id() == artifact_id
+
+
+def test_orphan_captures_returns_only_unknown_bucket_records(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+
+    known_ref = AccountIdentity(provider_account_id="u", email="e@example.com")
+    orphan_ref = AccountIdentity(provider_account_id="stray", email="s@example.com")
+    append_capture(
+        "claude-code", account="om", method="browser",
+        auth_class="ambient-browser-login", auth_ref=known_ref, artifact_id="known",
+    )
+    append_capture(
+        "claude-code", account=UNKNOWN_ACCOUNT, method="ambient-browser-login",
+        auth_class="ambient-browser-login", auth_ref=orphan_ref, artifact_id="orphan",
+    )
+
+    orphans = orphan_captures("claude-code")
+    assert len(orphans) == 1
+    assert orphans[0]["artifact_id"] == "orphan"
+    # the extracted identity is preserved for later adoption
+    assert orphans[0]["auth_ref"]["provider_account_id"] == "stray"
+
+
+def test_orphan_captures_empty_when_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    assert orphan_captures("claude-code") == []
+
+
+def test_unknown_bucket_is_not_a_runnable_account(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos.agent.auth_registry import account_exists
+
+    assert account_exists("claude-code", UNKNOWN_ACCOUNT) is False
+
+
+def test_set_active_rejects_unknown_bucket(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos._core.errors import CliError
+
+    with pytest.raises(CliError):
+        set_active("claude-code", UNKNOWN_ACCOUNT, "ambient-browser-login", "abc")
 
 
 def test_append_capture_records_every_auth_data(

@@ -67,7 +67,9 @@ def test_capture_orphan_to_unknown_account(monkeypatch: pytest.MonkeyPatch, tmp_
 
     from agentos.agent import auth_registry as R
     rec = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
-    assert rec["account"] == "unknown"  # Unknown.Account bucket
+    assert rec["account"] == R.UNKNOWN_ACCOUNT  # Unknown.Account bucket
+    assert rec["method"] == "auth-json"  # orphan method axis is the auth_class
+    assert R.read_artifact("codex", rec["artifact_id"]) is not None
 
 
 def test_activate_sets_pointer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
