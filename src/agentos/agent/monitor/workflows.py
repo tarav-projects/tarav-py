@@ -1169,9 +1169,10 @@ def build_monitor_workflows(
     limits_tracking_configs = tuple(
         config for config in configs if config.name == LIMITS_TRACKING_WORKFLOW
     )
-    auto_prime_configs = tuple(
-        config for config in configs if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
-    )
+    # TEMPORARILY DISCONNECTED (see the auto-prime branch below).
+    # auto_prime_configs = tuple(
+    #     config for config in configs if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
+    # )
     for config in configs:
         if config.name == LIMITS_TRACKING_WORKFLOW:
             if not any(
@@ -1183,16 +1184,19 @@ def build_monitor_workflows(
                     )
                 )
             continue
+        # TEMPORARILY DISCONNECTED: every workflow except limits-tracking is
+        # disabled. The auto-prime workflow still loads from config but is not
+        # built into the loop. Re-enable by restoring the branch below.
         if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW:
-            if not any(
-                workflow.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
-                for workflow in workflows
-            ):
-                workflows.append(
-                    AutoPrimeZeroLimitsWorkflow(
-                        _merge_auto_prime_configs(auto_prime_configs)
-                    )
-                )
+            # if not any(
+            #     workflow.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
+            #     for workflow in workflows
+            # ):
+            #     workflows.append(
+            #         AutoPrimeZeroLimitsWorkflow(
+            #             _merge_auto_prime_configs(auto_prime_configs)
+            #         )
+            #     )
             continue
         raise CliError(f"unknown monitor workflow {config.name!r}")
     return tuple(workflows)
