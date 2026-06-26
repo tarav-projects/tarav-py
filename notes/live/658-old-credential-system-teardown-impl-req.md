@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Goal:** remove every path through the **old credential system** (capture/activate/materialize/register/reconcile/promote) anywhere in agentos, so the **only** connected surface to account credentials is the new `agent accounts {capture,activate,materialize,status}` CLI on the new model (`auth_registry` + `AuthMethod`). Disconnect the old consumers (monitor, run path); the deep re-integration of those onto the new model is a **later** redesign.
-- **Status:** Slices 1–3 + 3b landed. New surface complete; `register` CLI + monitor auto-promote + the **run surface** all severed from the old credential system (`codex/agent.py` & `claude/agent.py` import no old `account_registry`). Full suite: 202. **Deferred:** claude-keychain extraction + the Slice 4 mass deletion (the old credential modules are now reachable only from their own tests + each other — no live consumer).
+- **Status:** Slices 1–3 + 3b landed (new surface complete; register CLI + monitor auto-promote + run surface all severed; suite 202). **Next:** Slice 4a — repoint the kept usage/status system (`account_status.py`) off the old registry (4 shallow couplings, each with a new-model equivalent), then Slice 4b — delete the now-orphaned old credential modules.
 - **Scope (in):**
   - **build** `agent accounts capture` + `agent accounts activate` (new model, generic over `AuthMethod`) — completes the connected surface.
   - **extract** the shared primitives the new model borrows from old files so the old files can be deleted.
@@ -83,8 +83,17 @@ Order: extract → build → sever → delete. Keep the suite green between slic
 - **observable result:** a codex run/ping and a claude (browser) run/ping work with no old-`account_registry` call; `codex/agent.py`+`claude/agent.py` import no old credential function; token-method claude run no longer injects env (unused).
 - **check (RED→GREEN where behavior is asserted):** rewrite the codex home-current preflight tests and any claude token-run / auto-promote tests to the "runs home as-is, no registry" contract; a run/ping dry-run smoke is green; grep shows no run-path import of an old credential function.
 
-### Slice 4 — delete old modules + realign tests
-- **changes:** delete the old credential modules/functions per `Old.Modules.Deletion`; rewrite/remove their tests.
+### Slice 4a — repoint the usage/status system off the old registry
+- **changes:** the kept `account_status.py` (all 3 providers) couples to the old registry at four shallow points, each with a direct new-model equivalent:
+    - `load_account` → the **expected identity** for the identity-match → read the account's `identity` from `auth_registry.load_settings` (new settings).
+    - claude `read_claude_secure_storage` → extract the keychain cluster to `claude/keychain.py`; `account_status` (and `ClaudeAuthMethod`) import it from there.
+    - codex `inspect_codex_account_home` → the home's identity/classification → `CodexAuthMethod.read_auth_data` + `extract_identity` (already exists).
+    - copilot `record_copilot_account_verified` → **drop** (the old verifications ledger is gone from the new model).
+- **observable result:** `account_status.py` (all 3) import nothing from the old credential registry; `agent accounts status` / monitor limits-tracking still produce identity-match + usage as before.
+- **check (RED→GREEN where behavior is asserted):** existing account_status tests stay green (rewrite only those asserting the old verification write / old record shape); full suite green; live `status` unaffected.
+
+### Slice 4b — delete the now-orphaned old modules + realign tests
+- **changes:** with run/CLI/monitor/usage all off the old registry, delete the old credential modules/functions per `Old.Modules.Deletion` (`account_model.py`, `*_reconcile.py`, the register/promote/materialize/sync/inspect credential funcs in `*_registry.py`); untangle reconcile↔registry cross-imports; rewrite/remove their tests.
 - **observable result:** grep finds no references to the deleted symbols outside their own (removed) files; the kept usage/status system + new model still import cleanly.
 - **check:** full suite green; targeted grep clean; `agent accounts {capture,activate,materialize,status}` all work live; usage/limits monitor still loads.
 
@@ -107,4 +116,5 @@ Order: extract → build → sever → delete. Keep the suite green between slic
 - **Goal status (honest).** New surface `capture/activate/materialize/status` complete and live-verified; `register` CLI + monitor auto-capture severed. NOT yet fully "only the new CLI connected" — the **run path still reads the old registry** (deferred), and the old credential modules/functions still exist (still used by test setups; deferred deletion). The clearest old *write* paths are gone; the remaining old *reads* + dead code are the next focused pass.
 - **Live verification.** `capture --provider codex --home ~/.codex-br` archives (dedup); `activate --provider codex --account br/file --artifact <id>` sets the pointer and rejects a missing artifact; monitor config loads on the migrated `account/method` targets.
 - **Slice 3b — run surface disconnected (done).** Severed the three run-path touchpoints: codex `prepare_codex_run` home-current validation (+ the dead `_validate_home_current_codex_run` helper cluster), claude `prepare_run` token env-injection (→ empty result), claude `_refresh_ambient_auth_after_successful_run` post-run promote (+ call site + `_format_claude_preamble_line`). `codex/agent.py` & `claude/agent.py` now import no old `account_registry` credential function; `_check_account_scope` (config) and `account_status()` (usage) are kept. Removed 4 tests asserting the disconnected behaviors (codex home-current ×2, claude token env-injection, claude post-run promote). Live: codex & claude dry-run launch against the home as-is with no credential preamble.
-- **Latent effect.** With the run surface severed, the old credential modules (`*_reconcile`, `account_model`, the credential funcs in `*_registry`) now have **no live consumer** — only their own tests and each other. The Slice 4 deletion is now a pure dead-code sweep (still large, deferred).
+- **Latent effect.** With the run surface severed, the old credential *capture/activate/materialize/register/reconcile/promote* paths have no live consumer.
+- **Slice 4 split (4a repoint → 4b delete).** The **kept usage/status system** (`account_status.py`, all 3 providers) couples to the old registry at four *shallow* points, each with a direct new-model equivalent (see Slice 4a) — so the fix is a modest repoint, not a rewrite: expected-identity → `auth_registry` settings; claude token → extracted `claude/keychain.py`; codex home read → `CodexAuthMethod`; copilot verification write → drop. After the repoint the old modules are genuinely orphaned and deletable (4b).
