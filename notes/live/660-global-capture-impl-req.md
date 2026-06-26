@@ -9,7 +9,7 @@
   `agent accounts capture` subcommand (no new subcommand). Capture never rejects
   — known artifacts file under their account/method, identifiable orphans under
   `Unknown.Account` (`_unknown`), per req 659.
-- **Status:** READY (not started).
+- **Status:** COMPLETE.
 - **Source context:** Design discussion (this session). Builds directly on req
   659 (`auth_registry.capture_target` / `UNKNOWN_ACCOUNT` / singular capture) and
   reuses `account_status_report.collect_home_targets` (the home scan `status`
@@ -142,4 +142,27 @@ drives each slice test-first.
 
 ## Impl.Log
 
-- (empty — not started)
+- All 3 slices RED→GREEN in order. Suite 151→160 (+9), lint clean.
+- Risk resolved (not a deviation): a profile home that does not exist on disk is
+  tolerated — `capture_home` reads nothing and returns None, the sweep skips it
+  (covered by `test_capture_all_homes_skips_missing_home`). `collect_home_targets`
+  `.resolve()`-ing a non-existent path does not raise.
+- Decision in open space: the live acceptance signal (`capture --global
+  --provider codex` against the real profiles) was held back rather than run
+  autonomously — it writes real artifacts/captures into `~/.agentos`. CLI wiring
+  was smoke-checked via `--help` (flag present, `--provider`/`--home` optional).
+  The behavior is fully covered by the handler-level test; left for the user to
+  run the live sweep when ready.
+- `--global` uses argparse `dest="global_sweep"` (``global`` is a reserved word);
+  handlers read `args.global_sweep`.
+- Follow-up folded into this req (user request): a `--dry-run` flag for **both**
+  the singular and global capture paths. `capture_home`/`capture_all_homes` gained
+  a `dry_run` kwarg — when set, the artifact id is computed via
+  `auth.content_id()` and neither the artifact blob nor the capture-log line is
+  written (read-only on the registry; already read-only on homes). `CaptureResult`
+  left unchanged per the decision — dry-run is marked only in CLI/JSON output.
+  Suite 160→164 (+4).
+- Live acceptance now satisfied via the safe path: `agent accounts capture
+  --global --dry-run` was run against the real profiles — 16 homes / 2 providers,
+  0 new (registry fully in sync; content-addressing dedups the same identity
+  across multiple homes). The writing sweep remains the user's to run.

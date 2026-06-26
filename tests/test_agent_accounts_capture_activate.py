@@ -50,7 +50,7 @@ def test_capture_files_by_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     home = _home(tmp_path, "codex-br", UUID)
 
     assert _cmd_agent_accounts_capture(argparse.Namespace(
-        provider="codex", home=str(home), json=False, _agentos_argv=[])) == 0
+        provider="codex", home=str(home), global_sweep=False, json=False, _agentos_argv=[])) == 0
 
     from agentos.agent import auth_registry as R
     rec = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
@@ -63,13 +63,94 @@ def test_capture_orphan_to_unknown_account(monkeypatch: pytest.MonkeyPatch, tmp_
     home = _home(tmp_path, "stray", "ffffffff-0000-0000-0000-000000000000")
 
     _cmd_agent_accounts_capture(argparse.Namespace(
-        provider="codex", home=str(home), json=False, _agentos_argv=[]))
+        provider="codex", home=str(home), global_sweep=False, json=False, _agentos_argv=[]))
 
     from agentos.agent import auth_registry as R
     rec = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
     assert rec["account"] == R.UNKNOWN_ACCOUNT  # Unknown.Account bucket
     assert rec["method"] == "auth-json"  # orphan method axis is the auth_class
     assert R.read_artifact("codex", rec["artifact_id"]) is not None
+
+
+def _profile(home_root: Path, pid: str, homes: list[Path], accounts: list[str]) -> None:
+    (home_root / "profiles").mkdir(parents=True, exist_ok=True)
+    (home_root / "profiles" / f"{pid}.json").write_text(json.dumps(
+        {"id": pid, "provider": "codex", "homes": [str(h) for h in homes], "accounts": accounts}
+    ))
+
+
+def test_capture_global_sweeps_provider_homes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos._core.project import agentos_home_dir
+
+    known = _home(tmp_path, "codex-br", UUID)
+    orphan = _home(tmp_path, "stray", "ffffffff-0000-0000-0000-000000000000")
+    _profile(agentos_home_dir(), "codex-main", [known, orphan], ["br/file"])
+
+    rc = _cmd_agent_accounts_capture(argparse.Namespace(
+        provider="codex", home=None, global_sweep=True, json=False, _agentos_argv=[]))
+    assert rc == 0
+
+    from agentos.agent import auth_registry as R
+    accounts = {json.loads(line)["account"]
+                for line in R.captures_path("codex").read_text().splitlines()}
+    assert accounts == {"br", R.UNKNOWN_ACCOUNT}
+
+
+def test_capture_global_dry_run_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos._core.project import agentos_home_dir
+
+    known = _home(tmp_path, "codex-br", UUID)
+    _profile(agentos_home_dir(), "codex-main", [known], ["br/file"])
+
+    rc = _cmd_agent_accounts_capture(argparse.Namespace(
+        provider="codex", home=None, global_sweep=True, dry_run=True, json=False, _agentos_argv=[]))
+    assert rc == 0
+
+    from agentos.agent import auth_registry as R
+    assert not R.captures_path("codex").exists()
+    assert "dry-run" in capsys.readouterr().out
+
+
+def test_capture_single_dry_run_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    home = _home(tmp_path, "codex-br", UUID)
+
+    rc = _cmd_agent_accounts_capture(argparse.Namespace(
+        provider="codex", home=str(home), global_sweep=False, dry_run=True, json=False, _agentos_argv=[]))
+    assert rc == 0
+
+    from agentos.agent import auth_registry as R
+    assert not R.captures_path("codex").exists()
+
+
+def test_capture_global_and_home_are_mutually_exclusive(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos._core.errors import CliError
+
+    with pytest.raises(CliError):
+        _cmd_agent_accounts_capture(argparse.Namespace(
+            provider="codex", home="/some/home", global_sweep=True, json=False, _agentos_argv=[]))
+
+
+def test_capture_single_requires_provider_and_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos._core.errors import CliError
+
+    with pytest.raises(CliError):
+        _cmd_agent_accounts_capture(argparse.Namespace(
+            provider=None, home="/some/home", global_sweep=False, json=False, _agentos_argv=[]))
 
 
 def test_activate_sets_pointer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

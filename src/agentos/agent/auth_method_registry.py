@@ -24,4 +24,15 @@ def auth_methods_for_provider(provider: str) -> list[AuthMethod]:
     return [method for (prov, _cls), method in _METHODS.items() if prov == provider]
 
 
-__all__ = ["auth_method_for_class", "auth_methods_for_provider"]
+def providers_with_auth_methods() -> tuple[str, ...]:
+    """Providers that have a registered `AuthMethod` — the set a global capture
+    sweeps. Derived from `_METHODS`, so a new method auto-joins."""
+
+    return tuple(dict.fromkeys(prov for prov, _cls in _METHODS))
+
+
+__all__ = [
+    "auth_method_for_class",
+    "auth_methods_for_provider",
+    "providers_with_auth_methods",
+]

@@ -299,34 +299,69 @@ def _cmd_agent_accounts_materialize(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_accounts_capture(args: argparse.Namespace) -> int:
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method_registry import auth_methods_for_provider
+    if getattr(args, "global_sweep", False):
+        return _cmd_agent_accounts_capture_global(args)
 
+    from agentos.agent.capture import capture_home
+
+    if args.provider is None:
+        raise CliError("agent accounts capture requires --provider (or --global)")
+    if args.home is None:
+        raise CliError("agent accounts capture requires --home (or --global)")
     provider = args.provider
     home = Path(args.home)
-    for auth_method in auth_methods_for_provider(provider):
-        auth = auth_method.read_auth_data(home)
-        if auth is None:
-            continue
-        identity = auth_method.extract_identity(auth)
-        # Capture never rejects: a known identity files under its account/method,
-        # an identifiable orphan files under the Unknown.Account bucket.
-        account, method = R.capture_target(provider, identity, auth_method.name)
-        artifact_id = R.store_artifact(provider, auth)
-        if not R.is_captured(provider, account, method, artifact_id):
-            R.append_capture(
-                provider, account=account, method=method,
-                auth_class=auth_method.name, auth_ref=identity, artifact_id=artifact_id,
+    dry_run = getattr(args, "dry_run", False)
+    result = capture_home(provider, home, dry_run=dry_run)
+    if result is None:
+        raise CliError(f"no Auth.Data could be read from home: {home}")
+    payload = {"command": "agent accounts capture", "provider": provider,
+               "home": str(home), "account": result.account, "method": result.method,
+               "artifact_id": result.artifact_id, "dry_run": dry_run}
+    if args.json:
+        print(format_json_output(payload))
+    else:
+        prefix = "[dry-run] would capture" if dry_run else "Captured"
+        print(
+            f"{prefix} {provider} {result.account}/{result.method} <- {home} "
+            f"(artifact {result.artifact_id[:12]})"
+        )
+    return 0
+
+
+def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
+    from agentos.agent.auth_method_registry import providers_with_auth_methods
+    from agentos.agent.capture import capture_all_homes
+
+    if args.home is not None:
+        raise CliError("agent accounts capture: --global and --home are mutually exclusive")
+    dry_run = getattr(args, "dry_run", False)
+    providers = (args.provider,) if args.provider is not None else providers_with_auth_methods()
+    results = [r for provider in providers for r in capture_all_homes(provider, dry_run=dry_run)]
+    new_count = sum(1 for r in results if r.is_new)
+    if args.json:
+        payload = {
+            "command": "agent accounts capture --global",
+            "providers": list(providers),
+            "dry_run": dry_run,
+            "captured": [
+                {"provider": r.provider, "home": str(r.home), "account": r.account,
+                 "method": r.method, "artifact_id": r.artifact_id, "new": r.is_new}
+                for r in results
+            ],
+            "new": new_count,
+        }
+        print(format_json_output(payload))
+    else:
+        prefix = "[dry-run] would capture" if dry_run else "Captured"
+        for r in results:
+            state = "new" if r.is_new else "already"
+            print(
+                f"{prefix} {r.provider} {r.account}/{r.method} <- {r.home} "
+                f"(artifact {r.artifact_id[:12]}, {state})"
             )
-        payload = {"command": "agent accounts capture", "provider": provider,
-                   "home": str(home), "account": account, "method": method,
-                   "artifact_id": artifact_id}
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(f"Captured {provider} {account}/{method} <- {home} (artifact {artifact_id[:12]})")
-        return 0
-    raise CliError(f"no Auth.Data could be read from home: {home}")
+        verb = "Would sweep" if dry_run else "Swept"
+        print(f"{verb} {len(results)} home(s) across {len(providers)} provider(s); {new_count} new.")
+    return 0
 
 
 def _cmd_agent_accounts_activate(args: argparse.Namespace) -> int:
@@ -654,10 +689,18 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Capture (archive) the Auth.Data present in a provider home. Read-only on the home.",
     )
     accounts_capture_parser.add_argument(
-        "--provider", required=True, choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
-        help="Provider family.",
+        "--provider", choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family. Required unless --global (which scopes the sweep if given).",
     )
-    accounts_capture_parser.add_argument("--home", required=True, help="Provider home to capture from.")
+    accounts_capture_parser.add_argument("--home", help="Provider home to capture from.")
+    accounts_capture_parser.add_argument(
+        "--global", dest="global_sweep", action="store_true",
+        help="Sweep every profile home (all providers with an auth-method) instead of one --home.",
+    )
+    accounts_capture_parser.add_argument(
+        "--dry-run", dest="dry_run", action="store_true",
+        help="Report what would be captured without writing to the registry (read-only).",
+    )
     accounts_capture_parser.add_argument("--json", action="store_true", help="Output as JSON.")
     accounts_capture_parser.set_defaults(handler=_cmd_agent_accounts_capture)
 
