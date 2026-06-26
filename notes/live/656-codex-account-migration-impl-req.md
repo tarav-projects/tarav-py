@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Goal:** bring **codex** to parity with claude on the new account model so `agent accounts status --provider codex` reports truthfully (`aligned`/`drift`/`error:unlisted-account`, never `undeterminable`), via the full **capture → activate** flow. **Read-only on homes** — no codex materialize.
-- **Status:** not started. The generic stack (`CodexAuthMethod`, `auth_registry` capture/activate, `account_status_report`) is already built and proven on claude; this is primarily a **data migration** + a codex regression-lock test.
+- **Status:** complete. Codex migrated on the new model — `status --provider codex` reports truthfully (br homes `aligned`; mislabeled `jp/mm/tk` homes `error:unlisted-account`; no `undeterminable`). **Zero production code changed** (Slice 1 confirmed the generic stack already handles codex); the rest was data migration. Full suite: 201 passed.
 - **Scope (in):**
   - re-point codex **profiles** to the `<account-id>/<method>` addressing (the only reason status currently reads `undeterminable`).
   - **capture** every codex home's live `Auth.Data` (archival, content-dedup), filed by real `Account.Identity`.
@@ -81,4 +81,7 @@ Claude-template, codex data + one regression test. Read-only on homes throughout
 
 ## Impl.Log
 
-- (empty — implementer appends deviations, open-space decisions, blockers; nothing diff-visible)
+- **Confirmed (Slice 1).** The codex status behavior test passed with **no production change** — the generic stack (`CodexAuthMethod` + `auth_method_registry` + `auth_registry` + `account_status_report`) already handles codex. No `method_for_class` helper was needed; the capture step resolved the method by class **inline** in the migration script (status goes candidate→method→class, so it never needed the reverse lookup). Kept production code untouched per `No.Gold.Plating`.
+- **Reality confirmed live (`Homes.Hold.Br`).** All nine codex homes hold br's credential (`07de2ad9`, content `b27d9a90`); capture deduped to a single artifact; only `br/file` was activated. The mislabeled `jp/mm/tk` homes report `error:unlisted-account` — the correct, truthful outcome. Re-logging those homes into their named accounts is a home-write/login task, out of scope.
+- **Live verification.** `status --provider codex`: `~/.codex`, `~/.codex-br`, managed `codex/br` → `aligned`; the six `jp/mm/tk` homes → `error:unlisted-account`; none `undeterminable`.
+- **Data, not repo.** Profile re-point + capture/activate mutate `~/.agentos` (profiles backed up alongside the existing migration backup); the only repo change is `tests/test_codex_account_status_report.py`.
