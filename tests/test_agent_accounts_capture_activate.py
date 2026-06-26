@@ -161,8 +161,8 @@ def test_activate_sets_pointer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     artifact_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID)))
 
     assert _cmd_agent_accounts_activate(argparse.Namespace(
-        provider="codex", account="br/file", artifact=artifact_id, json=False, _agentos_argv=[])) == 0
-    assert R.active_artifact_id("codex", "br", "file") == artifact_id
+        provider="codex", account="br/file", ref=artifact_id, json=False, _agentos_argv=[])) == 0
+    assert R.active_ref("codex", "br", "file") == artifact_id
 
 
 def test_activate_rejects_missing_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -171,4 +171,4 @@ def test_activate_rejects_missing_artifact(monkeypatch: pytest.MonkeyPatch, tmp_
 
     with pytest.raises(CliError):
         _cmd_agent_accounts_activate(argparse.Namespace(
-            provider="codex", account="br/file", artifact="deadbeef", json=False, _agentos_argv=[]))
+            provider="codex", account="br/file", ref="deadbeef", json=False, _agentos_argv=[]))

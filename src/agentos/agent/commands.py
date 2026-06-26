@@ -316,14 +316,14 @@ def _cmd_agent_accounts_capture(args: argparse.Namespace) -> int:
         raise CliError(f"no Auth.Data could be read from home: {home}")
     payload = {"command": "agent accounts capture", "provider": provider,
                "home": str(home), "account": result.account, "method": result.method,
-               "artifact_id": result.artifact_id, "dry_run": dry_run}
+               "ref_id": result.ref_id, "artifact_id": result.artifact_id, "dry_run": dry_run}
     if args.json:
         print(format_json_output(payload))
     else:
         prefix = "[dry-run] would capture" if dry_run else "Captured"
         print(
             f"{prefix} {provider} {result.account}/{result.method} <- {home} "
-            f"(artifact {result.artifact_id[:12]})"
+            f"(ref {result.ref_id[:12]})"
         )
     return 0
 
@@ -345,7 +345,8 @@ def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
             "dry_run": dry_run,
             "captured": [
                 {"provider": r.provider, "home": str(r.home), "account": r.account,
-                 "method": r.method, "artifact_id": r.artifact_id, "new": r.is_new}
+                 "method": r.method, "ref_id": r.ref_id, "artifact_id": r.artifact_id,
+                 "new": r.is_new}
                 for r in results
             ],
             "new": new_count,
@@ -357,7 +358,7 @@ def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
             state = "new" if r.is_new else "already"
             print(
                 f"{prefix} {r.provider} {r.account}/{r.method} <- {r.home} "
-                f"(artifact {r.artifact_id[:12]}, {state})"
+                f"(ref {r.ref_id[:12]}, {state})"
             )
         verb = "Would sweep" if dry_run else "Swept"
         print(f"{verb} {len(results)} home(s) across {len(providers)} provider(s); {new_count} new.")
@@ -426,15 +427,15 @@ def _cmd_agent_accounts_activate(args: argparse.Namespace) -> int:
     account_id, sep, method = args.account.partition("/")
     if not sep or not account_id or not method:
         raise CliError(f"{provider} activate requires --account <account-id>/<method>")
-    if R.read_artifact(provider, args.artifact) is None:
-        raise CliError(f"artifact not found in registry: {args.artifact}")
-    R.set_active(provider, account_id, method, args.artifact)
+    if R.auth_data_for_ref(provider, account_id, method, args.ref) is None:
+        raise CliError(f"no captured Auth.Data for ref: {args.ref}")
+    R.set_active(provider, account_id, method, args.ref)
     payload = {"command": "agent accounts activate", "provider": provider,
-               "account": args.account, "artifact_id": args.artifact}
+               "account": args.account, "ref_id": args.ref}
     if args.json:
         print(format_json_output(payload))
     else:
-        print(f"Activated {provider} {args.account} -> {args.artifact[:12]}")
+        print(f"Activated {provider} {args.account} -> {args.ref[:12]}")
     return 0
 
 
@@ -451,12 +452,12 @@ def _materialize_account(args: argparse.Namespace, provider: str) -> int:
     if auth_method is None:
         raise CliError(f"unknown auth method for {provider} {args.account}")
 
-    active_id = R.active_artifact_id(provider, account_id, method)
+    active_id = R.active_ref(provider, account_id, method)
     if active_id is None:
-        raise CliError(f"no active artifact for {provider} {args.account}")
-    artifact = R.read_artifact(provider, active_id)
+        raise CliError(f"no active Auth.Ref for {provider} {args.account}")
+    artifact = R.auth_data_for_ref(provider, account_id, method, active_id)
     if artifact is None:
-        raise CliError(f"active artifact payload not found: {active_id}")
+        raise CliError(f"active Auth.Data payload not found for ref: {active_id}")
 
     home = Path(args.home)
 
@@ -464,12 +465,13 @@ def _materialize_account(args: argparse.Namespace, provider: str) -> int:
     captured_id = None
     live = auth_method.read_auth_data(home)
     if live is not None:
+        live_ref = auth_method.ref_id(live)
         captured_id = R.store_artifact(provider, live)
         identity = auth_method.extract_identity(live)
-        if identity is not None and not R.is_captured(provider, account_id, method, captured_id):
+        if identity is not None and not R.is_captured(provider, account_id, method, live_ref):
             R.append_capture(
-                provider, account=account_id, method=method,
-                auth_class=auth_method.name, auth_ref=identity, artifact_id=captured_id,
+                provider, account=account_id, method=method, auth_class=auth_method.name,
+                auth_ref=identity, ref_id=live_ref, artifact_id=captured_id,
             )
 
     if not args.check:
@@ -480,15 +482,15 @@ def _materialize_account(args: argparse.Namespace, provider: str) -> int:
         "provider": provider,
         "account": args.account,
         "home": str(home),
-        "active_artifact_id": active_id,
-        "captured_artifact_id": captured_id,
+        "active_ref": active_id,
+        "captured_ref": captured_id,
         "status": "check" if args.check else "materialized",
     }
     if args.json:
         print(format_json_output(payload))
     else:
         verb = "Would materialize" if args.check else "Materialized"
-        line = f"{verb} {provider} {args.account} -> {home} (artifact {active_id[:12]})"
+        line = f"{verb} {provider} {args.account} -> {home} (ref {active_id[:12]})"
         if captured_id is not None:
             line += f"; captured-first {captured_id[:12]}"
         print(line)
@@ -770,7 +772,9 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     accounts_activate_parser.add_argument(
         "--account", required=True, help="Target account as <account-id>/<method>.",
     )
-    accounts_activate_parser.add_argument("--artifact", required=True, help="Artifact id to activate.")
+    accounts_activate_parser.add_argument(
+        "--ref", required=True, help="Auth.Ref id (ref_id) to activate.",
+    )
     accounts_activate_parser.add_argument("--json", action="store_true", help="Output as JSON.")
     accounts_activate_parser.set_defaults(handler=_cmd_agent_accounts_activate)
 

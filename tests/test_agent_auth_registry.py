@@ -9,7 +9,7 @@ from agentos.agent.account_status import AccountIdentity
 from agentos.agent.auth_method import AuthData
 from agentos.agent.auth_registry import (
     UNKNOWN_ACCOUNT,
-    active_artifact_id,
+    active_ref,
     append_capture,
     capture_target,
     load_active,
@@ -97,7 +97,7 @@ def test_active_pointer_round_trip_keyed_by_account_method(
     artifact_id = store_artifact("claude-code", auth)
     set_active("claude-code", "om", "browser", artifact_id)
 
-    assert active_artifact_id("claude-code", "om", "browser") == artifact_id
+    assert active_ref("claude-code", "om", "browser") == artifact_id
     assert load_active("claude-code") == {"om/browser": artifact_id}
     # live-read content_id of an identical payload equals the stored artifact id
     assert auth.content_id() == artifact_id
@@ -112,11 +112,11 @@ def test_orphan_captures_returns_only_unknown_bucket_records(
     orphan_ref = AccountIdentity(provider_account_id="stray", email="s@example.com")
     append_capture(
         "claude-code", account="om", method="browser",
-        auth_class="ambient-browser-login", auth_ref=known_ref, artifact_id="known",
+        auth_class="ambient-browser-login", auth_ref=known_ref, ref_id="known", artifact_id="known",
     )
     append_capture(
         "claude-code", account=UNKNOWN_ACCOUNT, method="ambient-browser-login",
-        auth_class="ambient-browser-login", auth_ref=orphan_ref, artifact_id="orphan",
+        auth_class="ambient-browser-login", auth_ref=orphan_ref, ref_id="orphan", artifact_id="orphan",
     )
 
     orphans = orphan_captures("claude-code")
@@ -161,10 +161,10 @@ def test_append_capture_records_every_auth_data(
     ref = AccountIdentity(provider_account_id="u", email="e@example.com")
     append_capture(
         "claude-code", account="om", method="browser",
-        auth_class="ambient-browser-login", auth_ref=ref, artifact_id="abc",
+        auth_class="ambient-browser-login", auth_ref=ref, ref_id="abc", artifact_id="abc",
     )
     lines = captures_path("claude-code").read_text().strip().splitlines()
     assert len(lines) == 1
     rec = json.loads(lines[0])
-    assert rec["account"] == "om" and rec["artifact_id"] == "abc"
+    assert rec["account"] == "om" and rec["ref_id"] == "abc" and rec["artifact_id"] == "abc"
     assert rec["auth_ref"]["provider_account_id"] == "u"

@@ -3,8 +3,12 @@
 Settings/state are physically split under ``~/.agentos/accounts/<provider>/``:
 
 - ``accounts.json`` — settings: ``{provider, accounts: {<account-id>: {identity, auth_methods: {<method>: {class}}}}}``.
-- ``registry/`` — state: ``active.json`` (``{"<account-id>/<method>": <artifact_id>}``),
-  ``captures.jsonl`` (one record per capture), ``artifacts/<sha256>`` (content-addressed payloads, secrets here only).
+- ``registry/`` — state: ``active.json`` (``{"<account-id>/<method>": <ref_id>}``),
+  ``captures.jsonl`` (one record per capture, joining ``ref_id`` to its ``artifact_id``),
+  ``artifacts/<sha256>`` (content-addressed payloads, secrets here only).
+
+The activation pointer is the method-defined `Auth.Ref` ``ref_id``; the artifact
+blob is the content-addressed secret store joined to it via the capture record.
 
 The pair ``{captures.jsonl record + artifact}`` reconstructs a full `Auth.Data`.
 This module is provider-agnostic; provider specifics live in the `Auth.Method`.
@@ -160,7 +164,9 @@ def load_active(provider: str) -> dict[str, str]:
     return {k: v for k, v in payload.items() if isinstance(k, str) and isinstance(v, str)}
 
 
-def active_artifact_id(provider: str, account_id: str, method: str) -> str | None:
+def active_ref(provider: str, account_id: str, method: str) -> str | None:
+    """The `ref_id` the registry has designated active for ``account/method``."""
+
     return load_active(provider).get(f"{account_id}/{method}")
 
 
@@ -196,14 +202,19 @@ def append_capture(
     method: str,
     auth_class: str,
     auth_ref: AccountIdentity,
+    ref_id: str,
     artifact_id: str | None,
 ) -> dict[str, object]:
+    # ``ref_id`` is the activation pointer (the method-defined Auth.Ref id);
+    # ``artifact_id`` is the content-addressed storage key joined to it (the blob
+    # holding the secret, when stored). ``auth_ref`` is the identity, not the id.
     record: dict[str, object] = {
         "ts": utc_now_iso(),
         "account": account,
         "method": method,
         "class": auth_class,
         "auth_ref": auth_ref.summary(),
+        "ref_id": ref_id,
         "artifact_id": artifact_id,
     }
     path = captures_path(provider)
@@ -213,7 +224,18 @@ def append_capture(
     return record
 
 
-def is_captured(provider: str, account: str, method: str, artifact_id: str) -> bool:
+def record_ref_id(record: dict[str, object]) -> str | None:
+    """The capture record's `ref_id`, falling back to its `artifact_id`.
+
+    Records written before `Auth.Ref` carry only `artifact_id` (== the content id
+    == the ref for artifact-backed methods), so this backfills them at read time —
+    no `captures.jsonl` migration needed."""
+
+    ref_id = record.get("ref_id") or record.get("artifact_id")
+    return ref_id if isinstance(ref_id, str) else None
+
+
+def is_captured(provider: str, account: str, method: str, ref_id: str) -> bool:
     path = captures_path(provider)
     if not path.is_file():
         return False
@@ -221,9 +243,28 @@ def is_captured(provider: str, account: str, method: str, artifact_id: str) -> b
         if not line.strip():
             continue
         r = json.loads(line)
-        if (r.get("account"), r.get("method"), r.get("artifact_id")) == (account, method, artifact_id):
+        if (r.get("account"), r.get("method"), record_ref_id(r)) == (account, method, ref_id):
             return True
     return False
+
+
+def auth_data_for_ref(provider: str, account: str, method: str, ref_id: str) -> AuthData | None:
+    """Resolve an `Auth.Ref` pointer back to its `Auth.Data` payload.
+
+    Finds the capture record carrying ``ref_id`` for ``account/method`` and reads
+    the artifact it joins to — the single place a pointer becomes a payload, so a
+    method whose ``ref_id`` is not the content id still resolves correctly."""
+
+    for record in captures_for(provider, account, method):
+        if record_ref_id(record) != ref_id:
+            continue
+        artifact_id = record.get("artifact_id")
+        return read_artifact(provider, artifact_id) if isinstance(artifact_id, str) else None
+    # No capture record joins this ref (e.g. a directly-activated artifact). For an
+    # artifact-backed method the ref_id is the content-addressed storage key, so
+    # fall back to a direct read; a method whose ref_id is not a content id needs
+    # the join and resolves to None here.
+    return read_artifact(provider, ref_id)
 
 
 def orphan_captures(provider: str) -> list[dict[str, object]]:
@@ -263,14 +304,14 @@ def captures_for(provider: str, account: str, method: str) -> list[dict[str, obj
     return records
 
 
-def set_active(provider: str, account_id: str, method: str, artifact_id: str) -> None:
+def set_active(provider: str, account_id: str, method: str, ref_id: str) -> None:
     if account_id == UNKNOWN_ACCOUNT:
         raise CliError(
             f"the {UNKNOWN_ACCOUNT} bucket cannot be activated — adopt the orphan "
             "into a declared account first"
         )
     active = load_active(provider)
-    active[f"{account_id}/{method}"] = artifact_id
+    active[f"{account_id}/{method}"] = ref_id
     path = active_path(provider)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(active, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -288,12 +329,14 @@ __all__ = [
     "resolve_account_by_identity",
     "method_class",
     "load_active",
-    "active_artifact_id",
+    "active_ref",
     "read_artifact",
+    "auth_data_for_ref",
     "store_artifact",
     "append_capture",
     "is_captured",
     "orphan_captures",
     "captures_for",
+    "record_ref_id",
     "set_active",
 ]

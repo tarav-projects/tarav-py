@@ -60,6 +60,14 @@ class AuthMethod(ABC):
     def materialize(self, auth_data: AuthData, home: Path) -> None:
         """Write a credential's `Auth.Data` into a home. Pure write — no read-back/sync/promote."""
 
+    @abstractmethod
+    def ref_id(self, auth_data: AuthData) -> str:
+        """The `Auth.Ref` id — the stable pointer the registry activates.
+
+        Unique per credential-version of an ``account/method``; the method defines
+        it (there is no inherited default). Artifact-backed methods return the
+        `Auth.Data` content id, so the ref doubles as the stored artifact key."""
+
     def rotation_rank(self, auth_data: AuthData, captured_at: float) -> float | None:
         """The head-of-line key for rotation — higher means "should be active".
 

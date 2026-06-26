@@ -77,7 +77,7 @@ def test_rotate_captures_first_then_flips_active(
     assert _cmd_agent_accounts_rotate(_ns()) == 0
     # capture-first pulled the fresh home into the pool; rotation activated it
     fresh_id = AuthData(payload=_auth_json(UUID, exp=2_000_000_000)).content_id()
-    assert R.active_artifact_id("codex", "br", "file") == fresh_id
+    assert R.active_ref("codex", "br", "file") == fresh_id
 
 
 def test_rotate_dry_run_writes_nothing(
@@ -93,7 +93,7 @@ def test_rotate_dry_run_writes_nothing(
     R.set_active("codex", "br", "file", stale)
 
     assert _cmd_agent_accounts_rotate(_ns(dry_run=True)) == 0
-    assert R.active_artifact_id("codex", "br", "file") == stale  # unchanged
+    assert R.active_ref("codex", "br", "file") == stale  # unchanged
     assert not R.captures_path("codex").exists()  # capture was dry too
 
 

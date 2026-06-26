@@ -72,8 +72,8 @@ def status_for_home(target: HomeTarget) -> dict[str, object]:
             (c.split("/", 1)[1] for c in target.candidates if c.split("/", 1)[0] == account),
             method_hint,
         )
-        active = R.active_artifact_id(provider, account, method_name)
-        if active is not None and active == auth.content_id():
+        active = R.active_ref(provider, account, method_name)
+        if active is not None and active == method.ref_id(auth):
             return _entry(target, status="aligned", account=account, method=method_name)
         reason = (
             "home Auth.Data is not the active one"

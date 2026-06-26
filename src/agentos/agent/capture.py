@@ -23,8 +23,9 @@ class CaptureResult:
     home: Path
     account: str
     method: str
-    artifact_id: str
-    is_new: bool  # a fresh capture-log append vs an already-present artifact
+    ref_id: str  # the activation pointer (the Auth.Ref id)
+    artifact_id: str  # the content-addressed storage key for the secret blob
+    is_new: bool  # a fresh capture-log append vs an already-present ref
 
 
 def capture_home(provider: str, home: Path, *, dry_run: bool = False) -> CaptureResult | None:
@@ -44,16 +45,17 @@ def capture_home(provider: str, home: Path, *, dry_run: bool = False) -> Capture
             continue
         identity = auth_method.extract_identity(auth)
         account, method = R.capture_target(provider, identity, auth_method.name)
+        ref_id = auth_method.ref_id(auth)
         artifact_id = auth.content_id() if dry_run else R.store_artifact(provider, auth)
-        is_new = not R.is_captured(provider, account, method, artifact_id)
+        is_new = not R.is_captured(provider, account, method, ref_id)
         if is_new and not dry_run:
             R.append_capture(
-                provider, account=account, method=method,
-                auth_class=auth_method.name, auth_ref=identity, artifact_id=artifact_id,
+                provider, account=account, method=method, auth_class=auth_method.name,
+                auth_ref=identity, ref_id=ref_id, artifact_id=artifact_id,
             )
         return CaptureResult(
             provider=provider, home=home, account=account, method=method,
-            artifact_id=artifact_id, is_new=is_new,
+            ref_id=ref_id, artifact_id=artifact_id, is_new=is_new,
         )
     return None
 

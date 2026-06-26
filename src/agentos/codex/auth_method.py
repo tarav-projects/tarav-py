@@ -55,6 +55,9 @@ class CodexAuthMethod(AuthMethod):
             json.dumps(dict(auth_data.payload), indent=2) + "\n", encoding="utf-8"
         )
 
+    def ref_id(self, auth_data: AuthData) -> str:
+        return auth_data.content_id()
+
     def rotation_rank(self, auth_data: AuthData, captured_at: float) -> float | None:
         # Head-of-line by the access-token expiry — monotonic across refreshes.
         tokens = auth_data.payload.get("tokens")

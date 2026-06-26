@@ -30,7 +30,7 @@ def _seed_artifact(account: str, method: str, payload: dict[str, object]) -> str
     auth = AuthData(payload=payload)
     artifact_id = R.store_artifact("codex", auth)
     R.append_capture("codex", account=account, method=method, auth_class="auth-json",
-                     auth_ref=AccountIdentity(provider_account_id="acc"), artifact_id=artifact_id)
+                     auth_ref=AccountIdentity(provider_account_id="acc"), ref_id=artifact_id, artifact_id=artifact_id)
     return artifact_id
 
 
@@ -69,6 +69,9 @@ def test_rotation_rank_default_is_capture_time(
         def materialize(self, auth_data, home):  # pragma: no cover - unused
             return None
 
+        def ref_id(self, auth_data):  # pragma: no cover - unused
+            return auth_data.content_id()
+
     assert _Stub().rotation_rank(AuthData(payload={}), captured_at=123.0) == 123.0
 
 
@@ -86,7 +89,7 @@ def test_rotate_activates_head_by_rank(
     result = rotate("codex", "br", "file")
     assert result.changed is True
     assert result.previous_active == old and result.new_active == new
-    assert R.active_artifact_id("codex", "br", "file") == new
+    assert R.active_ref("codex", "br", "file") == new
 
     # idempotent: second rotate changes nothing
     assert rotate("codex", "br", "file").changed is False
@@ -120,7 +123,7 @@ def test_rotate_dry_run_writes_nothing(
 
     result = rotate("codex", "br", "file", dry_run=True)
     assert result.changed is True and result.new_active == new
-    assert R.active_artifact_id("codex", "br", "file") == old  # unchanged on disk
+    assert R.active_ref("codex", "br", "file") == old  # unchanged on disk
 
 
 def test_rotate_skips_empty_pool(
@@ -168,7 +171,7 @@ def _claude_seed(account: str, expires_at: int) -> str:
     artifact_id = R.store_artifact("claude-code", AuthData(payload=payload))
     R.append_capture("claude-code", account=account, method="browser",
                      auth_class="ambient-browser-login",
-                     auth_ref=AccountIdentity(provider_account_id="u"), artifact_id=artifact_id)
+                     auth_ref=AccountIdentity(provider_account_id="u"), ref_id=artifact_id, artifact_id=artifact_id)
     return artifact_id
 
 

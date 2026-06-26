@@ -27,6 +27,9 @@ class _FakeAuthMethod(AuthMethod):
         home.mkdir(parents=True, exist_ok=True)
         (home / "auth").write_text(str(auth_data.payload.get("id", "")), encoding="utf-8")
 
+    def ref_id(self, auth_data: AuthData) -> str:
+        return auth_data.content_id()
+
 
 def test_auth_data_content_id_is_deterministic_and_dedups() -> None:
     a = AuthData(payload={"b": 1, "a": 2})

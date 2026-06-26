@@ -9,7 +9,7 @@
   stays the secret store** (content-addressed, unchanged); the capture record
   **joins `ref_id → artifact_id`**. `active.json` keys by `ref_id`;
   `activate`/`rotate`/`materialize`/`status` follow the rename.
-- **Status:** READY (not started).
+- **Status:** COMPLETE.
 - **Source context:** Design discussion (this session). Motive: `activate
   --artifact <sha>` hardwired the artifact-store model into the public surface and
   does not generalize to a method that defines its credential reference
@@ -136,4 +136,24 @@ expect to update tests asserting the old `artifact_id`/`--artifact` vocabulary
 
 ## Impl.Log
 
-- (empty — not started)
+- All 3 slices RED→GREEN. Suite 178 passing, lint clean.
+- Deviation (plan was wrong): the plan claimed "no `captures.jsonl` migration"
+  because `ref_id == content_id`. True for *values*, but **old capture records
+  have no `ref_id` field at all** — written before this change. Rotation (which
+  now keys candidates on `ref_id`) found nothing → live codex `jp/mm/tk` showed
+  `skipped`. Fix: read-time backfill `auth_registry.record_ref_id(record) =
+  record.ref_id or record.artifact_id` (correct, since old ref==content==
+  artifact), applied in `is_captured`, `auth_data_for_ref`, and rotation candidate
+  enumeration. Genuinely no on-disk migration. Caught by the live
+  `rotate --dry-run` acceptance check, not the unit suite.
+- Decision in open space: `auth_data_for_ref` falls back to
+  `read_artifact(ref_id)` when no capture record joins the ref (a directly-
+  activated artifact with no capture row). Safe because for artifact-backed
+  methods the `ref_id` is the content-addressed storage key; a method whose
+  `ref_id != content_id` would require the capture-record join and resolve to None.
+- Minor ordering: the `status` ref-compare and `materialize` ref-resolve (nominal
+  Slice 3 logic) landed in Slice 2 because the `active_artifact_id → active_ref`
+  rename forced those call sites at once; kept the suite green per slice.
+- Live verified: `activate --help` shows `--ref`; `status` unchanged; `rotate
+  --dry-run` reports 0 changes with no `skipped` after the backfill. `active.json`
+  not rewritten.

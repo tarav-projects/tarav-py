@@ -147,6 +147,9 @@ class ClaudeAuthMethod(AuthMethod):
         if isinstance(oauth_account, dict):
             _write_oauth_account(home, oauth_account)
 
+    def ref_id(self, auth_data: AuthData) -> str:
+        return auth_data.content_id()
+
     def rotation_rank(self, auth_data: AuthData, captured_at: float) -> float | None:
         # Head-of-line by the OAuth token expiry (claudeAiOauth.expiresAt, ms).
         oauth = auth_data.payload.get("claudeAiOauth")

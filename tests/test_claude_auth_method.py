@@ -100,3 +100,9 @@ def test_materialize_round_trips_to_aligned(tmp_path: Path) -> None:
     # identity landed in .claude.json
     cfg = json.loads((home / ".claude.json").read_text())
     assert cfg["oauthAccount"]["accountUuid"] == "u-1"
+
+
+def test_claude_ref_id_is_content_id() -> None:
+    auth = AuthData(payload={"claudeAiOauth": {"accessToken": "t", "expiresAt": 1},
+                            "oauthAccount": {"accountUuid": "u"}})
+    assert ClaudeAuthMethod().ref_id(auth) == auth.content_id()

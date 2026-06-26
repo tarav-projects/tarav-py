@@ -22,8 +22,8 @@ class RotateResult:
     provider: str
     account: str
     method: str
-    previous_active: str | None
-    new_active: str | None
+    previous_active: str | None  # the previously active ref_id
+    new_active: str | None  # the head-of-line ref_id
     changed: bool
     skipped: bool
 
@@ -43,30 +43,31 @@ def rotate(provider: str, account: str, method: str, *, dry_run: bool = False) -
     Skipped (active untouched) when the pool is empty or no candidate ranks.
     """
 
-    previous = R.active_artifact_id(provider, account, method)
+    previous = R.active_ref(provider, account, method)
     auth_class = R.method_class(provider, account, method)
     auth_method = auth_method_for_class(provider, auth_class) if auth_class else None
 
-    # Collapse the capture pool to one entry per artifact, keeping its most recent
-    # capture time and capture-sequence index (file order) as a deterministic
-    # tie-break when ranks are equal (e.g. same-second default ranks).
-    seen: dict[str, tuple[float, int]] = {}
+    # Collapse the capture pool to one entry per ref_id (the activation pointer),
+    # keeping its most recent capture time, capture-sequence index (file order) as
+    # a deterministic tie-break, and the artifact key to resolve its payload.
+    seen: dict[str, tuple[float, int, str | None]] = {}
     for seq, record in enumerate(R.captures_for(provider, account, method)):
-        artifact_id = record.get("artifact_id")
-        if not isinstance(artifact_id, str):
+        ref_id = R.record_ref_id(record)
+        if ref_id is None:
             continue
-        seen[artifact_id] = (_epoch(record.get("ts")), seq)
+        artifact_id = record.get("artifact_id")
+        seen[ref_id] = (_epoch(record.get("ts")), seq, artifact_id if isinstance(artifact_id, str) else None)
 
     ranked: list[tuple[float, int, str]] = []
     if auth_method is not None:
-        for artifact_id, (captured_at, seq) in seen.items():
-            auth = R.read_artifact(provider, artifact_id)
+        for ref_id, (captured_at, seq, artifact_id) in seen.items():
+            auth = R.read_artifact(provider, artifact_id) if artifact_id is not None else None
             if auth is None:
                 continue
             rank = auth_method.rotation_rank(auth, captured_at)
             if rank is None:
                 continue
-            ranked.append((rank, seq, artifact_id))
+            ranked.append((rank, seq, ref_id))
 
     if not ranked:
         return RotateResult(provider, account, method, previous, previous, changed=False, skipped=True)

@@ -70,3 +70,10 @@ def test_codex_method_unrecognized_without_account_id() -> None:
     # tokens present but no chatgpt_account_id claim and no tokens.account_id
     payload = {"tokens": {"access_token": _jwt({"email": "x@y.com"})}}
     assert method.extract_identity(AuthData(payload=payload)) is None
+
+
+def test_codex_ref_id_is_content_id() -> None:
+    method = CodexAuthMethod()
+    auth = AuthData(payload=_auth_json(
+        account_id_claim="uuid-x", tokens_account_id="uuid-x", email="x@e.com"))
+    assert method.ref_id(auth) == auth.content_id()
