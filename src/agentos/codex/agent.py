@@ -92,12 +92,6 @@ class CodexAgent(RunnableMixin, AgentConfig):
             print(line)
         command = self._build_command(command_config)
         base_result = execute_agent_command(command, run_config=self.resolve_run_config(run_config))
-        if base_result.exit_code == 0 and command_config.credential_success_source is not None:
-            self._refresh_auth_after_successful_run(
-                command_config,
-                source=command_config.credential_success_source,
-                start_path=start_path,
-            )
         return AgentRunResult(
             exit_code=base_result.exit_code,
             stdout=base_result.stdout,
@@ -165,34 +159,6 @@ class CodexAgent(RunnableMixin, AgentConfig):
         if self.home is not None:
             env_overrides[CODEX_HOME_ENV_VAR] = str(self.home)
         return env_overrides
-
-    def _refresh_auth_after_successful_run(
-        self,
-        command_config: AgentCommandConfig,
-        *,
-        source: str,
-        start_path: Path,
-    ) -> None:
-        if self.home is None:
-            return
-        account = _normalized_account(command_config.account) or _agent_account(self)
-        if account is None:
-            status = _safe_inspect_codex_home(self.home)
-            account = _active_home_account(status) if status is not None else None
-        if account is None:
-            return
-        try:
-            from agentos.codex.account_registry import promote_verified_codex_auth_from_home
-
-            promote_verified_codex_auth_from_home(
-                home=self.home,
-                account=account,
-                source=source,
-                start_path=start_path,
-            )
-        except Exception:
-            return
-
 
 def prepare_codex_run(
     agent: CodexAgent,

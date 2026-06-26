@@ -19,6 +19,15 @@ def _no_keychain(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from agentos._core.project import agentos_home_dir
+
+    prov = agentos_home_dir() / "accounts" / "claude-code"
+    prov.mkdir(parents=True, exist_ok=True)
+    (prov / "accounts.json").write_text(json.dumps({
+        "provider": "claude-code",
+        "accounts": {"om": {"identity": {"account_uuid": "u-om"},
+                            "auth_methods": {"browser": {"class": "ambient-browser-login"}}}},
+    }))
 
 
 def _args(**kw: object) -> argparse.Namespace:

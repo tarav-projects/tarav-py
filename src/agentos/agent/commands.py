@@ -252,42 +252,10 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
         result,
         expected_number=agent.ping.expected_number,
     )
-    _record_agent_credential_success(
-        agent,
-        command_config=command_config,
-        source="agent.ping",
-    )
     print(
         f"pong model={_agent_ping_model(agent, command_config)} elapsed_ms={elapsed_ms}"
     )
     return 0
-
-
-def _record_agent_credential_success(
-    agent: AgentConfig,
-    *,
-    command_config: AgentCommandConfig,
-    source: str,
-) -> None:
-    if agent.home is None:
-        return
-    account = command_config.account
-    if account is None and agent.account is not None and agent.account.provider == agent.provider:
-        account = agent.account.account
-    if account is None:
-        return
-    try:
-        if agent.provider == "codex":
-            from agentos.codex.account_registry import promote_verified_codex_auth_from_home
-
-            promote_verified_codex_auth_from_home(
-                home=agent.home,
-                account=account,
-                source=source,
-            )
-    except CliError:
-        return
-
 
 
 def _validate_agent_ping_result(
@@ -364,37 +332,25 @@ def _cmd_agent_accounts_register(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_accounts_materialize(args: argparse.Namespace) -> int:
-    if args.provider == "claude-code":
-        return _materialize_claude(args)
-
-    if args.provider == "codex":
-        from agentos.codex.account_registry import materialize_codex_account_to_home
-
-        payload = materialize_codex_account_to_home(
-            home=Path(args.home),
-            account=args.account,
-            force=args.force,
-            check=args.check,
-            argv=getattr(args, "_agentos_argv", []),
-        )
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(_format_agent_accounts_materialize(payload))
-        return 0
+    if args.provider in ("claude-code", "codex"):
+        return _materialize_account(args, args.provider)
     raise CliError(
         f"agent accounts materialize is not supported for provider {args.provider}"
     )
 
 
-def _materialize_claude(args: argparse.Namespace) -> int:
+def _materialize_account(args: argparse.Namespace, provider: str) -> int:
     from agentos.agent import auth_registry as R
-    from agentos.claude.auth_method import ClaudeAuthMethod
+    from agentos.agent.auth_method_registry import auth_method_for_class
 
-    provider = "claude-code"
     account_id, sep, method = args.account.partition("/")
     if not sep or not account_id or not method:
-        raise CliError("claude materialize requires --account <account-id>/<method>")
+        raise CliError(f"{provider} materialize requires --account <account-id>/<method>")
+
+    auth_class = R.method_class(provider, account_id, method)
+    auth_method = auth_method_for_class(provider, auth_class) if auth_class else None
+    if auth_method is None:
+        raise CliError(f"unknown auth method for {provider} {args.account}")
 
     active_id = R.active_artifact_id(provider, account_id, method)
     if active_id is None:
@@ -404,7 +360,6 @@ def _materialize_claude(args: argparse.Namespace) -> int:
         raise CliError(f"active artifact payload not found: {active_id}")
 
     home = Path(args.home)
-    auth_method = ClaudeAuthMethod()
 
     # Capture.Over.Materialization: archive whatever is live in the home first.
     captured_id = None
@@ -439,77 +394,6 @@ def _materialize_claude(args: argparse.Namespace) -> int:
             line += f"; captured-first {captured_id[:12]}"
         print(line)
     return 0
-
-
-def _cmd_agent_accounts_reconcile(args: argparse.Namespace) -> int:
-    if args.ping and args.provider not in {"claude-code", "codex"}:
-        raise CliError("--ping is only supported for provider claude-code or codex")
-    if args.provider == "codex":
-        from agentos.codex.account_reconcile import reconcile_codex_accounts
-
-        payload = reconcile_codex_accounts(
-            account=args.account,
-            home=Path(args.home) if args.home is not None else None,
-            start_path=_config_start_path(args),
-            check=args.check,
-            ping=args.ping,
-            argv=getattr(args, "_agentos_argv", []),
-        )
-        if args.json:
-            print(format_json_output(payload))
-        else:
-            print(_format_agent_accounts_reconcile(payload))
-        return 0
-    raise CliError(f"agent accounts reconcile is not supported for provider {args.provider}")
-
-
-def _format_agent_accounts_materialize(payload: dict[str, object]) -> str:
-    provider = payload.get("provider")
-    account = payload.get("account")
-    home = payload.get("home")
-    auth_path = payload.get("auth_path")
-    artifact_id = payload.get("artifact_id")
-    prefix = "Would materialize" if payload.get("check") else "Materialized"
-    if isinstance(auth_path, str):
-        return (
-            f"{prefix} {provider} account {account} to {home} "
-            f"(auth copied to {auth_path})."
-        )
-    if isinstance(artifact_id, str):
-        return (
-            f"{prefix} {provider} account {account} to {home} "
-            f"(artifact {artifact_id[:12]})."
-        )
-    return f"{prefix} {provider} account {account} to {home}."
-
-
-def _format_agent_accounts_reconcile(payload: dict[str, object]) -> str:
-    lines = [
-        f"Reconciled {payload.get('provider', '<unknown>')} accounts",
-        f"Homes scanned: {payload.get('scanned_count', 0)}",
-        f"Actions: {payload.get('action_count', 0)}",
-        f"Warnings: {payload.get('warning_count', 0)}",
-    ]
-    actions = payload.get("actions")
-    if isinstance(actions, list):
-        for action in actions:
-            if not isinstance(action, dict):
-                continue
-            kind = action.get("kind", "<unknown>")
-            account = action.get("account", "<unknown>")
-            artifact_id = action.get("artifact_id")
-            suffix = f" {str(artifact_id)[:12]}" if isinstance(artifact_id, str) else ""
-            lines.append(f"  - {kind}: {account}{suffix}")
-    warnings = payload.get("warnings")
-    if isinstance(warnings, list):
-        for warning in warnings:
-            if not isinstance(warning, dict):
-                continue
-            message = warning.get("message") or warning.get("kind") or "warning"
-            home = warning.get("home")
-            suffix = f" ({home})" if isinstance(home, str) else ""
-            lines.append(f"  ! {message}{suffix}")
-    return "\n".join(lines)
 
 
 def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
@@ -839,51 +723,6 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Output as JSON.",
     )
     accounts_materialize_parser.set_defaults(handler=_cmd_agent_accounts_materialize)
-
-    accounts_reconcile_parser = accounts_subparsers.add_parser(
-        "reconcile",
-        help="Register fresh known auth files and sync stale materialized homes.",
-    )
-    accounts_reconcile_parser.add_argument(
-        "--provider",
-        required=True,
-        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
-        help="Provider family to reconcile.",
-    )
-    accounts_reconcile_parser.add_argument(
-        "--account",
-        default=None,
-        help="Local AgentOS account alias to reconcile.",
-    )
-    accounts_reconcile_parser.add_argument(
-        "--home",
-        default=None,
-        help="Known provider home to reconcile.",
-    )
-    accounts_reconcile_parser.add_argument(
-        "--project",
-        nargs="?",
-        type=Path,
-        const=Path("."),
-        default=None,
-        help="Config start path for configured home discovery.",
-    )
-    accounts_reconcile_parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Report intended actions without mutating account storage or homes.",
-    )
-    accounts_reconcile_parser.add_argument(
-        "--ping",
-        action="store_true",
-        help="For claude-code, run live ping verification before activating credentials.",
-    )
-    accounts_reconcile_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON.",
-    )
-    accounts_reconcile_parser.set_defaults(handler=_cmd_agent_accounts_reconcile)
 
     accounts_status_parser = accounts_subparsers.add_parser(
         "status",

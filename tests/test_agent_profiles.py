@@ -30,7 +30,6 @@ from agentos.claude.agent import ClaudeAgent
 from agentos.claude.account_registry import ClaudeOAuthTokenMaterialization, register_claude_account
 from agentos.codex.agent import CodexAgent
 from agentos.codex.account_registry import (
-    inspect_codex_account_home,
     materialize_codex_account_to_home,
     read_codex_auth_info,
     register_codex_account_from_auth_file,
@@ -565,70 +564,6 @@ def test_profile_account_run_does_not_materialize(
         if event["event"] == "account.auth.materialized" and event["source"] == "agent.run"
     ]
     assert materialized_run_events == []
-
-
-def test_accounts_materialize_codex_check_does_not_mutate_home(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
-    environment.apply_environment(monkeypatch.setenv)
-    home = tmp_path / "codex-mm"
-    auth_file = tmp_path / "mm-auth.json"
-    write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
-    register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
-
-    result = _cmd_agent_accounts_materialize(
-        argparse.Namespace(
-            provider="codex",
-            home=str(home),
-            account="mm",
-            check=True,
-            force=False,
-            json=False,
-            _agentos_argv=[],
-        )
-    )
-
-    assert result == 0
-    assert inspect_codex_account_home(home=home)["classification"] == "missing"
-    assert not any(
-        event["event"] == "account.auth.materialized"
-        for event in _account_events(environment.agentos_home)
-    )
-
-
-def test_accounts_materialize_codex_writes_home_and_event(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
-    environment.apply_environment(monkeypatch.setenv)
-    home = tmp_path / "codex-mm"
-    auth_file = tmp_path / "mm-auth.json"
-    write_text_file(auth_file, codex_auth_json(account_id="acc_mm"))
-    register_codex_account_from_auth_file(auth_file=auth_file, account="mm")
-
-    result = _cmd_agent_accounts_materialize(
-        argparse.Namespace(
-            provider="codex",
-            home=str(home),
-            account="mm",
-            check=False,
-            force=False,
-            json=False,
-            _agentos_argv=[],
-        )
-    )
-
-    assert result == 0
-    status = inspect_codex_account_home(home=home)
-    assert status["classification"] == "matching-active"
-    events = _account_events(environment.agentos_home)
-    assert events[-1]["event"] == "account.auth.materialized"
-    assert events[-1]["source"] == "agent accounts materialize"
-    assert events[-1]["provider"] == "codex"
-    assert events[-1]["account"] == "mm"
 
 
 def test_accounts_materialize_unsupported_provider_errors() -> None:
