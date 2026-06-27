@@ -45,7 +45,7 @@ def _settings() -> None:
 
 def _args(**kw: object) -> argparse.Namespace:
     base = dict(provider="codex", account="jp/file", home=None,
-               check=False, force=False, json=False, _agentos_argv=[])
+               check=False, json=False, _agentos_argv=[])
     base.update(kw)
     return argparse.Namespace(**base)
 

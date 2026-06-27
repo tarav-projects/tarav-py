@@ -32,7 +32,7 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 def _args(**kw: object) -> argparse.Namespace:
     base = dict(provider="claude-code", account="om/browser", home=None,
-               check=False, force=False, json=False, _agentos_argv=[])
+               check=False, json=False, _agentos_argv=[])
     base.update(kw)
     return argparse.Namespace(**base)
 

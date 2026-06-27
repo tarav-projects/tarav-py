@@ -144,13 +144,17 @@ def build_monitor_loop(
     max_ticks: int | None,
 ) -> MonitorLoop:
     configs = load_monitor_workflow_configs(start_path=start_path)
-    if not configs:
-        raise CliError("agent.accounts.monitor must configure at least one workflow")
+    # `build_monitor_workflows` always includes the config-free account-rotation
+    # workflow, so the monitor is runnable even with no limits-tracking config.
     return MonitorLoop(
         workflows=build_monitor_workflows(configs),
         interval_sec=interval_sec,
         max_ticks=max_ticks,
-        config_fingerprint=configs[0].config_fingerprint,
+        config_fingerprint=(
+            configs[0].config_fingerprint
+            if configs
+            else monitor_config_fingerprint(start_path=start_path)
+        ),
         config_fingerprint_loader=lambda: monitor_config_fingerprint(
             start_path=start_path
         ),

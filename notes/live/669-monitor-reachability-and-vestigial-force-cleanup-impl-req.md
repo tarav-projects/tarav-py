@@ -18,7 +18,7 @@
     stopped reading `args.force` in the 665 extraction — a declared flag that does
     nothing. Remove it. (The identically-named `--force` on `sessions copy` is real,
     used at `commands.py:717` — leave it.)
-- **Status:** READY.
+- **Status:** COMPLETE.
 - **Source context:** `hugentics-codebase-cleaner` general scan (this session),
   after the monitor work (668) and the materialize extraction (665). Cleanup
   constraints: narrow, module-local, replace don't wrap.
@@ -103,4 +103,12 @@ new focused check for Block A. `No.Regression`: add only the Block-A behavior te
 
 ## Impl.Log
 
-- (executer fills in)
+- Both slices done. Suite 205→206 (+1 reachability test), lint clean.
+- Block A: `CliError` import stays (still used by ~25 other validators in
+  `config.py`). The empty-configs fingerprint routes through
+  `monitor_config_fingerprint` (empty-safe); `MonitorLoop` tolerated it.
+- Block B verified live: `agent accounts materialize --help` no longer advertises
+  `--force`; the two materialize handler tests stay green with `force` dropped from
+  their `Namespace`s.
+- Left untouched per scope: the intentionally-commented auto-prime branch and the
+  real `sessions copy --force`.

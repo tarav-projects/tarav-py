@@ -958,11 +958,6 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Report intended materialization without mutating the provider home.",
     )
     accounts_materialize_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite unknown or broken target-home auth state when supported.",
-    )
-    accounts_materialize_parser.add_argument(
         "--json",
         action="store_true",
         help="Output as JSON.",
