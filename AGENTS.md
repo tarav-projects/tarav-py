@@ -23,3 +23,42 @@
 - Use `agentos stdlib mdblocks links` when you need companion `path#Lline` references for those blocks.
 - Use `agentos stdlib mdblocks find --query ...` for deterministic block retrieval by text/regex.
 - Prefer these commands over ad-hoc manual block parsing from raw file reads.
+
+## Logging System
+
+Three separate JSONL mechanisms exist; they are not yet unified.
+
+1. **Activity log (command logger)** — `src/agentos/_core/project_command_log.py`.
+   - File: `~/.agentos/activity/YYYYMM.jsonl` (monthly roll), schema v2:
+     `{schema_version, timetag, event_type, command, argv, status, payload}`.
+   - Writers: `record_project_command_from_args` from prefix/utils/forum/mission/skills
+     handlers — project commands only.
+   - Reader: `agentos … utils cmd-logger {path,tail,query}` (rare-use activity log).
+
+2. **Monitor log** — `src/agentos/agent/monitor_log.py`.
+   - File: `~/.agentos/agent/monitor-log/YYYYMMDD.jsonl` (daily roll), schema v1:
+     `{schema_version, class, recorded_at, event, tick, provider, account, home, payload}`.
+   - Writers: monitor loop (`monitor_start`, `workflow_error`, `config_stale`),
+     workflows (`target_transition`, …), and `account_rotation.sweep_rotations`
+     (`event=account_rotation`). Best-effort: never raises into the monitor loop.
+   - Reader: none (write-only; no CLI surfaces it).
+
+3. **Accounts registry** — `src/agentos/agent/auth_registry.py` (state, not an event log).
+   - `active.json` (pointer map), `captures.jsonl` (append-only, joins `ref_id`→
+     `artifact_id` for reconstruction), `artifacts/<sha>`. No rotation/activation
+     event log here.
+
+### Known gaps (integration targets)
+- Rotation events land only in throwaway places: the write-only monitor log (no reader)
+  and the ephemeral in-state ring (dies with the TUI). No durable, queryable accounts log.
+- Only the monitor logs rotation — the CLI `rotate`/`activate` and `materialize` handlers
+  log nothing, despite the rule that primitives are the source of truth and the CLI is just
+  a consumer. Logging belongs in the lifecycle primitives, not in the monitor consumer.
+- Two parallel JSONL stacks with divergent schemas/roll cadence/dirs; only the activity log
+  has a reader.
+
+### Direction
+- Emit lifecycle events from the primitives (capture/activate/materialize/rotate) so both
+  the CLI and the monitor log uniformly. Keep monitor-log for operational events only. Add
+  an `agentos accounts log` reader. Folding the two existing JSONL stacks into one shared
+  event-log primitive is a deferred follow-up.

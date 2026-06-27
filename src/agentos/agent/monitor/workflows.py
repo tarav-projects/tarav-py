@@ -1197,7 +1197,12 @@ class AccountRotationWorkflow:
         self._write_block(state, frame)
 
     def _write_block(self, state: MonitorState, frame: MonitorFrame) -> None:
-        from agentos.agent.monitor.account_rotation import recent_from_state, rotation_block_rows
+        from agentos.agent.monitor.account_rotation import (
+            collect_non_aligned_homes,
+            non_aligned_block_rows,
+            recent_from_state,
+            rotation_block_rows,
+        )
 
         frame.add_block(
             self.name,
@@ -1208,6 +1213,14 @@ class AccountRotationWorkflow:
                 "refresh_interval_sec": self.refresh_interval_sec,
             },
         )
+        # Current drifted homes — a second, read-only block shown only when drift exists.
+        drifted = collect_non_aligned_homes()
+        if drifted:
+            frame.add_block(
+                "non-aligned homes",
+                rows=non_aligned_block_rows(drifted),
+                data={"workflow": self.name, "count": len(drifted)},
+            )
 
 
 def build_monitor_workflows(

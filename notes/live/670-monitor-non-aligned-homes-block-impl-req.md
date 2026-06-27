@@ -14,7 +14,7 @@
   (`account_status_report.build_status_report` / `status_for_home`). Read-only:
   reads home files, no provider/network call, never writes a home. No new state ring
   — drift is *current* state, recomputed each sweep, not accumulated history.
-- **Status:** NOT STARTED.
+- **Status:** COMPLETE.
 - **Source context:** this session's monitor work — follows 668 (the rotation log +
   `m` keystroke) and 666 (drift qualification). Design discussion: a sibling block,
   drift-only, conditional visibility; draft frame mockup approved by the user.
@@ -146,4 +146,7 @@ only the two behavior tests below.
 
 ## Impl.Log
 
-- (empty — not started)
+- Both slices done test-first (RED→GREEN). Suite 206→210 (+4 tests), lint clean.
+- No deviations. The drift-only filter is the `status.startswith("drift")` prefix as
+  designed; `error:*`/`undeterminable` excluded. Block omitted entirely when no drift
+  (`account-rotation` log stays always-present).
