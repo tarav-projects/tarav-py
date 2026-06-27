@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from agentos.agent import auth_registry as R
+from agentos.agent.accounts_log import append_account_event
 from agentos.agent.auth_method import AuthData, AuthMethod
 from agentos.agent.auth_method_registry import auth_method_for_class
 
@@ -77,6 +78,10 @@ def rotate(provider: str, account: str, method: str, *, dry_run: bool = False) -
     changed = head != previous
     if changed and not dry_run:
         R.set_active(provider, account, method, head)
+        append_account_event(
+            event="rotate", provider=provider, account=account, method=method,
+            payload={"previous_active": previous, "new_active": head},
+        )
     return RotateResult(provider, account, method, previous, head, changed=changed, skipped=False)
 
 

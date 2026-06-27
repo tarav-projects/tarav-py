@@ -26,7 +26,7 @@
 
 ## Logging System
 
-Three separate JSONL mechanisms exist; they are not yet unified.
+Four separate JSONL mechanisms exist; they are not yet unified.
 
 1. **Activity log (command logger)** — `src/agentos/_core/project_command_log.py`.
    - File: `~/.agentos/activity/YYYYMM.jsonl` (monthly roll), schema v2:
@@ -48,17 +48,23 @@ Three separate JSONL mechanisms exist; they are not yet unified.
      `artifact_id` for reconstruction), `artifacts/<sha>`. No rotation/activation
      event log here.
 
-### Known gaps (integration targets)
-- Rotation events land only in throwaway places: the write-only monitor log (no reader)
-  and the ephemeral in-state ring (dies with the TUI). No durable, queryable accounts log.
-- Only the monitor logs rotation — the CLI `rotate`/`activate` and `materialize` handlers
-  log nothing, despite the rule that primitives are the source of truth and the CLI is just
-  a consumer. Logging belongs in the lifecycle primitives, not in the monitor consumer.
-- Two parallel JSONL stacks with divergent schemas/roll cadence/dirs; only the activity log
-  has a reader.
+4. **Accounts lifecycle log** — `src/agentos/agent/accounts_log.py`.
+   - File: `~/.agentos/agent/accounts-log/YYYYMMDD.jsonl` (daily roll), schema v1:
+     `{schema_version, class, recorded_at, event, provider, account, method, home, payload}`.
+   - Writers: emitted **inside the lifecycle primitives** — `capture` (capture.py, new
+     capture only), `activate` (activation.py), `materialize` (materialization.py, real
+     home write only), `rotate` (rotation.py, real pointer move only). Emit only on a real
+     effect — never on `dry_run`/`check`/no-op. Secret-free: ids only, never `Auth.Data`.
+     Best-effort: never raises into a primitive. Because the `_all` sweeps and the CLI
+     handlers funnel through the per-item primitives, every consumer logs uniformly.
+   - Reader: none yet — `agentos accounts log` (tail/query) is the next follow-up.
 
-### Direction
-- Emit lifecycle events from the primitives (capture/activate/materialize/rotate) so both
-  the CLI and the monitor log uniformly. Keep monitor-log for operational events only. Add
-  an `agentos accounts log` reader. Folding the two existing JSONL stacks into one shared
-  event-log primitive is a deferred follow-up.
+### Known gaps (integration targets)
+- The accounts log is currently **write-only** — add an `agentos accounts log` reader so it
+  does not stay write-only like monitor-log.
+- The monitor still emits its own `account_rotation` line to monitor-log; monitor-driven
+  rotations now *also* land in the accounts log (via the `rotate` primitive). De-duplicating
+  and routing the monitor fully through the accounts log is the deferred monitor-integration.
+- Two parallel JSONL stacks (activity + monitor) with divergent schemas/roll cadence/dirs;
+  only the activity log has a reader. Folding all stacks into one shared event-log primitive
+  is the broader deferred unification.

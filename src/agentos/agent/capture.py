@@ -14,6 +14,7 @@ from pathlib import Path
 
 from agentos.agent import auth_registry as R
 from agentos.agent.account_status_report import collect_home_targets
+from agentos.agent.accounts_log import append_account_event
 from agentos.agent.auth_method_registry import read_home_auth
 
 
@@ -51,6 +52,10 @@ def capture_home(provider: str, home: Path, *, dry_run: bool = False) -> Capture
         R.append_capture(
             provider, account=account, method=method, auth_class=auth_method.name,
             auth_ref=identity, ref_id=ref_id, artifact_id=artifact_id,
+        )
+        append_account_event(
+            event="capture", provider=provider, account=account, method=method,
+            home=home, payload={"ref_id": ref_id, "artifact_id": artifact_id},
         )
     return CaptureResult(
         provider=provider, home=home, account=account, method=method,

@@ -23,7 +23,7 @@
     `{active_ref, captured_ref}`.
   - `rotate`: emit `rotate` only when `changed and not dry_run`. Payload
     `{previous_active, new_active}`.
-- **Status:** NOT STARTED.
+- **Status:** COMPLETE.
 - **Source context:** this session's logging research (see `agentos-py/AGENTS.md` →
   "Logging System"). User directive: do the `~/.agentos/agent/accounts-log/…` file,
   for all account primitives; **integrate the monitor into it later**.
@@ -171,4 +171,12 @@ fast: Slice 1 makes the appender real and tested; Slices 2–5 wire one primitiv
 
 ## Impl.Log
 
-- (empty — not started)
+- All six slices done test-first (RED→GREEN). Suite 210→219 (+9 tests), lint clean.
+- No deviations from the plan. Emits sit inside each primitive's real-effect gate
+  (`rotate`: `changed and not dry_run`; `capture_home`: `is_new and not dry_run`;
+  `materialize_account`: the `status="materialized"` branch; `activate`: after
+  `set_active`). No call site outside the primitives changed.
+- Decision in open space: all behavior tests live in one self-contained module
+  (`tests/test_agent_accounts_log.py`) using the codex JWT seed pattern, so the emit
+  tests don't depend on other test modules' fixtures.
+- No circular import: `accounts_log` depends only on `_core.project`.

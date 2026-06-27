@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from agentos._core.errors import CliError
 from agentos.agent import auth_registry as R
+from agentos.agent.accounts_log import append_account_event
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,10 @@ def activate(provider: str, account: str, method: str, ref_prefix: str) -> Activ
     if R.auth_data_for_ref(provider, account, method, ref) is None:
         raise CliError(f"no captured Auth.Data for ref: {ref}")
     R.set_active(provider, account, method, ref)
+    append_account_event(
+        event="activate", provider=provider, account=account, method=method,
+        payload={"ref_id": ref},
+    )
     return ActivateResult(provider=provider, account=account, method=method, ref_id=ref)
 
 

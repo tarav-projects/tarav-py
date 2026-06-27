@@ -17,6 +17,7 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos.agent import auth_registry as R
 from agentos.agent.account_status_report import collect_home_targets
+from agentos.agent.accounts_log import append_account_event
 from agentos.agent.auth_method_registry import auth_method_for_class, read_home_auth
 
 
@@ -77,6 +78,10 @@ def materialize_account(
     else:
         auth_method.materialize(artifact, home)
         status = "materialized"
+        append_account_event(
+            event="materialize", provider=provider, account=account, method=method,
+            home=home, payload={"active_ref": active_id, "captured_ref": captured_id},
+        )
 
     return MaterializeResult(
         provider=provider, account=account, method=method, home=home,
