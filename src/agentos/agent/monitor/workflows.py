@@ -19,6 +19,7 @@ from agentos.agent.account_status import (
     registry_latest_usage_record_metadata,
 )
 from agentos.agent.monitor.clock import (
+    ACCOUNT_ROTATION_PERIODIC_ALARM,
     AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
@@ -1162,6 +1163,53 @@ class AutoPrimeZeroLimitsWorkflow:
         frame.add_block(self.name, rows=rows, data=data)
 
 
+ACCOUNT_ROTATION_WORKFLOW = "account-rotation"
+
+
+class AccountRotationWorkflow:
+    """Periodic capture+rotate sweep — registry-only, never writes a home.
+
+    On its periodic alarm (or startup/enter) it sweeps every provider and records
+    the rotations that changed the active pointer into a small in-state ring; every
+    loop pass it rewrites the `account-rotation` block from that ring (so an
+    `m`-triggered materialize sweep surfaces on the next tick). Home writes belong
+    only to the `m` keystroke, not here.
+    """
+
+    name = ACCOUNT_ROTATION_WORKFLOW
+    periodic_alarm_name = ACCOUNT_ROTATION_PERIODIC_ALARM
+    refresh_interval_sec = 60.0
+
+    def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
+        self._write_block(state, frame)
+
+    def loop(
+        self, state: MonitorState, frame: MonitorFrame, trigger: MonitorClockSnapshot
+    ) -> None:
+        from agentos.agent.monitor.account_rotation import record_events, sweep_rotations
+
+        should_sweep = bool(
+            {MONITOR_STARTUP_ALARM, MONITOR_ENTER_ALARM, ACCOUNT_ROTATION_PERIODIC_ALARM}
+            .intersection(trigger.fired_alarm_names)
+        )
+        if should_sweep:
+            record_events(state, sweep_rotations(materialize=False))
+        self._write_block(state, frame)
+
+    def _write_block(self, state: MonitorState, frame: MonitorFrame) -> None:
+        from agentos.agent.monitor.account_rotation import recent_from_state, rotation_block_rows
+
+        frame.add_block(
+            self.name,
+            rows=rotation_block_rows(recent_from_state(state)),
+            data={
+                "workflow": self.name,
+                "periodic_alarm_name": ACCOUNT_ROTATION_PERIODIC_ALARM,
+                "refresh_interval_sec": self.refresh_interval_sec,
+            },
+        )
+
+
 def build_monitor_workflows(
     configs: tuple[MonitorWorkflowConfig, ...],
 ) -> tuple[MonitorWorkflow, ...]:
@@ -1199,6 +1247,9 @@ def build_monitor_workflows(
             #     )
             continue
         raise CliError(f"unknown monitor workflow {config.name!r}")
+    # The account-rotation workflow is config-free (it sweeps all providers via the
+    # lifecycle primitives), so it is built unconditionally rather than from config.
+    workflows.append(AccountRotationWorkflow())
     return tuple(workflows)
 
 

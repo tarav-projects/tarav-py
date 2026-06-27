@@ -12,7 +12,7 @@
   - **5-row rotation log** in the TUI: a small block showing the last ~5 rotations
     that actually changed the active pointer (`ts · provider · account/method ·
     prev→new`). Fed by both the auto workflow and the `m` action.
-- **Status:** READY.
+- **Status:** COMPLETE.
 - **Source context:** design discussion (this session). Separation of concerns:
   automation freshens the *pool/active* (safe), the human authorizes any *home*
   write with a keypress. Builds on the lifecycle primitives (capture 660, rotation
@@ -161,4 +161,27 @@ periodic workflow that consumes it, then the keystroke. Each slice
 
 ## Impl.Log
 
-- (executer fills in)
+- All three slices RED→GREEN. Suite 199→205 (+6), lint clean.
+- Decision in open space (block render shape): `render_rotation_block` became
+  `rotation_block_rows(recent) -> list[MonitorTextRow]` (not a `dict`) to match the
+  real frame API (`frame.add_block(title, rows=…, data=…)`). The workflow calls
+  `add_block` every loop pass (only the *sweep* is alarm-gated), so an `m`-updated
+  ring surfaces on the next sub-second tick.
+- Decision in open space (shared ring helpers): the in-state ring key + accessors
+  (`ACCOUNT_ROTATION_RECENT_KEY`, `recent_from_state`, `record_events`) live in
+  `account_rotation.py`, consumed by both the workflow and the loop's `m` handler —
+  avoids the loop reaching into a `workflows.py` private. The `m` action is
+  `materialize_sweep(state)` (a testable unit); `_apply_display_alarms` is a
+  one-line consumer.
+- Decision (display-only alarm): `MONITOR_MATERIALIZE_ALARM` is excluded from
+  `_workflow_alarm_names` (like the usage toggle) so it is handled only on the main
+  thread and never queues a workflow pass.
+- Known concurrency risk (accepted per "keep it simple"): the auto sweep runs on the
+  workflow thread and the `m` sweep runs inline on the main thread, so two sweeps
+  could race on `active.json` writes. Low-probability, atomic-ish writes; revisit if
+  it ever bites. Not guarded now.
+- Live acceptance partial: verified via integration that `build_monitor_workflows`
+  builds the `account-rotation` workflow, its block renders `(no rotations yet)`,
+  and its 60s periodic alarm is exposed. The full TUI keystroke path (`m` through
+  termios) is thin glue mirroring the untested `r` mapping; the `materialize_sweep`
+  action it invokes is unit-covered.

@@ -9,8 +9,10 @@ MonitorAlarmKind = Literal["one-shot", "periodic"]
 MONITOR_STARTUP_ALARM = "startup"
 MONITOR_ENTER_ALARM = "io.enter"
 MONITOR_USAGE_VARIANT_TOGGLE_ALARM = "io.usage-variant-toggle"
+MONITOR_MATERIALIZE_ALARM = "io.account-materialize"
 LIMITS_TRACKING_PERIODIC_ALARM = "limits-tracking.periodic"
 AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM = "auto-prime-zero-limits.periodic"
+ACCOUNT_ROTATION_PERIODIC_ALARM = "account-rotation.periodic"
 
 
 @dataclass

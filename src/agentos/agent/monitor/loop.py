@@ -10,9 +10,11 @@ from typing import Protocol
 
 from agentos._core.errors import CliError
 from agentos.agent.monitor.clock import (
+    ACCOUNT_ROTATION_PERIODIC_ALARM,
     AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
+    MONITOR_MATERIALIZE_ALARM,
     MONITOR_STARTUP_ALARM,
     MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
     MonitorClock,
@@ -205,6 +207,11 @@ class MonitorLoop:
     def _apply_display_alarms(self, snapshot: MonitorClockSnapshot) -> None:
         if snapshot.fired(MONITOR_USAGE_VARIANT_TOGGLE_ALARM):
             self._toggle_usage_variant()
+        if snapshot.fired(MONITOR_MATERIALIZE_ALARM):
+            # `m` keystroke: full reconcile (writes homes), inline on the UI thread.
+            from agentos.agent.monitor.account_rotation import materialize_sweep
+
+            materialize_sweep(self.state)
 
     def _initialize_display_state(self) -> None:
         self._monitor_display_state()
@@ -358,6 +365,7 @@ class MonitorLoop:
             alarm_name=LIMITS_TRACKING_PERIODIC_ALARM,
         )
         self._arm_fixed_periodic_alarm(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM)
+        self._arm_fixed_periodic_alarm(ACCOUNT_ROTATION_PERIODIC_ALARM)
         if period_sec is None:
             return
         self._limits_tracking_adaptive_alarm = _AdaptivePeriodicAlarmState(
@@ -479,11 +487,8 @@ def _workflow_period_seconds(
 
 
 def _workflow_alarm_names(fired_alarm_names: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(
-        name
-        for name in fired_alarm_names
-        if name != MONITOR_USAGE_VARIANT_TOGGLE_ALARM
-    )
+    display_only = {MONITOR_USAGE_VARIANT_TOGGLE_ALARM, MONITOR_MATERIALIZE_ALARM}
+    return tuple(name for name in fired_alarm_names if name not in display_only)
 
 
 def _period_ticks_from_seconds(period_sec: float, *, interval_sec: float) -> int:

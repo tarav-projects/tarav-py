@@ -667,6 +667,7 @@ def _start_monitor_input_thread(loop) -> Thread:
 
     from agentos.agent.monitor import (
         MONITOR_ENTER_ALARM,
+        MONITOR_MATERIALIZE_ALARM,
         MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
     )
 
@@ -690,6 +691,8 @@ def _start_monitor_input_thread(loop) -> Thread:
                         MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
                         remaining_ticks=0,
                     )
+                elif char.lower() == "m":
+                    loop.set_alarm(MONITOR_MATERIALIZE_ALARM, remaining_ticks=0)
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, previous_attrs)
 
