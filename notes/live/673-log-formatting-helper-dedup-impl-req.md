@@ -99,4 +99,14 @@ the one `iso_z` unit check; do not add tests for unchanged behavior.
 
 ## Impl.Log
 
-- (empty — not started)
+- Both slices done test-first (RED→GREEN). Suite 221→224 (+3 `iso_z` unit tests),
+  lint clean. `_iso_z`/`_home_str` removed from both log modules; `iso_z`
+  (`_core/clock.py`) and `home_path_str` (`_core/project.py`) are now the single
+  definitions; `utc_now_iso()` unchanged (verified). The two append logs' `recorded_at`
+  now drops sub-second precision (intended, matches `utc_now_iso`); no test pinned it.
+- **Found-but-deferred (scope boundary):** a **third** byte-identical `_iso_z` exists
+  in `src/agentos/agent/usage_registry.py:136`. It was not in this Impl.Req's declared
+  scope (the two log modules), and migrating it to `clock.iso_z` would drop
+  microseconds in usage records — a behavior change outside scope. Per the cleanup
+  deviation contract (no silent broadening), it was **left untouched** and surfaced to
+  the user as a candidate follow-up rather than actioned autonomously.

@@ -6,7 +6,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from agentos._core.project import agentos_home_dir
+from agentos._core.clock import iso_z
+from agentos._core.project import agentos_home_dir, home_path_str
 
 MONITOR_LOG_CLASS = "agentos.agent.monitor-log"
 MONITOR_LOG_SCHEMA_VERSION = 1
@@ -38,12 +39,12 @@ def append_monitor_log_event(
         record = {
             "schema_version": MONITOR_LOG_SCHEMA_VERSION,
             "class": MONITOR_LOG_CLASS,
-            "recorded_at": _iso_z(recorded_at),
+            "recorded_at": iso_z(recorded_at),
             "event": event,
             "tick": tick,
             "provider": provider,
             "account": account,
-            "home": _home_str(home),
+            "home": home_path_str(home),
             "payload": dict(payload) if payload is not None else {},
         }
         # Serialize before opening the file so an unserializable payload leaves
@@ -55,19 +56,6 @@ def append_monitor_log_event(
         return record_path
     except Exception:
         return None
-
-
-def _home_str(home: Path | str | None) -> str | None:
-    if home is None:
-        return None
-    try:
-        return str(Path(home).expanduser())
-    except Exception:
-        return str(home)
-
-
-def _iso_z(value: datetime.datetime) -> str:
-    return value.astimezone(datetime.UTC).isoformat().replace("+00:00", "Z")
 
 
 __all__ = [

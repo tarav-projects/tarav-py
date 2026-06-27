@@ -28,6 +28,16 @@ def agentos_home_dir() -> Path:
     return (Path.home() / AGENTOS_DIRNAME).resolve()
 
 
+def home_path_str(home: Path | str | None) -> str | None:
+    """Stringify a home path for logging — expanded, with a best-effort fallback."""
+    if home is None:
+        return None
+    try:
+        return str(Path(home).expanduser())
+    except Exception:
+        return str(home)
+
+
 def project_agentos_dir(project_root: Path) -> Path:
     return project_root / AGENTOS_DIRNAME
 
