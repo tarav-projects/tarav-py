@@ -1,5 +1,12 @@
 # AGENTS.md
 
+## Keep AGENTS.md Updated (required)
+
+- Updating this file is **required**, not optional, whenever a change affects what it
+  documents (architecture, subsystems, logging, CLI surface, conventions, gaps).
+- Treat the doc update as part of the change — land it in the same unit of work, not as
+  a later follow-up. If a section becomes stale or wrong, fix it in the same pass.
+
 ## Python Tooling Preference
 
 - Use `uv` as the default Python environment and package management system.
