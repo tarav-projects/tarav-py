@@ -156,9 +156,12 @@ def test_capture_single_requires_provider_and_home(
 def test_activate_sets_pointer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
     from agentos.agent import auth_registry as R
+    from agentos.agent.account_status import AccountIdentity
     from agentos.agent.auth_method import AuthData
 
     artifact_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID)))
+    R.append_capture("codex", account="br", method="file", auth_class="auth-json",
+                     auth_ref=AccountIdentity(), ref_id=artifact_id, artifact_id=artifact_id)
 
     assert _cmd_agent_accounts_activate(argparse.Namespace(
         provider="codex", account="br/file", ref=artifact_id, json=False, _agentos_argv=[])) == 0

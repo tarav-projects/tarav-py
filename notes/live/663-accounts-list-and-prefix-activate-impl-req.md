@@ -9,7 +9,7 @@
   - **`activate --ref <prefix>`** — accept a unique **prefix** of a `ref_id`
     (resolved against that account/method's pool); error if the prefix is
     ambiguous, error if it matches nothing. A full `ref_id` still works.
-- **Status:** READY (not started).
+- **Status:** COMPLETE.
 - **Source context:** Design discussion (this session). `activate` (req 662) takes
   a 64-char `ref_id`, but there is no way to *see* the available refs, so it is
   unusable on its own — you must hand-inspect `captures.jsonl`. `list` is the
@@ -110,4 +110,20 @@ resolution in `activate`. Each slice `RED.GREEN.Test.Suite`-driven, test-first.
 
 ## Impl.Log
 
-- (empty — not started)
+- Both slices RED→GREEN. Suite 178→182 (+4), lint clean.
+- Decision in open space (semantics tightening): `activate` now resolves its
+  `--ref` through `resolve_ref_prefix`, which reads `pool_for` (capture records).
+  So activate requires the ref to be in the **discoverable pool** — you can only
+  activate what `list` shows. This is stricter than 662, where
+  `auth_data_for_ref` had a content-addressed fallback that let you activate a
+  stored-but-uncaptured artifact. Updated `test_activate_sets_pointer` to capture
+  first (faithful to real flow). The `auth_data_for_ref` fallback still serves
+  read/materialize resolution; only activate's entry point tightened.
+- Live verified: `list --provider claude-code --account br/browser` prints the
+  pool newest-first with `(active head)` on the right row; prefix-`activate`
+  resolves a unique prefix. (No genuinely ambiguous short prefix exists in that
+  live pool — all first hex chars differ — so ambiguity is covered by unit test
+  only.)
+- Note: a stray live `activate --ref 0` during verification matched uniquely
+  (only one ref began with `0`) and moved the active pointer; restored it to the
+  head ref `22e51ee2aa9d` immediately after.

@@ -9,7 +9,8 @@
 - check `agentos --version` to confirm that it is installed on the system.
 - run `agentos` to see the available commands and options.
 - Prefer direct `agentos ...` shell commands over `uv run agentos ...` when `agentos` is already installed.
-- After changing the `agentos` CLI, refresh the installed executable with `uv tool install --reinstall --editable .` so `~/.local/bin/agentos` stays in sync.
+- The `agentos` executable is owned by `agentos-cli`, not this package. After changing CLI entrypoint or command-registration code, refresh the installed executable from `agentos-cli/` with `uv tool install --reinstall --editable .` so `~/.local/bin/agentos` stays in sync.
+- Changes limited to library/runtime code in `agentos-py` do not require reinstalling `agentos-cli` unless they affect the installed CLI behavior you are actively testing.
 
 ## Compatibility Policy
 

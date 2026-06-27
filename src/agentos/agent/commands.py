@@ -365,6 +365,61 @@ def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_agent_accounts_list(args: argparse.Namespace) -> int:
+    from agentos.agent import auth_registry as R
+    from agentos.agent.auth_method_registry import providers_with_auth_methods
+    from agentos.agent.rotation import rotate
+
+    if args.account is not None and args.provider is None:
+        raise CliError("agent accounts list --account requires --provider")
+    providers = (args.provider,) if args.provider is not None else providers_with_auth_methods()
+
+    pools: list[dict[str, object]] = []
+    for provider in providers:
+        for account_id, method in _account_method_pairs(provider, args.account):
+            active = R.active_ref(provider, account_id, method)
+            head_result = rotate(provider, account_id, method, dry_run=True)
+            head = head_result.new_active if not head_result.skipped else None
+            entries = [
+                {"index": i, "ref_id": e["ref_id"], "ts": e["ts"],
+                 "active": e["ref_id"] == active, "head": e["ref_id"] == head}
+                for i, e in enumerate(R.pool_for(provider, account_id, method))
+            ]
+            pools.append({"provider": provider, "account": f"{account_id}/{method}",
+                          "entries": entries})
+
+    if args.json:
+        print(format_json_output({"command": "agent accounts list", "pools": pools}))
+    else:
+        for pool in pools:
+            print(f"{pool['provider']} {pool['account']}")
+            if not pool["entries"]:
+                print("  (no captures)")
+            for e in pool["entries"]:
+                marks = " ".join(m for m, on in (("active", e["active"]), ("head", e["head"])) if on)
+                suffix = f"  ({marks})" if marks else ""
+                print(f"  {e['index']}  {e['ref_id'][:12]}  {e['ts']}{suffix}")
+    return 0
+
+
+def _account_method_pairs(provider: str, account: str | None) -> list[tuple[str, str]]:
+    from agentos.agent import auth_registry as R
+
+    if account is not None:
+        account_id, sep, method = account.partition("/")
+        if not sep or not account_id or not method:
+            raise CliError("agent accounts list requires --account <account-id>/<method>")
+        return [(account_id, method)]
+    accounts = R.load_settings(provider).get("accounts")
+    pairs: list[tuple[str, str]] = []
+    if isinstance(accounts, dict):
+        for account_id, record in accounts.items():
+            methods = record.get("auth_methods") if isinstance(record, dict) else None
+            if isinstance(methods, dict):
+                pairs.extend((account_id, method) for method in methods)
+    return pairs
+
+
 def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
     from agentos.agent.auth_method_registry import providers_with_auth_methods
     from agentos.agent.capture import capture_all_homes
@@ -427,15 +482,16 @@ def _cmd_agent_accounts_activate(args: argparse.Namespace) -> int:
     account_id, sep, method = args.account.partition("/")
     if not sep or not account_id or not method:
         raise CliError(f"{provider} activate requires --account <account-id>/<method>")
-    if R.auth_data_for_ref(provider, account_id, method, args.ref) is None:
-        raise CliError(f"no captured Auth.Data for ref: {args.ref}")
-    R.set_active(provider, account_id, method, args.ref)
+    ref = R.resolve_ref_prefix(provider, account_id, method, args.ref)
+    if R.auth_data_for_ref(provider, account_id, method, ref) is None:
+        raise CliError(f"no captured Auth.Data for ref: {ref}")
+    R.set_active(provider, account_id, method, ref)
     payload = {"command": "agent accounts activate", "provider": provider,
-               "account": args.account, "ref_id": args.ref}
+               "account": args.account, "ref_id": ref}
     if args.json:
         print(format_json_output(payload))
     else:
-        print(f"Activated {provider} {args.account} -> {args.ref[:12]}")
+        print(f"Activated {provider} {args.account} -> {ref[:12]}")
     return 0
 
 
@@ -740,6 +796,20 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         dest="agent_accounts_command",
         required=True,
     )
+
+    accounts_list_parser = accounts_subparsers.add_parser(
+        "list",
+        help="List the captured Auth.Refs (ref_ids) for an account/method, newest first.",
+    )
+    accounts_list_parser.add_argument(
+        "--provider", choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family. Without it, list every provider with an auth-method.",
+    )
+    accounts_list_parser.add_argument(
+        "--account", help="Scope to one account as <account-id>/<method> (requires --provider).",
+    )
+    accounts_list_parser.add_argument("--json", action="store_true", help="Output as JSON.")
+    accounts_list_parser.set_defaults(handler=_cmd_agent_accounts_list)
 
     accounts_capture_parser = accounts_subparsers.add_parser(
         "capture",

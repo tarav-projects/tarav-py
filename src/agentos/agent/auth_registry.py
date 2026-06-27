@@ -304,6 +304,42 @@ def captures_for(provider: str, account: str, method: str) -> list[dict[str, obj
     return records
 
 
+def pool_for(provider: str, account: str, method: str) -> list[dict[str, object]]:
+    """The distinct `Auth.Ref`s captured for ``account/method``, recency-ordered.
+
+    One entry per ``ref_id`` (most recent capture ``ts`` kept), newest first — the
+    discoverable pool both `list` display and prefix resolution read."""
+
+    latest: dict[str, str] = {}
+    for record in captures_for(provider, account, method):
+        ref_id = record_ref_id(record)
+        ts = record.get("ts")
+        if ref_id is None or not isinstance(ts, str):
+            continue
+        if ref_id not in latest or ts > latest[ref_id]:
+            latest[ref_id] = ts
+    rows = [{"ref_id": ref_id, "ts": ts} for ref_id, ts in latest.items()]
+    rows.sort(key=lambda e: e["ts"], reverse=True)
+    return rows
+
+
+def resolve_ref_prefix(provider: str, account: str, method: str, prefix: str) -> str:
+    """Resolve a ``ref_id`` prefix against the ``account/method`` pool.
+
+    Exactly one match → the full ref; >1 → `CliError` naming the collisions; 0 →
+    `CliError`. A full ref_id is the trivial unique-prefix case. Scoped to this
+    account/method so a short prefix can't collide across accounts."""
+
+    matches = [e["ref_id"] for e in pool_for(provider, account, method)
+               if isinstance(e["ref_id"], str) and e["ref_id"].startswith(prefix)]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise CliError(f"no captured Auth.Ref matches prefix {prefix!r} for {account}/{method}")
+    shown = ", ".join(m[:12] for m in sorted(matches))
+    raise CliError(f"ambiguous Auth.Ref prefix {prefix!r} for {account}/{method} — matches: {shown}")
+
+
 def set_active(provider: str, account_id: str, method: str, ref_id: str) -> None:
     if account_id == UNKNOWN_ACCOUNT:
         raise CliError(
@@ -337,6 +373,8 @@ __all__ = [
     "is_captured",
     "orphan_captures",
     "captures_for",
+    "pool_for",
+    "resolve_ref_prefix",
     "record_ref_id",
     "set_active",
 ]
