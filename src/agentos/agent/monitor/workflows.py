@@ -1186,27 +1186,27 @@ class AccountRotationWorkflow:
     def loop(
         self, state: MonitorState, frame: MonitorFrame, trigger: MonitorClockSnapshot
     ) -> None:
-        from agentos.agent.monitor.account_rotation import record_events, sweep_rotations
+        from agentos.agent.monitor.account_rotation import sweep_rotations
 
         should_sweep = bool(
             {MONITOR_STARTUP_ALARM, MONITOR_ENTER_ALARM, ACCOUNT_ROTATION_PERIODIC_ALARM}
             .intersection(trigger.fired_alarm_names)
         )
         if should_sweep:
-            record_events(state, sweep_rotations(materialize=False))
+            sweep_rotations(materialize=False)
         self._write_block(state, frame)
 
     def _write_block(self, state: MonitorState, frame: MonitorFrame) -> None:
+        from agentos.agent.accounts_log import read_recent_events
         from agentos.agent.monitor.account_rotation import (
             collect_non_aligned_homes,
             non_aligned_block_rows,
-            recent_from_state,
             rotation_block_rows,
         )
 
         frame.add_block(
             self.name,
-            rows=rotation_block_rows(recent_from_state(state)),
+            rows=rotation_block_rows(read_recent_events(event="rotate", limit=5)),
             data={
                 "workflow": self.name,
                 "periodic_alarm_name": ACCOUNT_ROTATION_PERIODIC_ALARM,

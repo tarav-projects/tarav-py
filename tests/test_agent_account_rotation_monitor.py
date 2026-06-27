@@ -68,6 +68,7 @@ def test_sweep_rotate_only_moves_active_not_home(
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
     from agentos.agent import auth_registry as R
+    from agentos.agent.accounts_log import read_recent_events
     from agentos.agent.monitor.account_rotation import sweep_rotations
 
     stale_payload = _codex_payload(exp=1_000_000_000)
@@ -77,13 +78,15 @@ def test_sweep_rotate_only_moves_active_not_home(
     fresher = _seed_capture(_codex_payload(exp=2_000_000_000))  # not in any home
     R.set_active("codex", "br", "file", stale)
 
-    events = sweep_rotations(materialize=False)
+    sweep_rotations(materialize=False)
 
-    assert len(events) == 1
-    assert (events[0].account, events[0].method) == ("br", "file")
-    assert events[0].prev == stale and events[0].new == fresher
     assert R.active_ref("codex", "br", "file") == fresher
     assert json.loads((home / "auth.json").read_text()) == stale_payload  # home untouched
+    # the rotation is recorded in the durable accounts-log (the new source of truth)
+    events = read_recent_events(event="rotate")
+    assert len(events) == 1
+    assert (events[0]["account"], events[0]["method"]) == ("br", "file")
+    assert events[0]["payload"] == {"previous_active": stale, "new_active": fresher}
 
 
 def test_sweep_materialize_writes_home(
@@ -142,8 +145,8 @@ def test_materialize_sweep_writes_home_and_records(
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
     from agentos.agent import auth_registry as R
-    from agentos.agent.monitor.account_rotation import materialize_sweep, recent_from_state
-    from agentos.agent.monitor.models import MonitorState
+    from agentos.agent.accounts_log import read_recent_events
+    from agentos.agent.monitor.account_rotation import materialize_sweep
 
     stale_payload = _codex_payload(exp=1_000_000_000)
     fresher_payload = _codex_payload(exp=2_000_000_000)
@@ -153,26 +156,34 @@ def test_materialize_sweep_writes_home_and_records(
     fresher = _seed_capture(fresher_payload)
     R.set_active("codex", "br", "file", stale)
 
-    state = MonitorState()
-    events = materialize_sweep(state)
+    materialize_sweep()
 
     # the `m` action rotated the active AND reconciled the home (writes homes)
     assert R.active_ref("codex", "br", "file") == fresher
     assert json.loads((home / "auth.json").read_text()) == fresher_payload
-    assert any(e.new == fresher for e in events)
-    assert recent_from_state(state)[-1]["new"] == fresher  # recorded in the ring
+    # the rotation is recorded in the accounts-log
+    assert read_recent_events(event="rotate")[0]["payload"]["new_active"] == fresher
 
 
-def test_push_recent_truncates_to_five() -> None:
-    from agentos.agent.monitor.account_rotation import RotationEvent, push_recent
+def test_sweep_writes_no_monitor_log_rotation_line(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    from agentos.agent import auth_registry as R
+    from agentos.agent.monitor.account_rotation import sweep_rotations
+    from agentos.agent.monitor_log import monitor_log_dir
 
-    recent: list[dict[str, object]] = []
-    for i in range(7):
-        ev = RotationEvent(ts=f"t{i}", provider="codex", account="br", method="file",
-                           prev="p", new=f"n{i}")
-        recent = push_recent(recent, [ev], limit=5)
-    assert len(recent) == 5
-    assert [r["new"] for r in recent] == ["n2", "n3", "n4", "n5", "n6"]  # last 5, chronological
+    stale = _seed_capture(_codex_payload(exp=1_000_000_000))
+    _seed_capture(_codex_payload(exp=2_000_000_000))
+    _profile(home_root, [_home(tmp_path, _codex_payload(exp=1_000_000_000))])
+    R.set_active("codex", "br", "file", stale)
+
+    sweep_rotations(materialize=False)
+
+    # monitor-log carries operational events only — no account_rotation line
+    log_dir = monitor_log_dir()
+    text = "".join(p.read_text() for p in log_dir.glob("*.jsonl")) if log_dir.exists() else ""
+    assert "account_rotation" not in text
 
 
 def test_rotation_block_rows_empty_and_populated() -> None:
@@ -182,8 +193,8 @@ def test_rotation_block_rows_empty_and_populated() -> None:
     assert len(empty) == 1 and "no rotations" in empty[0].text.lower()
 
     rows = rotation_block_rows([
-        {"ts": "t0", "provider": "codex", "account": "br", "method": "file",
-         "prev": "aaaaaaaaaaaa0000", "new": "bbbbbbbbbbbb1111"},
+        {"recorded_at": "t0", "provider": "codex", "account": "br", "method": "file",
+         "payload": {"previous_active": "aaaaaaaaaaaa0000", "new_active": "bbbbbbbbbbbb1111"}},
     ])
     assert "codex" in rows[0].text and "br/file" in rows[0].text
     assert "aaaaaaaaaaaa" in rows[0].text and "bbbbbbbbbbbb" in rows[0].text

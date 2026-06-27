@@ -211,7 +211,7 @@ class MonitorLoop:
             # `m` keystroke: full reconcile (writes homes), inline on the UI thread.
             from agentos.agent.monitor.account_rotation import materialize_sweep
 
-            materialize_sweep(self.state)
+            materialize_sweep()
 
     def _initialize_display_state(self) -> None:
         self._monitor_display_state()

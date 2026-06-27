@@ -45,9 +45,10 @@ Four separate JSONL mechanisms exist; they are not yet unified.
 2. **Monitor log** — `src/agentos/agent/monitor_log.py`.
    - File: `~/.agentos/agent/monitor-log/YYYYMMDD.jsonl` (daily roll), schema v1:
      `{schema_version, class, recorded_at, event, tick, provider, account, home, payload}`.
-   - Writers: monitor loop (`monitor_start`, `workflow_error`, `config_stale`),
-     workflows (`target_transition`, …), and `account_rotation.sweep_rotations`
-     (`event=account_rotation`). Best-effort: never raises into the monitor loop.
+   - Writers: monitor loop (`monitor_start`, `workflow_error`, `config_stale`) and
+     workflows (`target_transition`, …) — **operational events only**. Best-effort:
+     never raises into the monitor loop. (Rotation events go to the accounts log, #4,
+     not here.)
    - Reader: none (write-only; no CLI surfaces it).
 
 3. **Accounts registry** — `src/agentos/agent/auth_registry.py` (state, not an event log).
@@ -64,14 +65,15 @@ Four separate JSONL mechanisms exist; they are not yet unified.
      effect — never on `dry_run`/`check`/no-op. Secret-free: ids only, never `Auth.Data`.
      Best-effort: never raises into a primitive. Because the `_all` sweeps and the CLI
      handlers funnel through the per-item primitives, every consumer logs uniformly.
-   - Reader: none yet — `agentos accounts log` (tail/query) is the next follow-up.
+   - Reader: `accounts_log.read_recent_events(*, event, limit)` — a programmatic,
+     newest-first tail (used by the monitor). No user-facing CLI yet.
+   - Monitor: the TUI `account-rotation` block (last-5 rotations) reads `event="rotate"`
+     from this log via `read_recent_events`. The monitor sweep is drive-only and keeps
+     no in-state ring; rotation logging lives in the `rotate` primitive.
 
 ### Known gaps (integration targets)
-- The accounts log is currently **write-only** — add an `agentos accounts log` reader so it
-  does not stay write-only like monitor-log.
-- The monitor still emits its own `account_rotation` line to monitor-log; monitor-driven
-  rotations now *also* land in the accounts log (via the `rotate` primitive). De-duplicating
-  and routing the monitor fully through the accounts log is the deferred monitor-integration.
+- The accounts log has no **user-facing reader CLI** yet — `agentos accounts log`
+  (tail/query) is the next follow-up (a programmatic reader exists).
 - Two parallel JSONL stacks (activity + monitor) with divergent schemas/roll cadence/dirs;
   only the activity log has a reader. Folding all stacks into one shared event-log primitive
   is the broader deferred unification.

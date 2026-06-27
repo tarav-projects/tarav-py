@@ -247,3 +247,50 @@ def test_materialize_check_emits_nothing(
 
     materialize_account("codex", "br", "file", home, check=True)
     assert _events_of("materialize") == []
+
+
+# --- reader: read_recent_events -------------------------------------------
+
+
+def test_read_recent_events_filters_limits_and_orders_newest_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos.agent.accounts_log import append_account_event, read_recent_events
+
+    for i in range(3):
+        append_account_event(event="rotate", provider="codex", account="br", method="file",
+                             payload={"new_active": f"r{i}"})
+    append_account_event(event="capture", provider="codex", account="br", method="file",
+                         payload={"ref_id": "c0"})
+
+    recent = read_recent_events(event="rotate", limit=2)
+    assert [e["payload"]["new_active"] for e in recent] == ["r2", "r1"]  # newest-first, limited
+    assert all(e["event"] == "rotate" for e in recent)
+
+    # unfiltered returns the most-recent of any kind, newest-first
+    any_recent = read_recent_events(limit=1)
+    assert any_recent[0]["event"] == "capture"
+
+
+def test_read_recent_events_spans_day_files_and_empty_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos.agent.accounts_log import accounts_log_dir, read_recent_events
+
+    assert read_recent_events(event="rotate") == []  # no log dir yet
+
+    # two dated files; "last 3" must cross the day boundary
+    log_dir = accounts_log_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    def _line(ref: str) -> str:
+        return json.dumps({"event": "rotate", "provider": "codex", "account": "br",
+                           "method": "file", "payload": {"new_active": ref}}) + "\n"
+
+    (log_dir / "20260101.jsonl").write_text(_line("old1") + _line("old2"))
+    (log_dir / "20260102.jsonl").write_text(_line("new1"))
+
+    recent = read_recent_events(event="rotate", limit=3)
+    assert [e["payload"]["new_active"] for e in recent] == ["new1", "old2", "old1"]

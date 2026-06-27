@@ -70,6 +70,46 @@ def append_account_event(
         return None
 
 
+def read_recent_events(
+    *, event: str | None = None, limit: int = 5
+) -> list[dict[str, Any]]:
+    """The most-recent account-lifecycle events, newest-first (best-effort).
+
+    Scans the dated ``YYYYMMDD.jsonl`` files newest filename first (dates sort
+    lexically) and collects records — optionally filtered to a single ``event`` —
+    until ``limit`` is reached, so "last N" can span a day boundary. Missing dir,
+    unreadable files, and malformed lines are skipped; never raises.
+    """
+    if limit <= 0:
+        return []
+    out: list[dict[str, Any]] = []
+    log_dir = accounts_log_dir()
+    try:
+        files = sorted(log_dir.glob("*.jsonl"), reverse=True)
+    except Exception:
+        return []
+    for path in files:
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            continue
+        for line in reversed(lines):  # within a file, newest line is last
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(record, dict):
+                continue
+            if event is not None and record.get("event") != event:
+                continue
+            out.append(record)
+            if len(out) >= limit:
+                return out
+    return out
+
+
 def _home_str(home: Path | str | None) -> str | None:
     if home is None:
         return None
@@ -88,4 +128,5 @@ __all__ = [
     "ACCOUNTS_LOG_SCHEMA_VERSION",
     "accounts_log_dir",
     "append_account_event",
+    "read_recent_events",
 ]

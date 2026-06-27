@@ -26,7 +26,7 @@
   - `sweep_rotations` / `materialize_sweep` just **drive** the lifecycle primitives
     (capture→rotate[→materialize]); rotation logging already happens inside the
     `rotate` primitive. The `monitor-log` `account_rotation` write is removed.
-- **Status:** NOT STARTED.
+- **Status:** COMPLETE.
 - **Source context:** session discussion on logging redundancy; builds on 671
   (accounts-log) and 668 (the original monitor rotation display). See
   `agentos-py/AGENTS.md` → "Logging System".
@@ -176,4 +176,15 @@ behavior tests named; rewrite (don't accrete) the tests that covered removed pat
 
 ## Impl.Log
 
-- (empty — not started)
+- All four slices done test-first (RED→GREEN). Suite 219→221, lint clean. Slices 2+3
+  were implemented together (removing the ring breaks `_write_block`, so the rewire
+  and the deletion land in one coherent step), each still RED→GREEN at the test level.
+- Removed (No.Legacy): `RotationEvent`, `ACCOUNT_ROTATION_RECENT_KEY`, `push_recent`,
+  `recent_from_state`, `record_events`, and the `monitor-log` `account_rotation`
+  write. `sweep_rotations(*, materialize) -> None` and `materialize_sweep() -> None`
+  are drive-only; `loop.py` keystroke and the workflow `loop` updated accordingly.
+- Tests covering removed paths were rewritten to assert against the accounts-log
+  (`read_recent_events`) / `R.active_ref`; `test_push_recent_truncates_to_five` was
+  deleted (reader limit is covered in `test_agent_accounts_log.py`); added
+  `test_sweep_writes_no_monitor_log_rotation_line` to pin the de-duplication.
+- Verified no lingering references to the removed symbols across src/tests.
