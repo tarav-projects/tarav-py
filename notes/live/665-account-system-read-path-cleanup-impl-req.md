@@ -21,7 +21,7 @@
   - **C. Stale doc.** `claude/auth_method.py` module docstring claims
     `materialize` is "intentionally unimplemented / read-only"; it is fully
     implemented and `materializable=True`. Correct the docstring.
-- **Status:** READY.
+- **Status:** COMPLETE.
 - **Source context:** `hugentics-codebase-cleaner` scan of the account system
   (this session), after the 659–664 rebuild. Cleanup constraints: stay narrow,
   module-local helpers, no new frameworks, replace (don't wrap) the duplication.
@@ -128,4 +128,14 @@ do not add tests for unchanged behaviour.
 
 ## Impl.Log
 
-- (executer fills in)
+- All three slices applied as behaviour-preserving refactors. Full suite stayed
+  green throughout (189 passed), lint clean. No new tests added (`No.Regression`).
+- Block B confirmed zero behaviour change live: `agent accounts status --provider
+  claude-code` and `rotate --provider claude-code --materialize --dry-run` produced
+  identical output to pre-cleanup (same drift/aligned per home; same 2-home
+  materialize preview). The `status_for_home` method-name fix is latent-only today
+  (one `AuthMethod` per provider) — no observable diff now, removes the multi-method
+  mislabel for the future.
+- `auth_method_registry` gained `account_status` (`AccountIdentity`) + `auth_method`
+  (`AuthData`) imports for `HomeAuth`; no import cycle (it does not import
+  `account_status_report`, which is the module that imports it back).

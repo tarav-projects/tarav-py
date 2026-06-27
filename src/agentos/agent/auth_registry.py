@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 from agentos._core.clock import utc_now_iso
@@ -235,14 +236,25 @@ def record_ref_id(record: dict[str, object]) -> str | None:
     return ref_id if isinstance(ref_id, str) else None
 
 
-def is_captured(provider: str, account: str, method: str, ref_id: str) -> bool:
+def _iter_capture_records(provider: str) -> Iterator[dict[str, object]]:
+    """Yield each parsed `captures.jsonl` record (skipping blanks/non-dicts).
+
+    The single place the capture log is read off disk — every capture-record
+    reader filters over this, so the file scan lives in exactly one spot."""
+
     path = captures_path(provider)
     if not path.is_file():
-        return False
+        return
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        r = json.loads(line)
+        record = json.loads(line)
+        if isinstance(record, dict):
+            yield record
+
+
+def is_captured(provider: str, account: str, method: str, ref_id: str) -> bool:
+    for r in _iter_capture_records(provider):
         if (r.get("account"), r.get("method"), record_ref_id(r)) == (account, method, ref_id):
             return True
     return False
@@ -272,17 +284,7 @@ def orphan_captures(provider: str) -> list[dict[str, object]]:
     auth-method that could not be bound to a declared account. Each record keeps
     its extracted ``auth_ref`` identity, the basis for later adoption."""
 
-    path = captures_path(provider)
-    if not path.is_file():
-        return []
-    records: list[dict[str, object]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        record = json.loads(line)
-        if isinstance(record, dict) and record.get("account") == UNKNOWN_ACCOUNT:
-            records.append(record)
-    return records
+    return [r for r in _iter_capture_records(provider) if r.get("account") == UNKNOWN_ACCOUNT]
 
 
 def captures_for(provider: str, account: str, method: str) -> list[dict[str, object]]:
@@ -291,17 +293,8 @@ def captures_for(provider: str, account: str, method: str) -> list[dict[str, obj
     The capture pool a rotation ranks over — `_unknown` is reachable only by
     passing it explicitly (callers rotate declared accounts, never the bucket)."""
 
-    path = captures_path(provider)
-    if not path.is_file():
-        return []
-    records: list[dict[str, object]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        record = json.loads(line)
-        if isinstance(record, dict) and record.get("account") == account and record.get("method") == method:
-            records.append(record)
-    return records
+    return [r for r in _iter_capture_records(provider)
+            if r.get("account") == account and r.get("method") == method]
 
 
 def pool_for(provider: str, account: str, method: str) -> list[dict[str, object]]:

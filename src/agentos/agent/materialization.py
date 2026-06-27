@@ -17,7 +17,7 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos.agent import auth_registry as R
 from agentos.agent.account_status_report import collect_home_targets
-from agentos.agent.auth_method_registry import auth_method_for_class, auth_methods_for_provider
+from agentos.agent.auth_method_registry import auth_method_for_class, read_home_auth
 
 
 @dataclass(frozen=True)
@@ -93,19 +93,16 @@ def _home_target_account_method(provider: str, home: Path, candidates: frozenset
     """
 
     candidate_accounts = {c.split("/", 1)[0] for c in candidates}
-    for auth_method in auth_methods_for_provider(provider):
-        auth = auth_method.read_auth_data(home)
-        if auth is None:
-            continue
-        identity = auth_method.extract_identity(auth)
-        account = R.resolve_account_by_identity(provider, identity) if identity is not None else None
-        if account is None or account not in candidate_accounts:
-            return None
-        method = R.method_for_class(provider, account, auth_method.name)
-        if method is None:
-            return None
-        return account, method
-    return None
+    found = read_home_auth(provider, home)
+    if found is None:
+        return None
+    account = R.resolve_account_by_identity(provider, found.identity) if found.identity is not None else None
+    if account is None or account not in candidate_accounts:
+        return None
+    method = R.method_for_class(provider, account, found.method.name)
+    if method is None:
+        return None
+    return account, method
 
 
 def materialize_all(provider: str, *, check: bool = False) -> list[MaterializeResult]:

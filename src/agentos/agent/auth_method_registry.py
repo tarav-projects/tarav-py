@@ -7,7 +7,11 @@ to the implementing `AuthMethod`.
 
 from __future__ import annotations
 
-from agentos.agent.auth_method import AuthMethod
+from dataclasses import dataclass
+from pathlib import Path
+
+from agentos.agent.account_status import AccountIdentity
+from agentos.agent.auth_method import AuthData, AuthMethod
 from agentos.claude.auth_method import ClaudeAuthMethod
 from agentos.codex.auth_method import CodexAuthMethod
 
@@ -31,8 +35,35 @@ def providers_with_auth_methods() -> tuple[str, ...]:
     return tuple(dict.fromkeys(prov for prov, _cls in _METHODS))
 
 
+@dataclass(frozen=True)
+class HomeAuth:
+    """A home's readable credential: the `AuthMethod` that read it, the `AuthData`,
+    and its extracted `Account.Identity` (None when unrecognizable)."""
+
+    method: AuthMethod
+    auth: AuthData
+    identity: AccountIdentity | None
+
+
+def read_home_auth(provider: str, home: Path) -> HomeAuth | None:
+    """The first provider `AuthMethod` whose `read_auth_data(home)` is non-None.
+
+    The single home-reading seam shared by capture, materialize, and status — each
+    applies its own account policy to the result. Preserves `auth_methods_for_provider`
+    order ("first method that reads wins"); applies no account policy itself."""
+
+    for auth_method in auth_methods_for_provider(provider):
+        auth = auth_method.read_auth_data(home)
+        if auth is None:
+            continue
+        return HomeAuth(method=auth_method, auth=auth, identity=auth_method.extract_identity(auth))
+    return None
+
+
 __all__ = [
+    "HomeAuth",
     "auth_method_for_class",
     "auth_methods_for_provider",
     "providers_with_auth_methods",
+    "read_home_auth",
 ]

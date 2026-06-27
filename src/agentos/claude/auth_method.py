@@ -7,8 +7,9 @@ under ``oauthAccount``. This class composes both into one self-contained
 ``AuthData`` payload so ``content_id`` covers the whole credential and
 ``extract_identity`` works off the payload alone.
 
-Read-side only. ``materialize`` is intentionally unimplemented — this credential
-class is observed read-only from the home's perspective.
+``materialize`` writes both halves back — the secret to secure storage and
+``oauthAccount`` to ``.claude.json`` — so a materialized home reads back the same
+``content_id``. The class is ``materializable``.
 """
 
 from __future__ import annotations

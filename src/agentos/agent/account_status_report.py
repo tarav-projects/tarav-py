@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentos.agent import auth_registry as R
-from agentos.agent.auth_method_registry import auth_method_for_class
+from agentos.agent.auth_method_registry import read_home_auth
 from agentos.agent.config import load_agent_profile_entries
 
 
@@ -51,38 +51,26 @@ def status_for_home(target: HomeTarget) -> dict[str, object]:
     provider = target.provider
     candidate_accounts = {c.split("/", 1)[0] for c in target.candidates}
 
-    # try each distinct candidate method-class; first non-empty read wins
-    for candidate in sorted(target.candidates):
-        account_hint, _, method_hint = candidate.partition("/")
-        auth_class = R.method_class(provider, account_hint, method_hint)
-        method = auth_method_for_class(provider, auth_class) if auth_class else None
-        if method is None:
-            continue
-        auth = method.read_auth_data(target.home)
-        if auth is None:
-            continue
-        identity = method.extract_identity(auth)
-        account = (
-            R.resolve_account_by_identity(provider, identity) if identity is not None else None
-        )
-        if account is None or account not in candidate_accounts:
-            return _entry(target, status="error:unlisted-account", account=account, reason="identity not among candidates")
-        # the candidate method for the resolved account
-        method_name = next(
-            (c.split("/", 1)[1] for c in target.candidates if c.split("/", 1)[0] == account),
-            method_hint,
-        )
-        active = R.active_ref(provider, account, method_name)
-        if active is not None and active == method.ref_id(auth):
-            return _entry(target, status="aligned", account=account, method=method_name)
-        reason = (
-            "home Auth.Data is not the active one"
-            if active is not None
-            else "no active artifact registered for this account/method"
-        )
-        return _entry(target, status="drift", account=account, method=method_name, reason=reason)
+    found = read_home_auth(provider, target.home)
+    if found is None:
+        return _entry(target, status="undeterminable", reason="no Auth.Data could be read from the home")
 
-    return _entry(target, status="undeterminable", reason="no Auth.Data could be read from the home")
+    account = (
+        R.resolve_account_by_identity(provider, found.identity) if found.identity is not None else None
+    )
+    if account is None or account not in candidate_accounts:
+        return _entry(target, status="error:unlisted-account", account=account, reason="identity not among candidates")
+    # report the method by the class actually read, not by candidate string order
+    method_name = R.method_for_class(provider, account, found.method.name) or found.method.name
+    active = R.active_ref(provider, account, method_name)
+    if active is not None and active == found.method.ref_id(found.auth):
+        return _entry(target, status="aligned", account=account, method=method_name)
+    reason = (
+        "home Auth.Data is not the active one"
+        if active is not None
+        else "no active artifact registered for this account/method"
+    )
+    return _entry(target, status="drift", account=account, method=method_name, reason=reason)
 
 
 def _entry(target: HomeTarget, *, status: str, account: str | None = None,
