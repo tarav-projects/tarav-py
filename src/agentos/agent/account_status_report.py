@@ -18,6 +18,7 @@ from pathlib import Path
 from agentos.agent import auth_registry as R
 from agentos.agent.auth_method_registry import read_home_auth
 from agentos.agent.config import load_agent_profile_entries
+from agentos.agent.rotation import drift_against_active
 
 
 @dataclass(frozen=True)
@@ -63,14 +64,21 @@ def status_for_home(target: HomeTarget) -> dict[str, object]:
     # report the method by the class actually read, not by candidate string order
     method_name = R.method_for_class(provider, account, found.method.name) or found.method.name
     active = R.active_ref(provider, account, method_name)
-    if active is not None and active == found.method.ref_id(found.auth):
+    if active is None:
+        return _entry(target, status="drift:no-active", account=account, method=method_name,
+                      reason="no active ref registered for this account/method — rotate")
+    if active == found.method.ref_id(found.auth):
         return _entry(target, status="aligned", account=account, method=method_name)
-    reason = (
-        "home Auth.Data is not the active one"
-        if active is not None
-        else "no active artifact registered for this account/method"
-    )
-    return _entry(target, status="drift", account=account, method=method_name, reason=reason)
+    # qualify the drift by which credential is fresher (rotation's head-of-line rank)
+    direction = drift_against_active(provider, account, method_name, found.method, found.auth)
+    if direction == "newer":
+        return _entry(target, status="drift:home-newer", account=account, method=method_name,
+                      reason="home credential is newer than active — rotate")
+    if direction == "older":
+        return _entry(target, status="drift:home-older", account=account, method=method_name,
+                      reason="active credential is newer than home — materialize")
+    return _entry(target, status="drift", account=account, method=method_name,
+                  reason="home differs from active but freshness is unorderable")
 
 
 def _entry(target: HomeTarget, *, status: str, account: str | None = None,

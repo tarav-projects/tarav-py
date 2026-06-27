@@ -162,6 +162,39 @@ def test_codex_rotation_rank_prefers_later_token_exp_over_capture_order(
     assert result.new_active == fresher and result.changed is True
 
 
+def test_drift_against_active_directions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos.agent import auth_registry as R
+    from agentos.agent.rotation import drift_against_active
+    from agentos.codex.auth_method import CodexAuthMethod
+
+    active = _seed_artifact("br", "file", _codex_payload(exp=1_500_000_000))
+    R.set_active("codex", "br", "file", active)
+    method = CodexAuthMethod()
+
+    newer = AuthData(payload=_codex_payload(exp=2_000_000_000))
+    older = AuthData(payload=_codex_payload(exp=1_000_000_000))
+    same = AuthData(payload=_codex_payload(exp=1_500_000_000))
+
+    assert drift_against_active("codex", "br", "file", method, newer) == "newer"
+    assert drift_against_active("codex", "br", "file", method, older) == "older"
+    assert drift_against_active("codex", "br", "file", method, same) is None  # tie → unorderable
+
+
+def test_drift_against_active_none_when_no_active(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _env(monkeypatch, tmp_path)
+    from agentos.agent.rotation import drift_against_active
+    from agentos.codex.auth_method import CodexAuthMethod
+
+    home = AuthData(payload=_codex_payload(exp=2_000_000_000))
+    # nothing activated for br/file → no basis to compare against
+    assert drift_against_active("codex", "br", "file", CodexAuthMethod(), home) is None
+
+
 def _claude_seed(account: str, expires_at: int) -> str:
     from agentos.agent import auth_registry as R
     from agentos.agent.account_status import AccountIdentity

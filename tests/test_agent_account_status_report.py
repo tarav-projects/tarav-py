@@ -109,3 +109,60 @@ def test_status_drift_when_active_differs(
     item = build_status_report("claude-code")["homes"][0]
     assert item["status"] == "drift"
     assert item["account"] == "om"
+
+
+def _claude_home_exp(root: Path, name: str, *, uuid: str, expires_at: int) -> Path:
+    """A logged-in claude home whose secret carries a rotation-rankable expiry."""
+    home = root / name
+    home.mkdir(parents=True, exist_ok=True)
+    (home / ".claude.json").write_text(
+        json.dumps({"oauthAccount": {"accountUuid": uuid, "emailAddress": f"{name}@e.com", "displayName": name}})
+    )
+    (home / ".credentials.json").write_text(
+        json.dumps({"claudeAiOauth": {"accessToken": f"tok-{name}", "expiresAt": expires_at}})
+    )
+    return home
+
+
+def _activate_claude(*, uuid: str, expires_at: int) -> None:
+    from agentos.agent import auth_registry as R
+    artifact = R.store_artifact(
+        "claude-code",
+        AuthData(payload={"claudeAiOauth": {"accessToken": "active", "expiresAt": expires_at},
+                          "oauthAccount": {"accountUuid": uuid}}),
+    )
+    R.set_active("claude-code", "om", "browser", artifact)
+
+
+@pytest.mark.parametrize("home_exp, expected", [
+    (2_000_000_000_000, "drift:home-newer"),   # home fresher than active → rotate
+    (500_000_000_000, "drift:home-older"),     # active fresher than home → materialize
+])
+def test_status_drift_is_qualified_by_freshness(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, home_exp: int, expected: str
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    UUID = "973c403b-615a-47da-bc34-32ddc13a2e65"
+    home = _claude_home_exp(tmp_path / "homes", "om", uuid=UUID, expires_at=home_exp)
+    _settings(home_root, account="om", uuid=UUID)
+    _profile(home_root, "claude-om", [home], ["om/browser"])
+    _activate_claude(uuid=UUID, expires_at=1_000_000_000_000)
+
+    from agentos.agent.account_status_report import build_status_report
+
+    assert build_status_report("claude-code")["homes"][0]["status"] == expected
+
+
+def test_status_drift_no_active_when_nothing_registered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    UUID = "973c403b-615a-47da-bc34-32ddc13a2e65"
+    home = _claude_home_exp(tmp_path / "homes", "om", uuid=UUID, expires_at=1_000_000_000_000)
+    _settings(home_root, account="om", uuid=UUID)
+    _profile(home_root, "claude-om", [home], ["om/browser"])
+    # no set_active → nothing registered for om/browser
+
+    from agentos.agent.account_status_report import build_status_report
+
+    assert build_status_report("claude-code")["homes"][0]["status"] == "drift:no-active"

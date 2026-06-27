@@ -11,7 +11,7 @@
   - `drift` (bare) — refs differ but the freshness ranks are unorderable
     (equal, or `None`) → inspect.
   `aligned` is unchanged.
-- **Status:** READY.
+- **Status:** COMPLETE.
 - **Source context:** design discussion (this session), the natural readout for the
   `rotate --materialize` reconciler built in 664. Principle the user set: **status
   is only a consumer** — the freshness comparison is a primitive built on what
@@ -124,4 +124,16 @@ status mapping that consumes it (observable via the report). Each slice
 
 ## Impl.Log
 
-- (executer fills in)
+- Both slices RED→GREEN. Suite 189→194 (+5), lint clean.
+- Decision in open space (existing test preserved): `test_status_drift_when_active_differs`
+  activates an unresolvable ref (`deadbeef`) — under the new mapping its payload
+  resolves to None ⇒ `drift_against_active` returns None ⇒ bare `drift`, which the
+  existing assertion already expects. Left untouched (faithful to the "unorderable →
+  bare drift" rule).
+- No import cycle from `account_status_report → rotation`: `rotation` imports
+  `auth_registry`/`auth_method`/`auth_method_registry`, none of which import
+  `account_status_report`.
+- Live acceptance partial: `agent accounts status --provider claude-code` ran
+  read-only and the `aligned` path is intact, but every live home currently reads
+  `aligned` (no drift on real data now), so the qualified labels are exercised by
+  unit tests only, not live.

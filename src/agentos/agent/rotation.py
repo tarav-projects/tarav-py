@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from agentos.agent import auth_registry as R
+from agentos.agent.auth_method import AuthData, AuthMethod
 from agentos.agent.auth_method_registry import auth_method_for_class
 
 
@@ -79,6 +80,47 @@ def rotate(provider: str, account: str, method: str, *, dry_run: bool = False) -
     return RotateResult(provider, account, method, previous, head, changed=changed, skipped=False)
 
 
+def _active_captured_at(provider: str, account: str, method: str, ref_id: str) -> float:
+    """The capture `ts` (epoch) of the active ref — the shared ranking basis.
+
+    ``0.0`` when no capture record joins the ref (e.g. a directly-activated
+    artifact); irrelevant for payload-derived ranks, a tie for default ranks."""
+
+    for record in R.captures_for(provider, account, method):
+        if R.record_ref_id(record) == ref_id:
+            return _epoch(record.get("ts"))
+    return 0.0
+
+
+def drift_against_active(
+    provider: str, account: str, method: str, home_method: AuthMethod, home_auth: AuthData
+) -> str | None:
+    """Direction of a drifted home relative to the active ref by freshness.
+
+    ``"newer"`` (home fresher → rotate), ``"older"`` (active fresher → materialize),
+    or ``None`` when there is no active ref, its payload is unresolvable, a rank is
+    ``None``, or the ranks tie (unorderable). Both sides are ranked with the SAME
+    basis (the active ref's capture ``ts``) so the direction reflects only
+    payload-derived divergence."""
+
+    active = R.active_ref(provider, account, method)
+    if active is None:
+        return None
+    active_auth = R.auth_data_for_ref(provider, account, method, active)
+    if active_auth is None:
+        return None
+    basis = _active_captured_at(provider, account, method, active)
+    home_rank = home_method.rotation_rank(home_auth, basis)
+    active_rank = home_method.rotation_rank(active_auth, basis)
+    if home_rank is None or active_rank is None:
+        return None
+    if home_rank > active_rank:
+        return "newer"
+    if home_rank < active_rank:
+        return "older"
+    return None
+
+
 def rotate_all(provider: str, *, dry_run: bool = False) -> list[RotateResult]:
     """Rotate every declared ``account/method`` for ``provider`` (from settings).
 
@@ -98,4 +140,4 @@ def rotate_all(provider: str, *, dry_run: bool = False) -> list[RotateResult]:
     return results
 
 
-__all__ = ["RotateResult", "rotate", "rotate_all"]
+__all__ = ["RotateResult", "drift_against_active", "rotate", "rotate_all"]
