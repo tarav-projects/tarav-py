@@ -15,7 +15,7 @@
     complete `Auth.Data` payload** for each ref (read from the artifact). This is
     the deliberate "dump everything" surface — the agent consumes it and writes the
     two files itself.
-- **Status:** READY.
+- **Status:** COMPLETE.
 - **Source context:** design discussion (this session). Decided: adoption stays a
   manual edit (rare, judgment-heavy); the system's only job is to make orphans
   visible with everything an adopter needs. The data already exists
@@ -123,4 +123,12 @@ test-first.
 
 ## Impl.Log
 
-- (executer fills in)
+- Both slices RED→GREEN. Suite 194→199 (+5), lint clean.
+- Decision in open space (no secret read in text mode): the handler builds the
+  secret-free base groups once; it only calls `read_artifact` (resolving the secret
+  payload) inside the `--json` branch. So text mode never even touches the artifact
+  blobs — secrets are read solely for the worksheet dump.
+- Live acceptance: `agent accounts orphans` (text) and `--help` run clean; no live
+  orphans exist right now, so both providers print "(no orphans)" — the populated
+  path (identity + ref secret-free; `--json` full `Auth.Data`) is covered by unit
+  tests only.

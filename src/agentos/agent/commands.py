@@ -420,6 +420,50 @@ def _account_method_pairs(provider: str, account: str | None) -> list[tuple[str,
     return pairs
 
 
+def _cmd_agent_accounts_orphans(args: argparse.Namespace) -> int:
+    from agentos.agent import auth_registry as R
+    from agentos.agent.auth_method_registry import providers_with_auth_methods
+
+    providers = (args.provider,) if args.provider is not None else providers_with_auth_methods()
+
+    # base groups carry no secret material — the text view reads only these
+    groups = [
+        {"provider": provider, "identity": g["identity"],
+         "auth_class": g["auth_class"], "refs": g["refs"]}
+        for provider in providers
+        for g in R.orphan_groups(provider)
+    ]
+
+    if args.json:
+        # --json is the adoption worksheet: attach the full Auth.Data per ref
+        orphans = []
+        for g in groups:
+            refs = []
+            for r in g["refs"]:
+                artifact_id = r.get("artifact_id")
+                auth = R.read_artifact(g["provider"], artifact_id) if isinstance(artifact_id, str) else None
+                refs.append({**r, "auth_data": dict(auth.payload) if auth is not None else None})
+            orphans.append({**g, "refs": refs})
+        print(format_json_output({"command": "agent accounts orphans",
+                                  "providers": list(providers), "orphans": orphans}))
+    else:
+        for provider in providers:
+            print(provider)
+            provider_groups = [g for g in groups if g["provider"] == provider]
+            if not provider_groups:
+                print("  (no orphans)")
+                continue
+            for g in provider_groups:
+                ident = g["identity"] if isinstance(g["identity"], dict) else {}
+                who = ident.get("provider_account_id") or "(no identity)"
+                extra = "  ".join(str(x) for x in (ident.get("email"), ident.get("label")) if x)
+                header = f"  {who}  [{g['auth_class']}]"
+                print(f"{header}  {extra}".rstrip())
+                for r in g["refs"]:
+                    print(f"    {str(r['ref_id'])[:12]}  {r.get('ts')}")
+    return 0
+
+
 def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
     from agentos.agent.auth_method_registry import providers_with_auth_methods
     from agentos.agent.capture import capture_all_homes
@@ -807,6 +851,20 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     accounts_list_parser.add_argument("--json", action="store_true", help="Output as JSON.")
     accounts_list_parser.set_defaults(handler=_cmd_agent_accounts_list)
+
+    accounts_orphans_parser = accounts_subparsers.add_parser(
+        "orphans",
+        help="List captured orphans (the _unknown bucket) grouped by identity, for manual adoption.",
+    )
+    accounts_orphans_parser.add_argument(
+        "--provider", choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        help="Provider family. Without it, list orphans for every provider with an auth-method.",
+    )
+    accounts_orphans_parser.add_argument(
+        "--json", action="store_true",
+        help="Output as JSON, including the full Auth.Data payload per ref (secrets).",
+    )
+    accounts_orphans_parser.set_defaults(handler=_cmd_agent_accounts_orphans)
 
     accounts_capture_parser = accounts_subparsers.add_parser(
         "capture",

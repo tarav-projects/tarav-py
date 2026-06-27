@@ -287,6 +287,43 @@ def orphan_captures(provider: str) -> list[dict[str, object]]:
     return [r for r in _iter_capture_records(provider) if r.get("account") == UNKNOWN_ACCOUNT]
 
 
+def orphan_groups(provider: str) -> list[dict[str, object]]:
+    """Orphan captures (`Unknown.Account`) grouped by identity — the adoption view.
+
+    One group per distinct identity anchor (``auth_ref.provider_account_id``;
+    anchorless orphans share the ``None`` group), each carrying the identity, the
+    ``auth_class``, and its distinct ``ref_id``s newest-first (with ``artifact_id``
+    + ``ts``) plus ``last_seen``. Groups are ordered by ``last_seen`` desc. This is
+    the candidate-account view a manual adopter reads — grouping/dedup live here so
+    the CLI is a pure formatter."""
+
+    groups: dict[str | None, dict[str, object]] = {}
+    for record in orphan_captures(provider):
+        ref_id = record_ref_id(record)
+        if ref_id is None:
+            continue
+        auth_ref = record.get("auth_ref")
+        identity = auth_ref if isinstance(auth_ref, dict) else {}
+        key = identity.get("provider_account_id")
+        ts = record.get("ts")
+        group = groups.setdefault(key, {
+            "identity": identity,
+            "auth_class": record.get("class") or record.get("method"),
+            "_refs": {},
+        })
+        refs: dict[str, dict[str, object]] = group["_refs"]  # type: ignore[assignment]
+        existing = refs.get(ref_id)
+        if existing is None or (isinstance(ts, str) and ts > str(existing.get("ts") or "")):
+            refs[ref_id] = {"ref_id": ref_id, "artifact_id": record.get("artifact_id"), "ts": ts}
+
+    result: list[dict[str, object]] = []
+    for group in groups.values():
+        refs = sorted(group.pop("_refs").values(), key=lambda r: str(r.get("ts") or ""), reverse=True)
+        result.append({**group, "refs": refs, "last_seen": refs[0]["ts"] if refs else None})
+    result.sort(key=lambda g: str(g.get("last_seen") or ""), reverse=True)
+    return result
+
+
 def captures_for(provider: str, account: str, method: str) -> list[dict[str, object]]:
     """Capture records for one ``account/method``, in capture (file) order.
 
@@ -365,6 +402,7 @@ __all__ = [
     "append_capture",
     "is_captured",
     "orphan_captures",
+    "orphan_groups",
     "captures_for",
     "pool_for",
     "resolve_ref_prefix",
