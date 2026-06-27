@@ -14,7 +14,7 @@
   - **`rotate --materialize`** — after the rotate pass, push each home's
     account/method active ref into stale homes (capture-first), so one command runs
     the maintenance loop capture → rotate → materialize.
-- **Status:** READY.
+- **Status:** COMPLETE.
 - **Source context:** Design discussion (this session). `capture.py` (660) and
   `rotation.py` (661) already follow the primitive shape; activate (662/663) and
   materialize still have their logic trapped in CLI handlers. Builds on
@@ -188,4 +188,32 @@ extraction the inline body is gone, the handler only consumes the primitive.
 
 ## Impl.Log
 
-- (executer fills in)
+- All four slices RED→GREEN. Suite 182→189 (+7), lint clean.
+- Deviation (process, minor): `materialize_all` (slice 3's primitive) was authored
+  in the same module-write as `materialize_account` (slice 2) rather than strictly
+  after its own RED. Its behavior test (`test_materialize_all_*`) was still written
+  and run as the slice-3 gate (GREEN), so coverage is intact — only the write
+  ordering differed.
+- Decision in open space (stale-gate precedence): an aligned home reports
+  `status="aligned"` **regardless of `check`** (the gate is evaluated before the
+  check branch). So a real single-home `materialize` against an already-active home
+  now returns `aligned` instead of `materialized`, and a `--check` against an
+  aligned home returns `aligned` instead of `check`. No existing materialize test
+  encoded the old always-rewrite behavior, so none needed updating (the plan
+  anticipated one might).
+- Decision in open space (`written` count in `rotate --materialize` output): the
+  "homes written" tally counts both `materialized` and `check` statuses so the
+  dry-run summary reads "Would materialize N home(s)" with the real N (under
+  `--dry-run`, stale homes carry `check`, not `materialized`).
+- `--force` on the `materialize` CLI is carried through untouched — it was a no-op
+  in the prior inline body and remains unused; not extended to the fleet path
+  (per the req's risk note).
+- Live acceptance: `agent accounts rotate --provider claude-code --materialize
+  --dry-run` previewed the reconcile and wrote nothing — notably `br/browser`
+  showed the pointer `unchanged` while its `browser-br` home `would materialize`,
+  confirming the reconcile-all decision (a home drifts without a rotation). Other
+  homes `aligned`, one `skipped` (no safe target).
+- Environment note (pre-existing, not from this change): `uv tool install
+  --reinstall --editable .` reports "Failed to install entrypoints" / "No
+  executables are provided"; the `agentos` script on PATH
+  (`~/.local/bin/agentos`) still runs the editable source, verified live.

@@ -56,7 +56,7 @@ def _profile(home_root: Path, pid: str, homes: list[Path]) -> None:
 
 def _ns(**kw: object) -> argparse.Namespace:
     base = dict(provider="codex", account=None, no_capture=False, dry_run=False,
-               json=False, _agentos_argv=[])
+               materialize=False, json=False, _agentos_argv=[])
     base.update(kw)
     return argparse.Namespace(**base)
 
@@ -109,6 +109,59 @@ def test_rotate_no_capture_skips_home_read(
     assert _cmd_agent_accounts_rotate(_ns(no_capture=True)) == 0
     # no capture happened → empty pool → nothing written
     assert not R.captures_path("codex").exists()
+
+
+def _seed_fresher_capture() -> tuple[str, dict[str, object]]:
+    """Seed a fresher captured ref (not present in any home) + return its ref/payload."""
+    from agentos.agent import auth_registry as R
+    from agentos.agent.account_status import AccountIdentity
+    from agentos.agent.auth_method import AuthData
+
+    payload = _auth_json(UUID, exp=2_000_000_000)
+    ref = R.store_artifact("codex", AuthData(payload=payload))
+    R.append_capture("codex", account="br", method="file", auth_class="auth-json",
+                     auth_ref=AccountIdentity(), ref_id=ref, artifact_id=ref)
+    return ref, payload
+
+
+def test_rotate_materialize_writes_new_active_into_stale_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    home = _home(tmp_path, "codex-br", exp=1_000_000_000)  # holds the OLD ref
+    _profile(home_root, "codex-main", [home])
+
+    from agentos.agent import auth_registry as R
+    from agentos.agent.auth_method import AuthData
+
+    fresher_ref, fresher_payload = _seed_fresher_capture()
+    old_ref = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))
+    R.set_active("codex", "br", "file", old_ref)
+
+    assert _cmd_agent_accounts_rotate(_ns(materialize=True)) == 0
+    # rotation flipped active to the fresher ref, materialize pushed it into the stale home
+    assert R.active_ref("codex", "br", "file") == fresher_ref
+    assert json.loads((home / "auth.json").read_text()) == fresher_payload
+
+
+def test_rotate_materialize_dry_run_writes_neither_pointer_nor_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    home = _home(tmp_path, "codex-br", exp=1_000_000_000)
+    _profile(home_root, "codex-main", [home])
+
+    from agentos.agent import auth_registry as R
+    from agentos.agent.auth_method import AuthData
+
+    _seed_fresher_capture()
+    old_ref = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))
+    R.set_active("codex", "br", "file", old_ref)
+    home_before = (home / "auth.json").read_text()
+
+    assert _cmd_agent_accounts_rotate(_ns(materialize=True, dry_run=True)) == 0
+    assert R.active_ref("codex", "br", "file") == old_ref  # pointer unchanged
+    assert (home / "auth.json").read_text() == home_before  # home unchanged
 
 
 def test_rotate_account_requires_provider(

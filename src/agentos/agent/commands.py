@@ -423,15 +423,18 @@ def _account_method_pairs(provider: str, account: str | None) -> list[tuple[str,
 def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
     from agentos.agent.auth_method_registry import providers_with_auth_methods
     from agentos.agent.capture import capture_all_homes
+    from agentos.agent.materialization import MaterializeResult, materialize_all
     from agentos.agent.rotation import RotateResult, rotate, rotate_all
 
     dry_run = getattr(args, "dry_run", False)
     no_capture = getattr(args, "no_capture", False)
+    do_materialize = getattr(args, "materialize", False)
     if args.account is not None and args.provider is None:
         raise CliError("agent accounts rotate --account requires --provider")
     providers = (args.provider,) if args.provider is not None else providers_with_auth_methods()
 
     results: list[RotateResult] = []
+    materialized: list[MaterializeResult] = []
     for provider in providers:
         # Capture-first (homes read-only) so a just-refreshed home enters the pool
         # before we pick the head; --no-capture rotates the existing pool only.
@@ -444,8 +447,14 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
             results.append(rotate(provider, account_id, method, dry_run=dry_run))
         else:
             results.extend(rotate_all(provider, dry_run=dry_run))
+        # Reconcile: push each home's now-current active into stale homes (dry-run
+        # maps to check — no home writes). Syncs drifted homes even if the head
+        # did not move.
+        if do_materialize:
+            materialized.extend(materialize_all(provider, check=dry_run))
 
     changed = sum(1 for r in results if r.changed)
+    written = sum(1 for m in materialized if m.status in ("materialized", "check"))
     if args.json:
         payload = {
             "command": "agent accounts rotate",
@@ -458,6 +467,11 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
                 for r in results
             ],
             "changed": changed,
+            "materialized": [
+                {"provider": m.provider, "account": m.account, "method": m.method,
+                 "home": str(m.home), "active_ref": m.active_ref, "status": m.status}
+                for m in materialized
+            ],
         }
         print(format_json_output(payload))
     else:
@@ -472,83 +486,66 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
             print(f"{r.provider} {r.account}/{r.method}: {state}")
         verb = "Would change" if dry_run else "Changed"
         print(f"{verb} {changed} active pointer(s) across {len(results)} account/method(s).")
+        if do_materialize:
+            for m in materialized:
+                if m.status == "materialized":
+                    label = "[dry-run] would materialize" if dry_run else "materialized"
+                    detail = f"{label} (ref {(m.active_ref or '-')[:12]})"
+                elif m.status == "check":
+                    detail = f"[dry-run] would materialize (ref {(m.active_ref or '-')[:12]})"
+                else:
+                    detail = m.status  # aligned | skipped
+                print(f"  {m.provider} {m.home}: {detail}")
+            mverb = "Would materialize" if dry_run else "Materialized"
+            print(f"{mverb} {written} home(s).")
     return 0
 
 
 def _cmd_agent_accounts_activate(args: argparse.Namespace) -> int:
-    from agentos.agent import auth_registry as R
+    from agentos.agent.activation import activate
 
     provider = args.provider
     account_id, sep, method = args.account.partition("/")
     if not sep or not account_id or not method:
         raise CliError(f"{provider} activate requires --account <account-id>/<method>")
-    ref = R.resolve_ref_prefix(provider, account_id, method, args.ref)
-    if R.auth_data_for_ref(provider, account_id, method, ref) is None:
-        raise CliError(f"no captured Auth.Data for ref: {ref}")
-    R.set_active(provider, account_id, method, ref)
+    result = activate(provider, account_id, method, args.ref)
     payload = {"command": "agent accounts activate", "provider": provider,
-               "account": args.account, "ref_id": ref}
+               "account": args.account, "ref_id": result.ref_id}
     if args.json:
         print(format_json_output(payload))
     else:
-        print(f"Activated {provider} {args.account} -> {ref[:12]}")
+        print(f"Activated {provider} {args.account} -> {result.ref_id[:12]}")
     return 0
 
 
 def _materialize_account(args: argparse.Namespace, provider: str) -> int:
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method_registry import auth_method_for_class
+    from agentos.agent.materialization import materialize_account
 
     account_id, sep, method = args.account.partition("/")
     if not sep or not account_id or not method:
         raise CliError(f"{provider} materialize requires --account <account-id>/<method>")
 
-    auth_class = R.method_class(provider, account_id, method)
-    auth_method = auth_method_for_class(provider, auth_class) if auth_class else None
-    if auth_method is None:
-        raise CliError(f"unknown auth method for {provider} {args.account}")
-
-    active_id = R.active_ref(provider, account_id, method)
-    if active_id is None:
-        raise CliError(f"no active Auth.Ref for {provider} {args.account}")
-    artifact = R.auth_data_for_ref(provider, account_id, method, active_id)
-    if artifact is None:
-        raise CliError(f"active Auth.Data payload not found for ref: {active_id}")
-
-    home = Path(args.home)
-
-    # Capture.Over.Materialization: archive whatever is live in the home first.
-    captured_id = None
-    live = auth_method.read_auth_data(home)
-    if live is not None:
-        live_ref = auth_method.ref_id(live)
-        captured_id = R.store_artifact(provider, live)
-        identity = auth_method.extract_identity(live)
-        if identity is not None and not R.is_captured(provider, account_id, method, live_ref):
-            R.append_capture(
-                provider, account=account_id, method=method, auth_class=auth_method.name,
-                auth_ref=identity, ref_id=live_ref, artifact_id=captured_id,
-            )
-
-    if not args.check:
-        auth_method.materialize(artifact, home)
+    result = materialize_account(
+        provider, account_id, method, Path(args.home), check=args.check
+    )
 
     payload = {
         "command": "agent accounts materialize",
         "provider": provider,
         "account": args.account,
-        "home": str(home),
-        "active_ref": active_id,
-        "captured_ref": captured_id,
-        "status": "check" if args.check else "materialized",
+        "home": str(result.home),
+        "active_ref": result.active_ref,
+        "captured_ref": result.captured_ref,
+        "status": result.status,
     }
     if args.json:
         print(format_json_output(payload))
     else:
-        verb = "Would materialize" if args.check else "Materialized"
-        line = f"{verb} {provider} {args.account} -> {home} (ref {active_id[:12]})"
-        if captured_id is not None:
-            line += f"; captured-first {captured_id[:12]}"
+        verb = {"materialized": "Materialized", "check": "Would materialize",
+                "aligned": "Already aligned"}[result.status]
+        line = f"{verb} {provider} {args.account} -> {result.home} (ref {(result.active_ref or '-')[:12]})"
+        if result.captured_ref is not None:
+            line += f"; captured-first {result.captured_ref[:12]}"
         print(line)
     return 0
 
@@ -866,6 +863,10 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     accounts_rotate_parser.add_argument(
         "--dry-run", dest="dry_run", action="store_true",
         help="Report the intended active flips without writing (read-only).",
+    )
+    accounts_rotate_parser.add_argument(
+        "--materialize", action="store_true",
+        help="After rotating, reconcile homes — push each home's active Auth.Ref into stale homes.",
     )
     accounts_rotate_parser.add_argument("--json", action="store_true", help="Output as JSON.")
     accounts_rotate_parser.set_defaults(handler=_cmd_agent_accounts_rotate)
