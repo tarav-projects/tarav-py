@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime
 import json
-import re
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -64,8 +63,8 @@ from agentos.agent.monitor.models import (
     MonitorWorkflowConfig,
 )
 from agentos.agent.monitor_log import append_monitor_log_event
+from agentos.agent.ping import AgentPingError, ping_agent
 from agentos.agent.providers import resolve_account_runtime_agent
-from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.agent.usage_registry import latest_usage_record
 from agentos.claude.account_status import (
     CLAUDE_STATUSLINE_USAGE_SOURCE,
@@ -81,7 +80,6 @@ from agentos.copilot.account_status import (
 )
 
 
-_PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 _AUTO_PRIME_VERIFICATION_TIMEOUT_SEC = 900.0
 # Fallback staleness threshold when no refresh interval is available. A usage
 # record older than this counts as "stale" for target_transition logging.
@@ -2349,43 +2347,14 @@ def _run_account_prime_ping(source_target_state: dict[str, object]) -> None:
         profile=profile,
         start_path=start_path,
     )
-    if not agent.ping.enabled:
-        raise CliError(
-            f"agent {agent.profile_id or '<default>'} for provider {agent.provider} has ping disabled"
-        )
-    command_config = AgentCommandConfig(
-        prompt=agent.ping.prompt,
-        argv=agent.ping.argv,
-        model=agent.ping.model,
-        account=None,
-        interaction_mode="non_interactive",
-        credential_success_source=None,
-    )
-    result = agent.run(
-        command_config,
-        AgentRunConfig(cwd=Path.cwd().resolve(), process_mode="capture"),
-    )
-    _validate_prime_ping_result(result, expected_number=agent.ping.expected_number)
+    try:
+        result = ping_agent(agent, cwd=Path.cwd().resolve())
+    except AgentPingError as exc:
+        raise CliError(str(exc)) from exc
+    if result.failure is not None:
+        raise CliError(f"agent ping failed: {result.failure}")
     # Credential auto-capture on prime is disconnected from the old registry here.
     # The new-model capture workflow is a deferred re-integration (Impl.Req 658).
-
-
-def _validate_prime_ping_result(result, *, expected_number: int | None) -> None:
-    output = "\n".join(part for part in (result.stdout, result.stderr) if part)
-    if result.exit_code != 0:
-        detail = output.strip()
-        suffix = f": {detail}" if detail else ""
-        raise CliError(
-            f"agent ping failed: provider command exited with {result.exit_code}{suffix}"
-        )
-    if expected_number is None:
-        return
-    numbers = [int(match.group(0)) for match in _PING_NUMBER_PATTERN.finditer(output)]
-    if expected_number not in numbers:
-        raise CliError(
-            f"agent ping failed: expected numeric answer {expected_number} "
-            "was not present in provider output"
-        )
 
 
 def _required_target_string(target_state: dict[str, object], key: str) -> str:

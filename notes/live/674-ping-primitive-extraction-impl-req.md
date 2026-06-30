@@ -30,7 +30,7 @@
   (`AgentPingError`, defined in `ping.py`). This keeps `CliError` out of the primitive
   **and** out of the monitor's prime path, fixing the leak. Reversible if a consumer
   later needs raise-on-failure.
-- **Status:** READY.
+- **Status:** COMPLETE.
 - **Source context:** this session's "primitives that run agent commands" audit.
   Verdict: `run`, `account_status`, `account_usage` are coherent primitives; **`ping`
   is the only leak**. House rule in play: *primitives are the source of truth; the
@@ -155,4 +155,21 @@ CLI/monitor boundary tests green.
 
 ## Impl.Log
 
-- (pending execution)
+- All three slices done test-first (RED→GREEN). Suite 224→232 (+8 `ping_agent` unit
+  tests), lint clean. `_PING_NUMBER_PATTERN` now exists once (in `ping.py`);
+  `_validate_agent_ping_result`, `_validate_prime_ping_result`, `_agent_ping_output`,
+  `_agent_ping_model` are gone. `CliError` no longer appears in the ping operation —
+  raised only by the two consumers. `agent ping` output / failure text and monitor
+  auto-prime behavior preserved exactly.
+- **Deviation (Slice 3, autonomous-resolved):** the new `isinstance(agent, RunCapable)`
+  precondition guard surfaced two incomplete test doubles
+  (`_FakeClaudePrimeAgent`/`_FakeCodexPrimeAgent` in
+  `tests/test_agent_monitor_auto_prime.py`) — duck-typed with only `run`, so they no
+  longer satisfied `RunCapable` and lacked `default_model`. Resolved by completing the
+  doubles (added `run_dry` + `default_model`) so they faithfully stand in for a real
+  `RunCapable` agent. Production behavior unchanged — real claude/codex agents are
+  already `RunCapable`. Not a code-behavior change, so the guard stayed.
+- **Decision in open space:** an initial happy-path test fixture used `"745."` —
+  rejected by the (deliberate) `_PING_NUMBER_PATTERN`, which excludes digits adjacent
+  to a dot. Corrected the fixture to `"745"`; the pattern semantics are preserved
+  unchanged (this is existing behavior, not a regression).

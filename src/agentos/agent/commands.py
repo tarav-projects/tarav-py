@@ -2,17 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import termios
-import time
 import tty
-from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
+from agentos.agent.ping import AgentPingError, ping_agent
 from agentos.agent.primitives import AgentConfig, RunCapable
 from agentos.agent.config import (
     profile_path,
@@ -28,7 +26,6 @@ _AGENT_PROVIDER_CHOICES = tuple(
     provider.family for provider in canonical_provider_families()
 )
 _AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES = ("codex", "claude-code", "copilot-cli")
-_PING_NUMBER_PATTERN = re.compile(r"(?<![\d.])-?\d+(?![\d.])")
 
 
 def _list_configured_agents(
@@ -232,62 +229,14 @@ def _agent_run_config(*, cwd: Path) -> AgentRunConfig:
 
 def _cmd_agent_ping(args: argparse.Namespace) -> int:
     agent, cwd = _resolve_agent_run_target(args)
-    if not agent.ping.enabled:
-        raise CliError(
-            f"agent {agent.profile_id or '<default>'} for provider {agent.provider} has ping disabled"
-        )
-    command_config = _agent_command_config(
-        args,
-        prompt=agent.ping.prompt,
-        argv=agent.ping.argv,
-        interaction_mode="non_interactive",
-    )
-    command_config = replace(command_config, credential_success_source=None)
-    if command_config.model is None and agent.ping.model is not None:
-        command_config = replace(command_config, model=agent.ping.model)
-    started_at = time.perf_counter()
-    result = agent.run(command_config, AgentRunConfig(cwd=cwd, process_mode="capture"))
-    elapsed_ms = round((time.perf_counter() - started_at) * 1000)
-    _validate_agent_ping_result(
-        result,
-        expected_number=agent.ping.expected_number,
-    )
-    print(
-        f"pong model={_agent_ping_model(agent, command_config)} elapsed_ms={elapsed_ms}"
-    )
+    try:
+        result = ping_agent(agent, cwd=cwd, model=args.model, account=args.account)
+    except AgentPingError as exc:
+        raise CliError(str(exc)) from exc
+    if result.failure is not None:
+        raise CliError(f"agent ping failed: {result.failure}")
+    print(f"pong model={result.model} elapsed_ms={result.elapsed_ms}")
     return 0
-
-
-def _validate_agent_ping_result(
-    result,
-    *,
-    expected_number: int | None,
-) -> None:
-    output = _agent_ping_output(result.stdout, result.stderr)
-    if result.exit_code != 0:
-        detail = output.strip()
-        suffix = f": {detail}" if detail else ""
-        raise CliError(
-            f"agent ping failed: provider command exited with {result.exit_code}{suffix}"
-        )
-
-    if expected_number is None:
-        return
-
-    numbers = [int(match.group(0)) for match in _PING_NUMBER_PATTERN.finditer(output)]
-    if expected_number not in numbers:
-        raise CliError(
-            f"agent ping failed: expected numeric answer {expected_number} "
-            "was not present in provider output"
-        )
-
-
-def _agent_ping_output(stdout: str | None, stderr: str | None) -> str:
-    return "\n".join(part for part in (stdout, stderr) if part)
-
-
-def _agent_ping_model(agent: AgentConfig, command_config: AgentCommandConfig) -> str:
-    return command_config.model or agent.default_model or "<provider-default>"
 
 
 def _cmd_agent_accounts_materialize(args: argparse.Namespace) -> int:

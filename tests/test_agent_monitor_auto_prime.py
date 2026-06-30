@@ -1136,6 +1136,7 @@ def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() 
 class _FakeClaudePrimeAgent:
     provider = "claude-code"
     profile_id = "claude-br"
+    default_model = None
     account = AgentAccountContext(provider="claude-code", account="browser-br")
     ping = AgentPingConfig(expected_number=745)
 
@@ -1145,10 +1146,14 @@ class _FakeClaudePrimeAgent:
     def run(self, command_config, run_config) -> AgentRunResult:
         return AgentRunResult(exit_code=0, stdout="745")
 
+    def run_dry(self, command_config):
+        raise NotImplementedError
+
 
 class _FakeCodexPrimeAgent:
     provider = "codex"
     profile_id = "codex-br"
+    default_model = None
     account = AgentAccountContext(provider="codex", account="br")
     ping = AgentPingConfig(expected_number=745)
 
@@ -1157,3 +1162,6 @@ class _FakeCodexPrimeAgent:
 
     def run(self, command_config, run_config) -> AgentRunResult:
         return AgentRunResult(exit_code=0, stdout="745")
+
+    def run_dry(self, command_config):
+        raise NotImplementedError
