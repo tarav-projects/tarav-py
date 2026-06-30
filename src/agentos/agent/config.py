@@ -330,8 +330,8 @@ def write_agent_profile(config: AgentConfig) -> Path:
         payload["run_args"] = list(config.run_args)
     if config.env:
         payload["env"] = {key: value for key, value in config.env}
-    if config.ping != default_agent_ping_config():
-        payload["ping"] = config.ping.summary()
+    if config.ping_config != default_agent_ping_config():
+        payload["ping"] = config.ping_config.summary()
     _write_json_file(path, payload)
     return path
 
@@ -762,7 +762,7 @@ def agent_config_from_config_entry(
         account_policy=account_policy,
         timeout_sec=timeout_sec,
         default_model=default_model,
-        ping=ping,
+        ping_config=ping,
         fingerprint_override=fingerprint_override,
         identity_anchors=anchors,
         is_default=False,

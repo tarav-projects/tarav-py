@@ -41,31 +41,33 @@ class AgentPingResult:
     failure: str | None  # None iff ok; the operation-level reason otherwise
 
 
-def ping_agent(
+def _run_ping(
     agent,
     *,
     cwd: Path,
     model: str | None = None,
     account: str | None = None,
 ) -> AgentPingResult:
-    """Run ``agent``'s configured ping and return the outcome.
+    """Internal helper behind the ``ping()`` capability method.
 
-    ``model`` overrides the configured ping model (falling back to it when ``None``);
-    ``account`` is passed through to the command. Raises `AgentPingError` if the
-    agent's ping is disabled or the agent is not `RunCapable`.
+    Runs ``agent``'s configured ping and returns the outcome. ``model`` overrides the
+    configured ping model (falling back to it when ``None``); ``account`` is passed
+    through to the command. Raises `AgentPingError` if the agent's ping is disabled or
+    the agent is not `RunCapable`. Consumers call ``agent.ping(...)``, never this
+    function directly.
     """
     if not isinstance(agent, RunCapable):
         raise AgentPingError(f"provider {agent.provider} does not support run")
-    if not agent.ping.enabled:
+    if not agent.ping_config.enabled:
         raise AgentPingError(
             f"agent {agent.profile_id or '<default>'} for provider "
             f"{agent.provider} has ping disabled"
         )
 
     command_config = AgentCommandConfig(
-        prompt=agent.ping.prompt,
-        argv=agent.ping.argv,
-        model=model if model is not None else agent.ping.model,
+        prompt=agent.ping_config.prompt,
+        argv=agent.ping_config.argv,
+        model=model if model is not None else agent.ping_config.model,
         account=account,
         interaction_mode="non_interactive",
         credential_success_source=None,
@@ -80,7 +82,7 @@ def ping_agent(
     failure = _ping_failure(
         exit_code=result.exit_code,
         output=output,
-        expected_number=agent.ping.expected_number,
+        expected_number=agent.ping_config.expected_number,
     )
     return AgentPingResult(
         ok=failure is None,
@@ -114,4 +116,4 @@ def _ping_failure(
     return None
 
 
-__all__ = ["AgentPingError", "AgentPingResult", "ping_agent"]
+__all__ = ["AgentPingError", "AgentPingResult"]

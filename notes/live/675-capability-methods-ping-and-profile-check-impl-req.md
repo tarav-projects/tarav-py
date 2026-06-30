@@ -23,7 +23,7 @@
   needs **no extraction** — `profile_check` reuses `status_for_home` directly. This
   revises the earlier "extract home_alignment from build_status_report" idea: the
   function is already separable (`build_status_report` just maps it over all homes).
-- **Status:** READY.
+- **Status:** COMPLETE.
 - **Out of scope (do NOT touch):**
   - **The structural refactor** — splitting `primitives.py`, grouping `agent/account/`
     vs run-time modules, renaming `agent/providers.py`. Explicitly deferred to a separate
@@ -157,4 +157,27 @@ reuse existing reads, add behavior tests only at the new boundaries.
 
 ## Impl.Log
 
-- (pending execution)
+- All four slices done test-first (RED→GREEN). Suite 232→240 (ping tests rewritten to
+  drive the method; +6 profile_check unit/method tests, +2 CLI tests), lint clean.
+- **Deviation (Slice 1, autonomous-resolved — the one real one):** `agent.ping()` as a
+  method **collides with the existing `ping` config field** (`AgentConfig.ping:
+  AgentPingConfig`) — an instance attribute shadows a method, so the two cannot coexist.
+  The Req did not foresee this. Faithful corrective action: renamed the Python field
+  `AgentConfig.ping` → **`ping_config`** (the profile JSON key and `summary()` output key
+  stay `"ping"` — no external/behavior change). Updated all readers (`ping.py`,
+  `config.py` loader + summary, `primitives.py` identity/summary). Semantically cleaner:
+  `agent.ping_config` (settings) vs `agent.ping()` (action).
+- **Ripple from that rename:** the monitor prime test fakes
+  (`_FakeClaudePrimeAgent`/`_FakeCodexPrimeAgent`) had to become `RunnableMixin`
+  subclasses (so `agent.ping()` exists on them) and use `ping_config`. Production
+  monitor path calls `agent.ping()` and is otherwise unchanged.
+- **Design simplification confirmed (Block C):** `home_alignment` needed **no
+  extraction** — `status_for_home` was already a clean separable read; `profile_check`'s
+  `home_aligned` checkpoint builds a one-account `HomeTarget` and calls it directly. No
+  change to `account_status_report` / the monitor.
+- **Helper naming:** `ping_agent` → `_run_ping` (module-internal); `_profile_check` is
+  the internal assembler. Both are invoked only by their capability methods on
+  `RunnableMixin` (the sanctioned delegation); no CLI/monitor/external caller touches
+  them — verified by grep.
+- **Out-of-scope held:** no structural refactor, no account-lifecycle changes, no
+  checkpoint registry. `account_status` left as-is (already a method).

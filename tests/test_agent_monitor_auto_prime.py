@@ -49,7 +49,7 @@ from agentos.agent.monitor.workflows import (
     LimitsTrackingWorkflow,
 )
 from agentos.agent.account_status import AgentAccountContext
-from agentos.agent.primitives import AgentPingConfig
+from agentos.agent.primitives import AgentPingConfig, RunnableMixin
 from agentos.agent.run_runtime import AgentRunResult
 import agentos.claude.keychain as claude_keychain
 from agentos.testing import AgentosTestEnvironment
@@ -1133,12 +1133,12 @@ def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() 
     )
 
 
-class _FakeClaudePrimeAgent:
+class _FakeClaudePrimeAgent(RunnableMixin):
     provider = "claude-code"
     profile_id = "claude-br"
     default_model = None
     account = AgentAccountContext(provider="claude-code", account="browser-br")
-    ping = AgentPingConfig(expected_number=745)
+    ping_config = AgentPingConfig(expected_number=745)
 
     def __init__(self, *, home: Path) -> None:
         self.home = home
@@ -1150,12 +1150,12 @@ class _FakeClaudePrimeAgent:
         raise NotImplementedError
 
 
-class _FakeCodexPrimeAgent:
+class _FakeCodexPrimeAgent(RunnableMixin):
     provider = "codex"
     profile_id = "codex-br"
     default_model = None
     account = AgentAccountContext(provider="codex", account="br")
-    ping = AgentPingConfig(expected_number=745)
+    ping_config = AgentPingConfig(expected_number=745)
 
     def __init__(self, *, home: Path) -> None:
         self.home = home

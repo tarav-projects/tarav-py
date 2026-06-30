@@ -10,7 +10,7 @@ from threading import Thread
 
 from agentos._core.project import normalize_project_target
 from agentos._core.errors import CliError
-from agentos.agent.ping import AgentPingError, ping_agent
+from agentos.agent.ping import AgentPingError
 from agentos.agent.primitives import AgentConfig, RunCapable
 from agentos.agent.config import (
     profile_path,
@@ -230,13 +230,26 @@ def _agent_run_config(*, cwd: Path) -> AgentRunConfig:
 def _cmd_agent_ping(args: argparse.Namespace) -> int:
     agent, cwd = _resolve_agent_run_target(args)
     try:
-        result = ping_agent(agent, cwd=cwd, model=args.model, account=args.account)
+        result = agent.ping(cwd=cwd, model=args.model, account=args.account)
     except AgentPingError as exc:
         raise CliError(str(exc)) from exc
     if result.failure is not None:
         raise CliError(f"agent ping failed: {result.failure}")
     print(f"pong model={result.model} elapsed_ms={result.elapsed_ms}")
     return 0
+
+
+def _cmd_agent_profile_check(args: argparse.Namespace) -> int:
+    agent, _cwd = _resolve_agent_run_target(args)
+    result = agent.profile_check()
+    for checkpoint in result.checkpoints:
+        mark = "ok" if checkpoint.passed else "FAIL"
+        line = f"  [{mark}] {checkpoint.id}"
+        if checkpoint.reason:
+            line += f" — {checkpoint.reason}"
+        print(line)
+    print(f"profile-check: {'ok' if result.ok else 'FAILED'}")
+    return 0 if result.ok else 1
 
 
 def _cmd_agent_accounts_materialize(args: argparse.Namespace) -> int:
@@ -1086,3 +1099,12 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_agent_run_target_args(ping_parser, provider_help="Provider family to ping.")
     ping_parser.set_defaults(handler=_cmd_agent_ping)
+
+    profile_check_parser = agent_subparsers.add_parser(
+        "profile-check",
+        help="Check whether a resolved agent is fit to run (read-only, no spawn).",
+    )
+    _add_agent_run_target_args(
+        profile_check_parser, provider_help="Provider family to check."
+    )
+    profile_check_parser.set_defaults(handler=_cmd_agent_profile_check)

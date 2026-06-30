@@ -63,7 +63,7 @@ from agentos.agent.monitor.models import (
     MonitorWorkflowConfig,
 )
 from agentos.agent.monitor_log import append_monitor_log_event
-from agentos.agent.ping import AgentPingError, ping_agent
+from agentos.agent.ping import AgentPingError
 from agentos.agent.providers import resolve_account_runtime_agent
 from agentos.agent.usage_registry import latest_usage_record
 from agentos.claude.account_status import (
@@ -2348,7 +2348,7 @@ def _run_account_prime_ping(source_target_state: dict[str, object]) -> None:
         start_path=start_path,
     )
     try:
-        result = ping_agent(agent, cwd=Path.cwd().resolve())
+        result = agent.ping(cwd=Path.cwd().resolve())
     except AgentPingError as exc:
         raise CliError(str(exc)) from exc
     if result.failure is not None:

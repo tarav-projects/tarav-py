@@ -3,8 +3,12 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 from urllib.parse import quote
+
+if TYPE_CHECKING:
+    from agentos.agent.ping import AgentPingResult
+    from agentos.agent.profile_check import ProfileCheck
 
 from agentos._core.errors import CliError
 from agentos.agent.account_status import AccountStatus, AgentAccountContext
@@ -101,7 +105,7 @@ class AgentConfig:
     account_policy: str = "profile-default"
     timeout_sec: int | None = None
     default_model: str | None = None
-    ping: AgentPingConfig = field(default_factory=default_agent_ping_config)
+    ping_config: AgentPingConfig = field(default_factory=default_agent_ping_config)
     is_default: bool = False
     fingerprint_override: str | None = None
     direct_targets: tuple[Path, ...] = ()
@@ -141,7 +145,7 @@ class AgentConfig:
             self.account_policy,
             self.timeout_sec,
             self.default_model,
-            self.ping,
+            self.ping_config,
         )
 
     def uri_key(self) -> str:
@@ -178,8 +182,8 @@ class AgentConfig:
             payload["timeout_sec"] = self.timeout_sec
         if self.default_model is not None:
             payload["default_model"] = self.default_model
-        if self.ping != default_agent_ping_config():
-            payload["ping"] = self.ping.summary()
+        if self.ping_config != default_agent_ping_config():
+            payload["ping"] = self.ping_config.summary()
         if self.direct_targets:
             payload["direct_targets"] = [str(path) for path in self.direct_targets]
         if self.grep_targets:
@@ -314,6 +318,25 @@ class RunnableMixin:
             timeout_sec=self.timeout_sec,
         )
 
+    def ping(
+        self,
+        *,
+        cwd: Path | None = None,
+        model: str | None = None,
+        account: str | None = None,
+    ) -> AgentPingResult:
+        # Local import avoids a cycle: `ping` imports this module for `RunCapable`.
+        from agentos.agent.ping import _run_ping
+
+        resolved_cwd = cwd if cwd is not None else Path.cwd().resolve()
+        return _run_ping(self, cwd=resolved_cwd, model=model, account=account)
+
+    def profile_check(self) -> ProfileCheck:
+        # Local import avoids a cycle through account_status_report -> config.
+        from agentos.agent.profile_check import _profile_check
+
+        return _profile_check(self)
+
 
 @runtime_checkable
 class AgentAdapter(Protocol):
@@ -339,6 +362,22 @@ class RunCapable(Protocol):
     ) -> AgentRunResult: ...
 
     def run_dry(self, command_config: AgentCommandConfig) -> AgentRunDryResult: ...
+
+
+@runtime_checkable
+class PingCapable(Protocol):
+    def ping(
+        self,
+        *,
+        cwd: Path | None = ...,
+        model: str | None = ...,
+        account: str | None = ...,
+    ) -> object: ...
+
+
+@runtime_checkable
+class ProfileCheckCapable(Protocol):
+    def profile_check(self) -> object: ...
 
 
 @runtime_checkable
@@ -424,6 +463,8 @@ __all__ = [
     "AgentAdapter",
     "AgentConfig",
     "AgentPingConfig",
+    "PingCapable",
+    "ProfileCheckCapable",
     "RunCapable",
     "RunnableMixin",
     "SessionDiscoveryCapable",
