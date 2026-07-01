@@ -161,6 +161,15 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
             print(line)
         return 0
 
+    if not args.force:
+        check = agent.profile_check()
+        if not check.ok:
+            _render_profile_checkpoints([c for c in check.checkpoints if not c.passed])
+            raise CliError(
+                "agent run blocked by pre-flight profile-check; "
+                "fix the failing checkpoints or pass --force to run anyway"
+            )
+
     result = agent.run(command_config, run_config)
     return result.exit_code
 
@@ -239,15 +248,19 @@ def _cmd_agent_ping(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_agent_profile_check(args: argparse.Namespace) -> int:
-    agent, _cwd = _resolve_agent_run_target(args)
-    result = agent.profile_check()
-    for checkpoint in result.checkpoints:
+def _render_profile_checkpoints(checkpoints) -> None:
+    for checkpoint in checkpoints:
         mark = "ok" if checkpoint.passed else "FAIL"
         line = f"  [{mark}] {checkpoint.id}"
         if checkpoint.reason:
             line += f" — {checkpoint.reason}"
         print(line)
+
+
+def _cmd_agent_profile_check(args: argparse.Namespace) -> int:
+    agent, _cwd = _resolve_agent_run_target(args)
+    result = agent.profile_check()
+    _render_profile_checkpoints(result.checkpoints)
     print(f"profile-check: {'ok' if result.ok else 'FAILED'}")
     return 0 if result.ok else 1
 
@@ -1080,6 +1093,11 @@ def register_agent_commands(subparsers: argparse._SubParsersAction) -> None:
         "--dry-run",
         action="store_true",
         help="Print the resolved command instead of running it.",
+    )
+    run_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip the pre-flight profile-check and run anyway.",
     )
     run_parser.add_argument(
         "--prompt",
