@@ -63,7 +63,7 @@ from agentos.agent.monitor.models import (
     MonitorWorkflowConfig,
 )
 from agentos.agent.monitor_log import append_monitor_log_event
-from agentos.agent.ping import AgentPingError
+from agentos.agent.ping import AgentPingResult
 from agentos.agent.providers import resolve_account_runtime_agent
 from agentos.agent.usage_registry import latest_usage_record
 from agentos.claude.account_status import (
@@ -786,35 +786,30 @@ class AutoPrimeZeroLimitsWorkflow:
                 tick=tick,
             )
         try:
-            _run_account_prime_ping(source_target_state)
+            result = _run_account_prime_ping(source_target_state)
         except Exception as exc:
-            target_state["retry_after_monotonic"] = (
-                monotonic_now + self.retry_cooldown_sec
+            # could not attempt: resolution / ping precondition error
+            self._record_prime_failure(
+                target_state,
+                source_target_state=source_target_state,
+                eligible_periods=eligible_periods,
+                tick=tick,
+                monotonic_now=monotonic_now,
+                message=str(exc),
+                error_type=type(exc).__name__,
             )
-            target_state["last_error"] = {
-                "message": str(exc),
-                "error_type": type(exc).__name__,
-                "last_attempt_tick": tick,
-            }
-            for period in eligible_periods:
-                self._record_decision(
-                    target_state,
-                    limit_id=period.get("limit_id"),
-                    classification=period.get("decision_classification"),
-                    action="ping failed",
-                    period=period,
-                    tick=tick,
-                )
-                self._record_period_event(
-                    AUTO_PRIME_EVENT_ATTEMPT_FAILED,
-                    source_target_state=source_target_state,
-                    period=period,
-                    tick=tick,
-                    error={
-                        "type": type(exc).__name__,
-                        "message": str(exc),
-                    },
-                )
+            return False
+        if not result.ok:
+            # the ping ran but reported failure — read its structured verdict
+            self._record_prime_failure(
+                target_state,
+                source_target_state=source_target_state,
+                eligible_periods=eligible_periods,
+                tick=tick,
+                monotonic_now=monotonic_now,
+                message=result.failure or "agent ping failed",
+                error_type="ping-failed",
+            )
             return False
 
         target_state["last_success_tick"] = tick
@@ -854,6 +849,8 @@ class AutoPrimeZeroLimitsWorkflow:
                     if period.get("uninitialized")
                     else None
                 ),
+                "ping_model": result.model,
+                "ping_elapsed_ms": result.elapsed_ms,
             }
             self._record_period_event(
                 AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
@@ -861,9 +858,49 @@ class AutoPrimeZeroLimitsWorkflow:
                 period=period,
                 tick=tick,
                 status=AUTO_PRIME_VERIFICATION_PENDING,
-                extra={"attempt_count": attempt_count},
+                extra={
+                    "attempt_count": attempt_count,
+                    "ping_model": result.model,
+                    "ping_elapsed_ms": result.elapsed_ms,
+                },
             )
         return True
+
+    def _record_prime_failure(
+        self,
+        target_state: dict[str, object],
+        *,
+        source_target_state: dict[str, object],
+        eligible_periods: list[dict[str, object]],
+        tick: int,
+        monotonic_now: float,
+        message: str,
+        error_type: str,
+    ) -> None:
+        target_state["retry_after_monotonic"] = (
+            monotonic_now + self.retry_cooldown_sec
+        )
+        target_state["last_error"] = {
+            "message": message,
+            "error_type": error_type,
+            "last_attempt_tick": tick,
+        }
+        for period in eligible_periods:
+            self._record_decision(
+                target_state,
+                limit_id=period.get("limit_id"),
+                classification=period.get("decision_classification"),
+                action="ping failed",
+                period=period,
+                tick=tick,
+            )
+            self._record_period_event(
+                AUTO_PRIME_EVENT_ATTEMPT_FAILED,
+                source_target_state=source_target_state,
+                period=period,
+                tick=tick,
+                error={"type": error_type, "message": message},
+            )
 
     def _period_can_retry(
         self,
@@ -1228,10 +1265,9 @@ def build_monitor_workflows(
     limits_tracking_configs = tuple(
         config for config in configs if config.name == LIMITS_TRACKING_WORKFLOW
     )
-    # TEMPORARILY DISCONNECTED (see the auto-prime branch below).
-    # auto_prime_configs = tuple(
-    #     config for config in configs if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
-    # )
+    auto_prime_configs = tuple(
+        config for config in configs if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
+    )
     for config in configs:
         if config.name == LIMITS_TRACKING_WORKFLOW:
             if not any(
@@ -1243,19 +1279,16 @@ def build_monitor_workflows(
                     )
                 )
             continue
-        # TEMPORARILY DISCONNECTED: every workflow except limits-tracking is
-        # disabled. The auto-prime workflow still loads from config but is not
-        # built into the loop. Re-enable by restoring the branch below.
         if config.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW:
-            # if not any(
-            #     workflow.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
-            #     for workflow in workflows
-            # ):
-            #     workflows.append(
-            #         AutoPrimeZeroLimitsWorkflow(
-            #             _merge_auto_prime_configs(auto_prime_configs)
-            #         )
-            #     )
+            if not any(
+                workflow.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW
+                for workflow in workflows
+            ):
+                workflows.append(
+                    AutoPrimeZeroLimitsWorkflow(
+                        _merge_auto_prime_configs(auto_prime_configs)
+                    )
+                )
             continue
         raise CliError(f"unknown monitor workflow {config.name!r}")
     # The account-rotation workflow is config-free (it sweeps all providers via the
@@ -2334,7 +2367,7 @@ def _is_sliding_reset(
     return abs(end_delta - observation_delta) <= max(60.0, 0.20 * observation_delta)
 
 
-def _run_account_prime_ping(source_target_state: dict[str, object]) -> None:
+def _run_account_prime_ping(source_target_state: dict[str, object]) -> AgentPingResult:
     provider = _required_target_string(source_target_state, "provider")
     account = _required_target_string(source_target_state, "account")
     home = Path(_required_target_string(source_target_state, "home"))
@@ -2347,14 +2380,12 @@ def _run_account_prime_ping(source_target_state: dict[str, object]) -> None:
         profile=profile,
         start_path=start_path,
     )
-    try:
-        result = agent.ping(cwd=Path.cwd().resolve())
-    except AgentPingError as exc:
-        raise CliError(str(exc)) from exc
-    if result.failure is not None:
-        raise CliError(f"agent ping failed: {result.failure}")
-    # Credential auto-capture on prime is disconnected from the old registry here.
-    # The new-model capture workflow is a deferred re-integration (Impl.Req 658).
+    # Ping via the normal agent capability. Resolution errors and AgentPingError
+    # (ping disabled / not runnable) propagate as "could not attempt"; a ping that
+    # ran is returned as an AgentPingResult (ok or not-ok) for the caller to record.
+    # 658 seam: a successful prime (result.ok) is where new-model credential capture
+    # will hook in on the caller side — a deferred re-integration (Impl.Req 658).
+    return agent.ping(cwd=Path.cwd().resolve())
 
 
 def _required_target_string(target_state: dict[str, object], key: str) -> str:

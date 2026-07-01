@@ -49,6 +49,7 @@ from agentos.agent.monitor.workflows import (
     LimitsTrackingWorkflow,
 )
 from agentos.agent.account_status import AgentAccountContext
+from agentos.agent.ping import AgentPingResult
 from agentos.agent.primitives import AgentPingConfig, RunnableMixin
 from agentos.agent.run_runtime import AgentRunResult
 import agentos.claude.keychain as claude_keychain
@@ -842,8 +843,11 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
     _set_fake_agentos_home(monkeypatch, tmp_path)
     calls: list[dict[str, object]] = []
 
-    def fake_ping(source_target_state: dict[str, object]) -> None:
+    def fake_ping(source_target_state: dict[str, object]) -> AgentPingResult:
         calls.append(source_target_state)
+        return AgentPingResult(
+            ok=True, model="codex-x", elapsed_ms=5, exit_code=0, output="745", failure=None
+        )
 
     monkeypatch.setattr(monitor_workflows, "_run_account_prime_ping", fake_ping)
     now = datetime.datetime.now(tz=datetime.UTC)
@@ -878,6 +882,88 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
         AUTO_PRIME_EVENT_ATTEMPT_STARTED,
         AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
     ]
+
+
+def _single_target_state(now: datetime.datetime) -> MonitorState:
+    return MonitorState(
+        data={
+            LIMITS_TRACKING_WORKFLOW: {
+                "targets": {
+                    "codex/jp@/tmp/codex-jp": _source_state(
+                        limit=_limit(used_percent=1, now=now)
+                    )
+                }
+            }
+        }
+    )
+
+
+def test_auto_prime_success_records_ping_telemetry(monkeypatch, tmp_path: Path) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path)
+
+    def fake_ping(source_target_state: dict[str, object]) -> AgentPingResult:
+        return AgentPingResult(
+            ok=True, model="codex-x", elapsed_ms=42, exit_code=0, output="745", failure=None
+        )
+
+    monkeypatch.setattr(monitor_workflows, "_run_account_prime_ping", fake_ping)
+    now = datetime.datetime.now(tz=datetime.UTC)
+    workflow = _workflow(triggers=("near_zero_full_window",))
+    state = _single_target_state(now)
+    workflow_state = workflow._workflow_state(state)
+
+    workflow._scan_and_prime(state, workflow_state=workflow_state, tick=3)
+
+    assert workflow_state["last_scan"]["pinged"] == 1  # type: ignore[index]
+    target_state = workflow_state["targets"]["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
+    primed = next(iter(target_state["primed_periods"].values()))  # type: ignore[index]
+    assert primed["ping_model"] == "codex-x"
+    assert primed["ping_elapsed_ms"] == 42
+
+
+def test_build_monitor_workflows_includes_auto_prime_when_configured() -> None:
+    config = MonitorWorkflowConfig(
+        name=AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
+        targets=(
+            MonitorTarget(provider="codex", account="jp", home=Path("/tmp/codex-jp")),
+        ),
+        refresh_interval_sec=60,
+        retry_cooldown_sec=600,
+        target_limit_ids={"codex": ("burst",)},
+        triggers={"codex": ("near_zero_full_window",)},
+        raw_config={},
+    )
+    workflows = monitor_workflows.build_monitor_workflows((config,))
+    assert any(w.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW for w in workflows)
+
+
+def test_auto_prime_ping_failure_records_last_error_from_result(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _set_fake_agentos_home(monkeypatch, tmp_path)
+
+    def fake_ping(source_target_state: dict[str, object]) -> AgentPingResult:
+        return AgentPingResult(
+            ok=False,
+            model="codex-x",
+            elapsed_ms=1,
+            exit_code=2,
+            output="",
+            failure="provider command exited with 2",
+        )
+
+    monkeypatch.setattr(monitor_workflows, "_run_account_prime_ping", fake_ping)
+    now = datetime.datetime.now(tz=datetime.UTC)
+    workflow = _workflow(triggers=("near_zero_full_window",))
+    state = _single_target_state(now)
+    workflow_state = workflow._workflow_state(state)
+
+    workflow._scan_and_prime(state, workflow_state=workflow_state, tick=3)
+
+    assert workflow_state["last_scan"]["pinged"] == 0  # type: ignore[index]
+    assert workflow_state["last_scan"]["failed"] == 1  # type: ignore[index]
+    target_state = workflow_state["targets"]["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
+    assert target_state["last_error"]["message"] == "provider command exited with 2"
 
 
 def test_auto_prime_ping_records_claude_verified_auth_source(
