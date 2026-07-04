@@ -16,7 +16,7 @@
     behavior and loop on one line rather than wrapping.
   - Extend animation stepping + animation-state inheritance to include the new
     top/header rows so the marquee does not reset on every frame publish.
-- **Status:** TODO.
+- **Status:** COMPLETE.
 - **Source context:** current discussion plus the current monitor code. Hard
   evidence from the implementation:
   - the top header is hardcoded in `monitor/render.py` (`_monitor_render_rows`)
@@ -178,3 +178,23 @@ boundaries, the second about rendering, and the third about composition.
 
 - 2026-07-04: `Impl.Req` created from direct user request after design alignment.
   Chosen direction: clean-cut row-model unification, not a compatibility bridge.
+- 2026-07-04: Slices 1-3 completed in one pass. The monitor now renders its top
+  area from `MonitorFrame.top_rows`, block headings from `heading_rows`, and the
+  shortcut strip from a new `MonitorMarqueeRow`. The renderer no longer hardcodes
+  the title/tick/status display path.
+- Decision in open space: retained block `title` as metadata for workflow identity
+  and existing tests/consumers, while moving the printed heading itself to
+  `heading_rows`. This preserves non-render metadata without keeping the old
+  renderer special case.
+- Verification completed: `uv run pytest tests/test_agent_monitor_auto_prime.py
+  tests/test_agent_account_rotation_monitor.py tests/test_agent_non_aligned_homes_monitor.py -q`
+  -> `43 passed`; `uv run ruff check src/agentos/agent/monitor
+  tests/test_agent_monitor_auto_prime.py tests/test_agent_account_rotation_monitor.py
+  tests/test_agent_non_aligned_homes_monitor.py` -> clean.
+- 2026-07-04 follow-up: moved the `m` materialize action out of display-only
+  handling and into `AccountRotationWorkflow`. `MONITOR_MATERIALIZE_ALARM` now
+  reaches the workflow thread, where the rotation workflow materializes and then
+  rewrites its rotation / non-aligned homes blocks. Limits tracking still ignores
+  this alarm for live fetch purposes; `Enter` remains the usage/account-status
+  refresh shortcut. Verification updated: focused monitor suite now `45 passed`,
+  ruff clean.

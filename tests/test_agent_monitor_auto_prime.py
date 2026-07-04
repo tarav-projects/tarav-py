@@ -32,14 +32,17 @@ from agentos.agent.monitor.models import (
     MonitorAccountRow,
     MonitorColumnVariant,
     MonitorFrame,
+    MonitorMarqueeRow,
     MonitorRenderContext,
     MonitorState,
     MonitorTarget,
+    MonitorTextRow,
     MonitorUsageTimeRow,
     MonitorWorkflowConfig,
 )
 from agentos.agent.monitor.clock import (
     LIMITS_TRACKING_PERIODIC_ALARM,
+    MONITOR_MATERIALIZE_ALARM,
     MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
 )
 from agentos.agent.monitor.render import format_monitor_frame, monitor_result_payload
@@ -1175,10 +1178,66 @@ def test_monitor_loop_usage_variant_toggle_alarm_changes_display_only() -> None:
     assert "usage/time [used]" in format_monitor_frame(loop.visible_frame, loop.state)
 
 
+def test_monitor_result_payload_exposes_top_rows_and_heading_rows() -> None:
+    frame = MonitorFrame()
+    frame.add_top_row(MonitorTextRow("Agent accounts monitor", indent=False))
+    frame.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
+    frame.add_block("limits-tracking", rows=[MonitorTextRow("hello")])
+    payload = monitor_result_payload(frame, MonitorState())
+
+    top_rows = payload["frame"]["top_rows"]  # type: ignore[index]
+    block = payload["frame"]["blocks"][0]  # type: ignore[index]
+    assert top_rows[0]["text"] == "Agent accounts monitor"
+    assert top_rows[1]["kind"] == "marquee"
+    assert block["heading_rows"][0]["text"] == "limits-tracking"
+
+
+def test_monitor_frame_inherits_marquee_animation_state() -> None:
+    first = MonitorFrame()
+    first.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
+    first.step_animations()
+    second = MonitorFrame()
+    second.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
+
+    second.inherit_animation_state_from(first)
+
+    marquee = second.top_rows[0]
+    assert isinstance(marquee, MonitorMarqueeRow)
+    assert marquee.animation_tick == 1
+
+
+def test_monitor_loop_prepares_top_rows_with_shortcuts_and_waiting_status() -> None:
+    loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
+
+    loop._prepare_visible_frame_for_render()
+
+    texts = [row.text for row in loop.visible_frame.top_rows]
+    assert texts[:3] == [
+        "Agent accounts monitor",
+        "Tick: 0",
+        "Enter refresh | r toggle used/left | m materialize",
+    ]
+    assert texts[-1] == "waiting for workflow frame"
+
+
+def test_monitor_marquee_renders_single_line_viewport() -> None:
+    frame = MonitorFrame()
+    frame.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
+
+    rendered = format_monitor_frame(frame, width=20)
+
+    lines = rendered.splitlines()
+    assert len(lines) == 1
+    assert len(lines[0]) <= 20
+
+
 def test_monitor_loop_usage_variant_toggle_alarm_does_not_hide_workflow_alarms() -> None:
     assert _workflow_alarm_names(
         (MONITOR_USAGE_VARIANT_TOGGLE_ALARM, LIMITS_TRACKING_PERIODIC_ALARM)
     ) == (LIMITS_TRACKING_PERIODIC_ALARM,)
+    assert _workflow_alarm_names(
+        (MONITOR_USAGE_VARIANT_TOGGLE_ALARM, MONITOR_MATERIALIZE_ALARM)
+    ) == (MONITOR_MATERIALIZE_ALARM,)
 
 
 def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() -> None:

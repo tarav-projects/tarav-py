@@ -14,7 +14,6 @@ from agentos.agent.monitor.clock import (
     AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
-    MONITOR_MATERIALIZE_ALARM,
     MONITOR_STARTUP_ALARM,
     MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
     MonitorClock,
@@ -22,7 +21,9 @@ from agentos.agent.monitor.clock import (
 )
 from agentos.agent.monitor.models import (
     MonitorFrame,
+    MonitorMarqueeRow,
     MonitorState,
+    MonitorTextRow,
     MonitorUsageVariant,
 )
 from agentos.agent.monitor_log import append_monitor_log_event
@@ -171,18 +172,26 @@ class MonitorLoop:
             self._workflow_condition.notify()
 
     def _prepare_visible_frame_for_render(self) -> None:
-        status_lines: list[str] = []
+        status_rows: list[MonitorTextRow] = []
         if self._workflow_is_active():
-            status_lines.append("workflow: fetching account data")
+            status_rows.append(
+                MonitorTextRow("workflow: fetching account data", indent=False)
+            )
         if not self._has_visible_frame:
             self.visible_frame.prepare(tick=self.state.tick)
-            self.visible_frame.status_lines = [
-                *status_lines,
-                "waiting for workflow frame",
-            ]
+            self.visible_frame.top_rows = _monitor_top_rows(
+                tick=self.state.tick,
+                status_rows=(
+                    *status_rows,
+                    MonitorTextRow("waiting for workflow frame", indent=False),
+                ),
+            )
             return
         self.visible_frame.tick = self.state.tick
-        self.visible_frame.status_lines = status_lines
+        self.visible_frame.top_rows = _monitor_top_rows(
+            tick=self.state.tick,
+            status_rows=tuple(status_rows),
+        )
         self._apply_clock_feedback_to_visible_frame()
 
     def _apply_clock_feedback_to_visible_frame(self) -> None:
@@ -197,21 +206,19 @@ class MonitorLoop:
             alarm = self._clock_snapshot.alarms.get(alarm_name)
             if alarm is None or not alarm.armed:
                 block["title"] = workflow_name
+                block["heading_rows"] = [MonitorTextRow(workflow_name, indent=False)]
                 continue
-            block["title"] = _workflow_clock_title(
+            title = _workflow_clock_title(
                 workflow_name,
                 remaining_ticks=alarm.remaining_ticks,
                 period_ticks=alarm.period_ticks,
             )
+            block["title"] = title
+            block["heading_rows"] = [MonitorTextRow(title, indent=False)]
 
     def _apply_display_alarms(self, snapshot: MonitorClockSnapshot) -> None:
         if snapshot.fired(MONITOR_USAGE_VARIANT_TOGGLE_ALARM):
             self._toggle_usage_variant()
-        if snapshot.fired(MONITOR_MATERIALIZE_ALARM):
-            # `m` keystroke: full reconcile (writes homes), inline on the UI thread.
-            from agentos.agent.monitor.account_rotation import materialize_sweep
-
-            materialize_sweep()
 
     def _initialize_display_state(self) -> None:
         self._monitor_display_state()
@@ -260,7 +267,6 @@ class MonitorLoop:
             self._set_workflow_active(True)
             frame = self.working_frame
             frame.prepare(tick=snapshot.tick)
-            frame.status_lines = [f"tick: {snapshot.tick}"]
 
             try:
                 for workflow in self.workflows:
@@ -284,7 +290,6 @@ class MonitorLoop:
     def _run_workflow_setup(self) -> None:
         frame = self.working_frame
         frame.prepare(tick=self.state.tick)
-        frame.status_lines = [f"tick: {self.state.tick}"]
 
         try:
             for workflow in self.workflows:
@@ -487,7 +492,7 @@ def _workflow_period_seconds(
 
 
 def _workflow_alarm_names(fired_alarm_names: tuple[str, ...]) -> tuple[str, ...]:
-    display_only = {MONITOR_USAGE_VARIANT_TOGGLE_ALARM, MONITOR_MATERIALIZE_ALARM}
+    display_only = {MONITOR_USAGE_VARIANT_TOGGLE_ALARM}
     return tuple(name for name in fired_alarm_names if name not in display_only)
 
 
@@ -507,3 +512,20 @@ def _workflow_clock_title(
         return title
     ticks_since_reset = max(0, period_ticks - remaining_ticks)
     return f"{title} | reset {ticks_since_reset} ticks ago"
+
+
+def _monitor_top_rows(
+    *,
+    tick: int,
+    status_rows: tuple[MonitorTextRow, ...] = (),
+) -> list[MonitorTextRow | MonitorMarqueeRow]:
+    rows: list[MonitorTextRow | MonitorMarqueeRow] = [
+        MonitorTextRow("Agent accounts monitor", indent=False),
+        MonitorTextRow(f"Tick: {tick}", indent=False),
+        MonitorMarqueeRow(
+            "Enter refresh | r toggle used/left | m materialize",
+            indent=False,
+        ),
+    ]
+    rows.extend(status_rows)
+    return rows

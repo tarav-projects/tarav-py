@@ -165,6 +165,40 @@ def test_materialize_sweep_writes_home_and_records(
     assert read_recent_events(event="rotate")[0]["payload"]["new_active"] == fresher
 
 
+def test_workflow_materialize_alarm_writes_home_and_refreshes_block(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home_root = _env(monkeypatch, tmp_path)
+    from agentos.agent import auth_registry as R
+    from agentos.agent.monitor.clock import MONITOR_MATERIALIZE_ALARM, MonitorClockSnapshot
+    from agentos.agent.monitor.models import MonitorFrame, MonitorState, monitor_block_rows
+    from agentos.agent.monitor.workflows import AccountRotationWorkflow
+
+    stale_payload = _codex_payload(exp=1_000_000_000)
+    fresher_payload = _codex_payload(exp=2_000_000_000)
+    home = _home(tmp_path, stale_payload)
+    _profile(home_root, [home])
+    stale = _seed_capture(stale_payload)
+    fresher = _seed_capture(fresher_payload)
+    R.set_active("codex", "br", "file", stale)
+
+    wf = AccountRotationWorkflow()
+    state = MonitorState()
+    frame = MonitorFrame()
+    frame.prepare(tick=1)
+    snapshot = MonitorClockSnapshot(
+        tick=1, alarms={}, fired_alarm_names=(MONITOR_MATERIALIZE_ALARM,)
+    )
+
+    wf.loop(state, frame, snapshot)
+
+    assert R.active_ref("codex", "br", "file") == fresher
+    assert json.loads((home / "auth.json").read_text()) == fresher_payload
+    block = next(b for b in frame.blocks if b.get("title") == "account-rotation")
+    row_text = " ".join(r.text for r in monitor_block_rows(block))
+    assert "br/file" in row_text and fresher[:12] in row_text
+
+
 def test_sweep_writes_no_monitor_log_rotation_line(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

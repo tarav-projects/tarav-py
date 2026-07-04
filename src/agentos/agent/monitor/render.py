@@ -8,14 +8,18 @@ from typing import Any
 
 from agentos.agent.monitor.models import (
     MonitorFrame,
+    MonitorMarqueeRow,
     MonitorRenderContext,
     MonitorResetRow,
     MonitorRow,
     MonitorState,
     MonitorUsageTimeRow,
+    _circular_cell_viewport,
     _cell_offset_to_text_index,
     monitor_block_payload,
+    monitor_block_heading_rows,
     monitor_block_rows,
+    monitor_row_payload,
 )
 
 _MONITOR_TRACK_STYLE = "bright_white on grey15"
@@ -82,16 +86,24 @@ def monitor_result_payload(
         "state": state.data,
         "frame": {
             "tick": frame.tick,
+            "top_rows": [
+                row_payload
+                for row in frame.top_rows
+                if (row_payload := monitor_row_payload(row)) is not None
+            ],
             "blocks": [monitor_block_payload(block) for block in frame.blocks],
-            "status_lines": frame.status_lines,
             "warnings": frame.warnings,
             "errors": frame.errors,
         },
     }
 
 
-def format_monitor_frame(frame: MonitorFrame, state: MonitorState | None = None) -> str:
-    return "\n".join(row.text for row in _monitor_render_rows(frame, state=state))
+def format_monitor_frame(
+    frame: MonitorFrame, state: MonitorState | None = None, *, width: int = 80
+) -> str:
+    return "\n".join(
+        row.text for row in _monitor_render_rows(frame, state=state, width=width)
+    )
 
 
 def dumps_monitor_json(frame: MonitorFrame, state: MonitorState) -> str:
@@ -149,7 +161,7 @@ def rich_monitor_frame(
 ) -> Any:
     from rich.text import Text
 
-    rows = _monitor_render_rows(frame, state=state)
+    rows = _monitor_render_rows(frame, state=state, width=width)
     bar_width = _monitor_bar_width(rows, fallback_width=width)
     rendered = Text(overflow="fold")
     for index, row in enumerate(rows):
@@ -168,13 +180,14 @@ def _monitor_render_rows(
     frame: MonitorFrame,
     *,
     state: MonitorState | None = None,
+    width: int = 80,
 ) -> list[_MonitorRenderTextRow | _MonitorRenderBarRow]:
     context = _monitor_render_context(state)
-    rows: list[_MonitorRenderTextRow | _MonitorRenderBarRow] = [
-        _MonitorRenderTextRow("Agent accounts monitor"),
-        _MonitorRenderTextRow(f"Tick: {frame.tick}"),
-    ]
-    rows.extend(_MonitorRenderTextRow(f"Status: {line}") for line in frame.status_lines)
+    rows: list[_MonitorRenderTextRow | _MonitorRenderBarRow] = _monitor_render_block_rows(
+        frame.top_rows,
+        context=context,
+        width=width,
+    )
     if frame.errors:
         rows.extend(
             [
@@ -184,16 +197,20 @@ def _monitor_render_rows(
         )
         rows.extend(_MonitorRenderTextRow(f"  {error}") for error in frame.errors)
     for block in frame.blocks:
-        title = block.get("title")
-        if isinstance(title, str):
+        heading_rows = monitor_block_heading_rows(block)
+        if heading_rows:
+            rows.append(_MonitorRenderTextRow(""))
             rows.extend(
-                [
-                    _MonitorRenderTextRow(""),
-                    _MonitorRenderTextRow(title),
-                ]
+                _monitor_render_block_rows(
+                    heading_rows,
+                    context=context,
+                    width=width,
+                )
             )
         block_rows = monitor_block_rows(block)
-        rows.extend(_monitor_render_block_rows(block_rows, context=context))
+        rows.extend(
+            _monitor_render_block_rows(block_rows, context=context, width=width)
+        )
     return rows
 
 
@@ -201,8 +218,9 @@ def _monitor_render_block_rows(
     rows: list[MonitorRow],
     *,
     context: MonitorRenderContext,
+    width: int,
 ) -> list[_MonitorRenderTextRow | _MonitorRenderBarRow]:
-    return [_monitor_render_row(row, context=context) for row in rows]
+    return [_monitor_render_row(row, context=context, width=width) for row in rows]
 
 
 def _monitor_render_context(state: MonitorState | None) -> MonitorRenderContext:
@@ -221,11 +239,29 @@ def _monitor_render_row(
     row: MonitorRow,
     *,
     context: MonitorRenderContext,
+    width: int,
 ) -> _MonitorRenderTextRow | _MonitorRenderBarRow:
+    if isinstance(row, MonitorMarqueeRow):
+        return _MonitorRenderTextRow(_render_monitor_marquee_row(row, width=width))
     text = row.render_frame(context)
     if isinstance(row, MonitorUsageTimeRow | MonitorResetRow):
         return _MonitorRenderBarRow(row=row, text=text)
     return _MonitorRenderTextRow(text)
+
+
+def _render_monitor_marquee_row(row: MonitorMarqueeRow, *, width: int) -> str:
+    from rich.cells import cell_len, set_cell_size
+
+    text = _normalize_cell_text(row.text)
+    if not text:
+        return ""
+    available_width = max(1, width)
+    if cell_len(text) <= available_width:
+        return text
+    return set_cell_size(
+        _circular_cell_viewport(text, row.animation_tick, available_width),
+        available_width,
+    )
 
 
 def _monitor_bar_width(

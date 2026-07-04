@@ -22,6 +22,7 @@ from agentos.agent.monitor.clock import (
     AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
+    MONITOR_MATERIALIZE_ALARM,
     MONITOR_STARTUP_ALARM,
     MonitorClockSnapshot,
 )
@@ -1221,7 +1222,10 @@ class AccountRotationWorkflow:
     def loop(
         self, state: MonitorState, frame: MonitorFrame, trigger: MonitorClockSnapshot
     ) -> None:
-        from agentos.agent.monitor.account_rotation import sweep_rotations
+        from agentos.agent.monitor.account_rotation import (
+            materialize_sweep,
+            sweep_rotations,
+        )
 
         should_sweep = bool(
             {MONITOR_STARTUP_ALARM, MONITOR_ENTER_ALARM, ACCOUNT_ROTATION_PERIODIC_ALARM}
@@ -1229,6 +1233,8 @@ class AccountRotationWorkflow:
         )
         if should_sweep:
             sweep_rotations(materialize=False)
+        if trigger.fired(MONITOR_MATERIALIZE_ALARM):
+            materialize_sweep()
         self._write_block(state, frame)
 
     def _write_block(self, state: MonitorState, frame: MonitorFrame) -> None:
