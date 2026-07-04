@@ -47,6 +47,8 @@ from agentos.agent.monitor.clock import (
 )
 from agentos.agent.monitor.render import format_monitor_frame, monitor_result_payload
 import agentos.agent.monitor.workflows as monitor_workflows
+import agentos.agent.monitor.workflows.auto_prime as auto_prime
+import agentos.agent.monitor.workflows.limits_tracking as limits_tracking
 from agentos.agent.monitor.workflows import (
     AutoPrimeZeroLimitsWorkflow,
     LimitsTrackingWorkflow,
@@ -221,7 +223,7 @@ def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
         return FakeAgent()
 
     monkeypatch.setattr(
-        monitor_workflows,
+        limits_tracking,
         "resolve_account_runtime_agent",
         fake_resolve_account_runtime_agent,
     )
@@ -317,7 +319,7 @@ def _freeze_monitor_now(
                 return now.replace(tzinfo=None)
             return now.astimezone(tz)
 
-    monkeypatch.setattr(monitor_workflows.datetime, "datetime", FixedDateTime)
+    monkeypatch.setattr(auto_prime.datetime, "datetime", FixedDateTime)
 
 
 def _eligible(
@@ -532,7 +534,7 @@ def test_limits_tracking_burst_limit_does_not_get_weekly_burst_unit_variant(
     _freeze_monitor_now(monkeypatch, now)
     burst = _limit(used_percent=63, now=now, limit_id="burst")
 
-    rows = monitor_workflows._account_limit_rows(
+    rows = limits_tracking._account_limit_rows(
         _account_status(limits=[burst]), provider="codex"
     )
 
@@ -555,7 +557,7 @@ def test_limits_tracking_unknown_provider_does_not_get_burst_unit_variant(
         duration_mins=10080,
     )
 
-    rows = monitor_workflows._account_limit_rows(
+    rows = limits_tracking._account_limit_rows(
         _account_status(limits=[weekly]), provider="copilot-cli"
     )
 
@@ -566,10 +568,10 @@ def test_limits_tracking_unknown_provider_does_not_get_burst_unit_variant(
 
 
 def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
-    monkeypatch.setattr(monitor_workflows.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(auto_prime.time, "monotonic", lambda: 100.0)
 
     assert (
-        monitor_workflows._auto_prime_status_part(
+        auto_prime._auto_prime_status_part(
             {
                 "last_decision": {
                     "limit_id": "burst",
@@ -582,11 +584,11 @@ def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
         == "burst non-primed/pinged"
     )
     assert (
-        monitor_workflows._auto_prime_status_part({"last_error": {"message": "failed"}})
+        auto_prime._auto_prime_status_part({"last_error": {"message": "failed"}})
         == "prime failed"
     )
     assert (
-        monitor_workflows._auto_prime_status_part(
+        auto_prime._auto_prime_status_part(
             {
                 "primed_periods": {
                     "burst": {
@@ -599,7 +601,7 @@ def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
         == "prime ineffective"
     )
     assert (
-        monitor_workflows._auto_prime_status_part(
+        auto_prime._auto_prime_status_part(
             {
                 "primed_periods": {
                     "burst": {
@@ -612,7 +614,7 @@ def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
         == "prime retry in 8m"
     )
     assert (
-        monitor_workflows._auto_prime_status_part(
+        auto_prime._auto_prime_status_part(
             {
                 "retry_after_monotonic": 580.0,
             }
@@ -620,7 +622,7 @@ def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
         == "prime retry in 8m"
     )
     assert (
-        monitor_workflows._auto_prime_status_part(
+        auto_prime._auto_prime_status_part(
             {
                 "primed_periods": {
                     "burst": {
@@ -632,7 +634,7 @@ def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
         == "prime pending"
     )
     assert (
-        monitor_workflows._auto_prime_status_part(
+        auto_prime._auto_prime_status_part(
             {
                 "primed_periods": {
                     "burst": {
@@ -852,7 +854,7 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
             ok=True, model="codex-x", elapsed_ms=5, exit_code=0, output="745", failure=None
         )
 
-    monkeypatch.setattr(monitor_workflows, "_run_account_prime_ping", fake_ping)
+    monkeypatch.setattr(auto_prime, "_run_account_prime_ping", fake_ping)
     now = datetime.datetime.now(tz=datetime.UTC)
     workflow = _workflow(triggers=("near_zero_full_window",))
     state = MonitorState(
@@ -909,7 +911,7 @@ def test_auto_prime_success_records_ping_telemetry(monkeypatch, tmp_path: Path) 
             ok=True, model="codex-x", elapsed_ms=42, exit_code=0, output="745", failure=None
         )
 
-    monkeypatch.setattr(monitor_workflows, "_run_account_prime_ping", fake_ping)
+    monkeypatch.setattr(auto_prime, "_run_account_prime_ping", fake_ping)
     now = datetime.datetime.now(tz=datetime.UTC)
     workflow = _workflow(triggers=("near_zero_full_window",))
     state = _single_target_state(now)
@@ -955,7 +957,7 @@ def test_auto_prime_ping_failure_records_last_error_from_result(
             failure="provider command exited with 2",
         )
 
-    monkeypatch.setattr(monitor_workflows, "_run_account_prime_ping", fake_ping)
+    monkeypatch.setattr(auto_prime, "_run_account_prime_ping", fake_ping)
     now = datetime.datetime.now(tz=datetime.UTC)
     workflow = _workflow(triggers=("near_zero_full_window",))
     state = _single_target_state(now)
@@ -980,12 +982,12 @@ def test_auto_prime_ping_records_claude_verified_auth_source(
     write_claude_home(home, email="br@example.com", account_uuid="acc_br")
     seed_claude_account("browser-br", account_uuid="acc_browser-br")
     monkeypatch.setattr(
-        monitor_workflows,
+        auto_prime,
         "resolve_account_runtime_agent",
         lambda **kwargs: _FakeClaudePrimeAgent(home=Path(kwargs["home"])),
     )
 
-    monitor_workflows._run_account_prime_ping(
+    auto_prime._run_account_prime_ping(
         {
             "provider": "claude-code",
             "account": "browser-br",
@@ -1012,12 +1014,12 @@ def test_auto_prime_ping_uses_profile_resolved_runtime_agent(
         return _FakeCodexPrimeAgent(home=Path(kwargs["home"]))
 
     monkeypatch.setattr(
-        monitor_workflows,
+        auto_prime,
         "resolve_account_runtime_agent",
         fake_resolve_account_runtime_agent,
     )
 
-    monitor_workflows._run_account_prime_ping(
+    auto_prime._run_account_prime_ping(
         {
             "provider": "codex",
             "account": "br",
@@ -1048,12 +1050,12 @@ def test_auto_prime_ping_records_codex_verified_auth_source(
     write_text_file(home / "auth.json", codex_auth_json(account_id="acc_br", email="br@example.com"))
     seed_codex_account("br")
     monkeypatch.setattr(
-        monitor_workflows,
+        auto_prime,
         "resolve_account_runtime_agent",
         lambda **kwargs: _FakeCodexPrimeAgent(home=Path(kwargs["home"])),
     )
 
-    monitor_workflows._run_account_prime_ping(
+    auto_prime._run_account_prime_ping(
         {
             "provider": "codex",
             "account": "br",
