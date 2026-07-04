@@ -3,11 +3,11 @@ from __future__ import annotations
 import fcntl
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from agentos._core.clock import utc_now_iso
+from agentos._core.clock import iso_z, utc_now_iso
 from agentos._core.errors import CliError
 from agentos._core.ids import normalize_or_generate_uuid, validate_uuid_string
 from agentos._core.project import (
@@ -428,7 +428,7 @@ def _normalize_timestamp(value: object, *, field_name: str, default_now: bool) -
         raise CliError(f"invalid {field_name}: {value}") from exc
     if parsed.tzinfo is None:
         raise CliError(f"invalid {field_name}: {value}")
-    return parsed.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return iso_z(parsed)
 
 
 def _normalize_optional_uuid(value: object, *, field_name: str) -> str | None:

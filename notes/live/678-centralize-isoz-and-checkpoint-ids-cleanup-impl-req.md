@@ -24,7 +24,7 @@
   - B: add `CHECKPOINT_ACCOUNT_REGISTERED` / `CHECKPOINT_HOME_EXISTS` /
     `CHECKPOINT_HOME_ALIGNED` constants in `profile_check.py`, use them in the checkpoint
     helpers, export them in `__all__`, and reference them from the tests.
-- **Status:** READY.
+- **Status:** COMPLETE.
 - **Source context:** `hugentics-codebase-cleaner` scan after 675/676/677. 673 already
   made `clock` the ISO-Z home and **explicitly flagged** `usage_registry._iso_z` as a
   deferred follow-up (its microsecond difference blocked a silent fold then — the
@@ -102,4 +102,20 @@ else new.
 
 ## Impl.Log
 
-- (pending execution)
+- Both slices done test-first (RED→GREEN). Suite 246→247 (+1 `iso_z(drop_micros=False)`
+  clock case). Lint clean. **No deviations.**
+- Slice 1: `clock.iso_z` grew `*, drop_micros: bool = True`. Migrated `forum/core.py` →
+  `iso_z(parsed)` (dropped the now-unused `timezone` import); `usage_registry._iso_z`
+  deleted, its one caller now `iso_z(recorded_at, drop_micros=False)`. `copilot` /
+  `claude` `_datetime_to_iso` kept as thin wrappers whose bodies became
+  `return iso_z(value, drop_micros=False)` — removes the hand-rolled formatter with zero
+  caller churn (both have several call sites). No `astimezone(...).isoformat().replace`
+  formatter remains outside `clock.py`.
+- **Scope note (broader grep, held to plan):** `claude`/`codex` `_iso_from_epoch_seconds`
+  and `sessions`/`extractors` millisecond formatters also contain
+  `.isoformat().replace("+00:00","Z")`, but they are structurally different (epoch-built,
+  or `timespec="milliseconds"`) — `iso_z(drop_micros=…)` cannot reproduce them. Left
+  untouched per the Impl.Req's four-copy scope; no scope broadening.
+- Slice 2: three `CHECKPOINT_*` constants added to `profile_check.py`, used in every
+  checkpoint helper and exported in `__all__`. Test literals switched to the constants
+  (values unchanged, so emitted ids are byte-identical).

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agentos._core.clock import iso_z
 from agentos._core.errors import CliError
 from agentos._core.path_validation import validate_string_for_path
 from agentos._core.project import agentos_home_dir
@@ -1207,7 +1208,7 @@ def _parse_iso_datetime(value: str | None) -> datetime.datetime | None:
 
 
 def _datetime_to_iso(value: datetime.datetime) -> str:
-    return value.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    return iso_z(value, drop_micros=False)
 
 
 def _optional_int(value: object, *, field_name: str) -> int | None:

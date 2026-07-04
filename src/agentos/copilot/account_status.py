@@ -8,6 +8,7 @@ import urllib.request
 from collections.abc import Mapping
 from typing import Any
 
+from agentos._core.clock import iso_z
 from agentos._core.errors import CliError
 from agentos._core.process import run_process
 from agentos.agent import auth_registry
@@ -650,7 +651,7 @@ def _parse_iso_datetime(value: str | None) -> datetime.datetime | None:
 
 
 def _datetime_to_iso(value: datetime.datetime) -> str:
-    return value.astimezone(datetime.UTC).isoformat().replace("+00:00", "Z")
+    return iso_z(value, drop_micros=False)
 
 
 def _string_or_none(value: object) -> str | None:

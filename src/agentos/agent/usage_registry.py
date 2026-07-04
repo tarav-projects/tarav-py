@@ -7,6 +7,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
+from agentos._core.clock import iso_z
 from agentos._core.errors import CliError
 from agentos._core.project import agentos_home_dir
 
@@ -33,7 +34,7 @@ def append_usage_record(
     record = {
         "schema_version": USAGE_RECORD_SCHEMA_VERSION,
         "class": USAGE_RECORD_CLASS,
-        "recorded_at": _iso_z(recorded_at),
+        "recorded_at": iso_z(recorded_at, drop_micros=False),
         "provider": provider,
         "account": account,
         "home": str(home.expanduser().resolve()),
@@ -131,10 +132,6 @@ def _record_matches(
 def _validate_required_text(value: str, *, field_name: str) -> None:
     if not value:
         raise CliError(f"usage record {field_name} is required")
-
-
-def _iso_z(value: datetime.datetime) -> str:
-    return value.astimezone(datetime.UTC).isoformat().replace("+00:00", "Z")
 
 
 __all__ = ["append_usage_record", "latest_usage_record"]

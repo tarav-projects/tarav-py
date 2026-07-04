@@ -36,7 +36,7 @@ def test_profile_check_all_pass(tmp_path: Path, monkeypatch) -> None:
     result = _profile_check(_Agent("codex", "br", home))
     assert result.ok is True
     assert all(c.passed for c in result.checkpoints)
-    assert set(_by_id(result)) == {"account_registered", "home_exists", "home_aligned"}
+    assert set(_by_id(result)) == {pc.CHECKPOINT_ACCOUNT_REGISTERED, pc.CHECKPOINT_HOME_EXISTS, pc.CHECKPOINT_HOME_ALIGNED}
 
 
 def test_profile_check_unregistered_account_fails(tmp_path: Path, monkeypatch) -> None:
@@ -46,17 +46,17 @@ def test_profile_check_unregistered_account_fails(tmp_path: Path, monkeypatch) -
     result = _profile_check(_Agent("codex", "br", home))
     assert result.ok is False
     checks = _by_id(result)
-    assert checks["account_registered"].passed is False
-    assert checks["account_registered"].reason is not None
+    assert checks[pc.CHECKPOINT_ACCOUNT_REGISTERED].passed is False
+    assert checks[pc.CHECKPOINT_ACCOUNT_REGISTERED].reason is not None
     # collect-all: the other checkpoints still ran
-    assert checks["home_exists"].passed is True
+    assert checks[pc.CHECKPOINT_HOME_EXISTS].passed is True
 
 
 def test_profile_check_missing_home_fails(tmp_path: Path, monkeypatch) -> None:
     _patch(monkeypatch, registered=True, status={"status": "aligned"})
     result = _profile_check(_Agent("codex", "br", tmp_path / "nope"))
     checks = _by_id(result)
-    assert checks["home_exists"].passed is False
+    assert checks[pc.CHECKPOINT_HOME_EXISTS].passed is False
     assert result.ok is False
 
 
@@ -70,8 +70,8 @@ def test_profile_check_drift_fails_with_reason(tmp_path: Path, monkeypatch) -> N
     )
     result = _profile_check(_Agent("codex", "br", home))
     checks = _by_id(result)
-    assert checks["home_aligned"].passed is False
-    assert "drift:home-newer" in checks["home_aligned"].reason
+    assert checks[pc.CHECKPOINT_HOME_ALIGNED].passed is False
+    assert "drift:home-newer" in checks[pc.CHECKPOINT_HOME_ALIGNED].reason
     assert result.ok is False
 
 
@@ -81,7 +81,7 @@ def test_profile_check_no_account_bound(tmp_path: Path, monkeypatch) -> None:
     _patch(monkeypatch, registered=True, status={"status": "aligned"})
     result = _profile_check(_Agent("codex", None, home))
     checks = _by_id(result)
-    assert checks["account_registered"].passed is False
+    assert checks[pc.CHECKPOINT_ACCOUNT_REGISTERED].passed is False
     assert result.ok is False
 
 
@@ -116,9 +116,9 @@ class _CliAgent:
 def test_cmd_profile_check_pass(monkeypatch, capsys) -> None:
     result = ProfileCheck(
         checkpoints=(
-            CheckpointResult("account_registered", True, None),
-            CheckpointResult("home_exists", True, None),
-            CheckpointResult("home_aligned", True, None),
+            CheckpointResult(pc.CHECKPOINT_ACCOUNT_REGISTERED, True, None),
+            CheckpointResult(pc.CHECKPOINT_HOME_EXISTS, True, None),
+            CheckpointResult(pc.CHECKPOINT_HOME_ALIGNED, True, None),
         ),
         ok=True,
     )
@@ -128,14 +128,14 @@ def test_cmd_profile_check_pass(monkeypatch, capsys) -> None:
     rc = commands._cmd_agent_profile_check(argparse.Namespace())
     assert rc == 0
     out = capsys.readouterr().out
-    assert "home_aligned" in out
+    assert pc.CHECKPOINT_HOME_ALIGNED in out
 
 
 def test_cmd_profile_check_fail_exits_nonzero(monkeypatch, capsys) -> None:
     result = ProfileCheck(
         checkpoints=(
-            CheckpointResult("account_registered", True, None),
-            CheckpointResult("home_aligned", False, "drift:home-newer: home is newer"),
+            CheckpointResult(pc.CHECKPOINT_ACCOUNT_REGISTERED, True, None),
+            CheckpointResult(pc.CHECKPOINT_HOME_ALIGNED, False, "drift:home-newer: home is newer"),
         ),
         ok=False,
     )

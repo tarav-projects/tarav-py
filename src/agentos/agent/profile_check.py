@@ -22,6 +22,11 @@ from pathlib import Path
 from agentos.agent import auth_registry as R
 from agentos.agent.account_status_report import HomeTarget, status_for_home
 
+# Canonical checkpoint ids — the single source for each `CheckpointResult.id`.
+CHECKPOINT_ACCOUNT_REGISTERED = "account_registered"
+CHECKPOINT_HOME_EXISTS = "home_exists"
+CHECKPOINT_HOME_ALIGNED = "home_aligned"
+
 
 @dataclass(frozen=True)
 class CheckpointResult:
@@ -38,27 +43,29 @@ class ProfileCheck:
 
 def _account_registered(provider: str, account: str | None) -> CheckpointResult:
     if account is None:
-        return CheckpointResult("account_registered", False, "no account bound to the agent")
+        return CheckpointResult(
+            CHECKPOINT_ACCOUNT_REGISTERED, False, "no account bound to the agent"
+        )
     if R.account_exists(provider, account):
-        return CheckpointResult("account_registered", True, None)
+        return CheckpointResult(CHECKPOINT_ACCOUNT_REGISTERED, True, None)
     return CheckpointResult(
-        "account_registered", False, f"account not registered: {provider}.{account}"
+        CHECKPOINT_ACCOUNT_REGISTERED, False, f"account not registered: {provider}.{account}"
     )
 
 
 def _home_exists(home: Path | str | None) -> CheckpointResult:
     if home is None:
-        return CheckpointResult("home_exists", False, "no home bound to the agent")
+        return CheckpointResult(CHECKPOINT_HOME_EXISTS, False, "no home bound to the agent")
     if Path(home).expanduser().is_dir():
-        return CheckpointResult("home_exists", True, None)
-    return CheckpointResult("home_exists", False, f"home does not exist: {home}")
+        return CheckpointResult(CHECKPOINT_HOME_EXISTS, True, None)
+    return CheckpointResult(CHECKPOINT_HOME_EXISTS, False, f"home does not exist: {home}")
 
 
 def _home_aligned(
     provider: str, home: Path | str | None, account: str | None
 ) -> CheckpointResult:
     if home is None:
-        return CheckpointResult("home_aligned", False, "no home to check")
+        return CheckpointResult(CHECKPOINT_HOME_ALIGNED, False, "no home to check")
     candidates = frozenset({account}) if account else frozenset()
     target = HomeTarget(
         home=Path(home).expanduser(), provider=provider, candidates=candidates
@@ -66,10 +73,10 @@ def _home_aligned(
     entry = status_for_home(target)
     status = str(entry.get("status"))
     if status == "aligned":
-        return CheckpointResult("home_aligned", True, None)
+        return CheckpointResult(CHECKPOINT_HOME_ALIGNED, True, None)
     reason = entry.get("reason")
     detail = f"{status}: {reason}" if reason else status
-    return CheckpointResult("home_aligned", False, detail)
+    return CheckpointResult(CHECKPOINT_HOME_ALIGNED, False, detail)
 
 
 def _account_id(account: object) -> str | None:
@@ -94,4 +101,10 @@ def _profile_check(agent) -> ProfileCheck:
     )
 
 
-__all__ = ["CheckpointResult", "ProfileCheck"]
+__all__ = [
+    "CHECKPOINT_ACCOUNT_REGISTERED",
+    "CHECKPOINT_HOME_ALIGNED",
+    "CHECKPOINT_HOME_EXISTS",
+    "CheckpointResult",
+    "ProfileCheck",
+]

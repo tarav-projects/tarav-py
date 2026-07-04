@@ -10,6 +10,13 @@ def test_iso_z_drops_microseconds_and_uses_z() -> None:
     assert iso_z(value) == "2026-06-27T14:32:07Z"
 
 
+def test_iso_z_keeps_microseconds_when_asked() -> None:
+    from agentos._core.clock import iso_z
+
+    value = datetime(2026, 6, 27, 14, 32, 7, 123456, tzinfo=timezone.utc)
+    assert iso_z(value, drop_micros=False) == "2026-06-27T14:32:07.123456Z"
+
+
 def test_iso_z_normalizes_to_utc() -> None:
     from agentos._core.clock import iso_z
 
