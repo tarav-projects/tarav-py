@@ -127,19 +127,5 @@ def write_claude_home(
     )
 
 
-def register_codex_args(auth_file: Path, *, account: str = "br") -> list[str]:
-    return [
-        "agent",
-        "accounts",
-        "register",
-        "--provider",
-        "codex",
-        "--account",
-        account,
-        "--auth-file",
-        str(auth_file),
-    ]
-
-
 def captured_json(capsys: object) -> dict[str, Any]:
     return json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]

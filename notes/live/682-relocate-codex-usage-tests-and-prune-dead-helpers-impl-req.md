@@ -10,7 +10,7 @@
   2. Delete the dead `register_codex_args` from agentos-py
      `tests/_helpers.py` (asserted dead by grep: definition only).
   3. Prune agentos-cli `tests/_helpers.py` helpers left dead by the move.
-- **Status:** PLANNED.
+- **Status:** COMPLETE.
 - **Source context:** `agentos-hugentics-codebase-cleaner --AUTO`; tree prep
   committed the pending 681 monitor cleanup (`6672e02`) and the 001 e2e
   realignment (`09113cd`).
@@ -42,3 +42,9 @@
 ## Impl.Log
 
 - 2026-07-04: Impl.Req created (cleaner, autonomous).
+- 2026-07-04: Executed both slices. Checkpoints: agentos-py `574dd62`,
+  agentos-cli `1521016`. One addition beyond the named helpers: agentos-cli's
+  `_jwt`/`codex_auth_json` in `tests/_helpers.py` became dead after the move
+  (the accounts test carries its own local `_jwt`) — pruned per slice 2's
+  grep-verified rule. Verification: agentos-py 255 passed / ruff clean;
+  agentos-cli 49 passed / ruff clean; no `register_codex_args` anywhere.
