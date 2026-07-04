@@ -100,4 +100,13 @@ a no-duplicates grep.
 
 ## Impl.Log
 
-- (pending execution)
+- Slice 1 done. Suite 247 passed (unchanged — pure relocation, no new tests per
+  `No.Regression.Tests.Allowed`); lint clean; grep confirms zero helper copies remain in
+  the provider modules. **No deviations.**
+- Spelling note: the shared `iso_from_epoch_seconds` / `parse_iso_datetime` use
+  `datetime.UTC` (the module's existing spelling; alias of `datetime.timezone.utc` —
+  the originals' spelling). Identical object, identical output.
+- Unused-import fallout as predicted: codex's `import datetime` orphaned by the
+  deletions; removed (ruff-flagged, nothing else touched).
+- claude's `_period_bounds_from_reset_iso` (superficially similar name, claude-only
+  logic) verified untouched by the word-boundary rename.

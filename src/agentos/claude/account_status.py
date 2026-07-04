@@ -27,9 +27,15 @@ from agentos.agent.account_status import (
     AccountLimit,
     AccountStatus,
     AccountStatusError,
-    USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     UsageOverTimeLimitData,
+    USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     fresh_usage_record_metadata,
+    iso_from_epoch_seconds,
+    limits_summary,
+    optional_int,
+    parse_iso_datetime,
+    period_bounds_from_reset,
+    string_or_none,
 )
 from agentos.agent.account_usage_fallback import (
     AccountUsageReadResult,
@@ -173,7 +179,7 @@ def _claude_account_status_impl(
                 fallback_to_usage_registry=fallback_to_usage_registry,
             )
         usage_status = "error" if usage_errors else "ok"
-        usage_summary = _limits_summary(limits) if limits else None
+        usage_summary = limits_summary(limits) if limits else None
         auth_summary = _usage_auth_summary(usage_record_metadata, usage_status=usage_status)
         if record_usage and usage_status == "ok" and limits and usage_record_payload is not None:
             append_usage_record(
@@ -237,9 +243,9 @@ def _fetched_identity_from_home_config(
     if not isinstance(oauth_account, dict):
         return None
     return AccountIdentity(
-        provider_account_id=_string_or_none(oauth_account.get("accountUuid")),
-        email=_string_or_none(oauth_account.get("emailAddress")),
-        label=_string_or_none(oauth_account.get("displayName")),
+        provider_account_id=string_or_none(oauth_account.get("accountUuid")),
+        email=string_or_none(oauth_account.get("emailAddress")),
+        label=string_or_none(oauth_account.get("displayName")),
         raw=oauth_account,
     )
 
@@ -482,7 +488,7 @@ def _load_claude_usage_get_throttle(agent: AgentConfig) -> AccountStatusError | 
         return None
     if not isinstance(payload, dict) or not _claude_usage_get_throttle_matches(agent, payload):
         return None
-    retry_after_until = _parse_iso_datetime(_string_or_none(payload.get("retry_after_until")))
+    retry_after_until = parse_iso_datetime(string_or_none(payload.get("retry_after_until")))
     if retry_after_until is None:
         return None
     now = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -497,8 +503,8 @@ def _load_claude_usage_get_throttle(agent: AgentConfig) -> AccountStatusError | 
     detail_payload = dict(detail) if isinstance(detail, Mapping) else {}
     detail_payload["retry_after_remaining_sec"] = remaining_sec
     return AccountStatusError(
-        error_type=_string_or_none(live_error.get("type")) or "usage_api_throttled",
-        message=_string_or_none(live_error.get("message"))
+        error_type=string_or_none(live_error.get("type")) or "usage_api_throttled",
+        message=string_or_none(live_error.get("message"))
         or "claude usage API is temporarily throttled",
         exit_code=_optional_error_exit_code(live_error.get("exit_code")),
         detail=detail_payload,
@@ -509,8 +515,8 @@ def _write_claude_usage_get_throttle(agent: AgentConfig, error: AccountStatusErr
     if error.exit_code != 429:
         return
     retry_after_sec = _optional_positive_retry_after_sec(error.detail.get("retry_after_sec"))
-    retry_after_until = _string_or_none(error.detail.get("retry_after_until"))
-    if retry_after_sec is None or _parse_iso_datetime(retry_after_until) is None:
+    retry_after_until = string_or_none(error.detail.get("retry_after_until"))
+    if retry_after_sec is None or parse_iso_datetime(retry_after_until) is None:
         return
     now = datetime.datetime.now(tz=datetime.timezone.utc)
     throttle = {
@@ -1016,7 +1022,7 @@ def _parse_claude_usage_get_limit(
         field_name=f"claude {limit_type} utilization",
     )
     used_percent = round(utilization) if utilization is not None else None
-    resets_at = _string_or_none(raw_limit.get("resets_at"))
+    resets_at = string_or_none(raw_limit.get("resets_at"))
     period_duration_mins = _claude_rate_limit_duration_mins(limit_type)
     period_started_at, period_ends_at = _period_bounds_from_reset_iso(
         resets_at=resets_at,
@@ -1073,12 +1079,12 @@ def _parse_claude_statusline_limit(
         field_name=f"claude {limit_type} used_percentage",
     )
     used_percent = round(used_percentage) if used_percentage is not None else None
-    resets_at_epoch = _optional_int(
+    resets_at_epoch = optional_int(
         raw_limit.get("resets_at"),
         field_name=f"claude {limit_type} resets_at",
     )
     period_duration_mins = _claude_rate_limit_duration_mins(limit_type)
-    period_started_at, period_ends_at = _period_bounds_from_reset(
+    period_started_at, period_ends_at = period_bounds_from_reset(
         resets_at_epoch=resets_at_epoch,
         period_duration_mins=period_duration_mins,
     )
@@ -1092,7 +1098,7 @@ def _parse_claude_statusline_limit(
             period_started_at=period_started_at,
             period_ends_at=period_ends_at,
             period_duration_mins=period_duration_mins,
-            resets_at=_iso_from_epoch_seconds(resets_at_epoch),
+            resets_at=iso_from_epoch_seconds(resets_at_epoch),
         ),
         provider_limit={
             "limit_type": limit_type,
@@ -1128,35 +1134,6 @@ def _claude_rate_limit_duration_mins(limit_type: str) -> int | None:
     raise CliError(f"unsupported claude rate-limit type {limit_type!r}")
 
 
-def _limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:
-    parts: list[str] = []
-    for limit in limits:
-        usage = limit.usage_over_time
-        if usage is None:
-            continue
-        if usage.used_percent is None:
-            if limit.limit_label is not None:
-                parts.append(limit.limit_label)
-            continue
-        label = limit.limit_label or limit.limit_name
-        parts.append(f"{label} {usage.used_percent}%")
-    return ", ".join(parts) or None
-
-
-def _period_bounds_from_reset(
-    *,
-    resets_at_epoch: int | None,
-    period_duration_mins: int | None,
-) -> tuple[str | None, str | None]:
-    if resets_at_epoch is None or period_duration_mins is None:
-        return (None, None)
-    period_started_at_epoch = resets_at_epoch - (period_duration_mins * 60)
-    return (
-        _iso_from_epoch_seconds(period_started_at_epoch),
-        _iso_from_epoch_seconds(resets_at_epoch),
-    )
-
-
 def _period_bounds_from_reset_iso(
     *,
     resets_at: str | None,
@@ -1164,7 +1141,7 @@ def _period_bounds_from_reset_iso(
 ) -> tuple[str | None, str | None]:
     if resets_at is None or period_duration_mins is None:
         return (None, None)
-    reset_at = _parse_iso_datetime(resets_at)
+    reset_at = parse_iso_datetime(resets_at)
     if reset_at is None:
         return (None, _normalize_iso_datetime(resets_at))
     period_started_at = reset_at - datetime.timedelta(minutes=period_duration_mins)
@@ -1174,49 +1151,15 @@ def _period_bounds_from_reset_iso(
     )
 
 
-def _iso_from_epoch_seconds(epoch_seconds: int | None) -> str | None:
-    if epoch_seconds is None:
-        return None
-    return datetime.datetime.fromtimestamp(
-        epoch_seconds,
-        tz=datetime.timezone.utc,
-    ).isoformat().replace("+00:00", "Z")
-
-
 def _normalize_iso_datetime(value: str | None) -> str | None:
-    parsed = _parse_iso_datetime(value)
+    parsed = parse_iso_datetime(value)
     if parsed is None:
         return value
     return _datetime_to_iso(parsed)
 
 
-def _parse_iso_datetime(value: str | None) -> datetime.datetime | None:
-    if value is None:
-        return None
-    normalized = value.strip()
-    if not normalized:
-        return None
-    if normalized.endswith("Z"):
-        normalized = f"{normalized[:-1]}+00:00"
-    try:
-        parsed = datetime.datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=datetime.timezone.utc)
-    return parsed.astimezone(datetime.timezone.utc)
-
-
 def _datetime_to_iso(value: datetime.datetime) -> str:
     return iso_z(value, drop_micros=False)
-
-
-def _optional_int(value: object, *, field_name: str) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise CliError(f"{field_name} must be an integer")
-    return value
 
 
 def _optional_float(value: object, *, field_name: str) -> float | None:
@@ -1308,7 +1251,7 @@ def _cleanup_claude_statusline_transcript(
 ) -> None:
     if agent.home is None:
         return
-    transcript_path_value = _string_or_none(statusline_payload.get("transcript_path"))
+    transcript_path_value = string_or_none(statusline_payload.get("transcript_path"))
     if transcript_path_value is None:
         return
     transcript_path = Path(transcript_path_value)
@@ -1340,12 +1283,6 @@ def _claude_statusline_process_environment(env_overrides: Mapping[str, str]) -> 
 
 def _allow_claude_statusline_parent_env(key: str) -> bool:
     return key in CLAUDE_STATUSLINE_PARENT_ENV_ALLOWLIST or key.startswith("LC_")
-
-
-def _string_or_none(value: object) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
 
 
 __all__: list[str] = []

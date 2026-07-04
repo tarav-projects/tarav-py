@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import json
 import os
 import select
@@ -16,9 +15,14 @@ from agentos.agent.account_status import (
     AccountLimit,
     AccountStatus,
     AccountStatusError,
-    USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     UsageOverTimeLimitData,
+    USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     fresh_usage_record_metadata,
+    iso_from_epoch_seconds,
+    limits_summary,
+    optional_int,
+    period_bounds_from_reset,
+    string_or_none,
 )
 from agentos.agent.account_usage_fallback import (
     AccountUsageReadResult,
@@ -111,7 +115,7 @@ def _codex_account_status_impl(
                 fallback_to_usage_registry=fallback_to_usage_registry,
             )
         usage_status = "error" if usage_errors else "ok"
-        usage_summary = _limits_summary(limits) if limits else None
+        usage_summary = limits_summary(limits) if limits else None
         auth_summary = _usage_auth_summary(
             usage_record_metadata,
             usage_status=usage_status,
@@ -309,7 +313,7 @@ def _parse_codex_rate_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, 
         raw_rate_limits = payload.get("rateLimits")
         if not isinstance(raw_rate_limits, dict):
             raise CliError("codex rate limit response is missing rateLimits")
-        snapshots.append((_string_or_none(raw_rate_limits.get("limitId")), raw_rate_limits))
+        snapshots.append((string_or_none(raw_rate_limits.get("limitId")), raw_rate_limits))
 
     limits: list[AccountLimit] = []
     for limit_id, snapshot in snapshots:
@@ -337,15 +341,15 @@ def _parse_codex_snapshot_windows(
             raw_window.get("usedPercent"),
             field_name=f"codex {window_key} usedPercent",
         )
-        window_duration_mins = _optional_int(
+        window_duration_mins = optional_int(
             raw_window.get("windowDurationMins"),
             field_name=f"codex {window_key} windowDurationMins",
         )
-        resets_at_epoch = _optional_int(
+        resets_at_epoch = optional_int(
             raw_window.get("resetsAt"),
             field_name=f"codex {window_key} resetsAt",
         )
-        period_started_at, period_ends_at = _period_bounds_from_reset(
+        period_started_at, period_ends_at = period_bounds_from_reset(
             resets_at_epoch=resets_at_epoch,
             period_duration_mins=window_duration_mins,
         )
@@ -360,7 +364,7 @@ def _parse_codex_snapshot_windows(
                     period_started_at=period_started_at,
                     period_ends_at=period_ends_at,
                     period_duration_mins=window_duration_mins,
-                    resets_at=_iso_from_epoch_seconds(resets_at_epoch),
+                    resets_at=iso_from_epoch_seconds(resets_at_epoch),
                 ),
                 provider_limit={
                     "limit_id": limit_id,
@@ -386,21 +390,6 @@ def _codex_window_label(window_key: str) -> str:
     if window_key == "secondary":
         return "Weekly"
     raise CliError(f"unsupported codex rate-limit window {window_key!r}")
-
-
-def _limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:
-    parts: list[str] = []
-    for limit in limits:
-        usage = limit.usage_over_time
-        if usage is None:
-            continue
-        if usage.used_percent is None:
-            if limit.limit_label is not None:
-                parts.append(limit.limit_label)
-            continue
-        label = limit.limit_label or limit.limit_name
-        parts.append(f"{label} {usage.used_percent}%")
-    return ", ".join(parts) or None
 
 
 def _usage_auth_summary(
@@ -510,47 +499,10 @@ def _account_timeout_sec(agent: AgentConfig) -> int:
     return agent.timeout_sec or DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC
 
 
-def _period_bounds_from_reset(
-    *,
-    resets_at_epoch: int | None,
-    period_duration_mins: int | None,
-) -> tuple[str | None, str | None]:
-    if resets_at_epoch is None or period_duration_mins is None:
-        return (None, None)
-    period_started_at_epoch = resets_at_epoch - (period_duration_mins * 60)
-    return (
-        _iso_from_epoch_seconds(period_started_at_epoch),
-        _iso_from_epoch_seconds(resets_at_epoch),
-    )
-
-
-def _iso_from_epoch_seconds(epoch_seconds: int | None) -> str | None:
-    if epoch_seconds is None:
-        return None
-    return datetime.datetime.fromtimestamp(
-        epoch_seconds,
-        tz=datetime.timezone.utc,
-    ).isoformat().replace("+00:00", "Z")
-
-
 def _required_int(value: object, *, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise CliError(f"{field_name} must be an integer")
     return value
-
-
-def _optional_int(value: object, *, field_name: str) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise CliError(f"{field_name} must be an integer")
-    return value
-
-
-def _string_or_none(value: object) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
 
 
 __all__: list[str] = []

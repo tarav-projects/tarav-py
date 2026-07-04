@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
+from agentos._core.errors import CliError
+
 
 AccountCheckStatus = Literal["ok", "error"]
 AccountUsageStatus = Literal["ok", "error", "unavailable"]
@@ -212,6 +214,79 @@ class AccountStatus:
         return payload
 
 
+# Shared payload-shaping helpers — one definition for the provider account-status
+# implementations (claude / codex / copilot).
+
+
+def limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:
+    parts: list[str] = []
+    for limit in limits:
+        usage = limit.usage_over_time
+        if usage is None:
+            continue
+        if usage.used_percent is None:
+            if limit.limit_label is not None:
+                parts.append(limit.limit_label)
+            continue
+        label = limit.limit_label or limit.limit_name
+        parts.append(f"{label} {usage.used_percent}%")
+    return ", ".join(parts) or None
+
+
+def string_or_none(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def optional_int(value: object, *, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CliError(f"{field_name} must be an integer")
+    return value
+
+
+def parse_iso_datetime(value: str | None) -> datetime.datetime | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=datetime.UTC)
+    return parsed.astimezone(datetime.UTC)
+
+
+def iso_from_epoch_seconds(epoch_seconds: int | None) -> str | None:
+    if epoch_seconds is None:
+        return None
+    return datetime.datetime.fromtimestamp(
+        epoch_seconds,
+        tz=datetime.UTC,
+    ).isoformat().replace("+00:00", "Z")
+
+
+def period_bounds_from_reset(
+    *,
+    resets_at_epoch: int | None,
+    period_duration_mins: int | None,
+) -> tuple[str | None, str | None]:
+    if resets_at_epoch is None or period_duration_mins is None:
+        return (None, None)
+    period_started_at_epoch = resets_at_epoch - (period_duration_mins * 60)
+    return (
+        iso_from_epoch_seconds(period_started_at_epoch),
+        iso_from_epoch_seconds(resets_at_epoch),
+    )
+
+
 __all__ = [
     "AccountCheckStatus",
     "AccountIdentity",
@@ -226,7 +301,13 @@ __all__ = [
     "USAGE_RECORD_STATUS_REGISTRY_LATEST",
     "UsageOverTimeLimitData",
     "fresh_usage_record_metadata",
+    "iso_from_epoch_seconds",
+    "limits_summary",
+    "optional_int",
+    "parse_iso_datetime",
+    "period_bounds_from_reset",
     "registry_latest_usage_record_metadata",
     "registry_fallback_usage_record_metadata",
+    "string_or_none",
     "usage_record_age_sec",
 ]

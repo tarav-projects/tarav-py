@@ -18,9 +18,12 @@ from agentos.agent.account_status import (
     AccountLimit,
     AccountStatus,
     AccountStatusError,
-    USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     UsageOverTimeLimitData,
+    USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     fresh_usage_record_metadata,
+    limits_summary,
+    parse_iso_datetime,
+    string_or_none,
 )
 from agentos.agent.account_usage_fallback import (
     AccountUsageReadResult,
@@ -130,7 +133,7 @@ def _copilot_account_status_impl(
         else:
             usage_status = "ok"
             auth_summary = "Copilot usage read"
-        usage_summary = _limits_summary(limits) if limits else None
+        usage_summary = limits_summary(limits) if limits else None
         if record_usage and usage_status == "ok" and limits and usage_record_payload is not None:
             append_usage_record(
                 provider=agent.provider,
@@ -166,12 +169,12 @@ def _fetched_identity_from_usage_payload(
 ) -> AccountIdentity | None:
     if usage_payload is None:
         return None
-    login = _string_or_none(usage_payload.get("login"))
+    login = string_or_none(usage_payload.get("login"))
     if login is None:
         return None
     return AccountIdentity(
         provider_account_id=login,
-        label=_string_or_none(usage_payload.get("name")),
+        label=string_or_none(usage_payload.get("name")),
         raw={"login": login},
     )
 
@@ -427,7 +430,7 @@ def _parse_copilot_quota_snapshot(
         "entitlement": entitlement if entitlement is not None else 0.0,
         "remaining": remaining if remaining is not None else 0.0,
         "percent_remaining": percent_remaining,
-        "quota_id": _string_or_none(value.get("quota_id")) or "",
+        "quota_id": string_or_none(value.get("quota_id")) or "",
         "has_percent_remaining": has_percent_remaining,
     }
     if _copilot_quota_snapshot_is_placeholder(snapshot):
@@ -559,7 +562,7 @@ def _copilot_monthly_period_bounds(payload: Mapping[str, Any]) -> tuple[str | No
     period_ends_at = _copilot_quota_reset_at(payload)
     if period_ends_at is None:
         return (None, None, None)
-    period_ends_at_dt = _parse_iso_datetime(period_ends_at)
+    period_ends_at_dt = parse_iso_datetime(period_ends_at)
     if period_ends_at_dt is None:
         return (None, period_ends_at, None)
     period_started_at_dt = _previous_month_same_instant(period_ends_at_dt)
@@ -572,11 +575,11 @@ def _copilot_monthly_period_bounds(payload: Mapping[str, Any]) -> tuple[str | No
 
 
 def _copilot_quota_reset_at(payload: Mapping[str, Any]) -> str | None:
-    raw_reset_at = _string_or_none(payload.get("quota_reset_date_utc"))
+    raw_reset_at = string_or_none(payload.get("quota_reset_date_utc"))
     if raw_reset_at is not None:
-        reset_at = _parse_iso_datetime(raw_reset_at)
+        reset_at = parse_iso_datetime(raw_reset_at)
         return _datetime_to_iso(reset_at) if reset_at is not None else raw_reset_at
-    raw_reset_date = _string_or_none(payload.get("quota_reset_date"))
+    raw_reset_date = string_or_none(payload.get("quota_reset_date"))
     if raw_reset_date is None:
         return None
     try:
@@ -595,21 +598,6 @@ def _previous_month_same_instant(value: datetime.datetime) -> datetime.datetime:
         year -= 1
     day = min(value.day, calendar.monthrange(year, month)[1])
     return value.replace(year=year, month=month, day=day)
-
-
-def _limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:
-    parts: list[str] = []
-    for limit in limits:
-        usage = limit.usage_over_time
-        if usage is None:
-            continue
-        if usage.used_percent is None:
-            if limit.limit_label is not None:
-                parts.append(limit.limit_label)
-            continue
-        label = limit.limit_label or limit.limit_name
-        parts.append(f"{label} {usage.used_percent}%")
-    return ", ".join(parts) or None
 
 
 def _account_name(agent: AgentConfig) -> str:
@@ -633,31 +621,8 @@ def _optional_number(value: object, *, field_name: str) -> float | None:
     return float(value)
 
 
-def _parse_iso_datetime(value: str | None) -> datetime.datetime | None:
-    if value is None:
-        return None
-    normalized = value.strip()
-    if not normalized:
-        return None
-    if normalized.endswith("Z"):
-        normalized = f"{normalized[:-1]}+00:00"
-    try:
-        parsed = datetime.datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=datetime.UTC)
-    return parsed.astimezone(datetime.UTC)
-
-
 def _datetime_to_iso(value: datetime.datetime) -> str:
     return iso_z(value, drop_micros=False)
-
-
-def _string_or_none(value: object) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
 
 
 __all__ = [
