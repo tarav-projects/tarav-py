@@ -83,6 +83,28 @@ class MonitorState:
     data: dict[str, object] = field(default_factory=dict)
 
 
+def _text_row_render(
+    text: str, *, indent: bool, context: MonitorRenderContext
+) -> str:
+    if not text:
+        return ""
+    if indent:
+        return f"{context.row_indent}{text}"
+    return text
+
+
+def _text_row_summary(
+    *, kind: str, text: str, indent: bool, default_indent: bool
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "kind": kind,
+        "text": text,
+    }
+    if indent is not default_indent:
+        payload["indent"] = indent
+    return payload
+
+
 @dataclass
 class MonitorTextRow:
     text: str
@@ -92,23 +114,15 @@ class MonitorTextRow:
     def render_frame(
         self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
     ) -> str:
-        if not self.text:
-            return ""
-        if self.indent:
-            return f"{context.row_indent}{self.text}"
-        return self.text
+        return _text_row_render(self.text, indent=self.indent, context=context)
 
     def step_animation(self) -> None:
         return None
 
     def summary(self) -> dict[str, object]:
-        payload = {
-            "kind": self.kind,
-            "text": self.text,
-        }
-        if not self.indent:
-            payload["indent"] = self.indent
-        return payload
+        return _text_row_summary(
+            kind=self.kind, text=self.text, indent=self.indent, default_indent=True
+        )
 
 
 @dataclass
@@ -121,23 +135,15 @@ class MonitorMarqueeRow:
     def render_frame(
         self, context: MonitorRenderContext = DEFAULT_MONITOR_RENDER_CONTEXT
     ) -> str:
-        if not self.text:
-            return ""
-        if self.indent:
-            return f"{context.row_indent}{self.text}"
-        return self.text
+        return _text_row_render(self.text, indent=self.indent, context=context)
 
     def step_animation(self) -> None:
         self.animation_tick += 1
 
     def summary(self) -> dict[str, object]:
-        payload: dict[str, object] = {
-            "kind": self.kind,
-            "text": self.text,
-        }
-        if self.indent:
-            payload["indent"] = self.indent
-        return payload
+        return _text_row_summary(
+            kind=self.kind, text=self.text, indent=self.indent, default_indent=False
+        )
 
 
 class _MonitorColumnRowMixin:
@@ -405,10 +411,36 @@ def _cell_offset_to_text_index(text: str, cell_offset: int) -> int:
 
 
 @dataclass
+class MonitorBlock:
+    title: str | None = None
+    rows: list[MonitorRow] = field(default_factory=list)
+    data: dict[str, object] | None = None
+
+    @property
+    def heading_rows(self) -> list[MonitorRow]:
+        # Derived from the title: heading text has no animation state, so
+        # recomputing the row per access keeps title the single source.
+        if self.title is None:
+            return []
+        return [MonitorTextRow(self.title, indent=False)]
+
+    def payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "heading_rows": [row.summary() for row in self.heading_rows],
+            "rows": [row.summary() for row in self.rows],
+        }
+        if self.title is not None:
+            payload["title"] = self.title
+        if self.data is not None:
+            payload["data"] = self.data
+        return payload
+
+
+@dataclass
 class MonitorFrame:
     tick: int = 0
     top_rows: list[MonitorRow] = field(default_factory=list)
-    blocks: list[dict[str, object]] = field(default_factory=list)
+    blocks: list[MonitorBlock] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -425,19 +457,12 @@ class MonitorFrame:
     def add_block(
         self,
         title: str | None = None,
-        lines: list[str] | None = None,
         data: dict[str, object] | None = None,
         rows: list[MonitorRow] | None = None,
-        heading_rows: list[MonitorRow] | None = None,
     ) -> None:
-        block = monitor_block(
-            title=title,
-            lines=lines,
-            data=data,
-            rows=rows,
-            heading_rows=heading_rows,
+        self.blocks.append(
+            MonitorBlock(title=title, rows=list(rows or []), data=data)
         )
-        self.blocks.append(block)
 
     def add_error(self, message: str) -> None:
         self.errors.append(message)
@@ -452,117 +477,11 @@ class MonitorFrame:
             _inherit_row_animation_state(row, previous_row)
 
 
-def monitor_block(
-    *,
-    title: str | None = None,
-    lines: list[str] | None = None,
-    data: dict[str, object] | None = None,
-    rows: list[MonitorRow] | None = None,
-    heading_rows: list[MonitorRow] | None = None,
-) -> dict[str, object]:
-    if rows is None:
-        rows = [MonitorTextRow(line) for line in lines or []]
-    if lines is None:
-        lines = [row.text for row in rows]
-    if heading_rows is None:
-        heading_rows = []
-        if title is not None:
-            heading_rows.append(MonitorTextRow(title, indent=False))
-
-    block: dict[str, object] = {
-        "lines": lines,
-        "heading_rows": heading_rows,
-        "rows": rows,
-    }
-    if title is not None:
-        block["title"] = title
-    if data is not None:
-        block["data"] = data
-    return block
-
-
-def monitor_row_payload(row: object) -> dict[str, object] | None:
-    if isinstance(
-        row,
-        MonitorTextRow
-        | MonitorMarqueeRow
-        | MonitorAccountRow
-        | MonitorInfoRow
-        | MonitorUsageTimeRow
-        | MonitorResetRow,
-    ):
-        return row.summary()
-    if isinstance(row, dict):
-        return row
-    return None
-
-
-def monitor_block_payload(block: dict[str, object]) -> dict[str, object]:
-    payload = dict(block)
-    heading_rows = block.get("heading_rows")
-    if isinstance(heading_rows, list):
-        payload["heading_rows"] = [
-            row_payload
-            for row in heading_rows
-            if (row_payload := monitor_row_payload(row)) is not None
-        ]
-    rows = block.get("rows")
-    if isinstance(rows, list):
-        payload["rows"] = [
-            row_payload
-            for row in rows
-            if (row_payload := monitor_row_payload(row)) is not None
-        ]
-    return payload
-
-
-def monitor_block_heading_rows(block: dict[str, object]) -> list[MonitorRow]:
-    rows = block.get("heading_rows")
-    if isinstance(rows, list) and all(
-        isinstance(
-            row,
-            MonitorTextRow
-            | MonitorMarqueeRow
-            | MonitorAccountRow
-            | MonitorInfoRow
-            | MonitorUsageTimeRow
-            | MonitorResetRow,
-        )
-        for row in rows
-    ):
-        return rows
-    title = block.get("title")
-    if isinstance(title, str):
-        return [MonitorTextRow(title, indent=False)]
-    return []
-
-
-def monitor_block_rows(block: dict[str, object]) -> list[MonitorRow]:
-    rows = block.get("rows")
-    if isinstance(rows, list) and all(
-        isinstance(
-            row,
-            MonitorTextRow
-            | MonitorMarqueeRow
-            | MonitorAccountRow
-            | MonitorInfoRow
-            | MonitorUsageTimeRow
-            | MonitorResetRow,
-        )
-        for row in rows
-    ):
-        return rows
-    lines = block.get("lines")
-    if isinstance(lines, list):
-        return [MonitorTextRow(line) for line in lines if isinstance(line, str)]
-    return []
-
-
 def _frame_rows(frame: MonitorFrame) -> list[MonitorRow]:
     rows: list[MonitorRow] = list(frame.top_rows)
     for block in frame.blocks:
-        rows.extend(monitor_block_heading_rows(block))
-        rows.extend(monitor_block_rows(block))
+        rows.extend(block.heading_rows)
+        rows.extend(block.rows)
     return rows
 
 

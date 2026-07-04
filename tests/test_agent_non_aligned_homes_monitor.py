@@ -127,7 +127,7 @@ def _render_frame() -> object:
 
 
 def _titles(frame: object) -> set[str]:
-    return {b.get("title") for b in frame.blocks}
+    return {b.title for b in frame.blocks}
 
 
 def test_workflow_shows_non_aligned_block_when_drift_present(

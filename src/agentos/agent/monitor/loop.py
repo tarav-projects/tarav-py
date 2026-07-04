@@ -196,7 +196,7 @@ class MonitorLoop:
 
     def _apply_clock_feedback_to_visible_frame(self) -> None:
         for block in self.visible_frame.blocks:
-            data = block.get("data")
+            data = block.data
             if not isinstance(data, dict):
                 continue
             workflow_name = data.get("workflow")
@@ -205,16 +205,13 @@ class MonitorLoop:
                 continue
             alarm = self._clock_snapshot.alarms.get(alarm_name)
             if alarm is None or not alarm.armed:
-                block["title"] = workflow_name
-                block["heading_rows"] = [MonitorTextRow(workflow_name, indent=False)]
+                block.title = workflow_name
                 continue
-            title = _workflow_clock_title(
+            block.title = _workflow_clock_title(
                 workflow_name,
                 remaining_ticks=alarm.remaining_ticks,
                 period_ticks=alarm.period_ticks,
             )
-            block["title"] = title
-            block["heading_rows"] = [MonitorTextRow(title, indent=False)]
 
     def _apply_display_alarms(self, snapshot: MonitorClockSnapshot) -> None:
         if snapshot.fired(MONITOR_USAGE_VARIANT_TOGGLE_ALARM):

@@ -16,10 +16,6 @@ from agentos.agent.monitor.models import (
     MonitorUsageTimeRow,
     _circular_cell_viewport,
     _cell_offset_to_text_index,
-    monitor_block_payload,
-    monitor_block_heading_rows,
-    monitor_block_rows,
-    monitor_row_payload,
 )
 
 _MONITOR_TRACK_STYLE = "bright_white on grey15"
@@ -86,12 +82,8 @@ def monitor_result_payload(
         "state": state.data,
         "frame": {
             "tick": frame.tick,
-            "top_rows": [
-                row_payload
-                for row in frame.top_rows
-                if (row_payload := monitor_row_payload(row)) is not None
-            ],
-            "blocks": [monitor_block_payload(block) for block in frame.blocks],
+            "top_rows": [row.summary() for row in frame.top_rows],
+            "blocks": [block.payload() for block in frame.blocks],
             "warnings": frame.warnings,
             "errors": frame.errors,
         },
@@ -197,7 +189,7 @@ def _monitor_render_rows(
         )
         rows.extend(_MonitorRenderTextRow(f"  {error}") for error in frame.errors)
     for block in frame.blocks:
-        heading_rows = monitor_block_heading_rows(block)
+        heading_rows = block.heading_rows
         if heading_rows:
             rows.append(_MonitorRenderTextRow(""))
             rows.extend(
@@ -207,9 +199,8 @@ def _monitor_render_rows(
                     width=width,
                 )
             )
-        block_rows = monitor_block_rows(block)
         rows.extend(
-            _monitor_render_block_rows(block_rows, context=context, width=width)
+            _monitor_render_block_rows(block.rows, context=context, width=width)
         )
     return rows
 

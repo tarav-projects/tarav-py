@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import time
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from agentos._core.errors import CliError
@@ -937,23 +938,26 @@ def _observation_time(
     return recorded_at or fallback
 
 
-def _eligible_limit_period(
+@dataclass(frozen=True)
+class _LimitPeriod:
+    limit_id: str
+    usage_over_time: dict[str, object]
+    used_percent: int | None
+    period_key: str
+    period_end: datetime.datetime
+    uninitialized_period_key: str
+
+
+def _parse_limit_period(
     source_target_state: dict[str, object],
     limit: dict[str, object],
     *,
-    target_limit_ids: set[str],
-    trigger_names: set[str],
-    observations: dict[str, object],
     now: datetime.datetime,
-    scan_at: datetime.datetime,
-) -> dict[str, object] | None:
+) -> _LimitPeriod | None:
     limit_id = _string_value(limit.get("limit_id"))
-    if limit_id is None or limit_id not in target_limit_ids:
-        return None
     usage_over_time = limit.get("usage_over_time")
-    if not isinstance(usage_over_time, dict):
+    if limit_id is None or not isinstance(usage_over_time, dict):
         return None
-    used_percent = _int_value(usage_over_time.get("used_percent"))
     period_started_at = _string_value(usage_over_time.get("period_started_at"))
     period_ends_at = _string_value(usage_over_time.get("period_ends_at"))
     resets_at = _string_value(usage_over_time.get("resets_at"))
@@ -968,30 +972,70 @@ def _eligible_limit_period(
     home = _string_value(source_target_state.get("home"))
     if provider is None or account is None or home is None:
         return None
-
-    normal_period_key = "|".join(
-        (provider, account, home, limit_id, period_started_at, period_end_key)
+    return _LimitPeriod(
+        limit_id=limit_id,
+        usage_over_time=usage_over_time,
+        used_percent=_int_value(usage_over_time.get("used_percent")),
+        period_key="|".join(
+            (provider, account, home, limit_id, period_started_at, period_end_key)
+        ),
+        period_end=period_end,
+        uninitialized_period_key="|".join(
+            (provider, account, home, limit_id, "uninitialized")
+        ),
     )
-    previous_observation = observations.get(limit_id)
-    reasons = _auto_prime_trigger_reasons(
+
+
+def _parsed_trigger_reasons(
+    parsed: _LimitPeriod,
+    limit: dict[str, object],
+    *,
+    trigger_names: set[str],
+    observations: dict[str, object],
+    now: datetime.datetime,
+) -> tuple[str, ...]:
+    previous_observation = observations.get(parsed.limit_id)
+    return _auto_prime_trigger_reasons(
         limit,
-        usage_over_time,
-        used_percent=used_percent,
+        parsed.usage_over_time,
+        used_percent=parsed.used_percent,
         trigger_names=trigger_names,
         previous_observation=previous_observation
         if isinstance(previous_observation, dict)
         else None,
-        period_key=normal_period_key,
-        period_end=period_end,
+        period_key=parsed.period_key,
+        period_end=parsed.period_end,
         now=now,
     )
-    observations[limit_id] = {
-        "period_key": normal_period_key,
-        "period_end": period_end.isoformat(),
+
+
+def _eligible_limit_period(
+    source_target_state: dict[str, object],
+    limit: dict[str, object],
+    *,
+    target_limit_ids: set[str],
+    trigger_names: set[str],
+    observations: dict[str, object],
+    now: datetime.datetime,
+    scan_at: datetime.datetime,
+) -> dict[str, object] | None:
+    parsed = _parse_limit_period(source_target_state, limit, now=now)
+    if parsed is None or parsed.limit_id not in target_limit_ids:
+        return None
+    reasons = _parsed_trigger_reasons(
+        parsed,
+        limit,
+        trigger_names=trigger_names,
+        observations=observations,
+        now=now,
+    )
+    observations[parsed.limit_id] = {
+        "period_key": parsed.period_key,
+        "period_end": parsed.period_end.isoformat(),
         "observed_at": now.isoformat(),
-        "used_percent": used_percent,
+        "used_percent": parsed.used_percent,
         "remaining_ratio": _remaining_window_ratio(
-            limit, usage_over_time, period_end, now
+            limit, parsed.usage_over_time, parsed.period_end, now
         ),
     }
     if not reasons:
@@ -1000,14 +1044,11 @@ def _eligible_limit_period(
     uninitialized = any(
         reason in AUTO_PRIME_UNINITIALIZED_TRIGGERS for reason in reasons
     )
-    period_key = (
-        "|".join((provider, account, home, limit_id, "uninitialized"))
-        if uninitialized
-        else normal_period_key
-    )
     return {
-        "limit_id": limit_id,
-        "period_key": period_key,
+        "limit_id": parsed.limit_id,
+        "period_key": parsed.uninitialized_period_key
+        if uninitialized
+        else parsed.period_key,
         "trigger_reasons": reasons,
         "uninitialized": uninitialized,
         "observed_at": now.isoformat(),
@@ -1034,39 +1075,14 @@ def _uninitialized_trigger_reasons(
     observations: dict[str, object],
     now: datetime.datetime,
 ) -> tuple[str, ...]:
-    limit_id = _string_value(limit.get("limit_id"))
-    usage_over_time = limit.get("usage_over_time")
-    if limit_id is None or not isinstance(usage_over_time, dict):
+    parsed = _parse_limit_period(source_target_state, limit, now=now)
+    if parsed is None:
         return ()
-    used_percent = _int_value(usage_over_time.get("used_percent"))
-    period_started_at = _string_value(usage_over_time.get("period_started_at"))
-    period_ends_at = _string_value(usage_over_time.get("period_ends_at"))
-    resets_at = _string_value(usage_over_time.get("resets_at"))
-    period_end_key = period_ends_at or resets_at
-    if period_started_at is None or period_end_key is None:
-        return ()
-    period_end = _parse_datetime(period_end_key)
-    if period_end is None or period_end <= now:
-        return ()
-    provider = _string_value(source_target_state.get("provider"))
-    account = _string_value(source_target_state.get("account"))
-    home = _string_value(source_target_state.get("home"))
-    if provider is None or account is None or home is None:
-        return ()
-    normal_period_key = "|".join(
-        (provider, account, home, limit_id, period_started_at, period_end_key)
-    )
-    previous_observation = observations.get(limit_id)
-    reasons = _auto_prime_trigger_reasons(
+    reasons = _parsed_trigger_reasons(
+        parsed,
         limit,
-        usage_over_time,
-        used_percent=used_percent,
         trigger_names=trigger_names,
-        previous_observation=previous_observation
-        if isinstance(previous_observation, dict)
-        else None,
-        period_key=normal_period_key,
-        period_end=period_end,
+        observations=observations,
         now=now,
     )
     return tuple(

@@ -115,7 +115,7 @@ def test_workflow_loop_rotates_on_alarm_and_writes_block(
     home_root = _env(monkeypatch, tmp_path)
     from agentos.agent import auth_registry as R
     from agentos.agent.monitor.clock import ACCOUNT_ROTATION_PERIODIC_ALARM, MonitorClockSnapshot
-    from agentos.agent.monitor.models import MonitorFrame, MonitorState, monitor_block_rows
+    from agentos.agent.monitor.models import MonitorFrame, MonitorState
     from agentos.agent.monitor.workflows import AccountRotationWorkflow
 
     stale_payload = _codex_payload(exp=1_000_000_000)
@@ -135,8 +135,8 @@ def test_workflow_loop_rotates_on_alarm_and_writes_block(
 
     assert R.active_ref("codex", "br", "file") == fresher  # rotated
     assert json.loads((home / "auth.json").read_text()) == stale_payload  # home untouched
-    block = next(b for b in frame.blocks if b.get("title") == "account-rotation")
-    row_text = " ".join(r.text for r in monitor_block_rows(block))
+    block = next(b for b in frame.blocks if b.title == "account-rotation")
+    row_text = " ".join(r.text for r in block.rows)
     assert "br/file" in row_text and fresher[:12] in row_text
 
 
@@ -171,7 +171,7 @@ def test_workflow_materialize_alarm_writes_home_and_refreshes_block(
     home_root = _env(monkeypatch, tmp_path)
     from agentos.agent import auth_registry as R
     from agentos.agent.monitor.clock import MONITOR_MATERIALIZE_ALARM, MonitorClockSnapshot
-    from agentos.agent.monitor.models import MonitorFrame, MonitorState, monitor_block_rows
+    from agentos.agent.monitor.models import MonitorFrame, MonitorState
     from agentos.agent.monitor.workflows import AccountRotationWorkflow
 
     stale_payload = _codex_payload(exp=1_000_000_000)
@@ -194,8 +194,8 @@ def test_workflow_materialize_alarm_writes_home_and_refreshes_block(
 
     assert R.active_ref("codex", "br", "file") == fresher
     assert json.loads((home / "auth.json").read_text()) == fresher_payload
-    block = next(b for b in frame.blocks if b.get("title") == "account-rotation")
-    row_text = " ".join(r.text for r in monitor_block_rows(block))
+    block = next(b for b in frame.blocks if b.title == "account-rotation")
+    row_text = " ".join(r.text for r in block.rows)
     assert "br/file" in row_text and fresher[:12] in row_text
 
 

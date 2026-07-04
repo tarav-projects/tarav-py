@@ -14,7 +14,7 @@
      `monitor/workflows/auto_prime.py`.
   3. Fold the `MonitorTextRow` / `MonitorMarqueeRow` render/summary
      duplication where theme 1 makes it natural.
-- **Status:** PLANNED.
+- **Status:** COMPLETE.
 - **Source context:** follow-up to `680-monitor-frame-row-model-unification-impl-req.md`,
   which deliberately deferred the block-container question ("retained block
   `title` as metadata"). The dict shape is now the last untyped surface in the
@@ -138,3 +138,17 @@ slices 2 and 3 are local and independent.
 
 - 2026-07-04: Impl.Req created autonomously from the codebase-cleaner scan;
   boundary confirmation skipped per `--AUTO`.
+- 2026-07-04: Executed slices 1-3 (executer, autonomous). Checkpoint commit:
+  `845534d`. Open-space decisions:
+  - `monitor_row_payload` deleted outright (not simplified): with typed
+    `MonitorBlock.rows` and typed `top_rows`, payload building is plain
+    `row.summary()` calls — no union re-validation anywhere.
+  - `_LimitPeriod` carries `uninitialized_period_key` so
+    `_eligible_limit_period` no longer rebuilds the provider/account/home
+    join inline.
+  - `MonitorBlock` added to `monitor/__init__` exports.
+- Observation (out of scope): `agentos-cli` test suite has 27 pre-existing
+  failures (argparse-level, `agent accounts` subcommands) — reproduced with
+  this change stashed at the checkpoint; unrelated to the monitor cleanup.
+- Verification: `uv run pytest tests/ -q` → 252 passed; `uv run ruff check
+  src tests` → clean; `grep -rn '"lines"' src/agentos/agent/monitor` → empty.

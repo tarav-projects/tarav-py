@@ -1192,6 +1192,8 @@ def test_monitor_result_payload_exposes_top_rows_and_heading_rows() -> None:
     assert top_rows[0]["text"] == "Agent accounts monitor"
     assert top_rows[1]["kind"] == "marquee"
     assert block["heading_rows"][0]["text"] == "limits-tracking"
+    assert block["title"] == "limits-tracking"
+    assert "lines" not in block
 
 
 def test_monitor_frame_inherits_marquee_animation_state() -> None:
@@ -1272,10 +1274,10 @@ def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() 
 
     loop._apply_clock_feedback_to_visible_frame()
 
-    assert loop.visible_frame.blocks[0]["title"] == (
+    assert loop.visible_frame.blocks[0].title == (
         "limits-tracking | next in 168 ticks | reset 2 ticks ago"
     )
-    assert loop.visible_frame.blocks[1]["title"] == (
+    assert loop.visible_frame.blocks[1].title == (
         "auto-prime-zero-limits | next in 8 ticks | reset 0 ticks ago"
     )
 
