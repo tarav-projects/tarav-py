@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.commands import _cmd_agent_accounts_rotate
+from agentos.agent.commands.accounts import _cmd_agent_accounts_rotate
 from agentos.testing import AgentosTestEnvironment
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"

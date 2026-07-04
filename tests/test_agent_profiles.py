@@ -6,11 +6,9 @@ from pathlib import Path
 import pytest
 
 from agentos._core.errors import CliError
-from agentos.agent.commands import (
-    _cmd_agent_accounts_materialize,
-    _cmd_agent_run,
-    register_agent_commands,
-)
+from agentos.agent.commands import register_agent_commands
+from agentos.agent.commands.accounts import _cmd_agent_accounts_materialize
+from agentos.agent.commands.run import _cmd_agent_run
 from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.config import load_agent_configs, profile_path, write_agent_profile
 from agentos.agent.primitives import AgentConfig
@@ -29,13 +27,11 @@ from agentos.copilot.agent import CopilotAgent
 from agentos.pi.agent import PiAgent
 from agentos.testing import AgentosTestEnvironment
 
+from agentos.testing import codex_auth_json, seed_claude_account, seed_codex_account
 from _helpers import (
-    codex_auth_json,
     read_json_file,
     read_jsonl_file,
     write_text_file,
-    seed_claude_account,
-    seed_codex_account,
 )
 
 

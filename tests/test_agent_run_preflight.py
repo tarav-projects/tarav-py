@@ -5,7 +5,7 @@ import argparse
 import pytest
 
 from agentos._core.errors import CliError
-from agentos.agent import commands
+from agentos.agent.commands import run as commands
 from agentos.agent.profile_check import CheckpointResult, ProfileCheck
 from agentos.agent.run_runtime import AgentRunResult
 

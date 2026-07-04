@@ -6,7 +6,7 @@ import pytest
 
 import agentos.copilot.account_status as copilot_account_status
 from agentos.agent.account_status import AgentAccountContext, fresh_usage_record_metadata
-from _helpers import seed_copilot_account
+from agentos.testing import seed_copilot_account
 from agentos.copilot.agent import CopilotAgent
 from agentos.testing import AgentosTestEnvironment
 

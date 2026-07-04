@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from agentos.agent import auth_registry
-from agentos.agent import commands
+from agentos.agent.commands import run as commands
 from agentos.agent import profile_check as pc
 from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.primitives import ProfileCheckCapable, RunnableMixin

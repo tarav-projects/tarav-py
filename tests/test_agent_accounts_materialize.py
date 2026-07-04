@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from agentos.agent.auth_method import AuthData
-from agentos.agent.commands import _cmd_agent_accounts_materialize
+from agentos.agent.commands.accounts import _cmd_agent_accounts_materialize
 from agentos.testing import AgentosTestEnvironment
 
 

@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
 from agentos.agent.monitor.auto_prime_registry import (
     AUTO_PRIME_EVENT_ATTEMPT_STARTED,
     AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
@@ -16,12 +15,6 @@ from agentos.agent.monitor.auto_prime_registry import (
     AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE,
     auto_prime_event_registry_path,
 )
-from agentos.agent.monitor.config import (
-    _auto_prime_triggers,
-    _target_limit_ids,
-    load_monitor_workflow_configs,
-)
-from agentos.agent.monitor.loop import MonitorLoop, _workflow_alarm_names
 from agentos.agent.monitor.models import (
     AUTO_PRIME_PING_SUCCEEDED_STATUS,
     AUTO_PRIME_VERIFICATION_EFFECTIVE,
@@ -29,29 +22,13 @@ from agentos.agent.monitor.models import (
     AUTO_PRIME_VERIFICATION_PENDING,
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
-    MonitorAccountRow,
-    MonitorColumnVariant,
-    MonitorFrame,
-    MonitorMarqueeRow,
-    MonitorRenderContext,
     MonitorState,
     MonitorTarget,
-    MonitorTextRow,
-    MonitorUsageTimeRow,
     MonitorWorkflowConfig,
 )
-from agentos.agent.monitor.clock import (
-    LIMITS_TRACKING_PERIODIC_ALARM,
-    MONITOR_MATERIALIZE_ALARM,
-    MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
-)
-from agentos.agent.monitor.render import format_monitor_frame, monitor_result_payload
-import agentos.agent.monitor.workflows as monitor_workflows
 import agentos.agent.monitor.workflows.auto_prime as auto_prime
-import agentos.agent.monitor.workflows.limits_tracking as limits_tracking
 from agentos.agent.monitor.workflows import (
     AutoPrimeZeroLimitsWorkflow,
-    LimitsTrackingWorkflow,
 )
 from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.ping import AgentPingResult
@@ -60,14 +37,15 @@ from agentos.agent.run_runtime import AgentRunResult
 import agentos.claude.keychain as claude_keychain
 from agentos.testing import AgentosTestEnvironment
 
-from _helpers import codex_auth_json, write_claude_home, write_text_file, seed_claude_account, seed_codex_account
+from agentos.testing import codex_auth_json, seed_claude_account, seed_codex_account, write_claude_home
+from _helpers import write_text_file
+from _monitor_helpers import _limit, _target_state
 
 
 def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
     environment = AgentosTestEnvironment.create(root)
     environment.apply_environment(monkeypatch.setenv)
     return environment.agentos_home
-
 
 def _workflow(*, triggers: tuple[str, ...]) -> AutoPrimeZeroLimitsWorkflow:
     return AutoPrimeZeroLimitsWorkflow(
@@ -88,17 +66,6 @@ def _workflow(*, triggers: tuple[str, ...]) -> AutoPrimeZeroLimitsWorkflow:
         )
     )
 
-
-def _target_state() -> dict[str, object]:
-    return {
-        "provider": "codex",
-        "account": "jp",
-        "home": "/tmp/codex-jp",
-        "primed_periods": {},
-        "observations": {},
-    }
-
-
 def _source_state(
     *, limit: dict[str, object], recorded_at: datetime.datetime | None = None
 ) -> dict[str, object]:
@@ -117,211 +84,6 @@ def _source_state(
         "account_status": account_status,
     }
 
-
-def test_monitor_profile_target_accepts_explicit_scoped_home(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
-    environment.apply_environment(monkeypatch.setenv)
-    home = tmp_path / "codex-jp"
-    auth_file = tmp_path / "auth.json"
-    write_text_file(auth_file, codex_auth_json(account_id="acc_jp"))
-    seed_codex_account("jp")
-    environment.write_profile(
-        "codex-jp",
-        provider="codex",
-        accounts=["jp"],
-        homes=[str(home)],
-    )
-    environment.write_global_config(
-        agent={
-            "accounts": {
-                "monitor": [
-                    {
-                        "workflow": AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
-                        "targets": [
-                            {
-                                "profile": "codex-jp",
-                                "provider": "codex",
-                                "account": "jp",
-                                "home": str(home),
-                            }
-                        ],
-                    }
-                ]
-            }
-        }
-    )
-
-    configs = load_monitor_workflow_configs(start_path=tmp_path)
-
-    assert configs[0].targets[0].profile == "codex-jp"
-    assert configs[0].targets[0].home == home.resolve()
-
-
-def test_monitor_profile_target_rejects_unscoped_home(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
-    environment.apply_environment(monkeypatch.setenv)
-    allowed_home = tmp_path / "codex-jp"
-    blocked_home = tmp_path / "codex-blocked"
-    auth_file = tmp_path / "auth.json"
-    write_text_file(auth_file, codex_auth_json(account_id="acc_jp"))
-    seed_codex_account("jp")
-    environment.write_profile(
-        "codex-jp",
-        provider="codex",
-        accounts=["jp"],
-        homes=[str(allowed_home)],
-    )
-    environment.write_global_config(
-        agent={
-            "accounts": {
-                "monitor": [
-                    {
-                        "workflow": AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
-                        "targets": [
-                            {
-                                "profile": "codex-jp",
-                                "provider": "codex",
-                                "account": "jp",
-                                "home": str(blocked_home),
-                            }
-                        ],
-                    }
-                ]
-            }
-        }
-    )
-
-    with pytest.raises(CliError, match="home must be allowed"):
-        load_monitor_workflow_configs(start_path=tmp_path)
-
-
-def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    calls: list[dict[str, object]] = []
-
-    class FakeAccountStatus:
-        def summary(self) -> dict[str, object]:
-            return {
-                "limits": [],
-                "raw": {"claude_policy_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
-            }
-
-    class FakeAgent:
-        def account_status(self) -> FakeAccountStatus:
-            return FakeAccountStatus()
-
-    def fake_resolve_account_runtime_agent(**kwargs) -> FakeAgent:
-        calls.append(kwargs)
-        return FakeAgent()
-
-    monkeypatch.setattr(
-        limits_tracking,
-        "resolve_account_runtime_agent",
-        fake_resolve_account_runtime_agent,
-    )
-    home = tmp_path / "claude-br"
-    target = MonitorTarget(
-        provider="claude-code",
-        account="browser-br",
-        home=home,
-        profile="claude-br",
-    )
-    workflow = LimitsTrackingWorkflow(
-        MonitorWorkflowConfig(
-            name=LIMITS_TRACKING_WORKFLOW,
-            targets=(target,),
-            refresh_interval_sec=60,
-            raw_config={},
-            start_path=tmp_path,
-        )
-    )
-    target_state = workflow._target_state({}, target=target, target_key="target")
-
-    workflow._refresh_target(target_state, target=target, tick=7)
-
-    assert calls == [
-        {
-            "provider": "claude-code",
-            "account": "browser-br",
-            "home": home,
-            "profile": "claude-br",
-            "start_path": tmp_path,
-        }
-    ]
-    assert target_state["profile"] == "claude-br"
-    assert target_state["start_path"] == str(tmp_path)
-    assert target_state["account_status"] == {
-        "limits": [],
-        "raw": {"claude_policy_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
-    }
-
-
-def _limit(
-    *,
-    used_percent: int,
-    now: datetime.datetime,
-    limit_id: str = "burst",
-    end_offset_mins: int = 300,
-    duration_mins: int = 300,
-) -> dict[str, object]:
-    period_ends_at = now + datetime.timedelta(minutes=end_offset_mins)
-    period_started_at = period_ends_at - datetime.timedelta(minutes=duration_mins)
-    return {
-        "limit_id": limit_id,
-        "usage_over_time": {
-            "used_percent": used_percent,
-            "period_started_at": period_started_at.isoformat(),
-            "period_ends_at": period_ends_at.isoformat(),
-            "period_duration_mins": duration_mins,
-            "resets_at": period_ends_at.isoformat(),
-        },
-    }
-
-
-def _account_status(
-    *,
-    usage_record_status: str = "fresh",
-    age_sec: int | None = None,
-    limits: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    usage_record: dict[str, object] = {
-        "status": usage_record_status,
-        "recorded_at": now.isoformat(),
-    }
-    if age_sec is not None:
-        usage_record["age_sec"] = age_sec
-    return {
-        "limits": limits if limits is not None else [_limit(used_percent=20, now=now)],
-        "raw": {
-            "usage_record": usage_record,
-        },
-    }
-
-
-def _freeze_monitor_now(
-    monkeypatch: pytest.MonkeyPatch, now: datetime.datetime
-) -> None:
-    original_datetime = datetime.datetime
-
-    class FixedDateTime(original_datetime):
-        @classmethod
-        def now(cls, tz=None):  # type: ignore[no-untyped-def]
-            if tz is None:
-                return now.replace(tzinfo=None)
-            return now.astimezone(tz)
-
-    monkeypatch.setattr(auto_prime.datetime, "datetime", FixedDateTime)
-
-
 def _eligible(
     workflow: AutoPrimeZeroLimitsWorkflow,
     target_state: dict[str, object],
@@ -336,236 +98,11 @@ def _eligible(
         monotonic_now=1.0,
     )
 
-
 def _events() -> list[dict[str, object]]:
     path = auto_prime_event_registry_path()
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text().splitlines()]
-
-
-def test_monitor_account_row_renders_status_as_full_lane() -> None:
-    row = MonitorAccountRow(label="account:", status="fresh")
-    context = MonitorRenderContext(
-        label_width=12,
-        value_width=10,
-        suffix_width=8,
-        row_indent="",
-    )
-
-    rendered = row.render_frame(context)
-
-    assert rendered[:12] == "account:    "
-    assert rendered[12:15] == " | "
-    assert rendered[15:].startswith("fresh")
-    assert rendered.count("|") == 1
-    assert row.summary()["status"] == "fresh"
-
-
-def test_usage_time_row_variant_follows_render_context() -> None:
-    row = MonitorUsageTimeRow(
-        label="    usage/time [used]",
-        value="63% / 40% = 1.6 [%]",
-        suffix="Weekly",
-        used_percent=63,
-        elapsed_percent=40,
-        ratio=1.575,
-        variants=(
-            MonitorColumnVariant(
-                label="    usage/time [used]",
-                value="63% / 40% = 1.6 [%]",
-            ),
-            MonitorColumnVariant(
-                label="    time/usage [left]",
-                value="20.2 / 2.4 = 8.6 [Burst]",
-            ),
-        ),
-    )
-    used_context = MonitorRenderContext(row_indent="")
-    left_context = MonitorRenderContext(row_indent="", usage_variant="left")
-
-    assert "usage/time [used]" in row.render_frame(used_context)
-    assert "63% / 40% = 1.6 [%]" in row.render_frame(used_context)
-    for _ in range(5):
-        row.step_animation()
-    assert "63% / 40% = 1.6 [%]" in row.render_frame(used_context)
-    assert "usage/time [used]" in row.render_frame(used_context)
-
-    assert "time/usage [left]" in row.render_frame(left_context)
-    assert "20.2 / 2.4 = 8.6 [Burst]" in row.render_frame(left_context)
-
-
-def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
-    target = MonitorTarget(
-        provider="codex",
-        account="jp",
-        home=Path("/tmp/codex-jp"),
-    )
-    workflow = LimitsTrackingWorkflow(
-        MonitorWorkflowConfig(
-            name=LIMITS_TRACKING_WORKFLOW,
-            targets=(target,),
-            refresh_interval_sec=60,
-            raw_config={},
-        )
-    )
-    state = MonitorState(
-        data={
-            LIMITS_TRACKING_WORKFLOW: {
-                "targets": {
-                    "codex/jp@/tmp/codex-jp": {
-                        "status": "ok",
-                        "account_status": _account_status(),
-                    }
-                },
-            },
-            AUTO_PRIME_ZERO_LIMITS_WORKFLOW: {
-                "targets": {
-                    "codex/jp@/tmp/codex-jp": {
-                        "last_decision": {
-                            "limit_id": "burst",
-                            "classification": "non-primed",
-                            "action": "pinged",
-                        }
-                    }
-                }
-            },
-        }
-    )
-    frame = MonitorFrame()
-    workflow_state = state.data[LIMITS_TRACKING_WORKFLOW]
-    assert isinstance(workflow_state, dict)
-
-    workflow._write_frame_block(frame, state=state, workflow_state=workflow_state)
-    rendered = format_monitor_frame(frame)
-    payload = monitor_result_payload(frame, state)
-    account_row = payload["frame"]["blocks"][0]["rows"][0]  # type: ignore[index]
-
-    assert "⬢ codex/jp:" in rendered
-    assert "fresh · burst non-primed/pinged" in rendered
-    assert "⬢ codex/jp:            | fresh · burst non-primed/pinged" in rendered
-    assert "usage/time" in rendered
-    assert isinstance(account_row, dict)
-    assert account_row["status"] == "fresh · burst non-primed/pinged"
-
-
-def test_limits_tracking_weekly_usage_time_animates_burst_units(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    _freeze_monitor_now(monkeypatch, now)
-    target = MonitorTarget(
-        provider="codex",
-        account="jp",
-        home=Path("/tmp/codex-jp"),
-    )
-    workflow = LimitsTrackingWorkflow(
-        MonitorWorkflowConfig(
-            name=LIMITS_TRACKING_WORKFLOW,
-            targets=(target,),
-            refresh_interval_sec=60,
-            raw_config={},
-        )
-    )
-    weekly = _limit(
-        used_percent=63,
-        now=now,
-        limit_id="weekly",
-        end_offset_mins=6048,
-        duration_mins=10080,
-    )
-    state = MonitorState(
-        data={
-            LIMITS_TRACKING_WORKFLOW: {
-                "targets": {
-                    "codex/jp@/tmp/codex-jp": {
-                        "status": "ok",
-                        "account_status": _account_status(limits=[weekly]),
-                    }
-                },
-            },
-        }
-    )
-    frame = MonitorFrame()
-    workflow_state = state.data[LIMITS_TRACKING_WORKFLOW]
-    assert isinstance(workflow_state, dict)
-
-    workflow._write_frame_block(frame, state=state, workflow_state=workflow_state)
-    payload = monitor_result_payload(frame, state)
-    usage_row = payload["frame"]["blocks"][0]["rows"][1]  # type: ignore[index]
-
-    assert "63% / 40% = 1.6 [%]" in format_monitor_frame(frame)
-    assert isinstance(usage_row, dict)
-    assert usage_row["variants"] == [
-        {
-            "label": "    usage/time [used]",
-            "value": "63% / 40% = 1.6 [%]",
-        },
-        {
-            "label": "    time/usage [left]",
-            "value": "20.2 / 2.4 = 8.6 [Burst]",
-        },
-    ]
-    assert usage_row["burst_unit"]["weekly_burst_percent"] == 15.7  # type: ignore[index]
-    assert usage_row["burst_unit"]["usage_burst_units_left"] == pytest.approx(2.4, abs=0.05)  # type: ignore[index]
-    assert usage_row["burst_unit"]["time_burst_units_left"] == pytest.approx(20.2, abs=0.05)  # type: ignore[index]
-    assert usage_row["burst_unit"]["left_ratio"] == pytest.approx(8.6, abs=0.05)  # type: ignore[index]
-    assert usage_row["used_percent"] == 63
-    assert usage_row["elapsed_percent"] == 40
-
-    for _ in range(5):
-        frame.step_animations()
-
-    rendered = format_monitor_frame(frame)
-    assert "usage/time [used]" in rendered
-    assert "63% / 40% = 1.6 [%]" in rendered
-
-    state.data["monitor_display"] = {"usage_variant": "left"}
-
-    rendered = format_monitor_frame(frame, state)
-    assert "time/usage [left]" in rendered
-    assert "20.2 / 2.4 = 8.6 [Burst]" in rendered
-
-
-def test_limits_tracking_burst_limit_does_not_get_weekly_burst_unit_variant(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    _freeze_monitor_now(monkeypatch, now)
-    burst = _limit(used_percent=63, now=now, limit_id="burst")
-
-    rows = limits_tracking._account_limit_rows(
-        _account_status(limits=[burst]), provider="codex"
-    )
-
-    usage_row = rows[0]
-    assert isinstance(usage_row, MonitorUsageTimeRow)
-    assert usage_row.variants == ()
-    assert usage_row.burst_unit is None
-
-
-def test_limits_tracking_unknown_provider_does_not_get_burst_unit_variant(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
-    _freeze_monitor_now(monkeypatch, now)
-    weekly = _limit(
-        used_percent=63,
-        now=now,
-        limit_id="weekly",
-        end_offset_mins=6048,
-        duration_mins=10080,
-    )
-
-    rows = limits_tracking._account_limit_rows(
-        _account_status(limits=[weekly]), provider="copilot-cli"
-    )
-
-    usage_row = rows[0]
-    assert isinstance(usage_row, MonitorUsageTimeRow)
-    assert usage_row.variants == ()
-    assert usage_row.burst_unit is None
-
 
 def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
     monkeypatch.setattr(auto_prime.time, "monotonic", lambda: 100.0)
@@ -646,7 +183,6 @@ def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
         == "primed"
     )
 
-
 def test_auto_prime_period_keys_distinguish_zero_and_near_zero_usage(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -694,7 +230,6 @@ def test_auto_prime_period_keys_distinguish_zero_and_near_zero_usage(
     ]
     assert "stdout" not in json.dumps(_events())
 
-
 def test_auto_prime_moving_period_triggers_use_uninitialized_key(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -724,7 +259,6 @@ def test_auto_prime_moving_period_triggers_use_uninitialized_key(
         assert periods[0]["trigger_reasons"] == (trigger,)
         assert periods[0]["period_key"].endswith("|burst|uninitialized")
 
-
 def test_auto_prime_uses_recorded_at_for_full_window_detection(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -747,7 +281,6 @@ def test_auto_prime_uses_recorded_at_for_full_window_detection(
     assert len(periods) == 1
     assert periods[0]["observed_at"] == recorded_at.isoformat()
     assert periods[0]["scan_at"] == scan_at.isoformat()
-
 
 def test_auto_prime_retries_uninitialized_after_cooldown(
     monkeypatch, tmp_path: Path
@@ -782,7 +315,6 @@ def test_auto_prime_retries_uninitialized_after_cooldown(
     assert len(retry) == 1
     assert retry[0]["period_key"] == period_key
 
-
 def test_auto_prime_verification_clears_uninitialized_after_stable_observation(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -810,7 +342,6 @@ def test_auto_prime_verification_clears_uninitialized_after_stable_observation(
 
     assert period_key not in target_state["primed_periods"]
     assert _events()[-1]["event_type"] == AUTO_PRIME_EVENT_VERIFICATION_EFFECTIVE
-
 
 def test_auto_prime_verification_marks_persistent_uninitialized_ineffective(
     monkeypatch, tmp_path: Path
@@ -840,7 +371,6 @@ def test_auto_prime_verification_marks_persistent_uninitialized_ineffective(
     primed_period = target_state["primed_periods"][period_key]  # type: ignore[index]
     assert primed_period["verification_status"] == AUTO_PRIME_VERIFICATION_INEFFECTIVE  # type: ignore[index]
     assert _events()[-1]["event_type"] == AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE
-
 
 def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
     monkeypatch, tmp_path: Path
@@ -888,7 +418,6 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
         AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
     ]
 
-
 def _single_target_state(now: datetime.datetime) -> MonitorState:
     return MonitorState(
         data={
@@ -901,7 +430,6 @@ def _single_target_state(now: datetime.datetime) -> MonitorState:
             }
         }
     )
-
 
 def test_auto_prime_success_records_ping_telemetry(monkeypatch, tmp_path: Path) -> None:
     _set_fake_agentos_home(monkeypatch, tmp_path)
@@ -924,23 +452,6 @@ def test_auto_prime_success_records_ping_telemetry(monkeypatch, tmp_path: Path) 
     primed = next(iter(target_state["primed_periods"].values()))  # type: ignore[index]
     assert primed["ping_model"] == "codex-x"
     assert primed["ping_elapsed_ms"] == 42
-
-
-def test_build_monitor_workflows_includes_auto_prime_when_configured() -> None:
-    config = MonitorWorkflowConfig(
-        name=AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
-        targets=(
-            MonitorTarget(provider="codex", account="jp", home=Path("/tmp/codex-jp")),
-        ),
-        refresh_interval_sec=60,
-        retry_cooldown_sec=600,
-        target_limit_ids={"codex": ("burst",)},
-        triggers={"codex": ("near_zero_full_window",)},
-        raw_config={},
-    )
-    workflows = monitor_workflows.build_monitor_workflows((config,))
-    assert any(w.name == AUTO_PRIME_ZERO_LIMITS_WORKFLOW for w in workflows)
-
 
 def test_auto_prime_ping_failure_records_last_error_from_result(
     monkeypatch, tmp_path: Path
@@ -969,7 +480,6 @@ def test_auto_prime_ping_failure_records_last_error_from_result(
     assert workflow_state["last_scan"]["failed"] == 1  # type: ignore[index]
     target_state = workflow_state["targets"]["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
     assert target_state["last_error"]["message"] == "provider command exited with 2"
-
 
 def test_auto_prime_ping_records_claude_verified_auth_source(
     monkeypatch,
@@ -1000,7 +510,6 @@ def test_auto_prime_ping_records_claude_verified_auth_source(
     assert not (
         environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
     ).exists()
-
 
 def test_auto_prime_ping_uses_profile_resolved_runtime_agent(
     monkeypatch: pytest.MonkeyPatch,
@@ -1039,7 +548,6 @@ def test_auto_prime_ping_uses_profile_resolved_runtime_agent(
         }
     ]
 
-
 def test_auto_prime_ping_records_codex_verified_auth_source(
     monkeypatch,
     tmp_path: Path,
@@ -1067,7 +575,6 @@ def test_auto_prime_ping_records_codex_verified_auth_source(
     assert not (
         environment.agentos_home / "accounts" / "codex" / "verifications.jsonl"
     ).exists()
-
 
 def test_auto_prime_decisions_only_include_configured_limits() -> None:
     now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
@@ -1099,189 +606,6 @@ def test_auto_prime_decisions_only_include_configured_limits() -> None:
         "burst"
     ]
 
-
-def test_auto_prime_partial_config_maps_merge_with_defaults() -> None:
-    raw_config: dict[str, object] = {
-        "target_limits": {"codex": ["weekly"]},
-        "triggers": {"codex": ["zero_usage"]},
-    }
-
-    assert _target_limit_ids(raw_config, field_name="target_limits") == {
-        "codex": ("weekly",),
-        "claude-code": ("burst",),
-    }
-    assert _auto_prime_triggers(raw_config, field_name="triggers") == {
-        "codex": ("zero_usage",),
-        "claude-code": ("zero_usage",),
-    }
-
-
-def test_monitor_loop_surfaces_config_fingerprint_drift() -> None:
-    loop = MonitorLoop(
-        workflows=(),
-        interval_sec=0,
-        max_ticks=1,
-        config_fingerprint="old",
-        config_fingerprint_loader=lambda: "new",
-    )
-
-    loop._check_config_fingerprint()
-
-    setup = loop.state.data["monitor_setup"]
-    assert isinstance(setup, dict)
-    assert setup["config_stale"] is True
-    assert setup["current_config_fingerprint"] == "new"
-
-
-def test_monitor_loop_usage_variant_toggle_alarm_changes_display_only() -> None:
-    loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
-    assert loop.state.data["monitor_display"] == {"usage_variant": "used"}
-    row = MonitorUsageTimeRow(
-        label="    usage/time [used]",
-        value="63% / 40% = 1.6 [%]",
-        suffix="Weekly",
-        used_percent=63,
-        elapsed_percent=40,
-        ratio=1.575,
-        variants=(
-            MonitorColumnVariant(
-                label="    usage/time [used]",
-                value="63% / 40% = 1.6 [%]",
-            ),
-            MonitorColumnVariant(
-                label="    time/usage [left]",
-                value="20.2 / 2.4 = 8.6 [Burst]",
-            ),
-        ),
-    )
-    loop.visible_frame.add_block("limits-tracking", rows=[row])
-    loop.clock.set_one_shot(MONITOR_USAGE_VARIANT_TOGGLE_ALARM, remaining_ticks=0)
-    snapshot = loop.clock.step()
-
-    loop._apply_display_alarms(snapshot)
-
-    assert loop.state.data["monitor_display"] == {"usage_variant": "left"}
-    assert "time/usage [left]" in format_monitor_frame(
-        loop.visible_frame, loop.state
-    )
-    refreshed_frame = MonitorFrame()
-    refreshed_frame.add_block("limits-tracking", rows=[row])
-    assert "time/usage [left]" in format_monitor_frame(refreshed_frame, loop.state)
-    assert MONITOR_USAGE_VARIANT_TOGGLE_ALARM not in _workflow_alarm_names(
-        snapshot.fired_alarm_names
-    )
-
-    loop.clock.set_one_shot(MONITOR_USAGE_VARIANT_TOGGLE_ALARM, remaining_ticks=0)
-    snapshot = loop.clock.step()
-
-    loop._apply_display_alarms(snapshot)
-
-    assert loop.state.data["monitor_display"] == {"usage_variant": "used"}
-    assert "usage/time [used]" in format_monitor_frame(loop.visible_frame, loop.state)
-
-
-def test_monitor_result_payload_exposes_top_rows_and_heading_rows() -> None:
-    frame = MonitorFrame()
-    frame.add_top_row(MonitorTextRow("Agent accounts monitor", indent=False))
-    frame.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
-    frame.add_block("limits-tracking", rows=[MonitorTextRow("hello")])
-    payload = monitor_result_payload(frame, MonitorState())
-
-    top_rows = payload["frame"]["top_rows"]  # type: ignore[index]
-    block = payload["frame"]["blocks"][0]  # type: ignore[index]
-    assert top_rows[0]["text"] == "Agent accounts monitor"
-    assert top_rows[1]["kind"] == "marquee"
-    assert block["heading_rows"][0]["text"] == "limits-tracking"
-    assert block["title"] == "limits-tracking"
-    assert "lines" not in block
-
-
-def test_monitor_frame_inherits_marquee_animation_state() -> None:
-    first = MonitorFrame()
-    first.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
-    first.step_animations()
-    second = MonitorFrame()
-    second.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
-
-    second.inherit_animation_state_from(first)
-
-    marquee = second.top_rows[0]
-    assert isinstance(marquee, MonitorMarqueeRow)
-    assert marquee.animation_tick == 1
-
-
-def test_monitor_loop_prepares_top_rows_with_shortcuts_and_waiting_status() -> None:
-    loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
-
-    loop._prepare_visible_frame_for_render()
-
-    texts = [row.text for row in loop.visible_frame.top_rows]
-    assert texts[:3] == [
-        "Agent accounts monitor",
-        "Tick: 0",
-        "Enter refresh | r toggle used/left | m materialize",
-    ]
-    assert texts[-1] == "waiting for workflow frame"
-
-
-def test_monitor_marquee_renders_single_line_viewport() -> None:
-    frame = MonitorFrame()
-    frame.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
-
-    rendered = format_monitor_frame(frame, width=20)
-
-    lines = rendered.splitlines()
-    assert len(lines) == 1
-    assert len(lines[0]) <= 20
-
-
-def test_monitor_loop_usage_variant_toggle_alarm_does_not_hide_workflow_alarms() -> None:
-    assert _workflow_alarm_names(
-        (MONITOR_USAGE_VARIANT_TOGGLE_ALARM, LIMITS_TRACKING_PERIODIC_ALARM)
-    ) == (LIMITS_TRACKING_PERIODIC_ALARM,)
-    assert _workflow_alarm_names(
-        (MONITOR_USAGE_VARIANT_TOGGLE_ALARM, MONITOR_MATERIALIZE_ALARM)
-    ) == (MONITOR_MATERIALIZE_ALARM,)
-
-
-def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() -> None:
-    loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
-    loop.visible_frame.add_block(
-        "limits-tracking",
-        data={
-            "workflow": "limits-tracking",
-            "periodic_alarm_name": "limits-tracking.periodic",
-        },
-    )
-    loop.visible_frame.add_block(
-        "auto-prime-zero-limits",
-        data={
-            "workflow": "auto-prime-zero-limits",
-            "periodic_alarm_name": "auto-prime-zero-limits.periodic",
-        },
-    )
-    loop.clock.set_periodic(
-        "limits-tracking.periodic",
-        period_ticks=170,
-        remaining_ticks=168,
-    )
-    loop.clock.set_periodic(
-        "auto-prime-zero-limits.periodic",
-        period_ticks=8,
-        remaining_ticks=8,
-    )
-    loop._clock_snapshot = loop.clock.snapshot()
-
-    loop._apply_clock_feedback_to_visible_frame()
-
-    assert loop.visible_frame.blocks[0].title == (
-        "limits-tracking | next in 168 ticks | reset 2 ticks ago"
-    )
-    assert loop.visible_frame.blocks[1].title == (
-        "auto-prime-zero-limits | next in 8 ticks | reset 0 ticks ago"
-    )
-
-
 class _FakeClaudePrimeAgent(RunnableMixin):
     provider = "claude-code"
     profile_id = "claude-br"
@@ -1297,7 +621,6 @@ class _FakeClaudePrimeAgent(RunnableMixin):
 
     def run_dry(self, command_config):
         raise NotImplementedError
-
 
 class _FakeCodexPrimeAgent(RunnableMixin):
     provider = "codex"

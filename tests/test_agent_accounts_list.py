@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.commands import _cmd_agent_accounts_list
+from agentos.agent.commands.accounts import _cmd_agent_accounts_list
 from agentos.testing import AgentosTestEnvironment
 
 
@@ -99,7 +99,7 @@ def test_activate_accepts_unique_prefix(
     from agentos.agent import auth_registry as R
     from agentos.agent.account_status import AccountIdentity
     from agentos.agent.auth_method import AuthData
-    from agentos.agent.commands import _cmd_agent_accounts_activate
+    from agentos.agent.commands.accounts import _cmd_agent_accounts_activate
 
     # store a real artifact so auth_data_for_ref resolves, and seed its capture
     auth = AuthData(payload={"tokens": {"account_id": "acc"}})

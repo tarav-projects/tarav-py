@@ -9,7 +9,7 @@
   4. Split `tests/test_agent_monitor_auto_prime.py` (1,318 lines) by subject.
   5. Bounded look at `skills/routing.py` and `mdblocks/core.py`: small safe
      wins only, else record findings and defer.
-- **Status:** PLANNED.
+- **Status:** COMPLETE.
 - Item 3 (typed monitor state) gets its own Impl.Req (684) — riskier, distinct
   blast radius. Item 6 (chatlas WIP) untouched by design; item 7 done in tree
   prep (`887aaab`, `20555d1`).
@@ -81,3 +81,25 @@
 ## Impl.Log
 
 - 2026-07-04: Impl.Req created (cleaner, autonomous, from user-approved list).
+- 2026-07-04: Executed slices 1-4. Checkpoint: `113867b`. Open-space decisions:
+  - Fixture promotion: chatlas's `codex_auth_json`/`register_codex_args`/`_jwt`
+    were dead there — deleted, not migrated. `write_claude_home` now writes via
+    `write_raw_json` (same bytes as before).
+  - Test split: shared `_limit`/`_target_state` landed in
+    `tests/_monitor_helpers.py`; everything else stayed with its owning file.
+    Files: `test_agent_monitor_config.py`, `..._limits_tracking.py`,
+    `..._auto_prime.py` (auto-prime only), `..._loop_render.py`.
+  - Commands split: repeated `--project` argument block (3 copies) centralized
+    as `_shared._add_project_argument`. Monitor registration lives in
+    `commands/monitor.py`, invoked from the accounts registrar. Tests now
+    import handlers from owning submodules (`commands.accounts`,
+    `commands.run`); preflight/profile-check tests patch `commands.run`.
+  - Bounded look findings (deferred, no edits):
+    - `skills/routing.py` (1,748 lines) is well-typed and cohesive; the only
+      improvement is a package split (parse/state/import/status) — structural,
+      not a bounded win. Candidate for a future pass.
+    - `mdblocks/core.py` blocks-as-dicts refactor would ripple into
+      `index/linter.py` and the CLI JSON surface — needs its own pass with a
+      typed `MdBlock` model; not attempted here.
+- Verification: agentos-py 255 passed, agentos-cli 49 passed,
+  agentos-chatlas-py 138 passed; ruff clean in all touched repos.

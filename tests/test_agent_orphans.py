@@ -88,7 +88,7 @@ def test_orphans_text_lists_identity_without_secret(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent.commands import _cmd_agent_accounts_orphans
+    from agentos.agent.commands.accounts import _cmd_agent_accounts_orphans
 
     ref = _store_orphan("uuid-a", "SUPERSECRET")
 
@@ -102,7 +102,7 @@ def test_orphans_json_dumps_full_auth_data(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent.commands import _cmd_agent_accounts_orphans
+    from agentos.agent.commands.accounts import _cmd_agent_accounts_orphans
 
     _store_orphan("uuid-a", "SUPERSECRET")
 
@@ -118,7 +118,7 @@ def test_orphans_empty_reports_cleanly(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent.commands import _cmd_agent_accounts_orphans
+    from agentos.agent.commands.accounts import _cmd_agent_accounts_orphans
 
     assert _cmd_agent_accounts_orphans(_ns(json=True)) == 0
     assert json.loads(capsys.readouterr().out)["orphans"] == []

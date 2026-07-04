@@ -14,7 +14,8 @@ from agentos.agent.account_status import (
 from agentos.claude.agent import ClaudeAgent
 from agentos.testing import AgentosTestEnvironment
 
-from _helpers import read_jsonl_file, seed_claude_account, write_claude_home
+from agentos.testing import seed_claude_account, write_claude_home
+from _helpers import read_jsonl_file
 
 
 def test_claude_statusline_env_does_not_author_policy_env() -> None:
