@@ -4,6 +4,10 @@ import datetime
 from pathlib import Path
 
 from agentos.agent.monitor.workflows import AutoPrimeZeroLimitsWorkflow
+from agentos.agent.monitor.workflows.state import (
+    AutoPrimeTargetState,
+    LimitsTargetState,
+)
 from agentos.agent.monitor_log import (
     MONITOR_LOG_CLASS,
     MONITOR_LOG_SCHEMA_VERSION,
@@ -101,7 +105,7 @@ def test_append_is_best_effort_on_unserializable_payload(monkeypatch, tmp_path):
 
 def test_auto_prime_failed_and_retry_blocked_are_logged(monkeypatch, tmp_path):
     _set_fake_agentos_home(monkeypatch, tmp_path)
-    target_state = {"provider": "codex", "account": "jp", "home": "/h"}
+    target_state = AutoPrimeTargetState(provider="codex", account="jp", home="/h")
     decision_failed = {"tick": 3, "limit_id": "burst", "classification": "non-primed"}
     decision_retry = {"tick": 4, "limit_id": "burst", "classification": "non-primed"}
     decision_ok = {"tick": 5, "limit_id": "burst", "classification": "non-primed"}
@@ -175,23 +179,25 @@ def _limits_workflow(refresh_interval_sec=60.0):
     return LimitsTrackingWorkflow(config)
 
 
+def _limits_state(account_status):
+    return LimitsTargetState(
+        provider="claude-code",
+        account="browser-br",
+        home="/h",
+        status="ok",
+        account_status=account_status,
+    )
+
+
 def _state_with_age(age_sec, status="registry_latest"):
-    return {
-        "status": "ok",
-        "error": None,
-        "account_status": {
-            "raw": {"usage_record": {"status": status, "age_sec": age_sec}}
-        },
-    }
+    return _limits_state(
+        {"raw": {"usage_record": {"status": status, "age_sec": age_sec}}}
+    )
 
 
 def _state_fresh():
     # A successful live fetch: fresh-status record carries no age_sec.
-    return {
-        "status": "ok",
-        "error": None,
-        "account_status": {"raw": {"usage_record": {"status": "fresh"}}},
-    }
+    return _limits_state({"raw": {"usage_record": {"status": "fresh"}}})
 
 
 def test_live_fresh_record_classifies_fresh_not_none(monkeypatch, tmp_path):
@@ -248,10 +254,8 @@ def test_no_transition_logged_when_unchanged(monkeypatch, tmp_path):
 
 
 def _fallback_state(age_sec=99999, err_type="timeout", source="claude-statusline"):
-    return {
-        "status": "ok",
-        "error": None,
-        "account_status": {
+    return _limits_state(
+        {
             "usage_status": "ok",
             "raw": {
                 "usage_record": {
@@ -261,8 +265,8 @@ def _fallback_state(age_sec=99999, err_type="timeout", source="claude-statusline
                     "live_error": {"type": err_type, "message": "boom"},
                 }
             },
-        },
-    }
+        }
+    )
 
 
 def test_persistent_stale_fallback_logs_once(monkeypatch, tmp_path):

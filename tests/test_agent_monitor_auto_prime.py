@@ -39,6 +39,11 @@ from agentos.testing import AgentosTestEnvironment
 
 from agentos.testing import codex_auth_json, seed_claude_account, seed_codex_account, write_claude_home
 from _helpers import write_text_file
+from agentos.agent.monitor.workflows.state import (
+    AutoPrimeTargetState,
+    LimitsTargetState,
+    LimitsWorkflowState,
+)
 from _monitor_helpers import _limit, _target_state
 
 
@@ -67,8 +72,12 @@ def _workflow(*, triggers: tuple[str, ...]) -> AutoPrimeZeroLimitsWorkflow:
     )
 
 def _source_state(
-    *, limit: dict[str, object], recorded_at: datetime.datetime | None = None
-) -> dict[str, object]:
+    *,
+    limit: dict[str, object],
+    recorded_at: datetime.datetime | None = None,
+    account: str = "jp",
+    home: str = "/tmp/codex-jp",
+) -> LimitsTargetState:
     account_status: dict[str, object] = {"limits": [limit]}
     if recorded_at is not None:
         account_status["raw"] = {
@@ -76,13 +85,13 @@ def _source_state(
                 "recorded_at": recorded_at.isoformat(),
             }
         }
-    return {
-        "status": "ok",
-        "provider": "codex",
-        "account": "jp",
-        "home": "/tmp/codex-jp",
-        "account_status": account_status,
-    }
+    return LimitsTargetState(
+        provider="codex",
+        account=account,
+        home=home,
+        status="ok",
+        account_status=account_status,
+    )
 
 def _eligible(
     workflow: AutoPrimeZeroLimitsWorkflow,
@@ -109,76 +118,76 @@ def test_auto_prime_status_part_uses_priority_order(monkeypatch) -> None:
 
     assert (
         auto_prime._auto_prime_status_part(
-            {
+            AutoPrimeTargetState(**{
                 "last_decision": {
                     "limit_id": "burst",
                     "classification": "non-primed",
                     "action": "pinged",
                 },
                 "last_error": {"message": "failed"},
-            }
+            })
         )
         == "burst non-primed/pinged"
     )
     assert (
-        auto_prime._auto_prime_status_part({"last_error": {"message": "failed"}})
+        auto_prime._auto_prime_status_part(AutoPrimeTargetState(last_error={"message": "failed"}))
         == "prime failed"
     )
     assert (
         auto_prime._auto_prime_status_part(
-            {
+            AutoPrimeTargetState(**{
                 "primed_periods": {
                     "burst": {
                         "verification_status": AUTO_PRIME_VERIFICATION_INEFFECTIVE,
                         "next_retry_after_monotonic": 580.0,
                     }
                 }
-            }
+            })
         )
         == "prime ineffective"
     )
     assert (
         auto_prime._auto_prime_status_part(
-            {
+            AutoPrimeTargetState(**{
                 "primed_periods": {
                     "burst": {
                         "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
                         "next_retry_after_monotonic": 580.0,
                     }
                 }
-            }
+            })
         )
         == "prime retry in 8m"
     )
     assert (
         auto_prime._auto_prime_status_part(
-            {
+            AutoPrimeTargetState(**{
                 "retry_after_monotonic": 580.0,
-            }
+            })
         )
         == "prime retry in 8m"
     )
     assert (
         auto_prime._auto_prime_status_part(
-            {
+            AutoPrimeTargetState(**{
                 "primed_periods": {
                     "burst": {
                         "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
                     }
                 }
-            }
+            })
         )
         == "prime pending"
     )
     assert (
         auto_prime._auto_prime_status_part(
-            {
+            AutoPrimeTargetState(**{
                 "primed_periods": {
                     "burst": {
                         "verification_status": AUTO_PRIME_VERIFICATION_EFFECTIVE,
                     }
                 }
-            }
+            })
         )
         == "primed"
     )
@@ -207,7 +216,7 @@ def test_auto_prime_period_keys_distinguish_zero_and_near_zero_usage(
     assert len(first) == 1
     assert first[0]["trigger_reasons"] == ("near_zero_full_window",)
     assert first[0]["period_key"].endswith("|burst|uninitialized")
-    primed_periods = target_state["primed_periods"]
+    primed_periods = target_state.primed_periods
     assert isinstance(primed_periods, dict)
     primed_periods[first[0]["period_key"]] = {
         "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
@@ -296,7 +305,7 @@ def test_auto_prime_retries_uninitialized_after_cooldown(
         now=now,
     )
     period_key = str(first[0]["period_key"])
-    primed_periods = target_state["primed_periods"]
+    primed_periods = target_state.primed_periods
     assert isinstance(primed_periods, dict)
     primed_periods[period_key] = {
         "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
@@ -323,7 +332,7 @@ def test_auto_prime_verification_clears_uninitialized_after_stable_observation(
     workflow = _workflow(triggers=("near_zero_full_window",))
     target_state = _target_state()
     period_key = "codex|jp|/tmp/codex-jp|burst|uninitialized"
-    target_state["primed_periods"] = {
+    target_state.primed_periods = {
         period_key: {
             "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
             "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
@@ -340,7 +349,7 @@ def test_auto_prime_verification_clears_uninitialized_after_stable_observation(
         tick=7,
     )
 
-    assert period_key not in target_state["primed_periods"]
+    assert period_key not in target_state.primed_periods
     assert _events()[-1]["event_type"] == AUTO_PRIME_EVENT_VERIFICATION_EFFECTIVE
 
 def test_auto_prime_verification_marks_persistent_uninitialized_ineffective(
@@ -351,7 +360,7 @@ def test_auto_prime_verification_marks_persistent_uninitialized_ineffective(
     workflow = _workflow(triggers=("near_zero_full_window",))
     target_state = _target_state()
     period_key = "codex|jp|/tmp/codex-jp|burst|uninitialized"
-    target_state["primed_periods"] = {
+    target_state.primed_periods = {
         period_key: {
             "status": AUTO_PRIME_PING_SUCCEEDED_STATUS,
             "verification_status": AUTO_PRIME_VERIFICATION_PENDING,
@@ -368,7 +377,7 @@ def test_auto_prime_verification_marks_persistent_uninitialized_ineffective(
         tick=8,
     )
 
-    primed_period = target_state["primed_periods"][period_key]  # type: ignore[index]
+    primed_period = target_state.primed_periods[period_key]  # type: ignore[index]
     assert primed_period["verification_status"] == AUTO_PRIME_VERIFICATION_INEFFECTIVE  # type: ignore[index]
     assert _events()[-1]["event_type"] == AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE
 
@@ -389,16 +398,17 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
     workflow = _workflow(triggers=("near_zero_full_window",))
     state = MonitorState(
         data={
-            LIMITS_TRACKING_WORKFLOW: {
-                "targets": {
+            LIMITS_TRACKING_WORKFLOW: LimitsWorkflowState(
+                targets={
                     "codex/jp@/tmp/codex-jp": _source_state(
                         limit=_limit(used_percent=1, now=now)
                     ),
                     "codex/mm@/tmp/codex-mm": _source_state(
-                        limit=_limit(used_percent=1, now=now)
+                        limit=_limit(used_percent=1, now=now), account="mm",
+                        home="/tmp/codex-mm",
                     ),
                 }
-            }
+            )
         }
     )
     workflow_state = workflow._workflow_state(state)
@@ -406,11 +416,11 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
     workflow._scan_and_prime(state, workflow_state=workflow_state, tick=3)
 
     assert len(calls) == 1
-    assert workflow_state["last_scan"]["pinged"] == 1  # type: ignore[index]
-    target_state = workflow_state["targets"]["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
-    assert target_state["last_decision"]["limit_id"] == "burst"  # type: ignore[index]
-    assert target_state["last_decision"]["classification"] == "non-primed"  # type: ignore[index]
-    assert target_state["last_decision"]["action"] == "pinged"  # type: ignore[index]
+    assert workflow_state.last_scan["pinged"] == 1  # type: ignore[index]
+    target_state = workflow_state.targets["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
+    assert target_state.last_decision["limit_id"] == "burst"  # type: ignore[index]
+    assert target_state.last_decision["classification"] == "non-primed"  # type: ignore[index]
+    assert target_state.last_decision["action"] == "pinged"  # type: ignore[index]
     event_types = [event["event_type"] for event in _events()]
     assert event_types == [
         AUTO_PRIME_EVENT_ELIGIBLE,
@@ -421,13 +431,13 @@ def test_auto_prime_attempts_write_durable_events_and_do_not_run_live_provider(
 def _single_target_state(now: datetime.datetime) -> MonitorState:
     return MonitorState(
         data={
-            LIMITS_TRACKING_WORKFLOW: {
-                "targets": {
+            LIMITS_TRACKING_WORKFLOW: LimitsWorkflowState(
+                targets={
                     "codex/jp@/tmp/codex-jp": _source_state(
                         limit=_limit(used_percent=1, now=now)
                     )
                 }
-            }
+            )
         }
     )
 
@@ -447,9 +457,9 @@ def test_auto_prime_success_records_ping_telemetry(monkeypatch, tmp_path: Path) 
 
     workflow._scan_and_prime(state, workflow_state=workflow_state, tick=3)
 
-    assert workflow_state["last_scan"]["pinged"] == 1  # type: ignore[index]
-    target_state = workflow_state["targets"]["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
-    primed = next(iter(target_state["primed_periods"].values()))  # type: ignore[index]
+    assert workflow_state.last_scan["pinged"] == 1  # type: ignore[index]
+    target_state = workflow_state.targets["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
+    primed = next(iter(target_state.primed_periods.values()))  # type: ignore[index]
     assert primed["ping_model"] == "codex-x"
     assert primed["ping_elapsed_ms"] == 42
 
@@ -476,10 +486,10 @@ def test_auto_prime_ping_failure_records_last_error_from_result(
 
     workflow._scan_and_prime(state, workflow_state=workflow_state, tick=3)
 
-    assert workflow_state["last_scan"]["pinged"] == 0  # type: ignore[index]
-    assert workflow_state["last_scan"]["failed"] == 1  # type: ignore[index]
-    target_state = workflow_state["targets"]["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
-    assert target_state["last_error"]["message"] == "provider command exited with 2"
+    assert workflow_state.last_scan["pinged"] == 0  # type: ignore[index]
+    assert workflow_state.last_scan["failed"] == 1  # type: ignore[index]
+    target_state = workflow_state.targets["codex/jp@/tmp/codex-jp"]  # type: ignore[index]
+    assert target_state.last_error["message"] == "provider command exited with 2"
 
 def test_auto_prime_ping_records_claude_verified_auth_source(
     monkeypatch,
@@ -498,11 +508,11 @@ def test_auto_prime_ping_records_claude_verified_auth_source(
     )
 
     auto_prime._run_account_prime_ping(
-        {
-            "provider": "claude-code",
-            "account": "browser-br",
-            "home": str(home),
-        }
+        LimitsTargetState(
+            provider="claude-code",
+            account="browser-br",
+            home=str(home),
+        )
     )
 
     # Auto-prime no longer auto-promotes credentials into the old registry
@@ -529,13 +539,13 @@ def test_auto_prime_ping_uses_profile_resolved_runtime_agent(
     )
 
     auto_prime._run_account_prime_ping(
-        {
-            "provider": "codex",
-            "account": "br",
-            "home": str(home),
-            "profile": "codex-br",
-            "start_path": str(tmp_path),
-        }
+        LimitsTargetState(
+            provider="codex",
+            account="br",
+            home=str(home),
+            profile="codex-br",
+            start_path=str(tmp_path),
+        )
     )
 
     assert calls == [
@@ -564,11 +574,11 @@ def test_auto_prime_ping_records_codex_verified_auth_source(
     )
 
     auto_prime._run_account_prime_ping(
-        {
-            "provider": "codex",
-            "account": "br",
-            "home": str(home),
-        }
+        LimitsTargetState(
+            provider="codex",
+            account="br",
+            home=str(home),
+        )
     )
 
     # Auto-prime no longer auto-promotes credentials into the old registry (658).
@@ -583,7 +593,7 @@ def test_auto_prime_decisions_only_include_configured_limits() -> None:
     source_state = _source_state(
         limit=_limit(used_percent=40, now=now),
     )
-    account_status = source_state["account_status"]
+    account_status = source_state.account_status
     assert isinstance(account_status, dict)
     account_status["limits"] = [
         _limit(used_percent=40, now=now, limit_id="burst"),
@@ -599,10 +609,10 @@ def test_auto_prime_decisions_only_include_configured_limits() -> None:
     )
 
     assert periods == []
-    assert target_state["last_decision"]["limit_id"] == "burst"  # type: ignore[index]
-    assert target_state["last_decision"]["classification"] == "primed"  # type: ignore[index]
-    assert target_state["last_decision"]["action"] == "skipped"  # type: ignore[index]
-    assert [decision["limit_id"] for decision in target_state["last_decisions"]] == [  # type: ignore[index]
+    assert target_state.last_decision["limit_id"] == "burst"  # type: ignore[index]
+    assert target_state.last_decision["classification"] == "primed"  # type: ignore[index]
+    assert target_state.last_decision["action"] == "skipped"  # type: ignore[index]
+    assert [decision["limit_id"] for decision in target_state.last_decisions] == [  # type: ignore[index]
         "burst"
     ]
 

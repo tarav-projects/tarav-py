@@ -6,7 +6,7 @@
   `state.data` dict-of-dicts for the limits-tracking and auto-prime workflow
   state with typed dataclasses, removing the defensive `isinstance` reads.
   JSON payload boundary preserved via explicit `payload()` conversion.
-- **Status:** PLANNED.
+- **Status:** COMPLETE.
 - **Out of scope:** loop-level `state.data` entries (`monitor_display`,
   `monitor_setup`, `monitor_config_warning`, `workflow_errors`) — flat dicts
   written/read locally, no isinstance noise worth removing; the
@@ -72,3 +72,19 @@
 ## Impl.Log
 
 - 2026-07-04: Impl.Req created (cleaner, autonomous, from user-approved list).
+- 2026-07-04: Executed slices 1-4. Checkpoint: `b129cbd`. Deviations / open
+  space:
+  - The auto-prime "limits-tracking targets state is not available" skip
+    branch is unreachable under the typed model (a `LimitsWorkflowState`
+    always has `targets`) — removed with its message; the state-missing skip
+    remains.
+  - `_uninitialized_period_key` now returns `str` (identity fields are typed);
+    `_required_target_string` takes the value directly; the redundant
+    provider/account/home `None` guards inside auto-prime collapsed
+    accordingly.
+  - Payload key presence is now stable per the design note (e.g.
+    `setup_message`/`error` always present once a target state exists);
+    no test or consumer depended on the accreting-keys behavior.
+  - `_refresh_target` bumps `last_refresh_tick`/`refresh_count` once up front
+    instead of duplicating them in both branches — same observable values.
+- Verification: agentos-py 255 passed, agentos-cli 49 passed, ruff clean.

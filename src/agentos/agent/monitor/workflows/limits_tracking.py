@@ -51,6 +51,11 @@ from agentos.agent.monitor.workflows.auto_prime import (
     _auto_prime_status_part,
     _auto_prime_target_state,
 )
+from agentos.agent.monitor.workflows.state import (
+    AutoPrimeTargetState,
+    LimitsTargetState,
+    LimitsWorkflowState,
+)
 from agentos.agent.monitor_log import append_monitor_log_event
 from agentos.agent.providers import resolve_account_runtime_agent
 from agentos.agent.usage_registry import latest_usage_record
@@ -96,13 +101,11 @@ class LimitsTrackingWorkflow:
         frame: MonitorFrame,
     ) -> None:
         workflow_state = self._workflow_state(state)
-        workflow_state["setup_tick"] = frame.tick
-        workflow_state["refresh_interval_sec"] = self.config.refresh_interval_sec
-        target_states = self._target_states(workflow_state)
+        workflow_state.setup_tick = frame.tick
+        workflow_state.refresh_interval_sec = self.config.refresh_interval_sec
         for target in self.config.targets:
-            target_key = _target_key(target)
             target_state = self._target_state(
-                target_states, target=target, target_key=target_key
+                workflow_state, target=target, target_key=_target_key(target)
             )
             self._prime_target_from_usage_registry(target_state, target=target)
             self._maybe_log_error(target, target_state, tick=frame.tick)
@@ -118,10 +121,10 @@ class LimitsTrackingWorkflow:
         run_count = state.workflow_run_counts.get(self.name, 0) + 1
         state.workflow_run_counts[self.name] = run_count
         workflow_state = self._workflow_state(state)
-        workflow_state["last_tick"] = frame.tick
-        workflow_state["run_count"] = run_count
-        workflow_state["refresh_interval_sec"] = self.config.refresh_interval_sec
-        workflow_state["fired_alarms"] = list(trigger.fired_alarm_names)
+        workflow_state.last_tick = frame.tick
+        workflow_state.run_count = run_count
+        workflow_state.refresh_interval_sec = self.config.refresh_interval_sec
+        workflow_state.fired_alarms = list(trigger.fired_alarm_names)
 
         should_refresh = bool(
             {
@@ -130,11 +133,9 @@ class LimitsTrackingWorkflow:
                 LIMITS_TRACKING_PERIODIC_ALARM,
             }.intersection(trigger.fired_alarm_names)
         )
-        target_states = self._target_states(workflow_state)
         for target in self.config.targets:
-            target_key = _target_key(target)
             target_state = self._target_state(
-                target_states, target=target, target_key=target_key
+                workflow_state, target=target, target_key=_target_key(target)
             )
             if should_refresh:
                 prior = self._effective_target_state(target_state)
@@ -154,12 +155,13 @@ class LimitsTrackingWorkflow:
         return _DEFAULT_STALE_THRESHOLD_SEC
 
     def _effective_target_state(
-        self, target_state: dict[str, object]
+        self, target_state: LimitsTargetState
     ) -> dict[str, object]:
-        status = _string_value(target_state.get("status"))
-        has_error = target_state.get("error") is not None
-        staleness = self._staleness_class(target_state.get("account_status"))
-        return {"status": status, "has_error": has_error, "staleness": staleness}
+        return {
+            "status": target_state.status,
+            "has_error": target_state.error is not None,
+            "staleness": self._staleness_class(target_state.account_status),
+        }
 
     def _staleness_class(self, account_status: object) -> str | None:
         # Classify from the usage record's status, not age alone: a successful
@@ -207,17 +209,16 @@ class LimitsTrackingWorkflow:
     def _maybe_log_error(
         self,
         target: MonitorTarget,
-        target_state: dict[str, object],
+        target_state: LimitsTargetState,
         *,
         tick: int,
     ) -> None:
         # Log error/fallback conditions on change + heartbeat, not every tick.
         signature, event, payload = self._error_signal(target_state)
-        last = target_state.get("last_error_emit")
-        last = last if isinstance(last, dict) else None
+        last = target_state.last_error_emit
         if signature is None:
             if last is not None:
-                target_state["last_error_emit"] = None
+                target_state.last_error_emit = None
             return
         now = self._error_clock()
         if last is not None and last.get("signature") == signature:
@@ -232,13 +233,13 @@ class LimitsTrackingWorkflow:
             home=target.home,
             payload=payload,
         )
-        target_state["last_error_emit"] = {"signature": signature, "at": now}
+        target_state.last_error_emit = {"signature": signature, "at": now}
 
     def _error_signal(
-        self, target_state: dict[str, object]
+        self, target_state: LimitsTargetState
     ) -> tuple[tuple[str, str | None] | None, str, dict[str, object]]:
         # A hard refresh exception captured on the target.
-        error = target_state.get("error")
+        error = target_state.error
         if isinstance(error, dict):
             error_type = _string_value(error.get("type"))
             return (
@@ -250,7 +251,7 @@ class LimitsTrackingWorkflow:
                     "message": _string_value(error.get("message")),
                 },
             )
-        account_status = target_state.get("account_status")
+        account_status = target_state.account_status
         if not isinstance(account_status, dict):
             return (None, "", {})
         raw = account_status.get("raw")
@@ -281,36 +282,26 @@ class LimitsTrackingWorkflow:
 
     def _prime_target_from_usage_registry(
         self,
-        target_state: dict[str, object],
+        target_state: LimitsTargetState,
         *,
         target: MonitorTarget,
     ) -> None:
         source = _usage_record_source_for_target(target)
-        if source is None:
-            target_state.update(
-                {
-                    "status": "pending",
-                    "setup_message": "waiting for first fetch",
-                    "account_status": None,
-                    "error": None,
-                }
+        record = (
+            latest_usage_record(
+                provider=target.provider,
+                account=target.account,
+                home=target.home,
+                source=source,
             )
-            return
-        record = latest_usage_record(
-            provider=target.provider,
-            account=target.account,
-            home=target.home,
-            source=source,
+            if source is not None
+            else None
         )
         if record is None:
-            target_state.update(
-                {
-                    "status": "pending",
-                    "setup_message": "waiting for first fetch",
-                    "account_status": None,
-                    "error": None,
-                }
-            )
+            target_state.status = "pending"
+            target_state.setup_message = "waiting for first fetch"
+            target_state.account_status = None
+            target_state.error = None
             return
         try:
             account_status = _account_status_summary_from_usage_record(
@@ -319,66 +310,50 @@ class LimitsTrackingWorkflow:
                 record=record,
             )
         except (CliError, json.JSONDecodeError, TypeError, ValueError) as exc:
-            target_state.update(
-                {
-                    "status": "error",
-                    "setup_message": None,
-                    "account_status": None,
-                    "error": {
-                        "type": type(exc).__name__,
-                        "message": str(exc),
-                    },
-                }
-            )
-            return
-        target_state.update(
-            {
-                "status": "ok",
-                "setup_message": None,
-                "account_status": account_status,
-                "error": None,
+            target_state.status = "error"
+            target_state.setup_message = None
+            target_state.account_status = None
+            target_state.error = {
+                "type": type(exc).__name__,
+                "message": str(exc),
             }
-        )
+            return
+        target_state.status = "ok"
+        target_state.setup_message = None
+        target_state.account_status = account_status
+        target_state.error = None
 
-    def _workflow_state(self, state: MonitorState) -> dict[str, object]:
+    def _workflow_state(self, state: MonitorState) -> LimitsWorkflowState:
         existing = state.data.get(self.name)
-        if isinstance(existing, dict):
+        if isinstance(existing, LimitsWorkflowState):
             return existing
-        workflow_state: dict[str, object] = {
-            "targets": {},
-        }
+        workflow_state = LimitsWorkflowState()
         state.data[self.name] = workflow_state
         return workflow_state
 
-    def _target_states(self, workflow_state: dict[str, object]) -> dict[str, object]:
-        existing = workflow_state.get("targets")
-        if isinstance(existing, dict):
-            return existing
-        target_states: dict[str, object] = {}
-        workflow_state["targets"] = target_states
-        return target_states
-
     def _target_state(
         self,
-        target_states: dict[str, object],
+        workflow_state: LimitsWorkflowState,
         *,
         target: MonitorTarget,
         target_key: str,
-    ) -> dict[str, object]:
-        existing = target_states.get(target_key)
-        if isinstance(existing, dict):
+    ) -> LimitsTargetState:
+        existing = workflow_state.targets.get(target_key)
+        if existing is not None:
             return existing
         target_state = _new_target_state(target, start_path=self.config.start_path)
-        target_states[target_key] = target_state
+        workflow_state.targets[target_key] = target_state
         return target_state
 
     def _refresh_target(
         self,
-        target_state: dict[str, object],
+        target_state: LimitsTargetState,
         *,
         target: MonitorTarget,
         tick: int,
     ) -> None:
+        target_state.last_refresh_tick = tick
+        target_state.refresh_count += 1
         try:
             agent = resolve_account_runtime_agent(
                 provider=target.provider,
@@ -389,51 +364,39 @@ class LimitsTrackingWorkflow:
             )
             account_status = agent.account_status()
         except Exception as exc:
-            target_state.update(
-                {
-                    "status": "error",
-                    "last_refresh_tick": tick,
-                    "refresh_count": _target_refresh_count(target_state) + 1,
-                    "account_status": None,
-                    "error": {
-                        "type": type(exc).__name__,
-                        "message": str(exc),
-                    },
-                }
-            )
-            return
-        target_state.update(
-            {
-                "status": "ok",
-                "last_refresh_tick": tick,
-                "refresh_count": _target_refresh_count(target_state) + 1,
-                "account_status": account_status.summary(),
-                "error": None,
+            target_state.status = "error"
+            target_state.account_status = None
+            target_state.error = {
+                "type": type(exc).__name__,
+                "message": str(exc),
             }
-        )
+            return
+        target_state.status = "ok"
+        target_state.account_status = account_status.summary()
+        target_state.error = None
 
     def _write_frame_block(
         self,
         frame: MonitorFrame,
         *,
         state: MonitorState,
-        workflow_state: dict[str, object],
+        workflow_state: LimitsWorkflowState,
     ) -> None:
         rows: list[MonitorRow] = []
         target_summaries: list[dict[str, object]] = []
-        target_states = self._target_states(workflow_state)
         for index, target in enumerate(self.config.targets):
             if index > 0:
                 rows.append(MonitorTextRow(""))
             target_key = _target_key(target)
-            raw_target_state = target_states.get(target_key)
-            target_state = (
-                raw_target_state if isinstance(raw_target_state, dict) else {}
-            )
+            target_state = workflow_state.targets.get(target_key)
+            if target_state is None:
+                target_state = _new_target_state(
+                    target, start_path=self.config.start_path
+                )
             auto_prime_target_state = _auto_prime_target_state(
                 state, target_key=target_key
             )
-            target_summaries.append(_target_state_summary(target_state))
+            target_summaries.append(target_state.payload())
             rows.extend(
                 _target_rows(
                     target=target,
@@ -445,7 +408,7 @@ class LimitsTrackingWorkflow:
             "workflow": self.name,
             "periodic_alarm_name": LIMITS_TRACKING_PERIODIC_ALARM,
             "refresh_interval_sec": self.config.refresh_interval_sec,
-            "run_count": workflow_state.get("run_count"),
+            "run_count": workflow_state.run_count,
             "targets": target_summaries,
         }
         frame.add_block(self.name, rows=rows, data=data)
@@ -453,26 +416,14 @@ class LimitsTrackingWorkflow:
 
 def _new_target_state(
     target: MonitorTarget, *, start_path: Path | None = None
-) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "provider": target.provider,
-        "account": target.account,
-        "home": str(target.home),
-        "status": "pending",
-        "refresh_count": 0,
-    }
-    if target.profile is not None:
-        payload["profile"] = target.profile
-    if start_path is not None:
-        payload["start_path"] = str(start_path)
-    return payload
-
-
-def _target_refresh_count(target_state: dict[str, object]) -> int:
-    count = target_state.get("refresh_count", 0)
-    if isinstance(count, int):
-        return count
-    return 0
+) -> LimitsTargetState:
+    return LimitsTargetState(
+        provider=target.provider,
+        account=target.account,
+        home=str(target.home),
+        profile=target.profile,
+        start_path=str(start_path) if start_path is not None else None,
+    )
 
 
 def _runtime_start_path(start_path: Path | None) -> Path:
@@ -538,20 +489,16 @@ def _account_status_summary_from_usage_record(
     return status.summary()
 
 
-def _target_state_summary(target_state: dict[str, object]) -> dict[str, object]:
-    return dict(target_state)
-
-
 def _target_rows(
     *,
     target: MonitorTarget,
-    target_state: dict[str, object],
-    auto_prime_target_state: dict[str, object] | None = None,
+    target_state: LimitsTargetState,
+    auto_prime_target_state: AutoPrimeTargetState | None = None,
 ) -> list[MonitorRow]:
-    account_status = target_state.get("account_status")
+    account_status = target_state.account_status
     status_parts = _account_status_parts(
         target_state=target_state,
-        account_status=account_status if isinstance(account_status, dict) else None,
+        account_status=account_status,
         auto_prime_target_state=auto_prime_target_state,
     )
     rows: list[MonitorRow] = [
@@ -560,7 +507,7 @@ def _target_rows(
             status=" · ".join(status_parts) if status_parts else None,
         )
     ]
-    if target_state.get("status") == "error":
+    if target_state.status == "error":
         rows.append(
             MonitorInfoRow(label="    error", value=_error_message(target_state))
         )
@@ -577,9 +524,8 @@ def _target_rows(
             MonitorInfoRow(label="    usage", value=_limits_summary(account_status))
         )
         return rows
-    setup_message = target_state.get("setup_message")
-    if isinstance(setup_message, str) and setup_message:
-        rows.append(MonitorInfoRow(label="    usage", value=setup_message))
+    if target_state.setup_message:
+        rows.append(MonitorInfoRow(label="    usage", value=target_state.setup_message))
     return rows
 
 
@@ -588,8 +534,8 @@ def _target_title(target: MonitorTarget) -> str:
     return f"{prefix}{target.provider}/{target.account}:"
 
 
-def _error_message(target_state: dict[str, object]) -> str:
-    error = target_state.get("error")
+def _error_message(target_state: LimitsTargetState) -> str:
+    error = target_state.error
     if isinstance(error, dict):
         message = error.get("message")
         if isinstance(message, str) and message:
@@ -599,9 +545,9 @@ def _error_message(target_state: dict[str, object]) -> str:
 
 def _account_status_parts(
     *,
-    target_state: dict[str, object],
+    target_state: LimitsTargetState,
     account_status: dict[str, Any] | None,
-    auto_prime_target_state: dict[str, object] | None,
+    auto_prime_target_state: AutoPrimeTargetState | None,
 ) -> tuple[str, ...]:
     parts: list[str] = []
     fetch_part = _usage_refresh_status_part(
@@ -698,10 +644,10 @@ def _account_limit_rows(
 
 def _usage_refresh_status_part(
     *,
-    target_state: dict[str, object],
+    target_state: LimitsTargetState,
     account_status: dict[str, Any] | None,
 ) -> str | None:
-    if target_state.get("status") == "error":
+    if target_state.status == "error":
         return "error"
     if account_status is None:
         return None

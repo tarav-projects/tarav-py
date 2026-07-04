@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+from agentos.agent.monitor.workflows.state import AutoPrimeTargetState
+
 import datetime
 
 
 
 
 
-def _target_state() -> dict[str, object]:
-    return {
-        "provider": "codex",
-        "account": "jp",
-        "home": "/tmp/codex-jp",
-        "primed_periods": {},
-        "observations": {},
-    }
+def _target_state() -> AutoPrimeTargetState:
+    return AutoPrimeTargetState(
+        provider="codex",
+        account="jp",
+        home="/tmp/codex-jp",
+    )
 
 def _limit(
     *,

@@ -17,6 +17,7 @@ from agentos.agent.monitor.models import (
     _circular_cell_viewport,
     _cell_offset_to_text_index,
 )
+from agentos.agent.monitor.workflows.state import monitor_state_payload
 
 _MONITOR_TRACK_STYLE = "bright_white on grey15"
 _MONITOR_USAGE_BAR_PALETTE = (
@@ -79,7 +80,7 @@ def monitor_result_payload(
         "command": "agent accounts monitor",
         "tick": frame.tick,
         "workflow_run_counts": state.workflow_run_counts,
-        "state": state.data,
+        "state": monitor_state_payload(state.data),
         "frame": {
             "tick": frame.tick,
             "top_rows": [row.summary() for row in frame.top_rows],

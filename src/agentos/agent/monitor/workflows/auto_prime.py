@@ -41,6 +41,12 @@ from agentos.agent.monitor.models import (
     MonitorState,
     MonitorWorkflowConfig,
 )
+from agentos.agent.monitor.workflows.state import (
+    AutoPrimeTargetState,
+    AutoPrimeWorkflowState,
+    LimitsTargetState,
+    LimitsWorkflowState,
+)
 from agentos.agent.monitor.workflows._common import (
     _float_value,
     _format_age_duration,
@@ -81,9 +87,9 @@ class AutoPrimeZeroLimitsWorkflow:
 
     def setup(self, state: MonitorState, frame: MonitorFrame) -> None:
         workflow_state = self._workflow_state(state)
-        workflow_state["setup_tick"] = frame.tick
-        workflow_state["interval_sec"] = self.config.refresh_interval_sec
-        workflow_state["retry_cooldown_sec"] = self.retry_cooldown_sec
+        workflow_state.setup_tick = frame.tick
+        workflow_state.interval_sec = self.config.refresh_interval_sec
+        workflow_state.retry_cooldown_sec = self.retry_cooldown_sec
         self._write_config_state(workflow_state)
         self._write_frame_block(frame, workflow_state=workflow_state)
 
@@ -96,11 +102,11 @@ class AutoPrimeZeroLimitsWorkflow:
         run_count = state.workflow_run_counts.get(self.name, 0) + 1
         state.workflow_run_counts[self.name] = run_count
         workflow_state = self._workflow_state(state)
-        workflow_state["last_tick"] = frame.tick
-        workflow_state["run_count"] = run_count
-        workflow_state["interval_sec"] = self.config.refresh_interval_sec
-        workflow_state["retry_cooldown_sec"] = self.retry_cooldown_sec
-        workflow_state["fired_alarms"] = list(trigger.fired_alarm_names)
+        workflow_state.last_tick = frame.tick
+        workflow_state.run_count = run_count
+        workflow_state.interval_sec = self.config.refresh_interval_sec
+        workflow_state.retry_cooldown_sec = self.retry_cooldown_sec
+        workflow_state.fired_alarms = list(trigger.fired_alarm_names)
         self._write_config_state(workflow_state)
 
         if trigger.fired(AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM):
@@ -108,36 +114,25 @@ class AutoPrimeZeroLimitsWorkflow:
 
         self._write_frame_block(frame, workflow_state=workflow_state)
 
-    def _workflow_state(self, state: MonitorState) -> dict[str, object]:
+    def _workflow_state(self, state: MonitorState) -> AutoPrimeWorkflowState:
         existing = state.data.get(self.name)
-        if isinstance(existing, dict):
+        if isinstance(existing, AutoPrimeWorkflowState):
             return existing
-        workflow_state: dict[str, object] = {
-            "targets": {},
-            "last_scan": None,
-        }
+        workflow_state = AutoPrimeWorkflowState()
         state.data[self.name] = workflow_state
         return workflow_state
 
-    def _target_states(self, workflow_state: dict[str, object]) -> dict[str, object]:
-        existing = workflow_state.get("targets")
-        if isinstance(existing, dict):
-            return existing
-        target_states: dict[str, object] = {}
-        workflow_state["targets"] = target_states
-        return target_states
-
-    def _write_config_state(self, workflow_state: dict[str, object]) -> None:
-        workflow_state["loaded_at"] = self.config.loaded_at
-        workflow_state["config_fingerprint"] = self.config.config_fingerprint
-        workflow_state["target_summary"] = [
+    def _write_config_state(self, workflow_state: AutoPrimeWorkflowState) -> None:
+        workflow_state.loaded_at = self.config.loaded_at
+        workflow_state.config_fingerprint = self.config.config_fingerprint
+        workflow_state.target_summary = [
             target.summary() for target in self.config.targets
         ]
-        workflow_state["target_limit_ids"] = {
+        workflow_state.target_limit_ids = {
             provider: tuple(sorted(limit_ids))
             for provider, limit_ids in self.target_limit_ids.items()
         }
-        workflow_state["triggers"] = {
+        workflow_state.triggers = {
             provider: tuple(sorted(trigger_names))
             for provider, trigger_names in self.triggers.items()
         }
@@ -146,26 +141,15 @@ class AutoPrimeZeroLimitsWorkflow:
         self,
         state: MonitorState,
         *,
-        workflow_state: dict[str, object],
+        workflow_state: AutoPrimeWorkflowState,
         tick: int,
     ) -> None:
-        target_states = self._target_states(workflow_state)
         limits_state = state.data.get(LIMITS_TRACKING_WORKFLOW)
-        if not isinstance(limits_state, dict):
-            workflow_state["last_scan"] = {
+        if not isinstance(limits_state, LimitsWorkflowState):
+            workflow_state.last_scan = {
                 "tick": tick,
                 "status": "skipped",
                 "message": "limits-tracking state is not available",
-                "pinged": 0,
-                "failed": 0,
-            }
-            return
-        raw_targets = limits_state.get("targets")
-        if not isinstance(raw_targets, dict):
-            workflow_state["last_scan"] = {
-                "tick": tick,
-                "status": "skipped",
-                "message": "limits-tracking targets state is not available",
                 "pinged": 0,
                 "failed": 0,
             }
@@ -175,18 +159,14 @@ class AutoPrimeZeroLimitsWorkflow:
         monotonic_now = time.monotonic()
         pinged = 0
         failed = 0
-        for target_key, raw_target_state in raw_targets.items():
-            if not isinstance(target_key, str) or not isinstance(
-                raw_target_state, dict
-            ):
-                continue
+        for target_key, raw_target_state in limits_state.targets.items():
             if target_key not in self.target_keys:
                 continue
             target_state = self._target_state(
-                target_states, raw_target_state, target_key
+                workflow_state, raw_target_state, target_key
             )
-            target_state["last_decisions"] = []
-            target_state["last_decision"] = None
+            target_state.last_decisions = []
+            target_state.last_decision = None
             self._verify_existing_primes(
                 raw_target_state,
                 target_state=target_state,
@@ -213,7 +193,7 @@ class AutoPrimeZeroLimitsWorkflow:
                 pinged += 1
             else:
                 failed += 1
-        workflow_state["last_scan"] = {
+        workflow_state.last_scan = {
             "tick": tick,
             "status": "ok",
             "pinged": pinged,
@@ -222,45 +202,42 @@ class AutoPrimeZeroLimitsWorkflow:
 
     def _target_state(
         self,
-        target_states: dict[str, object],
-        source_target_state: dict[str, object],
+        workflow_state: AutoPrimeWorkflowState,
+        source_target_state: LimitsTargetState,
         target_key: str,
-    ) -> dict[str, object]:
-        existing = target_states.get(target_key)
-        if isinstance(existing, dict):
+    ) -> AutoPrimeTargetState:
+        existing = workflow_state.targets.get(target_key)
+        if existing is not None:
             return existing
-        target_state: dict[str, object] = {
-            "provider": source_target_state.get("provider"),
-            "account": source_target_state.get("account"),
-            "home": source_target_state.get("home"),
-            "observations": {},
-            "primed_periods": {},
-        }
-        target_states[target_key] = target_state
+        target_state = AutoPrimeTargetState(
+            provider=source_target_state.provider,
+            account=source_target_state.account,
+            home=source_target_state.home,
+            profile=source_target_state.profile,
+            start_path=source_target_state.start_path,
+        )
+        workflow_state.targets[target_key] = target_state
         return target_state
 
     def _eligible_periods(
         self,
-        source_target_state: dict[str, object],
+        source_target_state: LimitsTargetState,
         *,
-        target_state: dict[str, object],
+        target_state: AutoPrimeTargetState,
         scan_at: datetime.datetime,
         monotonic_now: float,
         tick: int | None = None,
     ) -> list[dict[str, object]]:
-        if source_target_state.get("status") != "ok":
+        if source_target_state.status != "ok":
             return []
-        provider = _string_value(source_target_state.get("provider"))
-        if provider is None:
-            return []
-        target_limit_ids = self.target_limit_ids.get(provider)
+        target_limit_ids = self.target_limit_ids.get(source_target_state.provider)
         if not target_limit_ids:
             return []
-        trigger_names = self.triggers.get(provider)
+        trigger_names = self.triggers.get(source_target_state.provider)
         if not trigger_names:
             return []
-        retry_after = target_state.get("retry_after_monotonic")
-        if isinstance(retry_after, int | float) and monotonic_now < retry_after:
+        retry_after = target_state.retry_after_monotonic
+        if retry_after is not None and monotonic_now < retry_after:
             self._record_retry_blocked_decisions(
                 source_target_state,
                 target_state=target_state,
@@ -270,13 +247,13 @@ class AutoPrimeZeroLimitsWorkflow:
             )
             return []
 
-        account_status = source_target_state.get("account_status")
+        account_status = source_target_state.account_status
         if not isinstance(account_status, dict):
             return []
         limits = account_status.get("limits")
         if not isinstance(limits, list):
             return []
-        primed_periods = self._primed_periods(target_state)
+        primed_periods = target_state.primed_periods
         observed_at = _observation_time(source_target_state, fallback=scan_at)
         eligible: list[dict[str, object]] = []
         for limit in limits:
@@ -290,7 +267,7 @@ class AutoPrimeZeroLimitsWorkflow:
                 limit,
                 target_limit_ids=target_limit_ids,
                 trigger_names=trigger_names,
-                observations=self._observations(target_state),
+                observations=target_state.observations,
                 now=observed_at,
                 scan_at=scan_at,
             )
@@ -344,33 +321,17 @@ class AutoPrimeZeroLimitsWorkflow:
             eligible.append(period)
         return eligible
 
-    def _observations(self, target_state: dict[str, object]) -> dict[str, object]:
-        existing = target_state.get("observations")
-        if isinstance(existing, dict):
-            return existing
-        observations: dict[str, object] = {}
-        target_state["observations"] = observations
-        return observations
-
-    def _primed_periods(self, target_state: dict[str, object]) -> dict[str, object]:
-        existing = target_state.get("primed_periods")
-        if isinstance(existing, dict):
-            return existing
-        primed_periods: dict[str, object] = {}
-        target_state["primed_periods"] = primed_periods
-        return primed_periods
-
     def _prime_target(
         self,
-        target_state: dict[str, object],
+        target_state: AutoPrimeTargetState,
         *,
-        source_target_state: dict[str, object],
+        source_target_state: LimitsTargetState,
         eligible_periods: list[dict[str, object]],
         tick: int,
         monotonic_now: float,
         scan_at: datetime.datetime,
     ) -> bool:
-        target_state["last_attempt_tick"] = tick
+        target_state.last_attempt_tick = tick
         for period in eligible_periods:
             self._record_period_event(
                 AUTO_PRIME_EVENT_ATTEMPT_STARTED,
@@ -405,10 +366,10 @@ class AutoPrimeZeroLimitsWorkflow:
             )
             return False
 
-        target_state["last_success_tick"] = tick
-        target_state["retry_after_monotonic"] = None
-        target_state["last_error"] = None
-        primed_periods = self._primed_periods(target_state)
+        target_state.last_success_tick = tick
+        target_state.retry_after_monotonic = None
+        target_state.last_error = None
+        primed_periods = target_state.primed_periods
         for period in eligible_periods:
             period_key = period.get("period_key")
             if not isinstance(period_key, str):
@@ -461,19 +422,17 @@ class AutoPrimeZeroLimitsWorkflow:
 
     def _record_prime_failure(
         self,
-        target_state: dict[str, object],
+        target_state: AutoPrimeTargetState,
         *,
-        source_target_state: dict[str, object],
+        source_target_state: LimitsTargetState,
         eligible_periods: list[dict[str, object]],
         tick: int,
         monotonic_now: float,
         message: str,
         error_type: str,
     ) -> None:
-        target_state["retry_after_monotonic"] = (
-            monotonic_now + self.retry_cooldown_sec
-        )
-        target_state["last_error"] = {
+        target_state.retry_after_monotonic = monotonic_now + self.retry_cooldown_sec
+        target_state.last_error = {
             "message": message,
             "error_type": error_type,
             "last_attempt_tick": tick,
@@ -512,20 +471,20 @@ class AutoPrimeZeroLimitsWorkflow:
 
     def _record_retry_blocked_decisions(
         self,
-        source_target_state: dict[str, object],
+        source_target_state: LimitsTargetState,
         *,
-        target_state: dict[str, object],
+        target_state: AutoPrimeTargetState,
         target_limit_ids: set[str],
         retry_after_monotonic: float,
         tick: int | None,
     ) -> None:
-        account_status = source_target_state.get("account_status")
+        account_status = source_target_state.account_status
         if not isinstance(account_status, dict):
             return
         limits = account_status.get("limits")
         if not isinstance(limits, list):
             return
-        primed_periods = self._primed_periods(target_state)
+        primed_periods = target_state.primed_periods
         for limit in limits:
             if not isinstance(limit, dict):
                 continue
@@ -533,7 +492,7 @@ class AutoPrimeZeroLimitsWorkflow:
             if limit_id is None or limit_id not in target_limit_ids:
                 continue
             period_key = _uninitialized_period_key(source_target_state, limit_id)
-            existing = primed_periods.get(period_key) if period_key else None
+            existing = primed_periods.get(period_key)
             self._record_decision(
                 target_state,
                 limit_id=limit_id,
@@ -547,7 +506,7 @@ class AutoPrimeZeroLimitsWorkflow:
 
     def _record_decision(
         self,
-        target_state: dict[str, object],
+        target_state: AutoPrimeTargetState,
         *,
         limit_id: object,
         classification: object,
@@ -575,21 +534,17 @@ class AutoPrimeZeroLimitsWorkflow:
                 decision["trigger_reasons"] = tuple(trigger_reasons)
         if retry_after_monotonic is not None:
             decision["retry_after_monotonic"] = retry_after_monotonic
-        decisions = target_state.get("last_decisions")
-        if not isinstance(decisions, list):
-            decisions = []
-            target_state["last_decisions"] = decisions
-        decisions.append(decision)
-        existing = target_state.get("last_decision")
-        if not isinstance(existing, dict) or _decision_priority(
-            decision
-        ) >= _decision_priority(existing):
-            target_state["last_decision"] = decision
+        target_state.last_decisions.append(decision)
+        existing = target_state.last_decision
+        if existing is None or _decision_priority(decision) >= _decision_priority(
+            existing
+        ):
+            target_state.last_decision = decision
         self._log_decision_error(target_state, decision=decision, action=action)
 
     @staticmethod
     def _log_decision_error(
-        target_state: dict[str, object],
+        target_state: AutoPrimeTargetState,
         *,
         decision: dict[str, object],
         action: str,
@@ -603,9 +558,9 @@ class AutoPrimeZeroLimitsWorkflow:
         append_monitor_log_event(
             event=event,
             tick=decision.get("tick") if isinstance(decision.get("tick"), int) else None,
-            provider=_string_value(target_state.get("provider")),
-            account=_string_value(target_state.get("account")),
-            home=_string_value(target_state.get("home")),
+            provider=target_state.provider,
+            account=target_state.account,
+            home=target_state.home,
             payload={
                 "limit_id": decision.get("limit_id"),
                 "classification": decision.get("classification"),
@@ -618,24 +573,23 @@ class AutoPrimeZeroLimitsWorkflow:
 
     def _verify_existing_primes(
         self,
-        source_target_state: dict[str, object],
+        source_target_state: LimitsTargetState,
         *,
-        target_state: dict[str, object],
+        target_state: AutoPrimeTargetState,
         scan_at: datetime.datetime,
         tick: int,
     ) -> None:
-        if source_target_state.get("status") != "ok":
+        if source_target_state.status != "ok":
             return
-        account_status = source_target_state.get("account_status")
+        account_status = source_target_state.account_status
         if not isinstance(account_status, dict):
             return
         limits = account_status.get("limits")
         if not isinstance(limits, list):
             return
-        primed_periods = self._primed_periods(target_state)
+        primed_periods = target_state.primed_periods
         if not primed_periods:
             return
-        provider = _string_value(source_target_state.get("provider"))
         observed_at = _observation_time(source_target_state, fallback=scan_at)
         for limit in limits:
             if not isinstance(limit, dict):
@@ -644,19 +598,17 @@ class AutoPrimeZeroLimitsWorkflow:
             if limit_id is None:
                 continue
             period_key = _uninitialized_period_key(source_target_state, limit_id)
-            if period_key is None:
-                continue
             existing = primed_periods.get(period_key)
-            if not isinstance(existing, dict):
+            if existing is None:
                 continue
             if existing.get("verification_status") == AUTO_PRIME_VERIFICATION_EFFECTIVE:
                 continue
-            trigger_names = self.triggers.get(provider or "", set())
+            trigger_names = self.triggers.get(source_target_state.provider, set())
             reasons = _uninitialized_trigger_reasons(
                 source_target_state,
                 limit,
                 trigger_names=trigger_names,
-                observations=self._observations(target_state),
+                observations=target_state.observations,
                 now=observed_at,
             )
             new_status = self._verification_status(
@@ -716,7 +668,7 @@ class AutoPrimeZeroLimitsWorkflow:
         self,
         event_type: str,
         *,
-        source_target_state: dict[str, object],
+        source_target_state: LimitsTargetState,
         period: dict[str, object],
         tick: int | None,
         status: object = None,
@@ -725,9 +677,9 @@ class AutoPrimeZeroLimitsWorkflow:
     ) -> None:
         append_auto_prime_event(
             event_type,
-            provider=source_target_state.get("provider"),
-            account=source_target_state.get("account"),
-            home=source_target_state.get("home"),
+            provider=source_target_state.provider,
+            account=source_target_state.account,
+            home=source_target_state.home,
             limit_id=period.get("limit_id"),
             period_key=period.get("period_key"),
             trigger_reasons=period.get("trigger_reasons"),
@@ -740,11 +692,11 @@ class AutoPrimeZeroLimitsWorkflow:
         )
 
     def _write_frame_block(
-        self, frame: MonitorFrame, *, workflow_state: dict[str, object]
+        self, frame: MonitorFrame, *, workflow_state: AutoPrimeWorkflowState
     ) -> None:
         rows: list[MonitorRow] = []
-        last_scan = workflow_state.get("last_scan")
-        if isinstance(last_scan, dict):
+        last_scan = workflow_state.last_scan
+        if last_scan is not None:
             pinged = _int_value(last_scan.get("pinged"))
             failed = _int_value(last_scan.get("failed"))
             if pinged:
@@ -755,10 +707,8 @@ class AutoPrimeZeroLimitsWorkflow:
                 rows.append(
                     MonitorInfoRow(label="    auto-prime", value=f"failed {failed}")
                 )
-        for target_state in self._target_states(workflow_state).values():
-            if not isinstance(target_state, dict):
-                continue
-            last_error = target_state.get("last_error")
+        for target_state in workflow_state.targets.values():
+            last_error = target_state.last_error
             if not isinstance(last_error, dict):
                 continue
             message = _string_value(last_error.get("message")) or "unknown error"
@@ -770,8 +720,8 @@ class AutoPrimeZeroLimitsWorkflow:
             )
         if (
             not rows
-            and workflow_state.get("setup_tick") is None
-            and workflow_state.get("last_scan") is None
+            and workflow_state.setup_tick is None
+            and workflow_state.last_scan is None
         ):
             return
         data = {
@@ -779,57 +729,48 @@ class AutoPrimeZeroLimitsWorkflow:
             "periodic_alarm_name": AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
             "interval_sec": self.config.refresh_interval_sec,
             "retry_cooldown_sec": self.retry_cooldown_sec,
-            "loaded_at": workflow_state.get("loaded_at"),
-            "config_fingerprint": workflow_state.get("config_fingerprint"),
-            "target_summary": workflow_state.get("target_summary"),
-            "target_limit_ids": workflow_state.get("target_limit_ids"),
-            "triggers": workflow_state.get("triggers"),
-            "run_count": workflow_state.get("run_count"),
+            "loaded_at": workflow_state.loaded_at,
+            "config_fingerprint": workflow_state.config_fingerprint,
+            "target_summary": workflow_state.target_summary,
+            "target_limit_ids": workflow_state.target_limit_ids,
+            "triggers": workflow_state.triggers,
+            "run_count": workflow_state.run_count,
             "last_scan": last_scan,
-            "targets": self._target_states(workflow_state),
+            "targets": {
+                key: target.payload()
+                for key, target in workflow_state.targets.items()
+            },
         }
         frame.add_block(self.name, rows=rows, data=data)
 
 
 def _auto_prime_target_state(
     state: MonitorState, *, target_key: str
-) -> dict[str, object] | None:
+) -> AutoPrimeTargetState | None:
     workflow_state = state.data.get(AUTO_PRIME_ZERO_LIMITS_WORKFLOW)
-    if not isinstance(workflow_state, dict):
+    if not isinstance(workflow_state, AutoPrimeWorkflowState):
         return None
-    target_states = workflow_state.get("targets")
-    if not isinstance(target_states, dict):
-        return None
-    target_state = target_states.get(target_key)
-    if not isinstance(target_state, dict):
-        return None
-    return target_state
+    return workflow_state.targets.get(target_key)
 
 
-def _auto_prime_status_part(target_state: dict[str, object] | None) -> str | None:
+def _auto_prime_status_part(target_state: AutoPrimeTargetState | None) -> str | None:
     if target_state is None:
         return None
-    decision_part = _auto_prime_decision_status_part(target_state.get("last_decision"))
+    decision_part = _auto_prime_decision_status_part(target_state.last_decision)
     if decision_part is not None:
         return decision_part
-    if isinstance(target_state.get("last_error"), dict):
+    if target_state.last_error is not None:
         return "prime failed"
-    primed_periods = target_state.get("primed_periods")
+    primed_periods = target_state.primed_periods
     retry_after_monotonic = _auto_prime_retry_after_monotonic(
         target_state,
-        primed_periods=primed_periods if isinstance(primed_periods, dict) else {},
+        primed_periods=primed_periods,
     )
-    if not isinstance(primed_periods, dict):
-        if retry_after_monotonic is not None:
-            return _auto_prime_retry_status_part(retry_after_monotonic)
-        return None
 
     has_ineffective = False
     has_pending = False
     has_effective = False
     for primed_period in primed_periods.values():
-        if not isinstance(primed_period, dict):
-            continue
         verification_status = primed_period.get("verification_status")
         if verification_status == AUTO_PRIME_VERIFICATION_INEFFECTIVE:
             has_ineffective = True
@@ -900,12 +841,12 @@ def _decision_priority(decision: dict[str, object]) -> int:
 
 
 def _auto_prime_retry_after_monotonic(
-    target_state: dict[str, object], *, primed_periods: dict[object, object]
+    target_state: AutoPrimeTargetState,
+    *,
+    primed_periods: dict[str, dict[str, object]],
 ) -> float | None:
-    retry_after_monotonic = _float_value(target_state.get("retry_after_monotonic"))
+    retry_after_monotonic = target_state.retry_after_monotonic
     for primed_period in primed_periods.values():
-        if not isinstance(primed_period, dict):
-            continue
         period_retry_after = _float_value(
             primed_period.get("next_retry_after_monotonic")
         )
@@ -923,9 +864,9 @@ def _auto_prime_retry_status_part(retry_after_monotonic: float) -> str:
 
 
 def _observation_time(
-    source_target_state: dict[str, object], *, fallback: datetime.datetime
+    source_target_state: LimitsTargetState, *, fallback: datetime.datetime
 ) -> datetime.datetime:
-    account_status = source_target_state.get("account_status")
+    account_status = source_target_state.account_status
     if not isinstance(account_status, dict):
         return fallback
     raw = account_status.get("raw")
@@ -949,7 +890,7 @@ class _LimitPeriod:
 
 
 def _parse_limit_period(
-    source_target_state: dict[str, object],
+    source_target_state: LimitsTargetState,
     limit: dict[str, object],
     *,
     now: datetime.datetime,
@@ -967,9 +908,9 @@ def _parse_limit_period(
     period_end = _parse_datetime(period_end_key)
     if period_end is None or period_end <= now:
         return None
-    provider = _string_value(source_target_state.get("provider"))
-    account = _string_value(source_target_state.get("account"))
-    home = _string_value(source_target_state.get("home"))
+    provider = source_target_state.provider
+    account = source_target_state.account
+    home = source_target_state.home
     if provider is None or account is None or home is None:
         return None
     return _LimitPeriod(
@@ -1057,18 +998,21 @@ def _eligible_limit_period(
 
 
 def _uninitialized_period_key(
-    source_target_state: dict[str, object], limit_id: str
-) -> str | None:
-    provider = _string_value(source_target_state.get("provider"))
-    account = _string_value(source_target_state.get("account"))
-    home = _string_value(source_target_state.get("home"))
-    if provider is None or account is None or home is None:
-        return None
-    return "|".join((provider, account, home, limit_id, "uninitialized"))
+    source_target_state: LimitsTargetState, limit_id: str
+) -> str:
+    return "|".join(
+        (
+            source_target_state.provider or "",
+            source_target_state.account or "",
+            source_target_state.home or "",
+            limit_id,
+            "uninitialized",
+        )
+    )
 
 
 def _uninitialized_trigger_reasons(
-    source_target_state: dict[str, object],
+    source_target_state: LimitsTargetState,
     limit: dict[str, object],
     *,
     trigger_names: set[str],
@@ -1197,12 +1141,12 @@ def _is_sliding_reset(
     return abs(end_delta - observation_delta) <= max(60.0, 0.20 * observation_delta)
 
 
-def _run_account_prime_ping(source_target_state: dict[str, object]) -> AgentPingResult:
-    provider = _required_target_string(source_target_state, "provider")
-    account = _required_target_string(source_target_state, "account")
-    home = Path(_required_target_string(source_target_state, "home"))
-    profile = _string_value(source_target_state.get("profile"))
-    start_path = Path(_string_value(source_target_state.get("start_path")) or ".")
+def _run_account_prime_ping(source_target_state: LimitsTargetState) -> AgentPingResult:
+    provider = _required_target_string(source_target_state.provider, "provider")
+    account = _required_target_string(source_target_state.account, "account")
+    home = Path(_required_target_string(source_target_state.home, "home"))
+    profile = source_target_state.profile
+    start_path = Path(source_target_state.start_path or ".")
     agent = resolve_account_runtime_agent(
         provider=provider,
         account=account,
@@ -1218,14 +1162,13 @@ def _run_account_prime_ping(source_target_state: dict[str, object]) -> AgentPing
     return agent.ping(cwd=Path.cwd().resolve())
 
 
-def _required_target_string(target_state: dict[str, object], key: str) -> str:
-    value = _string_value(target_state.get(key))
-    if value is None:
+def _required_target_string(value: str | None, key: str) -> str:
+    if not value:
         raise CliError(f"limits-tracking target state is missing {key}")
     return value
 
 
-def _target_state_name(target_state: dict[str, object]) -> str:
-    provider = _string_value(target_state.get("provider")) or "unknown"
-    account = _string_value(target_state.get("account")) or "unknown"
+def _target_state_name(target_state: AutoPrimeTargetState) -> str:
+    provider = target_state.provider or "unknown"
+    account = target_state.account or "unknown"
     return f"{provider}/{account}"

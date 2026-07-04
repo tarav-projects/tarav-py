@@ -17,6 +17,12 @@ from agentos.agent.monitor.models import (
 from agentos.agent.monitor.render import format_monitor_frame, monitor_result_payload
 import agentos.agent.monitor.workflows.auto_prime as auto_prime
 import agentos.agent.monitor.workflows.limits_tracking as limits_tracking
+from agentos.agent.monitor.workflows.state import (
+    AutoPrimeTargetState,
+    AutoPrimeWorkflowState,
+    LimitsTargetState,
+    LimitsWorkflowState,
+)
 from agentos.agent.monitor.workflows import (
     LimitsTrackingWorkflow,
 )
@@ -66,7 +72,9 @@ def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
             start_path=tmp_path,
         )
     )
-    target_state = workflow._target_state({}, target=target, target_key="target")
+    target_state = workflow._target_state(
+        LimitsWorkflowState(), target=target, target_key="target"
+    )
 
     workflow._refresh_target(target_state, target=target, tick=7)
 
@@ -79,9 +87,9 @@ def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
             "start_path": tmp_path,
         }
     ]
-    assert target_state["profile"] == "claude-br"
-    assert target_state["start_path"] == str(tmp_path)
-    assert target_state["account_status"] == {
+    assert target_state.profile == "claude-br"
+    assert target_state.start_path == str(tmp_path)
+    assert target_state.account_status == {
         "limits": [],
         "raw": {"claude_policy_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
     }
@@ -136,30 +144,33 @@ def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
     )
     state = MonitorState(
         data={
-            LIMITS_TRACKING_WORKFLOW: {
-                "targets": {
-                    "codex/jp@/tmp/codex-jp": {
-                        "status": "ok",
-                        "account_status": _account_status(),
-                    }
+            LIMITS_TRACKING_WORKFLOW: LimitsWorkflowState(
+                targets={
+                    "codex/jp@/tmp/codex-jp": LimitsTargetState(
+                        provider="codex",
+                        account="jp",
+                        home="/tmp/codex-jp",
+                        status="ok",
+                        account_status=_account_status(),
+                    )
                 },
-            },
-            AUTO_PRIME_ZERO_LIMITS_WORKFLOW: {
-                "targets": {
-                    "codex/jp@/tmp/codex-jp": {
-                        "last_decision": {
+            ),
+            AUTO_PRIME_ZERO_LIMITS_WORKFLOW: AutoPrimeWorkflowState(
+                targets={
+                    "codex/jp@/tmp/codex-jp": AutoPrimeTargetState(
+                        last_decision={
                             "limit_id": "burst",
                             "classification": "non-primed",
                             "action": "pinged",
                         }
-                    }
+                    )
                 }
-            },
+            ),
         }
     )
     frame = MonitorFrame()
     workflow_state = state.data[LIMITS_TRACKING_WORKFLOW]
-    assert isinstance(workflow_state, dict)
+    assert isinstance(workflow_state, LimitsWorkflowState)
 
     workflow._write_frame_block(frame, state=state, workflow_state=workflow_state)
     rendered = format_monitor_frame(frame)
@@ -200,19 +211,22 @@ def test_limits_tracking_weekly_usage_time_animates_burst_units(
     )
     state = MonitorState(
         data={
-            LIMITS_TRACKING_WORKFLOW: {
-                "targets": {
-                    "codex/jp@/tmp/codex-jp": {
-                        "status": "ok",
-                        "account_status": _account_status(limits=[weekly]),
-                    }
+            LIMITS_TRACKING_WORKFLOW: LimitsWorkflowState(
+                targets={
+                    "codex/jp@/tmp/codex-jp": LimitsTargetState(
+                        provider="codex",
+                        account="jp",
+                        home="/tmp/codex-jp",
+                        status="ok",
+                        account_status=_account_status(limits=[weekly]),
+                    )
                 },
-            },
+            ),
         }
     )
     frame = MonitorFrame()
     workflow_state = state.data[LIMITS_TRACKING_WORKFLOW]
-    assert isinstance(workflow_state, dict)
+    assert isinstance(workflow_state, LimitsWorkflowState)
 
     workflow._write_frame_block(frame, state=state, workflow_state=workflow_state)
     payload = monitor_result_payload(frame, state)
