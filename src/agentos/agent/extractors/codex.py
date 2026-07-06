@@ -137,7 +137,8 @@ def _is_codex_session_meta(obj: object) -> bool:
     if originator in _CODEX_SESSION_META_ORIGINATORS:
         return True
 
-    return originator.startswith("codex")
+    # originators vary in casing across surfaces ("codex_cli_rs", "Codex Desktop")
+    return originator.lower().startswith("codex")
 
 
 def _strip_system_reminder(text: str) -> str:

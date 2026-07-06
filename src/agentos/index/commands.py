@@ -13,11 +13,12 @@ from .linter import (
 
 
 def _cmd_linter(args: argparse.Namespace) -> int:
-    config, raw_index_paths, raw_appendix_paths = build_linter_config(
+    config, raw_depot_paths, raw_index_paths, raw_appendix_paths = build_linter_config(
+        depot_paths=tuple(args.depot),
         index_paths=tuple(args.index),
         appendix_paths=tuple(args.appendix),
     )
-    state = run_linter(config, raw_index_paths, raw_appendix_paths)
+    state = run_linter(config, raw_depot_paths, raw_index_paths, raw_appendix_paths)
     if args.json:
         print(render_linter_json(state))
     else:
@@ -35,17 +36,24 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
     linter_parser = index_subparsers.add_parser(
         "linter",
         help="Lint index and appendix surfaces.",
-        description="Lint explicit Agentos index and appendix files or directories.",
+        description="Lint explicit Agentos index and appendix files or directories, or derive them from depot roots.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  agentos index linter --index skills/agentos-pkg/index "
+            "  agentos index linter --depot skills/agentos-pkg\n"
+            "  agentos index linter --index skills/agentos-pkg/design "
             "--appendix skills/agentos-pkg/appendix\n"
-            "  agentos index linter --index notes/index/001-index.md --json\n\n"
+            "  agentos index linter --index skills/agentos-pkg/000-INDEX.md --json\n\n"
             "Finding and check codes are Agentos Index concepts under Index.Linter/*.\n"
             "Resolve their meaning through the agentos-pkg Index.Linter concept\n"
             "and normal appendix discovery."
         ),
+    )
+    linter_parser.add_argument(
+        "--depot",
+        action="append",
+        default=[],
+        help="Depot root to derive index chapter directories and appendix surfaces from. Repeat to lint multiple depots.",
     )
     linter_parser.add_argument(
         "--index",

@@ -18,6 +18,7 @@
 - Prefer direct `agentos ...` shell commands over `uv run agentos ...` when `agentos` is already installed.
 - The `agentos` executable is owned by `agentos-cli`, not this package. After changing CLI entrypoint or command-registration code, refresh the installed executable from `agentos-cli/` with `uv tool install --reinstall --editable .` so `~/.local/bin/agentos` stays in sync.
 - Changes limited to library/runtime code in `agentos-py` do not require reinstalling `agentos-cli` unless they affect the installed CLI behavior you are actively testing.
+- `agentos index linter` supports both explicit surfaces (`--index`, `--appendix`) and depot-root discovery via `--depot`; prefer `--depot` for package-skill indexes that follow `000-INDEX.md` + chapter folders + `appendix/`.
 
 ## Compatibility Policy
 
