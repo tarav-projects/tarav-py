@@ -25,6 +25,15 @@
 - Do not add backward-compatibility aliases or compatibility layers unless explicitly requested.
 - Prefer clean namespace and interface changes over preserving legacy command paths.
 
+## Anchory System
+
+- `src/agentos/anchory/` owns depot-scoped anchor dictionaries and their public library interface.
+- `AnchoryDepot` receives the exact Anchory root; applications such as Chatlas derive that root from their own depot.
+- Anchory owns record persistence, locking, registration, resolution, amendment, query, and structural checks.
+- Applications own record meaning, anchor allocation, and any Git lifecycle around their depot.
+- `agentos anchory ...` is registered by `agentos-cli` as a thin wrapper over the library.
+- `agentos anchory scan --depot ... --src-file ... --regex ... [--json]` is a read-only source-file query feed: it extracts anchor candidates from text, resolves them against the depot, and never mutates records.
+
 ## Markdown Block Scanning Preference
 
 - When a task requires extracting markdown blocks, use `agentos stdlib mdblocks blocks` first.
