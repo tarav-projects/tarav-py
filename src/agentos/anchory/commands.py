@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from agentos._core.errors import CliError
@@ -9,6 +10,12 @@ from agentos._core.json_input import load_json_object_arg
 
 from .core import AnchoryDepot, AnchoryEntry, AnchoryError
 from .core import AnchorySourceMatch, scan_anchory_source
+
+
+@dataclass(frozen=True)
+class _ResolvedScanMatch:
+    source: AnchorySourceMatch
+    record: dict[str, object] | None
 
 
 def _depot(args: argparse.Namespace) -> AnchoryDepot:
@@ -38,7 +45,7 @@ def _record_arg(args: argparse.Namespace) -> dict[str, object]:
 def _cmd_register(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        entry = depot.register(args.anchor, _record_arg(args))
+        entry = depot.register(_record_arg(args), anchor=args.anchor, prefix=args.prefix)
     except AnchoryError as exc:
         raise CliError(str(exc)) from exc
     _print_json(_entry_payload(depot, entry))
@@ -106,48 +113,63 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def _resolve_scan_matches(
+    depot: AnchoryDepot, matches: tuple[AnchorySourceMatch, ...]
+) -> tuple[_ResolvedScanMatch, ...]:
+    return tuple(
+        _ResolvedScanMatch(source=match, record=depot.resolve(match.anchor))
+        for match in matches
+    )
+
+
+def _scan_match_payload(match: _ResolvedScanMatch) -> dict[str, object]:
+    return {
+        "anchor": match.source.anchor,
+        "line": match.source.line,
+        "column": match.source.column,
+        "start": match.source.start,
+        "end": match.source.end,
+        "record": match.record,
+    }
+
+
 def _scan_payload(
     *,
     depot: AnchoryDepot,
     src_file: Path,
     regex: str,
-    matches: tuple[AnchorySourceMatch, ...],
+    matches: tuple[_ResolvedScanMatch, ...],
 ) -> dict[str, object]:
     return {
         "depot": str(depot.root),
         "src_file": str(src_file),
         "regex": regex,
         "count": len(matches),
-        "matches": [
-            {
-                "anchor": match.anchor,
-                "line": match.line,
-                "column": match.column,
-                "start": match.start,
-                "end": match.end,
-                "record": depot.resolve(match.anchor),
-            }
-            for match in matches
-        ],
+        "matches": [_scan_match_payload(match) for match in matches],
     }
 
 
-def _print_scan_human(payload: dict[str, object]) -> None:
+def _print_scan_human(
+    *,
+    depot: AnchoryDepot,
+    src_file: Path,
+    regex: str,
+    matches: tuple[_ResolvedScanMatch, ...],
+) -> None:
     print("Anchory scan")
-    print(f"depot: {payload['depot']}")
-    print(f"source: {payload['src_file']}")
-    print(f"regex: {payload['regex']}")
-    print(f"{payload['count']} match(es)")
-    for match in payload["matches"]:  # type: ignore[index]
+    print(f"depot: {depot.root}")
+    print(f"source: {src_file}")
+    print(f"regex: {regex}")
+    print(f"{len(matches)} match(es)")
+    for match in matches:
         print(
-            f"- {match['anchor']} @ line {match['line']}, "  # type: ignore[index]
-            f"column {match['column']}"  # type: ignore[index]
+            f"- {match.source.anchor} @ line {match.source.line}, "
+            f"column {match.source.column}"
         )
-        record = match["record"]  # type: ignore[index]
-        if record is None:
+        if match.record is None:
             print("  record: missing")
         else:
-            print(f"  record: {json.dumps(record, sort_keys=True)}")
+            print(f"  record: {json.dumps(match.record, sort_keys=True)}")
 
 
 def _cmd_scan(args: argparse.Namespace) -> int:
@@ -155,7 +177,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     src_file = Path(args.src_file).expanduser().resolve()
     try:
         text = src_file.read_text(encoding="utf-8")
-        matches = scan_anchory_source(text, args.regex)
+        matches = _resolve_scan_matches(depot, scan_anchory_source(text, args.regex))
         payload = _scan_payload(
             depot=depot,
             src_file=src_file,
@@ -167,7 +189,12 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     if args.json:
         _print_json(payload)
     else:
-        _print_scan_human(payload)
+        _print_scan_human(
+            depot=depot,
+            src_file=src_file,
+            regex=args.regex,
+            matches=matches,
+        )
     return 0
 
 
@@ -181,6 +208,15 @@ def _add_depot_argument(parser: argparse.ArgumentParser) -> None:
 
 def _add_anchor_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--anchor", required=True, help="Anchor key.")
+
+
+def _add_register_identity_arguments(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--anchor", help="Exact anchor key.")
+    group.add_argument(
+        "--prefix",
+        help="Prefix for atomic allocation of the next <prefix>-N anchor.",
+    )
 
 
 def _add_record_arguments(parser: argparse.ArgumentParser) -> None:
@@ -199,9 +235,12 @@ def register_anchory_commands(subparsers: argparse._SubParsersAction) -> None:
         required=True,
     )
 
-    register_parser = anchory_subparsers.add_parser("register", help="Register an anchor.")
+    register_parser = anchory_subparsers.add_parser(
+        "register",
+        help="Register an exact anchor or atomically allocate one from a prefix.",
+    )
     _add_depot_argument(register_parser)
-    _add_anchor_argument(register_parser)
+    _add_register_identity_arguments(register_parser)
     _add_record_arguments(register_parser)
     register_parser.set_defaults(handler=_cmd_register)
 

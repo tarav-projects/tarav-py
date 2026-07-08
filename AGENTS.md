@@ -29,8 +29,8 @@
 
 - `src/agentos/anchory/` owns depot-scoped anchor dictionaries and their public library interface.
 - `AnchoryDepot` receives the exact Anchory root; applications such as Chatlas derive that root from their own depot.
-- Anchory owns record persistence, locking, registration, resolution, amendment, query, and structural checks.
-- Applications own record meaning, anchor allocation, and any Git lifecycle around their depot.
+- Anchory owns record persistence, locking, registration, prefix allocation, resolution, amendment, query, and structural checks.
+- Applications own record meaning, allocation prefix conventions, and any Git lifecycle around their depot.
 - `agentos anchory ...` is registered by `agentos-cli` as a thin wrapper over the library.
 - `agentos anchory scan --depot ... --src-file ... --regex ... [--json]` is a read-only source-file query feed: it extracts anchor candidates from text, resolves them against the depot, and never mutates records.
 

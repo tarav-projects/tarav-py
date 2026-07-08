@@ -13,13 +13,26 @@ from agentos.anchory import (
     AnchoryDepot,
     AnchoryEntry,
     AnchorySourceMatch,
+    InvalidAnchoryInputError,
     scan_anchory_source,
 )
 
 
 def _register_after_signal(root: str, anchor: str, value: int, start: object) -> None:
     start.wait()  # type: ignore[attr-defined]
-    AnchoryDepot(root).register(anchor, {"value": value})
+    AnchoryDepot(root).register({"value": value}, anchor=anchor)
+
+
+def _register_prefix_after_signal(
+    root: str,
+    prefix: str,
+    value: int,
+    start: object,
+    results: object,
+) -> None:
+    start.wait()  # type: ignore[attr-defined]
+    entry = AnchoryDepot(root).register({"value": value}, prefix=prefix)
+    results.put(entry.anchor)  # type: ignore[attr-defined]
 
 
 def _same_shard_anchors() -> tuple[str, str]:
@@ -38,7 +51,7 @@ def test_register_and_resolve_round_trip_in_expected_shard(tmp_path: Path) -> No
     anchor = "20260706-0"
     record = {"session_id": "session-1", "turn": 12}
 
-    entry = AnchoryDepot(root).register(anchor, record)
+    entry = AnchoryDepot(root).register(record, anchor=anchor)
 
     assert entry == AnchoryEntry(anchor=anchor, record=record)
     assert AnchoryDepot(root).resolve(anchor) == record
@@ -52,8 +65,8 @@ def test_same_anchor_is_independent_per_depot(tmp_path: Path) -> None:
     first = AnchoryDepot(tmp_path / "first")
     second = AnchoryDepot(tmp_path / "second")
 
-    first.register("shared", {"value": 1})
-    second.register("shared", {"value": 2})
+    first.register({"value": 1}, anchor="shared")
+    second.register({"value": 2}, anchor="shared")
 
     assert first.resolve("shared") == {"value": 1}
     assert second.resolve("shared") == {"value": 2}
@@ -63,10 +76,10 @@ def test_duplicate_registration_is_rejected_and_amend_requires_existing_anchor(
     tmp_path: Path,
 ) -> None:
     depot = AnchoryDepot(tmp_path / "anchory")
-    depot.register("stable", {"value": 1})
+    depot.register({"value": 1}, anchor="stable")
 
     with pytest.raises(AnchorExistsError, match="anchor already exists"):
-        depot.register("stable", {"value": 2})
+        depot.register({"value": 2}, anchor="stable")
 
     assert depot.resolve("stable") == {"value": 1}
     assert depot.amend("stable", {"value": 3}) == AnchoryEntry(
@@ -104,13 +117,71 @@ def test_concurrent_same_shard_registrations_do_not_lose_records(tmp_path: Path)
     assert depot.resolve(second_anchor) == {"value": 2}
 
 
+def test_prefix_registration_allocates_max_plus_one_and_ignores_unrelated_suffixes(
+    tmp_path: Path,
+) -> None:
+    depot = AnchoryDepot(tmp_path / "anchory")
+
+    assert depot.register({"value": 0}, prefix="20260708") == AnchoryEntry(
+        anchor="20260708-0",
+        record={"value": 0},
+    )
+    depot.register({"value": 2}, anchor="20260708-2")
+    depot.register({"value": "ignored"}, anchor="20260708-alpha")
+    depot.register({"value": "adjacent"}, anchor="202607080-9")
+    depot.register({"value": "broader"}, anchor="2026-9")
+
+    assert depot.register({"value": 3}, prefix="20260708") == AnchoryEntry(
+        anchor="20260708-3",
+        record={"value": 3},
+    )
+    assert depot.register({"value": 10}, prefix="2026") == AnchoryEntry(
+        anchor="2026-10",
+        record={"value": 10},
+    )
+
+
+def test_register_requires_exactly_one_anchor_identity(tmp_path: Path) -> None:
+    depot = AnchoryDepot(tmp_path / "anchory")
+
+    with pytest.raises(InvalidAnchoryInputError, match="exactly one"):
+        depot.register({"value": 1})
+    with pytest.raises(InvalidAnchoryInputError, match="exactly one"):
+        depot.register({"value": 1}, anchor="stable", prefix="20260708")
+
+
+def test_concurrent_prefix_registrations_allocate_distinct_anchors(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "anchory"
+    context = multiprocessing.get_context("spawn")
+    start = context.Event()
+    results = context.Queue()
+    processes = [
+        context.Process(
+            target=_register_prefix_after_signal,
+            args=(str(root), "20260708", value, start, results),
+        )
+        for value in (1, 2)
+    ]
+    for process in processes:
+        process.start()
+    start.set()
+    for process in processes:
+        process.join(timeout=10)
+
+    assert [process.exitcode for process in processes] == [0, 0]
+    anchors = {results.get(timeout=10) for _ in processes}
+    assert anchors == {"20260708-0", "20260708-1"}
+
+
 def test_failed_atomic_replace_preserves_shard_and_cleans_temporary_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "anchory"
     depot = AnchoryDepot(root)
-    depot.register("stable", {"value": 1})
+    depot.register({"value": 1}, anchor="stable")
 
     def fail_replace(_source: object, _target: object) -> None:
         raise OSError("replace failed")
@@ -125,9 +196,9 @@ def test_failed_atomic_replace_preserves_shard_and_cleans_temporary_file(
 
 def test_query_is_anchor_sorted_and_supports_prefix_filtering(tmp_path: Path) -> None:
     depot = AnchoryDepot(tmp_path / "anchory")
-    depot.register("beta", {"value": 2})
-    depot.register("alpha-2", {"value": 3})
-    depot.register("alpha-1", {"value": 1})
+    depot.register({"value": 2}, anchor="beta")
+    depot.register({"value": 3}, anchor="alpha-2")
+    depot.register({"value": 1}, anchor="alpha-1")
 
     assert depot.query() == (
         AnchoryEntry(anchor="alpha-1", record={"value": 1}),
@@ -169,7 +240,7 @@ def test_check_reports_corruption_without_mutating_the_depot(tmp_path: Path) -> 
 def test_check_accepts_an_empty_or_valid_depot(tmp_path: Path) -> None:
     depot = AnchoryDepot(tmp_path / "anchory")
     assert depot.check().ok is True
-    depot.register("valid", {"value": 1})
+    depot.register({"value": 1}, anchor="valid")
     assert depot.check().ok is True
 
 

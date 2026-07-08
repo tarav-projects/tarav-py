@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 import hashlib
 import fcntl
 import json
@@ -73,10 +74,21 @@ class AnchoryDepot:
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root).expanduser().resolve()
 
-    def register(self, anchor: str, record: Mapping[str, object]) -> AnchoryEntry:
-        anchor = _validate_anchor(anchor)
+    def register(
+        self,
+        record: Mapping[str, object],
+        *,
+        anchor: str | None = None,
+        prefix: str | None = None,
+    ) -> AnchoryEntry:
+        if (anchor is None) == (prefix is None):
+            raise InvalidAnchoryInputError("exactly one of anchor or prefix is required")
         normalized_record = _normalize_record(record)
         with self._lock(exclusive=True, create=True):
+            if prefix is not None:
+                anchor = self._allocate_anchor(prefix)
+            else:
+                anchor = _validate_anchor(anchor)
             path = self._shard_path(anchor)
             records = _read_shard(path)
             if anchor in records:
@@ -202,6 +214,20 @@ class AnchoryDepot:
     def _shard_path(self, anchor: str) -> Path:
         return self.root / GLOBAL_NAMESPACE / f"{_shard_name(anchor)}.json"
 
+    def _allocate_anchor(self, prefix: str) -> str:
+        prefix = _validate_anchor(prefix)
+        pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
+        max_suffix: int | None = None
+        namespace_root = self.root / GLOBAL_NAMESPACE
+        for path in sorted(namespace_root.glob("*.json")):
+            for existing_anchor in _read_shard(path):
+                match = pattern.fullmatch(existing_anchor)
+                if match is None:
+                    continue
+                suffix = int(match.group(1))
+                max_suffix = suffix if max_suffix is None else max(max_suffix, suffix)
+        return f"{prefix}-{0 if max_suffix is None else max_suffix + 1}"
+
     @contextmanager
     def _lock(self, *, exclusive: bool, create: bool) -> Iterator[None]:
         if create:
@@ -286,11 +312,7 @@ def _line_starts(text: str) -> tuple[int, ...]:
 
 
 def _line_column(line_starts: tuple[int, ...], offset: int) -> tuple[int, int]:
-    line_index = 0
-    for index, start in enumerate(line_starts):
-        if start > offset:
-            break
-        line_index = index
+    line_index = bisect_right(line_starts, offset) - 1
     return line_index + 1, offset - line_starts[line_index] + 1
 
 

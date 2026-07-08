@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** tighten the fresh Anchory scan implementation by removing untyped renderer payload indexing, centralizing scan match payload construction, and simplifying line/column lookup.
-- **status:** ready for implementation
+- **status:** implemented
 - **source:** `hugentics-codebase-cleaner --AUTO` after the Anchory source-query implementation.
 - **current state:** `agentos.anchory.commands._print_scan_human` indexes a mixed `dict[str, object]` payload and uses `# type: ignore`; `core._line_column` manually scans line-start offsets for every match.
 - **out of scope:** changing the `agentos anchory scan` CLI contract, adding new scan features, changing existing JSON payload shape, or touching unrelated Anchory storage behavior.
@@ -36,21 +36,21 @@
 - RED: add/adjust a focused assertion that scan human and JSON outputs still cover resolved and missing records.
 - GREEN: remove scan-rendering `# type: ignore` comments while existing e2e behavior remains green.
 - check: `cd agentos-py && uv run pytest tests/test_anchory.py`
-- status: not started
+- status: complete
 
 ### Slice 2 - Location lookup simplification
 
 - replace the manual `_line_column` loop with `bisect_right`.
 - keep 1-based line and column semantics unchanged.
 - check: `cd agentos-py && uv run pytest tests/test_anchory.py`
-- status: not started
+- status: complete
 
 ### Slice 3 - Verification
 
 - run Ruff on touched Anchory files.
 - run the focused Anchory tests.
 - inspect diff for no CLI contract drift.
-- status: not started
+- status: complete
 
 ## Acceptance.Signals
 
@@ -70,3 +70,4 @@
 ## Impl.Log
 
 - 2026-07-07: Cleanup request created. Pre-cleanup checkpoint for existing Anchory work: `dbcaf48`.
+- 2026-07-07: Executed in `Alignment.Mode:Autonomous`; execution checkpoint: `c532d4e`. Cleanup kept scope to Anchory scan internals: typed resolved scan matches replaced mixed-payload human rendering, JSON match payload construction is centralized, and `_line_column` now uses `bisect_right`. Verification: `uv run pytest tests/test_anchory.py` passed (11), `uv run ruff check src/agentos/anchory/core.py src/agentos/anchory/commands.py tests/test_anchory.py` passed, and cross-package `agentos-cli` `uv run pytest tests/test_e2e_anchory.py` passed (5).
