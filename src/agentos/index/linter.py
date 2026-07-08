@@ -13,6 +13,14 @@ from agentos.mdblocks.core import (
     lint_markdown_blocks,
     scan_markdown_blocks,
 )
+from agentos.index.model import (
+    BlockHeading,
+    Diagnostic,
+    IndexDocument,
+    KernelLine,
+    RouterEntry as ModelRouterEntry,
+    parse_index_file,
+)
 
 
 Severity = Literal["error", "warning"]
@@ -26,10 +34,7 @@ _CONCEPT_REF = rf"{_DOTTED_CONCEPT}(?::{_CONCEPT_PARAM})*"
 _BLOCK_PATH_SEGMENT = rf"(?:{_CONCEPT_REF}|{_CONCEPT_SEGMENT})"
 BLOCK_PATH_RE = re.compile(rf"^{_CONCEPT_REF}(?:/{_BLOCK_PATH_SEGMENT})*$")
 APPENDIX_FILENAME_RE = re.compile(rf"^(?P<concept>{_CONCEPT_REF})-appendix(?:-(?P<page>[2-9][0-9]*))?\.md$")
-ROUTER_ENTRY_RE = re.compile(r"^-\s+`(?P<file>[^`]+\.md)`\s+[—-]\s+(?P<concepts>.+)$")
-APPENDIX_ROUTE_ANNOTATION_RE = re.compile(r"\[\+(?P<count>[1-9][0-9]*)\]$")
 INDEX_FILENAME_RE = re.compile(r"^(?P<number>[1-9][0-9]{2})-(?P<chapter>[a-z0-9][a-z0-9-]*)\.md$")
-SECTION_HEADING_RE = re.compile(r"^(#{2,6})[ \t]+(.+?)\s*$")
 
 CONFIG_NO_SURFACES = "Index.Linter/Config.NoSurfaces"
 SURFACE_INVALID = "Index.Linter/Surface.Invalid"
@@ -112,6 +117,7 @@ class LinterConfig:
     depot_paths: tuple[Path, ...]
     index_paths: tuple[Path, ...]
     appendix_paths: tuple[Path, ...]
+    warn_unlinked: bool = False
 
 
 @dataclass(frozen=True)
@@ -225,6 +231,7 @@ class LinterState:
     appendix_pages: dict[str, dict[int, list[str]]] = field(default_factory=dict)
     routers: list[str] = field(default_factory=list)
     router_entries: dict[str, list[RouterEntry]] = field(default_factory=dict)
+    parsed_documents: list[IndexDocument] = field(default_factory=list)
     findings: list[LinterFinding] = field(default_factory=list)
     check_results: list[CheckResult] = field(default_factory=list)
 
@@ -243,6 +250,14 @@ class LinterState:
 
     def has_valid_surface(self, kind: SurfaceKind) -> bool:
         return any(surface.kind == kind and surface.valid for surface in self.surfaces)
+
+    def parsed_kernel_lines(self) -> list[tuple[IndexDocument, KernelLine]]:
+        return [
+            (document, node)
+            for document in self.parsed_documents
+            for node in document.nodes
+            if isinstance(node, KernelLine)
+        ]
 
     def record_check(self, check: LinterCheck, findings: list[LinterFinding]) -> None:
         self.findings.extend(findings)
@@ -299,6 +314,7 @@ def build_linter_config(
     depot_paths: tuple[str, ...],
     index_paths: tuple[str, ...],
     appendix_paths: tuple[str, ...],
+    warn_unlinked: bool = False,
 ) -> tuple[LinterConfig, tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     resolved_root = Path.cwd().resolve()
     resolved_depots = tuple(
@@ -331,6 +347,7 @@ def build_linter_config(
             appendix_paths=tuple(
                 _resolve_under_root(resolved_root, path) for path in derived_appendix_paths
             ),
+            warn_unlinked=warn_unlinked,
         ),
         depot_paths,
         tuple(derived_index_paths),
@@ -633,28 +650,23 @@ def _check_mdblocks_syntax(state: LinterState) -> list[LinterFinding]:
 
 def _check_unanchored_sections(state: LinterState) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    for kind in ("index", "appendix"):
-        for file_data in state.mdblock_files_by_kind[kind]:
-            if Path(str(file_data["path"])).name == "000-INDEX.md":
+    _ensure_parsed_documents(state)
+    for document in state.parsed_documents:
+        if document.surface_kind == "router":
+            continue
+        for node in document.nodes:
+            if not isinstance(node, Diagnostic) or node.reason != "heading_without_separator":
                 continue
-            block_ranges = [
-                (int(block["start_line"]), int(block["end_line"]))
-                for block in file_data["blocks"]
-            ]
-            file_path = state.config.root / str(file_data["path"])
-            for line_no, title in _iter_section_headings(file_path):
-                if _line_in_ranges(line_no, block_ranges):
-                    continue
-                findings.append(
-                    LinterFinding(
-                        severity="warning",
-                        code=BLOCK_UNANCHORED_SECTION,
-                        path=str(file_data["path"]),
-                        line=line_no,
-                        message="Section heading is not part of a separator-anchored block.",
-                        details={"heading": title},
-                    )
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=BLOCK_UNANCHORED_SECTION,
+                    path=state.rel_path(node.path) if node.path else ".",
+                    line=node.start_line,
+                    message="Section heading is not part of a separator-anchored block.",
+                    details={"heading": node.parsed.get("heading", node.src)},
                 )
+            )
     return findings
 
 
@@ -733,16 +745,19 @@ def _check_index_filenames(state: LinterState) -> list[LinterFinding]:
 
 def _check_concept_inventory(state: LinterState) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    for file_data in state.mdblock_files_by_kind["index"]:
-        for block in file_data["blocks"]:
-            title = str(block["title"]).strip()
+    _ensure_parsed_documents(state)
+    for document in state.parsed_documents:
+        if document.surface_kind != "chapter":
+            continue
+        for block in (node for node in document.nodes if isinstance(node, BlockHeading)):
+            title = str(block.parsed["path"]).strip()
             concept_block = ConceptBlock(
                 concept=title,
-                path=str(block["path"]),
-                line=int(block["start_line"]),
+                path=state.rel_path(block.path) if block.path else ".",
+                line=block.start_line,
             )
             state.concepts.setdefault(title, []).append(concept_block)
-            if not BLOCK_PATH_RE.fullmatch(title):
+            if not block.parsed.get("valid"):
                 findings.append(
                     LinterFinding(
                         severity="warning",
@@ -831,26 +846,25 @@ def _check_orphan_appendix(state: LinterState) -> list[LinterFinding]:
 
 def _check_router_entries(state: LinterState) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    for router_rel_path in state.routers:
-        router_path = state.config.root / router_rel_path
-        for line_number, line in enumerate(router_path.read_text(encoding="utf-8").splitlines(), start=1):
-            match = ROUTER_ENTRY_RE.match(line.strip())
-            if match is None:
-                continue
-            route_file = match.group("file")
-            for raw_concept in match.group("concepts").split(","):
-                route_concept = _parse_router_concept(raw_concept)
-                concept = route_concept.concept
+    _ensure_parsed_documents(state)
+    for document in state.parsed_documents:
+        if document.surface_kind != "router":
+            continue
+        router_rel_path = state.rel_path(document.path) if document.path else "."
+        for node in (node for node in document.nodes if isinstance(node, ModelRouterEntry)):
+            route_file = str(node.parsed["file"])
+            for route_concept in node.parsed["concepts"]:
+                concept = str(route_concept["concept"])
                 if not concept:
                     continue
                 state.router_entries.setdefault(concept, []).append(
                     RouterEntry(
                         concept=concept,
-                        raw_concept=route_concept.raw_concept,
-                        appendix_annotation_count=route_concept.appendix_annotation_count,
+                        raw_concept=str(route_concept["raw"]),
+                        appendix_annotation_count=route_concept["plus_n"],
                         route_file=route_file,
                         router_path=router_rel_path,
-                        line=line_number,
+                        line=node.start_line,
                     )
                 )
                 if not BLOCK_PATH_RE.fullmatch(concept):
@@ -859,7 +873,7 @@ def _check_router_entries(state: LinterState) -> list[LinterFinding]:
                             severity="warning",
                             code=ROUTER_INVALID_CONCEPT,
                             path=router_rel_path,
-                            line=line_number,
+                            line=node.start_line,
                             message="Router entry concept does not match the current block-path pattern.",
                             details={"concept": concept, "route_file": route_file},
                         )
@@ -1024,28 +1038,6 @@ def _check_router_targets(state: LinterState) -> list[LinterFinding]:
     return findings
 
 
-@dataclass(frozen=True)
-class ParsedRouterConcept:
-    concept: str
-    raw_concept: str
-    appendix_annotation_count: int | None
-
-
-def _parse_router_concept(raw_concept: str) -> ParsedRouterConcept:
-    concept = raw_concept.strip().strip("`")
-    concept = concept.split(" — ", 1)[0].strip()
-    annotation_count = None
-    annotation_match = APPENDIX_ROUTE_ANNOTATION_RE.search(concept)
-    if annotation_match is not None:
-        annotation_count = int(annotation_match.group("count"))
-        concept = concept[: annotation_match.start()].strip()
-    return ParsedRouterConcept(
-        concept=concept,
-        raw_concept=raw_concept.strip(),
-        appendix_annotation_count=annotation_count,
-    )
-
-
 def _missing_appendix_pages(pages: list[int]) -> list[int]:
     if not pages:
         return []
@@ -1078,77 +1070,55 @@ def _surface_depot_root(surface: SurfacePath) -> Path:
     return path.parent.parent
 
 
-def _iter_section_headings(path: Path) -> list[tuple[int, str]]:
-    headings: list[tuple[int, str]] = []
-    in_fence = False
-    fence_char = ""
-    fence_len = 0
-
-    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        stripped_left = line.lstrip()
-        run_char, run_len = _fence_run(stripped_left)
-        if not in_fence and run_len >= 3:
-            in_fence = True
-            fence_char = run_char
-            fence_len = run_len
-            continue
-        if in_fence:
-            if (
-                run_char == fence_char
-                and run_len >= fence_len
-                and stripped_left[run_len:].strip() == ""
-            ):
-                in_fence = False
-                fence_char = ""
-                fence_len = 0
-            continue
-
-        match = SECTION_HEADING_RE.match(line)
-        if match is None:
-            continue
-        title = re.sub(r"[ \t]+#+[ \t]*$", "", match.group(2)).strip()
-        headings.append((line_no, title))
-    return headings
-
-
-def _fence_run(stripped_line: str) -> tuple[str, int]:
-    if not stripped_line:
-        return ("", 0)
-    char = stripped_line[0]
-    if char not in ("`", "~"):
-        return ("", 0)
-    count = 0
-    for candidate in stripped_line:
-        if candidate == char:
-            count += 1
-        else:
-            break
-    return (char, count)
-
-
-def _line_in_ranges(line_no: int, ranges: list[tuple[int, int]]) -> bool:
-    return any(start <= line_no <= end for start, end in ranges)
-
-
 LINE_TYPE_SYNTAX = "Index.Linter/Line.Type.Syntax"
 LINE_TYPE_UNKNOWN = "Index.Linter/Line.Type.UnknownCode"
 LINE_TYPE_GR_MISSING_ANCHOR = "Index.Linter/Line.Type.GR.MissingAnchor"
 SOURCE_AXIS_PLACEMENT = "Index.Linter/Source.Axis.Placement"
 CHECK_LINE_TYPES = "Index.Linter/Line.Types"
+LINE_UNLINKED = "Index.Linter/Line.Unlinked"
+CHECK_LINE_UNLINKED = "Index.Linter/Line.Unlinked"
 
 # act codes: keep aligned with `Line.Type.Vocabulary` in the agentos-pkg index
 _LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX", "GR")
 
-_TYPED_LINE_RE = re.compile(r"^- \[(?P<source>AS:)?(?P<code>[A-Z]{2})\] ")
 _TYPED_LINE_CANDIDATE_RE = re.compile(r"^- \[")
-_TRAILING_ANCHOR_RE = re.compile(r"@\d{8}-\d+\s*$")
 
 
-def _line_type_surface_files(state: LinterState) -> list[tuple[Path, bool]]:
-    """(file, is_agendix) for every markdown surface the line-type checks cover."""
-    files: list[tuple[Path, bool]] = []
+def parsed_linter_kernel_lines(state: LinterState) -> list[tuple[IndexDocument, KernelLine]]:
+    """Public parser-backed kernel-line feed for core and external linter checks."""
+    _ensure_parsed_documents(state)
+    return state.parsed_kernel_lines()
+
+
+def _ensure_parsed_documents(state: LinterState) -> None:
+    parsed_paths = {document.path for document in state.parsed_documents}
+    for path, surface_kind in _parser_surface_files(state):
+        if path in parsed_paths:
+            continue
+        try:
+            state.parsed_documents.append(parse_index_file(path, surface_kind=surface_kind))
+            parsed_paths.add(path)
+        except OSError:
+            continue
+
+
+def _parser_surface_files(state: LinterState) -> list[tuple[Path, str]]:
     seen: set[Path] = set()
-    for paths in (state.config.index_paths, state.config.appendix_paths):
+    typed_files: list[tuple[Path, str]] = []
+    for depot in state.config.depot_paths:
+        router = depot / "000-INDEX.md"
+        if router.is_file() and router not in seen:
+            seen.add(router)
+            typed_files.append((router, "router"))
+    for router_rel_path in state.routers:
+        router = state.config.root / router_rel_path
+        if router.is_file() and router not in seen:
+            seen.add(router)
+            typed_files.append((router, "router"))
+    for paths, surface_kind in (
+        (state.config.index_paths, "chapter"),
+        (state.config.appendix_paths, "appendix"),
+    ):
         for surface in paths:
             if surface.is_file():
                 candidates = [surface]
@@ -1157,76 +1127,92 @@ def _line_type_surface_files(state: LinterState) -> list[tuple[Path, bool]]:
             else:
                 continue
             for path in candidates:
-                if path not in seen:
+                if path.name != "AGENTS.md" and path not in seen:
                     seen.add(path)
-                    files.append((path, False))
+                    typed_files.append((path, surface_kind))
     agendix_dirs = {appendix.parent / "agendix" for appendix in state.config.appendix_paths}
     agendix_dirs.update(depot / "agendix" for depot in state.config.depot_paths)
     for agendix_dir in sorted(agendix_dirs):
         if not agendix_dir.is_dir():
             continue
         for path in sorted(agendix_dir.glob("*.md")):
-            if path not in seen:
+            if path.name != "AGENTS.md" and path not in seen:
                 seen.add(path)
-                files.append((path, True))
-    return files
+                typed_files.append((path, "agendix"))
+    return typed_files
 
 
 def _check_line_types(state: LinterState) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    for path, is_agendix in _line_type_surface_files(state):
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except OSError:
+    for document, line in parsed_linter_kernel_lines(state):
+        if not _TYPED_LINE_CANDIDATE_RE.match(line.src):
             continue
-        rel = state.rel_path(path)
-        for line_no, line in enumerate(lines, start=1):
-            if not _TYPED_LINE_CANDIDATE_RE.match(line):
-                continue
-            match = _TYPED_LINE_RE.match(line)
-            if match is None:
-                findings.append(
-                    LinterFinding(
-                        severity="warning",
-                        code=LINE_TYPE_SYNTAX,
-                        path=rel,
-                        line=line_no,
-                        message="Typed-line bracket does not match '- [XX] ' or '- [AS:XX] '.",
-                    )
+        rel = state.rel_path(line.path) if line.path else "."
+        code = line.parsed.get("act")
+        if code is None:
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=LINE_TYPE_SYNTAX,
+                    path=rel,
+                    line=line.start_line,
+                    message="Typed-line bracket does not match '- [XX] ' or '- [AS:XX] '.",
                 )
-                continue
-            code = match.group("code")
-            if code not in _LINE_TYPE_ACT_CODES:
-                findings.append(
-                    LinterFinding(
-                        severity="warning",
-                        code=LINE_TYPE_UNKNOWN,
-                        path=rel,
-                        line=line_no,
-                        message=f"Unknown Line.Type act code: {code}.",
-                        details={"code": code},
-                    )
+            )
+            continue
+        if code not in _LINE_TYPE_ACT_CODES:
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=LINE_TYPE_UNKNOWN,
+                    path=rel,
+                    line=line.start_line,
+                    message=f"Unknown Line.Type act code: {code}.",
+                    details={"code": code},
                 )
-            if match.group("source") and not is_agendix:
-                findings.append(
-                    LinterFinding(
-                        severity="error",
-                        code=SOURCE_AXIS_PLACEMENT,
-                        path=rel,
-                        line=line_no,
-                        message="AS: source-axis marker outside agendix/ — the index proper is user-turn-grounded.",
-                    )
+            )
+        if line.parsed.get("source") and document.surface_kind != "agendix":
+            findings.append(
+                LinterFinding(
+                    severity="error",
+                    code=SOURCE_AXIS_PLACEMENT,
+                    path=rel,
+                    line=line.start_line,
+                    message="AS: source-axis marker outside agendix/ — the index proper is user-turn-grounded.",
                 )
-            if code == "GR" and not _TRAILING_ANCHOR_RE.search(line):
-                findings.append(
-                    LinterFinding(
-                        severity="warning",
-                        code=LINE_TYPE_GR_MISSING_ANCHOR,
-                        path=rel,
-                        line=line_no,
-                        message="[GR] grounding line has no trailing anchor token.",
-                    )
+            )
+        if code == "GR" and not any(span.kind == "anchor" for span in line.spans):
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=LINE_TYPE_GR_MISSING_ANCHOR,
+                    path=rel,
+                    line=line.start_line,
+                    message="[GR] grounding line has no trailing anchor token.",
                 )
+            )
+    return findings
+
+
+def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
+    findings: list[LinterFinding] = []
+    for document, line in parsed_linter_kernel_lines(state):
+        if any(span.kind == "anchor" for span in line.spans):
+            continue
+        if document.surface_kind != "agendix" and not state.config.warn_unlinked:
+            continue
+        if document.surface_kind not in {"chapter", "appendix", "agendix"}:
+            continue
+        findings.append(
+            LinterFinding(
+                severity="warning",
+                code=LINE_UNLINKED,
+                path=state.rel_path(line.path) if line.path else ".",
+                line=line.start_line,
+                message="Kernel line has no Anchory anchor.",
+                details={"surface_kind": document.surface_kind},
+            )
+        )
     return findings
 
 
@@ -1320,5 +1306,11 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Line.Type syntax and source axis",
         gate=_needs_valid_surface,
         run=_check_line_types,
+    ),
+    LinterCheck(
+        code=CHECK_LINE_UNLINKED,
+        title="Unlinked kernel lines",
+        gate=_needs_valid_surface,
+        run=_check_line_unlinked,
     ),
 )

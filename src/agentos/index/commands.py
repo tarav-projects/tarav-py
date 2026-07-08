@@ -19,6 +19,7 @@ def _cmd_linter(args: argparse.Namespace) -> int:
         depot_paths=tuple(args.depot),
         index_paths=tuple(args.index),
         appendix_paths=tuple(args.appendix),
+        warn_unlinked=bool(getattr(args, "warn_unlinked", False)),
     )
     state = run_linter(
         config,
@@ -83,5 +84,10 @@ def register_index_commands(
         "--json",
         action="store_true",
         help="Emit structured JSON output.",
+    )
+    linter_parser.add_argument(
+        "--warn-unlinked",
+        action="store_true",
+        help="Warn for unanchored kernel lines in index and appendix surfaces.",
     )
     linter_parser.set_defaults(handler=_cmd_linter, _extra_linter_checks=tuple(extra_linter_checks))

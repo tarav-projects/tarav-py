@@ -631,6 +631,40 @@ def test_index_linter_source_axis_placement(monkeypatch, tmp_path: Path) -> None
     assert "100-design.md" in placement[0].path
 
 
+def test_index_linter_line_unlinked_scope(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n"
+        "- [DF] unlinked chapter line\n"
+        "- [GR] linked chapter line @20260101-0\n"
+        "****\n",
+    )
+    _write(
+        depot_dir / "agendix" / "Example.Concept-agendix.md",
+        "****\n## Example.Concept/Agendix\n\n"
+        "- [AS:CT] unlinked agendix line\n"
+        "- [AS:CT] linked agendix line @20260101-1\n"
+        "****\n",
+    )
+
+    default_state = _run(depot_paths=(str(depot_dir),))
+    default_hits = [f for f in default_state.findings if f.code == "Index.Linter/Line.Unlinked"]
+    assert len(default_hits) == 1
+    assert "agendix" in default_hits[0].path
+
+    config, raw_d, raw_i, raw_a = build_linter_config(
+        depot_paths=(str(depot_dir),),
+        index_paths=(),
+        appendix_paths=(),
+        warn_unlinked=True,
+    )
+    warned_state = run_linter(config, raw_d, raw_i, raw_a)
+    warned_hits = [f for f in warned_state.findings if f.code == "Index.Linter/Line.Unlinked"]
+    assert len(warned_hits) == 3
+
+
 def test_index_linter_runs_extra_checks(monkeypatch, tmp_path: Path) -> None:
     from agentos.index.linter import GateResult, LinterCheck, LinterFinding
 
