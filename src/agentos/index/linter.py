@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -342,6 +343,8 @@ def run_linter(
     raw_depot_paths: tuple[str, ...],
     raw_index_paths: tuple[str, ...],
     raw_appendix_paths: tuple[str, ...],
+    *,
+    extra_checks: Sequence["LinterCheck"] = (),
 ) -> LinterState:
     state = LinterState(
         config=config,
@@ -349,7 +352,7 @@ def run_linter(
         raw_index_paths=raw_index_paths,
         raw_appendix_paths=raw_appendix_paths,
     )
-    for check in CHECKS:
+    for check in (*CHECKS, *extra_checks):
         gate = check.gate(state)
         if not gate.allowed:
             state.record_blocked(check, gate)
@@ -1127,6 +1130,106 @@ def _line_in_ranges(line_no: int, ranges: list[tuple[int, int]]) -> bool:
     return any(start <= line_no <= end for start, end in ranges)
 
 
+LINE_TYPE_SYNTAX = "Index.Linter/Line.Type.Syntax"
+LINE_TYPE_UNKNOWN = "Index.Linter/Line.Type.UnknownCode"
+LINE_TYPE_GR_MISSING_ANCHOR = "Index.Linter/Line.Type.GR.MissingAnchor"
+SOURCE_AXIS_PLACEMENT = "Index.Linter/Source.Axis.Placement"
+CHECK_LINE_TYPES = "Index.Linter/Line.Types"
+
+# act codes: keep aligned with `Line.Type.Vocabulary` in the agentos-pkg index
+_LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX", "GR")
+
+_TYPED_LINE_RE = re.compile(r"^- \[(?P<source>AS:)?(?P<code>[A-Z]{2})\] ")
+_TYPED_LINE_CANDIDATE_RE = re.compile(r"^- \[")
+_TRAILING_ANCHOR_RE = re.compile(r"@\d{8}-\d+\s*$")
+
+
+def _line_type_surface_files(state: LinterState) -> list[tuple[Path, bool]]:
+    """(file, is_agendix) for every markdown surface the line-type checks cover."""
+    files: list[tuple[Path, bool]] = []
+    seen: set[Path] = set()
+    for paths in (state.config.index_paths, state.config.appendix_paths):
+        for surface in paths:
+            if surface.is_file():
+                candidates = [surface]
+            elif surface.is_dir():
+                candidates = sorted(surface.glob("*.md"))
+            else:
+                continue
+            for path in candidates:
+                if path not in seen:
+                    seen.add(path)
+                    files.append((path, False))
+    agendix_dirs = {appendix.parent / "agendix" for appendix in state.config.appendix_paths}
+    agendix_dirs.update(depot / "agendix" for depot in state.config.depot_paths)
+    for agendix_dir in sorted(agendix_dirs):
+        if not agendix_dir.is_dir():
+            continue
+        for path in sorted(agendix_dir.glob("*.md")):
+            if path not in seen:
+                seen.add(path)
+                files.append((path, True))
+    return files
+
+
+def _check_line_types(state: LinterState) -> list[LinterFinding]:
+    findings: list[LinterFinding] = []
+    for path, is_agendix in _line_type_surface_files(state):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        rel = state.rel_path(path)
+        for line_no, line in enumerate(lines, start=1):
+            if not _TYPED_LINE_CANDIDATE_RE.match(line):
+                continue
+            match = _TYPED_LINE_RE.match(line)
+            if match is None:
+                findings.append(
+                    LinterFinding(
+                        severity="warning",
+                        code=LINE_TYPE_SYNTAX,
+                        path=rel,
+                        line=line_no,
+                        message="Typed-line bracket does not match '- [XX] ' or '- [AS:XX] '.",
+                    )
+                )
+                continue
+            code = match.group("code")
+            if code not in _LINE_TYPE_ACT_CODES:
+                findings.append(
+                    LinterFinding(
+                        severity="warning",
+                        code=LINE_TYPE_UNKNOWN,
+                        path=rel,
+                        line=line_no,
+                        message=f"Unknown Line.Type act code: {code}.",
+                        details={"code": code},
+                    )
+                )
+            if match.group("source") and not is_agendix:
+                findings.append(
+                    LinterFinding(
+                        severity="error",
+                        code=SOURCE_AXIS_PLACEMENT,
+                        path=rel,
+                        line=line_no,
+                        message="AS: source-axis marker outside agendix/ — the index proper is user-turn-grounded.",
+                    )
+                )
+            if code == "GR" and not _TRAILING_ANCHOR_RE.search(line):
+                findings.append(
+                    LinterFinding(
+                        severity="warning",
+                        code=LINE_TYPE_GR_MISSING_ANCHOR,
+                        path=rel,
+                        line=line_no,
+                        message="[GR] grounding line has no trailing anchor token.",
+                    )
+                )
+    return findings
+
+
 CHECKS: tuple[LinterCheck, ...] = (
     LinterCheck(
         code=CHECK_CONFIG_SURFACES,
@@ -1211,5 +1314,11 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Router targets real blocks",
         gate=_needs_router_inventory,
         run=_check_router_targets,
+    ),
+    LinterCheck(
+        code=CHECK_LINE_TYPES,
+        title="Line.Type syntax and source axis",
+        gate=_needs_valid_surface,
+        run=_check_line_types,
     ),
 )

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 
 from .linter import (
+    LinterCheck,
     build_linter_config,
     render_linter_json,
     render_linter_text,
@@ -18,7 +20,13 @@ def _cmd_linter(args: argparse.Namespace) -> int:
         index_paths=tuple(args.index),
         appendix_paths=tuple(args.appendix),
     )
-    state = run_linter(config, raw_depot_paths, raw_index_paths, raw_appendix_paths)
+    state = run_linter(
+        config,
+        raw_depot_paths,
+        raw_index_paths,
+        raw_appendix_paths,
+        extra_checks=tuple(getattr(args, "_extra_linter_checks", ()) or ()),
+    )
     if args.json:
         print(render_linter_json(state))
     else:
@@ -26,7 +34,11 @@ def _cmd_linter(args: argparse.Namespace) -> int:
     return 1 if state.summary()["error_count"] else 0
 
 
-def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
+def register_index_commands(
+    subparsers: argparse._SubParsersAction,
+    *,
+    extra_linter_checks: Sequence[LinterCheck] = (),
+) -> None:
     index_parser = subparsers.add_parser(
         "index",
         help="Index knowledge surface operations.",
@@ -72,4 +84,4 @@ def register_index_commands(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Emit structured JSON output.",
     )
-    linter_parser.set_defaults(handler=_cmd_linter)
+    linter_parser.set_defaults(handler=_cmd_linter, _extra_linter_checks=tuple(extra_linter_checks))

@@ -580,3 +580,89 @@ def test_index_linter_command_accepts_depot_paths(
     assert payload["config"]["depot"] == ["depot"]
     assert payload["config"]["index"] == ["depot/design"]
     assert payload["config"]["appendix"] == ["depot/appendix"]
+
+
+def _finding_codes(state) -> list[str]:
+    return [finding.code for finding in state.findings]
+
+
+def test_index_linter_line_type_syntax_checks(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n"
+        "- [DF] `Example.Concept` is fine\n"
+        "- [ct] malformed lowercase code\n"
+        "- [ZZ] unknown act code\n"
+        "- [GR] grounding line with no trailing anchor\n"
+        "- untyped legacy line stays silent\n"
+        "****\n",
+    )
+    state = _run(depot_paths=(str(depot_dir),))
+    codes = _finding_codes(state)
+    assert "Index.Linter/Line.Type.Syntax" in codes
+    assert "Index.Linter/Line.Type.UnknownCode" in codes
+    assert "Index.Linter/Line.Type.GR.MissingAnchor" in codes
+    typed_findings = [f for f in state.findings if f.code.startswith("Index.Linter/Line.Type")]
+    assert all(f.severity == "warning" for f in typed_findings)
+
+
+def test_index_linter_source_axis_placement(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n"
+        "- [DF] `Example.Concept` is fine\n"
+        "- [AS:CT] assistant-grounded line in the index proper @20260101-0\n"
+        "****\n",
+    )
+    _write(
+        depot_dir / "agendix" / "Example.Concept-agendix.md",
+        "****\n## Example.Concept/Agendix\n\n"
+        "- [AS:CT] assistant-grounded capture is legal here @20260101-1\n"
+        "****\n",
+    )
+    state = _run(depot_paths=(str(depot_dir),))
+    placement = [f for f in state.findings if f.code == "Index.Linter/Source.Axis.Placement"]
+    assert len(placement) == 1
+    assert placement[0].severity == "error"
+    assert "100-design.md" in placement[0].path
+
+
+def test_index_linter_runs_extra_checks(monkeypatch, tmp_path: Path) -> None:
+    from agentos.index.linter import GateResult, LinterCheck, LinterFinding
+
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    ran: list[str] = []
+
+    def _gate_ok(state) -> GateResult:
+        return GateResult(allowed=True)
+
+    def _run_extra(state) -> list[LinterFinding]:
+        ran.append("yes")
+        return [
+            LinterFinding(
+                severity="warning",
+                code="External.Check/Probe",
+                message="external check ran",
+                path="probe",
+            )
+        ]
+
+    def _gate_blocked(state) -> GateResult:
+        return GateResult(allowed=False, reason="backend unavailable")
+
+    extra = LinterCheck(code="External.Check", title="External probe", gate=_gate_ok, run=_run_extra)
+    blocked = LinterCheck(
+        code="External.Blocked", title="External blocked", gate=_gate_blocked, run=_run_extra
+    )
+    config, raw_d, raw_i, raw_a = build_linter_config(
+        depot_paths=(str(depot_dir),), index_paths=(), appendix_paths=()
+    )
+    state = run_linter(config, raw_d, raw_i, raw_a, extra_checks=(extra, blocked))
+    assert ran == ["yes"]
+    assert "External.Check/Probe" in _finding_codes(state)
+    assert any(r.code == "External.Blocked" and r.status == "blocked" for r in state.check_results)
