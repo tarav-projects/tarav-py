@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Sequence
 
 from .linter import (
@@ -19,6 +20,8 @@ def _cmd_linter(args: argparse.Namespace) -> int:
         depot_paths=tuple(args.depot),
         index_paths=tuple(args.index),
         appendix_paths=tuple(args.appendix),
+        coverage=tuple(getattr(args, "coverage", ()) or ()),
+        scope_paths=tuple(getattr(args, "scope", ()) or ()),
         warn_unlinked=bool(getattr(args, "warn_unlinked", False)),
     )
     state = run_linter(
@@ -28,11 +31,13 @@ def _cmd_linter(args: argparse.Namespace) -> int:
         raw_appendix_paths,
         extra_checks=tuple(getattr(args, "_extra_linter_checks", ()) or ()),
     )
+    json_output = render_linter_json(state)
     if args.json:
-        print(render_linter_json(state))
+        print(json_output)
     else:
         print(render_linter_text(state))
-    return 1 if state.summary()["error_count"] else 0
+    payload = json.loads(json_output)
+    return int(payload["exit_code"])
 
 
 def register_index_commands(
@@ -86,8 +91,21 @@ def register_index_commands(
         help="Emit structured JSON output.",
     )
     linter_parser.add_argument(
+        "--coverage",
+        action="append",
+        default=[],
+        choices=("line", "block", "all"),
+        help="Enable an optional coverage meter: line, block, or all. Repeatable.",
+    )
+    linter_parser.add_argument(
+        "--scope",
+        action="append",
+        default=[],
+        help="Report findings and coverage only for this file or directory scope. Repeatable.",
+    )
+    linter_parser.add_argument(
         "--warn-unlinked",
         action="store_true",
-        help="Warn for unanchored kernel lines in index and appendix surfaces.",
+        help="Alias for --coverage line.",
     )
     linter_parser.set_defaults(handler=_cmd_linter, _extra_linter_checks=tuple(extra_linter_checks))

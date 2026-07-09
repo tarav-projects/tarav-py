@@ -117,7 +117,8 @@ class LinterConfig:
     depot_paths: tuple[Path, ...]
     index_paths: tuple[Path, ...]
     appendix_paths: tuple[Path, ...]
-    warn_unlinked: bool = False
+    coverage: frozenset[str] = frozenset()
+    scope_paths: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -188,6 +189,12 @@ class CheckResult:
 
 
 @dataclass(frozen=True)
+class CoverageItem:
+    path: str
+    covered: bool
+
+
+@dataclass(frozen=True)
 class SurfacePath:
     kind: SurfaceKind
     raw_path: str
@@ -233,7 +240,9 @@ class LinterState:
     router_entries: dict[str, list[RouterEntry]] = field(default_factory=dict)
     parsed_documents: list[IndexDocument] = field(default_factory=list)
     findings: list[LinterFinding] = field(default_factory=list)
+    finding_check_codes: dict[int, str] = field(default_factory=dict)
     check_results: list[CheckResult] = field(default_factory=list)
+    coverage_items: dict[str, list[CoverageItem]] = field(default_factory=dict)
 
     def rel_path(self, path: Path) -> str:
         try:
@@ -261,6 +270,8 @@ class LinterState:
 
     def record_check(self, check: LinterCheck, findings: list[LinterFinding]) -> None:
         self.findings.extend(findings)
+        for finding in findings:
+            self.finding_check_codes[id(finding)] = check.code
         error_count = sum(1 for finding in findings if finding.severity == "error")
         warning_count = sum(1 for finding in findings if finding.severity == "warning")
         self.check_results.append(
@@ -314,11 +325,17 @@ def build_linter_config(
     depot_paths: tuple[str, ...],
     index_paths: tuple[str, ...],
     appendix_paths: tuple[str, ...],
+    coverage: tuple[str, ...] = (),
+    scope_paths: tuple[str, ...] = (),
     warn_unlinked: bool = False,
 ) -> tuple[LinterConfig, tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     resolved_root = Path.cwd().resolve()
     resolved_depots = tuple(
         _resolve_under_root(resolved_root, path) for path in depot_paths
+    )
+    resolved_coverage = _resolve_coverage(coverage, warn_unlinked=warn_unlinked)
+    resolved_scope_paths = tuple(
+        _resolve_under_root(resolved_root, path) for path in scope_paths
     )
     derived_index_paths: list[str] = list(index_paths)
     derived_appendix_paths: list[str] = list(appendix_paths)
@@ -347,7 +364,8 @@ def build_linter_config(
             appendix_paths=tuple(
                 _resolve_under_root(resolved_root, path) for path in derived_appendix_paths
             ),
-            warn_unlinked=warn_unlinked,
+            coverage=resolved_coverage,
+            scope_paths=resolved_scope_paths,
         ),
         depot_paths,
         tuple(derived_index_paths),
@@ -383,11 +401,12 @@ def render_linter_json(state: LinterState) -> str:
 
 
 def render_linter_text(state: LinterState) -> str:
+    view = _scoped_view(state)
     lines = ["Index linter"]
-    if state.findings:
+    if view["findings"]:
         lines.append("")
         lines.append("Findings:")
-        for finding in state.findings:
+        for finding in view["findings"]:
             location = finding.path
             if finding.line is not None:
                 location = f"{location}:{finding.line}"
@@ -395,7 +414,7 @@ def render_linter_text(state: LinterState) -> str:
                 f"- [{finding.severity.upper()}] {finding.code} @ {location} - {finding.message}"
             )
 
-    blocked_results = [result for result in state.check_results if result.status == "blocked"]
+    blocked_results = [result for result in view["check_results"] if result.status == "blocked"]
     if blocked_results:
         lines.append("")
         lines.append("Blocked checks:")
@@ -405,7 +424,17 @@ def render_linter_text(state: LinterState) -> str:
                 suffix = f" (blocked by: {', '.join(result.blocked_by)})"
             lines.append(f"- {result.code}: {result.reason or 'blocked'}{suffix}")
 
-    summary = state.summary()
+    coverage_payload = view["coverage"]
+    if coverage_payload:
+        lines.append("")
+        lines.append("Coverage:")
+        for name, meter in coverage_payload.items():
+            if name == "line":
+                lines.append(f"- line: {meter['linked']}/{meter['total']} linked")
+            elif name == "block":
+                lines.append(f"- block: {meter['grounded']}/{meter['total']} grounded")
+
+    summary = view["summary"]
     lines.append("")
     lines.append(
         "Summary: "
@@ -432,13 +461,19 @@ def _relativize_under_root(root: Path, path: Path) -> str:
 
 
 def _state_payload(state: LinterState) -> dict[str, Any]:
-    return {
+    view = _scoped_view(state)
+    config: dict[str, Any] = {
+        "depot": list(state.raw_depot_paths),
+        "index": list(state.raw_index_paths),
+        "appendix": list(state.raw_appendix_paths),
+    }
+    if state.config.coverage:
+        config["coverage"] = sorted(state.config.coverage)
+    if state.config.scope_paths:
+        config["scope"] = [state.rel_path(path) for path in state.config.scope_paths]
+    payload = {
         "root": str(state.config.root),
-        "config": {
-            "depot": list(state.raw_depot_paths),
-            "index": list(state.raw_index_paths),
-            "appendix": list(state.raw_appendix_paths),
-        },
+        "config": config,
         "surfaces": [
             {
                 "kind": surface.kind,
@@ -451,11 +486,130 @@ def _state_payload(state: LinterState) -> dict[str, Any]:
             kind: list(paths)
             for kind, paths in state.files_by_kind.items()
         },
-        "checks": [result.to_payload() for result in state.check_results],
-        "findings": [finding.to_payload() for finding in state.findings],
-        "summary": state.summary(),
-        "exit_code": 1 if state.summary()["error_count"] else 0,
+        "checks": [result.to_payload() for result in view["check_results"]],
+        "findings": [finding.to_payload() for finding in view["findings"]],
+        "summary": view["summary"],
+        "exit_code": 1 if view["summary"]["error_count"] else 0,
     }
+    if view["coverage"]:
+        payload["coverage"] = view["coverage"]
+    return payload
+
+
+def _resolve_coverage(coverage: tuple[str, ...], *, warn_unlinked: bool) -> frozenset[str]:
+    resolved: set[str] = set()
+    for name in coverage:
+        if name == "all":
+            resolved.update(("line", "block"))
+            continue
+        if name not in {"line", "block"}:
+            raise SystemExit(f"error: unknown coverage meter: {name}")
+        resolved.add(name)
+    if warn_unlinked:
+        resolved.add("line")
+    return frozenset(resolved)
+
+
+def _scoped_view(state: LinterState) -> dict[str, Any]:
+    findings = [finding for finding in state.findings if _finding_in_scope(state, finding)]
+    check_results = _scoped_check_results(state, findings)
+    summary = _summary_from(check_results, findings)
+    coverage = _scoped_coverage(state)
+    return {
+        "findings": findings,
+        "check_results": check_results,
+        "summary": summary,
+        "coverage": coverage,
+    }
+
+
+def _finding_in_scope(state: LinterState, finding: LinterFinding) -> bool:
+    if not state.config.scope_paths:
+        return True
+    return _rel_path_in_scope(state, finding.path)
+
+
+def _rel_path_in_scope(state: LinterState, rel_path: str) -> bool:
+    path = (state.config.root / rel_path).resolve()
+    return any(_path_is_or_contains(scope, path) for scope in state.config.scope_paths)
+
+
+def _path_is_or_contains(scope: Path, path: Path) -> bool:
+    if path == scope:
+        return True
+    try:
+        path.relative_to(scope)
+        return True
+    except ValueError:
+        return False
+
+
+def _scoped_check_results(
+    state: LinterState,
+    findings: list[LinterFinding],
+) -> list[CheckResult]:
+    findings_by_check: dict[str, list[LinterFinding]] = {}
+    for finding in findings:
+        check_code = state.finding_check_codes.get(id(finding))
+        if check_code is None:
+            continue
+        findings_by_check.setdefault(check_code, []).append(finding)
+
+    results: list[CheckResult] = []
+    for result in state.check_results:
+        if result.status == "blocked":
+            results.append(result)
+            continue
+        check_findings = findings_by_check.get(result.code, [])
+        error_count = sum(1 for finding in check_findings if finding.severity == "error")
+        warning_count = sum(1 for finding in check_findings if finding.severity == "warning")
+        results.append(
+            CheckResult(
+                code=result.code,
+                title=result.title,
+                status="failed" if check_findings else "passed",
+                finding_count=len(check_findings),
+                error_count=error_count,
+                warning_count=warning_count,
+            )
+        )
+    return results
+
+
+def _summary_from(
+    check_results: list[CheckResult],
+    findings: list[LinterFinding],
+) -> dict[str, int]:
+    return {
+        "check_count": len(check_results),
+        "passed_count": sum(1 for result in check_results if result.status == "passed"),
+        "failed_count": sum(1 for result in check_results if result.status == "failed"),
+        "blocked_count": sum(1 for result in check_results if result.status == "blocked"),
+        "finding_count": len(findings),
+        "error_count": sum(1 for finding in findings if finding.severity == "error"),
+        "warning_count": sum(1 for finding in findings if finding.severity == "warning"),
+    }
+
+
+def _scoped_coverage(state: LinterState) -> dict[str, dict[str, int]]:
+    payload: dict[str, dict[str, int]] = {}
+    if "line" in state.config.coverage:
+        items = _coverage_items_in_scope(state, "line")
+        linked = sum(1 for item in items if item.covered)
+        payload["line"] = {"linked": linked, "total": len(items)}
+    if "block" in state.config.coverage:
+        items = _coverage_items_in_scope(state, "block")
+        grounded = sum(1 for item in items if item.covered)
+        payload["block"] = {"grounded": grounded, "total": len(items)}
+    return payload
+
+
+def _coverage_items_in_scope(state: LinterState, name: str) -> list[CoverageItem]:
+    return [
+        item
+        for item in state.coverage_items.get(name, [])
+        if not state.config.scope_paths or _rel_path_in_scope(state, item.path)
+    ]
 
 
 def _always(_state: LinterState) -> GateResult:
@@ -600,6 +754,9 @@ def _check_discover_files(state: LinterState) -> list[LinterFinding]:
             continue
         files = _surface_markdown_files(state, surface)
         state.files_by_kind[surface.kind].extend(state.rel_path(path) for path in files)
+    scope_findings = _check_scope_paths(state)
+    if scope_findings:
+        return scope_findings
     if any(state.files_by_kind.values()):
         return []
     return [
@@ -610,6 +767,33 @@ def _check_discover_files(state: LinterState) -> list[LinterFinding]:
             message="No markdown files were discovered in configured surfaces.",
         )
     ]
+
+
+def _check_scope_paths(state: LinterState) -> list[LinterFinding]:
+    if not state.config.scope_paths:
+        return []
+    configured_paths = [
+        surface.path
+        for surface in state.surfaces
+        if surface.valid
+    ] + [
+        (state.config.root / rel_path).resolve()
+        for paths in state.files_by_kind.values()
+        for rel_path in paths
+    ]
+    findings: list[LinterFinding] = []
+    for scope in state.config.scope_paths:
+        if any(_path_is_or_contains(scope, path) for path in configured_paths):
+            continue
+        findings.append(
+            LinterFinding(
+                severity="error",
+                code=SURFACE_INVALID,
+                path=state.rel_path(scope),
+                message="Configured --scope path matches no configured linter file.",
+            )
+        )
+    return findings
 
 
 def _check_mdblocks_syntax(state: LinterState) -> list[LinterFinding]:
@@ -1077,6 +1261,8 @@ SOURCE_AXIS_PLACEMENT = "Index.Linter/Source.Axis.Placement"
 CHECK_LINE_TYPES = "Index.Linter/Line.Types"
 LINE_UNLINKED = "Index.Linter/Line.Unlinked"
 CHECK_LINE_UNLINKED = "Index.Linter/Line.Unlinked"
+BLOCK_UNGROUNDED = "Index.Linter/Block.Ungrounded"
+CHECK_BLOCK_UNGROUNDED = "Index.Linter/Block.Ungrounded"
 
 # act codes: keep aligned with `Line.Type.Vocabulary` in the agentos-pkg index
 _LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX", "GR")
@@ -1197,9 +1383,17 @@ def _check_line_types(state: LinterState) -> list[LinterFinding]:
 def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
     for document, line in parsed_linter_kernel_lines(state):
-        if any(span.kind == "anchor" for span in line.spans):
+        has_anchor = any(span.kind == "anchor" for span in line.spans)
+        if "line" in state.config.coverage and document.surface_kind in {"chapter", "appendix"}:
+            state.coverage_items.setdefault("line", []).append(
+                CoverageItem(
+                    path=state.rel_path(line.path) if line.path else ".",
+                    covered=has_anchor,
+                )
+            )
+        if has_anchor:
             continue
-        if document.surface_kind != "agendix" and not state.config.warn_unlinked:
+        if document.surface_kind != "agendix" and "line" not in state.config.coverage:
             continue
         if document.surface_kind not in {"chapter", "appendix", "agendix"}:
             continue
@@ -1209,11 +1403,71 @@ def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
                 code=LINE_UNLINKED,
                 path=state.rel_path(line.path) if line.path else ".",
                 line=line.start_line,
-                message="Kernel line has no Anchory anchor.",
+                message="Kernel line carries no evidence pointer (no trailing Anchory anchor).",
                 details={"surface_kind": document.surface_kind},
             )
         )
     return findings
+
+
+def _check_block_ungrounded(state: LinterState) -> list[LinterFinding]:
+    findings: list[LinterFinding] = []
+    grounded_paths = _grounded_block_paths(state)
+    for document in _parsed_documents_by_kind(state, "chapter"):
+        for block in (node for node in document.nodes if isinstance(node, BlockHeading)):
+            block_path = str(block.parsed.get("path", "")).strip()
+            if not block.parsed.get("valid") or block.parsed.get("segments") != []:
+                continue
+            rel_path = state.rel_path(block.path) if block.path else "."
+            grounded = block_path in grounded_paths
+            if "block" in state.config.coverage:
+                state.coverage_items.setdefault("block", []).append(
+                    CoverageItem(path=rel_path, covered=grounded)
+                )
+            if grounded or "block" not in state.config.coverage:
+                continue
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=BLOCK_UNGROUNDED,
+                    path=rel_path,
+                    line=block.start_line,
+                    message="Index concept block has no Grounding.Head evidence board (no anchored `[GR]` spot).",
+                    details={"block_path": block_path},
+                )
+            )
+    return findings
+
+
+def _grounded_block_paths(state: LinterState) -> set[str]:
+    grounded: set[str] = set()
+    for document in _parsed_documents_by_kind(state, "appendix"):
+        grounding_heads = {
+            str(node.parsed["path"])
+            for node in document.nodes
+            if isinstance(node, BlockHeading)
+            and node.parsed.get("segments") == ["Grounding.Head"]
+            and node.parsed.get("valid")
+        }
+        for line in document.kernel_lines():
+            block_path = str(line.parsed.get("block_path", ""))
+            if block_path not in grounding_heads:
+                continue
+            if line.parsed.get("act") != "GR":
+                continue
+            if not any(span.kind == "anchor" for span in line.spans):
+                continue
+            grounded.add(block_path.rsplit("/Grounding.Head", 1)[0])
+    return grounded
+
+
+def _parsed_documents_by_kind(state: LinterState, surface_kind: str) -> list[IndexDocument]:
+    _ensure_parsed_documents(state)
+    return [
+        document
+        for document in state.parsed_documents
+        if document.surface_kind == surface_kind
+    ]
 
 
 CHECKS: tuple[LinterCheck, ...] = (
@@ -1312,5 +1566,11 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Unlinked kernel lines",
         gate=_needs_valid_surface,
         run=_check_line_unlinked,
+    ),
+    LinterCheck(
+        code=CHECK_BLOCK_UNGROUNDED,
+        title="Ungrounded concept blocks",
+        gate=_needs_valid_surface,
+        run=_check_block_ungrounded,
     ),
 )

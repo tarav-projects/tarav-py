@@ -22,7 +22,9 @@
 - `src/agentos/index/model/` is the parser-backed model layer for index surfaces. It exposes `parse_index_file`, `parse_depot`, typed nodes such as `BlockHeading`/`KernelLine`/`RouterEntry`, and block-anchor query helpers for parser consumers.
 - the linter exposes an external-check socket: `run_linter(..., extra_checks=...)` and `register_index_commands(..., extra_linter_checks=...)`; bridges (e.g. the chatlas grounding-provenance check) register at the composition root (`agentos-cli`), the core never imports them (`Dependency.Profile.Split`).
 - core parser-backed line checks: typed-line bracket syntax, known act codes, `[GR]` trailing anchor (warnings), and `AS:` outside `agendix/` as `Index.Linter/Source.Axis.Placement` (error); `agendix/` files are discovered next to `appendix/` for these checks.
-- `agentos index linter --warn-unlinked` enables `Index.Linter/Line.Unlinked` warnings for chapter and appendix kernel lines; agendix kernel lines are checked for anchors by default.
+- `agentos index linter --coverage line` enables `Index.Linter/Line.Unlinked` warnings for chapter and appendix kernel lines; `--warn-unlinked` is a compatibility alias for this meter. Agendix kernel lines are checked for anchors by default.
+- `agentos index linter --coverage block` enables `Index.Linter/Block.Ungrounded`, measuring chapter concept blocks by presence of `[GR]`-anchored `Grounding.Head` appendix evidence. `--coverage all` enables both block and line meters.
+- `agentos index linter --scope <path>` filters reported findings, per-check counts, summaries, and coverage meters to configured files under the file or directory scope while checks still run over the full configured depot.
 
 ## Compatibility Policy
 

@@ -60,11 +60,17 @@ def _run(
     depot_paths: tuple[str, ...] = (),
     index_paths: tuple[str, ...] = (),
     appendix_paths: tuple[str, ...] = (),
+    coverage: tuple[str, ...] = (),
+    scope_paths: tuple[str, ...] = (),
+    warn_unlinked: bool = False,
 ):
     config, raw_depot_paths, raw_index_paths, raw_appendix_paths = build_linter_config(
         depot_paths=depot_paths,
         index_paths=index_paths,
         appendix_paths=appendix_paths,
+        coverage=coverage,
+        scope_paths=scope_paths,
+        warn_unlinked=warn_unlinked,
     )
     return run_linter(config, raw_depot_paths, raw_index_paths, raw_appendix_paths)
 
@@ -548,6 +554,9 @@ def test_index_linter_command_uses_shared_state_for_json(
         index=[index_dir.name],
         appendix=[],
         json=True,
+        coverage=[],
+        scope=[],
+        warn_unlinked=False,
     )
 
     exit_code = _cmd_linter(args)
@@ -571,6 +580,9 @@ def test_index_linter_command_accepts_depot_paths(
         index=[],
         appendix=[],
         json=True,
+        coverage=[],
+        scope=[],
+        warn_unlinked=False,
     )
 
     exit_code = _cmd_linter(args)
@@ -663,6 +675,151 @@ def test_index_linter_line_unlinked_scope(monkeypatch, tmp_path: Path) -> None:
     warned_state = run_linter(config, raw_d, raw_i, raw_a)
     warned_hits = [f for f in warned_state.findings if f.code == "Index.Linter/Line.Unlinked"]
     assert len(warned_hits) == 3
+
+
+def test_index_linter_coverage_line_replaces_warn_unlinked(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path, include_appendix=False)
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n"
+        "- [DF] unlinked chapter line\n"
+        "- [GR] linked chapter line @20260101-0\n"
+        "****\n",
+    )
+
+    state = _run(depot_paths=(str(depot_dir),), coverage=("line",))
+    hits = [f for f in state.findings if f.code == "Index.Linter/Line.Unlinked"]
+    payload = json.loads(render_linter_json(state))
+
+    assert len(hits) == 1
+    assert payload["coverage"]["line"] == {"linked": 1, "total": 2}
+
+    alias_state = _run(depot_paths=(str(depot_dir),), warn_unlinked=True)
+    alias_hits = [f for f in alias_state.findings if f.code == "Index.Linter/Line.Unlinked"]
+    assert len(alias_hits) == len(hits)
+
+
+def test_index_linter_block_ungrounded_meter(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    _write(
+        depot_dir / "000-INDEX.md",
+        "# Agentos Index\n\n## design\n\n"
+        "- `design/100-design.md` — Example.Grounded[+1], Example.Ungrounded[+1], "
+        "Example.InlineOnly[+1], Example.Param:One[+1]\n",
+    )
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.Grounded\n\n"
+        "- unanchored but block-grounded\n"
+        "****\n## Example.Ungrounded\n\n"
+        "- ungrounded\n"
+        "****\n## Example.InlineOnly\n\n"
+        "- inline anchor does not block-ground @20260101-2\n"
+        "****\n## Example.Param:One\n\n"
+        "- parameterized block\n"
+        "****\n",
+    )
+    _write(
+        depot_dir / "appendix" / "Example.Grounded-appendix.md",
+        "****\n## Example.Grounded/Grounding.Head\n\n"
+        "- [GR] block evidence @20260101-0\n"
+        "****\n",
+    )
+    _write(
+        depot_dir / "appendix" / "Example.Ungrounded-appendix.md",
+        "****\n## Example.Ungrounded/Grounding.Head\n\n"
+        "- [CT] anchored but not a grounding line @20260101-1\n"
+        "****\n",
+    )
+    _write(
+        depot_dir / "appendix" / "Example.InlineOnly-appendix.md",
+        "****\n## Example.InlineOnly/Depth\n\n"
+        "- [GR] depth evidence @20260101-2\n"
+        "****\n",
+    )
+    _write(
+        depot_dir / "appendix" / "Example.Param:One-appendix.md",
+        "****\n## Example.Param:One/Grounding.Head\n\n"
+        "- [GR] parameterized evidence @20260101-3\n"
+        "****\n",
+    )
+
+    state = _run(depot_paths=(str(depot_dir),), coverage=("block",))
+    hits = [f for f in state.findings if f.code == "Index.Linter/Block.Ungrounded"]
+    payload = json.loads(render_linter_json(state))
+
+    assert payload["coverage"]["block"] == {"grounded": 2, "total": 4}
+    assert {hit.details["block_path"] for hit in hits} == {
+        "Example.Ungrounded",
+        "Example.InlineOnly",
+    }
+
+
+def test_index_linter_scope_filters_findings_counts_and_meters(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    _write(
+        depot_dir / "000-INDEX.md",
+        "# Agentos Index\n\n## design\n\n"
+        "- `design/100-design.md` — Example.One[+1]\n"
+        "- `other/100-other.md` — Example.Two[+1]\n",
+    )
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.One\n\n"
+        "- scoped unlinked line\n"
+        "****\n",
+    )
+    _write(
+        depot_dir / "other" / "100-other.md",
+        "****\n## Example.Two\n\n"
+        "- out-of-scope unlinked line\n"
+        "- linked line @20260101-0\n"
+        "****\n",
+    )
+    _write(
+        depot_dir / "appendix" / "Example.One-appendix.md",
+        "****\n## Example.One/Grounding.Head\n\n"
+        "- [GR] one evidence @20260101-1\n"
+        "****\n",
+    )
+    _write(
+        depot_dir / "appendix" / "Example.Two-appendix.md",
+        "****\n## Example.Two/Grounding.Head\n\n"
+        "- [GR] two evidence @20260101-2\n"
+        "****\n",
+    )
+
+    state = _run(
+        depot_paths=(str(depot_dir),),
+        coverage=("line", "block"),
+        scope_paths=("depot/design",),
+    )
+    payload = json.loads(render_linter_json(state))
+
+    assert payload["config"]["scope"] == ["depot/design"]
+    assert payload["coverage"]["line"] == {"linked": 0, "total": 1}
+    assert payload["coverage"]["block"] == {"grounded": 1, "total": 1}
+    assert payload["summary"]["finding_count"] == 1
+    assert all(finding["path"].startswith("depot/design/") for finding in payload["findings"])
+
+
+def test_index_linter_scope_rejects_unmatched_path(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+
+    state = _run(depot_paths=(str(depot_dir),), scope_paths=("missing",))
+
+    assert any(
+        finding.code == "Index.Linter/Surface.Invalid"
+        and finding.path == "missing"
+        for finding in state.findings
+    )
 
 
 def test_index_linter_runs_extra_checks(monkeypatch, tmp_path: Path) -> None:
