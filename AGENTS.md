@@ -25,6 +25,7 @@
 - `agentos index linter --coverage line` enables `Index.Linter/Line.Unlinked` warnings for chapter and appendix kernel lines; `--warn-unlinked` is a compatibility alias for this meter. Agendix kernel lines are checked for anchors by default.
 - `agentos index linter --coverage block` enables `Index.Linter/Block.Ungrounded`, measuring chapter concept blocks by presence of `[GR]`-anchored `Grounding.Head` appendix evidence. `--coverage all` enables both block and line meters.
 - `agentos index linter --scope <path>` filters reported findings, per-check counts, summaries, and coverage meters to configured files under the file or directory scope while checks still run over the full configured depot.
+- `agentos index blocks --depot <path> [--sort gr-density] [--scope <path>] [--limit N] [--json]` lists concept blocks with `Grounding.Density` (unique inline anchors / kernel lines) and the evidence-board flag; `--sort gr-density` ascending is the grounding/enrichment worklist. Computation lives in `agentos.index.model.stats` (`block_grounding_stats`), importable without the CLI.
 
 ## Compatibility Policy
 
