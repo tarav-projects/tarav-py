@@ -1259,6 +1259,8 @@ LINE_TYPE_UNKNOWN = "Index.Linter/Line.Type.UnknownCode"
 LINE_TYPE_GR_MISSING_ANCHOR = "Index.Linter/Line.Type.GR.MissingAnchor"
 SOURCE_AXIS_PLACEMENT = "Index.Linter/Source.Axis.Placement"
 CHECK_LINE_TYPES = "Index.Linter/Line.Types"
+ANCHOR_LEGACY_SIGIL = "Index.Linter/Anchor.LegacySigil"
+CHECK_ANCHOR_LEGACY_SIGIL = "Index.Linter/Anchor.LegacySigil"
 LINE_UNLINKED = "Index.Linter/Line.Unlinked"
 CHECK_LINE_UNLINKED = "Index.Linter/Line.Unlinked"
 BLOCK_UNGROUNDED = "Index.Linter/Block.Ungrounded"
@@ -1268,6 +1270,7 @@ CHECK_BLOCK_UNGROUNDED = "Index.Linter/Block.Ungrounded"
 _LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX", "GR")
 
 _TYPED_LINE_CANDIDATE_RE = re.compile(r"^- \[")
+_LEGACY_ANCHOR_SIGIL_RE = re.compile(r"@(?P<anchor>\d{8}-\d+)\b")
 
 
 def parsed_linter_kernel_lines(state: LinterState) -> list[tuple[IndexDocument, KernelLine]]:
@@ -1377,6 +1380,31 @@ def _check_line_types(state: LinterState) -> list[LinterFinding]:
                     message="[GR] grounding line has no trailing anchor token.",
                 )
             )
+    return findings
+
+
+def _check_legacy_anchor_sigil(state: LinterState) -> list[LinterFinding]:
+    findings: list[LinterFinding] = []
+    _ensure_parsed_documents(state)
+    for document in state.parsed_documents:
+        if document.surface_kind not in {"chapter", "appendix", "agendix"}:
+            continue
+        for node in document.nodes:
+            for match in _LEGACY_ANCHOR_SIGIL_RE.finditer(node.src):
+                anchor = match.group("anchor")
+                findings.append(
+                    LinterFinding(
+                        severity="warning",
+                        code=ANCHOR_LEGACY_SIGIL,
+                        path=state.rel_path(node.path) if node.path else ".",
+                        line=node.start_line,
+                        message="Legacy Anchory anchor sigil; use `^` instead of `@`.",
+                        details={
+                            "anchor": anchor,
+                            "replacement": f"^{anchor}",
+                        },
+                    )
+                )
     return findings
 
 
@@ -1560,6 +1588,12 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Line.Type syntax and source axis",
         gate=_needs_valid_surface,
         run=_check_line_types,
+    ),
+    LinterCheck(
+        code=CHECK_ANCHOR_LEGACY_SIGIL,
+        title="Legacy anchor sigils",
+        gate=_needs_valid_surface,
+        run=_check_legacy_anchor_sigil,
     ),
     LinterCheck(
         code=CHECK_LINE_UNLINKED,

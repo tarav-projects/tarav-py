@@ -105,7 +105,7 @@ class IndexDepotModel:
         return [line for document in self.documents for line in document.kernel_lines()]
 
     def blocks_by_anchor(self, anchor: str) -> list[KernelLine]:
-        token = anchor[1:] if anchor.startswith("@") else anchor
+        token = anchor[1:] if anchor.startswith(("^", "@")) else anchor
         return [
             line
             for line in self.kernel_lines()

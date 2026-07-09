@@ -33,7 +33,7 @@ def test_index_model_parses_structural_nodes_and_diagnostics() -> None:
                 "- `Agentos.Skillware` is a discipline.",
                 "****",
                 "```json",
-                '{"anchor": "@20260708-0"}',
+                '{"anchor": "^20260708-0"}',
                 "",
             ]
         )
@@ -69,7 +69,7 @@ def test_index_model_parses_kernel_lines_spans_meta_and_fences() -> None:
                 "****",
                 "## Example.Concept",
                 "",
-                "- [AS:CT] text cites `Example.Concept` and `notes/live/x.md` @20260708-0",
+                "- [AS:CT] text cites `Example.Concept` and `notes/live/x.md` ^20260708-0",
                 "- untyped legacy line",
                 "",
                 "### meta",
@@ -77,7 +77,7 @@ def test_index_model_parses_kernel_lines_spans_meta_and_fences() -> None:
                 "- aliases: `Example.Alias`",
                 "",
                 "```json",
-                '{"fake": "@20260708-1", "concept": "Example.Hidden"}',
+                '{"fake": "^20260708-1", "concept": "Example.Hidden"}',
                 "```",
                 "****",
                 "",
@@ -92,7 +92,7 @@ def test_index_model_parses_kernel_lines_spans_meta_and_fences() -> None:
         ("type_bracket", "[AS:CT]"),
         ("concept_cite", "`Example.Concept`"),
         ("file_mention", "`notes/live/x.md`"),
-        ("anchor", "@20260708-0"),
+        ("anchor", "^20260708-0"),
     ]
     assert any(isinstance(node, MetaLine) for node in document.nodes)
     assert not [
@@ -117,11 +117,11 @@ def test_index_model_parses_router_dialects_depot_and_anchor_queries(tmp_path: P
     )
     _write(
         depot / "design" / "100-design.md",
-        "****\n## Example.Concept\n\n- [GR] linked @20260705-0\n****\n",
+        "****\n## Example.Concept\n\n- [GR] linked ^20260705-0\n****\n",
     )
     _write(depot / "design" / "101-design.md", "****\n## Third.Concept\n\n- text\n****\n")
     _write(depot / "appendix" / "Example.Concept-appendix.md", "****\n## Example.Concept/Depth\n\n- depth\n****\n")
-    _write(depot / "agendix" / "Example.Concept-agendix.md", "****\n## Example.Concept/Agendix\n\n- [AS:CT] capture @20260708-0\n****\n")
+    _write(depot / "agendix" / "Example.Concept-agendix.md", "****\n## Example.Concept/Agendix\n\n- [AS:CT] capture ^20260708-0\n****\n")
     _write(depot / "design" / "AGENTS.md", "# ignored\n")
 
     model = parse_depot(depot)

@@ -627,13 +627,13 @@ def test_index_linter_source_axis_placement(monkeypatch, tmp_path: Path) -> None
         depot_dir / "design" / "100-design.md",
         "****\n## Example.Concept\n\n"
         "- [DF] `Example.Concept` is fine\n"
-        "- [AS:CT] assistant-grounded line in the index proper @20260101-0\n"
+        "- [AS:CT] assistant-grounded line in the index proper ^20260101-0\n"
         "****\n",
     )
     _write(
         depot_dir / "agendix" / "Example.Concept-agendix.md",
         "****\n## Example.Concept/Agendix\n\n"
-        "- [AS:CT] assistant-grounded capture is legal here @20260101-1\n"
+        "- [AS:CT] assistant-grounded capture is legal here ^20260101-1\n"
         "****\n",
     )
     state = _run(depot_paths=(str(depot_dir),))
@@ -643,6 +643,25 @@ def test_index_linter_source_axis_placement(monkeypatch, tmp_path: Path) -> None
     assert "100-design.md" in placement[0].path
 
 
+def test_index_linter_reports_legacy_anchor_sigil(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n"
+        "- [DF] old sigil @20260101-0\n"
+        "- [DF] new sigil ^20260101-1\n"
+        "****\n",
+    )
+
+    state = _run(depot_paths=(str(depot_dir),))
+    hits = [f for f in state.findings if f.code == "Index.Linter/Anchor.LegacySigil"]
+
+    assert len(hits) == 1
+    assert hits[0].path.endswith("100-design.md")
+    assert hits[0].details["anchor"] == "20260101-0"
+
+
 def test_index_linter_line_unlinked_scope(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     depot_dir = _clean_depot(tmp_path)
@@ -650,14 +669,14 @@ def test_index_linter_line_unlinked_scope(monkeypatch, tmp_path: Path) -> None:
         depot_dir / "design" / "100-design.md",
         "****\n## Example.Concept\n\n"
         "- [DF] unlinked chapter line\n"
-        "- [GR] linked chapter line @20260101-0\n"
+        "- [GR] linked chapter line ^20260101-0\n"
         "****\n",
     )
     _write(
         depot_dir / "agendix" / "Example.Concept-agendix.md",
         "****\n## Example.Concept/Agendix\n\n"
         "- [AS:CT] unlinked agendix line\n"
-        "- [AS:CT] linked agendix line @20260101-1\n"
+        "- [AS:CT] linked agendix line ^20260101-1\n"
         "****\n",
     )
 
@@ -684,7 +703,7 @@ def test_index_linter_coverage_line_replaces_warn_unlinked(monkeypatch, tmp_path
         depot_dir / "design" / "100-design.md",
         "****\n## Example.Concept\n\n"
         "- [DF] unlinked chapter line\n"
-        "- [GR] linked chapter line @20260101-0\n"
+        "- [GR] linked chapter line ^20260101-0\n"
         "****\n",
     )
 
@@ -716,7 +735,7 @@ def test_index_linter_block_ungrounded_meter(monkeypatch, tmp_path: Path) -> Non
         "****\n## Example.Ungrounded\n\n"
         "- ungrounded\n"
         "****\n## Example.InlineOnly\n\n"
-        "- inline anchor does not block-ground @20260101-2\n"
+        "- inline anchor does not block-ground ^20260101-2\n"
         "****\n## Example.Param:One\n\n"
         "- parameterized block\n"
         "****\n",
@@ -724,25 +743,25 @@ def test_index_linter_block_ungrounded_meter(monkeypatch, tmp_path: Path) -> Non
     _write(
         depot_dir / "appendix" / "Example.Grounded-appendix.md",
         "****\n## Example.Grounded/Grounding.Head\n\n"
-        "- [GR] block evidence @20260101-0\n"
+        "- [GR] block evidence ^20260101-0\n"
         "****\n",
     )
     _write(
         depot_dir / "appendix" / "Example.Ungrounded-appendix.md",
         "****\n## Example.Ungrounded/Grounding.Head\n\n"
-        "- [CT] anchored but not a grounding line @20260101-1\n"
+        "- [CT] anchored but not a grounding line ^20260101-1\n"
         "****\n",
     )
     _write(
         depot_dir / "appendix" / "Example.InlineOnly-appendix.md",
         "****\n## Example.InlineOnly/Depth\n\n"
-        "- [GR] depth evidence @20260101-2\n"
+        "- [GR] depth evidence ^20260101-2\n"
         "****\n",
     )
     _write(
         depot_dir / "appendix" / "Example.Param:One-appendix.md",
         "****\n## Example.Param:One/Grounding.Head\n\n"
-        "- [GR] parameterized evidence @20260101-3\n"
+        "- [GR] parameterized evidence ^20260101-3\n"
         "****\n",
     )
 
@@ -779,19 +798,19 @@ def test_index_linter_scope_filters_findings_counts_and_meters(
         depot_dir / "other" / "100-other.md",
         "****\n## Example.Two\n\n"
         "- out-of-scope unlinked line\n"
-        "- linked line @20260101-0\n"
+        "- linked line ^20260101-0\n"
         "****\n",
     )
     _write(
         depot_dir / "appendix" / "Example.One-appendix.md",
         "****\n## Example.One/Grounding.Head\n\n"
-        "- [GR] one evidence @20260101-1\n"
+        "- [GR] one evidence ^20260101-1\n"
         "****\n",
     )
     _write(
         depot_dir / "appendix" / "Example.Two-appendix.md",
         "****\n## Example.Two/Grounding.Head\n\n"
-        "- [GR] two evidence @20260101-2\n"
+        "- [GR] two evidence ^20260101-2\n"
         "****\n",
     )
 
