@@ -26,6 +26,7 @@
 - `agentos index linter --coverage block` enables `Index.Linter/Block.Ungrounded`, measuring chapter concept blocks by presence of `[GR]`-anchored `Grounding.Head` appendix evidence. `--coverage all` enables both block and line meters.
 - `agentos index linter --scope <path>` filters reported findings, per-check counts, summaries, and coverage meters to configured files under the file or directory scope while checks still run over the full configured depot.
 - `agentos index blocks --depot <path> [--sort gr-density] [--scope <path>] [--limit N] [--json]` lists concept blocks with `Grounding.Density` (unique inline anchors / kernel lines) and the evidence-board flag; `--sort gr-density` ascending is the grounding/enrichment worklist. Computation lives in `agentos.index.model.stats` (`block_grounding_stats`), importable without the CLI.
+- `agentos skills imports --package <path> [--depot <index-depot>]... [--json]` is the CPU check for a skill package's `Import.Manifest`s (`build/<expanded-relative-path>-<file-name>-imports.md`, one block per `Module.Import`): `pointer` targets must resolve (files on disk, `Dotted.Name`s in a supplied depot), `copy` landing regions must equal the target verbatim, `derived` is inventoried as `skipped-agentic` for the builder's agentic pass. Exits non-zero on findings. Model lives in `agentos.skills.imports` (`discover_import_manifests`, `check_package_imports`), importable without the CLI.
 
 ## Compatibility Policy
 
