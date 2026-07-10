@@ -15,7 +15,6 @@ from agentos._core.project import (
     require_explicit_project_selector,
 )
 from agentos._core.project_command_log import record_project_command_from_args
-from agentos.skills.imports import check_package_imports
 from agentos.skills.routing import (
     SKILLS_IMPORT_MODE_DEPOT_LINKING,
     SKILLS_IMPORT_MODES,
@@ -362,67 +361,6 @@ def _cmd_skills_path(args: argparse.Namespace) -> int:
     raise CliError(f"skill not found in imported skills: {args.name}")
 
 
-def _cmd_skills_imports(args: argparse.Namespace) -> int:
-    package = Path(args.package)
-    if not package.is_dir():
-        raise CliError(f"agentos skills imports package is not a directory: {args.package}")
-    depot_paths = []
-    for raw_depot in args.depot or []:
-        depot = Path(raw_depot)
-        if not depot.is_dir():
-            raise CliError(f"agentos skills imports depot is not a directory: {raw_depot}")
-        depot_paths.append(depot)
-
-    report = check_package_imports(package, depot_paths=depot_paths)
-    payload = {
-        "command": "agentos skills imports",
-        "package": str(package),
-        "depot": [str(depot) for depot in depot_paths],
-        "results": [
-            {
-                "manifest": result.manifest,
-                "consumer": result.consumer,
-                "target": result.target,
-                "binding": result.binding,
-                "status": result.status,
-                "detail": result.detail,
-                "line": result.line,
-            }
-            for result in report.results
-        ],
-        "manifest_problems": [
-            {"manifest": manifest, "problem": problem}
-            for manifest, problem in report.manifest_problems
-        ],
-        "summary": {
-            "imports": len(report.results),
-            "findings": report.finding_count,
-        },
-    }
-    exit_code = 1 if report.finding_count else 0
-
-    if args.json:
-        print(json.dumps(payload, indent=2))
-        return exit_code
-
-    print("Skill package imports")
-    for manifest, problem in report.manifest_problems:
-        print(f"- [manifest] {manifest}: {problem}")
-    for result in report.results:
-        location = f"{result.manifest}:{result.line}" if result.line is not None else result.manifest
-        line = f"- [{result.status}] {result.target} ({result.binding}) — {location}"
-        if result.detail:
-            line += f": {result.detail}"
-        print(line)
-    summary = payload["summary"]
-    print(
-        f"Summary: {summary['imports']} import(s), "
-        f"{len(report.manifest_problems)} manifest problem(s), "
-        f"{summary['findings']} finding(s)."
-    )
-    return exit_code
-
-
 def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
     skills_parser = subparsers.add_parser(
         "skills",
@@ -516,33 +454,6 @@ def register_skills_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_project_argument(skills_status_parser)
     skills_status_parser.set_defaults(handler=_cmd_skills_status)
-
-    skills_imports_parser = skills_subparsers.add_parser(
-        "imports",
-        help="Check a skill package's Import.Manifest declarations (pointer/copy CPU checks).",
-        description=(
-            "Discover build/*-imports.md manifests in a skill package, resolve each "
-            "declared import, and report per-import status: resolved / equal / "
-            "drifted / unresolvable / skipped-agentic. Exits non-zero on findings."
-        ),
-    )
-    skills_imports_parser.add_argument(
-        "--package",
-        required=True,
-        help="Skill package root containing the build/ surface.",
-    )
-    skills_imports_parser.add_argument(
-        "--depot",
-        action="append",
-        default=[],
-        help="Index depot used to resolve ontology-name pointer targets. Repeatable.",
-    )
-    skills_imports_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Emit results, manifest problems, and the summary as JSON.",
-    )
-    skills_imports_parser.set_defaults(handler=_cmd_skills_imports)
 
     skills_path_parser = skills_subparsers.add_parser(
         "path",
