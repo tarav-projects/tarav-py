@@ -368,3 +368,51 @@ def test_cli_build_check_status(tmp_path: Path, capsys: pytest.CaptureFixture[st
 
     with pytest.raises(CliError):
         _cmd_skillware_build(argparse.Namespace(skill=str(tmp_path / "nope"), json=True))
+
+
+def test_build_stamps_agents_md(tmp_path: Path) -> None:
+    from agentos.skillware.build import AGENTS_MD_TEXT
+
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    agents = skill / ".skillware" / "AGENTS.md"
+    assert agents.is_file()
+    assert agents.read_text(encoding="utf-8") == AGENTS_MD_TEXT
+    assert "agentos skillware build" in AGENTS_MD_TEXT
+    assert "agentos-skillware" in AGENTS_MD_TEXT
+
+
+def test_build_overwrites_hand_edited_agents_md(tmp_path: Path) -> None:
+    from agentos.skillware.build import AGENTS_MD_TEXT
+
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    agents = skill / ".skillware" / "AGENTS.md"
+    agents.write_text("# my local notes\n", encoding="utf-8")
+    build_skill(skill)
+    assert agents.read_text(encoding="utf-8") == AGENTS_MD_TEXT
+
+
+def test_fenced_callouts_are_not_recipes() -> None:
+    source = parse_skw_source(
+        "# Spec\n"
+        "\n"
+        "## Example\n"
+        "\n"
+        "```md\n"
+        "## Fenced Heading\n"
+        "\n"
+        "> [!skw]- derived\n"
+        "> from: Some.Block\n"
+        "> intent: fenced example, not a real recipe\n"
+        "\n"
+        "- example body\n"
+        "\n"
+        "> [!skw] end\n"
+        "```\n"
+        "\n"
+        "hand tail after the fence\n"
+    )
+    assert source.recipes == ()
+    assert source.findings == ()
+    assert source.end_spans == ()

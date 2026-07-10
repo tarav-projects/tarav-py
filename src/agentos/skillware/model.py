@@ -111,8 +111,19 @@ def parse_skw_source(text: str) -> SkwSource:
         open_recipe = None
 
     index = 0
+    in_fence = False
     while index < len(lines):
         line = lines[index]
+        if line.lstrip().startswith(("```", "~~~")):
+            in_fence = not in_fence
+            section_has_content = True
+            index += 1
+            continue
+        if in_fence:
+            if line.strip():
+                section_has_content = True
+            index += 1
+            continue
         heading_match = _HEADING_RE.match(line)
         if heading_match is not None:
             close_body(index)
