@@ -1,0 +1,370 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+import pytest
+
+from agentos._core.errors import CliError
+from agentos.skillware.build import (
+    SkillwareError,
+    build_skill,
+    check_skill,
+    expand_file,
+    load_skillware,
+)
+from agentos.skillware.commands import (
+    _cmd_skillware_build,
+    _cmd_skillware_check,
+    _cmd_skillware_status,
+)
+from agentos.skillware.model import parse_skw_source
+
+SRC = """# agentos-index2 --ground
+
+Intro prose.
+
+## Copied
+
+> [!skw]- copy
+> from: references/lib.skw.md#Alpha
+
+- copied body line
+
+## Derived
+
+> [!skw]- derived
+> from: references/lib.skw.md#Alpha
+> from: Concept.One
+> intent: reshape alpha for
+> this consumer
+
+- derived body
+
+## Mixed
+
+> [!skw]- derived
+> from: Concept.One
+> intent: short
+
+- derived part
+
+> [!skw] end
+
+Hand tail prose.
+
+## Hand
+
+Plain hand section.
+"""
+
+
+def test_parse_recipes_fields_and_spans() -> None:
+    source = parse_skw_source(SRC)
+    assert not source.findings
+    assert [recipe.verb for recipe in source.recipes] == ["copy", "derived", "derived"]
+
+    copy = source.recipes[0]
+    assert copy.heading == "Copied"
+    assert copy.froms == ("references/lib.skw.md#Alpha",)
+    assert copy.body_text() == "- copied body line"
+
+    derived = source.recipes[1]
+    assert derived.froms == ("references/lib.skw.md#Alpha", "Concept.One")
+    assert derived.intent == "reshape alpha for this consumer"
+    assert derived.body_text() == "- derived body"
+
+    mixed = source.recipes[2]
+    assert mixed.body_text() == "- derived part"
+
+
+def test_parse_hand_sections_carry_no_recipe() -> None:
+    source = parse_skw_source(SRC)
+    assert all(recipe.heading != "Hand" for recipe in source.recipes)
+
+
+def test_parse_findings() -> None:
+    unknown = parse_skw_source("## A\n\n> [!skw]- transmute\n> from: x.md\n\n- body\n")
+    assert any("transmute" in finding.message for finding in unknown.findings)
+
+    missing_from = parse_skw_source("## A\n\n> [!skw]- copy\n\n- body\n")
+    assert any("from" in finding.message for finding in missing_from.findings)
+
+    dangling_end = parse_skw_source("## A\n\nprose\n\n> [!skw] end\n")
+    assert any("end" in finding.message for finding in dangling_end.findings)
+
+    late = parse_skw_source("## A\n\nprose first\n\n> [!skw]- copy\n> from: x.md\n\n- body\n")
+    assert any("first" in finding.message for finding in late.findings)
+
+
+# --- S2: locators + expansion + compile -------------------------------------
+
+BASE = """# base
+
+## Root
+
+- root line
+"""
+
+LIB = """# lib
+
+## Alpha
+
+- alpha one
+- alpha two
+
+## Beta
+
+> [!skw]- copy
+> from: references/base.skw.md#Root
+
+- stale beta copy
+"""
+
+MOD = """# mod
+
+Intro prose.
+
+## Copied
+
+> [!skw]- copy
+> from: references/lib.skw.md#Alpha
+
+- stale copy
+
+## Chained
+
+> [!skw]- copy
+> from: references/lib.skw.md#Beta
+
+- stale chain
+
+## Derived
+
+> [!skw]- derived
+> from: references/lib.skw.md#Alpha
+> from: Concept.One
+> intent: reshape alpha for this consumer
+
+- derived solution
+
+> [!skw] end
+
+Hand tail.
+"""
+
+DEPOT_CHAPTER = """> router
+
+****
+
+## Concept.One
+
+- concept line
+****
+"""
+
+MOD_COMPILED = """# mod
+
+Intro prose.
+
+## Copied
+
+- alpha one
+- alpha two
+
+## Chained
+
+- root line
+
+## Derived
+
+- derived solution
+
+Hand tail.
+"""
+
+
+def _write_skill(root: Path) -> Path:
+    skill = root / "skill"
+    src = skill / ".skillware" / "src" / "references"
+    src.mkdir(parents=True)
+    (src / "base.skw.md").write_text(BASE, encoding="utf-8")
+    (src / "lib.skw.md").write_text(LIB, encoding="utf-8")
+    (src / "mod.skw.md").write_text(MOD, encoding="utf-8")
+    (skill / ".skillware" / "skillware.json").write_text(
+        json.dumps({"depots": ["../depot"]}), encoding="utf-8"
+    )
+    (skill / "references").mkdir()
+    (skill / "references" / "hand.md").write_text("# hand\n\nhand-owned\n", encoding="utf-8")
+    depot = root / "depot"
+    (depot / "design").mkdir(parents=True)
+    (depot / "000-INDEX.md").write_text("- `design/100-design.md` — Concept.One\n", encoding="utf-8")
+    (depot / "design" / "100-design.md").write_text(DEPOT_CHAPTER, encoding="utf-8")
+    return skill
+
+
+def test_expand_compiles_and_refreshes_copies(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    assert not expansion.findings
+    assert "\n".join(expansion.fresh_lines) + "\n" == MOD_COMPILED
+    # src refresh keeps machinery but replaces stale copy bodies
+    refreshed = "\n".join(expansion.src_refresh_lines)
+    assert "- alpha one" in refreshed
+    assert "- stale copy" not in refreshed
+    assert "> [!skw]- copy" in refreshed
+    assert "- derived solution" in refreshed  # derived bodies never touched
+
+
+def test_expand_records_dep_hashes(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    derived_deps = expansion.dep_hashes["Derived"]
+    assert set(derived_deps) == {"references/lib.skw.md#Alpha", "Concept.One"}
+    assert all(isinstance(value, str) for value in derived_deps.values())
+
+
+def test_locator_findings(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "## A\n\n> [!skw]- copy\n> from: references/missing.skw.md#X\n\n- body\n"
+        "\n## B\n\n> [!skw]- copy\n> from: references/lib.skw.md#Nope\n\n- body\n"
+        "\n## C\n\n> [!skw]- copy\n> from: Concept.Missing\n\n- body\n",
+        encoding="utf-8",
+    )
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    messages = " | ".join(finding.message for finding in expansion.findings)
+    assert "missing.skw.md" in messages
+    assert "Nope" in messages
+    assert "Concept.Missing" in messages
+
+
+def test_cycle_detection(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references"
+    (src / "a.skw.md").write_text("## A\n\n> [!skw]- copy\n> from: references/b.skw.md#B\n\n- x\n", encoding="utf-8")
+    (src / "b.skw.md").write_text("## B\n\n> [!skw]- copy\n> from: references/a.skw.md#A\n\n- x\n", encoding="utf-8")
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/a.skw.md"))
+    assert any("cycle" in finding.message for finding in expansion.findings)
+
+
+def test_load_skillware_requires_src(tmp_path: Path) -> None:
+    with pytest.raises(SkillwareError):
+        load_skillware(tmp_path / "nope")
+
+
+# --- S3: build + lock + check ------------------------------------------------
+
+def _entry(report, target: str):
+    return next(entry for entry in report.entries if str(entry.target) == target)
+
+
+def test_build_then_check_ok(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    report = build_skill(skill)
+    assert not report.findings
+    assert {(str(e.target), e.action) for e in report.entries} == {
+        ("references/base.md", "built"),
+        ("references/lib.md", "built"),
+        ("references/mod.md", "built"),
+    }
+    assert (skill / "references" / "mod.md").read_text(encoding="utf-8") == MOD_COMPILED
+    compiled = (skill / "references" / "mod.md").read_text(encoding="utf-8")
+    assert "[!skw]" not in compiled
+    # src refreshed: stale copy body replaced in the src file
+    src_text = (skill / ".skillware" / "src" / "references" / "mod.skw.md").read_text(encoding="utf-8")
+    assert "- stale copy" not in src_text
+
+    second = build_skill(skill)
+    assert all(entry.action == "unchanged" for entry in second.entries)
+
+    check = check_skill(skill)
+    assert not check.findings
+    assert all(entry.status == "ok" for entry in check.entries)
+
+
+def test_check_never_built_and_hand_edited(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    check = check_skill(skill)
+    assert all(entry.status == "never-built" for entry in check.entries)
+    assert check.findings
+
+    build_skill(skill)
+    target = skill / "references" / "mod.md"
+    target.write_text(target.read_text(encoding="utf-8") + "\nrogue edit\n", encoding="utf-8")
+    check = check_skill(skill)
+    assert _entry(check, "references/mod.md").status == "hand-edited"
+
+
+def test_check_stale_build_on_src_edit(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(src.read_text(encoding="utf-8").replace("Intro prose.", "Intro prose, revised."), encoding="utf-8")
+    check = check_skill(skill)
+    assert _entry(check, "references/mod.md").status == "stale-build"
+
+
+def test_copy_drift_and_derived_stale_on_dep_edit(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
+    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two revised"), encoding="utf-8")
+
+    check = check_skill(skill)
+    entry = _entry(check, "references/mod.md")
+    assert "Copied" in entry.copy_drift
+    assert "Derived" in entry.derived_stale
+
+    # rebuild repairs the copy but must NOT silently bless the stale derived body
+    build_skill(skill)
+    assert "- alpha two revised" in (skill / "references" / "mod.md").read_text(encoding="utf-8")
+    check = check_skill(skill)
+    entry = _entry(check, "references/mod.md")
+    assert not entry.copy_drift
+    assert "Derived" in entry.derived_stale
+
+    # the agent re-derives (edits the derived body in src) and rebuilds: flag clears
+    mod = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    mod.write_text(mod.read_text(encoding="utf-8").replace("- derived solution", "- derived solution v2"), encoding="utf-8")
+    build_skill(skill)
+    check = check_skill(skill)
+    assert not check.findings
+    assert _entry(check, "references/mod.md").derived_stale == ()
+
+
+# --- S4: CLI -------------------------------------------------------------------
+
+def test_cli_build_check_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    skill = _write_skill(tmp_path)
+    args = argparse.Namespace(skill=str(skill), json=True)
+
+    assert _cmd_skillware_build(args) == 0
+    build_payload = json.loads(capsys.readouterr().out)
+    assert {entry["action"] for entry in build_payload["entries"]} == {"built"}
+
+    assert _cmd_skillware_check(args) == 0
+    check_payload = json.loads(capsys.readouterr().out)
+    assert check_payload["summary"]["findings"] == 0
+
+    target = skill / "references" / "mod.md"
+    target.write_text(target.read_text(encoding="utf-8") + "\nrogue\n", encoding="utf-8")
+    assert _cmd_skillware_check(args) == 1
+    check_payload = json.loads(capsys.readouterr().out)
+    statuses = {entry["target"]: entry["status"] for entry in check_payload["entries"]}
+    assert statuses["references/mod.md"] == "hand-edited"
+
+    assert _cmd_skillware_status(args) == 0
+    status_payload = json.loads(capsys.readouterr().out)
+    assert status_payload["lock_present"] is True
+    mod = next(f for f in status_payload["files"] if f["src"] == "references/mod.skw.md")
+    assert mod["recipes"] == {"copy": 2, "derived": 1}
+
+    with pytest.raises(CliError):
+        _cmd_skillware_build(argparse.Namespace(skill=str(tmp_path / "nope"), json=True))
