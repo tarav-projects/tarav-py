@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentos.index.model import BlockHeading, KernelLine, parse_depot
-from agentos.skillware.model import SkwFinding, SkwSource, parse_skw_source
+from agentos.skillware.model import SkwFinding, SkwSource, parse_skw_source, recipe_key
 
 SRC_SUFFIX = ".skw.md"
 SETTINGS_NAME = "skillware.json"
@@ -92,7 +92,7 @@ def expand_file(skillware: Skillware, src_rel: Path) -> Expansion:
             recipe_deps[locator] = content_hash(lines)
             if recipe.verb == "copy" and locator == recipe.froms[0]:
                 resolved_copies[recipe.body_span] = lines
-        dep_hashes[recipe.heading or f"line {recipe.line}"] = recipe_deps
+        dep_hashes[recipe_key(recipe)] = recipe_deps
 
     fresh = _emit(source, resolved_copies, keep_machinery=False)
     refreshed = _emit(source, resolved_copies, keep_machinery=True)
@@ -231,9 +231,7 @@ def _emit(
     skip_ranges: list[tuple[int, int]] = []
 
     if not keep_machinery:
-        for recipe in source.recipes:
-            skip_ranges.append(recipe.callout_span)
-        skip_ranges.extend(source.end_spans)
+        skip_ranges.extend(source.machinery_spans)
     for span, lines in resolved_copies.items():
         replacements[span[0]] = ["", *lines, ""]
         skip_ranges.append((span[0], span[1]))
@@ -341,13 +339,13 @@ def _recipe_states(skillware: Skillware, src_rel: Path, expansion: Expansion) ->
     source = parse_skw_source((skillware.src_root / src_rel).read_text(encoding="utf-8"))
     states = []
     for recipe in source.recipes:
-        heading = recipe.heading or f"line {recipe.line}"
+        key = recipe_key(recipe)
         states.append(
             {
-                "heading": heading,
+                "heading": key,
                 "verb": recipe.verb,
                 "body_sha256": content_hash(_trim(list(recipe.body))),
-                "deps": expansion.dep_hashes.get(heading, {}),
+                "deps": expansion.dep_hashes.get(key, {}),
             }
         )
     return states
@@ -433,10 +431,10 @@ def check_skill(skill_root: Path) -> CheckReport:
         if "\n".join(expansion.src_refresh_lines) + "\n" != src_text:
             source = parse_skw_source(src_text)
             copy_drift = [
-                recipe.heading or f"line {recipe.line}"
+                recipe_key(recipe)
                 for recipe in source.recipes
                 if recipe.verb == "copy"
-                and expansion.dep_hashes.get(recipe.heading or f"line {recipe.line}", {}).get(
+                and expansion.dep_hashes.get(recipe_key(recipe), {}).get(
                     recipe.froms[0] if recipe.froms else ""
                 )
                 != content_hash(_trim(list(recipe.body)))
@@ -451,17 +449,17 @@ def check_skill(skill_root: Path) -> CheckReport:
             for recipe in source.recipes:
                 if recipe.verb != "derived":
                     continue
-                heading = recipe.heading or f"line {recipe.line}"
-                old = locked.get((heading, "derived"))
+                key = recipe_key(recipe)
+                old = locked.get((key, "derived"))
                 if old is None:
                     continue
                 if old.get("body_sha256") != content_hash(_trim(list(recipe.body))):
                     continue  # body re-derived but not rebuilt: stale-build covers it
-                current = expansion.dep_hashes.get(heading, {})
+                current = expansion.dep_hashes.get(key, {})
                 if any(
                     current.get(locator) != sha for locator, sha in old.get("deps", {}).items()
                 ):
-                    derived_stale.append(heading)
+                    derived_stale.append(key)
 
         if not target_path.is_file() or lock_entry is None:
             status = "never-built"
