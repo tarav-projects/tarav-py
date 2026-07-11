@@ -113,6 +113,11 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
                     verb: sum(1 for r in source.recipes if r.verb == verb)
                     for verb in ("copy", "derived")
                 },
+                "constructs": {
+                    command: count
+                    for command in ("text", "router", "when", "then")
+                    if (count := sum(1 for c in source.constructs if c.command == command))
+                },
             }
         )
     payload = {

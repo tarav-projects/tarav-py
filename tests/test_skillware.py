@@ -425,7 +425,7 @@ def test_fenced_callouts_are_not_recipes() -> None:
     )
     assert source.recipes == ()
     assert source.findings == ()
-    assert source.end_spans == ()
+    assert source.machinery_spans == ()
 
 
 # --- v2: strict construct + structural commands --------------------------------
@@ -544,3 +544,269 @@ def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
     check = check_skill(skill)
     entry = _entry(check, "references/mod.md")
     assert entry.derived_stale == ("Pair@1",)
+
+
+# --- span labels ---------------------------------------------------------------
+
+def test_labeled_text_and_labeled_derived() -> None:
+    source = parse_skw_source(
+        "## A\n\n"
+        "> [!skw]- ^frag-1\nlabeled literal fragment\n> [!skw]- end-^frag-1\n\n"
+        "> [!skw]- derived ^model\n> from: X.Y\n> intent: i\n\n- body\n\n> [!skw]- end-derived\n"
+    )
+    assert not source.findings
+    text = source.constructs[0]
+    assert (text.command, text.label) == ("text", "frag-1")
+    assert "labeled literal fragment" in "\n".join(text.body)
+    assert source.recipes[0].label == "model"
+
+
+def test_label_closer_matching_and_duplicates() -> None:
+    mismatch = parse_skw_source(
+        "## A\n\n> [!skw]- ^one\nbody\n> [!skw]- end-^two\n"
+    )
+    assert any("mismatched close" in f.message for f in mismatch.findings)
+
+    dup = parse_skw_source(
+        "## A\n\n> [!skw]- ^x\na\n> [!skw]- end-^x\n\n> [!skw]- ^x\nb\n> [!skw]- end-^x\n"
+    )
+    assert any("duplicate label" in f.message for f in dup.findings)
+
+    mixed = parse_skw_source(
+        "## R\n\n> [!skw]- router ^table\n\n"
+        "> [!skw]- when\ns\n> [!skw]- end-when\n"
+        "> [!skw]- then\nr\n> [!skw]- end-then\n"
+        "> [!skw]- end-^table\n"
+    )
+    assert not mixed.findings
+
+
+def test_labels_never_reach_compiled_output(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n## A\n\n> [!skw]- ^frag\nfragment prose\n> [!skw]- end-^frag\n",
+        encoding="utf-8",
+    )
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    compiled = "\n".join(expansion.fresh_lines)
+    assert "frag" not in compiled.replace("fragment prose", "")
+    assert "fragment prose" in compiled
+
+
+def test_label_locators_resolve(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references"
+    (src / "lib.skw.md").write_text(
+        "# lib\n\n## Alpha\n\nintro prose around the span.\n\n"
+        "> [!skw]- ^alpha-core\n- alpha core one\n- alpha core two\n> [!skw]- end-^alpha-core\n\n"
+        "trailing prose outside the span.\n",
+        encoding="utf-8",
+    )
+    (src / "mod.skw.md").write_text(
+        "# mod\n\n"
+        "> [!skw]- ^local-frag\nlocal fragment\n> [!skw]- end-^local-frag\n\n"
+        "## Copied\n\n> [!skw]- copy\n> from: references/lib.skw.md^alpha-core\n\n- stale\n\n> [!skw]- end-copy\n\n"
+        "## Derived\n\n> [!skw]- derived\n> from: ^local-frag\n> intent: local digest\n\n- solution\n\n> [!skw]- end-derived\n",
+        encoding="utf-8",
+    )
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    assert not expansion.findings
+    refreshed = "\n".join(expansion.src_refresh_lines)
+    assert "- alpha core one" in refreshed
+    assert "- stale" not in refreshed
+    assert set(expansion.dep_hashes["Derived"]) == {"^local-frag"}
+
+    missing = (src / "mod.skw.md").read_text(encoding="utf-8").replace("^alpha-core", "^nope")
+    (src / "mod.skw.md").write_text(missing, encoding="utf-8")
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    assert any("nope" in f.message for f in expansion.findings)
+
+
+def test_label_spans_hash_fine_grained(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references"
+    (src / "lib.skw.md").write_text(
+        "# lib\n\n## Alpha\n\nprose outside.\n\n"
+        "> [!skw]- ^core\n- core line\n> [!skw]- end-^core\n",
+        encoding="utf-8",
+    )
+    (src / "mod.skw.md").write_text(
+        "# mod\n\n## Derived\n\n> [!skw]- derived ^consumer\n> from: references/lib.skw.md^core\n> intent: i\n\n- solution\n\n> [!skw]- end-derived\n",
+        encoding="utf-8",
+    )
+    build_skill(skill)
+    check = check_skill(skill)
+    assert not check.findings
+
+    # edit OUTSIDE the labeled span: no drift
+    lib = src / "lib.skw.md"
+    lib.write_text(lib.read_text(encoding="utf-8").replace("prose outside.", "prose outside, edited."), encoding="utf-8")
+    build_skill(skill)
+    check = check_skill(skill)
+    assert not check.findings
+
+    # edit INSIDE the span: derived-stale, keyed by the consumer's label
+    lib.write_text(lib.read_text(encoding="utf-8").replace("- core line", "- core line v2"), encoding="utf-8")
+    check = check_skill(skill)
+    entry = _entry(check, "references/mod.md")
+    assert entry.derived_stale == ("^consumer",)
+
+
+def test_region_body_is_fence_aware(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references"
+    (src / "lib.skw.md").write_text(
+        "# lib\n\n## Spec\n\nintro line.\n\n"
+        "```md\n## Fenced Heading\nfenced content\n```\n\n"
+        "bullet after the example.\n\n## Next\n\nother.\n",
+        encoding="utf-8",
+    )
+    (src / "mod.skw.md").write_text(
+        "# mod\n\n## Copied\n\n> [!skw]- copy\n> from: references/lib.skw.md#Spec\n\n- stale\n\n> [!skw]- end-copy\n",
+        encoding="utf-8",
+    )
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    assert not expansion.findings
+    refreshed = "\n".join(expansion.src_refresh_lines)
+    assert "bullet after the example." in refreshed
+    assert "fenced content" in refreshed
+    assert "other." not in refreshed
+
+
+# --- review fixes: lock continuity + adjacent blockquotes -----------------------
+
+def test_ordinal_shift_does_not_bless_stale_derived(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n## Pair\n\n"
+        "> [!skw]- derived\n> from: references/lib.skw.md#Alpha\n> intent: i\n\n- solution\n\n> [!skw]- end-derived\n",
+        encoding="utf-8",
+    )
+    build_skill(skill)
+    lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
+    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha one", "- alpha one v2"), encoding="utf-8")
+    check = check_skill(skill)
+    assert _entry(check, "references/mod.md").derived_stale == ("Pair",)
+
+    # insert a NEW derived above the stale one under the same heading; rebuild
+    src.write_text(
+        "# mod\n\n## Pair\n\n"
+        "> [!skw]- derived\n> from: Concept.One\n> intent: new first\n\n- new solution\n\n> [!skw]- end-derived\n\n"
+        "> [!skw]- derived\n> from: references/lib.skw.md#Alpha\n> intent: i\n\n- solution\n\n> [!skw]- end-derived\n",
+        encoding="utf-8",
+    )
+    build_skill(skill)
+    check = check_skill(skill)
+    # the old recipe now keys Pair@1 — its staleness must survive the key shift
+    assert _entry(check, "references/mod.md").derived_stale == ("Pair@1",)
+
+
+def test_adjacent_blockquotes_are_body_not_args() -> None:
+    source = parse_skw_source(
+        "## A\n\n"
+        "> [!skw]- ^frag\n"
+        "> a markdown quote that is body content\n"
+        "more body\n"
+        "> [!skw]- end-^frag\n"
+        "> a prose quote right after the end line\n"
+    )
+    assert not source.findings
+    body = "\n".join(source.constructs[0].body)
+    assert "a markdown quote that is body content" in body
+    # the end callout consumes only its own line
+    assert (5, 6) in source.machinery_spans
+
+
+def test_quote_after_end_survives_compilation(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n## A\n\n"
+        "> [!skw]- ^frag\nbody line\n> [!skw]- end-^frag\n"
+        "> quoted prose after the construct\n",
+        encoding="utf-8",
+    )
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    compiled = "\n".join(expansion.fresh_lines)
+    assert "> quoted prose after the construct" in compiled
+    assert "body line" in compiled
+
+
+# --- review cleanup pass --------------------------------------------------------
+
+def test_copy_with_multiple_froms_is_a_finding() -> None:
+    source = parse_skw_source(
+        "## A\n\n> [!skw]- copy\n> from: a.md#X\n> from: b.md#Y\n\n- body\n\n> [!skw]- end-copy\n"
+    )
+    assert any("copy takes exactly one from" in f.message for f in source.findings)
+
+
+def test_labeled_span_resolves_nested_copies_fresh(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references"
+    (src / "lib.skw.md").write_text(
+        "# lib\n\n## Alpha\n\n- alpha one\n",
+        encoding="utf-8",
+    )
+    (src / "frag.skw.md").write_text(
+        "# frag\n\n## Frag\n\n> [!skw]- ^frag\nspan prose.\n\n"
+        "> [!skw]- copy\n> from: references/lib.skw.md#Alpha\n\n- stale inner copy\n\n> [!skw]- end-copy\n"
+        "> [!skw]- end-^frag\n",
+        encoding="utf-8",
+    )
+    (src / "mod.skw.md").write_text(
+        "# mod\n\n## Uses\n\n> [!skw]- copy\n> from: references/frag.skw.md^frag\n\n- stale\n\n> [!skw]- end-copy\n",
+        encoding="utf-8",
+    )
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    assert not expansion.findings
+    refreshed = "\n".join(expansion.src_refresh_lines)
+    assert "- alpha one" in refreshed          # fresh, not the stale inner body
+    assert "- stale inner copy" not in refreshed
+
+
+def test_force_closed_router_still_checks_rows() -> None:
+    source = parse_skw_source(
+        "## R\n\n> [!skw]- router\n\n> [!skw]- when\ns\n> [!skw]- end-when\n\n## Next\n\nprose\n"
+    )
+    assert any("left open" in f.message for f in source.findings)
+    assert any("has no 'then'" in f.message for f in source.findings)
+
+
+def test_unclosed_fence_is_a_finding() -> None:
+    source = parse_skw_source("## A\n\nprose\n\n```md\nnever closed\n")
+    assert any("unclosed code fence" in f.message for f in source.findings)
+
+
+def test_status_counts_constructs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n> [!skw]- ^frag\nf\n> [!skw]- end-^frag\n\n"
+        "## R\n\n> [!skw]- router\n\n> [!skw]- when\ns\n> [!skw]- end-when\n"
+        "> [!skw]- then\nr\n> [!skw]- end-then\n> [!skw]- end-router\n",
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(skill=str(skill), json=True)
+    assert _cmd_skillware_status(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    mod = next(f for f in payload["files"] if f["src"] == "references/mod.skw.md")
+    assert mod["constructs"] == {"text": 1, "router": 1, "when": 1, "then": 1}
+
+
+def test_crlf_target_reads_ok(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    build_skill(skill)
+    target = skill / "references" / "mod.md"
+    # simulate a CRLF checkout of the identical content
+    crlf = target.read_text(encoding="utf-8").replace("\n", "\r\n")
+    target.write_bytes(crlf.encode("utf-8"))
+    check = check_skill(skill)
+    assert _entry(check, "references/mod.md").status == "ok"

@@ -24,6 +24,7 @@ STRUCTURAL_COMMANDS = ("router", "when", "then")
 COMMANDS = PRIMITIVE_COMMANDS + STRUCTURAL_COMMANDS
 
 _CALLOUT_RE = re.compile(r"^>\s*\[!skw\](-)?\s*(.*)$")
+_LABEL_RE = re.compile(r"^\^[A-Za-z0-9_-]+$")
 _QUOTE_RE = re.compile(r"^>\s?(.*)$")
 _FIELD_RE = re.compile(r"^([A-Za-z][\w-]*):\s*(.*)$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -43,6 +44,7 @@ class SkwRecipe:
     heading: str | None
     line: int
     ordinal: int
+    label: str | None
     callout_span: tuple[int, int]
     body_span: tuple[int, int]
     body: tuple[str, ...]
@@ -56,6 +58,7 @@ class SkwConstruct:
     command: str
     heading: str | None
     line: int
+    label: str | None
     decl_span: tuple[int, int]
     body_span: tuple[int, int]
     body: tuple[str, ...]
@@ -66,12 +69,13 @@ class SkwSource:
     lines: tuple[str, ...]
     recipes: tuple[SkwRecipe, ...]
     constructs: tuple[SkwConstruct, ...]
-    end_spans: tuple[tuple[int, int], ...]
     machinery_spans: tuple[tuple[int, int], ...]
     findings: tuple[SkwFinding, ...]
 
 
 def recipe_key(recipe: SkwRecipe) -> str:
+    if recipe.label is not None:
+        return f"^{recipe.label}"
     base = recipe.heading or f"line {recipe.line}"
     return base if recipe.ordinal == 0 else f"{base}@{recipe.ordinal}"
 
@@ -105,6 +109,8 @@ def _read_callout(lines: list[str], start: int) -> tuple[int, str, dict[str, lis
             fields.setdefault(last_key, []).append(field.group(2).strip())
         elif last_key is not None and content:
             fields[last_key][-1] = f"{fields[last_key][-1]} {content}".strip()
+        elif last_key is None:
+            break  # a plain blockquote before any field is body, not an arg
         index += 1
     return index, decl, fields
 
@@ -113,13 +119,13 @@ def parse_skw_source(text: str) -> SkwSource:
     lines = text.splitlines()
     recipes: list[SkwRecipe] = []
     constructs: list[SkwConstruct] = []
-    end_spans: list[tuple[int, int]] = []
     machinery_spans: list[tuple[int, int]] = []
     findings: list[SkwFinding] = []
 
     heading: str | None = None
     stack: list[dict] = []
     heading_counts: dict[str, int] = {}
+    seen_labels: set[str] = set()
 
     def close_top(end_index: int) -> None:
         frame = stack.pop()
@@ -137,6 +143,7 @@ def parse_skw_source(text: str) -> SkwSource:
                     heading=frame["heading"],
                     line=frame["line"],
                     ordinal=ordinal,
+                    label=frame["label"],
                     callout_span=frame["decl_span"],
                     body_span=span,
                     body=body,
@@ -148,6 +155,7 @@ def parse_skw_source(text: str) -> SkwSource:
                     command=frame["command"],
                     heading=frame["heading"],
                     line=frame["line"],
+                    label=frame["label"],
                     decl_span=frame["decl_span"],
                     body_span=span,
                     body=body,
@@ -168,6 +176,8 @@ def parse_skw_source(text: str) -> SkwSource:
                 )
             )
             close_top(end_index)
+            if frame["command"] == "router":
+                check_router_children(frame)
 
     def check_router_children(frame: dict) -> None:
         expected = "when"
@@ -191,10 +201,12 @@ def parse_skw_source(text: str) -> SkwSource:
 
     index = 0
     in_fence = False
+    fence_line = 0
     while index < len(lines):
         line = lines[index]
         if line.lstrip().startswith(("```", "~~~")):
             in_fence = not in_fence
+            fence_line = index + 1
             index += 1
             continue
         if in_fence:
@@ -208,10 +220,13 @@ def parse_skw_source(text: str) -> SkwSource:
             index += 1
             continue
 
-        if _CALLOUT_RE.match(line) is not None:
-            callout_end, decl, fields = _read_callout(lines, index)
+        callout_match = _CALLOUT_RE.match(line)
+        if callout_match is not None:
+            decl = callout_match.group(2).strip()
             tokens = decl.split()
             if tokens and all(token == "end" or token.startswith("end-") for token in tokens):
+                # end callouts take no args: consume only the declaration line
+                callout_end = index + 1
                 for token in tokens:
                     owner = token[4:] if token.startswith("end-") else ""
                     if not owner:
@@ -227,32 +242,56 @@ def parse_skw_source(text: str) -> SkwSource:
                             SkwFinding(index + 1, f"'end-{owner}' without an open construct")
                         )
                         continue
-                    top = stack[-1]["command"]
-                    if top != owner:
+                    top = stack[-1]
+                    if owner.startswith("^"):
+                        matches = top["label"] == owner[1:]
+                    else:
+                        matches = top["command"] == owner
+                    if not matches:
+                        accepted = f"end-{top['command']}"
+                        if top["label"] is not None:
+                            accepted += f" or end-^{top['label']}"
                         findings.append(
                             SkwFinding(
                                 index + 1,
-                                f"mismatched close: expected end-{top}, found end-{owner}",
+                                f"mismatched close: expected {accepted}, found end-{owner}",
                             )
                         )
                     frame = stack[-1]
                     close_top(index)
                     if frame["command"] == "router":
                         check_router_children(frame)
-                end_spans.append((index, callout_end))
                 machinery_spans.append((index, callout_end))
                 index = callout_end
                 continue
 
-            command = tokens[0] if tokens else ""
+            callout_end, decl, fields = _read_callout(lines, index)
+            tokens = decl.split()
+            label: str | None = None
+            command_tokens: list[str] = []
+            bad_tokens: list[str] = []
+            for token in tokens:
+                if _LABEL_RE.match(token):
+                    if label is None:
+                        label = token[1:]
+                    else:
+                        bad_tokens.append(token)
+                else:
+                    command_tokens.append(token)
+            command = command_tokens[0] if command_tokens else ("text" if label else "")
             if command not in COMMANDS:
                 findings.append(SkwFinding(index + 1, f"unknown skw command: {command!r}"))
                 index = callout_end
                 continue
-            if len(tokens) > 1:
+            if len(command_tokens) > 1 or bad_tokens:
+                extra = command_tokens[1:] + bad_tokens
                 findings.append(
-                    SkwFinding(index + 1, f"unexpected tokens on declaration: {tokens[1:]}")
+                    SkwFinding(index + 1, f"unexpected tokens on declaration: {extra}")
                 )
+            if label is not None:
+                if label in seen_labels:
+                    findings.append(SkwFinding(index + 1, f"duplicate label: ^{label}"))
+                seen_labels.add(label)
 
             if stack and stack[-1]["command"] in PRIMITIVE_COMMANDS:
                 findings.append(
@@ -271,12 +310,17 @@ def parse_skw_source(text: str) -> SkwSource:
                 findings.append(
                     SkwFinding(index + 1, f"{command} recipe carries no from: line")
                 )
+            if command == "copy" and len(froms) > 1:
+                findings.append(
+                    SkwFinding(index + 1, "copy takes exactly one from: line")
+                )
             intent_parts = fields.get("intent", [])
             stack.append(
                 {
                     "command": command,
                     "heading": heading,
                     "line": index + 1,
+                    "label": label,
                     "decl_span": (index, callout_end),
                     "body_start": callout_end,
                     "froms": froms,
@@ -291,11 +335,17 @@ def parse_skw_source(text: str) -> SkwSource:
         index += 1
 
     force_close_open(len(lines), "EOF")
+    if in_fence:
+        findings.append(
+            SkwFinding(
+                fence_line,
+                "unclosed code fence at EOF — everything after it parsed as inert",
+            )
+        )
     return SkwSource(
         lines=tuple(lines),
         recipes=tuple(recipes),
         constructs=tuple(constructs),
-        end_spans=tuple(end_spans),
         machinery_spans=tuple(machinery_spans),
         findings=tuple(findings),
     )

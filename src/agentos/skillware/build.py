@@ -130,6 +130,16 @@ def _expand_lines(skillware: Skillware, src_rel: Path, stack: tuple[Path, ...]) 
 def _resolve_locator(
     skillware: Skillware, locator: str, *, stack: tuple[Path, ...]
 ) -> tuple[list[str] | None, str | None]:
+    if "^" in locator and "#" not in locator:
+        path_part, label = locator.split("^", 1)
+        path_part = path_part.strip()
+        label = label.strip()
+        src_rel = Path(path_part) if path_part else stack[-1]
+        path = skillware.src_root / src_rel
+        if not path.is_file():
+            return None, f"src file not found: {path_part or src_rel}"
+        return _labeled_span(skillware, src_rel, label, stack=(*stack, src_rel))
+
     if "#" in locator:
         path_part, region = locator.split("#", 1)
         region = region.strip()
@@ -192,11 +202,45 @@ def _depot_block_body(model, name: str) -> list[str] | None:
     return None
 
 
+def _labeled_span(
+    skillware: Skillware, src_rel: Path, label: str, *, stack: tuple[Path, ...]
+) -> tuple[list[str] | None, str | None]:
+    text = (skillware.src_root / src_rel).read_text(encoding="utf-8")
+    source = parse_skw_source(text)
+    for recipe in source.recipes:
+        if recipe.label == label and recipe.verb == "copy" and recipe.froms:
+            # a labeled copy resolves to its target, fresh — same semantics as regions
+            return _resolve_locator(skillware, recipe.froms[0], stack=stack)
+    spans = [
+        (r.label, r.body) for r in source.recipes
+    ] + [(c.label, c.body) for c in source.constructs]
+    for span_label, body in spans:
+        if span_label != label:
+            continue
+        inner = parse_skw_source("\n".join(body))
+        resolved: dict[tuple[int, int], list[str]] = {}
+        for rec in inner.recipes:
+            if rec.verb != "copy" or not rec.froms:
+                continue
+            lines, _detail = _resolve_locator(skillware, rec.froms[0], stack=stack)
+            if lines is None:
+                # unresolvable here (e.g. a same-file cycle): keep the current
+                # body — the owning file's own build keeps it refreshed
+                continue
+            resolved[rec.body_span] = lines
+        return _emit(inner, resolved, keep_machinery=False), None
+    return None, f"label not found: ^{label}"
+
+
 def _region_body(lines: list[str], region: str) -> list[str] | None:
     start: int | None = None
     level = 0
+    in_fence = False
     for index, line in enumerate(lines):
-        if not line.startswith("#"):
+        if line.lstrip().startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        if in_fence or not line.startswith("#"):
             continue
         heading_level = len(line) - len(line.lstrip("#"))
         title = line.lstrip("#").strip()
@@ -301,14 +345,6 @@ class CheckReport:
     entries: tuple[CheckEntry, ...]
     findings: tuple[SkwFinding, ...]
 
-    @property
-    def finding_count(self) -> int:
-        return len(self.findings) + sum(
-            1
-            for entry in self.entries
-            if entry.status != "ok" or entry.copy_drift or entry.derived_stale
-        )
-
 
 AGENTS_NAME = "AGENTS.md"
 
@@ -351,6 +387,26 @@ def _recipe_states(skillware: Skillware, src_rel: Path, expansion: Expansion) ->
     return states
 
 
+def _match_locked_derived(entries: list[dict], key: str, body_sha256: str) -> dict | None:
+    """Locked state for a derived recipe: by key, else by unchanged body.
+
+    The body-hash fallback keeps lock continuity when positional keys shift
+    (a recipe inserted or reordered under the same heading) — a stale
+    derivation must never be re-blessed by a key miss.
+    """
+    for entry in entries:
+        if entry.get("verb") != "derived":
+            continue
+        if entry.get("heading") == key and entry.get("body_sha256") == body_sha256:
+            return entry
+    matches = [
+        entry
+        for entry in entries
+        if entry.get("verb") == "derived" and entry.get("body_sha256") == body_sha256
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def build_skill(skill_root: Path) -> BuildReport:
     skillware = load_skillware(skill_root)
     old_lock = _read_lock(skillware)
@@ -384,15 +440,12 @@ def build_skill(skill_root: Path) -> BuildReport:
         # derived dep hashes persist until the derived body itself changes:
         # build never blesses a stale derived body — only a re-derive does.
         recipes = _recipe_states(skillware, src_rel, expansion)
-        old_recipes = {
-            (r["heading"], r["verb"]): r
-            for r in old_lock.get("files", {}).get(str(expansion.target_rel), {}).get("recipes", [])
-        }
+        old_entries = old_lock.get("files", {}).get(str(expansion.target_rel), {}).get("recipes", [])
         for state in recipes:
             if state["verb"] != "derived":
                 continue
-            old = old_recipes.get((state["heading"], "derived"))
-            if old is not None and old.get("body_sha256") == state["body_sha256"]:
+            old = _match_locked_derived(old_entries, state["heading"], state["body_sha256"])
+            if old is not None:
                 state["deps"] = old.get("deps", state["deps"])
 
         lock["files"][str(expansion.target_rel)] = {
@@ -443,18 +496,15 @@ def check_skill(skill_root: Path) -> CheckReport:
         derived_stale: list[str] = []
         if lock_entry is not None:
             source = parse_skw_source(src_text)
-            locked = {
-                (r["heading"], r["verb"]): r for r in lock_entry.get("recipes", [])
-            }
+            locked_entries = lock_entry.get("recipes", [])
             for recipe in source.recipes:
                 if recipe.verb != "derived":
                     continue
                 key = recipe_key(recipe)
-                old = locked.get((key, "derived"))
+                body_sha = content_hash(_trim(list(recipe.body)))
+                old = _match_locked_derived(locked_entries, key, body_sha)
                 if old is None:
-                    continue
-                if old.get("body_sha256") != content_hash(_trim(list(recipe.body))):
-                    continue  # body re-derived but not rebuilt: stale-build covers it
+                    continue  # new or re-derived body: stale-build covers the rebuild
                 current = expansion.dep_hashes.get(key, {})
                 if any(
                     current.get(locator) != sha for locator, sha in old.get("deps", {}).items()
