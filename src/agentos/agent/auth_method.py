@@ -1,6 +1,6 @@
 """The `Auth.Method` provider seam.
 
-`Account.Model:Auth.Method` is an independent authentication method of an account
+`Account.Model::Auth.Method` is an independent authentication method of an account
 — a credential class that knows how to read/serialize its `Auth.Data`, extract the
 `Account.Identity` that binds it to an account, and materialize it into a home.
 

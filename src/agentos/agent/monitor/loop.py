@@ -142,10 +142,16 @@ class MonitorLoop:
 
     def set_alarm(self, name: str, *, remaining_ticks: int = 0) -> None:
         if name == MONITOR_MATERIALIZE_ALARM:
-            self.state.data["account_materialize"] = {
-                "tick": self.state.tick,
-                "status": "requested",
-            }
+            from agentos.agent.monitor.account_rotation import (
+                MATERIALIZE_STATUS_REQUESTED,
+                set_materialize_state,
+            )
+
+            set_materialize_state(
+                self.state.data,
+                tick=self.state.tick,
+                status=MATERIALIZE_STATUS_REQUESTED,
+            )
         self.clock.set_one_shot(name, remaining_ticks=remaining_ticks)
 
     def _queue_workflow_snapshot(self, snapshot: MonitorClockSnapshot) -> None:
@@ -158,10 +164,16 @@ class MonitorLoop:
                     snapshot,
                 )
             if self._pending_workflow_snapshot.fired(MONITOR_MATERIALIZE_ALARM):
-                self.state.data["account_materialize"] = {
-                    "tick": self._pending_workflow_snapshot.tick,
-                    "status": "queued",
-                }
+                from agentos.agent.monitor.account_rotation import (
+                    MATERIALIZE_STATUS_QUEUED,
+                    set_materialize_state,
+                )
+
+                set_materialize_state(
+                    self.state.data,
+                    tick=self._pending_workflow_snapshot.tick,
+                    status=MATERIALIZE_STATUS_QUEUED,
+                )
             self._workflow_condition.notify()
 
     def _start_workflow_thread(self) -> None:
@@ -194,11 +206,16 @@ class MonitorLoop:
             status_rows.append(
                 MonitorTextRow("workflow: fetching account data", indent=False)
             )
-        materialize_status = _materialize_status(self.state)
-        if materialize_status in {"requested", "queued", "running"}:
+        from agentos.agent.monitor.account_rotation import (
+            MATERIALIZE_TOP_ROW_STATUSES,
+            materialize_status,
+        )
+
+        status = materialize_status(self.state.data)
+        if status in MATERIALIZE_TOP_ROW_STATUSES:
             status_rows.append(
                 MonitorTextRow(
-                    f"materialize: {materialize_status}",
+                    f"materialize: {status}",
                     indent=False,
                 )
             )
@@ -527,19 +544,21 @@ def _workflows_for_snapshot(
     return tuple(
         sorted(
             workflows,
-            key=lambda workflow: 0
-            if getattr(workflow, "name", None) == "account-rotation"
-            else 1,
+            key=lambda workflow: _workflow_priority(workflow, snapshot),
         )
     )
 
 
-def _materialize_status(state: MonitorState) -> str | None:
-    materialize_state = state.data.get("account_materialize")
-    if not isinstance(materialize_state, dict):
-        return None
-    status = materialize_state.get("status")
-    return status if isinstance(status, str) else None
+def _workflow_priority(
+    workflow: MonitorWorkflow,
+    snapshot: MonitorClockSnapshot,
+) -> int:
+    priority_for_snapshot = getattr(workflow, "priority_for_snapshot", None)
+    if callable(priority_for_snapshot):
+        priority = priority_for_snapshot(snapshot)
+        if isinstance(priority, int):
+            return priority
+    return 100
 
 
 def _merge_workflow_snapshots(

@@ -21,6 +21,23 @@ from agentos.agent.materialization import materialize_all
 from agentos.agent.monitor.models import MonitorInfoRow, MonitorTextRow
 from agentos.agent.rotation import rotate_all
 
+ACCOUNT_MATERIALIZE_STATE_KEY = "account_materialize"
+ACCOUNT_MATERIALIZE_BLOCK_TITLE = "account-materialize"
+MATERIALIZE_STATUS_REQUESTED = "requested"
+MATERIALIZE_STATUS_QUEUED = "queued"
+MATERIALIZE_STATUS_RUNNING = "running"
+MATERIALIZE_STATUS_DONE = "done"
+MATERIALIZE_STATUS_SKIPPED = "skipped"
+MATERIALIZE_STATUS_FAILED = "failed"
+MATERIALIZE_TOP_ROW_STATUSES = frozenset(
+    {
+        MATERIALIZE_STATUS_REQUESTED,
+        MATERIALIZE_STATUS_QUEUED,
+        MATERIALIZE_STATUS_RUNNING,
+    }
+)
+MATERIALIZE_VISIBLE_RESULT_STATUSES = frozenset({"materialized", "skipped", "error"})
+
 
 @dataclass(frozen=True)
 class MonitorMaterializeResult:
@@ -85,6 +102,38 @@ def materialize_sweep() -> list[MonitorMaterializeResult]:
     return sweep_rotations(materialize=True)
 
 
+def set_materialize_state(
+    state_data: dict[str, object],
+    *,
+    tick: int,
+    status: str,
+) -> None:
+    state_data[ACCOUNT_MATERIALIZE_STATE_KEY] = {
+        "tick": tick,
+        "status": status,
+    }
+
+
+def set_materialize_summary(
+    state_data: dict[str, object],
+    summary: dict[str, object],
+) -> None:
+    state_data[ACCOUNT_MATERIALIZE_STATE_KEY] = summary
+
+
+def materialize_state_payload(state_data: dict[str, object]) -> dict[str, object] | None:
+    materialize_state = state_data.get(ACCOUNT_MATERIALIZE_STATE_KEY)
+    return materialize_state if isinstance(materialize_state, dict) else None
+
+
+def materialize_status(state_data: dict[str, object]) -> str | None:
+    materialize_state = materialize_state_payload(state_data)
+    if materialize_state is None:
+        return None
+    status = materialize_state.get("status")
+    return status if isinstance(status, str) else None
+
+
 def materialize_summary_payload(
     results: list[MonitorMaterializeResult],
     *,
@@ -100,13 +149,13 @@ def materialize_summary_payload(
     for result in results:
         counts[result.status] = counts.get(result.status, 0) + 1
     if counts.get("error", 0):
-        status = "failed"
+        status = MATERIALIZE_STATUS_FAILED
     elif counts.get("materialized", 0):
-        status = "done"
+        status = MATERIALIZE_STATUS_DONE
     elif counts.get("skipped", 0):
-        status = "skipped"
+        status = MATERIALIZE_STATUS_SKIPPED
     else:
-        status = "done"
+        status = MATERIALIZE_STATUS_DONE
     return {
         "tick": tick,
         "status": status,
@@ -128,43 +177,63 @@ def materialize_summary_payload(
 
 
 def materialize_status_block_rows(summary: dict[str, object]) -> list[MonitorTextRow | MonitorInfoRow]:
-    counts = summary.get("counts")
-    counts = counts if isinstance(counts, dict) else {}
     rows: list[MonitorTextRow | MonitorInfoRow] = [
         MonitorInfoRow("status", str(summary.get("status", "unknown"))),
-        MonitorTextRow(
-            "materialized: {materialized}  skipped: {skipped}  failed: {error}".format(
-                materialized=counts.get("materialized", 0),
-                skipped=counts.get("skipped", 0),
-                error=counts.get("error", 0),
-            )
-        ),
+        _materialize_count_row(summary),
     ]
-    results = summary.get("results")
-    visible_statuses = {"materialized", "skipped", "error"}
-    visible_count = 0
-    if isinstance(results, list):
-        for item in results:
-            if not isinstance(item, dict):
-                continue
-            if item.get("status") not in visible_statuses:
-                continue
-            if visible_count >= 5:
-                break
-            home = item.get("home") or "-"
-            account = item.get("account")
-            method = item.get("method")
-            tag = f"{account}/{method}" if account and method else "-"
-            status = item.get("status", "unknown")
-            text = f"[{status}] {item.get('provider')} {tag}  {home}"
-            message = item.get("message")
-            if message:
-                text += f"  — {message}"
-            rows.append(MonitorTextRow(text))
-            visible_count += 1
-    if visible_count == 0:
+    result_rows = _materialize_result_rows(summary, limit=5)
+    rows.extend(result_rows)
+    if not result_rows:
         rows.append(MonitorTextRow("(no drifted homes required materialization)"))
     return rows
+
+
+def _materialize_count_row(summary: dict[str, object]) -> MonitorTextRow:
+    counts = _materialize_counts(summary)
+    return MonitorTextRow(
+        "materialized: {materialized}  skipped: {skipped}  failed: {error}".format(
+            materialized=counts.get("materialized", 0),
+            skipped=counts.get("skipped", 0),
+            error=counts.get("error", 0),
+        )
+    )
+
+
+def _materialize_counts(summary: dict[str, object]) -> dict[str, object]:
+    counts = summary.get("counts")
+    return counts if isinstance(counts, dict) else {}
+
+
+def _materialize_result_rows(
+    summary: dict[str, object],
+    *,
+    limit: int,
+) -> list[MonitorTextRow]:
+    rows: list[MonitorTextRow] = []
+    results = summary.get("results")
+    if not isinstance(results, list):
+        return rows
+    for item in results:
+        if len(rows) >= limit:
+            return rows
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") not in MATERIALIZE_VISIBLE_RESULT_STATUSES:
+            continue
+        rows.append(_materialize_result_row(item))
+    return rows
+
+
+def _materialize_result_row(item: dict[str, object]) -> MonitorTextRow:
+    home = item.get("home") or "-"
+    account = item.get("account")
+    method = item.get("method")
+    tag = f"{account}/{method}" if account and method else "-"
+    text = f"[{item.get('status', 'unknown')}] {item.get('provider')} {tag}  {home}"
+    message = item.get("message")
+    if message:
+        text += f"  — {message}"
+    return MonitorTextRow(text)
 
 
 def collect_non_aligned_homes() -> list[dict[str, object]]:
@@ -242,6 +311,20 @@ __all__ = [
     "sweep_rotations",
     "materialize_sweep",
     "MonitorMaterializeResult",
+    "ACCOUNT_MATERIALIZE_STATE_KEY",
+    "ACCOUNT_MATERIALIZE_BLOCK_TITLE",
+    "MATERIALIZE_STATUS_REQUESTED",
+    "MATERIALIZE_STATUS_QUEUED",
+    "MATERIALIZE_STATUS_RUNNING",
+    "MATERIALIZE_STATUS_DONE",
+    "MATERIALIZE_STATUS_SKIPPED",
+    "MATERIALIZE_STATUS_FAILED",
+    "MATERIALIZE_TOP_ROW_STATUSES",
+    "MATERIALIZE_VISIBLE_RESULT_STATUSES",
+    "set_materialize_state",
+    "set_materialize_summary",
+    "materialize_state_payload",
+    "materialize_status",
     "materialize_summary_payload",
     "materialize_status_block_rows",
     "rotation_block_rows",

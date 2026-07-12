@@ -150,6 +150,32 @@ def test_monitor_result_payload_exposes_top_rows_and_heading_rows() -> None:
     assert block["title"] == "limits-tracking"
     assert "lines" not in block
 
+
+def test_monitor_render_uses_canonical_block_order_after_materialize_priority() -> None:
+    frame = MonitorFrame()
+    frame.add_block("account-rotation", rows=[MonitorTextRow("rotations")])
+    frame.add_block("account-materialize", rows=[MonitorTextRow("done")])
+    frame.add_block(
+        "limits-tracking | next in 168 ticks | reset 2 ticks ago",
+        rows=[MonitorTextRow("limits")],
+        data={"workflow": "limits-tracking"},
+    )
+
+    rendered = format_monitor_frame(frame)
+    payload = monitor_result_payload(frame, MonitorState())
+    payload_titles = [
+        block["title"] for block in payload["frame"]["blocks"]  # type: ignore[index]
+    ]
+
+    assert rendered.index("limits-tracking") < rendered.index("account-rotation")
+    assert rendered.index("account-rotation") < rendered.index("account-materialize")
+    assert payload_titles == [
+        "limits-tracking | next in 168 ticks | reset 2 ticks ago",
+        "account-rotation",
+        "account-materialize",
+    ]
+
+
 def test_monitor_frame_inherits_marquee_animation_state() -> None:
     first = MonitorFrame()
     first.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
@@ -245,11 +271,15 @@ def test_monitor_loop_merges_pending_workflow_alarm_names() -> None:
 
 def test_monitor_loop_prioritizes_account_rotation_for_materialize_alarm() -> None:
     class Workflow:
-        def __init__(self, name: str) -> None:
+        def __init__(self, name: str, priority: int = 100) -> None:
             self.name = name
+            self._priority = priority
+
+        def priority_for_snapshot(self, snapshot: MonitorClockSnapshot) -> int:
+            return self._priority
 
     limits = Workflow("limits-tracking")
-    rotation = Workflow("account-rotation")
+    rotation = Workflow("not-hard-coded-by-name", priority=0)
     snapshot = MonitorClockSnapshot(
         tick=1,
         alarms={},

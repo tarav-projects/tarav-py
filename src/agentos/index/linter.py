@@ -30,7 +30,8 @@ SurfaceKind = Literal["index", "appendix"]
 _CONCEPT_SEGMENT = r"[A-Z][A-Za-z0-9]*"
 _DOTTED_CONCEPT = rf"{_CONCEPT_SEGMENT}(?:\.{_CONCEPT_SEGMENT})+"
 _CONCEPT_PARAM = r"(?:[A-Za-z][\w\-.]*|<[A-Z][A-Za-z0-9]*>)"
-_CONCEPT_REF = rf"{_DOTTED_CONCEPT}(?::{_CONCEPT_PARAM})*"
+_TYPE_SIGIL = r"::?"
+_CONCEPT_REF = rf"{_DOTTED_CONCEPT}(?:{_TYPE_SIGIL}{_CONCEPT_PARAM})*"
 _BLOCK_PATH_SEGMENT = rf"(?:{_CONCEPT_REF}|{_CONCEPT_SEGMENT})"
 BLOCK_PATH_RE = re.compile(rf"^{_CONCEPT_REF}(?:/{_BLOCK_PATH_SEGMENT})*$")
 APPENDIX_FILENAME_RE = re.compile(rf"^(?P<concept>{_CONCEPT_REF})-appendix(?:-(?P<page>[2-9][0-9]*))?\.md$")
@@ -1261,6 +1262,8 @@ SOURCE_AXIS_PLACEMENT = "Index.Linter/Source.Axis.Placement"
 CHECK_LINE_TYPES = "Index.Linter/Line.Types"
 ANCHOR_LEGACY_SIGIL = "Index.Linter/Anchor.LegacySigil"
 CHECK_ANCHOR_LEGACY_SIGIL = "Index.Linter/Anchor.LegacySigil"
+TYPE_STATEMENT_LEGACY_SIGIL = "Index.Linter/TypeStatement.LegacySigil"
+CHECK_TYPE_STATEMENT_LEGACY_SIGIL = "Index.Linter/TypeStatement.LegacySigil"
 LINE_UNLINKED = "Index.Linter/Line.Unlinked"
 CHECK_LINE_UNLINKED = "Index.Linter/Line.Unlinked"
 BLOCK_UNGROUNDED = "Index.Linter/Block.Ungrounded"
@@ -1271,6 +1274,12 @@ _LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX", "GR")
 
 _TYPED_LINE_CANDIDATE_RE = re.compile(r"^- \[")
 _LEGACY_ANCHOR_SIGIL_RE = re.compile(r"@(?P<anchor>\d{8}-\d+)\b")
+_LEGACY_TYPE_STATEMENT_RE = re.compile(
+    r"(?P<legacy>"
+    r"[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+"
+    r"(?::[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*)+"
+    r")"
+)
 
 
 def parsed_linter_kernel_lines(state: LinterState) -> list[tuple[IndexDocument, KernelLine]]:
@@ -1402,6 +1411,31 @@ def _check_legacy_anchor_sigil(state: LinterState) -> list[LinterFinding]:
                         details={
                             "anchor": anchor,
                             "replacement": f"^{anchor}",
+                        },
+                    )
+                )
+    return findings
+
+
+def _check_legacy_type_statement_sigil(state: LinterState) -> list[LinterFinding]:
+    findings: list[LinterFinding] = []
+    _ensure_parsed_documents(state)
+    for document in state.parsed_documents:
+        if document.surface_kind not in {"router", "chapter", "appendix", "agendix"}:
+            continue
+        for node in document.nodes:
+            for match in _LEGACY_TYPE_STATEMENT_RE.finditer(node.src):
+                legacy = match.group(0)
+                findings.append(
+                    LinterFinding(
+                        severity="warning",
+                        code=TYPE_STATEMENT_LEGACY_SIGIL,
+                        path=state.rel_path(node.path) if node.path else ".",
+                        line=node.start_line,
+                        message="Legacy type-statement sigil; use `::` instead of `:`.",
+                        details={
+                            "legacy": legacy,
+                            "replacement": legacy.replace(":", "::"),
                         },
                     )
                 )
@@ -1594,6 +1628,12 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Legacy anchor sigils",
         gate=_needs_valid_surface,
         run=_check_legacy_anchor_sigil,
+    ),
+    LinterCheck(
+        code=CHECK_TYPE_STATEMENT_LEGACY_SIGIL,
+        title="Legacy type-statement sigils",
+        gate=_needs_valid_surface,
+        run=_check_legacy_type_statement_sigil,
     ),
     LinterCheck(
         code=CHECK_LINE_UNLINKED,

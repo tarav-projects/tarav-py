@@ -378,6 +378,33 @@ def test_index_linter_accepts_chained_colon_concept_parameters(
     )
 
 
+def test_index_linter_accepts_chained_double_colon_concept_parameters(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / "design"
+    _write(
+        tmp_path / "000-INDEX.md",
+        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend::InChat::What\n",
+    )
+    _write(
+        index_dir / "100-design.md",
+        "****\n## Alignment.Backend::InChat::What\n\n- backend parameterized to a phase\n****\n",
+    )
+
+    state = _run(index_paths=("design",))
+
+    assert not any(
+        finding.code == "Index.Linter/Concept.InvalidHeading"
+        for finding in state.findings
+    )
+    assert not any(
+        finding.code == "Index.Linter/Router.InvalidConcept"
+        for finding in state.findings
+    )
+
+
 def test_index_linter_accepts_router_appendix_annotation(
     monkeypatch,
     tmp_path: Path,
@@ -409,6 +436,39 @@ def test_index_linter_accepts_router_appendix_annotation(
         for finding in state.findings
     )
     assert state.router_entries["Alignment.Backend:InChat:What"][0].appendix_annotation_count == 1
+
+
+def test_index_linter_accepts_double_colon_router_appendix_annotation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / "design"
+    appendix_dir = tmp_path / "appendix"
+    _write(
+        tmp_path / "000-INDEX.md",
+        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend::InChat::What[+1]\n",
+    )
+    _write(
+        index_dir / "100-design.md",
+        "****\n## Alignment.Backend::InChat::What\n\n- backend parameterized to a phase\n****\n",
+    )
+    _write(
+        appendix_dir / "Alignment.Backend::InChat::What-appendix.md",
+        "****\n## Alignment.Backend::InChat::What/Depth\n\n- depth\n****\n",
+    )
+
+    state = _run(index_paths=("design",), appendix_paths=("appendix",))
+
+    assert not any(
+        finding.code == "Index.Linter/Router.InvalidConcept"
+        for finding in state.findings
+    )
+    assert not any(
+        finding.code.startswith("Index.Linter/Appendix.")
+        for finding in state.findings
+    )
+    assert state.router_entries["Alignment.Backend::InChat::What"][0].appendix_annotation_count == 1
 
 
 def test_index_linter_records_appendix_page_inventory(
@@ -660,6 +720,32 @@ def test_index_linter_reports_legacy_anchor_sigil(monkeypatch, tmp_path: Path) -
     assert len(hits) == 1
     assert hits[0].path.endswith("100-design.md")
     assert hits[0].details["anchor"] == "20260101-0"
+
+
+def test_index_linter_reports_legacy_type_statement_sigil(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    _write(
+        depot_dir / "000-INDEX.md",
+        "# Agentos Index\n\n## design\n\n"
+        "- `design/100-design.md` — Alignment.Mode:Autonomous\n",
+    )
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n"
+        "- [DF] legacy Alignment.Mode:Autonomous\n"
+        "- [DF] modern Alignment.Mode::Autonomous\n"
+        "- [DF] file reference parser.py:41\n"
+        "****\n",
+    )
+
+    state = _run(depot_paths=(str(depot_dir),))
+    hits = [f for f in state.findings if f.code == "Index.Linter/TypeStatement.LegacySigil"]
+
+    assert len(hits) == 2
+    assert {hit.path for hit in hits} == {"depot/000-INDEX.md", "depot/design/100-design.md"}
+    assert {hit.details["legacy"] for hit in hits} == {"Alignment.Mode:Autonomous"}
+    assert {hit.details["replacement"] for hit in hits} == {"Alignment.Mode::Autonomous"}
 
 
 def test_index_linter_line_unlinked_scope(monkeypatch, tmp_path: Path) -> None:

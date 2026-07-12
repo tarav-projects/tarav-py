@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agentos.agent.monitor.models import (
+    MonitorBlock,
     MonitorFrame,
     MonitorMarqueeRow,
     MonitorRenderContext,
@@ -33,6 +34,13 @@ _MONITOR_RESET_BAR_PALETTE = (
     "#2563eb",
 )
 _MONITOR_REFRESH_PER_SECOND = 4
+_MONITOR_BLOCK_RENDER_ORDER = {
+    "limits-tracking": 100,
+    "auto-prime-zero-limits": 200,
+    "account-rotation": 300,
+    "non-aligned homes": 350,
+    "account-materialize": 400,
+}
 
 
 def _normalize_cell_text(text: str) -> str:
@@ -84,7 +92,9 @@ def monitor_result_payload(
         "frame": {
             "tick": frame.tick,
             "top_rows": [row.summary() for row in frame.top_rows],
-            "blocks": [block.payload() for block in frame.blocks],
+            "blocks": [
+                block.payload() for block in _ordered_monitor_blocks(frame.blocks)
+            ],
             "warnings": frame.warnings,
             "errors": frame.errors,
         },
@@ -189,7 +199,7 @@ def _monitor_render_rows(
             ]
         )
         rows.extend(_MonitorRenderTextRow(f"  {error}") for error in frame.errors)
-    for block in frame.blocks:
+    for block in _ordered_monitor_blocks(frame.blocks):
         heading_rows = block.heading_rows
         if heading_rows:
             rows.append(_MonitorRenderTextRow(""))
@@ -204,6 +214,38 @@ def _monitor_render_rows(
             _monitor_render_block_rows(block.rows, context=context, width=width)
         )
     return rows
+
+
+def _ordered_monitor_blocks(blocks: list[MonitorBlock]) -> list[MonitorBlock]:
+    return [
+        block
+        for _, block in sorted(
+            enumerate(blocks),
+            key=lambda item: (_monitor_block_render_order(item[1]), item[0]),
+        )
+    ]
+
+
+def _monitor_block_render_order(block: MonitorBlock) -> int:
+    block_key = _monitor_block_key(block)
+    if block_key is None:
+        return 1_000
+    return _MONITOR_BLOCK_RENDER_ORDER.get(block_key, 1_000)
+
+
+def _monitor_block_key(block: MonitorBlock) -> str | None:
+    title = block.title
+    if isinstance(title, str):
+        if title in _MONITOR_BLOCK_RENDER_ORDER:
+            return title
+        title_prefix = title.split(" | ", maxsplit=1)[0]
+        if title_prefix in _MONITOR_BLOCK_RENDER_ORDER:
+            return title_prefix
+    data = block.data if isinstance(block.data, dict) else {}
+    workflow = data.get("workflow")
+    if isinstance(workflow, str) and workflow in _MONITOR_BLOCK_RENDER_ORDER:
+        return workflow
+    return None
 
 
 def _monitor_render_block_rows(

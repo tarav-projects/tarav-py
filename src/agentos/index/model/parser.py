@@ -28,7 +28,8 @@ from .nodes import (
 _CONCEPT_SEGMENT = r"[A-Z][A-Za-z0-9]*"
 _DOTTED_CONCEPT = rf"{_CONCEPT_SEGMENT}(?:\.{_CONCEPT_SEGMENT})+"
 _CONCEPT_PARAM = r"(?:[A-Za-z][\w\-.]*|<[A-Z][A-Za-z0-9]*>)"
-_CONCEPT_REF = rf"{_DOTTED_CONCEPT}(?::{_CONCEPT_PARAM})*"
+_TYPE_SIGIL = r"::?"
+_CONCEPT_REF = rf"{_DOTTED_CONCEPT}(?:{_TYPE_SIGIL}{_CONCEPT_PARAM})*"
 _BLOCK_PATH_SEGMENT = rf"(?:{_CONCEPT_REF}|{_CONCEPT_SEGMENT})"
 BLOCK_PATH_RE = re.compile(rf"^{_CONCEPT_REF}(?:/{_BLOCK_PATH_SEGMENT})*$")
 APPENDIX_FILENAME_RE = re.compile(rf"^(?P<concept>{_CONCEPT_REF})-appendix(?:-(?P<page>[2-9][0-9]*))?\.md$")
@@ -231,7 +232,7 @@ def _parse_kernel_line(line: str) -> dict[str, Any]:
 
 def _parse_block_path(path: str) -> dict[str, Any]:
     root, *segments = path.split("/")
-    root_name, *params = root.split(":")
+    root_name, *params = re.split(_TYPE_SIGIL, root)
     return {
         "path": path,
         "root": root_name,
