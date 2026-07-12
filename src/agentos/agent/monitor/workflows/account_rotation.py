@@ -47,13 +47,24 @@ class AccountRotationWorkflow:
         if should_sweep:
             sweep_rotations(materialize=False)
         if trigger.fired(MONITOR_MATERIALIZE_ALARM):
-            materialize_sweep()
+            state.data["account_materialize"] = {
+                "tick": trigger.tick,
+                "status": "running",
+            }
+            results = materialize_sweep()
+            from agentos.agent.monitor.account_rotation import materialize_summary_payload
+
+            state.data["account_materialize"] = materialize_summary_payload(
+                results,
+                tick=trigger.tick,
+            )
         self._write_block(state, frame)
 
     def _write_block(self, state: MonitorState, frame: MonitorFrame) -> None:
         from agentos.agent.accounts_log import read_recent_events
         from agentos.agent.monitor.account_rotation import (
             collect_non_aligned_homes,
+            materialize_status_block_rows,
             non_aligned_block_rows,
             rotation_block_rows,
         )
@@ -74,4 +85,11 @@ class AccountRotationWorkflow:
                 "non-aligned homes",
                 rows=non_aligned_block_rows(drifted),
                 data={"workflow": self.name, "count": len(drifted)},
+            )
+        materialize_summary = state.data.get("account_materialize")
+        if isinstance(materialize_summary, dict):
+            frame.add_block(
+                "account-materialize",
+                rows=materialize_status_block_rows(materialize_summary),
+                data={"workflow": self.name, **materialize_summary},
             )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 
-from agentos.agent.monitor.loop import MonitorLoop, _workflow_alarm_names
+from agentos.agent.monitor.loop import MonitorLoop, _workflow_alarm_names, _workflows_for_snapshot
 from agentos.agent.monitor.models import (
     MonitorAccountRow,
     MonitorColumnVariant,
@@ -14,9 +14,11 @@ from agentos.agent.monitor.models import (
     MonitorUsageTimeRow,
 )
 from agentos.agent.monitor.clock import (
+    ACCOUNT_ROTATION_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_MATERIALIZE_ALARM,
     MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
+    MonitorClockSnapshot,
 )
 from agentos.agent.monitor.render import format_monitor_frame, monitor_result_payload
 
@@ -174,6 +176,31 @@ def test_monitor_loop_prepares_top_rows_with_shortcuts_and_waiting_status() -> N
     ]
     assert texts[-1] == "waiting for workflow frame"
 
+def test_monitor_loop_prepares_materialize_requested_top_row() -> None:
+    loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
+
+    loop.set_alarm(MONITOR_MATERIALIZE_ALARM)
+    loop._prepare_visible_frame_for_render()
+
+    texts = [row.text for row in loop.visible_frame.top_rows]
+    assert "materialize: requested" in texts
+
+def test_monitor_loop_prepares_materialize_queued_top_row() -> None:
+    loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
+    loop.set_alarm(MONITOR_MATERIALIZE_ALARM)
+    snapshot = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=(MONITOR_MATERIALIZE_ALARM,),
+    )
+
+    loop._queue_workflow_snapshot(snapshot)
+    loop._prepare_visible_frame_for_render()
+
+    texts = [row.text for row in loop.visible_frame.top_rows]
+    assert "materialize: requested" not in texts
+    assert "materialize: queued" in texts
+
 def test_monitor_marquee_renders_single_line_viewport() -> None:
     frame = MonitorFrame()
     frame.add_top_row(MonitorMarqueeRow("Enter refresh | r toggle used/left | m materialize"))
@@ -191,6 +218,47 @@ def test_monitor_loop_usage_variant_toggle_alarm_does_not_hide_workflow_alarms()
     assert _workflow_alarm_names(
         (MONITOR_USAGE_VARIANT_TOGGLE_ALARM, MONITOR_MATERIALIZE_ALARM)
     ) == (MONITOR_MATERIALIZE_ALARM,)
+
+def test_monitor_loop_merges_pending_workflow_alarm_names() -> None:
+    loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)
+    first = MonitorClockSnapshot(
+        tick=2,
+        alarms={},
+        fired_alarm_names=(MONITOR_MATERIALIZE_ALARM,),
+    )
+    second = MonitorClockSnapshot(
+        tick=3,
+        alarms={},
+        fired_alarm_names=(ACCOUNT_ROTATION_PERIODIC_ALARM,),
+    )
+
+    loop._queue_workflow_snapshot(first)
+    loop._queue_workflow_snapshot(second)
+    merged = loop._take_workflow_snapshot()
+
+    assert merged is not None
+    assert merged.tick == 3
+    assert merged.fired_alarm_names == (
+        MONITOR_MATERIALIZE_ALARM,
+        ACCOUNT_ROTATION_PERIODIC_ALARM,
+    )
+
+def test_monitor_loop_prioritizes_account_rotation_for_materialize_alarm() -> None:
+    class Workflow:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    limits = Workflow("limits-tracking")
+    rotation = Workflow("account-rotation")
+    snapshot = MonitorClockSnapshot(
+        tick=1,
+        alarms={},
+        fired_alarm_names=(MONITOR_MATERIALIZE_ALARM, LIMITS_TRACKING_PERIODIC_ALARM),
+    )
+
+    ordered = _workflows_for_snapshot((limits, rotation), snapshot)
+
+    assert ordered == (rotation, limits)
 
 def test_monitor_loop_titles_include_ticks_since_reset_for_periodic_workflows() -> None:
     loop = MonitorLoop(workflows=(), interval_sec=0, max_ticks=1)

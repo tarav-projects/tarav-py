@@ -14,6 +14,7 @@ from agentos.agent.monitor.clock import (
     AUTO_PRIME_ZERO_LIMITS_PERIODIC_ALARM,
     LIMITS_TRACKING_PERIODIC_ALARM,
     MONITOR_ENTER_ALARM,
+    MONITOR_MATERIALIZE_ALARM,
     MONITOR_STARTUP_ALARM,
     MONITOR_USAGE_VARIANT_TOGGLE_ALARM,
     MonitorClock,
@@ -140,11 +141,27 @@ class MonitorLoop:
             self._stop_workflow_thread()
 
     def set_alarm(self, name: str, *, remaining_ticks: int = 0) -> None:
+        if name == MONITOR_MATERIALIZE_ALARM:
+            self.state.data["account_materialize"] = {
+                "tick": self.state.tick,
+                "status": "requested",
+            }
         self.clock.set_one_shot(name, remaining_ticks=remaining_ticks)
 
     def _queue_workflow_snapshot(self, snapshot: MonitorClockSnapshot) -> None:
         with self._workflow_condition:
-            self._pending_workflow_snapshot = snapshot
+            if self._pending_workflow_snapshot is None:
+                self._pending_workflow_snapshot = snapshot
+            else:
+                self._pending_workflow_snapshot = _merge_workflow_snapshots(
+                    self._pending_workflow_snapshot,
+                    snapshot,
+                )
+            if self._pending_workflow_snapshot.fired(MONITOR_MATERIALIZE_ALARM):
+                self.state.data["account_materialize"] = {
+                    "tick": self._pending_workflow_snapshot.tick,
+                    "status": "queued",
+                }
             self._workflow_condition.notify()
 
     def _start_workflow_thread(self) -> None:
@@ -176,6 +193,14 @@ class MonitorLoop:
         if self._workflow_is_active():
             status_rows.append(
                 MonitorTextRow("workflow: fetching account data", indent=False)
+            )
+        materialize_status = _materialize_status(self.state)
+        if materialize_status in {"requested", "queued", "running"}:
+            status_rows.append(
+                MonitorTextRow(
+                    f"materialize: {materialize_status}",
+                    indent=False,
+                )
             )
         if not self._has_visible_frame:
             self.visible_frame.prepare(tick=self.state.tick)
@@ -266,7 +291,7 @@ class MonitorLoop:
             frame.prepare(tick=snapshot.tick)
 
             try:
-                for workflow in self.workflows:
+                for workflow in _workflows_for_snapshot(self.workflows, snapshot):
                     try:
                         workflow.loop(self.state, frame, snapshot)
                     except Exception as exc:
@@ -491,6 +516,44 @@ def _workflow_period_seconds(
 def _workflow_alarm_names(fired_alarm_names: tuple[str, ...]) -> tuple[str, ...]:
     display_only = {MONITOR_USAGE_VARIANT_TOGGLE_ALARM}
     return tuple(name for name in fired_alarm_names if name not in display_only)
+
+
+def _workflows_for_snapshot(
+    workflows: tuple[MonitorWorkflow, ...],
+    snapshot: MonitorClockSnapshot,
+) -> tuple[MonitorWorkflow, ...]:
+    if not snapshot.fired(MONITOR_MATERIALIZE_ALARM):
+        return workflows
+    return tuple(
+        sorted(
+            workflows,
+            key=lambda workflow: 0
+            if getattr(workflow, "name", None) == "account-rotation"
+            else 1,
+        )
+    )
+
+
+def _materialize_status(state: MonitorState) -> str | None:
+    materialize_state = state.data.get("account_materialize")
+    if not isinstance(materialize_state, dict):
+        return None
+    status = materialize_state.get("status")
+    return status if isinstance(status, str) else None
+
+
+def _merge_workflow_snapshots(
+    current: MonitorClockSnapshot,
+    incoming: MonitorClockSnapshot,
+) -> MonitorClockSnapshot:
+    fired_alarm_names = tuple(
+        dict.fromkeys((*current.fired_alarm_names, *incoming.fired_alarm_names))
+    )
+    return MonitorClockSnapshot(
+        tick=incoming.tick,
+        alarms=incoming.alarms,
+        fired_alarm_names=fired_alarm_names,
+    )
 
 
 def _period_ticks_from_seconds(period_sec: float, *, interval_sec: float) -> int:

@@ -11,37 +11,160 @@ log" is rendered by `rotation_block_rows` from `read_recent_events`.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
+
 from agentos.agent.auth_method_registry import providers_with_auth_methods
 from agentos.agent.capture import capture_all_homes
+from agentos.agent.materialization import MaterializeResult
 from agentos.agent.materialization import materialize_all
-from agentos.agent.monitor.models import MonitorTextRow
+from agentos.agent.monitor.models import MonitorInfoRow, MonitorTextRow
 from agentos.agent.rotation import rotate_all
 
 
-def sweep_rotations(*, materialize: bool) -> None:
+@dataclass(frozen=True)
+class MonitorMaterializeResult:
+    provider: str
+    status: str
+    account: str = ""
+    method: str = ""
+    home: Path | None = None
+    active_ref: str | None = None
+    error_type: str | None = None
+    message: str | None = None
+
+
+def _monitor_materialize_result(result: MaterializeResult) -> MonitorMaterializeResult:
+    return MonitorMaterializeResult(
+        provider=result.provider,
+        account=result.account,
+        method=result.method,
+        home=result.home,
+        active_ref=result.active_ref,
+        status=result.status,
+    )
+
+
+def sweep_rotations(*, materialize: bool) -> list[MonitorMaterializeResult]:
     """Capture + rotate every provider (optionally materialize). Drive-only.
 
     Registry-only unless ``materialize`` (then homes are written via
     `materialize_all`). Best-effort per provider: one provider's failure neither
     aborts the sweep nor escapes to the monitor loop. Rotation events are persisted
-    by the `rotate` primitive (to the accounts-log) — the sweep returns nothing."""
+    by the `rotate` primitive (to the accounts-log)."""
 
+    results: list[MonitorMaterializeResult] = []
     for provider in providers_with_auth_methods():
         try:
             capture_all_homes(provider)
             rotate_all(provider)
             if materialize:
-                materialize_all(provider)
-        except Exception:
+                results.extend(
+                    _monitor_materialize_result(result)
+                    for result in materialize_all(provider)
+                )
+        except Exception as exc:
+            if materialize:
+                results.append(
+                    MonitorMaterializeResult(
+                        provider=provider,
+                        status="error",
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                    )
+                )
             continue  # per-provider isolation — never crash the tick/keystroke
+    return results
 
 
-def materialize_sweep() -> None:
+def materialize_sweep() -> list[MonitorMaterializeResult]:
     """The `m`-keystroke action: a full reconcile sweep (capture + rotate +
     materialize, writes homes). Rotations land in the accounts-log via the
     primitive; the TUI reads them back on the next render."""
 
-    sweep_rotations(materialize=True)
+    return sweep_rotations(materialize=True)
+
+
+def materialize_summary_payload(
+    results: list[MonitorMaterializeResult],
+    *,
+    tick: int,
+) -> dict[str, object]:
+    counts = {
+        "materialized": 0,
+        "aligned": 0,
+        "skipped": 0,
+        "check": 0,
+        "error": 0,
+    }
+    for result in results:
+        counts[result.status] = counts.get(result.status, 0) + 1
+    if counts.get("error", 0):
+        status = "failed"
+    elif counts.get("materialized", 0):
+        status = "done"
+    elif counts.get("skipped", 0):
+        status = "skipped"
+    else:
+        status = "done"
+    return {
+        "tick": tick,
+        "status": status,
+        "counts": counts,
+        "results": [
+            {
+                "provider": result.provider,
+                "account": result.account,
+                "method": result.method,
+                "home": str(result.home) if result.home is not None else None,
+                "active_ref": result.active_ref,
+                "status": result.status,
+                "error_type": result.error_type,
+                "message": result.message,
+            }
+            for result in results
+        ],
+    }
+
+
+def materialize_status_block_rows(summary: dict[str, object]) -> list[MonitorTextRow | MonitorInfoRow]:
+    counts = summary.get("counts")
+    counts = counts if isinstance(counts, dict) else {}
+    rows: list[MonitorTextRow | MonitorInfoRow] = [
+        MonitorInfoRow("status", str(summary.get("status", "unknown"))),
+        MonitorTextRow(
+            "materialized: {materialized}  skipped: {skipped}  failed: {error}".format(
+                materialized=counts.get("materialized", 0),
+                skipped=counts.get("skipped", 0),
+                error=counts.get("error", 0),
+            )
+        ),
+    ]
+    results = summary.get("results")
+    visible_statuses = {"materialized", "skipped", "error"}
+    visible_count = 0
+    if isinstance(results, list):
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            if item.get("status") not in visible_statuses:
+                continue
+            if visible_count >= 5:
+                break
+            home = item.get("home") or "-"
+            account = item.get("account")
+            method = item.get("method")
+            tag = f"{account}/{method}" if account and method else "-"
+            status = item.get("status", "unknown")
+            text = f"[{status}] {item.get('provider')} {tag}  {home}"
+            message = item.get("message")
+            if message:
+                text += f"  — {message}"
+            rows.append(MonitorTextRow(text))
+            visible_count += 1
+    if visible_count == 0:
+        rows.append(MonitorTextRow("(no drifted homes required materialization)"))
+    return rows
 
 
 def collect_non_aligned_homes() -> list[dict[str, object]]:
@@ -118,6 +241,9 @@ def rotation_block_rows(records: list[dict[str, object]]) -> list[MonitorTextRow
 __all__ = [
     "sweep_rotations",
     "materialize_sweep",
+    "MonitorMaterializeResult",
+    "materialize_summary_payload",
+    "materialize_status_block_rows",
     "rotation_block_rows",
     "collect_non_aligned_homes",
     "non_aligned_block_rows",
