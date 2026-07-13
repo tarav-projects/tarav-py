@@ -382,6 +382,11 @@ class LimitsTrackingWorkflow:
         state: MonitorState,
         workflow_state: LimitsWorkflowState,
     ) -> None:
+        _sync_weekly_usage_baselines(
+            workflow_state=workflow_state,
+            targets=self.config.targets,
+            recorded_at=datetime.datetime.now(tz=datetime.UTC),
+        )
         rows: list[MonitorRow] = []
         target_summaries: list[dict[str, object]] = []
         for index, target in enumerate(self.config.targets):
@@ -401,6 +406,8 @@ class LimitsTrackingWorkflow:
                 _target_rows(
                     target=target,
                     target_state=target_state,
+                    target_key=target_key,
+                    workflow_state=workflow_state,
                     auto_prime_target_state=auto_prime_target_state,
                 )
             )
@@ -493,6 +500,8 @@ def _target_rows(
     *,
     target: MonitorTarget,
     target_state: LimitsTargetState,
+    target_key: str | None = None,
+    workflow_state: LimitsWorkflowState | None = None,
     auto_prime_target_state: AutoPrimeTargetState | None = None,
 ) -> list[MonitorRow]:
     account_status = target_state.account_status
@@ -513,7 +522,12 @@ def _target_rows(
         )
         return rows
     if isinstance(account_status, dict):
-        limit_rows = _account_limit_rows(account_status, provider=target.provider)
+        limit_rows = _account_limit_rows(
+            account_status,
+            provider=target.provider,
+            target_key=target_key,
+            workflow_state=workflow_state,
+        )
         if limit_rows:
             rows.extend(limit_rows)
             fetch_error_row = _fetch_error_row(account_status)
@@ -563,7 +577,11 @@ def _account_status_parts(
 
 
 def _account_limit_rows(
-    account_status: dict[str, Any], *, provider: str
+    account_status: dict[str, Any],
+    *,
+    provider: str,
+    target_key: str | None = None,
+    workflow_state: LimitsWorkflowState | None = None,
 ) -> list[MonitorRow]:
     limits = account_status.get("limits")
     if not isinstance(limits, list):
@@ -630,10 +648,23 @@ def _account_limit_rows(
                 if used_percent > elapsed_percent
                 else None
             )
+            reset_value = reset_columns[0]
+            delta_marker = (
+                _weekly_usage_delta_marker(
+                    usage_over_time=usage_over_time,
+                    target_key=target_key,
+                    workflow_state=workflow_state,
+                    used_percent=used_percent,
+                )
+                if _is_weekly_limit(limit, usage_over_time)
+                else None
+            )
+            if delta_marker is not None:
+                reset_value = f"{reset_value} {delta_marker}"
             rows.append(
                 MonitorResetRow(
                     label="        resets",
-                    value=reset_columns[0],
+                    value=reset_value,
                     suffix=reset_columns[1],
                     elapsed_percent=max(0, min(100, elapsed_percent)),
                     marker_percent=marker_percent,
@@ -773,6 +804,106 @@ def _is_weekly_limit(
     if limit_id == "weekly":
         return True
     return _int_value(usage_over_time.get("period_duration_mins")) == 10_080
+
+
+def _sync_weekly_usage_baselines(
+    *,
+    workflow_state: LimitsWorkflowState,
+    targets: tuple[MonitorTarget, ...],
+    recorded_at: datetime.datetime,
+) -> None:
+    active_keys: set[str] = set()
+    observed_target_keys: set[str] = set()
+    for target in targets:
+        target_key = _target_key(target)
+        target_state = workflow_state.targets.get(target_key)
+        if target_state is None or not isinstance(target_state.account_status, dict):
+            continue
+        point = _weekly_usage_point(target_state.account_status)
+        if point is None:
+            continue
+        period_key, used_percent = point
+        baseline_key = _weekly_usage_baseline_key(
+            target_key=target_key,
+            period_key=period_key,
+        )
+        observed_target_keys.add(target_key)
+        active_keys.add(baseline_key)
+        workflow_state.weekly_usage_baselines.setdefault(
+            baseline_key,
+            {
+                "used_percent": used_percent,
+                "recorded_at": recorded_at.isoformat(),
+            },
+        )
+
+    stale_keys = [
+        key
+        for key in workflow_state.weekly_usage_baselines
+        if key not in active_keys
+        and _weekly_usage_baseline_target_key(key) in observed_target_keys
+    ]
+    for key in stale_keys:
+        del workflow_state.weekly_usage_baselines[key]
+
+
+def _weekly_usage_delta_marker(
+    *,
+    usage_over_time: dict[str, object],
+    target_key: str | None,
+    workflow_state: LimitsWorkflowState | None,
+    used_percent: int,
+) -> str | None:
+    if target_key is None or workflow_state is None:
+        return None
+    period_key = _weekly_usage_period_key(usage_over_time)
+    if period_key is None:
+        return None
+    baseline = workflow_state.weekly_usage_baselines.get(
+        _weekly_usage_baseline_key(target_key=target_key, period_key=period_key)
+    )
+    if baseline is None:
+        return None
+    baseline_used = _int_value(baseline.get("used_percent"))
+    if baseline_used is None:
+        return None
+    return f"[{used_percent - baseline_used:+d}%]"
+
+
+def _weekly_usage_point(account_status: dict[str, Any]) -> tuple[str, int] | None:
+    limits = account_status.get("limits")
+    if not isinstance(limits, list):
+        return None
+    for limit in limits:
+        if not isinstance(limit, dict):
+            continue
+        usage_over_time = limit.get("usage_over_time")
+        if not isinstance(usage_over_time, dict):
+            continue
+        if not _is_weekly_limit(limit, usage_over_time):
+            continue
+        used_percent = _int_value(usage_over_time.get("used_percent"))
+        period_key = _weekly_usage_period_key(usage_over_time)
+        if used_percent is not None and period_key is not None:
+            return period_key, used_percent
+    return None
+
+
+def _weekly_usage_period_key(usage_over_time: dict[str, object]) -> str | None:
+    period_end = _parse_datetime(_string_value(usage_over_time.get("period_ends_at")))
+    if period_end is None:
+        period_end = _parse_datetime(_string_value(usage_over_time.get("resets_at")))
+    if period_end is None:
+        return None
+    return period_end.isoformat()
+
+
+def _weekly_usage_baseline_key(*, target_key: str, period_key: str) -> str:
+    return f"{target_key}|weekly|{period_key}"
+
+
+def _weekly_usage_baseline_target_key(baseline_key: str) -> str:
+    return baseline_key.split("|weekly|", 1)[0]
 
 
 def _usage_time_burst_unit_value(

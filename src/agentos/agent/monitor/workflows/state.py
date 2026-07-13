@@ -57,6 +57,9 @@ class LimitsWorkflowState:
     run_count: int | None = None
     refresh_interval_sec: float | None = None
     fired_alarms: list[str] = field(default_factory=list)
+    weekly_usage_baselines: dict[str, dict[str, object]] = field(
+        default_factory=dict
+    )
 
     def payload(self) -> dict[str, object]:
         return {
@@ -68,6 +71,10 @@ class LimitsWorkflowState:
             "run_count": self.run_count,
             "refresh_interval_sec": self.refresh_interval_sec,
             "fired_alarms": list(self.fired_alarms),
+            "weekly_usage_baselines": {
+                key: dict(value)
+                for key, value in self.weekly_usage_baselines.items()
+            },
         }
 
 
