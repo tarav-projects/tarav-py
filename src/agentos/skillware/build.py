@@ -2,13 +2,20 @@
 
 Deterministic by construction — `derived` bodies are spliced as materialized
 in src, never regenerated here; `copy` bodies are resolved fresh. Compiling
-strips every `[!skw]` callout so zero machinery lands on the runnable surface.
+strips every `$kw` machinery line so nothing skw lands on the runnable surface.
+
+`check_skill` is the `Poi.Linter`: it lints parse results, never the native
+text. Parse errors gate a file — its semantic checks do not run below the
+`Parse.Floor` — and every POI is advisory, carrying a stable identity hash
+so a `derived-stale` situation can be explicitly accepted (`Poi.Bless`,
+`bless_skill`) instead of edited around.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -335,15 +342,43 @@ class BuildReport:
 @dataclass(frozen=True)
 class CheckEntry:
     target: Path
-    status: str  # never-built | stale-build | hand-edited | ok
+    status: str  # ok | never-built | stale-build | hand-edited | parse-error | unresolvable
     copy_drift: tuple[str, ...]
     derived_stale: tuple[str, ...]
 
 
 @dataclass(frozen=True)
+class Poi:
+    """A point of interest: a place worth an agent's attention — advisory, never a verdict."""
+
+    kind: str
+    target: Path
+    key: str | None
+    poi_hash: str
+    detail: str
+
+
+@dataclass(frozen=True)
+class BlessRecord:
+    target: Path
+    key: str
+    deps: dict[str, dict[str, str | None]]  # locator -> {"old": sha, "new": sha}
+
+
+@dataclass(frozen=True)
 class CheckReport:
     entries: tuple[CheckEntry, ...]
-    findings: tuple[SkwFinding, ...]
+    pois: tuple[Poi, ...]
+
+
+BLESSABLE_KINDS = ("derived-stale",)
+
+_LEGACY_CALLOUT_RE = re.compile(r"^>\s*\[!skw\]")
+
+
+def _poi(kind: str, target: Path, key: str | None, payload: str, detail: str) -> Poi:
+    digest = hashlib.sha256(f"{target}|{kind}|{key}|{payload}".encode("utf-8")).hexdigest()
+    return Poi(kind=kind, target=target, key=key, poi_hash=digest[:10], detail=detail)
 
 
 AGENTS_NAME = "AGENTS.md"
@@ -463,26 +498,79 @@ def build_skill(skill_root: Path) -> BuildReport:
     return BuildReport(entries=tuple(entries), findings=tuple(findings))
 
 
+def _legacy_callout_pois(target_rel: Path, src_text: str) -> list[Poi]:
+    pois: list[Poi] = []
+    in_fence = False
+    for number, line in enumerate(src_text.splitlines(), start=1):
+        if line.lstrip().startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        if not in_fence and _LEGACY_CALLOUT_RE.match(line):
+            pois.append(
+                _poi(
+                    "legacy-callout",
+                    target_rel,
+                    None,
+                    f"{number}|{line.strip()}",
+                    f"line {number}: {line.strip()}",
+                )
+            )
+    return pois
+
+
 def check_skill(skill_root: Path) -> CheckReport:
+    """The `Poi.Linter` pass: lint parse results, emit advisory POIs.
+
+    Parse errors gate a file — below the `Parse.Floor` its semantic checks
+    do not run; sibling files still check normally. Every POI carries a
+    stable identity hash bound to the current situation.
+    """
     skillware = load_skillware(skill_root)
     lock = _read_lock(skillware)
     entries: list[CheckEntry] = []
-    findings: list[SkwFinding] = []
+    pois: list[Poi] = []
 
     for src_rel in skillware.src_files():
+        target_rel = skillware.target_rel(src_rel)
+        src_text = (skillware.src_root / src_rel).read_text(encoding="utf-8")
+        pois.extend(_legacy_callout_pois(target_rel, src_text))
+
+        source = parse_skw_source(src_text)
+        if source.findings:
+            pois.extend(
+                _poi(
+                    "parse-error",
+                    target_rel,
+                    None,
+                    f"{f.line}|{f.message}",
+                    f"line {f.line}: {f.message}",
+                )
+                for f in source.findings
+            )
+            entries.append(CheckEntry(target_rel, "parse-error", (), ()))
+            continue
+
         expansion = expand_file(skillware, src_rel)
-        findings.extend(
-            SkwFinding(f.line, f"{src_rel}: {f.message}") for f in expansion.findings
-        )
-        target_rel = expansion.target_rel
+        if expansion.findings:
+            pois.extend(
+                _poi(
+                    "unresolvable",
+                    target_rel,
+                    None,
+                    f"{f.line}|{f.message}",
+                    f"line {f.line}: {f.message}",
+                )
+                for f in expansion.findings
+            )
+            entries.append(CheckEntry(target_rel, "unresolvable", (), ()))
+            continue
+
         target_path = skillware.skill_root / target_rel
         expected_text = "\n".join(expansion.fresh_lines) + "\n"
         lock_entry = lock.get("files", {}).get(str(target_rel))
 
         copy_drift: list[str] = []
-        src_text = (skillware.src_root / src_rel).read_text(encoding="utf-8")
         if "\n".join(expansion.src_refresh_lines) + "\n" != src_text:
-            source = parse_skw_source(src_text)
             copy_drift = [
                 recipe_key(recipe)
                 for recipe in source.recipes
@@ -495,7 +583,6 @@ def check_skill(skill_root: Path) -> CheckReport:
 
         derived_stale: list[str] = []
         if lock_entry is not None:
-            source = parse_skw_source(src_text)
             locked_entries = lock_entry.get("recipes", [])
             for recipe in source.recipes:
                 if recipe.verb != "derived":
@@ -533,22 +620,91 @@ def check_skill(skill_root: Path) -> CheckReport:
         )
         entries.append(entry)
         if entry.status != "ok":
-            findings.append(SkwFinding(0, f"{target_rel}: {entry.status}"))
-        for heading in entry.copy_drift:
-            findings.append(SkwFinding(0, f"{target_rel}: copy-drift at '{heading}' (build repairs)"))
-        for heading in entry.derived_stale:
-            findings.append(
-                SkwFinding(0, f"{target_rel}: derived-stale at '{heading}' (agentic re-derive in src)")
+            pois.append(_poi(entry.status, target_rel, None, entry.status, entry.status))
+        for key in entry.copy_drift:
+            pois.append(
+                _poi(
+                    "copy-drift",
+                    target_rel,
+                    key,
+                    json.dumps(expansion.dep_hashes.get(key, {}), sort_keys=True),
+                    f"copy body no longer equals its target's expansion",
+                )
+            )
+        for key in entry.derived_stale:
+            # the hash binds to the CURRENT dependency state: blessing accepts
+            # exactly this situation; a further dep change mints a new POI
+            pois.append(
+                _poi(
+                    "derived-stale",
+                    target_rel,
+                    key,
+                    json.dumps(expansion.dep_hashes.get(key, {}), sort_keys=True),
+                    "a dependency changed since the derived body was written",
+                )
             )
 
-    return CheckReport(entries=tuple(entries), findings=tuple(findings))
+    return CheckReport(entries=tuple(entries), pois=tuple(pois))
+
+
+def bless_skill(skill_root: Path, poi_hash: str) -> BlessRecord:
+    """`Poi.Bless`: accept a derived-stale POI's current state as correct.
+
+    Rewrites that recipe's locked dependency hashes to the current ones —
+    body and target untouched. Loud by design: the returned record (and the
+    lock diff) is the audit trail. Only `derived-stale` is blessable.
+    """
+    skillware = load_skillware(skill_root)
+    report = check_skill(skill_root)
+    match = next((p for p in report.pois if p.poi_hash == poi_hash), None)
+    if match is None:
+        raise SkillwareError(f"no POI with hash {poi_hash} in the current check")
+    if match.kind not in BLESSABLE_KINDS:
+        raise SkillwareError(
+            f"POI {poi_hash} ({match.kind}) is not blessable — only "
+            f"{', '.join(BLESSABLE_KINDS)} can be accepted; fix the surface instead"
+        )
+
+    src_rel = next(
+        rel for rel in skillware.src_files() if skillware.target_rel(rel) == match.target
+    )
+    expansion = expand_file(skillware, src_rel)
+    current = expansion.dep_hashes.get(match.key, {})
+
+    lock = _read_lock(skillware)
+    lock_entry = lock.get("files", {}).get(str(match.target), {})
+    recipe_entry = next(
+        (
+            entry
+            for entry in lock_entry.get("recipes", [])
+            if entry.get("verb") == "derived" and entry.get("heading") == match.key
+        ),
+        None,
+    )
+    if recipe_entry is None:
+        raise SkillwareError(f"no locked derived recipe for {match.target} :: {match.key}")
+    old_deps = dict(recipe_entry.get("deps", {}))
+    recipe_entry["deps"] = current
+    _lock_path(skillware).write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+    return BlessRecord(
+        target=match.target,
+        key=match.key,
+        deps={
+            locator: {"old": old_deps.get(locator), "new": sha}
+            for locator, sha in current.items()
+        },
+    )
 
 
 __all__ += [
+    "BLESSABLE_KINDS",
+    "BlessRecord",
     "BuildEntry",
     "BuildReport",
     "CheckEntry",
     "CheckReport",
+    "Poi",
+    "bless_skill",
     "build_skill",
     "check_skill",
 ]
