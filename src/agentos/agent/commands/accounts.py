@@ -13,6 +13,28 @@ from agentos.agent.commands._shared import (
 from agentos.agent.commands.monitor import _register_monitor_command
 
 
+def _split_account_method(account: str, command_label: str) -> tuple[str, str]:
+    """Parse ``<account-id>/<method>``, raising a uniform CliError when malformed."""
+    account_id, sep, method = account.partition("/")
+    if not sep or not account_id or not method:
+        raise CliError(f"{command_label} requires --account <account-id>/<method>")
+    return account_id, method
+
+
+def _resolve_providers(provider: str | None) -> tuple[str, ...]:
+    """The given provider, else every provider with an auth-method."""
+    from agentos.agent.auth_method_registry import providers_with_auth_methods
+
+    if provider is not None:
+        return (provider,)
+    return tuple(providers_with_auth_methods())
+
+
+def _short(ref: str | None) -> str:
+    """12-char short form of a ref_id; ``-`` for a missing ref."""
+    return (ref or "-")[:12]
+
+
 def _cmd_agent_accounts_materialize(args: argparse.Namespace) -> int:
     if args.provider in ("claude-code", "codex"):
         return _materialize_account(args, args.provider)
@@ -46,19 +68,18 @@ def _cmd_agent_accounts_capture(args: argparse.Namespace) -> int:
         prefix = "[dry-run] would capture" if dry_run else "Captured"
         print(
             f"{prefix} {provider} {result.account}/{result.method} <- {home} "
-            f"(ref {result.ref_id[:12]})"
+            f"(ref {_short(result.ref_id)})"
         )
     return 0
 
 
 def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
-    from agentos.agent.auth_method_registry import providers_with_auth_methods
     from agentos.agent.capture import capture_all_homes
 
     if args.home is not None:
         raise CliError("agent accounts capture: --global and --home are mutually exclusive")
     dry_run = getattr(args, "dry_run", False)
-    providers = (args.provider,) if args.provider is not None else providers_with_auth_methods()
+    providers = _resolve_providers(args.provider)
     results = [r for provider in providers for r in capture_all_homes(provider, dry_run=dry_run)]
     new_count = sum(1 for r in results if r.is_new)
     if args.json:
@@ -81,7 +102,7 @@ def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
             state = "new" if r.is_new else "already"
             print(
                 f"{prefix} {r.provider} {r.account}/{r.method} <- {r.home} "
-                f"(ref {r.ref_id[:12]}, {state})"
+                f"(ref {_short(r.ref_id)}, {state})"
             )
         verb = "Would sweep" if dry_run else "Swept"
         print(f"{verb} {len(results)} home(s) across {len(providers)} provider(s); {new_count} new.")
@@ -90,12 +111,11 @@ def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
 
 def _cmd_agent_accounts_list(args: argparse.Namespace) -> int:
     from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method_registry import providers_with_auth_methods
     from agentos.agent.rotation import rotate
 
     if args.account is not None and args.provider is None:
         raise CliError("agent accounts list --account requires --provider")
-    providers = (args.provider,) if args.provider is not None else providers_with_auth_methods()
+    providers = _resolve_providers(args.provider)
 
     pools: list[dict[str, object]] = []
     for provider in providers:
@@ -121,7 +141,7 @@ def _cmd_agent_accounts_list(args: argparse.Namespace) -> int:
             for e in pool["entries"]:
                 marks = " ".join(m for m, on in (("active", e["active"]), ("head", e["head"])) if on)
                 suffix = f"  ({marks})" if marks else ""
-                print(f"  {e['index']}  {e['ref_id'][:12]}  {e['ts']}{suffix}")
+                print(f"  {e['index']}  {_short(e['ref_id'])}  {e['ts']}{suffix}")
     return 0
 
 
@@ -129,10 +149,7 @@ def _account_method_pairs(provider: str, account: str | None) -> list[tuple[str,
     from agentos.agent import auth_registry as R
 
     if account is not None:
-        account_id, sep, method = account.partition("/")
-        if not sep or not account_id or not method:
-            raise CliError("agent accounts list requires --account <account-id>/<method>")
-        return [(account_id, method)]
+        return [_split_account_method(account, "agent accounts list")]
     accounts = R.load_settings(provider).get("accounts")
     pairs: list[tuple[str, str]] = []
     if isinstance(accounts, dict):
@@ -145,9 +162,8 @@ def _account_method_pairs(provider: str, account: str | None) -> list[tuple[str,
 
 def _cmd_agent_accounts_orphans(args: argparse.Namespace) -> int:
     from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method_registry import providers_with_auth_methods
 
-    providers = (args.provider,) if args.provider is not None else providers_with_auth_methods()
+    providers = _resolve_providers(args.provider)
 
     # base groups carry no secret material — the text view reads only these
     groups = [
@@ -183,12 +199,11 @@ def _cmd_agent_accounts_orphans(args: argparse.Namespace) -> int:
                 header = f"  {who}  [{g['auth_class']}]"
                 print(f"{header}  {extra}".rstrip())
                 for r in g["refs"]:
-                    print(f"    {str(r['ref_id'])[:12]}  {r.get('ts')}")
+                    print(f"    {_short(str(r['ref_id']))}  {r.get('ts')}")
     return 0
 
 
 def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
-    from agentos.agent.auth_method_registry import providers_with_auth_methods
     from agentos.agent.capture import capture_all_homes
     from agentos.agent.materialization import MaterializeResult, materialize_all
     from agentos.agent.rotation import RotateResult, rotate, rotate_all
@@ -198,7 +213,7 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
     do_materialize = getattr(args, "materialize", False)
     if args.account is not None and args.provider is None:
         raise CliError("agent accounts rotate --account requires --provider")
-    providers = (args.provider,) if args.provider is not None else providers_with_auth_methods()
+    providers = _resolve_providers(args.provider)
 
     results: list[RotateResult] = []
     materialized: list[MaterializeResult] = []
@@ -208,9 +223,7 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
         if not no_capture:
             capture_all_homes(provider, dry_run=dry_run)
         if args.account is not None:
-            account_id, sep, method = args.account.partition("/")
-            if not sep or not account_id or not method:
-                raise CliError("agent accounts rotate requires --account <account-id>/<method>")
+            account_id, method = _split_account_method(args.account, "agent accounts rotate")
             results.append(rotate(provider, account_id, method, dry_run=dry_run))
         else:
             results.extend(rotate_all(provider, dry_run=dry_run))
@@ -247,7 +260,7 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
                 state = "skipped"
             elif r.changed:
                 prefix = "[dry-run] would rotate" if dry_run else "rotated"
-                state = f"{prefix} {(r.previous_active or '-')[:12]} -> {(r.new_active or '-')[:12]}"
+                state = f"{prefix} {_short(r.previous_active)} -> {_short(r.new_active)}"
             else:
                 state = "unchanged"
             print(f"{r.provider} {r.account}/{r.method}: {state}")
@@ -257,9 +270,9 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
             for m in materialized:
                 if m.status == "materialized":
                     label = "[dry-run] would materialize" if dry_run else "materialized"
-                    detail = f"{label} (ref {(m.active_ref or '-')[:12]})"
+                    detail = f"{label} (ref {_short(m.active_ref)})"
                 elif m.status == "check":
-                    detail = f"[dry-run] would materialize (ref {(m.active_ref or '-')[:12]})"
+                    detail = f"[dry-run] would materialize (ref {_short(m.active_ref)})"
                 else:
                     detail = m.status  # aligned | skipped
                 print(f"  {m.provider} {m.home}: {detail}")
@@ -272,25 +285,21 @@ def _cmd_agent_accounts_activate(args: argparse.Namespace) -> int:
     from agentos.agent.activation import activate
 
     provider = args.provider
-    account_id, sep, method = args.account.partition("/")
-    if not sep or not account_id or not method:
-        raise CliError(f"{provider} activate requires --account <account-id>/<method>")
+    account_id, method = _split_account_method(args.account, f"{provider} activate")
     result = activate(provider, account_id, method, args.ref)
     payload = {"command": "agent accounts activate", "provider": provider,
                "account": args.account, "ref_id": result.ref_id}
     if args.json:
         print(format_json_output(payload))
     else:
-        print(f"Activated {provider} {args.account} -> {result.ref_id[:12]}")
+        print(f"Activated {provider} {args.account} -> {_short(result.ref_id)}")
     return 0
 
 
 def _materialize_account(args: argparse.Namespace, provider: str) -> int:
     from agentos.agent.materialization import materialize_account
 
-    account_id, sep, method = args.account.partition("/")
-    if not sep or not account_id or not method:
-        raise CliError(f"{provider} materialize requires --account <account-id>/<method>")
+    account_id, method = _split_account_method(args.account, f"{provider} materialize")
 
     result = materialize_account(
         provider, account_id, method, Path(args.home), check=args.check
@@ -310,9 +319,9 @@ def _materialize_account(args: argparse.Namespace, provider: str) -> int:
     else:
         verb = {"materialized": "Materialized", "check": "Would materialize",
                 "aligned": "Already aligned"}[result.status]
-        line = f"{verb} {provider} {args.account} -> {result.home} (ref {(result.active_ref or '-')[:12]})"
+        line = f"{verb} {provider} {args.account} -> {result.home} (ref {_short(result.active_ref)})"
         if result.captured_ref is not None:
-            line += f"; captured-first {result.captured_ref[:12]}"
+            line += f"; captured-first {_short(result.captured_ref)}"
         print(line)
     return 0
 

@@ -67,4 +67,12 @@
 
 ## Impl.Log
 
-- (filled during execution)
+- 2026-07-15: Cleanup request created. Pre-execution checkpoint: `c794239`.
+- 2026-07-15: Executed in `Alignment.Mode:Autonomous`. Added `_split_account_method`,
+  `_resolve_providers`, and `_short` to `commands/accounts.py` and routed the 4 account/method
+  parse sites, 4 provider-resolution sites, and ~10 short-ref sites through them. No CLI/JSON
+  contract change; error strings preserved per site (label unified). Verification:
+  `uv run ruff check src/agentos/agent/commands/accounts.py` passed; focused suite
+  (`test_agent_accounts_capture_activate`, `_rotate`, `_list`, `_materialize`,
+  `test_codex_accounts_materialize`, `test_agent_orphans`, `test_codex_account_status_report`,
+  `test_copilot_account_status`) passed (33).
