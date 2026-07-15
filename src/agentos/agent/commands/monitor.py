@@ -50,6 +50,23 @@ def _cmd_agent_accounts_monitor(args: argparse.Namespace) -> int:
         return 130
 
 
+def _cmd_agent_accounts_monitor_dev_test(args: argparse.Namespace) -> int:
+    from rich.console import Console
+
+    from agentos.agent.monitor.dev_test import build_dev_test_frame
+    from agentos.agent.monitor.render import rich_monitor_frame
+
+    console = Console()
+    console.print(
+        rich_monitor_frame(
+            build_dev_test_frame(),
+            width=console.width,
+            pad_bars=console.is_terminal,
+        )
+    )
+    return 0
+
+
 def _should_listen_for_monitor_enter(args: argparse.Namespace) -> bool:
     return not args.json and not args.once and sys.stdin.isatty()
 
@@ -126,3 +143,16 @@ def _register_monitor_command(accounts_subparsers) -> None:
         help="Print monitor state and frame as JSON.",
     )
     accounts_monitor_parser.set_defaults(handler=_cmd_agent_accounts_monitor)
+
+    # Optional subcommands; a bare `monitor` still runs the loop above.
+    monitor_subparsers = accounts_monitor_parser.add_subparsers(
+        dest="monitor_command",
+        required=False,
+    )
+    monitor_dev_test_parser = monitor_subparsers.add_parser(
+        "dev-test",
+        help="Render monitor UI candidate rows (dev sandbox for comms snippets).",
+    )
+    monitor_dev_test_parser.set_defaults(
+        handler=_cmd_agent_accounts_monitor_dev_test
+    )

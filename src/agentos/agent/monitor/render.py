@@ -33,6 +33,10 @@ _MONITOR_RESET_BAR_PALETTE = (
     "#0891b2",
     "#2563eb",
 )
+# A distinct, off-heat-scale style for the 100% boundary cell when a bar
+# overflows (>100%). Separate from the elapsed-time tip: it only ever appears
+# on an over-budget bar, so it reads as "past full", not as time elapsed.
+_MONITOR_OVERFLOW_MARKER_STYLE = "bold bright_white on #d946ef"
 _MONITOR_REFRESH_PER_SECOND = 4
 _MONITOR_BLOCK_RENDER_ORDER = {
     "limits-tracking": 100,
@@ -377,7 +381,39 @@ def _inline_percent_text(
         width=bar_width,
         marker_palette=marker_palette,
     )
+    _stylize_overflow_marker(text, row, percent=percent, width=bar_width)
     return text
+
+
+def _stylize_overflow_marker(
+    text: Any,
+    row: str,
+    *,
+    percent: int | float,
+    width: int,
+) -> None:
+    """Mark the 100% position when a bar overflows (>100%).
+
+    On overflow the bar rescales to ``0..percent`` and fills full, so the 100%
+    line sits partway along: at 200% it lands mid-bar, at 126% ~79% along. The
+    further left the marker, the deeper the overflow. General across every usage
+    bar — real provider limits are bounded 0-100 so this never fires for them.
+    """
+    if percent <= 100 or width <= 0:
+        return
+    # 100% as a fraction of the rescaled 0..percent axis = 100 / percent, fed
+    # through the shared cell math (which reads its arg as a fraction of 100).
+    line_end = _percent_cell_range(10000 / percent, width)[1]
+    marker_cell = line_end - 1
+    if marker_cell < 0:
+        return
+    _stylize_cell_range(
+        text,
+        row,
+        marker_cell,
+        marker_cell + 1,
+        _MONITOR_OVERFLOW_MARKER_STYLE,
+    )
 
 
 def _percent_cell_range(percent: int | float, width: int) -> tuple[int, int]:
