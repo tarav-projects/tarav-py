@@ -694,7 +694,7 @@ def _account_limit_rows(
                 label=row_label,
                 value=value,
                 suffix=label,
-                used_percent=max(0, min(100, used_percent)),
+                used_percent=max(0, used_percent),
                 elapsed_percent=max(0, min(100, elapsed_percent)),
                 ratio=ratio,
                 variants=variants,
@@ -993,10 +993,13 @@ def _synthesize_estimated_burst_limit(
 ) -> None:
     """Insert an estimated burst limit when the provider stopped reporting one.
 
-    Baseline = nearest registry record at-or-before the window start within the
-    current weekly period, with no proximity tolerance: a record gap means no
-    monitored activity, so an older reading remains valid. No at-or-before
-    record in the period means no observed usage — the estimate is 0%.
+    Baseline = nearest registry record at-or-before the window start, with no
+    weekly-period filter and no proximity tolerance. Codex's weekly resetsAt
+    rolls continuously, so it cannot identify a stable period; the max(0, delta)
+    floor below absorbs a real weekly reset (usage drops -> non-positive delta
+    -> 0%). No record at-or-before the window start means no observed usage
+    (a record gap implies no monitored activity, so an older reading stays
+    valid) -> 0%.
     """
     limits = account_status.get("limits")
     if not isinstance(limits, list) or _has_burst_limit(limits):
@@ -1004,18 +1007,16 @@ def _synthesize_estimated_burst_limit(
     point = _weekly_usage_point(account_status)
     if point is None:
         return
-    period_key, weekly_now = point
-    period_records = [
-        record for record in target_records if record["reset_at"] == period_key
-    ]
-    baseline = nearest_record_at_or_before(period_records, target=window_start)
+    _period_key, weekly_now = point
+    baseline = nearest_record_at_or_before(target_records, target=window_start)
     if baseline is None:
         used_percent = 0
     else:
         weekly_delta = max(0, weekly_now - baseline["used_percent"])
-        used_percent = max(
-            0, min(100, round((weekly_delta / burst_weekly_percent) * 100))
-        )
+        # Floored at 0 but intentionally uncapped: an estimated burst can exceed
+        # 100% (more than one estimated window's budget spent). The renderer
+        # saturates the bar and flags the overflow — the number stays truthful.
+        used_percent = max(0, round((weekly_delta / burst_weekly_percent) * 100))
     synthesized = AccountLimit(
         limit_class="usage_over_time",
         limit_id="burst",
@@ -1196,15 +1197,16 @@ def _elapsed_percent(
 
 
 def _format_usage_percent_plain(value: int) -> str:
-    return f"{max(0, min(100, value))}%".rjust(3)
+    # Floored at 0, uncapped: overflow (>100%) prints its true value so an
+    # estimated limit that blew past one window's budget stays legible.
+    return f"{max(0, value)}%".rjust(3)
 
 
 def _usage_time_ratio(used_percent: int, elapsed_percent: int) -> float | None:
     clamped_elapsed_percent = max(0, min(100, elapsed_percent))
     if clamped_elapsed_percent == 0:
         return None
-    clamped_used_percent = max(0, min(100, used_percent))
-    return clamped_used_percent / clamped_elapsed_percent
+    return max(0, used_percent) / clamped_elapsed_percent
 
 
 def _format_usage_time_ratio_text(ratio: float | None) -> str:

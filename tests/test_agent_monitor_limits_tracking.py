@@ -393,7 +393,7 @@ def test_limits_tracking_synthesizes_estimated_burst_limit_for_codex(
     assert isinstance(usage_row, MonitorUsageTimeRow)
     assert usage_row.suffix == "~Burst"
 
-def test_limits_tracking_estimated_burst_zero_without_period_baseline(
+def test_limits_tracking_estimated_burst_zero_without_baseline_before_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
@@ -433,6 +433,52 @@ def test_limits_tracking_estimated_burst_zero_without_period_baseline(
     synthesized = account_status["limits"][0]  # type: ignore[index]
     assert synthesized["estimated"] is True
     assert synthesized["usage_over_time"]["used_percent"] == 0
+
+def test_limits_tracking_estimated_burst_baseline_survives_rolling_reset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Codex's weekly resetsAt rolls, so a record captured before the window
+    # start carries a *different* reset_at than the current weekly period. It
+    # must still serve as the baseline; keying the period on exact resetsAt was
+    # the frozen-0% bug.
+    now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
+    _freeze_monitor_now(monkeypatch, now)
+    from agentos.agent.monitor.burst_estimation import fixed_local_5h_window
+
+    window_start, _reset_at = fixed_local_5h_window(recorded_at=now)
+    weekly = _limit(
+        used_percent=63,
+        now=now,
+        limit_id="weekly",
+        end_offset_mins=6048,
+        duration_mins=10080,
+    )
+    baseline = {
+        "key": "codex/jp@/tmp/codex-jp",
+        "recorded_at": datetime.datetime.fromisoformat(
+            (window_start - datetime.timedelta(hours=3)).isoformat()
+        ),
+        # A drifted resetsAt from before the window start; differs from the
+        # account-status weekly period_key.
+        "reset_at": "2026-05-12T00:00:00+00:00",
+        "used_percent": 55,
+    }
+    monkeypatch.setattr(limits_tracking, "codex_registry_records", lambda: [baseline])
+    monkeypatch.setattr(
+        limits_tracking, "estimated_burst_weekly_percent", lambda records: 16.0
+    )
+    workflow, workflow_state, target_key = _codex_workflow_and_state(
+        _account_status(limits=[weekly])
+    )
+
+    workflow._refresh_codex_estimated_burst_state(workflow_state)
+
+    account_status = workflow_state.targets[target_key].account_status
+    assert isinstance(account_status, dict)
+    synthesized = account_status["limits"][0]  # type: ignore[index]
+    assert synthesized["estimated"] is True
+    # (63 - 55) weekly delta over 16.0%/window -> 50%, despite the drifted reset_at.
+    assert synthesized["usage_over_time"]["used_percent"] == 50
 
 def test_limits_tracking_no_synthesis_when_provider_reports_burst(
     monkeypatch: pytest.MonkeyPatch,
