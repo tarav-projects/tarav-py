@@ -4,23 +4,29 @@ from __future__ import annotations
 
 import datetime
 import json
-import math
 import time
-from collections import Counter
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos._core.project import agentos_home_dir
 from agentos.agent.account_status import (
     AccountIdentity,
     AccountLimit,
     AccountStatus,
+    UsageOverTimeLimitData,
     USAGE_RECORD_STATUS_FRESH,
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     USAGE_RECORD_STATUS_REGISTRY_LATEST,
     registry_latest_usage_record_metadata,
+)
+from agentos.agent.monitor.burst_estimation import (
+    ESTIMATED_BURST_FALLBACK_WEEKLY_PERCENT,
+    codex_registry_records,
+    estimated_burst_weekly_percent,
+    fixed_local_5h_window,
+    nearest_record_at_or_before,
+    records_by_target,
 )
 from agentos.agent.monitor.clock import (
     LIMITS_TRACKING_PERIODIC_ALARM,
@@ -85,15 +91,6 @@ _ERROR_HEARTBEAT_SEC = 3600.0
 _WEEKLY_BURST_PERCENT_BY_PROVIDER = {
     "claude-code": 9.0,
 }
-_CODEX_ESTIMATED_BURST_FALLBACK_WEEKLY_PERCENT = 15.8
-_CODEX_ESTIMATED_BURST_WINDOW = datetime.timedelta(hours=5)
-_CODEX_ESTIMATED_BURST_START_TOLERANCE = datetime.timedelta(minutes=30)
-_CODEX_ESTIMATED_BURST_THRESHOLDS = (
-    datetime.timedelta(minutes=10),
-    datetime.timedelta(minutes=20),
-    datetime.timedelta(minutes=30),
-    datetime.timedelta(hours=1),
-)
 
 
 class LimitsTrackingWorkflow:
@@ -393,38 +390,48 @@ class LimitsTrackingWorkflow:
         self,
         workflow_state: LimitsWorkflowState,
     ) -> None:
+        # OpenAI no longer publishes the codex burst window, so refresh keeps
+        # the service alive by substituting an estimated burst limit into each
+        # codex target's in-memory limits. The synthesized limit is flagged
+        # `estimated` and rendered by the normal limit pipeline; nothing here
+        # is persisted — the usage registry carries provider data only.
         codex_targets = [
             target for target in self.config.targets if target.provider == "codex"
         ]
         if not codex_targets:
             workflow_state.codex_estimated_burst = None
-            workflow_state.codex_estimated_burst_targets.clear()
             return
-        registry_records = _codex_usage_registry_records()
-        estimate = _codex_estimated_burst_weekly_percent(registry_records)
+        registry_records = codex_registry_records()
+        estimate = estimated_burst_weekly_percent(registry_records)
+        source = "usage-registry"
         if estimate is None:
-            estimate = _CODEX_ESTIMATED_BURST_FALLBACK_WEEKLY_PERCENT
+            estimate = ESTIMATED_BURST_FALLBACK_WEEKLY_PERCENT
+            source = "fallback"
         now = datetime.datetime.now(tz=datetime.UTC)
-        window_start, reset_at = _fixed_local_5h_window(recorded_at=now)
+        window_start, reset_at = fixed_local_5h_window(recorded_at=now)
         workflow_state.codex_estimated_burst = {
             "weekly_percent": estimate,
             "computed_at": now.isoformat(),
-            "source": "usage-registry",
+            "source": source,
             "window": "fixed-local-5h",
             "window_start_at": window_start.isoformat(),
             "reset_at": reset_at.isoformat(),
         }
-        workflow_state.codex_estimated_burst_targets = (
-            _codex_estimated_burst_target_states(
-                targets=codex_targets,
-                workflow_state=workflow_state,
-                records=registry_records,
+        grouped = records_by_target(registry_records)
+        for target in codex_targets:
+            target_key = _target_key(target)
+            target_state = workflow_state.targets.get(target_key)
+            if target_state is None or not isinstance(
+                target_state.account_status, dict
+            ):
+                continue
+            _synthesize_estimated_burst_limit(
+                account_status=target_state.account_status,
+                target_records=grouped.get(target_key, []),
                 burst_weekly_percent=estimate,
-                recorded_at=now,
                 window_start=window_start,
                 reset_at=reset_at,
             )
-        )
 
     def _write_frame_block(
         self,
@@ -510,372 +517,6 @@ def _usage_record_limit_parser(
     if source == COPILOT_INTERNAL_USER_USAGE_SOURCE:
         return copilot_usage_record_limits
     raise CliError(f"unsupported monitor usage record source {source!r}")
-
-
-def _codex_usage_registry_records() -> list[dict[str, object]]:
-    registry_dir = agentos_home_dir() / "agent" / "usage-registry"
-    if not registry_dir.is_dir():
-        return []
-    records: list[dict[str, object]] = []
-    for record_path in sorted(registry_dir.glob("*-usage.jsonl")):
-        if not record_path.is_file():
-            continue
-        with record_path.open(encoding="utf-8") as handle:
-            for line in handle:
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(record, dict) or record.get("provider") != "codex":
-                    continue
-                weekly = _codex_weekly_limit_from_payload(record.get("payload"))
-                recorded_at = _parse_datetime(_string_value(record.get("recorded_at")))
-                if weekly is None or recorded_at is None:
-                    continue
-                reset_at, used_percent = weekly
-                account = _string_value(record.get("account"))
-                home = _string_value(record.get("home"))
-                if account is None or home is None:
-                    continue
-                registry_record: dict[str, object] = {
-                    "key": f"codex/{account}@{home}",
-                    "recorded_at": recorded_at,
-                    "reset_at": reset_at,
-                    "used_percent": used_percent,
-                }
-                records.append(registry_record)
-    return records
-
-
-def _codex_weekly_limit_from_payload(payload: object) -> tuple[str, int] | None:
-    if not isinstance(payload, dict):
-        return None
-    snapshots: list[object] = []
-    by_limit_id = payload.get("rateLimitsByLimitId")
-    if isinstance(by_limit_id, dict):
-        snapshots.extend(by_limit_id.values())
-    snapshots.append(payload.get("rateLimits"))
-    for snapshot in snapshots:
-        if not isinstance(snapshot, dict):
-            continue
-        for window_name in ("primary", "secondary"):
-            window = snapshot.get(window_name)
-            if not isinstance(window, dict):
-                continue
-            if _int_value(window.get("windowDurationMins")) != 10_080:
-                continue
-            reset_at = _int_value(window.get("resetsAt"))
-            used_percent = _int_value(window.get("usedPercent"))
-            if reset_at is None or used_percent is None:
-                continue
-            return _timestamp_period_key(reset_at), used_percent
-    return None
-
-
-def _timestamp_period_key(timestamp: int) -> str:
-    return datetime.datetime.fromtimestamp(timestamp, tz=datetime.UTC).isoformat()
-
-
-def _codex_estimated_burst_weekly_percent(
-    records: list[dict[str, object]],
-) -> float | None:
-    estimates: list[float] = []
-    for threshold in _CODEX_ESTIMATED_BURST_THRESHOLDS:
-        deltas = _codex_flat_range_deltas(records, min_flat_duration=threshold)
-        counts = Counter(delta for delta in deltas if delta > 0)
-        estimate = _gaussian_estimate_from_excess(counts)
-        if estimate is not None:
-            estimates.append(estimate)
-    if not estimates:
-        return None
-    estimates.sort()
-    midpoint = len(estimates) // 2
-    if len(estimates) % 2:
-        return estimates[midpoint]
-    return (estimates[midpoint - 1] + estimates[midpoint]) / 2
-
-
-def _codex_estimated_burst_target_states(
-    *,
-    targets: list[MonitorTarget],
-    workflow_state: LimitsWorkflowState,
-    records: list[dict[str, object]],
-    burst_weekly_percent: float,
-    recorded_at: datetime.datetime,
-    window_start: datetime.datetime,
-    reset_at: datetime.datetime,
-) -> dict[str, dict[str, object]]:
-    grouped = _codex_records_by_target(records)
-    target_states: dict[str, dict[str, object]] = {}
-    for target in targets:
-        target_key = _target_key(target)
-        target_state = workflow_state.targets.get(target_key)
-        if target_state is None or not isinstance(target_state.account_status, dict):
-            continue
-        current = _weekly_usage_point(target_state.account_status)
-        if current is None:
-            continue
-        period_key, current_used_percent = current
-        target_records = [
-            record
-            for record in grouped.get(target_key, [])
-            if record["reset_at"] == period_key
-        ]
-        baseline = _nearest_codex_record(
-            target_records,
-            target=window_start,
-        )
-        if baseline is None:
-            continue
-        if (
-            abs(baseline["recorded_at"] - window_start)
-            > _CODEX_ESTIMATED_BURST_START_TOLERANCE
-        ):
-            continue
-        weekly_delta = max(0, current_used_percent - baseline["used_percent"])
-        estimated_used = round((weekly_delta / burst_weekly_percent) * 100)
-        elapsed_percent = _estimated_burst_elapsed_percent(
-            recorded_at=recorded_at,
-            reset_at=reset_at,
-        )
-        target_states[target_key] = {
-            "used_percent": estimated_used,
-            "elapsed_percent": elapsed_percent,
-            "weekly_delta": weekly_delta,
-            "burst_weekly_percent": burst_weekly_percent,
-            "baseline_recorded_at": baseline["recorded_at"].isoformat(),
-            "baseline_used_percent": baseline["used_percent"],
-            "reset_value": reset_at.astimezone().strftime("%a %m-%d %H:%M"),
-            "reset_suffix": _format_remaining_duration(
-                int((reset_at - recorded_at).total_seconds())
-            ),
-        }
-    return target_states
-
-
-def _fixed_local_5h_window(
-    *,
-    recorded_at: datetime.datetime,
-) -> tuple[datetime.datetime, datetime.datetime]:
-    local_now = recorded_at.astimezone()
-    local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
-    minutes_since_midnight = int((local_now - local_midnight).total_seconds() // 60)
-    bucket_minutes = int(_CODEX_ESTIMATED_BURST_WINDOW.total_seconds() // 60)
-    bucket_index = minutes_since_midnight // bucket_minutes
-    local_start = local_midnight + datetime.timedelta(
-        minutes=bucket_index * bucket_minutes
-    )
-    local_reset = local_start + _CODEX_ESTIMATED_BURST_WINDOW
-    return local_start.astimezone(datetime.UTC), local_reset.astimezone(datetime.UTC)
-
-
-def _estimated_burst_elapsed_percent(
-    *,
-    recorded_at: datetime.datetime,
-    reset_at: datetime.datetime,
-) -> int:
-    start_at = reset_at - _CODEX_ESTIMATED_BURST_WINDOW
-    elapsed = (recorded_at - start_at).total_seconds()
-    duration = _CODEX_ESTIMATED_BURST_WINDOW.total_seconds()
-    return round(max(0.0, min(1.0, elapsed / duration)) * 100)
-
-
-def _codex_flat_range_deltas(
-    records: list[dict[str, object]],
-    *,
-    min_flat_duration: datetime.timedelta,
-) -> list[int]:
-    grouped = _codex_records_by_target(records)
-    deltas: list[int] = []
-    for target_records in grouped.values():
-        for flat_start, _flat_end in _codex_flat_ranges(
-            target_records,
-            min_flat_duration=min_flat_duration,
-        ):
-            baseline = _nearest_codex_record(
-                target_records,
-                target=flat_start["recorded_at"] - _CODEX_ESTIMATED_BURST_WINDOW,
-            )
-            if baseline is None:
-                continue
-            if (
-                abs(baseline["recorded_at"] - (flat_start["recorded_at"] - _CODEX_ESTIMATED_BURST_WINDOW))
-                > _CODEX_ESTIMATED_BURST_START_TOLERANCE
-            ):
-                continue
-            if baseline["reset_at"] != flat_start["reset_at"]:
-                continue
-            delta = flat_start["used_percent"] - baseline["used_percent"]
-            if delta >= 0:
-                deltas.append(delta)
-    return deltas
-
-
-def _codex_records_by_target(
-    records: list[dict[str, object]],
-) -> dict[str, list[dict[str, Any]]]:
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    for record in records:
-        key = record.get("key")
-        recorded_at = record.get("recorded_at")
-        reset_at = record.get("reset_at")
-        used_percent = record.get("used_percent")
-        if (
-            not isinstance(key, str)
-            or not isinstance(recorded_at, datetime.datetime)
-            or not isinstance(reset_at, str)
-            or not isinstance(used_percent, int)
-        ):
-            continue
-        grouped.setdefault(key, []).append(
-            {
-                "key": key,
-                "recorded_at": recorded_at,
-                "reset_at": reset_at,
-                "used_percent": used_percent,
-            }
-        )
-    for target_records in grouped.values():
-        target_records.sort(key=lambda item: item["recorded_at"])
-    return grouped
-
-
-def _codex_flat_ranges(
-    records: list[dict[str, Any]],
-    *,
-    min_flat_duration: datetime.timedelta,
-) -> list[tuple[dict[str, Any], dict[str, Any]]]:
-    if not records:
-        return []
-    ranges: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    start = records[0]
-    previous = records[0]
-    for record in records[1:]:
-        same_window = record["reset_at"] == previous["reset_at"]
-        same_value = record["used_percent"] == previous["used_percent"]
-        if same_window and same_value:
-            previous = record
-            continue
-        if previous["recorded_at"] - start["recorded_at"] >= min_flat_duration:
-            ranges.append((start, previous))
-        start = record
-        previous = record
-    if previous["recorded_at"] - start["recorded_at"] >= min_flat_duration:
-        ranges.append((start, previous))
-    return ranges
-
-
-def _nearest_codex_record(
-    records: list[dict[str, Any]],
-    *,
-    target: datetime.datetime,
-) -> dict[str, Any] | None:
-    if not records:
-        return None
-    timestamps = [record["recorded_at"] for record in records]
-    index = _bisect_datetimes(timestamps, target)
-    candidates: list[dict[str, Any]] = []
-    if index < len(records):
-        candidates.append(records[index])
-    if index > 0:
-        candidates.append(records[index - 1])
-    return min(candidates, key=lambda item: abs(item["recorded_at"] - target), default=None)
-
-
-def _bisect_datetimes(
-    values: list[datetime.datetime],
-    target: datetime.datetime,
-) -> int:
-    low = 0
-    high = len(values)
-    while low < high:
-        midpoint = (low + high) // 2
-        if values[midpoint] < target:
-            low = midpoint + 1
-        else:
-            high = midpoint
-    return low
-
-
-def _gaussian_estimate_from_excess(counts: Counter[int]) -> float | None:
-    model = _fit_exponential_background(counts)
-    positive = {
-        delta: count - model.expected(delta)
-        for delta, count in counts.items()
-        if count - model.expected(delta) > 0
-    }
-    if not positive:
-        return None
-    peak = max(positive, key=positive.get)
-    peak_weight = positive[peak]
-    local = {
-        delta: residual
-        for delta, residual in positive.items()
-        if abs(delta - peak) <= 3 and residual >= 0.20 * peak_weight
-    }
-    mass = sum(local.values())
-    if mass <= 0:
-        return None
-    return sum(delta * weight for delta, weight in local.items()) / mass
-
-
-class _ExponentialBackground:
-    def __init__(self, intercept: float, slope: float) -> None:
-        self.intercept = intercept
-        self.slope = slope
-
-    def expected(self, x: int) -> float:
-        return max(0.0, math.exp(self.intercept + self.slope * x))
-
-
-def _fit_exponential_background(counts: Counter[int]) -> _ExponentialBackground:
-    points = sorted((delta, count) for delta, count in counts.items() if count > 0)
-    if len(points) < 2:
-        return _ExponentialBackground(0.0, 0.0)
-    kept = points
-    model = _fit_log_linear(kept)
-    for _ in range(4):
-        residuals = [count - model.expected(delta) for delta, count in kept]
-        cutoff = _median(residuals) + 2.5 * _mad(residuals)
-        next_kept = [
-            (delta, count)
-            for delta, count in kept
-            if count - model.expected(delta) <= cutoff
-        ]
-        if len(next_kept) < 2 or len(next_kept) == len(kept):
-            break
-        kept = next_kept
-        model = _fit_log_linear(kept)
-    return model
-
-
-def _fit_log_linear(points: list[tuple[int, int]]) -> _ExponentialBackground:
-    xs = [float(delta) for delta, _ in points]
-    ys = [math.log(float(count)) for _, count in points]
-    mean_x = sum(xs) / len(xs)
-    mean_y = sum(ys) / len(ys)
-    denominator = sum((x - mean_x) ** 2 for x in xs)
-    if denominator == 0:
-        return _ExponentialBackground(mean_y, 0.0)
-    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
-    slope /= denominator
-    intercept = mean_y - slope * mean_x
-    return _ExponentialBackground(intercept, slope)
-
-
-def _median(values: list[float]) -> float:
-    if not values:
-        return 0.0
-    sorted_values = sorted(values)
-    midpoint = len(sorted_values) // 2
-    if len(sorted_values) % 2:
-        return sorted_values[midpoint]
-    return (sorted_values[midpoint - 1] + sorted_values[midpoint]) / 2
-
-
-def _mad(values: list[float]) -> float:
-    center = _median(values)
-    return _median([abs(value - center) for value in values]) or 1.0
 
 
 def _account_status_summary_from_usage_record(
@@ -1006,7 +647,6 @@ def _account_limit_rows(
 
     rows: list[MonitorRow] = []
     now = datetime.datetime.now(tz=datetime.UTC)
-    has_reported_burst = _has_reported_burst_limit(limits)
     for limit in limits:
         if not isinstance(limit, dict):
             continue
@@ -1018,15 +658,6 @@ def _account_limit_rows(
         if used_percent is None or elapsed_percent is None:
             continue
         label = _limit_label(limit, usage_over_time)
-        estimated_burst = _codex_estimated_burst_row_data(
-            provider=provider,
-            target_key=target_key,
-            workflow_state=workflow_state,
-            usage_over_time=usage_over_time,
-            has_reported_burst=has_reported_burst,
-        )
-        if estimated_burst is not None:
-            rows.extend(_codex_estimated_burst_rows(estimated_burst))
         ratio = _usage_time_ratio(used_percent, elapsed_percent)
         value = _usage_time_value(
             used_percent=used_percent,
@@ -1324,71 +955,6 @@ def _weekly_usage_delta_marker(
     return f"[{used_percent - baseline_used:+d}%]"
 
 
-def _codex_estimated_burst_row_data(
-    *,
-    provider: str,
-    target_key: str | None,
-    workflow_state: LimitsWorkflowState | None,
-    usage_over_time: dict[str, object],
-    has_reported_burst: bool,
-) -> dict[str, object] | None:
-    if provider != "codex" or target_key is None or workflow_state is None:
-        return None
-    if has_reported_burst:
-        return None
-    if _int_value(usage_over_time.get("period_duration_mins")) != 10_080:
-        return None
-    target = workflow_state.codex_estimated_burst_targets.get(target_key)
-    if not isinstance(target, dict):
-        return None
-    return target
-
-
-def _has_reported_burst_limit(limits: list[object]) -> bool:
-    for limit in limits:
-        if not isinstance(limit, dict):
-            continue
-        usage_over_time = limit.get("usage_over_time")
-        if not isinstance(usage_over_time, dict):
-            continue
-        if _int_value(usage_over_time.get("period_duration_mins")) == 300:
-            return True
-    return False
-
-
-def _codex_estimated_burst_rows(data: dict[str, object]) -> list[MonitorRow]:
-    used_percent = _int_value(data.get("used_percent"))
-    elapsed_percent = _int_value(data.get("elapsed_percent"))
-    reset_value = _string_value(data.get("reset_value"))
-    reset_suffix = _string_value(data.get("reset_suffix"))
-    if used_percent is None or elapsed_percent is None or reset_value is None:
-        return []
-    ratio = _usage_time_ratio(used_percent, elapsed_percent)
-    return [
-        MonitorUsageTimeRow(
-            label="    usage/time",
-            value=_usage_time_value(
-                used_percent=used_percent,
-                elapsed_percent=elapsed_percent,
-                ratio=ratio,
-            ),
-            suffix="~Burst",
-            used_percent=max(0, min(100, used_percent)),
-            elapsed_percent=max(0, min(100, elapsed_percent)),
-            ratio=ratio,
-        ),
-        MonitorResetRow(
-            label="        resets",
-            value=reset_value,
-            suffix=reset_suffix,
-            elapsed_percent=max(0, min(100, elapsed_percent)),
-            marker_percent=max(0, min(100, used_percent))
-            if used_percent > elapsed_percent
-            else None,
-        ),
-    ]
-
-
 def _weekly_usage_point(account_status: dict[str, Any]) -> tuple[str, int] | None:
     limits = account_status.get("limits")
     if not isinstance(limits, list):
@@ -1415,6 +981,72 @@ def _weekly_usage_period_key(usage_over_time: dict[str, object]) -> str | None:
     if period_end is None:
         return None
     return period_end.isoformat()
+
+
+def _synthesize_estimated_burst_limit(
+    *,
+    account_status: dict[str, Any],
+    target_records: list[dict[str, Any]],
+    burst_weekly_percent: float,
+    window_start: datetime.datetime,
+    reset_at: datetime.datetime,
+) -> None:
+    """Insert an estimated burst limit when the provider stopped reporting one.
+
+    Baseline = nearest registry record at-or-before the window start within the
+    current weekly period, with no proximity tolerance: a record gap means no
+    monitored activity, so an older reading remains valid. No at-or-before
+    record in the period means no observed usage — the estimate is 0%.
+    """
+    limits = account_status.get("limits")
+    if not isinstance(limits, list) or _has_burst_limit(limits):
+        return
+    point = _weekly_usage_point(account_status)
+    if point is None:
+        return
+    period_key, weekly_now = point
+    period_records = [
+        record for record in target_records if record["reset_at"] == period_key
+    ]
+    baseline = nearest_record_at_or_before(period_records, target=window_start)
+    if baseline is None:
+        used_percent = 0
+    else:
+        weekly_delta = max(0, weekly_now - baseline["used_percent"])
+        used_percent = max(
+            0, min(100, round((weekly_delta / burst_weekly_percent) * 100))
+        )
+    synthesized = AccountLimit(
+        limit_class="usage_over_time",
+        limit_id="burst",
+        limit_name="burst",
+        limit_label="Burst",
+        estimated=True,
+        usage_over_time=UsageOverTimeLimitData(
+            used_percent=used_percent,
+            period_started_at=_utc_iso(window_start),
+            period_ends_at=_utc_iso(reset_at),
+            period_duration_mins=300,
+            resets_at=_utc_iso(reset_at),
+        ),
+    )
+    limits.insert(0, synthesized.summary())
+
+
+def _has_burst_limit(limits: list[object]) -> bool:
+    for limit in limits:
+        if not isinstance(limit, dict):
+            continue
+        usage_over_time = limit.get("usage_over_time")
+        if not isinstance(usage_over_time, dict):
+            continue
+        if _int_value(usage_over_time.get("period_duration_mins")) == 300:
+            return True
+    return False
+
+
+def _utc_iso(value: datetime.datetime) -> str:
+    return value.astimezone(datetime.UTC).isoformat().replace("+00:00", "Z")
 
 
 def _weekly_usage_baseline_key(*, target_key: str, period_key: str) -> str:
@@ -1501,15 +1133,18 @@ def _usage_error_message(account_status: dict[str, Any]) -> str | None:
 
 
 def _limit_label(limit: dict[str, Any], usage_over_time: dict[str, object]) -> str:
+    # Estimated limits render with a `~` prefix so guidance is never read as
+    # provider-reported data.
+    prefix = "~" if limit.get("estimated") is True else ""
     duration_mins = _int_value(usage_over_time.get("period_duration_mins"))
     if duration_mins == 300:
-        return "Burst"
+        return f"{prefix}Burst"
     if duration_mins == 10_080:
-        return "Weekly"
+        return f"{prefix}Weekly"
     label = limit.get("limit_label") or limit.get("limit_name")
     if isinstance(label, str) and label:
-        return label
-    return "usage"
+        return f"{prefix}{label}"
+    return f"{prefix}usage"
 
 
 def _reset_columns(

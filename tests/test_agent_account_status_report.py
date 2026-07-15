@@ -166,3 +166,32 @@ def test_status_drift_no_active_when_nothing_registered(
     from agentos.agent.account_status_report import build_status_report
 
     assert build_status_report("claude-code")["homes"][0]["status"] == "drift:no-active"
+
+
+def test_account_limit_summary_estimated_flag() -> None:
+    from agentos.agent.account_status import AccountLimit, UsageOverTimeLimitData
+
+    usage = UsageOverTimeLimitData(
+        used_percent=40,
+        period_started_at="2026-07-15T10:00:00Z",
+        period_ends_at="2026-07-15T15:00:00Z",
+        period_duration_mins=300,
+        resets_at="2026-07-15T15:00:00Z",
+    )
+    real = AccountLimit(
+        limit_class="usage_over_time",
+        limit_id="burst",
+        limit_name="burst",
+        limit_label="Burst",
+        usage_over_time=usage,
+    )
+    estimated = AccountLimit(
+        limit_class="usage_over_time",
+        limit_id="burst",
+        limit_name="burst",
+        limit_label="Burst",
+        usage_over_time=usage,
+        estimated=True,
+    )
+    assert "estimated" not in real.summary()
+    assert estimated.summary()["estimated"] is True

@@ -292,12 +292,21 @@ def discover_codex_sessions(*, targets: tuple[Path, ...]) -> tuple[CodexSession,
 
 
 def find_codex_session_ref_by_id(*, targets: tuple[Path, ...], session_id: str) -> CodexSessionRef | None:
+    # discovery-equivalent point lookup: walk the targets in discovery order and
+    # merge every ref carrying the id (rollout matches + session_index entries),
+    # so the returned ref equals what discover_codex_session_refs would produce
     pattern = f"*{session_id}*.jsonl"
+    session_refs_by_id: dict[str, CodexSessionRef] = {}
     for target in targets:
+        if target.is_file() and target.name == "session_index.jsonl":
+            for session_ref in read_codex_index_session_refs(target):
+                if session_ref.native_session_id == session_id:
+                    _merge_codex_session_ref(session_refs_by_id, session_ref)
+            continue
         if target.is_file() and session_id in target.stem and target.suffix == ".jsonl":
             ref = read_codex_rollout_session_ref(target)
             if ref is not None and ref.native_session_id == session_id:
-                return ref
+                _merge_codex_session_ref(session_refs_by_id, ref)
             continue
         if not target.is_dir():
             continue
@@ -306,8 +315,8 @@ def find_codex_session_ref_by_id(*, targets: tuple[Path, ...], session_id: str) 
                 continue
             ref = read_codex_rollout_session_ref(match)
             if ref is not None and ref.native_session_id == session_id:
-                return ref
-    return None
+                _merge_codex_session_ref(session_refs_by_id, ref)
+    return session_refs_by_id.get(session_id)
 
 
 def find_codex_sessions(*, targets: tuple[Path, ...], query: str) -> tuple[CodexSession, ...]:

@@ -61,9 +61,6 @@ class LimitsWorkflowState:
         default_factory=dict
     )
     codex_estimated_burst: dict[str, object] | None = None
-    codex_estimated_burst_targets: dict[str, dict[str, object]] = field(
-        default_factory=dict
-    )
 
     def payload(self) -> dict[str, object]:
         return {
@@ -82,10 +79,6 @@ class LimitsWorkflowState:
             "codex_estimated_burst": dict(self.codex_estimated_burst)
             if self.codex_estimated_burst is not None
             else None,
-            "codex_estimated_burst_targets": {
-                key: dict(value)
-                for key, value in self.codex_estimated_burst_targets.items()
-            },
         }
 
 
