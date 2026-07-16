@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agentos.index.model import BlockHeading, KernelLine, parse_depot
+from agentos.index.model import BlockHeading, KernelLine, MetaLine, parse_depot
 from agentos.skillware.model import SkwFinding, SkwSource, parse_skw_source, recipe_key
 
 SRC_SUFFIX = ".skw.md"
@@ -57,6 +57,12 @@ class Expansion:
     src_refresh_lines: tuple[str, ...]
     dep_hashes: dict[str, dict[str, str | None]]
     findings: tuple[SkwFinding, ...]
+
+
+@dataclass(frozen=True)
+class _DepotNameEntry:
+    canonical: str
+    body: tuple[str, ...]
 
 
 def load_skillware(skill_root: Path) -> Skillware:
@@ -183,30 +189,80 @@ def _resolve_locator(
     if not skillware.depots:
         return None, "Dotted.Name target needs a depot in skillware.json"
     for depot in skillware.depots:
-        model = skillware._depot_cache.get(depot)
-        if model is None:
-            model = parse_depot(depot)
-            skillware._depot_cache[depot] = model
-        block = _depot_block_body(model, locator)
-        if block is not None:
-            return block, None
+        entry = _depot_name_index(skillware, depot).get(locator)
+        if entry is not None:
+            return list(entry.body), None
     return None, "block not found in the configured depots"
 
 
-def _depot_block_body(model, name: str) -> list[str] | None:
+def _depot_model(skillware: Skillware, depot: Path):
+    key = ("model", depot)
+    model = skillware._depot_cache.get(key)
+    if model is None:
+        model = parse_depot(depot)
+        skillware._depot_cache[key] = model
+    return model
+
+
+def _depot_name_index(skillware: Skillware, depot: Path) -> dict[str, _DepotNameEntry]:
+    key = ("names", depot)
+    index = skillware._depot_cache.get(key)
+    if index is None:
+        index = _build_depot_name_index(_depot_model(skillware, depot))
+        skillware._depot_cache[key] = index
+    return index
+
+
+def _build_depot_name_index(model) -> dict[str, _DepotNameEntry]:
+    blocks: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
     for document in model.documents:
-        block_lines: list[str] | None = None
+        name: str | None = None
+        body: list[str] = []
+        aliases: list[str] = []
+
+        def flush() -> None:
+            if name is not None:
+                blocks.append((name, tuple(body), tuple(aliases)))
+
         for node in document.nodes:
-            if isinstance(node, BlockHeading) and str(node.parsed.get("path", "")).strip() == name:
-                block_lines = []
-            elif block_lines is not None:
-                if isinstance(node, BlockHeading):
-                    break
+            if isinstance(node, BlockHeading):
+                flush()
+                name = str(node.parsed.get("path", "")).strip()
+                body = []
+                aliases = []
+            elif name is not None:
                 if isinstance(node, KernelLine):
-                    block_lines.append(node.src)
-        if block_lines is not None:
-            return block_lines
-    return None
+                    body.append(node.src)
+                elif isinstance(node, MetaLine):
+                    aliases.extend(_meta_aliases(node))
+        flush()
+
+    index: dict[str, _DepotNameEntry] = {}
+    canonical_names = {name for name, _body, _aliases in blocks}
+    for name, body, _aliases in blocks:
+        index[name] = _DepotNameEntry(canonical=name, body=body)
+    for name, body, aliases in blocks:
+        entry = _DepotNameEntry(canonical=name, body=body)
+        for alias in aliases:
+            if alias in canonical_names or alias in index:
+                continue
+            index[alias] = entry
+    return index
+
+
+def _meta_aliases(node: MetaLine) -> list[str]:
+    if not node.src.strip().startswith("- aliases:"):
+        return []
+    return [
+        match
+        for match in re.findall(r"`([^`]+)`", node.src)
+        if _is_dotted_name_locator(match)
+    ]
+
+
+def _depot_block_body(model, name: str) -> list[str] | None:
+    entry = _build_depot_name_index(model).get(name)
+    return list(entry.body) if entry is not None else None
 
 
 _DOTTED_NAME_RE = re.compile(
@@ -243,6 +299,14 @@ def resolve_mentions(skillware: Skillware, names: set[str]) -> set[str]:
         for name, resolution in _resolved_dotted_names(skillware, names).items()
         if not resolution.startswith("unresolved:")
     }
+
+
+def resolve_dotted_name_canonical(skillware: Skillware, name: str) -> str | None:
+    for depot in skillware.depots:
+        entry = _depot_name_index(skillware, depot).get(name)
+        if entry is not None:
+            return entry.canonical
+    return None
 
 
 def _labeled_span(
@@ -874,5 +938,6 @@ __all__ += [
     "build_skill",
     "check_skill",
     "extract_mentions",
+    "resolve_dotted_name_canonical",
     "resolve_mentions",
 ]

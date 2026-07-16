@@ -269,6 +269,25 @@ DEPOT_CHAPTER = """> router
 ****
 """
 
+DEPOT_ALIAS_CHAPTER = """> router
+
+****
+
+## Concept.One
+
+- canonical line
+
+### meta
+
+- aliases: `Concept.Alias`, `Concept.Taken`
+****
+
+## Concept.Taken
+
+- taken canonical line
+****
+"""
+
 MOD_COMPILED = """# mod
 
 Intro prose.
@@ -387,6 +406,30 @@ def test_resolve_mentions_keeps_only_depot_resolving_names(tmp_path: Path) -> No
     }
 
 
+def test_dotted_name_locator_resolves_meta_aliases(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    depot_file = tmp_path / "depot" / "design" / "100-design.md"
+    depot_file.write_text(DEPOT_ALIAS_CHAPTER, encoding="utf-8")
+    skillware = load_skillware(skill)
+
+    canonical = expand_file(skillware, Path("references/mod.skw.md"))
+    assert not canonical.findings
+
+    alias_lines, alias_detail = __import__(
+        "agentos.skillware.build", fromlist=["_resolve_locator"]
+    )._resolve_locator(skillware, "Concept.Alias", stack=(Path("references/mod.skw.md"),))
+    canonical_lines, canonical_detail = __import__(
+        "agentos.skillware.build", fromlist=["_resolve_locator"]
+    )._resolve_locator(skillware, "Concept.One", stack=(Path("references/mod.skw.md"),))
+    collision_lines, collision_detail = __import__(
+        "agentos.skillware.build", fromlist=["_resolve_locator"]
+    )._resolve_locator(skillware, "Concept.Taken", stack=(Path("references/mod.skw.md"),))
+
+    assert alias_detail is None and canonical_detail is None and collision_detail is None
+    assert alias_lines == canonical_lines == ["- canonical line"]
+    assert collision_lines == ["- taken canonical line"]
+
+
 # --- S3: build + lock + check ------------------------------------------------
 
 def _entry(report, target: str):
@@ -503,6 +546,45 @@ def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
     )
     changed = next(p for p in check_skill(skill).pois if p.kind == "undeclared-dependency")
     assert changed.poi_hash != first.poi_hash
+
+
+def test_alias_mentions_remain_literal_dependency_sync_pois(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    depot_file = tmp_path / "depot" / "design" / "100-design.md"
+    depot_file.write_text(DEPOT_ALIAS_CHAPTER, encoding="utf-8")
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n> $kw: depends --from Concept.One\n\nMentions `Concept.Alias`.\n",
+        encoding="utf-8",
+    )
+
+    check = check_skill(skill)
+    kinds = {(poi.kind, poi.key) for poi in check.pois}
+    assert ("undeclared-dependency", "Concept.Alias") in kinds
+    assert ("unhonored-dependency", "Concept.One") in kinds
+
+    first = next(p for p in check.pois if p.kind == "undeclared-dependency")
+    second = next(p for p in check_skill(skill).pois if p.kind == "undeclared-dependency")
+    assert first.poi_hash == second.poi_hash
+
+    from agentos.skillware.build import bless_skill
+
+    bless_skill(skill, first.poi_hash)
+    assert not any(
+        p.kind == "undeclared-dependency" and p.key == "Concept.Alias"
+        for p in check_skill(skill).pois
+    )
+
+    depot_file.write_text(
+        depot_file.read_text(encoding="utf-8").replace("- canonical line", "- canonical line v2"),
+        encoding="utf-8",
+    )
+    reminted = next(
+        p
+        for p in check_skill(skill).pois
+        if p.kind == "undeclared-dependency" and p.key == "Concept.Alias"
+    )
+    assert reminted.poi_hash != first.poi_hash
 
 
 # --- S4: CLI -------------------------------------------------------------------
