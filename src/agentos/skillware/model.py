@@ -23,7 +23,8 @@ from dataclasses import dataclass
 RECIPE_VERBS = ("copy", "derived")
 PRIMITIVE_COMMANDS = ("text", "copy", "derived")
 STRUCTURAL_COMMANDS = ("router", "when", "then")
-COMMANDS = PRIMITIVE_COMMANDS + STRUCTURAL_COMMANDS
+VOID_COMMANDS = ("depends",)
+COMMANDS = PRIMITIVE_COMMANDS + STRUCTURAL_COMMANDS + VOID_COMMANDS
 KNOWN_FLAGS = ("from", "intent", "to")
 
 _MACHINERY_RE = re.compile(r"^>\s*\$kw([:.])\s?(.*)$")
@@ -69,10 +70,20 @@ class SkwConstruct:
 
 
 @dataclass(frozen=True)
+class SkwDependency:
+    froms: tuple[str, ...]
+    heading: str | None
+    line: int
+    label: str | None
+    decl_span: tuple[int, int]
+
+
+@dataclass(frozen=True)
 class SkwSource:
     lines: tuple[str, ...]
     recipes: tuple[SkwRecipe, ...]
     constructs: tuple[SkwConstruct, ...]
+    dependencies: tuple[SkwDependency, ...]
     machinery_spans: tuple[tuple[int, int], ...]
     findings: tuple[SkwFinding, ...]
 
@@ -173,6 +184,7 @@ def parse_skw_source(text: str) -> SkwSource:
     lines = text.splitlines()
     recipes: list[SkwRecipe] = []
     constructs: list[SkwConstruct] = []
+    dependencies: list[SkwDependency] = []
     machinery_spans: list[tuple[int, int]] = []
     findings: list[SkwFinding] = []
 
@@ -372,6 +384,30 @@ def parse_skw_source(text: str) -> SkwSource:
             findings.append(
                 SkwFinding(index + 1, "copy takes exactly one --from flag")
             )
+        if command in VOID_COMMANDS:
+            if not froms:
+                findings.append(
+                    SkwFinding(index + 1, f"{command} declaration carries no --from flag")
+                )
+            if decl_end > index + 1:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        f"{command} is void and cannot carry $kw. body or continuation lines",
+                    )
+                )
+            dependencies.append(
+                SkwDependency(
+                    froms=froms,
+                    heading=heading,
+                    line=index + 1,
+                    label=label,
+                    decl_span=(index, decl_end),
+                )
+            )
+            machinery_spans.append((index, decl_end))
+            index = decl_end
+            continue
         intent_parts = [value for name, value in flags if name == "intent"]
         stack.append(
             {
@@ -401,6 +437,7 @@ def parse_skw_source(text: str) -> SkwSource:
         lines=tuple(lines),
         recipes=tuple(recipes),
         constructs=tuple(constructs),
+        dependencies=tuple(dependencies),
         machinery_spans=tuple(machinery_spans),
         findings=tuple(findings),
     )
@@ -412,7 +449,9 @@ __all__ = [
     "PRIMITIVE_COMMANDS",
     "RECIPE_VERBS",
     "STRUCTURAL_COMMANDS",
+    "VOID_COMMANDS",
     "SkwConstruct",
+    "SkwDependency",
     "SkwFinding",
     "SkwRecipe",
     "SkwSource",

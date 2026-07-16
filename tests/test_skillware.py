@@ -183,6 +183,24 @@ def test_to_flag_is_accepted() -> None:
     assert not source.findings
 
 
+def test_depends_is_void_and_records_froms() -> None:
+    source = parse_skw_source(
+        "## A\n\n> $kw: depends --from Concept.A --from Concept.B\n\nplain body\n"
+    )
+    assert not source.findings
+    assert [dependency.froms for dependency in source.dependencies] == [
+        ("Concept.A", "Concept.B")
+    ]
+    assert source.recipes == ()
+
+
+def test_depends_with_body_is_a_finding() -> None:
+    source = parse_skw_source(
+        "## A\n\n> $kw: depends --from Concept.A\n> $kw. --intent nope\n"
+    )
+    assert any("void" in finding.message for finding in source.findings)
+
+
 # --- S2: locators + expansion + compile -------------------------------------
 
 BASE = """# base
@@ -346,6 +364,29 @@ def test_load_skillware_requires_src(tmp_path: Path) -> None:
         load_skillware(tmp_path / "nope")
 
 
+def test_extract_mentions_from_backticked_dotted_names() -> None:
+    from agentos.skillware.build import extract_mentions
+
+    text = (
+        "Uses `Index.Ontology`, `Turn.Type::Project.Index.Gate`, "
+        "`file.md`, `lower.Case`, and `Single`."
+    )
+    assert extract_mentions(text) == {
+        "Index.Ontology",
+        "Turn.Type::Project.Index.Gate",
+    }
+
+
+def test_resolve_mentions_keeps_only_depot_resolving_names(tmp_path: Path) -> None:
+    from agentos.skillware.build import resolve_mentions
+
+    skill = _write_skill(tmp_path)
+    skillware = load_skillware(skill)
+    assert resolve_mentions(skillware, {"Concept.One", "Concept.Missing"}) == {
+        "Concept.One"
+    }
+
+
 # --- S3: build + lock + check ------------------------------------------------
 
 def _entry(report, target: str):
@@ -424,6 +465,44 @@ def test_copy_drift_and_derived_stale_on_dep_edit(tmp_path: Path) -> None:
     check = check_skill(skill)
     assert not check.pois
     assert _entry(check, "references/mod.md").derived_stale == ()
+
+
+def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    depot = tmp_path / "depot" / "design" / "100-design.md"
+    depot.write_text(
+        depot.read_text(encoding="utf-8") + "\n## Concept.Two\n\n- concept two\n",
+        encoding="utf-8",
+    )
+    src.write_text(
+        "# mod\n\n"
+        "Mentions `Concept.Two` without declaring it.\n\n"
+        "> $kw: depends --from Concept.Missing\n\n"
+        "## Copy\n\n> $kw: copy --from Concept.One\n\n- stale\n\n> $kw. end-copy\n",
+        encoding="utf-8",
+    )
+
+    check = check_skill(skill)
+    kinds = {(poi.kind, poi.key) for poi in check.pois}
+    assert ("undeclared-dependency", "Concept.Two") in kinds
+    assert ("unhonored-dependency", "Concept.Missing") in kinds
+    assert not any(
+        poi.kind == "unhonored-dependency" and poi.key == "Concept.One"
+        for poi in check.pois
+    )
+
+    first = next(p for p in check.pois if p.kind == "undeclared-dependency")
+    second = next(p for p in check_skill(skill).pois if p.kind == "undeclared-dependency")
+    assert first.poi_hash == second.poi_hash
+
+    src.write_text(src.read_text(encoding="utf-8").replace("Concept.Two", "Concept.Three"), encoding="utf-8")
+    depot.write_text(
+        depot.read_text(encoding="utf-8") + "\n## Concept.Three\n\n- concept three\n",
+        encoding="utf-8",
+    )
+    changed = next(p for p in check_skill(skill).pois if p.kind == "undeclared-dependency")
+    assert changed.poi_hash != first.poi_hash
 
 
 # --- S4: CLI -------------------------------------------------------------------
@@ -1036,6 +1115,44 @@ def test_cli_bless_round_trip(tmp_path: Path, capsys: pytest.CaptureFixture[str]
 
     with pytest.raises(CliError):
         _cmd_skillware_bless(argparse.Namespace(skill=str(skill), poi="ffffffffff", json=True))
+
+
+def test_cli_bulk_bless_clears_kind_only_for_current_situations(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from agentos.skillware.commands import _cmd_skillware_bless
+
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text("# mod\n\nUses `Concept.One`.\n", encoding="utf-8")
+
+    assert any(p.kind == "undeclared-dependency" for p in check_skill(skill).pois)
+    args = argparse.Namespace(
+        skill=str(skill),
+        poi=None,
+        kind="undeclared-dependency",
+        all=True,
+        json=True,
+    )
+    assert _cmd_skillware_bless(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["summary"]["blessed"] == 1
+    assert not any(
+        p.kind == "undeclared-dependency" for p in check_skill(skill).pois
+    )
+    build_skill(skill)
+    assert not any(
+        p.kind == "undeclared-dependency" for p in check_skill(skill).pois
+    )
+
+    depot = tmp_path / "depot" / "design" / "100-design.md"
+    depot.write_text(
+        depot.read_text(encoding="utf-8") + "\n## Concept.Two\n\n- concept two\n",
+        encoding="utf-8",
+    )
+    src.write_text(src.read_text(encoding="utf-8") + "\nAlso `Concept.Two`.\n", encoding="utf-8")
+    fresh = [p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"]
+    assert [poi.key for poi in fresh] == ["Concept.Two"]
 
 
 def test_crlf_target_reads_ok(tmp_path: Path) -> None:

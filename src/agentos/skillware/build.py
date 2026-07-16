@@ -209,6 +209,42 @@ def _depot_block_body(model, name: str) -> list[str] | None:
     return None
 
 
+_DOTTED_NAME_RE = re.compile(
+    r"^[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+(?:::[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+)?$"
+)
+_BACKTICKED_DOTTED_NAME_RE = re.compile(
+    r"`([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+(?:::[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+)?)`"
+)
+
+
+def _is_dotted_name_locator(locator: str) -> bool:
+    return bool(_DOTTED_NAME_RE.match(locator.strip()))
+
+
+def extract_mentions(text: str) -> set[str]:
+    """Return backticked addressable dotted names visible in compiled text."""
+    return set(_BACKTICKED_DOTTED_NAME_RE.findall(text))
+
+
+def _resolved_dotted_names(skillware: Skillware, names: set[str]) -> dict[str, str]:
+    resolved: dict[str, str] = {}
+    for name in sorted(names):
+        lines, detail = _resolve_locator(skillware, name, stack=(Path("."),))
+        if lines is not None:
+            resolved[name] = content_hash(lines)
+        elif detail is not None:
+            resolved[name] = f"unresolved:{detail}"
+    return resolved
+
+
+def resolve_mentions(skillware: Skillware, names: set[str]) -> set[str]:
+    return {
+        name
+        for name, resolution in _resolved_dotted_names(skillware, names).items()
+        if not resolution.startswith("unresolved:")
+    }
+
+
 def _labeled_span(
     skillware: Skillware, src_rel: Path, label: str, *, stack: tuple[Path, ...]
 ) -> tuple[list[str] | None, str | None]:
@@ -372,6 +408,7 @@ class CheckReport:
 
 
 BLESSABLE_KINDS = ("derived-stale",)
+SUPPRESSIBLE_KINDS = ("undeclared-dependency", "unhonored-dependency")
 
 _LEGACY_CALLOUT_RE = re.compile(r"^>\s*\[!skw\]")
 
@@ -379,6 +416,40 @@ _LEGACY_CALLOUT_RE = re.compile(r"^>\s*\[!skw\]")
 def _poi(kind: str, target: Path, key: str | None, payload: str, detail: str) -> Poi:
     digest = hashlib.sha256(f"{target}|{kind}|{key}|{payload}".encode("utf-8")).hexdigest()
     return Poi(kind=kind, target=target, key=key, poi_hash=digest[:10], detail=detail)
+
+
+def _blessed_hashes(lock: dict) -> set[str]:
+    return {
+        str(record.get("hash"))
+        for record in lock.get("blessings", [])
+        if record.get("hash")
+    }
+
+
+def _suppress_blessed(lock: dict, pois: list[Poi]) -> list[Poi]:
+    blessed = _blessed_hashes(lock)
+    if not blessed:
+        return pois
+    return [poi for poi in pois if poi.poi_hash not in blessed]
+
+
+def _write_lock(skillware: Skillware, lock: dict) -> None:
+    _lock_path(skillware).write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+
+
+def _append_poi_blessing(skillware: Skillware, poi: Poi) -> None:
+    lock = _read_lock(skillware)
+    blessings = lock.setdefault("blessings", [])
+    if not any(record.get("hash") == poi.poi_hash for record in blessings):
+        blessings.append(
+            {
+                "hash": poi.poi_hash,
+                "kind": poi.kind,
+                "target": str(poi.target),
+                "key": poi.key,
+            }
+        )
+    _write_lock(skillware, lock)
 
 
 AGENTS_NAME = "AGENTS.md"
@@ -445,7 +516,11 @@ def _match_locked_derived(entries: list[dict], key: str, body_sha256: str) -> di
 def build_skill(skill_root: Path) -> BuildReport:
     skillware = load_skillware(skill_root)
     old_lock = _read_lock(skillware)
-    lock: dict = {"schema_version": 1, "files": {}}
+    lock: dict = {
+        "schema_version": 1,
+        "files": {},
+        "blessings": list(old_lock.get("blessings", [])),
+    }
     entries: list[BuildEntry] = []
     findings: list[SkwFinding] = []
 
@@ -515,6 +590,58 @@ def _legacy_callout_pois(target_rel: Path, src_text: str) -> list[Poi]:
                     f"line {number}: {line.strip()}",
                 )
             )
+    return pois
+
+
+def _dependency_sync_pois(
+    skillware: Skillware, target_rel: Path, source: SkwSource, expansion: Expansion
+) -> list[Poi]:
+    declared: set[str] = set()
+    declared_from_depends: set[str] = set()
+    for dependency in source.dependencies:
+        for locator in dependency.froms:
+            if _is_dotted_name_locator(locator):
+                declared.add(locator)
+                declared_from_depends.add(locator)
+    for recipe in source.recipes:
+        for locator in recipe.froms:
+            if _is_dotted_name_locator(locator):
+                declared.add(locator)
+
+    raw_mentions = extract_mentions("\n".join(expansion.fresh_lines))
+    mention_resolutions = {
+        name: resolution
+        for name, resolution in _resolved_dotted_names(skillware, raw_mentions).items()
+        if not resolution.startswith("unresolved:")
+    }
+    declared_resolutions = _resolved_dotted_names(skillware, declared_from_depends)
+
+    pois: list[Poi] = []
+    for name, resolution in sorted(mention_resolutions.items()):
+        if name in declared:
+            continue
+        pois.append(
+            _poi(
+                "undeclared-dependency",
+                target_rel,
+                name,
+                resolution,
+                f"mention `{name}` resolves but has no declared dependency",
+            )
+        )
+    for name in sorted(declared_from_depends):
+        if name in mention_resolutions:
+            continue
+        resolution = declared_resolutions.get(name, "unresolved")
+        pois.append(
+            _poi(
+                "unhonored-dependency",
+                target_rel,
+                name,
+                resolution,
+                f"declared dependency `{name}` is not mentioned in compiled text",
+            )
+        )
     return pois
 
 
@@ -619,6 +746,7 @@ def check_skill(skill_root: Path) -> CheckReport:
             derived_stale=tuple(derived_stale),
         )
         entries.append(entry)
+        pois.extend(_dependency_sync_pois(skillware, target_rel, source, expansion))
         if entry.status != "ok":
             pois.append(_poi(entry.status, target_rel, None, entry.status, entry.status))
         for key in entry.copy_drift:
@@ -644,25 +772,28 @@ def check_skill(skill_root: Path) -> CheckReport:
                 )
             )
 
-    return CheckReport(entries=tuple(entries), pois=tuple(pois))
+    return CheckReport(entries=tuple(entries), pois=tuple(_suppress_blessed(lock, pois)))
 
 
 def bless_skill(skill_root: Path, poi_hash: str) -> BlessRecord:
-    """`Poi.Bless`: accept a derived-stale POI's current state as correct.
+    """`Poi.Bless`: accept a current POI's situation as correct.
 
-    Rewrites that recipe's locked dependency hashes to the current ones —
-    body and target untouched. Loud by design: the returned record (and the
-    lock diff) is the audit trail. Only `derived-stale` is blessable.
+    `derived-stale` updates the locked dependency hashes. Suppressible linter
+    POIs record the current POI hash in the lock until the situation changes.
     """
     skillware = load_skillware(skill_root)
     report = check_skill(skill_root)
     match = next((p for p in report.pois if p.poi_hash == poi_hash), None)
     if match is None:
         raise SkillwareError(f"no POI with hash {poi_hash} in the current check")
+    if match.kind in SUPPRESSIBLE_KINDS:
+        _append_poi_blessing(skillware, match)
+        return BlessRecord(target=match.target, key=match.key or "", deps={})
     if match.kind not in BLESSABLE_KINDS:
+        accepted = (*BLESSABLE_KINDS, *SUPPRESSIBLE_KINDS)
         raise SkillwareError(
             f"POI {poi_hash} ({match.kind}) is not blessable — only "
-            f"{', '.join(BLESSABLE_KINDS)} can be accepted; fix the surface instead"
+            f"{', '.join(accepted)} can be accepted; fix the surface instead"
         )
 
     src_rel = next(
@@ -685,7 +816,7 @@ def bless_skill(skill_root: Path, poi_hash: str) -> BlessRecord:
         raise SkillwareError(f"no locked derived recipe for {match.target} :: {match.key}")
     old_deps = dict(recipe_entry.get("deps", {}))
     recipe_entry["deps"] = current
-    _lock_path(skillware).write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+    _write_lock(skillware, lock)
     return BlessRecord(
         target=match.target,
         key=match.key,
@@ -696,6 +827,39 @@ def bless_skill(skill_root: Path, poi_hash: str) -> BlessRecord:
     )
 
 
+def bless_pois_by_kind(skill_root: Path, kind: str) -> tuple[Poi, ...]:
+    """Bless all currently visible POIs of one kind."""
+    accepted = (*BLESSABLE_KINDS, *SUPPRESSIBLE_KINDS)
+    if kind not in accepted:
+        raise SkillwareError(
+            f"POI kind {kind} is not blessable — only {', '.join(accepted)} can be accepted"
+        )
+    report = check_skill(skill_root)
+    matches = tuple(poi for poi in report.pois if poi.kind == kind)
+    if kind in SUPPRESSIBLE_KINDS:
+        skillware = load_skillware(skill_root)
+        lock = _read_lock(skillware)
+        blessings = lock.setdefault("blessings", [])
+        seen = {record.get("hash") for record in blessings}
+        for poi in matches:
+            if poi.poi_hash in seen:
+                continue
+            blessings.append(
+                {
+                    "hash": poi.poi_hash,
+                    "kind": poi.kind,
+                    "target": str(poi.target),
+                    "key": poi.key,
+                }
+            )
+            seen.add(poi.poi_hash)
+        _write_lock(skillware, lock)
+        return matches
+    for poi in matches:
+        bless_skill(skill_root, poi.poi_hash)
+    return matches
+
+
 __all__ += [
     "BLESSABLE_KINDS",
     "BlessRecord",
@@ -704,7 +868,11 @@ __all__ += [
     "CheckEntry",
     "CheckReport",
     "Poi",
+    "SUPPRESSIBLE_KINDS",
+    "bless_pois_by_kind",
     "bless_skill",
     "build_skill",
     "check_skill",
+    "extract_mentions",
+    "resolve_mentions",
 ]

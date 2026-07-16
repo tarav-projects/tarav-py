@@ -7,6 +7,7 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos.skillware.build import (
     SkillwareError,
+    bless_pois_by_kind,
     bless_skill,
     build_skill,
     check_skill,
@@ -42,6 +43,14 @@ POI_LEGEND = {
     "derived-stale": (
         "a dependency changed since the derived body was written",
         "re-derive the body in src, or accept explicitly: agentos skillware bless --poi <hash>",
+    ),
+    "undeclared-dependency": (
+        "compiled text mentions a resolving Dotted.Name without declaring the dependency",
+        "declare it with $kw: depends --from <name>, or baseline current findings: agentos skillware bless --kind undeclared-dependency --all",
+    ),
+    "unhonored-dependency": (
+        "a declared dependency is not mentioned in the compiled text",
+        "mention the dependency, remove the declaration, or bless the current finding",
     ),
     "legacy-callout": (
         "a v2 [!skw] callout survives outside a fence — inert prose to the parser",
@@ -148,6 +157,36 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
 
 def _cmd_skillware_bless(args: argparse.Namespace) -> int:
     _load(args)
+    if getattr(args, "all", False) or getattr(args, "kind", None):
+        if not args.all or not args.kind:
+            raise CliError("bulk bless requires both --kind <poi-kind> and --all")
+        try:
+            records = bless_pois_by_kind(Path(args.skill), args.kind)
+        except SkillwareError as exc:
+            raise CliError(str(exc)) from exc
+        payload = {
+            "command": "agentos skillware bless",
+            "skill": str(args.skill),
+            "kind": args.kind,
+            "blessed": [
+                {
+                    "target": str(poi.target),
+                    "key": poi.key,
+                    "hash": poi.poi_hash,
+                    "detail": poi.detail,
+                }
+                for poi in records
+            ],
+            "summary": {"blessed": len(records)},
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2))
+            return 0
+        print("Skillware bless")
+        print(f"- blessed {len(records)} {args.kind} POI(s)")
+        return 0
+    if not args.poi:
+        raise CliError("bless requires --poi <hash> or --kind <poi-kind> --all")
     try:
         record = bless_skill(Path(args.skill), args.poi)
     except SkillwareError as exc:
@@ -239,7 +278,9 @@ def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
         sub.add_argument("--skill", required=True, help="Skill root containing .skillware/src.")
         sub.add_argument("--json", action="store_true", help="Emit the report as JSON.")
         if name == "bless":
-            sub.add_argument("--poi", required=True, help="POI identity hash from check output.")
+            sub.add_argument("--poi", help="POI identity hash from check output.")
+            sub.add_argument("--kind", help="POI kind to bulk bless with --all.")
+            sub.add_argument("--all", action="store_true", help="Bless all current POIs of --kind.")
         sub.set_defaults(handler=handler)
 
 
