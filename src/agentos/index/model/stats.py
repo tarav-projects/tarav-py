@@ -20,7 +20,7 @@ class BlockGroundingStats:
     kernel_lines: int
     anchors: frozenset[str]
     gr_density: float
-    board: bool
+    grounded_lines: int
 
     @property
     def unique_anchors(self) -> int:
@@ -28,14 +28,13 @@ class BlockGroundingStats:
 
 
 def block_grounding_stats(model: IndexDepotModel) -> list[BlockGroundingStats]:
-    """Per-concept-block grounding stats: `Grounding.Density` plus the board flag.
+    """Per-concept-block grounding stats: `Grounding.Density` plus line coverage.
 
     Concept blocks are chapter-surface top-level headings (valid path, no
     segments) — the same denominator the linter's block coverage meter uses.
-    Density counts unique inline anchors only; `Grounding.Head` board anchors
-    never enter the numerator.
+    Grounding is a line property: `grounded_lines` counts kernel lines carrying
+    at least one trailing anchor; density counts unique inline anchors only.
     """
-    board_blocks = _board_block_paths(model)
     stats: list[BlockGroundingStats] = []
     for document in model.documents:
         if document.surface_kind != "chapter":
@@ -59,6 +58,11 @@ def block_grounding_stats(model: IndexDepotModel) -> list[BlockGroundingStats]:
                 if span.kind == "anchor"
             }
             kernel_lines = len(lines)
+            grounded_lines = sum(
+                1
+                for line in lines
+                if any(span.kind == "anchor" for span in line.spans)
+            )
             stats.append(
                 BlockGroundingStats(
                     block_path=block_path,
@@ -67,30 +71,10 @@ def block_grounding_stats(model: IndexDepotModel) -> list[BlockGroundingStats]:
                     kernel_lines=kernel_lines,
                     anchors=frozenset(anchors),
                     gr_density=(len(anchors) / kernel_lines) if kernel_lines else 0.0,
-                    board=block_path in board_blocks,
+                    grounded_lines=grounded_lines,
                 )
             )
     return stats
-
-
-def _board_block_paths(model: IndexDepotModel) -> set[str]:
-    """Blocks whose appendix carries a `Grounding.Head` with an anchored [GR] line."""
-    board: set[str] = set()
-    for document in model.documents:
-        if document.surface_kind != "appendix":
-            continue
-        for node in document.nodes:
-            if not isinstance(node, KernelLine):
-                continue
-            head_path = str(node.parsed.get("block_path", ""))
-            if not head_path.endswith("/Grounding.Head"):
-                continue
-            if node.parsed.get("act") != "GR":
-                continue
-            if not any(span.kind == "anchor" for span in node.spans):
-                continue
-            board.add(head_path.rsplit("/Grounding.Head", 1)[0])
-    return board
 
 
 __all__ = ["BlockGroundingStats", "block_grounding_stats"]

@@ -88,18 +88,19 @@ def test_block_grounding_stats_computation(tmp_path: Path) -> None:
     assert stamped.kernel_lines == 3
     assert stamped.unique_anchors == 1
     assert stamped.gr_density == pytest.approx(1 / 3)
-    assert stamped.board is False
+    assert stamped.grounded_lines == 3
 
     worked = stats["Worked.Block"]
     assert worked.kernel_lines == 2
     assert worked.unique_anchors == 2
     assert worked.gr_density == pytest.approx(1.0)
-    assert worked.board is True
+    assert worked.grounded_lines == 2
 
     bare = stats["Bare.Block"]
     assert bare.unique_anchors == 0
     assert bare.gr_density == 0.0
-    assert bare.board is False
+    assert bare.grounded_lines == 0
+    assert not hasattr(bare, "board")
 
     param = stats["Line.Type:Param"]
     assert param.kernel_lines == 1
@@ -120,6 +121,10 @@ def test_blocks_cli_sorts_by_gr_density(
     assert names[0] == "Bare.Block"
     assert names[1] == "Stamped.Block"
     assert set(names[2:]) == {"Worked.Block", "Line.Type:Param"}
+    rows = {row["block_path"]: row for row in payload["blocks"]}
+    assert rows["Stamped.Block"]["grounded_lines"] == 3
+    assert rows["Bare.Block"]["grounded_lines"] == 0
+    assert "board" not in rows["Worked.Block"]
     summary = payload["summary"]
     assert summary["blocks"] == 4
     assert summary["kernel_lines"] == 8

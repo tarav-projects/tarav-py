@@ -811,43 +811,26 @@ def test_index_linter_block_ungrounded_meter(monkeypatch, tmp_path: Path) -> Non
     _write(
         depot_dir / "000-INDEX.md",
         "# Agentos Index\n\n## design\n\n"
-        "- `design/100-design.md` — Example.Grounded[+1], Example.Ungrounded[+1], "
-        "Example.InlineOnly[+1], Example.Param:One[+1]\n",
+        "- `design/100-design.md` — Example.Grounded, Example.Ungrounded, "
+        "Example.HeadOnly[+1], Example.Empty\n",
     )
     _write(
         depot_dir / "design" / "100-design.md",
         "****\n## Example.Grounded\n\n"
-        "- unanchored but block-grounded\n"
+        "- every line anchored ^20260101-0\n"
+        "- second anchored line ^20260101-1\n"
         "****\n## Example.Ungrounded\n\n"
-        "- ungrounded\n"
-        "****\n## Example.InlineOnly\n\n"
-        "- inline anchor does not block-ground ^20260101-2\n"
-        "****\n## Example.Param:One\n\n"
-        "- parameterized block\n"
+        "- anchored line ^20260101-2\n"
+        "- line missing its anchor\n"
+        "****\n## Example.HeadOnly\n\n"
+        "- head section no longer grounds this line\n"
+        "****\n## Example.Empty\n\n"
         "****\n",
     )
     _write(
-        depot_dir / "appendix" / "Example.Grounded-appendix.md",
-        "****\n## Example.Grounded/Grounding.Head\n\n"
-        "- [GR] block evidence ^20260101-0\n"
-        "****\n",
-    )
-    _write(
-        depot_dir / "appendix" / "Example.Ungrounded-appendix.md",
-        "****\n## Example.Ungrounded/Grounding.Head\n\n"
-        "- [CT] anchored but not a grounding line ^20260101-1\n"
-        "****\n",
-    )
-    _write(
-        depot_dir / "appendix" / "Example.InlineOnly-appendix.md",
-        "****\n## Example.InlineOnly/Depth\n\n"
-        "- [GR] depth evidence ^20260101-2\n"
-        "****\n",
-    )
-    _write(
-        depot_dir / "appendix" / "Example.Param:One-appendix.md",
-        "****\n## Example.Param:One/Grounding.Head\n\n"
-        "- [GR] parameterized evidence ^20260101-3\n"
+        depot_dir / "appendix" / "Example.HeadOnly-appendix.md",
+        "****\n## Example.HeadOnly/Grounding.Head\n\n"
+        "- [GR] retired board evidence ^20260101-3\n"
         "****\n",
     )
 
@@ -858,8 +841,11 @@ def test_index_linter_block_ungrounded_meter(monkeypatch, tmp_path: Path) -> Non
     assert payload["coverage"]["block"] == {"grounded": 2, "total": 4}
     assert {hit.details["block_path"] for hit in hits} == {
         "Example.Ungrounded",
-        "Example.InlineOnly",
+        "Example.HeadOnly",
     }
+    by_path = {hit.details["block_path"]: hit for hit in hits}
+    assert by_path["Example.Ungrounded"].details["ungrounded_lines"] == 1
+    assert by_path["Example.HeadOnly"].details["ungrounded_lines"] == 1
 
 
 def test_index_linter_scope_filters_findings_counts_and_meters(
@@ -887,19 +873,6 @@ def test_index_linter_scope_filters_findings_counts_and_meters(
         "- linked line ^20260101-0\n"
         "****\n",
     )
-    _write(
-        depot_dir / "appendix" / "Example.One-appendix.md",
-        "****\n## Example.One/Grounding.Head\n\n"
-        "- [GR] one evidence ^20260101-1\n"
-        "****\n",
-    )
-    _write(
-        depot_dir / "appendix" / "Example.Two-appendix.md",
-        "****\n## Example.Two/Grounding.Head\n\n"
-        "- [GR] two evidence ^20260101-2\n"
-        "****\n",
-    )
-
     state = _run(
         depot_paths=(str(depot_dir),),
         coverage=("line", "block"),
@@ -909,8 +882,8 @@ def test_index_linter_scope_filters_findings_counts_and_meters(
 
     assert payload["config"]["scope"] == ["depot/design"]
     assert payload["coverage"]["line"] == {"linked": 0, "total": 1}
-    assert payload["coverage"]["block"] == {"grounded": 1, "total": 1}
-    assert payload["summary"]["finding_count"] == 1
+    assert payload["coverage"]["block"] == {"grounded": 0, "total": 1}
+    assert payload["summary"]["finding_count"] == 2
     assert all(finding["path"].startswith("depot/design/") for finding in payload["findings"])
 
 

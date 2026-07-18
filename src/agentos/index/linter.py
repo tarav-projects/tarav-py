@@ -1474,14 +1474,24 @@ def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
 
 def _check_block_ungrounded(state: LinterState) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    grounded_paths = _grounded_block_paths(state)
     for document in _parsed_documents_by_kind(state, "chapter"):
+        lines_by_block: dict[str, list[KernelLine]] = {}
+        for node in document.nodes:
+            if isinstance(node, KernelLine):
+                block = str(node.parsed.get("block_path", ""))
+                lines_by_block.setdefault(block, []).append(node)
         for block in (node for node in document.nodes if isinstance(node, BlockHeading)):
             block_path = str(block.parsed.get("path", "")).strip()
             if not block.parsed.get("valid") or block.parsed.get("segments") != []:
                 continue
             rel_path = state.rel_path(block.path) if block.path else "."
-            grounded = block_path in grounded_paths
+            lines = lines_by_block.get(block_path, [])
+            ungrounded_lines = sum(
+                1
+                for line in lines
+                if not any(span.kind == "anchor" for span in line.spans)
+            )
+            grounded = ungrounded_lines == 0
             if "block" in state.config.coverage:
                 state.coverage_items.setdefault("block", []).append(
                     CoverageItem(path=rel_path, covered=grounded)
@@ -1494,33 +1504,11 @@ def _check_block_ungrounded(state: LinterState) -> list[LinterFinding]:
                     code=BLOCK_UNGROUNDED,
                     path=rel_path,
                     line=block.start_line,
-                    message="Index concept block has no Grounding.Head evidence board (no anchored `[GR]` spot).",
-                    details={"block_path": block_path},
+                    message="Index concept block has ungrounded kernel lines (lines missing trailing anchors).",
+                    details={"block_path": block_path, "ungrounded_lines": ungrounded_lines},
                 )
             )
     return findings
-
-
-def _grounded_block_paths(state: LinterState) -> set[str]:
-    grounded: set[str] = set()
-    for document in _parsed_documents_by_kind(state, "appendix"):
-        grounding_heads = {
-            str(node.parsed["path"])
-            for node in document.nodes
-            if isinstance(node, BlockHeading)
-            and node.parsed.get("segments") == ["Grounding.Head"]
-            and node.parsed.get("valid")
-        }
-        for line in document.kernel_lines():
-            block_path = str(line.parsed.get("block_path", ""))
-            if block_path not in grounding_heads:
-                continue
-            if line.parsed.get("act") != "GR":
-                continue
-            if not any(span.kind == "anchor" for span in line.spans):
-                continue
-            grounded.add(block_path.rsplit("/Grounding.Head", 1)[0])
-    return grounded
 
 
 def _parsed_documents_by_kind(state: LinterState, surface_kind: str) -> list[IndexDocument]:

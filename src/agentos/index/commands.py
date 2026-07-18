@@ -113,7 +113,7 @@ def _cmd_blocks(args: argparse.Namespace) -> int:
                 "kernel_lines": row.kernel_lines,
                 "unique_anchors": row.unique_anchors,
                 "gr_density": round(row.gr_density, 4),
-                "board": row.board,
+                "grounded_lines": row.grounded_lines,
             }
             for row in listed
         ],
@@ -127,13 +127,14 @@ def _cmd_blocks(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2))
         return 0
-    header = f"{'gr-density':>10}  {'anchors':>7}  {'lines':>5}  {'board':>5}  block"
+    header = f"{'gr-density':>10}  {'anchors':>7}  {'lines':>5}  {'grounded':>8}  block"
     print("Index blocks")
     print(header)
     for row in listed:
+        grounded = f"{row.grounded_lines}/{row.kernel_lines}"
         print(
             f"{row.gr_density:>10.3f}  {row.unique_anchors:>7}  {row.kernel_lines:>5}  "
-            f"{'yes' if row.board else 'no':>5}  {row.block_path}  ({_rel(row.path)}:{row.line})"
+            f"{grounded:>8}  {row.block_path}  ({_rel(row.path)}:{row.line})"
         )
     summary = payload["summary"]
     print(
@@ -159,8 +160,8 @@ def register_index_commands(
         help="List concept blocks with grounding statistics.",
         description=(
             "Query the parsed index model: one row per concept block with its "
-            "Grounding.Density (unique inline anchors / kernel lines) and evidence-board flag. "
-            "`--sort gr-density` returns the grounding/enrichment worklist."
+            "Grounding.Density (unique inline anchors / kernel lines) and grounded-line "
+            "coverage. `--sort gr-density` returns the grounding/enrichment worklist."
         ),
     )
     blocks_parser.add_argument(
