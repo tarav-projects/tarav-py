@@ -8,14 +8,15 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos._core.json_input import load_json_object_arg
 
-from .core import AnchoryDepot, AnchoryEntry, AnchoryError
-from .core import AnchorySourceMatch, scan_anchory_source
+from .core import AnchoryDepot, AnchoryEntry, AnchoryError, AnchoryResolution
+from .core import GLOBAL_NAMESPACE, AnchorySourceMatch, scan_anchory_source
+from .registry import discover_resolve
 
 
 @dataclass(frozen=True)
 class _ResolvedScanMatch:
     source: AnchorySourceMatch
-    record: dict[str, object] | None
+    resolution: AnchoryResolution | None
 
 
 def _depot(args: argparse.Namespace) -> AnchoryDepot:
@@ -45,7 +46,13 @@ def _record_arg(args: argparse.Namespace) -> dict[str, object]:
 def _cmd_register(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        entry = depot.register(_record_arg(args), anchor=args.anchor, prefix=args.prefix)
+        entry = depot.register(
+            _record_arg(args),
+            anchor=args.anchor,
+            alloc_prefix=args.alloc_prefix,
+            tag=args.tag,
+            namespace=args.namespace,
+        )
     except AnchoryError as exc:
         raise CliError(str(exc)) from exc
     _print_json(_entry_payload(depot, entry))
@@ -53,21 +60,45 @@ def _cmd_register(args: argparse.Namespace) -> int:
 
 
 def _cmd_resolve(args: argparse.Namespace) -> int:
-    depot = _depot(args)
-    try:
-        record = depot.resolve(args.anchor)
-    except AnchoryError as exc:
-        raise CliError(str(exc)) from exc
-    if record is None:
+    if args.depot is not None:
+        depot = _depot(args)
+        try:
+            resolution = depot.resolve(args.anchor, namespace=args.namespace)
+        except AnchoryError as exc:
+            raise CliError(str(exc)) from exc
+        depot_root = depot.root
+    else:
+        try:
+            hit = discover_resolve(args.anchor)
+        except AnchoryError as exc:
+            raise CliError(str(exc)) from exc
+        if hit is None:
+            raise CliError(
+                f"anchor does not exist in any registered or global depot: {args.anchor}"
+            )
+        resolution, depot_root = hit
+    if resolution is None:
         raise CliError(f"anchor does not exist: {args.anchor}")
-    _print_json(_entry_payload(depot, AnchoryEntry(anchor=args.anchor, record=record)))
+    payload: dict[str, object] = {
+        "depot": str(depot_root),
+        "anchor": resolution.anchor,
+        "namespace": resolution.namespace,
+        "record": resolution.record,
+    }
+    if resolution.tag_mismatch:
+        payload["tag_mismatch"] = True
+        payload["cited_as"] = args.anchor
+    if args.meta:
+        meta_depot = AnchoryDepot(depot_root)
+        payload["meta"] = meta_depot.namespace_meta(resolution.namespace)
+    _print_json(payload)
     return 0
 
 
 def _cmd_query(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        entries = depot.query(prefix=args.prefix)
+        entries = depot.query(namespace=args.namespace, prefix=args.prefix)
     except AnchoryError as exc:
         raise CliError(str(exc)) from exc
     _print_json(
@@ -85,7 +116,7 @@ def _cmd_query(args: argparse.Namespace) -> int:
 def _cmd_amend(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        entry = depot.amend(args.anchor, _record_arg(args))
+        entry = depot.amend(args.anchor, _record_arg(args), namespace=args.namespace)
     except AnchoryError as exc:
         raise CliError(str(exc)) from exc
     _print_json(_entry_payload(depot, entry))
@@ -101,6 +132,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
             "status": "ok" if result.ok else "error",
             "findings": [
                 {
+                    "severity": finding.severity,
                     "code": finding.code,
                     "path": finding.path,
                     "message": finding.message,
@@ -117,20 +149,24 @@ def _resolve_scan_matches(
     depot: AnchoryDepot, matches: tuple[AnchorySourceMatch, ...]
 ) -> tuple[_ResolvedScanMatch, ...]:
     return tuple(
-        _ResolvedScanMatch(source=match, record=depot.resolve(match.anchor))
+        _ResolvedScanMatch(source=match, resolution=depot.resolve(match.anchor))
         for match in matches
     )
 
 
 def _scan_match_payload(match: _ResolvedScanMatch) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "anchor": match.source.anchor,
         "line": match.source.line,
         "column": match.source.column,
         "start": match.source.start,
         "end": match.source.end,
-        "record": match.record,
+        "record": match.resolution.record if match.resolution is not None else None,
     }
+    if match.resolution is not None and match.resolution.tag_mismatch:
+        payload["tag_mismatch"] = True
+        payload["resolved_anchor"] = match.resolution.anchor
+    return payload
 
 
 def _scan_payload(
@@ -166,10 +202,12 @@ def _print_scan_human(
             f"- {match.source.anchor} @ line {match.source.line}, "
             f"column {match.source.column}"
         )
-        if match.record is None:
+        if match.resolution is None:
             print("  record: missing")
         else:
-            print(f"  record: {json.dumps(match.record, sort_keys=True)}")
+            if match.resolution.tag_mismatch:
+                print(f"  tag-mismatch: stored key is {match.resolution.anchor}")
+            print(f"  record: {json.dumps(match.resolution.record, sort_keys=True)}")
 
 
 def _cmd_scan(args: argparse.Namespace) -> int:
@@ -198,6 +236,33 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_namespace_get(args: argparse.Namespace) -> int:
+    depot = _depot(args)
+    try:
+        meta = depot.namespace_meta(args.namespace)
+    except AnchoryError as exc:
+        raise CliError(str(exc)) from exc
+    if meta is None:
+        raise CliError(f"namespace has no meta.json: {args.namespace}")
+    _print_json({"depot": str(depot.root), "namespace": args.namespace, "meta": meta})
+    return 0
+
+
+def _cmd_namespace_set(args: argparse.Namespace) -> int:
+    depot = _depot(args)
+    try:
+        meta = depot.write_namespace_meta(
+            args.namespace,
+            prefix=args.prefix,
+            intention=args.intention,
+            semantics=args.semantics,
+        )
+    except AnchoryError as exc:
+        raise CliError(str(exc)) from exc
+    _print_json({"depot": str(depot.root), "namespace": args.namespace, "meta": meta})
+    return 0
+
+
 def _add_depot_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--depot",
@@ -214,8 +279,21 @@ def _add_register_identity_arguments(parser: argparse.ArgumentParser) -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--anchor", help="Exact anchor key.")
     group.add_argument(
-        "--prefix",
-        help="Prefix for atomic allocation of the next <prefix>-N anchor.",
+        "--alloc-prefix",
+        help=(
+            "Caller allocation prefix (e.g. a YYYYMMDD date); anchory composes "
+            "<ns-prefix><alloc-prefix>-<counter><tag?> and allocates the counter."
+        ),
+    )
+
+
+def _add_namespace_argument(
+    parser: argparse.ArgumentParser, *, default: str | None = None
+) -> None:
+    parser.add_argument(
+        "--namespace",
+        default=default,
+        help="Namespace inside the depot (directory of shards with its meta.json).",
     )
 
 
@@ -240,22 +318,41 @@ def register_anchory_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Register an exact anchor or atomically allocate one from a prefix.",
     )
     _add_depot_argument(register_parser)
+    _add_namespace_argument(register_parser, default=GLOBAL_NAMESPACE)
     _add_register_identity_arguments(register_parser)
+    register_parser.add_argument(
+        "--tag",
+        help="Optional single-letter key decoration appended after the counter.",
+    )
     _add_record_arguments(register_parser)
     register_parser.set_defaults(handler=_cmd_register)
 
-    resolve_parser = anchory_subparsers.add_parser("resolve", help="Resolve an anchor.")
-    _add_depot_argument(resolve_parser)
+    resolve_parser = anchory_subparsers.add_parser(
+        "resolve",
+        help="Resolve an anchor; without --depot, discover via the registry.",
+    )
+    resolve_parser.add_argument(
+        "--depot",
+        help="Exact Anchory depot root; omit to search registered depots and the global depot.",
+    )
+    _add_namespace_argument(resolve_parser)
     _add_anchor_argument(resolve_parser)
+    resolve_parser.add_argument(
+        "--meta",
+        action="store_true",
+        help="Include the resolved namespace's meta.json in the output.",
+    )
     resolve_parser.set_defaults(handler=_cmd_resolve)
 
     query_parser = anchory_subparsers.add_parser("query", help="Query anchors.")
     _add_depot_argument(query_parser)
+    _add_namespace_argument(query_parser)
     query_parser.add_argument("--prefix", help="Only return anchors with this prefix.")
     query_parser.set_defaults(handler=_cmd_query)
 
     amend_parser = anchory_subparsers.add_parser("amend", help="Amend an existing anchor.")
     _add_depot_argument(amend_parser)
+    _add_namespace_argument(amend_parser)
     _add_anchor_argument(amend_parser)
     _add_record_arguments(amend_parser)
     amend_parser.set_defaults(handler=_cmd_amend)
@@ -285,3 +382,33 @@ def register_anchory_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Print deterministic JSON instead of human-friendly output.",
     )
     scan_parser.set_defaults(handler=_cmd_scan)
+
+    namespace_parser = anchory_subparsers.add_parser(
+        "namespace",
+        help="Read or write a namespace's meta.json.",
+    )
+    namespace_subparsers = namespace_parser.add_subparsers(
+        dest="anchory_namespace_command",
+        required=True,
+    )
+    ns_get_parser = namespace_subparsers.add_parser(
+        "get", help="Print a namespace's meta.json."
+    )
+    _add_depot_argument(ns_get_parser)
+    ns_get_parser.add_argument("--namespace", required=True)
+    ns_get_parser.set_defaults(handler=_cmd_namespace_get)
+    ns_set_parser = namespace_subparsers.add_parser(
+        "set", help="Write a namespace's meta.json."
+    )
+    _add_depot_argument(ns_set_parser)
+    ns_set_parser.add_argument("--namespace", required=True)
+    ns_set_parser.add_argument(
+        "--prefix", required=True, help="Single-letter namespace key prefix."
+    )
+    ns_set_parser.add_argument(
+        "--intention", help="What this namespace's anchors mean — the resolution fallback."
+    )
+    ns_set_parser.add_argument(
+        "--semantics", help="Pointer to the owning system's documentation."
+    )
+    ns_set_parser.set_defaults(handler=_cmd_namespace_set)

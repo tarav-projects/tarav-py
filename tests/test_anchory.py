@@ -31,7 +31,7 @@ def _register_prefix_after_signal(
     results: object,
 ) -> None:
     start.wait()  # type: ignore[attr-defined]
-    entry = AnchoryDepot(root).register({"value": value}, prefix=prefix)
+    entry = AnchoryDepot(root).register({"value": value}, alloc_prefix=prefix)
     results.put(entry.anchor)  # type: ignore[attr-defined]
 
 
@@ -54,7 +54,7 @@ def test_register_and_resolve_round_trip_in_expected_shard(tmp_path: Path) -> No
     entry = AnchoryDepot(root).register(record, anchor=anchor)
 
     assert entry == AnchoryEntry(anchor=anchor, record=record)
-    assert AnchoryDepot(root).resolve(anchor) == record
+    assert AnchoryDepot(root).resolve(anchor).record == record
     shard = hashlib.sha256(anchor.encode("utf-8")).hexdigest()[:2]
     assert json.loads((root / "global" / f"{shard}.json").read_text(encoding="utf-8")) == {
         anchor: record
@@ -68,8 +68,8 @@ def test_same_anchor_is_independent_per_depot(tmp_path: Path) -> None:
     first.register({"value": 1}, anchor="shared")
     second.register({"value": 2}, anchor="shared")
 
-    assert first.resolve("shared") == {"value": 1}
-    assert second.resolve("shared") == {"value": 2}
+    assert first.resolve("shared").record == {"value": 1}
+    assert second.resolve("shared").record == {"value": 2}
 
 
 def test_duplicate_registration_is_rejected_and_amend_requires_existing_anchor(
@@ -81,11 +81,11 @@ def test_duplicate_registration_is_rejected_and_amend_requires_existing_anchor(
     with pytest.raises(AnchorExistsError, match="anchor already exists"):
         depot.register({"value": 2}, anchor="stable")
 
-    assert depot.resolve("stable") == {"value": 1}
+    assert depot.resolve("stable").record == {"value": 1}
     assert depot.amend("stable", {"value": 3}) == AnchoryEntry(
         anchor="stable", record={"value": 3}
     )
-    assert depot.resolve("stable") == {"value": 3}
+    assert depot.resolve("stable").record == {"value": 3}
     with pytest.raises(AnchorNotFoundError, match="anchor does not exist"):
         depot.amend("missing", {"value": 4})
 
@@ -113,8 +113,8 @@ def test_concurrent_same_shard_registrations_do_not_lose_records(tmp_path: Path)
 
     assert [process.exitcode for process in processes] == [0, 0]
     depot = AnchoryDepot(root)
-    assert depot.resolve(first_anchor) == {"value": 1}
-    assert depot.resolve(second_anchor) == {"value": 2}
+    assert depot.resolve(first_anchor).record == {"value": 1}
+    assert depot.resolve(second_anchor).record == {"value": 2}
 
 
 def test_prefix_registration_allocates_max_plus_one_and_ignores_unrelated_suffixes(
@@ -122,7 +122,7 @@ def test_prefix_registration_allocates_max_plus_one_and_ignores_unrelated_suffix
 ) -> None:
     depot = AnchoryDepot(tmp_path / "anchory")
 
-    assert depot.register({"value": 0}, prefix="20260708") == AnchoryEntry(
+    assert depot.register({"value": 0}, alloc_prefix="20260708") == AnchoryEntry(
         anchor="20260708-0",
         record={"value": 0},
     )
@@ -131,11 +131,11 @@ def test_prefix_registration_allocates_max_plus_one_and_ignores_unrelated_suffix
     depot.register({"value": "adjacent"}, anchor="202607080-9")
     depot.register({"value": "broader"}, anchor="2026-9")
 
-    assert depot.register({"value": 3}, prefix="20260708") == AnchoryEntry(
+    assert depot.register({"value": 3}, alloc_prefix="20260708") == AnchoryEntry(
         anchor="20260708-3",
         record={"value": 3},
     )
-    assert depot.register({"value": 10}, prefix="2026") == AnchoryEntry(
+    assert depot.register({"value": 10}, alloc_prefix="2026") == AnchoryEntry(
         anchor="2026-10",
         record={"value": 10},
     )
@@ -147,7 +147,7 @@ def test_register_requires_exactly_one_anchor_identity(tmp_path: Path) -> None:
     with pytest.raises(InvalidAnchoryInputError, match="exactly one"):
         depot.register({"value": 1})
     with pytest.raises(InvalidAnchoryInputError, match="exactly one"):
-        depot.register({"value": 1}, anchor="stable", prefix="20260708")
+        depot.register({"value": 1}, anchor="stable", alloc_prefix="20260708")
 
 
 def test_concurrent_prefix_registrations_allocate_distinct_anchors(
@@ -190,7 +190,7 @@ def test_failed_atomic_replace_preserves_shard_and_cleans_temporary_file(
     with pytest.raises(OSError, match="replace failed"):
         depot.amend("stable", {"value": 2})
 
-    assert depot.resolve("stable") == {"value": 1}
+    assert depot.resolve("stable").record == {"value": 1}
     assert list((root / "global").glob("*.tmp")) == []
 
 

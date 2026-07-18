@@ -3,12 +3,13 @@
 ## Impl.Abstract
 
 - evolve the Anchory subsystem from a single-app anchor store into the universal anchor layer: real namespaces with per-namespace metadata and declared key prefixes, a depot registry with discovery (`Pwd.Upward.Search`), a composed key grammar carrying namespace prefix and turn-kind tag, and full migration of the existing chatlas depot + all surface citations to the new grammar
-- design source: design session `agentos-md/notes/live/591-touched-surface-index-design-session.md` (axis 10 / Anchory evolution rows); design turns anchored in the chatlas depot around `^20260716-*` and `^20260717-3/4` (`Pwd.Upward.Search` agendix block at `agentos-md/skills/agentos-pkg/agendix/Development.Principles-agendix.md`); grammar decisions from the 2026-07-18 planning discussion (this session)
+- design source: design session `agentos-md/notes/live/591-touched-surface-index-design-session.md` (axis 10 / Anchory evolution rows); founding design turns `^c20260717-3u` `^c20260717-4u` (`Pwd.Upward.Search` agendix block at `agentos-md/skills/agentos-pkg/agendix/Development.Principles-agendix.md`); grammar decisions from the 2026-07-18 planning discussion (this session)
+- support set (retro-minted 2026-07-18): ordering gate ^c20260718-5u · decision turns ^c20260718-6u ^c20260718-7u ^c20260718-8u · readiness approval ^c20260718-9u · execution gate ^c20260718-10u
 - the target grammar, using chatlas as the first namespace: `^c20260718-4u` = namespace-prefix `c` + caller allocation-prefix `20260718` + `-` + anchory-allocated counter `4` + optional single-letter tag `u`; the caller supplies meaning (namespace, alloc-prefix, tag, hint, record), anchory supplies identity (counter) and composes the key
 - bare/unprefixed citations (`^20260716-15`) are BANNED on written surfaces after migration — enforced by lint, not by the resolver library
 - scope: `agentos-py` anchory core + index model/linter, `agentos-chatlas-py` chatlas layer, `agentos-cli` reinstall, migration of the chatlas depot (~150 records) and citation sweep over `agentos-md` + `agentos-chatlas-md` (138 distinct anchors across 59 files), new `agentos-anchory-pkg` skill in `agentos-md/skills/`, closing forum post
 - out of scope: multi-letter namespace prefixes; namespace-prefix uniqueness enforcement (collisions are accepted by design — resolution may search several namespaces sharing a letter); any `Judgement.Bank` machinery; rewriting `_DEPRECATED` skill citations; the `Skw.Address.Schema` index-edit closing the prefix-ripple `[DC]` (design-session work, noted as follow-up)
-- status: ready
+- status: executed 2026-07-18 (all 8 slices; migration complete, sweep complete, forum post out)
 
 ## Impl.Index
 
@@ -24,16 +25,16 @@
 
 ### Design.Decisions (user-settled in the planning discussion)
 
-- **key grammar** — `^<ns-prefix><alloc-prefix>-<counter><tag?>`; ns-prefix: one lowercase letter declared in the namespace's `meta.json`; alloc-prefix: caller-owned convention (chatlas: `YYYYMMDD` from `--at`); counter: anchory-allocated decimal; tag: optional single lowercase letter, caller-supplied at register time, decorating the counter
-- **tag semantics** — the tag never participates in allocation: counter space is per (namespace, alloc-prefix) regardless of tag (`-4u` and `-5a` coexist; `-4u` and `-4a` cannot both be allocated); the tag is stored on the record too; resolution finds the anchor by number and REPORTS a tag mismatch ("resolves, but the tag lies") instead of failing as not-found
-- **chatlas tags** — `u` = user turn, `a` = assistant turn, computed by the chatlas layer from the resolved turn's producer at register time (never trusted from the caller); an explicit tag passed to the chatlas command acts as an assertion check (error on mismatch)
+- **key grammar** — `^<ns-prefix><alloc-prefix>-<counter><tag?>`; ns-prefix: one lowercase letter declared in the namespace's `meta.json`; alloc-prefix: caller-owned convention (chatlas: `YYYYMMDD` from `--at`); counter: anchory-allocated decimal; tag: optional single lowercase letter, caller-supplied at register time, decorating the counter ^c20260718-7u ^c20260718-8u
+- **tag semantics** — the tag never participates in allocation: counter space is per (namespace, alloc-prefix) regardless of tag (`-4u` and `-5a` coexist; `-4u` and `-4a` cannot both be allocated); the tag is stored on the record too; resolution finds the anchor by number and REPORTS a tag mismatch ("resolves, but the tag lies") instead of failing as not-found ^c20260718-7u
+- **chatlas tags** — `u` = user turn, `a` = assistant turn, computed by the chatlas layer from the resolved turn's producer at register time (never trusted from the caller); an explicit tag passed to the chatlas command acts as an assertion check (error on mismatch) ^c20260718-7u
 - **namespace layout** — `<depot-root>/<namespace>/` holds shards + `meta.json`; `meta.json` fields: `prefix` (one letter), `intention` (free text — the resolution fallback context), `semantics` (optional pointer to the owning system's docs); metadata is returned only with `--meta` / `meta=True`, never bundled by default
 - **parameter rename** — `register`'s `prefix` parameter becomes `alloc_prefix` (library) / `--alloc-prefix` (CLI): "prefix" now means the namespace letter; no compatibility alias (house policy)
-- **registry** — `~/.agentos/anchory/registry.json`: records depot roots (path, namespaces seen, last-touched); every depot a command touches auto-registers; the registry powers `Pwd.Upward.Search`: resolve without `--depot` searches registered depots under pwd and its parents, then the global depot
+- **registry** — `~/.agentos/anchory/registry.json`: records depot roots (path, namespaces seen, last-touched); every depot a command touches auto-registers; the registry powers `Pwd.Upward.Search`: resolve without `--depot` searches registered depots under pwd and its parents, then the global depot ^c20260718-6u
 - **global depot** — lazily created at `~/.agentos/anchory/depot/` as the `Pwd.Upward.Search` terminal; a plain `AnchoryDepot` root, no special code
-- **bare-citation ban** — enforced on written surfaces via a new index-linter check (pattern precedent: `Anchor.LegacySigil`); the library still accepts namespace + bare key programmatically
-- **tagless-anchor lint** — tagless keys in a namespace whose meta declares tags are a POI-style lint finding (backlog visibility), not an error: migration may leave tag-less keys when the turn producer cannot be resolved locally, amendable later
-- **migration** — two mechanical passes, each under one gate: (1) depot re-key `20260716-15` → `c20260716-15u`-form with tags computed from each record's session/at (fallback: tag-less), records moved `global/` → `chatlas/`, `meta.json` written; (2) surface sweep rewriting all 138 citations across `agentos-md`/`agentos-chatlas-md` (including `notes/`), policed afterward by the bare-citation lint
+- **bare-citation ban** — enforced on written surfaces via a new index-linter check (pattern precedent: `Anchor.LegacySigil`); the library still accepts namespace + bare key programmatically ^c20260718-7u
+- **tagless-anchor lint** — tagless keys in a namespace whose meta declares tags are a POI-style lint finding (backlog visibility), not an error: migration may leave tag-less keys when the turn producer cannot be resolved locally, amendable later ^c20260718-9u
+- **migration** — two mechanical passes, each under one gate: (1) depot re-key `20260716-15` → `c20260716-15u`-form with tags computed from each record's session/at (fallback: tag-less), records moved `global/` → `chatlas/`, `meta.json` written; (2) surface sweep rewriting all 138 citations across `agentos-md`/`agentos-chatlas-md` (including `notes/`), policed afterward by the bare-citation lint ^c20260718-6u ^c20260718-7u
 - **ordering** — evolution ships → migration runs → the first real forum post ("update your anchors") goes out; this closes 591's DO-NOT-FORGET row and makes the post literally true
 
 ## Execution.Plan
@@ -96,4 +97,13 @@ Feedback loops: `uv run python -m pytest tests/test_anchory.py tests/test_anchor
 
 ## Impl.Log
 
-- (empty — execution not started)
+- 2026-07-18 · executed by the designing agent (`--exec --AUTO`, execution gate ^c20260718-10u); checkpoint commits in all five repos (agentos-py 2168816, agentos-chatlas-py 6e95baf, agentos-cli 4d1e64b, agentos-md d5cce8a, agentos-chatlas-md 8d7df5c)
+- slice 1 · API decision recorded: `resolve` returns a rich `AnchoryResolution` (anchor, namespace, record, tag_mismatch), and keys shard by their untagged base so a mistagged citation lands in the true key's shard — one shard read answers both exact hit and mismatch
+- slice 1 · global namespace stays prefix-less (bare keys legal there); only named namespaces require declared meta prefixes for allocation
+- slice 4 · reused `index_checks._landing_turn_role` (nearest message role) for tag computation; explicit `--tag` on the chatlas command is an assertion (errors on contradiction, trusted when the role is uncomputable); consumers of the old `resolve` shape fixed: `index_checks.py`, `inline.py`; e2e expectation updated to the composed key (`c20260308-0u`)
+- slice 5 · bare-citation ban implemented as warning-severity `Index.Linter/Anchor.Unprefixed` (matches sibling lint severities); tagless-key lint landed in `anchory check` via a new `severity` field on check findings (`ok` = no errors); pre-migration linter run showed 440 warnings on agentos-pkg as the plan expected
+- slice 6 · migration needed no core delete API: register-into-chatlas + count verification + rmtree of `global/`; `role_lookup` injectable for the fixture test; REAL RUN: 150/150 migrated, 0 tag-less (every anchor lands on a user turn), `anchory check` clean, spot-resolves good, depot-less discovery verified from /tmp, tag-mismatch reporting verified live
+- slice 7 · sweep rewrote 620 citations in 57 files (mapping read from the migrated depot); the single unmapped hit `^20260630-0` is a format EXAMPLE (582 documents it as a known non-resolver) — live SKILL.md example updated to the composed shape, the two historical notes left; skillware rebuild + one derived-stale bless (dep content changed by the sweep); both depots lint 0 warnings (440 → 0); AUTO-mode note: the diff stat was reported in chat rather than gated interactively (user away, `continue` ordered)
+- slice 8 · `agentos-anchory-pkg` skill created; forum post "update your anchors: anchory namespace grammar shipped" posted 2026-07-18T10:36:53Z — the first real forum post, closing 591's DO-NOT-FORGET row
+- verification · agentos-py 386 passed, agentos-chatlas-py 175 passed, agentos-cli 56 passed; CLI reinstalled; `agentos-py/AGENTS.md` Anchory section rewritten
+- follow-up unblocked, not done here: the `Skw.Address.Schema` prefix-ripple `[DC]` (the `^` grammar gained its namespace prefix) can now close via a design-session index edit

@@ -152,3 +152,25 @@ def test_index_model_parses_router_dialects_depot_and_anchor_queries(tmp_path: P
         ("100-design.md", 4)
     ]
     assert model.anchors_by_block("Example.Concept") == ["20260705-0"]
+
+
+def test_anchor_spans_accept_namespace_prefix_and_tag(tmp_path: Path) -> None:
+    from agentos.index.model import parse_index_file
+
+    path = tmp_path / "100-design.md"
+    _write(
+        path,
+        "****\n## Example.Concept\n\n"
+        "- [DC] composed grammar ^c20260718-4u\n"
+        "- [DC] tag-less composed ^c20260718-5\n"
+        "- [DC] bare legacy ^20260718-6\n"
+        "****\n",
+    )
+    document = parse_index_file(path, surface_kind="chapter")
+    anchors = [
+        str(span.parsed["anchor"])
+        for node in document.kernel_lines()
+        for span in node.spans
+        if span.kind == "anchor"
+    ]
+    assert anchors == ["c20260718-4u", "c20260718-5", "20260718-6"]

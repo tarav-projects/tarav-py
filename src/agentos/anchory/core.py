@@ -15,6 +15,12 @@ from typing import Iterator, Mapping, Pattern
 
 GLOBAL_NAMESPACE = "global"
 
+META_FILENAME = "meta.json"
+
+_TAG_RE = re.compile(r"^[a-z]$")
+_NS_PREFIX_RE = re.compile(r"^[a-z]$")
+_TAGGED_KEY_RE = re.compile(r"^(?P<base>.*-\d+)(?P<tag>[a-z])$")
+
 
 class AnchoryError(RuntimeError):
     pass
@@ -43,6 +49,14 @@ class AnchoryEntry:
 
 
 @dataclass(frozen=True)
+class AnchoryResolution:
+    anchor: str
+    namespace: str
+    record: dict[str, object]
+    tag_mismatch: bool
+
+
+@dataclass(frozen=True)
 class AnchorySourceMatch:
     anchor: str
     line: int
@@ -57,6 +71,7 @@ class AnchoryCheckFinding:
     path: str
     message: str
     anchor: str | None = None
+    severity: str = "error"
 
 
 @dataclass(frozen=True)
@@ -65,7 +80,7 @@ class AnchoryCheckResult:
 
     @property
     def ok(self) -> bool:
-        return not self.findings
+        return not any(finding.severity == "error" for finding in self.findings)
 
 
 class AnchoryDepot:
@@ -79,129 +94,192 @@ class AnchoryDepot:
         record: Mapping[str, object],
         *,
         anchor: str | None = None,
-        prefix: str | None = None,
+        alloc_prefix: str | None = None,
+        tag: str | None = None,
+        namespace: str = GLOBAL_NAMESPACE,
     ) -> AnchoryEntry:
-        if (anchor is None) == (prefix is None):
-            raise InvalidAnchoryInputError("exactly one of anchor or prefix is required")
+        if (anchor is None) == (alloc_prefix is None):
+            raise InvalidAnchoryInputError(
+                "exactly one of anchor or alloc_prefix is required"
+            )
+        if tag is not None:
+            if anchor is not None:
+                raise InvalidAnchoryInputError(
+                    "tag decorates an allocated key; pass it with alloc_prefix, not anchor"
+                )
+            if not isinstance(tag, str) or not _TAG_RE.fullmatch(tag):
+                raise InvalidAnchoryInputError("tag must be a single lowercase letter")
+        namespace = _validate_namespace(namespace)
         normalized_record = _normalize_record(record)
         with self._lock(exclusive=True, create=True):
-            if prefix is not None:
-                anchor = self._allocate_anchor(prefix)
+            if alloc_prefix is not None:
+                full_prefix = self._composed_prefix(namespace, alloc_prefix)
+                anchor = self._allocate_anchor(namespace, full_prefix, tag)
             else:
                 anchor = _validate_anchor(anchor)
-            path = self._shard_path(anchor)
+            path = self._shard_path(namespace, anchor)
             records = _read_shard(path)
             if anchor in records:
                 raise AnchorExistsError(f"anchor already exists: {anchor}")
             records[anchor] = normalized_record
             _write_shard_atomic(path, records)
+        self._touch_registry()
         return AnchoryEntry(anchor=anchor, record=dict(normalized_record))
 
-    def resolve(self, anchor: str) -> dict[str, object] | None:
-        anchor = _validate_anchor(anchor)
-        with self._lock(exclusive=False, create=False):
-            record = _read_shard(self._shard_path(anchor)).get(anchor)
-        return dict(record) if record is not None else None
+    def _touch_registry(self) -> None:
+        from .registry import record_depot_touch
 
-    def amend(self, anchor: str, record: Mapping[str, object]) -> AnchoryEntry:
+        record_depot_touch(self)
+
+    def resolve(
+        self, anchor: str, *, namespace: str | None = None
+    ) -> AnchoryResolution | None:
+        anchor = _validate_anchor(anchor)
+        base = _base_key(anchor)
+        self._touch_registry()
+        namespaces = (
+            [_validate_namespace(namespace)]
+            if namespace is not None
+            else self.namespaces()
+        )
+        with self._lock(exclusive=False, create=False):
+            for candidate in namespaces:
+                records = _read_shard(self._shard_path(candidate, anchor))
+                record = records.get(anchor)
+                if record is not None:
+                    return AnchoryResolution(
+                        anchor=anchor,
+                        namespace=candidate,
+                        record=dict(record),
+                        tag_mismatch=False,
+                    )
+                for existing, existing_record in records.items():
+                    if existing != anchor and _base_key(existing) == base:
+                        return AnchoryResolution(
+                            anchor=existing,
+                            namespace=candidate,
+                            record=dict(existing_record),
+                            tag_mismatch=True,
+                        )
+        return None
+
+    def amend(
+        self,
+        anchor: str,
+        record: Mapping[str, object],
+        *,
+        namespace: str | None = None,
+    ) -> AnchoryEntry:
         anchor = _validate_anchor(anchor)
         normalized_record = _normalize_record(record)
+        namespaces = (
+            [_validate_namespace(namespace)]
+            if namespace is not None
+            else self.namespaces() or [GLOBAL_NAMESPACE]
+        )
         with self._lock(exclusive=True, create=True):
-            path = self._shard_path(anchor)
-            records = _read_shard(path)
-            if anchor not in records:
-                raise AnchorNotFoundError(f"anchor does not exist: {anchor}")
-            records[anchor] = normalized_record
-            _write_shard_atomic(path, records)
-        return AnchoryEntry(anchor=anchor, record=dict(normalized_record))
+            for candidate in namespaces:
+                path = self._shard_path(candidate, anchor)
+                records = _read_shard(path)
+                if anchor in records:
+                    records[anchor] = normalized_record
+                    _write_shard_atomic(path, records)
+                    self._touch_registry()
+                    return AnchoryEntry(anchor=anchor, record=dict(normalized_record))
+        raise AnchorNotFoundError(f"anchor does not exist: {anchor}")
 
-    def query(self, *, prefix: str | None = None) -> tuple[AnchoryEntry, ...]:
+    def query(
+        self, *, namespace: str | None = None, prefix: str | None = None
+    ) -> tuple[AnchoryEntry, ...]:
         if prefix is not None and not isinstance(prefix, str):
             raise InvalidAnchoryInputError("prefix must be a string")
+        self._touch_registry()
+        namespaces = (
+            [_validate_namespace(namespace)]
+            if namespace is not None
+            else self.namespaces()
+        )
         entries: list[AnchoryEntry] = []
         with self._lock(exclusive=False, create=False):
-            namespace_root = self.root / GLOBAL_NAMESPACE
-            for path in sorted(namespace_root.glob("*.json")):
-                for anchor, record in _read_shard(path).items():
-                    if prefix is None or anchor.startswith(prefix):
-                        entries.append(AnchoryEntry(anchor=anchor, record=dict(record)))
+            for candidate in namespaces:
+                namespace_root = self.root / candidate
+                for path in sorted(namespace_root.glob("*.json")):
+                    if path.name == META_FILENAME:
+                        continue
+                    for anchor, record in _read_shard(path).items():
+                        if prefix is None or anchor.startswith(prefix):
+                            entries.append(
+                                AnchoryEntry(anchor=anchor, record=dict(record))
+                            )
         return tuple(sorted(entries, key=lambda entry: entry.anchor))
 
+    def namespaces(self) -> list[str]:
+        if not self.root.is_dir():
+            return []
+        return sorted(
+            path.name
+            for path in self.root.iterdir()
+            if path.is_dir() and not path.name.startswith(".")
+        )
+
+    def namespace_meta(self, namespace: str) -> dict[str, object] | None:
+        namespace = _validate_namespace(namespace)
+        path = self.root / namespace / META_FILENAME
+        if not path.is_file():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise CorruptAnchoryDepotError(
+                f"cannot read namespace meta {path}: {exc}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise CorruptAnchoryDepotError(f"namespace meta must be a JSON object: {path}")
+        return payload
+
+    def write_namespace_meta(
+        self,
+        namespace: str,
+        *,
+        prefix: str,
+        intention: str | None = None,
+        semantics: str | None = None,
+    ) -> dict[str, object]:
+        namespace = _validate_namespace(namespace)
+        if not isinstance(prefix, str) or not _NS_PREFIX_RE.fullmatch(prefix):
+            raise InvalidAnchoryInputError(
+                "namespace prefix must be a single lowercase letter"
+            )
+        meta: dict[str, object] = {"prefix": prefix}
+        if intention is not None:
+            meta["intention"] = intention
+        if semantics is not None:
+            meta["semantics"] = semantics
+        with self._lock(exclusive=True, create=True):
+            path = self.root / namespace / META_FILENAME
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return meta
+
+    def _composed_prefix(self, namespace: str, alloc_prefix: str) -> str:
+        alloc_prefix = _validate_anchor(alloc_prefix)
+        if namespace == GLOBAL_NAMESPACE:
+            return alloc_prefix
+        meta = self.namespace_meta(namespace)
+        ns_prefix = meta.get("prefix") if isinstance(meta, dict) else None
+        if not isinstance(ns_prefix, str) or not _NS_PREFIX_RE.fullmatch(ns_prefix):
+            raise InvalidAnchoryInputError(
+                f"namespace {namespace!r} has no declared prefix in {META_FILENAME}; "
+                "write namespace meta before allocating keys"
+            )
+        return f"{ns_prefix}{alloc_prefix}"
+
     def check(self) -> AnchoryCheckResult:
+        self._touch_registry()
         findings: list[AnchoryCheckFinding] = []
-        seen: set[str] = set()
         with self._lock(exclusive=False, create=False):
-            namespace_root = self.root / GLOBAL_NAMESPACE
-            for path in sorted(namespace_root.glob("*.json")):
-                relative_path = str(path.relative_to(self.root))
-                if len(path.stem) != 2 or any(char not in "0123456789abcdef" for char in path.stem):
-                    findings.append(
-                        AnchoryCheckFinding(
-                            code="invalid-shard-name",
-                            path=relative_path,
-                            message="shard filename must be two lowercase hexadecimal characters",
-                        )
-                    )
-                try:
-                    payload = json.loads(path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError) as exc:
-                    findings.append(
-                        AnchoryCheckFinding(
-                            code="invalid-json",
-                            path=relative_path,
-                            message=str(exc),
-                        )
-                    )
-                    continue
-                if not isinstance(payload, dict):
-                    findings.append(
-                        AnchoryCheckFinding(
-                            code="invalid-shard",
-                            path=relative_path,
-                            message="shard must be a JSON object",
-                        )
-                    )
-                    continue
-                for anchor, record in payload.items():
-                    if not isinstance(record, dict):
-                        findings.append(
-                            AnchoryCheckFinding(
-                                code="invalid-record",
-                                path=relative_path,
-                                anchor=anchor,
-                                message="record must be a JSON object",
-                            )
-                        )
-                        continue
-                    if not anchor:
-                        findings.append(
-                            AnchoryCheckFinding(
-                                code="invalid-anchor",
-                                path=relative_path,
-                                anchor=anchor,
-                                message="anchor must be a non-empty string",
-                            )
-                        )
-                        continue
-                    if _shard_name(anchor) != path.stem:
-                        findings.append(
-                            AnchoryCheckFinding(
-                                code="misplaced-anchor",
-                                path=relative_path,
-                                anchor=anchor,
-                                message=f"anchor belongs in shard {_shard_name(anchor)}.json",
-                            )
-                        )
-                    if anchor in seen:
-                        findings.append(
-                            AnchoryCheckFinding(
-                                code="duplicate-anchor",
-                                path=relative_path,
-                                anchor=anchor,
-                                message="anchor appears in more than one shard",
-                            )
-                        )
-                    seen.add(anchor)
+            for namespace in self.namespaces():
+                findings.extend(self._check_namespace(namespace))
         return AnchoryCheckResult(
             findings=tuple(
                 sorted(
@@ -211,22 +289,134 @@ class AnchoryDepot:
             )
         )
 
-    def _shard_path(self, anchor: str) -> Path:
-        return self.root / GLOBAL_NAMESPACE / f"{_shard_name(anchor)}.json"
-
-    def _allocate_anchor(self, prefix: str) -> str:
-        prefix = _validate_anchor(prefix)
-        pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
-        max_suffix: int | None = None
-        namespace_root = self.root / GLOBAL_NAMESPACE
+    def _check_namespace(self, namespace: str) -> list[AnchoryCheckFinding]:
+        findings: list[AnchoryCheckFinding] = []
+        seen: set[str] = set()
+        namespace_root = self.root / namespace
+        meta_path = namespace_root / META_FILENAME
+        if meta_path.is_file():
+            try:
+                self.namespace_meta(namespace)
+            except CorruptAnchoryDepotError as exc:
+                findings.append(
+                    AnchoryCheckFinding(
+                        code="invalid-meta",
+                        path=str(meta_path.relative_to(self.root)),
+                        message=str(exc),
+                    )
+                )
+        try:
+            meta = self.namespace_meta(namespace)
+        except CorruptAnchoryDepotError:
+            meta = None
+        prefixed_namespace = isinstance(meta, dict) and isinstance(meta.get("prefix"), str)
         for path in sorted(namespace_root.glob("*.json")):
+            if path.name == META_FILENAME:
+                continue
+            relative_path = str(path.relative_to(self.root))
+            if len(path.stem) != 2 or any(char not in "0123456789abcdef" for char in path.stem):
+                findings.append(
+                    AnchoryCheckFinding(
+                        code="invalid-shard-name",
+                        path=relative_path,
+                        message="shard filename must be two lowercase hexadecimal characters",
+                    )
+                )
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                findings.append(
+                    AnchoryCheckFinding(
+                        code="invalid-json",
+                        path=relative_path,
+                        message=str(exc),
+                    )
+                )
+                continue
+            if not isinstance(payload, dict):
+                findings.append(
+                    AnchoryCheckFinding(
+                        code="invalid-shard",
+                        path=relative_path,
+                        message="shard must be a JSON object",
+                    )
+                )
+                continue
+            for anchor, record in payload.items():
+                if not isinstance(record, dict):
+                    findings.append(
+                        AnchoryCheckFinding(
+                            code="invalid-record",
+                            path=relative_path,
+                            anchor=anchor,
+                            message="record must be a JSON object",
+                        )
+                    )
+                    continue
+                if not anchor:
+                    findings.append(
+                        AnchoryCheckFinding(
+                            code="invalid-anchor",
+                            path=relative_path,
+                            anchor=anchor,
+                            message="anchor must be a non-empty string",
+                        )
+                    )
+                    continue
+                if _shard_name(_base_key(anchor)) != path.stem:
+                    findings.append(
+                        AnchoryCheckFinding(
+                            code="misplaced-anchor",
+                            path=relative_path,
+                            anchor=anchor,
+                            message=(
+                                f"anchor belongs in shard {_shard_name(_base_key(anchor))}.json"
+                            ),
+                        )
+                    )
+                if anchor in seen:
+                    findings.append(
+                        AnchoryCheckFinding(
+                            code="duplicate-anchor",
+                            path=relative_path,
+                            anchor=anchor,
+                            message="anchor appears in more than one shard",
+                        )
+                    )
+                seen.add(anchor)
+                if (
+                    prefixed_namespace
+                    and re.fullmatch(r".*-\d+", anchor)
+                ):
+                    findings.append(
+                        AnchoryCheckFinding(
+                            code="tagless-anchor",
+                            path=relative_path,
+                            anchor=anchor,
+                            message="key carries no tag letter; amendable backlog, not an error",
+                            severity="warning",
+                        )
+                    )
+        return findings
+
+    def _shard_path(self, namespace: str, anchor: str) -> Path:
+        return self.root / namespace / f"{_shard_name(_base_key(anchor))}.json"
+
+    def _allocate_anchor(self, namespace: str, full_prefix: str, tag: str | None) -> str:
+        pattern = re.compile(rf"^{re.escape(full_prefix)}-(\d+)[a-z]?$")
+        max_suffix: int | None = None
+        namespace_root = self.root / namespace
+        for path in sorted(namespace_root.glob("*.json")):
+            if path.name == META_FILENAME:
+                continue
             for existing_anchor in _read_shard(path):
                 match = pattern.fullmatch(existing_anchor)
                 if match is None:
                     continue
                 suffix = int(match.group(1))
                 max_suffix = suffix if max_suffix is None else max(max_suffix, suffix)
-        return f"{prefix}-{0 if max_suffix is None else max_suffix + 1}"
+        counter = 0 if max_suffix is None else max_suffix + 1
+        return f"{full_prefix}-{counter}{tag or ''}"
 
     @contextmanager
     def _lock(self, *, exclusive: bool, create: bool) -> Iterator[None]:
@@ -252,6 +442,18 @@ def _validate_anchor(anchor: str) -> str:
 
 def _shard_name(anchor: str) -> str:
     return hashlib.sha256(anchor.encode("utf-8")).hexdigest()[:2]
+
+
+def _base_key(anchor: str) -> str:
+    """The key without its trailing tag letter — the sharding and identity spine."""
+    match = _TAGGED_KEY_RE.fullmatch(anchor)
+    return match.group("base") if match else anchor
+
+
+def _validate_namespace(namespace: str) -> str:
+    if not isinstance(namespace, str) or not namespace or "/" in namespace or namespace.startswith("."):
+        raise InvalidAnchoryInputError("namespace must be a plain directory name")
+    return namespace
 
 
 def _normalize_record(record: Mapping[str, object]) -> dict[str, object]:

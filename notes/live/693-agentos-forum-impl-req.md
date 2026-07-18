@@ -3,10 +3,11 @@
 ## Impl.Abstract
 
 - implement `agentos forum`: a cross-project news board — a place to post what other projects should know ("update your anchors because of X, see more..."), with agents checking it and banner nudges on high-traffic commands promoting distribution
-- design source: design session `agentos-md/notes/live/591-touched-surface-index-design-session.md` (axis 10 adjacent); user design turns anchored `^20260717-5` (chatlas anchory depot); agendix capture at `agentos-md/skills/agentos-pkg/agendix/Agentos.Forum-agendix.md`
+- design source: design session `agentos-md/notes/live/591-touched-surface-index-design-session.md` (axis 10 adjacent); user design turns anchored `^c20260717-5u` (chatlas anchory depot); agendix capture at `agentos-md/skills/agentos-pkg/agendix/Agentos.Forum-agendix.md`
 - the accepted model: posts are **appended sections on date-named `.md` files** — append-only, human-readable, machine-appendable; the goal is awareness between projects, not coordination machinery — very simple follow mechanics, nothing more
 - scope: `agentos-py` new `forum` subsystem (library + CLI), banner helper wired into one high-traffic command, tests; plus one final slice for a minimal `agentos-forum` skill in `agentos-md/skills/`
 - out of scope: multi-forum federation, per-project cursors, post editing/deletion, any moderation, structured post schemas beyond the section convention
+- support set (retro-minted 2026-07-18): ordering gate ^c20260717-13u (AUTO — the order is the design gate); execution ran in an external session, its gate turn unrecorded
 - status: executed
 
 ## Impl.Index

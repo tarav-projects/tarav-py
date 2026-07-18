@@ -935,3 +935,27 @@ def test_index_linter_runs_extra_checks(monkeypatch, tmp_path: Path) -> None:
     assert ran == ["yes"]
     assert "External.Check/Probe" in _finding_codes(state)
     assert any(r.code == "External.Blocked" and r.status == "blocked" for r in state.check_results)
+
+
+def test_index_linter_flags_unprefixed_anchor_citations(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    _write(
+        depot_dir / "000-INDEX.md",
+        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.One\n",
+    )
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.One\n\n"
+        "- prefixed citation ^c20260718-0u\n"
+        "- bare citation ^20260718-1\n"
+        "****\n",
+    )
+
+    state = _run(depot_paths=(str(depot_dir),))
+    hits = [f for f in state.findings if f.code == "Index.Linter/Anchor.Unprefixed"]
+    assert len(hits) == 1
+    assert hits[0].details["anchor"] == "20260718-1"
+    assert hits[0].severity == "warning"

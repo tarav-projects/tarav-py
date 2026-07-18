@@ -1262,6 +1262,8 @@ SOURCE_AXIS_PLACEMENT = "Index.Linter/Source.Axis.Placement"
 CHECK_LINE_TYPES = "Index.Linter/Line.Types"
 ANCHOR_LEGACY_SIGIL = "Index.Linter/Anchor.LegacySigil"
 CHECK_ANCHOR_LEGACY_SIGIL = "Index.Linter/Anchor.LegacySigil"
+ANCHOR_UNPREFIXED = "Index.Linter/Anchor.Unprefixed"
+CHECK_ANCHOR_UNPREFIXED = "Index.Linter/Anchor.Unprefixed"
 TYPE_STATEMENT_LEGACY_SIGIL = "Index.Linter/TypeStatement.LegacySigil"
 CHECK_TYPE_STATEMENT_LEGACY_SIGIL = "Index.Linter/TypeStatement.LegacySigil"
 LINE_UNLINKED = "Index.Linter/Line.Unlinked"
@@ -1273,7 +1275,8 @@ CHECK_BLOCK_UNGROUNDED = "Index.Linter/Block.Ungrounded"
 _LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX", "GR")
 
 _TYPED_LINE_CANDIDATE_RE = re.compile(r"^- \[")
-_LEGACY_ANCHOR_SIGIL_RE = re.compile(r"@(?P<anchor>\d{8}-\d+)\b")
+_LEGACY_ANCHOR_SIGIL_RE = re.compile(r"@(?P<anchor>[a-z]?\d{8}-\d+[a-z]?)\b")
+_UNPREFIXED_ANCHOR_RE = re.compile(r"^\d{8}-\d+[a-z]?$")
 _LEGACY_TYPE_STATEMENT_RE = re.compile(
     r"(?P<legacy>"
     r"[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+"
@@ -1414,6 +1417,33 @@ def _check_legacy_anchor_sigil(state: LinterState) -> list[LinterFinding]:
                         },
                     )
                 )
+    return findings
+
+
+def _check_unprefixed_anchor(state: LinterState) -> list[LinterFinding]:
+    findings: list[LinterFinding] = []
+    for document, line in parsed_linter_kernel_lines(state):
+        if document.surface_kind not in {"chapter", "appendix", "agendix"}:
+            continue
+        for span in line.spans:
+            if span.kind != "anchor":
+                continue
+            anchor = str(span.parsed["anchor"])
+            if not _UNPREFIXED_ANCHOR_RE.fullmatch(anchor):
+                continue
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=ANCHOR_UNPREFIXED,
+                    path=state.rel_path(line.path) if line.path else ".",
+                    line=line.start_line,
+                    message=(
+                        "Bare anchor citation; cite the composed key with its "
+                        "namespace prefix."
+                    ),
+                    details={"anchor": anchor},
+                )
+            )
     return findings
 
 
@@ -1616,6 +1646,12 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Legacy anchor sigils",
         gate=_needs_valid_surface,
         run=_check_legacy_anchor_sigil,
+    ),
+    LinterCheck(
+        code=CHECK_ANCHOR_UNPREFIXED,
+        title="Unprefixed anchor citations",
+        gate=_needs_valid_surface,
+        run=_check_unprefixed_anchor,
     ),
     LinterCheck(
         code=CHECK_TYPE_STATEMENT_LEGACY_SIGIL,
