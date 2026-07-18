@@ -7,7 +7,7 @@
 - the accepted model: posts are **appended sections on date-named `.md` files** — append-only, human-readable, machine-appendable; the goal is awareness between projects, not coordination machinery — very simple follow mechanics, nothing more
 - scope: `agentos-py` new `forum` subsystem (library + CLI), banner helper wired into one high-traffic command, tests; plus one final slice for a minimal `agentos-forum` skill in `agentos-md/skills/`
 - out of scope: multi-forum federation, per-project cursors, post editing/deletion, any moderation, structured post schemas beyond the section convention
-- status: ready
+- status: executed
 
 ## Impl.Index
 
@@ -21,7 +21,7 @@
 
 ### Design.Decisions (resolved in AUTO mode — recorded, not hidden)
 
-- **forum root** — default `~/Documents/agentos-forum/`, overridable via `AGENTOS_FORUM_ROOT` env var; posts live at `<root>/posts/YYYY-MM-DD.md` (UTC date names the file)
+- **forum root** — default `~/Documents/agentos/forum/`, overridable via `AGENTOS_FORUM_ROOT` env var; posts live at `<root>/posts/YYYY-MM-DD.md` (UTC date names the file)
 - **post format** — one appended section per post:
   - `## <HH:MM:SS>Z — <title>` heading, body lines below, then a meta line `- from: <project-path-or-name>` (the posting cwd's project, best-effort; `--from` overrides)
   - sections separated by a blank line; no `****` separators (this is not an index surface — plain readable md)
@@ -76,4 +76,20 @@ Run `python -m pytest agentos-py/tests/test_forum.py` per slice; RED→GREEN whe
 
 ## Impl.Log
 
-- (empty — execution not started)
+- 2026-07-18: checkpoint commits created before edits:
+  - `agentos-py` `a274be7 chore: checkpoint before forum implementation`
+  - `agentos-cli` `de22934 chore: checkpoint before forum cli registration`
+  - `agentos-chatlas-py` `dd7e3dd chore: checkpoint before forum banner wiring`
+  - `agentos-md` `cdd87ef chore: checkpoint before forum skill implementation`
+- 2026-07-18: implementation deviation recorded: an older `agentos future forum` JSONL/thread subsystem already existed despite `Current.State`; v1 replaced it with the accepted top-level Markdown-board model and did not add compatibility aliases.
+- 2026-07-18: implemented `agentos.forum` as a simple append-only Markdown board with `ForumDepot`, global cursor helpers, `forum_banner_line()`, `AGENTOS_FORUM_ROOT`, and `AGENTOS_FORUM_CURSOR`.
+- 2026-07-18: registered top-level `agentos forum post|check|read`; removed nested `future forum` registration; updated CLI tests and docs accordingly.
+- 2026-07-18: wired `forum_banner_line()` into `agentos chatlas update` only, printing to stderr after normal output and suppressing the banner for `--output-mode json`.
+- 2026-07-18: created `agentos-md/skills/agentos-forum/SKILL.md` as a CLI-first orientation skill.
+- 2026-07-18: default forum root corrected to `~/Documents/agentos/forum/` per user direction.
+- 2026-07-18: verification:
+  - `agentos-py`: `uv run python -m pytest tests/test_forum.py -q` → 3 passed
+  - `agentos-cli`: `uv run python -m pytest tests/test_e2e_forum.py tests/test_e2e_stdlib.py -q` → 10 passed
+  - `agentos-chatlas-py`: `uv run python -m pytest tests/test_forum_banner.py -q` → 2 passed
+  - `agentos-cli`: `uv tool install --reinstall --editable .` → installed 1 executable: `agentos`
+  - manual isolated round trip with temp `AGENTOS_FORUM_ROOT`/`AGENTOS_FORUM_CURSOR`: `post` → `check` showed 1 unread → `read` printed and advanced → `check` showed 0 unread

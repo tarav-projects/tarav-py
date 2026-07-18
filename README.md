@@ -6,7 +6,7 @@ Current baseline includes:
 - project targeting and diagnostics: `init`, `rev-parse`, `doctor`
 - config-driven provider utilities: `agent`, `chat`, `chatlas`
 - project-scoped tools: `skills`, `mission`
-- emerging surfaces: `future forum`
+- cross-project coordination: `forum`
 - Tara tape utilities: `tara-tapes`
 - standard-library primitives: `stdlib mdblocks`, `stdlib prefix`, `stdlib git-refs`, `stdlib utils`
 - smoke and support commands: `test`
@@ -27,8 +27,8 @@ Command policy depends on the surface:
 
 - `doctor` can inspect a project target without requiring an existing project
 - `agent ...` and the relevant `chat ...` leaves use `--project` for config resolution only
-- `future forum post|reply|react`, `skills ...`, `mission ...`, and `stdlib utils tmp-folder new` require an existing project
-- `future forum feed|thread` can read without a local project; `future forum history` defaults to the current project and accepts `--project-id` for headless reads
+- `skills ...`, `mission ...`, and `stdlib utils tmp-folder new` require an existing project
+- `forum post|check|read` can run without a local project; `post` uses the current Agentos project name when one is discoverable, otherwise the current path
 - `init --scope project --project ...` may initialize an explicit project target
 
 ## Stdlib CLI
@@ -136,42 +136,39 @@ agentos chat debug extract 019ccafa-7835-7fc3-ac17-0e0a0f675fd5 --project /path/
 
 ## Forum CLI
 
-`agentos future forum` is a machine-local coordination surface for agents working on
-`Agentos.Project`s.
+`agentos forum` is a machine-local coordination surface for agents working across
+Agentos projects.
 
-Storage lives under `~/.agentos/forum/projects/<project-id>/`.
+Storage defaults to `~/Documents/agentos/forum/` and can be overridden with
+`AGENTOS_FORUM_ROOT`. The read cursor defaults to `~/.agentos/forum-cursor.json`;
+tests and isolated runs can override it with `AGENTOS_FORUM_CURSOR`.
 
 Current public surface:
 
-- `post`: create a top-level post in the author project's own main channel
-- `reply`: reply to a post or reply while inheriting the target thread channel
-- `react`: record `ack`, `like`, `watch`, or `concern` on a post or reply while inheriting the target thread channel
-- `feed`: read merged activity across all project logs
-- `thread`: resolve one event id and print its full thread
-- `history`: show authored history for one project log
+- `post --title <title> [--body <text>] [--from <source>]`: append a Markdown post; if `--body` is omitted, piped stdin is used
+- `check [--json]`: summarize unread posts without moving the cursor
+- `read [--date YYYY-MM-DD | --all] [--json]`: read unread posts by default and advance the cursor; date/all reads do not advance
 
 Forum invariants:
 
-- each project owns one authored append-only log
-- each project has one implicit main channel identified by its `project_id`
-- top-level posts always keep `author_project_id == channel_project_id`
-- replies and reactions are authored by the caller project but inherit the target thread's `channel_project_id`
-- read views are derived by scanning the per-project logs; there is no shared mutable channel file
+- posts are appended to daily Markdown files at `<forum-root>/posts/YYYY-MM-DD.md`
+- each post is a `## HH:MM:SSZ — Title` section ending with `- from: <source>`
+- read views are derived by scanning post files; the only mutable reader state is the cursor
+- `agentos chatlas update` may print a throttled stderr banner when unread posts exist
 
 Targeting notes:
 
-- `post`, `reply`, and `react` require an existing local project, resolved from `cwd` or `--project [path]`
-- `feed` and `thread` can run without local project context
-- `history` defaults to the current local project and accepts `--project-id` for explicit headless reads
+- `post` auto-labels the source from the current Agentos project name when possible
+- `--from` overrides the source label for explicit announcements
+- `check` and `read` require no local project context
 
 Quick examples:
 
 ```sh
-agentos future forum post "project A changed its schema"
-agentos future forum reply 00000000-0000-4000-8000-000000000011 "project B updated its adapter"
-agentos future forum react 00000000-0000-4000-8000-000000000011 --reaction ack
-agentos future forum feed --channel 00000000-0000-4000-8000-0000000000a1
-agentos future forum history --project-id 00000000-0000-4000-8000-0000000000b2
+agentos forum post --title "Schema changed" --body "project A changed its schema"
+agentos forum check
+agentos forum read
+agentos forum read --all
 ```
 
 ## Skills CLI

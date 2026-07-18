@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import fcntl
 import json
+import os
+import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterator
 
-from agentos._core.clock import iso_z, utc_now_iso
-from agentos._core.errors import CliError
-from agentos._core.ids import normalize_or_generate_uuid, validate_uuid_string
 from agentos._core.project import (
     agentos_home_dir,
     load_project_marker,
@@ -17,515 +14,274 @@ from agentos._core.project import (
     require_agentos_project_root,
 )
 
-FORUM_SCHEMA_VERSION = 1
-FORUM_DIRNAME = "forum"
-FORUM_PROJECTS_DIRNAME = "projects"
-FORUM_PROJECT_CLASS = "agentos.forum.project"
-FORUM_EVENT_CLASS = "agentos.forum.event"
-FORUM_PROJECT_MANIFEST_FILENAME = "project.json"
-FORUM_EVENTS_FILENAME = "events.jsonl"
-VALID_FORUM_EVENT_TYPES = ("post", "reply", "reaction")
-VALID_FORUM_REACTIONS = ("ack", "like", "watch", "concern")
+FORUM_ROOT_ENV = "AGENTOS_FORUM_ROOT"
+FORUM_CURSOR_ENV = "AGENTOS_FORUM_CURSOR"
+DEFAULT_FORUM_ROOT = Path("~/Documents/agentos/forum")
+POST_HEADING_RE = re.compile(r"^## (?P<time>\d{2}:\d{2}:\d{2})Z — (?P<title>.+)$")
 
 
 @dataclass(frozen=True)
-class LocatedForumEvent:
-    source_file: Path
-    line_no: int
-    event: dict[str, object]
+class PostRef:
+    path: Path
+    timestamp: str
+    title: str
+
+
+@dataclass(frozen=True)
+class Post:
+    path: Path
+    timestamp: str
+    title: str
+    body: str
+    source: str
+
+
+class ForumDepot:
+    def __init__(self, root: Path | str | None = None) -> None:
+        self.root = forum_root() if root is None else Path(root).expanduser()
+
+    @property
+    def posts_dir(self) -> Path:
+        return self.root / "posts"
+
+    def post(self, title: str, body: str, source: str) -> PostRef:
+        title = _clean_title(title)
+        body = body.rstrip()
+        source = str(source).strip() or "unknown"
+        now = _utc_now()
+        timestamp = _format_timestamp(now)
+        path = self.posts_dir / f"{now:%Y-%m-%d}.md"
+        section = _format_section(now, title=title, body=body, source=source)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _append_text(path, section)
+        return PostRef(path=path, timestamp=timestamp, title=title)
+
+    def read_all(self) -> list[Post]:
+        return _read_posts_from_files(sorted(self.posts_dir.glob("*.md")))
+
+    def read_date(self, date: str) -> list[Post]:
+        _parse_date(date)
+        return _read_posts_from_files([self.posts_dir / f"{date}.md"])
+
+    def posts_since(self, timestamp: str | None) -> list[Post]:
+        cutoff = _parse_timestamp(timestamp) if timestamp else None
+        paths = sorted(self.posts_dir.glob("*.md"))
+        if cutoff is not None:
+            cutoff_date = cutoff.date()
+            filtered_paths = []
+            for path in paths:
+                path_date = _safe_date_from_path(path)
+                if path_date is not None and path_date >= cutoff_date:
+                    filtered_paths.append(path)
+            paths = filtered_paths
+        posts = _read_posts_from_files(paths)
+        if cutoff is None:
+            return posts
+        return [post for post in posts if _parse_timestamp(post.timestamp) > cutoff]
 
 
 def forum_root() -> Path:
-    return agentos_home_dir() / FORUM_DIRNAME
+    configured = os.environ.get(FORUM_ROOT_ENV)
+    if configured:
+        return Path(configured).expanduser()
+    return DEFAULT_FORUM_ROOT.expanduser()
 
 
-def forum_projects_dir() -> Path:
-    return forum_root() / FORUM_PROJECTS_DIRNAME
+def cursor_path() -> Path:
+    configured = os.environ.get(FORUM_CURSOR_ENV)
+    if configured:
+        return Path(configured).expanduser()
+    return agentos_home_dir() / "forum-cursor.json"
 
 
-def forum_project_dir(project_id: str) -> Path:
-    normalized_project_id = validate_uuid_string(project_id, field_name="project id")
-    return forum_projects_dir() / normalized_project_id
-
-
-def forum_project_manifest_path(project_id: str) -> Path:
-    return forum_project_dir(project_id) / FORUM_PROJECT_MANIFEST_FILENAME
-
-
-def forum_project_events_path(project_id: str) -> Path:
-    return forum_project_dir(project_id) / FORUM_EVENTS_FILENAME
-
-
-def current_author_project(
-    start_path: Path | str = ".",
-    *,
-    project: Path | str | None = None,
-) -> dict[str, object]:
-    project_root = require_agentos_project_root(
-        start_path,
-        project=project,
-        include_init_hint=True,
-    )
-    marker = load_project_marker(project_marker_path(project_root))
-    return {
-        "project_id": str(marker["project_id"]),
-        "project_root": project_root,
-        "source_root": str(project_root),
-        "display_name": project_root.name,
-        "marker": marker,
-    }
-
-
-def load_or_register_forum_project(project_identity: dict[str, object]) -> dict[str, object]:
-    normalized_identity = _normalize_project_identity(project_identity)
-    manifest_path = forum_project_manifest_path(normalized_identity["project_id"])
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-
-    now = utc_now_iso()
-    if manifest_path.exists():
-        manifest = _load_forum_project_manifest(manifest_path)
-        manifest["display_name"] = normalized_identity["display_name"]
-        manifest["source_root"] = normalized_identity["source_root"]
-        manifest["last_seen_at"] = now
-    else:
-        manifest = {
-            "class": FORUM_PROJECT_CLASS,
-            "schema_version": FORUM_SCHEMA_VERSION,
-            "project_id": normalized_identity["project_id"],
-            "display_name": normalized_identity["display_name"],
-            "source_root": normalized_identity["source_root"],
-            "created_at": now,
-            "last_seen_at": now,
-        }
-
-    _write_json(manifest_path, manifest)
-    return dict(manifest)
-
-
-def append_forum_event(author_project_id: str, event: dict[str, object]) -> dict[str, object]:
-    normalized_author_project_id = validate_uuid_string(author_project_id, field_name="author project id")
-    normalized_event = _normalize_forum_event(event)
-    if normalized_event["author_project_id"] != normalized_author_project_id:
-        raise CliError(
-            "forum event author_project_id must match the target author project log"
-        )
-
-    events_path = forum_project_events_path(normalized_author_project_id)
-    events_path.parent.mkdir(parents=True, exist_ok=True)
-    _append_jsonl_line(events_path, normalized_event)
-    return dict(normalized_event)
-
-
-def iter_all_forum_events() -> Iterator[LocatedForumEvent]:
-    projects_dir = forum_projects_dir()
-    if not projects_dir.exists():
-        return
-    if not projects_dir.is_dir():
-        raise CliError(f"forum projects path is not a directory: {projects_dir}")
-
-    for project_dir in sorted(child for child in projects_dir.iterdir() if child.is_dir()):
-        author_project_id = project_dir.name
-        validate_uuid_string(author_project_id, field_name="forum project directory")
-        events_path = project_dir / FORUM_EVENTS_FILENAME
-        if not events_path.exists():
-            continue
-        if not events_path.is_file():
-            raise CliError(f"forum events path is not a file: {events_path}")
-
-        with events_path.open("r", encoding="utf-8") as handle:
-            for line_no, raw_line in enumerate(handle, start=1):
-                stripped = raw_line.strip()
-                if not stripped:
-                    continue
-                payload = _parse_json_object_line(stripped, path=events_path, line_no=line_no)
-                event = _normalize_forum_event(payload, source_name=f"{events_path.name}:{line_no}")
-                if event["author_project_id"] != author_project_id:
-                    raise CliError(
-                        "forum event author_project_id does not match containing project log: "
-                        f"{events_path}:{line_no}"
-                    )
-                yield LocatedForumEvent(
-                    source_file=events_path,
-                    line_no=line_no,
-                    event=event,
-                )
-
-
-def load_forum_event(event_id: str) -> LocatedForumEvent:
-    normalized_event_id = validate_uuid_string(event_id, field_name="event id")
-    matched: LocatedForumEvent | None = None
-    for located in iter_all_forum_events():
-        if located.event["event_id"] != normalized_event_id:
-            continue
-        if matched is not None:
-            raise CliError(f"duplicate forum event id found: {normalized_event_id}")
-        matched = located
-    if matched is None:
-        raise CliError(f"forum event not found: {normalized_event_id}")
-    return matched
-
-
-def query_forum_events(
-    *,
-    channel_project_id: str | None = None,
-    author_project_id: str | None = None,
-    thread_root_post_id: str | None = None,
-    limit: int | None = None,
-) -> list[LocatedForumEvent]:
-    normalized_channel_project_id = (
-        validate_uuid_string(channel_project_id, field_name="channel project id")
-        if channel_project_id is not None
-        else None
-    )
-    normalized_author_project_id = (
-        validate_uuid_string(author_project_id, field_name="author project id")
-        if author_project_id is not None
-        else None
-    )
-    normalized_thread_root_post_id = (
-        validate_uuid_string(thread_root_post_id, field_name="thread root post id")
-        if thread_root_post_id is not None
-        else None
-    )
-    if limit is not None and limit < 1:
-        raise CliError("limit must be >= 1")
-
-    results = [
-        located
-        for located in iter_all_forum_events()
-        if (
-            normalized_channel_project_id is None
-            or located.event["channel_project_id"] == normalized_channel_project_id
-        )
-        and (
-            normalized_author_project_id is None
-            or located.event["author_project_id"] == normalized_author_project_id
-        )
-        and (
-            normalized_thread_root_post_id is None
-            or located.event["thread_root_post_id"] == normalized_thread_root_post_id
-        )
-    ]
-    results.sort(key=_forum_event_sort_key)
-    if limit is not None:
-        results = results[-limit:]
-    return results
-
-
-def load_forum_thread(event_id: str) -> tuple[LocatedForumEvent, list[LocatedForumEvent]]:
-    located = load_forum_event(event_id)
-    thread_root_post_id = str(located.event["thread_root_post_id"])
-    return (located, query_forum_events(thread_root_post_id=thread_root_post_id))
-
-
-def forum_history(project_id: str) -> list[LocatedForumEvent]:
-    normalized_project_id = validate_uuid_string(project_id, field_name="project id")
-    return query_forum_events(author_project_id=normalized_project_id)
-
-
-def serialize_located_forum_event(located: LocatedForumEvent) -> dict[str, object]:
-    return {
-        "source_file": str(located.source_file),
-        "line_no": located.line_no,
-        "event": dict(located.event),
-    }
-
-
-def _normalize_project_identity(project_identity: dict[str, object]) -> dict[str, str]:
-    if not isinstance(project_identity, dict):
-        raise CliError("forum project identity must be a JSON object")
-
-    project_id = validate_uuid_string(
-        str(project_identity.get("project_id", "")).strip(),
-        field_name="project id",
-    )
-
-    source_root_value = project_identity.get("source_root")
-    if source_root_value is None:
-        project_root_value = project_identity.get("project_root")
-        if project_root_value is None:
-            raise CliError("forum project identity source_root is required")
-        source_root = str(Path(project_root_value).expanduser().resolve())
-    else:
-        source_root = str(Path(source_root_value).expanduser().resolve())
-
-    display_name = str(project_identity.get("display_name", "")).strip()
-    if not display_name:
-        display_name = Path(source_root).name
-    if not display_name:
-        raise CliError("forum project identity display_name must not be empty")
-
-    return {
-        "project_id": project_id,
-        "display_name": display_name,
-        "source_root": source_root,
-    }
-
-
-def _load_forum_project_manifest(path: Path) -> dict[str, object]:
-    payload = _read_json(path)
-    if payload.get("class") != FORUM_PROJECT_CLASS:
-        raise CliError(f"invalid forum project manifest: {path.name}")
-
-    project_id = validate_uuid_string(
-        str(payload.get("project_id", "")).strip(),
-        field_name="forum project id",
-    )
-    display_name = str(payload.get("display_name", "")).strip()
-    if not display_name:
-        raise CliError(f"forum project manifest display_name is required: {path.name}")
-    source_root = str(payload.get("source_root", "")).strip()
-    if not source_root:
-        raise CliError(f"forum project manifest source_root is required: {path.name}")
-    created_at = _normalize_timestamp(
-        payload.get("created_at"),
-        field_name="forum project manifest created_at",
-        default_now=False,
-    )
-    last_seen_at = _normalize_timestamp(
-        payload.get("last_seen_at"),
-        field_name="forum project manifest last_seen_at",
-        default_now=False,
-    )
-
-    return {
-        "class": FORUM_PROJECT_CLASS,
-        "schema_version": FORUM_SCHEMA_VERSION,
-        "project_id": project_id,
-        "display_name": display_name,
-        "source_root": str(Path(source_root).expanduser().resolve()),
-        "created_at": created_at,
-        "last_seen_at": last_seen_at,
-    }
-
-
-def _normalize_forum_event(
-    event: dict[str, object],
-    *,
-    source_name: str = "forum event",
-) -> dict[str, object]:
-    if not isinstance(event, dict):
-        raise CliError(f"{source_name} must be a JSON object")
-    event_class = str(event.get("class", FORUM_EVENT_CLASS)).strip()
-    if event_class != FORUM_EVENT_CLASS:
-        raise CliError(f"{source_name} field class must be '{FORUM_EVENT_CLASS}'")
-
-    event_id = normalize_or_generate_uuid(event.get("event_id"), field_name="event id")
-    event_type = str(event.get("event_type", "")).strip()
-    if event_type not in VALID_FORUM_EVENT_TYPES:
-        raise CliError(
-            f"{source_name} event_type must be one of: {', '.join(VALID_FORUM_EVENT_TYPES)}"
-        )
-
-    created_at = _normalize_timestamp(
-        event.get("created_at"),
-        field_name="created_at",
-        default_now=source_name == "forum event",
-    )
-    author_project_id = validate_uuid_string(
-        str(event.get("author_project_id", "")).strip(),
-        field_name="author project id",
-    )
-    channel_project_id = validate_uuid_string(
-        str(event.get("channel_project_id", "")).strip(),
-        field_name="channel project id",
-    )
-    thread_root_post_id = validate_uuid_string(
-        str(event.get("thread_root_post_id", "")).strip(),
-        field_name="thread root post id",
-    )
-    parent_post_id = _normalize_optional_uuid(event.get("parent_post_id"), field_name="parent post id")
-    target_post_id = _normalize_optional_uuid(event.get("target_post_id"), field_name="target post id")
-    ref_post_ids = _normalize_uuid_list(event.get("ref_post_ids", []), field_name="ref_post_ids")
-    refs = _normalize_refs(event.get("refs", []))
-    reaction = _normalize_optional_string(event.get("reaction"))
-    body = _normalize_body(event.get("body"))
-
-    normalized = {
-        "class": FORUM_EVENT_CLASS,
-        "schema_version": FORUM_SCHEMA_VERSION,
-        "event_id": event_id,
-        "event_type": event_type,
-        "created_at": created_at,
-        "author_project_id": author_project_id,
-        "channel_project_id": channel_project_id,
-        "thread_root_post_id": thread_root_post_id,
-        "parent_post_id": parent_post_id,
-        "target_post_id": target_post_id,
-        "ref_post_ids": ref_post_ids,
-        "refs": refs,
-        "reaction": reaction,
-        "body": body,
-    }
-    _validate_event_type_fields(normalized, source_name=source_name)
-    return normalized
-
-
-def _validate_event_type_fields(event: dict[str, object], *, source_name: str) -> None:
-    event_type = str(event["event_type"])
-    event_id = str(event["event_id"])
-    author_project_id = str(event["author_project_id"])
-    channel_project_id = str(event["channel_project_id"])
-    thread_root_post_id = str(event["thread_root_post_id"])
-    parent_post_id = event.get("parent_post_id")
-    target_post_id = event.get("target_post_id")
-    reaction = event.get("reaction")
-    body = event.get("body")
-
-    if event_type == "post":
-        if author_project_id != channel_project_id:
-            raise CliError(
-                f"{source_name} top-level posts must use the author's own main channel"
-            )
-        if thread_root_post_id != event_id:
-            raise CliError(f"{source_name} post thread_root_post_id must equal event_id")
-        if parent_post_id is not None:
-            raise CliError(f"{source_name} post parent_post_id must be null")
-        if target_post_id is not None:
-            raise CliError(f"{source_name} post target_post_id must be null")
-        if reaction is not None:
-            raise CliError(f"{source_name} post reaction must be null")
-        if body is None:
-            raise CliError(f"{source_name} post body is required")
-        return
-
-    if event_type == "reply":
-        if parent_post_id is None:
-            raise CliError(f"{source_name} reply parent_post_id is required")
-        if target_post_id is not None:
-            raise CliError(f"{source_name} reply target_post_id must be null")
-        if reaction is not None:
-            raise CliError(f"{source_name} reply reaction must be null")
-        if body is None:
-            raise CliError(f"{source_name} reply body is required")
-        return
-
-    if target_post_id is None:
-        raise CliError(f"{source_name} reaction target_post_id is required")
-    if parent_post_id is not None:
-        raise CliError(f"{source_name} reaction parent_post_id must be null")
-    if reaction is None:
-        raise CliError(f"{source_name} reaction name is required")
-    if reaction not in VALID_FORUM_REACTIONS:
-        raise CliError(
-            f"{source_name} reaction must be one of: {', '.join(VALID_FORUM_REACTIONS)}"
-        )
-    if body is not None:
-        raise CliError(f"{source_name} reaction body must be empty")
-
-
-def _normalize_timestamp(value: object, *, field_name: str, default_now: bool) -> str:
-    if value is None:
-        if default_now:
-            return utc_now_iso()
-        raise CliError(f"{field_name} is required")
-    normalized = str(value).strip()
-    if not normalized:
-        raise CliError(f"{field_name} is required")
-    try:
-        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise CliError(f"invalid {field_name}: {value}") from exc
-    if parsed.tzinfo is None:
-        raise CliError(f"invalid {field_name}: {value}")
-    return iso_z(parsed)
-
-
-def _normalize_optional_uuid(value: object, *, field_name: str) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip()
-    if not normalized:
-        return None
-    return validate_uuid_string(normalized, field_name=field_name)
-
-
-def _normalize_uuid_list(value: object, *, field_name: str) -> list[str]:
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise CliError(f"{field_name} must be a JSON array")
-
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for index, item in enumerate(value, start=1):
-        item_uuid = validate_uuid_string(item, field_name=f"{field_name}[{index}]")
-        if item_uuid in seen:
-            continue
-        normalized.append(item_uuid)
-        seen.add(item_uuid)
-    return normalized
-
-
-def _normalize_refs(value: object) -> list[object]:
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise CliError("refs must be a JSON array")
-    return list(value)
-
-
-def _normalize_optional_string(value: object) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip()
-    if not normalized:
-        return None
-    return normalized
-
-
-def _normalize_body(value: object) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip()
-    if not normalized:
-        return None
-    return normalized
-
-
-def _append_jsonl_line(path: Path, payload: dict[str, object]) -> None:
-    with path.open("a", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
-            handle.write(json.dumps(payload) + "\n")
-            handle.flush()
-        finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
-
-def _read_json(path: Path) -> dict[str, object]:
-    if not path.exists():
-        raise CliError(f"forum metadata does not exist: {path}")
+def read_cursor() -> dict[str, str]:
+    path = cursor_path()
     if not path.is_file():
-        raise CliError(f"forum metadata path is not a file: {path}")
+        return {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise CliError(f"invalid JSON in {path.name}: {exc}") from exc
+    except (OSError, json.JSONDecodeError):
+        return {}
     if not isinstance(payload, dict):
-        raise CliError(f"{path.name} must be a JSON object")
-    return payload
+        return {}
+    return {
+        key: value
+        for key in ("last_read", "last_banner")
+        if isinstance((value := payload.get(key)), str)
+    }
 
 
-def _write_json(path: Path, payload: dict[str, object]) -> None:
+def write_cursor(cursor: dict[str, str]) -> None:
+    path = cursor_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(cursor, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _parse_json_object_line(raw_line: str, *, path: Path, line_no: int) -> dict[str, object]:
+def mark_read(posts: list[Post]) -> None:
+    if not posts:
+        return
+    cursor = read_cursor()
+    cursor["last_read"] = max(post.timestamp for post in posts)
+    write_cursor(cursor)
+
+
+def forum_banner_line() -> str | None:
     try:
-        payload = json.loads(raw_line)
-    except json.JSONDecodeError as exc:
-        raise CliError(f"invalid JSON object in {path}:{line_no}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise CliError(f"{path}:{line_no} must be a JSON object")
-    return payload
+        cursor = read_cursor()
+        unread = ForumDepot().posts_since(cursor.get("last_read"))
+        if not unread:
+            return None
+        now = _utc_now()
+        last_banner = _parse_timestamp(cursor.get("last_banner")) if cursor.get("last_banner") else None
+        if last_banner is not None and now - last_banner < timedelta(hours=24):
+            return None
+        cursor["last_banner"] = _format_timestamp(now)
+        write_cursor(cursor)
+        count = len(unread)
+        return f"agentos forum: {count} unread post(s) — run 'agentos forum check'"
+    except Exception:
+        return None
 
 
-def _forum_event_sort_key(located: LocatedForumEvent) -> tuple[str, str, str]:
-    event = located.event
-    return (
-        str(event["created_at"]),
-        str(event["author_project_id"]),
-        str(event["event_id"]),
-    )
+def current_post_source(start_path: Path | str = ".", *, override: str | None = None) -> str:
+    if override:
+        return override
+    try:
+        project_root = require_agentos_project_root(start_path)
+        marker = load_project_marker(project_marker_path(project_root))
+        name = str(marker.get("name") or "").strip()
+        return name or str(project_root)
+    except Exception:
+        return str(Path(start_path).resolve())
+
+
+def _format_section(now: datetime, *, title: str, body: str, source: str) -> str:
+    lines = [f"## {now:%H:%M:%S}Z — {title}"]
+    if body:
+        lines.extend(["", body])
+    lines.extend(["", f"- from: {source}", ""])
+    return "\n".join(lines) + "\n"
+
+
+def _append_text(path: Path, text: str) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+    fd = os.open(path, flags, 0o644)
+    try:
+        handle = os.fdopen(fd, "a", encoding="utf-8")
+    except Exception:
+        os.close(fd)
+        raise
+    with handle:
+        if path.stat().st_size > 0:
+            handle.write("\n")
+        handle.write(text)
+
+
+def _read_posts_from_files(paths: list[Path]) -> list[Post]:
+    posts: list[Post] = []
+    for path in paths:
+        if not path.is_file() or _safe_date_from_path(path) is None:
+            continue
+        try:
+            posts.extend(_parse_posts_file(path, path.read_text(encoding="utf-8")))
+        except OSError:
+            continue
+    return sorted(posts, key=lambda post: post.timestamp)
+
+
+def _parse_posts_file(path: Path, text: str) -> list[Post]:
+    file_date = _safe_date_from_path(path)
+    if file_date is None:
+        return []
+    sections: list[list[str]] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if current:
+                sections.append(current)
+            current = [line]
+        elif current:
+            current.append(line)
+    if current:
+        sections.append(current)
+
+    posts: list[Post] = []
+    for section in sections:
+        match = POST_HEADING_RE.match(section[0])
+        if match is None:
+            continue
+        source = ""
+        body_lines = section[1:]
+        while body_lines and not body_lines[-1].strip():
+            body_lines.pop()
+        if body_lines and body_lines[-1].startswith("- from: "):
+            source = body_lines[-1][8:].strip()
+            body_lines = body_lines[:-1]
+        while body_lines and not body_lines[0].strip():
+            body_lines.pop(0)
+        while body_lines and not body_lines[-1].strip():
+            body_lines.pop()
+        try:
+            timestamp = f"{file_date.isoformat()}T{match.group('time')}Z"
+            _parse_timestamp(timestamp)
+        except ValueError:
+            continue
+        posts.append(
+            Post(
+                path=path,
+                timestamp=timestamp,
+                title=match.group("title").strip(),
+                body="\n".join(body_lines),
+                source=source,
+            )
+        )
+    return posts
+
+
+def _clean_title(title: str) -> str:
+    clean = " ".join(str(title).split())
+    if not clean:
+        raise ValueError("forum post title must not be empty")
+    return clean
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def _format_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_timestamp(value: str | None) -> datetime:
+    if not value:
+        raise ValueError("timestamp is required")
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+
+
+def _parse_date(value: str) -> datetime.date:
+    return datetime.strptime(value, "%Y-%m-%d").date()
+
+
+def _safe_date_from_path(path: Path):
+    try:
+        return _parse_date(path.stem)
+    except ValueError:
+        return None
+
+
+__all__ = [
+    "DEFAULT_FORUM_ROOT",
+    "FORUM_CURSOR_ENV",
+    "FORUM_ROOT_ENV",
+    "ForumDepot",
+    "Post",
+    "PostRef",
+    "current_post_source",
+    "cursor_path",
+    "forum_banner_line",
+    "forum_root",
+    "mark_read",
+    "read_cursor",
+    "write_cursor",
+]
