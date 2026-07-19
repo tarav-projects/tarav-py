@@ -58,7 +58,7 @@
 
 ## Logging System
 
-Four separate JSONL mechanisms exist; they are not yet unified.
+Six separate JSONL/account record mechanisms exist; they are not yet unified.
 
 1. **Activity log (command logger)** — `src/agentos/_core/project_command_log.py`.
    - File: `~/.agentos/activity/YYYYMM.jsonl` (monthly roll), schema v2:
@@ -76,12 +76,31 @@ Four separate JSONL mechanisms exist; they are not yet unified.
      not here.)
    - Reader: none (write-only; no CLI surfaces it).
 
-3. **Accounts registry** — `src/agentos/agent/auth_registry.py` (state, not an event log).
+3. **Usage registry** — `src/agentos/agent/usage_registry.py`.
+   - File: `~/.agentos/agent/usage-registry/YYYYMM-usage.jsonl` (monthly roll),
+     schema v1:
+     `{schema_version, class, recorded_at, provider, account, home, source, payload}`.
+   - Writers: provider account-status usage fetches and future normalized hook reports.
+   - Readers: account-status registry fallback and the monitor limits-tracking workflow.
+   - Purpose: normalized provider usage facts only. Do not persist raw provider hook
+     contexts here.
+
+4. **Usage-report hook sample log** — `src/agentos/agent/usage_report.py`.
+   - File: `~/.agentos/agent/usage-report-hook-samples/YYYYMMDD.jsonl` (daily roll),
+     schema v1:
+     `{schema_version, class, recorded_at, provider, account, home, status, raw_context}`.
+   - Writer: `append_hook_context_sample` for explicit development sampling of provider
+     hook context objects.
+   - Retention: bounded per provider/account/home sample set; default last 50 samples.
+   - Privacy: file mode `0600`; samples may contain sensitive prompt/path/tool context.
+     This is an auxiliary development log, not the monitor-consumed usage registry.
+
+5. **Accounts registry** — `src/agentos/agent/auth_registry.py` (state, not an event log).
    - `active.json` (pointer map), `captures.jsonl` (append-only, joins `ref_id`→
      `artifact_id` for reconstruction), `artifacts/<sha>`. No rotation/activation
      event log here.
 
-4. **Accounts lifecycle log** — `src/agentos/agent/accounts_log.py`.
+6. **Accounts lifecycle log** — `src/agentos/agent/accounts_log.py`.
    - File: `~/.agentos/agent/accounts-log/YYYYMMDD.jsonl` (daily roll), schema v1:
      `{schema_version, class, recorded_at, event, provider, account, method, home, payload}`.
    - Writers: emitted **inside the lifecycle primitives** — `capture` (capture.py, new
@@ -99,6 +118,6 @@ Four separate JSONL mechanisms exist; they are not yet unified.
 ### Known gaps (integration targets)
 - The accounts log has no **user-facing reader CLI** yet — `agentos accounts log`
   (tail/query) is the next follow-up (a programmatic reader exists).
-- Two parallel JSONL stacks (activity + monitor) with divergent schemas/roll cadence/dirs;
-  only the activity log has a reader. Folding all stacks into one shared event-log primitive
-  is the broader deferred unification.
+- Multiple JSONL stacks have divergent schemas/roll cadence/dirs; only the activity log
+  has a user-facing reader. Folding shared event-log needs into one primitive is the
+  broader deferred unification.

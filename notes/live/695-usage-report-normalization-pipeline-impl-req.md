@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Scope:** add `agentos agent accounts usage-report`, a hook-facing command that accepts a full provider hook context on stdin, can sample bounded raw hook contexts into a private development log, normalizes any usage-limit facts Agentos understands, and appends a safe usage registry record for the account monitor to read.
-- **Status:** designed.
+- **Status:** partially implemented; Slices 1-2 complete.
 - **Source context:** current chat design: provider hooks should stay dumb and pipe the full hook context object; Agentos owns extraction, account resolution, validation, throttling, registry append, and initial evidence capture. Index grounding: `Normalization.Pipeline::Account.Usage.Model` already models native usage artifacts -> `Account.Usage.Status`.
 - **Current state:** `src/agentos/agent/usage_registry.py` already appends and reads provider/account/home/source keyed JSONL records. Provider `account_status` paths opportunistically write live usage records, and the monitor limits workflow primes/refreshes from the registry. There is no direct hook-facing writer CLI, no raw hook-context sample log, and monitor source selection currently assumes one exact source per provider.
 - **Out of scope:** installing or mutating provider hook configuration in `~/.codex`, `~/.claude`, or any home; persisting raw hook contexts by default; introducing a general session-token telemetry store; changing auth capture/materialization behavior.
@@ -64,6 +64,7 @@
 - RED: tests prove samples are written outside the usage registry, file mode is private, retention trims to the configured maximum, and the full raw context is present only in the sample log.
 - GREEN: implement with no provider command/network calls.
 - Check: `uv run pytest tests/test_agent_usage_report.py`
+- Status: complete.
 
 ### Slice 2 - accounts CLI sampling command
 
@@ -75,6 +76,7 @@
 - RED: command tests cover sample append, sample retention, invalid JSON, account validation, and quiet no-op behavior.
 - GREEN: implement without changing existing account lifecycle commands.
 - Check: `uv run pytest tests/test_agent_accounts_usage_report_command.py`
+- Status: complete.
 
 ### Slice 3 - provider hook evidence collection
 
@@ -132,3 +134,5 @@
 
 - 2026-07-18: Impl.Req created in `Alignment.Mode::Interactive` from the current design discussion. No Anchory anchors were minted in this pass; no fake citations were added.
 - 2026-07-18: Updated design after user feedback: start with bounded raw hook-context sampling because provider hook object shapes are unknown; use collected samples as fixture evidence for later normalizers.
+- 2026-07-18: Execution checkpoint commit `973f526` created after explicit user authorization to "commit ALL". Slice 1 implemented: `src/agentos/agent/usage_report.py` now writes private dated hook-context sample logs with per provider/account/home retention; `tests/test_agent_usage_report.py` covers path, mode `0600`, retention, registry separation, and unserializable payload rejection. `AGENTS.md` updated to document the usage registry and hook sample log.
+- 2026-07-18: Slice 2 implemented: `agentos agent accounts usage-report` now accepts hook JSON from stdin and can write raw samples through `--sample-raw-context`; normal usage extraction still returns `no_usage` until the normalizer slice. Installed `agentos` refreshed via `agentos-cli` and smoke-tested. Claude `Stop` hook sample script wrote a sample record to `~/.agentos/agent/usage-report-hook-samples/20260718.jsonl`.
