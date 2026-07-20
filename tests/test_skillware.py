@@ -18,6 +18,7 @@ from agentos.skillware.commands import (
     _cmd_skillware_build,
     _cmd_skillware_check,
     _cmd_skillware_status,
+    register_skillware_commands,
 )
 from agentos.skillware.model import parse_skw_source
 
@@ -665,7 +666,192 @@ def test_unresolved_recipe_from_is_caught_as_unresolvable(tmp_path: Path) -> Non
     assert not any(p.kind == "dangling-dependency" for p in pois)
 
 
+def _write_project(root: Path) -> Path:
+    """A project with the marker, a shared depot, a project config pointing at
+    it, and one package (pkgA) that declares a dependency on a shared block."""
+    (root / ".agentos").mkdir(parents=True)
+    (root / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    depot = root / "shared-depot"
+    (depot / "design").mkdir(parents=True)
+    (depot / "000-INDEX.md").write_text(
+        "- `design/100-design.md` — Shared.Block\n", encoding="utf-8"
+    )
+    (depot / "design" / "100-design.md").write_text(
+        "## Shared.Block\n\n- shared across packages\n", encoding="utf-8"
+    )
+    (root / ".skw").mkdir()
+    (root / ".skw" / "skw.json").write_text(
+        json.dumps({"depots": ["shared-depot"]}), encoding="utf-8"
+    )
+    pkg_a_src = root / "packages" / "pkgA" / ".skw" / "src"
+    pkg_a_src.mkdir(parents=True)
+    (pkg_a_src / "mod.skw.md").write_text(
+        "# mod\n\n> $kw: depends --from Shared.Block\n\nUses `Shared.Block`.\n",
+        encoding="utf-8",
+    )
+    build_skill(root / "packages" / "pkgA")  # a real package is built
+    return root
+
+
+def test_project_check_catches_cross_package_dangling(tmp_path: Path) -> None:
+    """The project-scope payoff: a rename in the shared depot breaks pkgA's
+    declared dependency, caught by `check_project` without targeting pkgA."""
+    from agentos.skillware.build import check_project
+
+    proj = _write_project(tmp_path)
+    depot_chapter = proj / "shared-depot" / "design" / "100-design.md"
+
+    # GREEN: the shared block resolves via the cascaded project depot.
+    report = check_project(proj)
+    assert report.poi_count == 0
+    assert any("pkgA" in str(pkg) for pkg, _ in report.packages)
+
+    # RED: rename the shared block without an alias — pkgA's --from dangles.
+    depot_chapter.write_text(
+        depot_chapter.read_text(encoding="utf-8").replace("## Shared.Block", "## Renamed.Block"),
+        encoding="utf-8",
+    )
+    report = check_project(proj)
+    dangling = [
+        (pkg, poi)
+        for pkg, pr in report.packages
+        for poi in pr.pois
+        if poi.kind == "dangling-dependency"
+    ]
+    assert len(dangling) == 1
+    pkg, poi = dangling[0]
+    assert "pkgA" in str(pkg) and poi.key == "Shared.Block"
+
+
+def test_project_check_honors_exclude(tmp_path: Path) -> None:
+    from agentos.skillware.build import check_project, discover_packages
+
+    proj = _write_project(tmp_path)
+    # a second package
+    pkg_b_src = proj / "packages" / "pkgB" / ".skw" / "src"
+    pkg_b_src.mkdir(parents=True)
+    (pkg_b_src / "mod.skw.md").write_text("# b\n\nplain.\n", encoding="utf-8")
+
+    assert any("pkgB" in str(p) for p in discover_packages(proj))
+
+    (proj / ".skw" / "skw.json").write_text(
+        json.dumps({"depots": ["shared-depot"], "exclude": ["packages/pkgB"]}),
+        encoding="utf-8",
+    )
+    assert not any("pkgB" in str(p) for p in discover_packages(proj))
+    report = check_project(proj)
+    assert not any("pkgB" in str(pkg) for pkg, _ in report.packages)
+
+
 # --- S4: CLI -------------------------------------------------------------------
+
+def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(tmp_path: Path) -> None:
+    from agentos.skillware.build import SkillwareError, parse_skw_config
+
+    good = tmp_path / "skw.json"
+    good.write_text(
+        json.dumps({"depots": ["../pkg"], "projects": ["../sib"], "mystery": 1}),
+        encoding="utf-8",
+    )
+    config = parse_skw_config(good)
+    assert config.depots == ("../pkg",)
+    assert config.projects == ("../sib",)
+    assert any("mystery" in w for w in config.warnings)
+
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"depots": "not-a-list"}), encoding="utf-8")
+    with pytest.raises(SkillwareError):
+        parse_skw_config(bad)
+
+
+def test_find_project_root_walks_to_marker(tmp_path: Path) -> None:
+    from agentos.skillware.build import find_project_root
+
+    (tmp_path / ".agentos").mkdir()
+    (tmp_path / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    deep = tmp_path / "skills" / "pkg" / ".skw"
+    deep.mkdir(parents=True)
+    assert find_project_root(deep) == tmp_path.resolve()
+    assert find_project_root(tmp_path / "nowhere") == tmp_path.resolve()
+
+
+def test_cascade_extends_package_depots_across_repos(tmp_path: Path) -> None:
+    """A package's own depots are extended by project-scope depots, including
+    a sibling project's depots reached via `projects`."""
+    from agentos.skillware.build import load_skillware, resolve_project_depots
+
+    # sibling repo with its own project-level depot
+    sib = tmp_path / "sib"
+    (sib / ".skw").mkdir(parents=True)
+    (sib / "depot" / "design").mkdir(parents=True)
+    (sib / "depot" / "000-INDEX.md").write_text(
+        "- `design/100-design.md` — Sib.Concept\n", encoding="utf-8"
+    )
+    (sib / "depot" / "design" / "100-design.md").write_text(
+        "## Sib.Concept\n\n- from the sibling repo\n", encoding="utf-8"
+    )
+    (sib / ".skw" / "skw.json").write_text(json.dumps({"depots": ["depot"]}), encoding="utf-8")
+
+    # project with a package and a project-scope config pointing at the sibling
+    proj = tmp_path / "proj"
+    skill = _write_skill(proj)  # legacy .skillware/ package with its own ../depot
+    (proj / ".agentos").mkdir(parents=True)
+    (proj / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    (proj / ".skw").mkdir()
+    (proj / ".skw" / "skw.json").write_text(
+        json.dumps({"projects": ["../sib"]}), encoding="utf-8"
+    )
+
+    project_depots = tuple(resolve_project_depots(proj))
+    assert any(d.name == "depot" and "sib" in str(d) for d in project_depots)
+
+    sw = load_skillware(skill, extra_depots=project_depots)
+    # the package keeps its own depot AND gains the sibling's
+    assert any("sib" in str(d) for d in sw.depots)
+    assert any(str(d).endswith("proj/depot") for d in sw.depots)
+
+
+def test_build_dir_prefers_skw_with_skillware_fallback(tmp_path: Path) -> None:
+    """`.skw/` is the current build home; `.skillware/` still loads during the
+    deprecation window; when both exist, `.skw/` wins."""
+    skill = _write_skill(tmp_path)  # writes a legacy .skillware/ package
+
+    # Fallback: a legacy .skillware/ package still loads.
+    legacy = load_skillware(skill)
+    assert legacy.build_root.name == ".skillware"
+
+    # Current: rename to .skw/ and it loads as the preferred home.
+    (skill / ".skillware").rename(skill / ".skw")
+    current = load_skillware(skill)
+    assert current.build_root.name == ".skw"
+
+    # Both present: .skw/ takes precedence.
+    (skill / ".skillware").mkdir()
+    (skill / ".skillware" / "src").mkdir()
+    assert load_skillware(skill).build_root.name == ".skw"
+
+
+def test_skw_verb_with_skillware_alias() -> None:
+    """The verb is `agentos skw`; `skillware` stays as a deprecation alias."""
+    parser = argparse.ArgumentParser(prog="agentos")
+    subparsers = parser.add_subparsers(dest="command")
+    register_skillware_commands(subparsers)
+
+    for verb in ("skw", "skillware"):
+        args = parser.parse_args([verb, "check", "--skill", "some/path"])
+        assert args.handler is _cmd_skillware_check
+        assert args.skill == "some/path"
+
+
+def test_check_payload_uses_skw_command_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    skill = _write_skill(tmp_path)
+    _cmd_skillware_build(argparse.Namespace(skill=str(skill), json=True))
+    capsys.readouterr()
+    _cmd_skillware_check(argparse.Namespace(skill=str(skill), json=True))
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["command"] == "agentos skw check"
+
+
 
 def test_cli_build_check_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     skill = _write_skill(tmp_path)
@@ -704,7 +890,7 @@ def test_build_stamps_agents_md(tmp_path: Path) -> None:
     agents = skill / ".skillware" / "AGENTS.md"
     assert agents.is_file()
     assert agents.read_text(encoding="utf-8") == AGENTS_MD_TEXT
-    assert "agentos skillware build" in AGENTS_MD_TEXT
+    assert "agentos skw build" in AGENTS_MD_TEXT
     assert "agentos-skillware" in AGENTS_MD_TEXT
 
 

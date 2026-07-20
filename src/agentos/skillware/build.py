@@ -23,7 +23,31 @@ from agentos.index.model import BlockHeading, KernelLine, MetaLine, parse_depot
 from agentos.skillware.model import SkwFinding, SkwSource, parse_skw_source, recipe_key
 
 SRC_SUFFIX = ".skw.md"
-SETTINGS_NAME = "skillware.json"
+BUILD_DIR = ".skw"
+LEGACY_BUILD_DIR = ".skillware"
+SETTINGS_NAME = "skw.json"
+LEGACY_SETTINGS_NAME = "skillware.json"
+
+
+def resolve_build_root(skill_root: Path) -> Path:
+    """The `.skw/` build home for a package, preferring the current `.skw/`
+    layout and falling back to the legacy `.skillware/` during the rename
+    deprecation window. Defaults to `.skw/` when neither exists yet."""
+    current = skill_root / BUILD_DIR
+    if (current / "src").is_dir():
+        return current
+    legacy = skill_root / LEGACY_BUILD_DIR
+    if (legacy / "src").is_dir():
+        return legacy
+    return current
+
+
+def _settings_path(build_root: Path) -> Path | None:
+    for name in (SETTINGS_NAME, LEGACY_SETTINGS_NAME):
+        candidate = build_root / name
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 class SkillwareError(Exception):
@@ -33,6 +57,7 @@ class SkillwareError(Exception):
 @dataclass
 class Skillware:
     skill_root: Path
+    build_root: Path
     src_root: Path
     depots: tuple[Path, ...]
     _depot_cache: dict = field(default_factory=dict, repr=False)
@@ -65,21 +90,106 @@ class _DepotNameEntry:
     body: tuple[str, ...]
 
 
-def load_skillware(skill_root: Path) -> Skillware:
-    skill_root = Path(skill_root)
-    src_root = skill_root / ".skillware" / "src"
-    if not src_root.is_dir():
-        raise SkillwareError(f"not a skillware skill (no .skillware/src): {skill_root}")
+PROJECT_MARKER = Path(".agentos") / "project.json"
+_SKW_CONFIG_KEYS = ("depots", "surfaces", "exclude", "projects")
+
+
+@dataclass(frozen=True)
+class SkwConfig:
+    """A `skw.json` — the same schema at project and package scope.
+
+    All keys optional: `depots` (resolution roots), `surfaces` (managed set;
+    empty → discover), `exclude` (trim), `projects` (sibling project roots
+    whose project-level depots extend cross-repo resolution)."""
+
+    depots: tuple[str, ...] = ()
+    surfaces: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
+    projects: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+
+def parse_skw_config(config_path: Path) -> SkwConfig:
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise SkillwareError(f"skw config is not a JSON object: {config_path}")
+    warnings = tuple(
+        f"unknown skw.json key `{key}` in {config_path}" for key in raw if key not in _SKW_CONFIG_KEYS
+    )
+
+    def _list(key: str) -> tuple[str, ...]:
+        value = raw.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+            raise SkillwareError(f"skw.json `{key}` must be a list of strings: {config_path}")
+        return tuple(value)
+
+    return SkwConfig(
+        depots=_list("depots"),
+        surfaces=_list("surfaces"),
+        exclude=_list("exclude"),
+        projects=_list("projects"),
+        warnings=warnings,
+    )
+
+
+def find_project_root(start: Path) -> Path | None:
+    """Walk up from `start` to the nearest `.agentos/project.json` marker."""
+    start = Path(start).resolve()
+    for candidate in (start, *start.parents):
+        if (candidate / PROJECT_MARKER).is_file():
+            return candidate
+    return None
+
+
+def _config_path(root: Path) -> Path | None:
+    build_root = resolve_build_root(root)
+    return _settings_path(build_root)
+
+
+def resolve_project_depots(project_root: Path) -> list[Path]:
+    """Project-scope default depots: the project config's own `depots` plus,
+    one level deep, each sibling `projects` root's project-level `depots`."""
     depots: list[Path] = []
-    settings_path = skill_root / ".skillware" / SETTINGS_NAME
-    if settings_path.is_file():
-        settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        for raw_depot in settings.get("depots", []):
+    config_path = _config_path(project_root)
+    if config_path is None:
+        return depots
+    config = parse_skw_config(config_path)
+    for raw in config.depots:
+        depot = (project_root / raw).resolve()
+        if depot.is_dir():
+            depots.append(depot)
+    for raw_project in config.projects:
+        sibling = (project_root / raw_project).resolve()
+        sibling_config = _config_path(sibling)
+        if sibling_config is None:
+            continue
+        for raw in parse_skw_config(sibling_config).depots:
+            depot = (sibling / raw).resolve()
+            if depot.is_dir():
+                depots.append(depot)
+    return depots
+
+
+def load_skillware(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> Skillware:
+    skill_root = Path(skill_root)
+    build_root = resolve_build_root(skill_root)
+    src_root = build_root / "src"
+    if not src_root.is_dir():
+        raise SkillwareError(f"not a skw package (no {BUILD_DIR}/src): {skill_root}")
+    depots: list[Path] = []
+    settings_path = _settings_path(build_root)
+    if settings_path is not None:
+        for raw_depot in parse_skw_config(settings_path).depots:
             depot = (skill_root / raw_depot).resolve()
             if not depot.is_dir():
                 raise SkillwareError(f"configured depot is not a directory: {raw_depot}")
             depots.append(depot)
-    return Skillware(skill_root=skill_root, src_root=src_root, depots=tuple(depots))
+    for depot in extra_depots:
+        if depot not in depots:
+            depots.append(depot)
+    return Skillware(
+        skill_root=skill_root, build_root=build_root, src_root=src_root, depots=tuple(depots)
+    )
 
 
 def content_hash(lines: list[str] | tuple[str, ...]) -> str:
@@ -523,19 +633,19 @@ def _append_poi_blessing(skillware: Skillware, poi: Poi) -> None:
 AGENTS_NAME = "AGENTS.md"
 
 AGENTS_MD_TEXT = """\
-# .skillware — Skillware Build Surface
+# .skw — skw Build Surface
 
-- this folder is the Skillware build surface of the skill above it
-- the skill's Skillware-managed files are compiled from `src/**/*.skw.md` — NEVER edit those targets by hand
-- to change managed content: edit the src file, then run `agentos skillware build --skill <skill-root>`
-- to inspect drift (read-only): `agentos skillware check --skill <skill-root>`
+- this folder is the skw build surface of the package above it
+- the package's skw-managed files are compiled from `src/**/*.skw.md` — NEVER edit those targets by hand
+- to change managed content: edit the src file, then run `agentos skw build --skill <package-root>`
+- to inspect drift (read-only): `agentos skw check --skill <package-root>`
 - `lock.json` and this `AGENTS.md` are engine-owned and overwritten on every build
-- for the full Skillware discipline, load the `agentos-skillware` skill
+- for the full skw discipline, load the `agentos-skillware` skill
 """
 
 
 def _lock_path(skillware: Skillware) -> Path:
-    return skillware.skill_root / ".skillware" / LOCK_NAME
+    return skillware.build_root / LOCK_NAME
 
 
 def _read_lock(skillware: Skillware) -> dict:
@@ -635,9 +745,7 @@ def build_skill(skill_root: Path) -> BuildReport:
         )
 
     _lock_path(skillware).write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
-    (skillware.skill_root / ".skillware" / AGENTS_NAME).write_text(
-        AGENTS_MD_TEXT, encoding="utf-8"
-    )
+    (skillware.build_root / AGENTS_NAME).write_text(AGENTS_MD_TEXT, encoding="utf-8")
     return BuildReport(entries=tuple(entries), findings=tuple(findings))
 
 
@@ -728,14 +836,14 @@ def _dependency_sync_pois(
     return pois
 
 
-def check_skill(skill_root: Path) -> CheckReport:
+def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckReport:
     """The `Poi.Linter` pass: lint parse results, emit advisory POIs.
 
     Parse errors gate a file — below the `Parse.Floor` its semantic checks
     do not run; sibling files still check normally. Every POI carries a
     stable identity hash bound to the current situation.
     """
-    skillware = load_skillware(skill_root)
+    skillware = load_skillware(skill_root, extra_depots=extra_depots)
     lock = _read_lock(skillware)
     entries: list[CheckEntry] = []
     pois: list[Poi] = []
@@ -856,6 +964,56 @@ def check_skill(skill_root: Path) -> CheckReport:
             )
 
     return CheckReport(entries=tuple(entries), pois=tuple(_suppress_blessed(lock, pois)))
+
+
+@dataclass(frozen=True)
+class ProjectCheckReport:
+    project_root: Path
+    packages: tuple[tuple[Path, CheckReport], ...]
+
+    @property
+    def poi_count(self) -> int:
+        return sum(len(report.pois) for _, report in self.packages)
+
+
+def discover_packages(project_root: Path) -> list[Path]:
+    """Every skw package under the project: a directory holding a `.skw/src`
+    (or legacy `.skillware/src`). Honors the project config's `surfaces`
+    (explicit set) and `exclude` (trim). A config-only project root — a
+    `.skw/` with no `src/` — is not itself a package."""
+    project_root = Path(project_root).resolve()
+    config_path = _config_path(project_root)
+    config = parse_skw_config(config_path) if config_path is not None else SkwConfig()
+    excluded = {(project_root / raw).resolve() for raw in config.exclude}
+
+    roots: dict[Path, None] = {}
+    if config.surfaces:
+        candidates = [(project_root / raw).resolve() for raw in config.surfaces]
+    else:
+        candidates = []
+        for build_name in (BUILD_DIR, LEGACY_BUILD_DIR):
+            for build_dir in project_root.rglob(build_name):
+                if not (build_dir / "src").is_dir():
+                    continue
+                if {".git", "node_modules"} & set(build_dir.parts):
+                    continue
+                candidates.append(build_dir.parent.resolve())
+    for pkg in candidates:
+        if pkg in excluded:
+            continue
+        roots[pkg] = None
+    return sorted(roots)
+
+
+def check_project(project_root: Path) -> ProjectCheckReport:
+    """Project-scope `Poi.Linter`: check every discovered package with the
+    project-scope depots cascaded in, so cross-package name bindings resolve."""
+    project_root = Path(project_root).resolve()
+    extra = tuple(resolve_project_depots(project_root))
+    packages = tuple(
+        (pkg, check_skill(pkg, extra_depots=extra)) for pkg in discover_packages(project_root)
+    )
+    return ProjectCheckReport(project_root=project_root, packages=packages)
 
 
 def bless_skill(skill_root: Path, poi_hash: str) -> BlessRecord:

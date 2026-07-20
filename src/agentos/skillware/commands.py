@@ -10,8 +10,10 @@ from agentos.skillware.build import (
     bless_pois_by_kind,
     bless_skill,
     build_skill,
+    check_project,
     check_skill,
     expand_file,
+    find_project_root,
     load_skillware,
 )
 from agentos.skillware.model import parse_skw_source
@@ -27,10 +29,10 @@ POI_LEGEND = {
         "a --from target does not resolve at its address",
         "fix the address or restore the target; never blessable",
     ),
-    "never-built": ("src exists but no lock entry", "run: agentos skillware build"),
+    "never-built": ("src exists but no lock entry", "run: agentos skw build"),
     "stale-build": (
         "the on-disk target matches the lock but a recompile differs",
-        "run: agentos skillware build",
+        "run: agentos skw build",
     ),
     "hand-edited": (
         "the compiled target was edited by hand",
@@ -38,15 +40,15 @@ POI_LEGEND = {
     ),
     "copy-drift": (
         "a copy body no longer equals its target's expansion",
-        "mechanical: agentos skillware build repairs it",
+        "mechanical: agentos skw build repairs it",
     ),
     "derived-stale": (
         "a dependency changed since the derived body was written",
-        "re-derive the body in src, or accept explicitly: agentos skillware bless --poi <hash>",
+        "re-derive the body in src, or accept explicitly: agentos skw bless --poi <hash>",
     ),
     "undeclared-dependency": (
         "compiled text mentions a resolving Dotted.Name without declaring the dependency",
-        "declare it with $kw: depends --from <name>, or baseline current findings: agentos skillware bless --kind undeclared-dependency --all",
+        "declare it with $kw: depends --from <name>, or baseline current findings: agentos skw bless --kind undeclared-dependency --all",
     ),
     "unhonored-dependency": (
         "a declared dependency is not mentioned in the compiled text",
@@ -73,7 +75,7 @@ def _cmd_skillware_build(args: argparse.Namespace) -> int:
     except SkillwareError as exc:
         raise CliError(str(exc)) from exc
     payload = {
-        "command": "agentos skillware build",
+        "command": "agentos skw build",
         "skill": str(args.skill),
         "entries": [
             {
@@ -105,14 +107,59 @@ def _cmd_skillware_build(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        raise CliError(
+            "no .agentos/project.json found from the current directory; "
+            "pass --skill to check a single package"
+        )
+    try:
+        report = check_project(project_root)
+    except SkillwareError as exc:
+        raise CliError(str(exc)) from exc
+    payload = {
+        "command": "agentos skw check",
+        "project_root": str(report.project_root),
+        "packages": [
+            {
+                "package": str(pkg.relative_to(report.project_root))
+                if pkg != report.project_root
+                else ".",
+                "pois": [
+                    {"kind": poi.kind, "target": str(poi.target), "key": poi.key, "hash": poi.poi_hash}
+                    for poi in pr.pois
+                ],
+            }
+            for pkg, pr in report.packages
+        ],
+        "summary": {"packages": len(report.packages), "pois": report.poi_count},
+    }
+    exit_code = 1 if report.poi_count else 0
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return exit_code
+    print(f"skw check (project scope): {report.project_root}")
+    for pkg, pr in report.packages:
+        rel = pkg.relative_to(report.project_root) if pkg != report.project_root else Path(".")
+        print(f"- {rel}: {len(pr.pois)} POI(s)")
+        for poi in pr.pois:
+            location = f"{poi.target} :: {poi.key}" if poi.key else str(poi.target)
+            print(f"    [{poi.kind}] {location} ({poi.poi_hash})")
+    print(f"Summary: {len(report.packages)} package(s), {report.poi_count} POI(s).")
+    return exit_code
+
+
 def _cmd_skillware_check(args: argparse.Namespace) -> int:
+    if getattr(args, "skill", None) is None:
+        return _cmd_skillware_project_check(args)
     _load(args)
     try:
         report = check_skill(Path(args.skill))
     except SkillwareError as exc:
         raise CliError(str(exc)) from exc
     payload = {
-        "command": "agentos skillware check",
+        "command": "agentos skw check",
         "skill": str(args.skill),
         "entries": [
             {
@@ -165,7 +212,7 @@ def _cmd_skillware_bless(args: argparse.Namespace) -> int:
         except SkillwareError as exc:
             raise CliError(str(exc)) from exc
         payload = {
-            "command": "agentos skillware bless",
+            "command": "agentos skw bless",
             "skill": str(args.skill),
             "kind": args.kind,
             "blessed": [
@@ -192,7 +239,7 @@ def _cmd_skillware_bless(args: argparse.Namespace) -> int:
     except SkillwareError as exc:
         raise CliError(str(exc)) from exc
     payload = {
-        "command": "agentos skillware bless",
+        "command": "agentos skw bless",
         "skill": str(args.skill),
         "blessed": {
             "target": str(record.target),
@@ -212,7 +259,7 @@ def _cmd_skillware_bless(args: argparse.Namespace) -> int:
 
 def _cmd_skillware_status(args: argparse.Namespace) -> int:
     skillware = _load(args)
-    lock_present = (skillware.skill_root / ".skillware" / "lock.json").is_file()
+    lock_present = (skillware.build_root / "lock.json").is_file()
     files = []
     for src_rel in skillware.src_files():
         source = parse_skw_source((skillware.src_root / src_rel).read_text(encoding="utf-8"))
@@ -234,7 +281,7 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
             }
         )
     payload = {
-        "command": "agentos skillware status",
+        "command": "agentos skw status",
         "skill": str(args.skill),
         "lock_present": lock_present,
         "depots": [str(depot) for depot in skillware.depots],
@@ -257,13 +304,14 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
 
 def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
     skillware_parser = subparsers.add_parser(
-        "skillware",
-        help="Compile and check a skill's runnable files from .skillware/src sources.",
+        "skw",
+        aliases=["skillware"],
+        help="Compile and check a package's runnable files from .skw/src sources.",
         description=(
-            "Skillware: a skill's files can be produced from .skillware/src/**/*.skw.md "
+            "skw: a package's files can be produced from .skw/src/**/*.skw.md "
             "sources — markdown plus $kw machinery lines. build compiles and refreshes "
             "copy bodies; check lints for POIs; bless accepts a derived-stale POI; "
-            "status inventories the managed files."
+            "status inventories the managed files. (skillware is a deprecated alias.)"
         ),
     )
     skillware_subparsers = skillware_parser.add_subparsers(dest="skillware_command")
@@ -275,7 +323,12 @@ def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
         ("status", _cmd_skillware_status, "Inventory managed files, recipes, and lock state."),
     ):
         sub = skillware_subparsers.add_parser(name, help=help_text)
-        sub.add_argument("--skill", required=True, help="Skill root containing .skillware/src.")
+        # check with no --skill runs project-scope over every discovered package
+        sub.add_argument(
+            "--skill",
+            required=(name != "check"),
+            help="Package root containing .skw/src (omit on check for project scope).",
+        )
         sub.add_argument("--json", action="store_true", help="Emit the report as JSON.")
         if name == "bless":
             sub.add_argument("--poi", help="POI identity hash from check output.")
