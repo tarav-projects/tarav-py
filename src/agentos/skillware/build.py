@@ -472,7 +472,11 @@ class CheckReport:
 
 
 BLESSABLE_KINDS = ("derived-stale",)
-SUPPRESSIBLE_KINDS = ("undeclared-dependency", "unhonored-dependency")
+SUPPRESSIBLE_KINDS = (
+    "undeclared-dependency",
+    "unhonored-dependency",
+    "dangling-dependency",
+)
 
 _LEGACY_CALLOUT_RE = re.compile(r"^>\s*\[!skw\]")
 
@@ -678,9 +682,24 @@ def _dependency_sync_pois(
         for name, resolution in _resolved_dotted_names(skillware, raw_mentions).items()
         if not resolution.startswith("unresolved:")
     }
-    declared_resolutions = _resolved_dotted_names(skillware, declared_from_depends)
+    declared_resolutions = _resolved_dotted_names(skillware, declared)
+    dangling = {
+        name
+        for name, resolution in declared_resolutions.items()
+        if resolution.startswith("unresolved:")
+    }
 
     pois: list[Poi] = []
+    for name in sorted(dangling):
+        pois.append(
+            _poi(
+                "dangling-dependency",
+                target_rel,
+                name,
+                declared_resolutions[name],
+                f"declared dependency `{name}` no longer resolves in the configured depots",
+            )
+        )
     for name, resolution in sorted(mention_resolutions.items()):
         if name in declared:
             continue
@@ -694,7 +713,7 @@ def _dependency_sync_pois(
             )
         )
     for name in sorted(declared_from_depends):
-        if name in mention_resolutions:
+        if name in mention_resolutions or name in dangling:
             continue
         resolution = declared_resolutions.get(name, "unresolved")
         pois.append(

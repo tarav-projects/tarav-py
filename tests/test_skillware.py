@@ -529,7 +529,13 @@ def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
     check = check_skill(skill)
     kinds = {(poi.kind, poi.key) for poi in check.pois}
     assert ("undeclared-dependency", "Concept.Two") in kinds
-    assert ("unhonored-dependency", "Concept.Missing") in kinds
+    # Concept.Missing is declared but does not resolve — it is dangling, not
+    # unhonored (unhonored means declared-and-resolving but unmentioned).
+    assert ("dangling-dependency", "Concept.Missing") in kinds
+    assert not any(
+        poi.kind == "unhonored-dependency" and poi.key == "Concept.Missing"
+        for poi in check.pois
+    )
     assert not any(
         poi.kind == "unhonored-dependency" and poi.key == "Concept.One"
         for poi in check.pois
@@ -585,6 +591,78 @@ def test_alias_mentions_remain_literal_dependency_sync_pois(tmp_path: Path) -> N
         if p.kind == "undeclared-dependency" and p.key == "Concept.Alias"
     )
     assert reminted.poi_hash != first.poi_hash
+
+
+def test_dangling_dependency_catches_unaliased_rename(tmp_path: Path) -> None:
+    """RED->GREEN guard for the 591 silent-drift scenario: a declared `--from`
+    whose target is renamed without an alias must break loudly."""
+    skill = _write_skill(tmp_path)
+    depot = tmp_path / "depot" / "design" / "100-design.md"
+    depot.write_text(
+        depot.read_text(encoding="utf-8") + "\n## Old.Name\n\n- old body\n",
+        encoding="utf-8",
+    )
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n> $kw: depends --from Old.Name\n\nUses `Old.Name` here.\n",
+        encoding="utf-8",
+    )
+
+    # GREEN baseline: the declared target resolves, no dangling POI.
+    assert not any(p.kind == "dangling-dependency" for p in check_skill(skill).pois)
+
+    # RED: rename the block without leaving an alias — the declaration dangles.
+    depot.write_text(
+        depot.read_text(encoding="utf-8").replace("## Old.Name", "## New.Name"),
+        encoding="utf-8",
+    )
+    dangling = [p for p in check_skill(skill).pois if p.kind == "dangling-dependency"]
+    assert [p.key for p in dangling] == ["Old.Name"]
+    # A dangling name is not also reported as unhonored.
+    assert not any(
+        p.kind == "unhonored-dependency" and p.key == "Old.Name"
+        for p in check_skill(skill).pois
+    )
+
+    # GREEN again: restore the name as a meta alias — the binding resolves.
+    depot.write_text(
+        depot.read_text(encoding="utf-8").replace(
+            "- old body", "- old body\n\n### meta\n\n- aliases: `Old.Name`"
+        ),
+        encoding="utf-8",
+    )
+    assert not any(p.kind == "dangling-dependency" for p in check_skill(skill).pois)
+
+
+def test_dangling_dependency_is_blessable(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n> $kw: depends --from Gone.Block\n\nMentions `Gone.Block`.\n",
+        encoding="utf-8",
+    )
+    from agentos.skillware.build import bless_skill
+
+    poi = next(p for p in check_skill(skill).pois if p.kind == "dangling-dependency")
+    assert poi.key == "Gone.Block"
+    bless_skill(skill, poi.poi_hash)
+    assert not any(p.kind == "dangling-dependency" for p in check_skill(skill).pois)
+
+
+def test_unresolved_recipe_from_is_caught_as_unresolvable(tmp_path: Path) -> None:
+    """An unresolved copy/derived --from cannot materialize, so it is caught
+    upstream (and louder) as an `unresolvable` build failure — dangling-dependency
+    is the depends/pointer-specific check, whose target is never materialized."""
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n## D\n\n> $kw: derived --from Missing.Source\n"
+        "> $kw. --intent x\n\n- body\n\n> $kw. end-derived\n",
+        encoding="utf-8",
+    )
+    pois = check_skill(skill).pois
+    assert any(p.kind == "unresolvable" for p in pois)
+    assert not any(p.kind == "dangling-dependency" for p in pois)
 
 
 # --- S4: CLI -------------------------------------------------------------------
