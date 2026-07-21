@@ -836,6 +836,59 @@ def _dependency_sync_pois(
     return pois
 
 
+def _note_pois(target_rel: Path, source: SkwSource) -> list[Poi]:
+    """`--note`/`--supp` are typed, anchored `Index.Line`s: a `--note` missing
+    its `[TYPE]` act code, or either flag missing its `^anchor`, is malformed."""
+    pois: list[Poi] = []
+    for note in source.notes:
+        problems: list[str] = []
+        if note.flag == "note" and note.type is None:
+            problems.append("missing [TYPE] act code")
+        if note.anchor is None:
+            problems.append("missing ^anchor")
+        if problems:
+            pois.append(
+                _poi(
+                    "malformed-note",
+                    target_rel,
+                    note.address or f"line {note.line}",
+                    f"{note.line}|{note.text}",
+                    f"line {note.line}: --{note.flag} {'; '.join(problems)}",
+                )
+            )
+    return pois
+
+
+def _address_mismatch_pois(target_rel: Path, source: SkwSource) -> list[Poi]:
+    """A block that fences a named host element checks its declared `#address`
+    against that element's name — a mismatch is a POI (the fence checks the
+    name, it does not source it)."""
+    pois: list[Poi] = []
+    blocks: list = [*source.recipes, *source.constructs]
+    for block in blocks:
+        address = getattr(block, "address", None)
+        if not address or not address.startswith("#"):
+            continue
+        want = address[1:]
+        head = next(
+            (line for line in block.body if line.lstrip().startswith("#")), None
+        )
+        if head is None:
+            continue
+        name = head.lstrip("#").strip()
+        if name != want:
+            pois.append(
+                _poi(
+                    "address-mismatch",
+                    target_rel,
+                    address,
+                    name,
+                    f"fenced element `{name}` does not match declared address `{address}`",
+                )
+            )
+    return pois
+
+
 def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckReport:
     """The `Poi.Linter` pass: lint parse results, emit advisory POIs.
 
@@ -938,6 +991,8 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
         )
         entries.append(entry)
         pois.extend(_dependency_sync_pois(skillware, target_rel, source, expansion))
+        pois.extend(_note_pois(target_rel, source))
+        pois.extend(_address_mismatch_pois(target_rel, source))
         if entry.status != "ok":
             pois.append(_poi(entry.status, target_rel, None, entry.status, entry.status))
         for key in entry.copy_drift:

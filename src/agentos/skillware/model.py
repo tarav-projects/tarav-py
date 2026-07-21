@@ -1,44 +1,77 @@
 """Skillware src surface model: `.skw.md` parsing.
 
-v3 — `Closure.Parser::Skw`. The surface grammar is the `$kw` sigil pair on
-the markdown carrier: ``> $kw: <command> [^label] [--flag value …]`` opens a
-construct, ``> $kw. …`` lines belong to it — further flags, value
-continuations, and the owned closer ``> $kw. end-<command>`` (or
-``end-^label``; a multi-close line unwinds innermost-first).
+v2 grammar — the annotation as a *named block*. The surface grammar is the
+`$kw` sigil pair on the markdown carrier, but the sigil now rides only the two
+**fence** lines:
+
+    > $kw: [address] [--flags]      # opens a block; address is optional identity
+    > --flag [value]                # belonging flag lines — self-marked by `--`
+    native surface text …           # the block's body (column 0)
+    > $kw. end                      # closes a content block (bare `end`)
+
+Features are additive `--flags`, not commands: the binding mode is a flag
+(`--derived`/`--copy`/`--pointer`), `--from` is a dependency edge, `--note`
+is a typed+anchored documentation line, `--supp` the block's own touched
+lines, `--intent` derivation context, `--cont` a generic continuation of the
+previous flag, and `--to` a reserved (parsed, inert) flag. Router rows are
+nameless child blocks opened with `--when` / `--then`.
+
+**Closure is by role, in three cases** (`Closure.Parser::Skw`):
+
+- a **materializing** block (`--derived`/`--copy`) owns a mandatory `$kw. end`
+  (its body is the generated target);
+- a **router** block (one that acquires `--when`/`--then` children) owns an
+  `$kw. end`, and its rows **peer-close** at the next row or the parent's end;
+- a **declaration-only** block (`--from`/`--note`/`--supp`/`--intent` only)
+  **self-closes** at its declaration — no `end` — unless it writes one, which
+  opts it into fencing a native body.
 
 The parser demands a minimal structure — the `Parse.Floor`: every machinery
-line well-formed, every construct explicitly closed, labels unique, router
-rows sane. Below the floor it emits parse errors (`SkwFinding`) and nothing
-else — no POIs; linting is the `Poi.Linter`'s job (see `build.check_skill`).
-Above the floor the parse is closed: recognized machinery becomes constructs,
-everything else is opaque text, and no finer detail can fail the parse.
-Fenced code lines are inert; headings close nothing; bodies sit at column 0.
+line well-formed, every content block explicitly closed, addresses unique,
+router rows sane. Below the floor it emits parse errors (`SkwFinding`) and
+nothing else — no POIs; linting is the `Poi.Linter`'s job (see
+`build.check_skill`). Fenced code lines are inert; headings close nothing;
+bodies sit at column 0.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-RECIPE_VERBS = ("copy", "derived")
-PRIMITIVE_COMMANDS = ("text", "copy", "derived")
-STRUCTURAL_COMMANDS = ("router", "when", "then")
-VOID_COMMANDS = ("depends",)
-COMMANDS = PRIMITIVE_COMMANDS + STRUCTURAL_COMMANDS + VOID_COMMANDS
-KNOWN_FLAGS = ("from", "intent", "to")
+RECIPE_BINDINGS = ("derived", "copy")
+BINDING_FLAGS = ("derived", "copy", "pointer")
+ROLE_FLAGS = ("when", "then")
+VALUE_FLAGS = ("from", "intent", "to", "note", "supp", "cont")
+KNOWN_FLAGS = BINDING_FLAGS + ROLE_FLAGS + VALUE_FLAGS
 
-_MACHINERY_RE = re.compile(r"^>\s*\$kw([:.])\s?(.*)$")
-_LABEL_RE = re.compile(r"^\^[A-Za-z0-9_-]+$")
-# only registered flags bound values: an unregistered --token mid-value is
-# prose (registry-driven trait validation), never a silent value splitter
+_OPEN_RE = re.compile(r"^>\s*\$kw:\s?(.*)$")
+_CLOSE_RE = re.compile(r"^>\s*\$kw\.\s*(.*)$")
+_FLAG_LINE_RE = re.compile(r"^>\s*(--\S.*)$")
+_ADDRESS_RE = re.compile(r"^[#^@]?[A-Za-z0-9_./#:^-]+$")
 _FLAG_RE = re.compile(rf"(?:^|\s)--({'|'.join(KNOWN_FLAGS)})(?=\s|$)")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+_NOTE_TYPE_RE = re.compile(r"^\[([A-Z]{2})\]\s*(.*)$")
+_TRAILING_ANCHOR_RE = re.compile(r"\s+(\^[A-Za-z0-9_-]+)\s*$")
 
 
 @dataclass(frozen=True)
 class SkwFinding:
     line: int
     message: str
+
+
+@dataclass(frozen=True)
+class SkwNote:
+    """A `--note` (documentation) or `--supp` (own touched line) — a typed,
+    anchored `Index.Line` carried by an annotation block."""
+
+    flag: str  # "note" | "supp"
+    type: str | None  # the two-letter act code for --note; None for --supp
+    text: str
+    anchor: str | None
+    line: int
+    address: str | None
 
 
 @dataclass(frozen=True)
@@ -50,6 +83,7 @@ class SkwRecipe:
     line: int
     ordinal: int
     label: str | None
+    address: str | None
     callout_span: tuple[int, int]
     body_span: tuple[int, int]
     body: tuple[str, ...]
@@ -64,6 +98,7 @@ class SkwConstruct:
     heading: str | None
     line: int
     label: str | None
+    address: str | None
     decl_span: tuple[int, int]
     body_span: tuple[int, int]
     body: tuple[str, ...]
@@ -75,6 +110,7 @@ class SkwDependency:
     heading: str | None
     line: int
     label: str | None
+    address: str | None
     decl_span: tuple[int, int]
 
 
@@ -84,6 +120,7 @@ class SkwSource:
     recipes: tuple[SkwRecipe, ...]
     constructs: tuple[SkwConstruct, ...]
     dependencies: tuple[SkwDependency, ...]
+    notes: tuple[SkwNote, ...]
     machinery_spans: tuple[tuple[int, int], ...]
     findings: tuple[SkwFinding, ...]
 
@@ -103,81 +140,112 @@ def _trimmed(lines: list[str]) -> list[str]:
     return lines
 
 
-def _is_end_content(content: str) -> bool:
-    tokens = content.split()
-    return bool(tokens) and all(t == "end" or t.startswith("end-") for t in tokens)
+def _is_bare_end(content: str) -> bool:
+    return content.strip() == "end"
 
 
-def _parse_flags(
-    content: str, flags: list[tuple[str, str]], findings: list[SkwFinding], line_no: int
+def _parse_flag_segments(
+    content: str,
+    flags: list[tuple[str, str]],
+    findings: list[SkwFinding],
+    line_no: int,
 ) -> None:
-    """Parse ``--flag value …`` pairs; a value runs to the next registered flag or EOL."""
+    """Parse ``--flag value …`` pairs on one segment; a value runs to the next
+    registered flag or EOL. ``--cont`` appends to the previous flag's value; a
+    bare head continues the previous flag too (value continuation)."""
     matches = list(_FLAG_RE.finditer(content))
     head = content[: matches[0].start()].strip() if matches else content.strip()
     if head:
-        if flags:
-            # value continuation of the previous flag
+        if head.startswith("--"):
+            # an unrecognized `--token` at a flag position is an unknown flag,
+            # never a silent value continuation (known flags match _FLAG_RE)
+            findings.append(SkwFinding(line_no, f"unknown flag: {head.split()[0]}"))
+        elif flags:
             name, value = flags[-1]
             flags[-1] = (name, f"{value} {head}".strip())
-        elif head.startswith("--"):
-            findings.append(SkwFinding(line_no, f"unknown flag: {head.split()[0]}"))
         else:
             findings.append(
                 SkwFinding(line_no, f"continuation before any flag: {head!r}")
             )
     for pos, match in enumerate(matches):
         end = matches[pos + 1].start() if pos + 1 < len(matches) else len(content)
-        flags.append((match.group(1), content[match.end() : end].strip()))
+        name = match.group(1)
+        value = content[match.end() : end].strip()
+        if name == "cont":
+            if flags:
+                prev_name, prev_value = flags[-1]
+                flags[-1] = (prev_name, f"{prev_value} {value}".strip())
+            else:
+                findings.append(
+                    SkwFinding(line_no, "orphan --cont: no previous flag to continue")
+                )
+            continue
+        flags.append((name, value))
 
 
-def _read_declaration(
+def _read_block(
     lines: list[str], start: int, findings: list[SkwFinding]
-) -> tuple[int, str, str | None, list[tuple[str, str]]]:
-    """Read a ``$kw:`` line plus contiguous ``$kw.`` belonging lines.
-
-    Returns (end_exclusive, command, label, flags). Closer lines are never
-    consumed here — an all-end ``$kw.`` line terminates the block.
-    """
-    match = _MACHINERY_RE.match(lines[start])
-    assert match is not None and match.group(1) == ":"
-    content = match.group(2).strip()
+) -> tuple[int, str | None, str | None, list[tuple[str, str]]]:
+    """Read a ``> $kw:`` open line plus contiguous ``> --flag`` belonging
+    lines. Returns (end_exclusive, address, label, flags). The address is the
+    first non-flag token on the open line; ``^label`` addresses also yield a
+    bare label for lock-key continuity."""
+    match = _OPEN_RE.match(lines[start])
+    assert match is not None
+    content = match.group(1).strip()
 
     matches = list(_FLAG_RE.finditer(content))
     head = content[: matches[0].start()] if matches else content
     head_tokens = head.split()
-    label: str | None = None
-    command = ""
+    address: str | None = None
     extras: list[str] = []
     for token in head_tokens:
-        if _LABEL_RE.match(token):
-            if label is None:
-                label = token[1:]
-            else:
-                extras.append(token)
-        elif not command:
-            command = token
+        if address is None and _ADDRESS_RE.match(token):
+            address = token
         else:
             extras.append(token)
 
     flags: list[tuple[str, str]] = []
     if matches:
-        _parse_flags(content[matches[0].start() :], flags, findings, start + 1)
+        _parse_flag_segments(content[matches[0].start() :], flags, findings, start + 1)
 
     index = start + 1
     while index < len(lines):
-        belonging = _MACHINERY_RE.match(lines[index])
-        if belonging is None or belonging.group(1) != ".":
+        flag_line = _FLAG_LINE_RE.match(lines[index])
+        if flag_line is None:
             break
-        inner = belonging.group(2).strip()
-        if _is_end_content(inner):
-            break
-        _parse_flags(inner, flags, findings, index + 1)
+        _parse_flag_segments(flag_line.group(1).strip(), flags, findings, index + 1)
         index += 1
+
     if extras:
         findings.append(
             SkwFinding(start + 1, f"unexpected tokens on declaration: {extras}")
         )
-    return index, command, label, flags
+    label = address[1:] if address and address.startswith("^") else None
+    return index, address, label, flags
+
+
+def _parse_note(flag: str, value: str, line: int, address: str | None) -> SkwNote:
+    text = value
+    anchor: str | None = None
+    anchor_match = _TRAILING_ANCHOR_RE.search(text)
+    if anchor_match is not None:
+        anchor = anchor_match.group(1)
+        text = text[: anchor_match.start()].strip()
+    note_type: str | None = None
+    if flag == "note":
+        type_match = _NOTE_TYPE_RE.match(text)
+        if type_match is not None:
+            note_type = type_match.group(1)
+            text = type_match.group(2).strip()
+    return SkwNote(
+        flag=flag,
+        type=note_type,
+        text=text,
+        anchor=anchor,
+        line=line,
+        address=address,
+    )
 
 
 def parse_skw_source(text: str) -> SkwSource:
@@ -185,34 +253,56 @@ def parse_skw_source(text: str) -> SkwSource:
     recipes: list[SkwRecipe] = []
     constructs: list[SkwConstruct] = []
     dependencies: list[SkwDependency] = []
+    notes: list[SkwNote] = []
     machinery_spans: list[tuple[int, int]] = []
     findings: list[SkwFinding] = []
 
     heading: str | None = None
     stack: list[dict] = []
     heading_counts: dict[str, int] = {}
-    seen_labels: set[str] = set()
+    seen_addresses: set[str] = set()
 
-    def close_top(end_index: int) -> None:
-        frame = stack.pop()
+    def _has_content(body: tuple[str, ...]) -> bool:
+        return any(line.strip() for line in body)
+
+    def emit_frame(frame: dict, end_index: int) -> None:
         span = (frame["body_start"], end_index)
         body = tuple(lines[span[0] : span[1]])
-        if frame["command"] in RECIPE_VERBS:
+        for note in frame["notes"]:
+            notes.append(note)
+        if frame["verb"] in RECIPE_BINDINGS:
             key = frame["heading"] or f"line {frame['line']}"
             ordinal = heading_counts.get(key, 0)
             heading_counts[key] = ordinal + 1
             recipes.append(
                 SkwRecipe(
-                    verb=frame["command"],
+                    verb=frame["verb"],
                     froms=frame["froms"],
                     intent=frame["intent"],
                     heading=frame["heading"],
                     line=frame["line"],
                     ordinal=ordinal,
                     label=frame["label"],
+                    address=frame["address"],
                     callout_span=frame["decl_span"],
                     body_span=span,
                     body=body,
+                )
+            )
+        elif (
+            frame["command"] == "text"
+            and frame["froms"]
+            and not _has_content(body)
+        ):
+            # a pure declaration-only `--from` block is the void dependency
+            dependencies.append(
+                SkwDependency(
+                    froms=frame["froms"],
+                    heading=frame["heading"],
+                    line=frame["line"],
+                    label=frame["label"],
+                    address=frame["address"],
+                    decl_span=frame["decl_span"],
                 )
             )
         else:
@@ -222,34 +312,29 @@ def parse_skw_source(text: str) -> SkwSource:
                     heading=frame["heading"],
                     line=frame["line"],
                     label=frame["label"],
+                    address=frame["address"],
                     decl_span=frame["decl_span"],
                     body_span=span,
                     body=body,
                 )
             )
         parent = stack[-1] if stack else None
-        if parent is not None and parent["command"] == "router":
+        if parent is not None and frame["command"] in ("when", "then"):
             parent["children"].append(frame["command"])
+            parent["command"] = "router"
+            parent["needs_end"] = True
 
-    def force_close_open(end_index: int, where: str) -> None:
-        while stack:
-            frame = stack[-1]
-            findings.append(
-                SkwFinding(
-                    frame["line"],
-                    f"'{frame['command']}' left open at {where} "
-                    f"(closure is explicit: end-{frame['command']})",
-                )
-            )
+    def close_top(end_index: int) -> None:
+        frame = stack.pop()
+        emit_frame(frame, end_index)
+
+    def peer_close_rows(end_index: int) -> None:
+        while stack and stack[-1]["command"] in ("when", "then"):
             close_top(end_index)
-            if frame["command"] == "router":
-                check_router_children(frame)
 
     def check_router_children(frame: dict) -> None:
         expected = "when"
         for child in frame["children"]:
-            if child not in ("when", "then"):
-                continue
             if child != expected:
                 findings.append(
                     SkwFinding(
@@ -264,6 +349,21 @@ def parse_skw_source(text: str) -> SkwSource:
             findings.append(
                 SkwFinding(frame["line"], "router ends with a 'when' that has no 'then'")
             )
+
+    def force_close(end_index: int, where: str) -> None:
+        while stack:
+            frame = stack[-1]
+            if frame["needs_end"]:
+                findings.append(
+                    SkwFinding(
+                        frame["line"],
+                        f"'{frame['command']}' left open at {where} "
+                        f"(a content block closes explicitly with $kw. end)",
+                    )
+                )
+            close_top(end_index)
+            if frame["command"] == "router":
+                check_router_children(frame)
 
     index = 0
     in_fence = False
@@ -281,50 +381,30 @@ def parse_skw_source(text: str) -> SkwSource:
 
         heading_match = _HEADING_RE.match(line)
         if heading_match is not None:
-            force_close_open(index, f"heading '{heading_match.group(2).strip()}'")
+            force_close(index, f"heading '{heading_match.group(2).strip()}'")
             heading = heading_match.group(2).strip()
             index += 1
             continue
 
-        machinery = _MACHINERY_RE.match(line)
-        if machinery is None:
-            index += 1
-            continue
-
-        sigil, content = machinery.group(1), machinery.group(2).strip()
-
-        if sigil == "." and _is_end_content(content):
-            # end lines take no args: consume only the closer line itself
-            for token in content.split():
-                owner = token[4:] if token.startswith("end-") else ""
-                if not owner:
-                    findings.append(
-                        SkwFinding(
-                            index + 1,
-                            "bare 'end' is invalid; close with end-<command>",
-                        )
+        close_match = _CLOSE_RE.match(line)
+        if close_match is not None:
+            content = close_match.group(1).strip()
+            if not _is_bare_end(content):
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        f"$kw. lines take only a bare 'end'; found: {content!r}",
                     )
-                    continue
-                if not stack:
-                    findings.append(
-                        SkwFinding(index + 1, f"'end-{owner}' without an open construct")
-                    )
-                    continue
-                top = stack[-1]
-                if owner.startswith("^"):
-                    matches = top["label"] == owner[1:]
-                else:
-                    matches = top["command"] == owner
-                if not matches:
-                    accepted = f"end-{top['command']}"
-                    if top["label"] is not None:
-                        accepted += f" or end-^{top['label']}"
-                    findings.append(
-                        SkwFinding(
-                            index + 1,
-                            f"mismatched close: expected {accepted}, found end-{owner}",
-                        )
-                    )
+                )
+                machinery_spans.append((index, index + 1))
+                index += 1
+                continue
+            peer_close_rows(index)
+            if not stack:
+                findings.append(
+                    SkwFinding(index + 1, "'end' without an open content block")
+                )
+            else:
                 frame = stack[-1]
                 close_top(index)
                 if frame["command"] == "router":
@@ -333,99 +413,130 @@ def parse_skw_source(text: str) -> SkwSource:
             index += 1
             continue
 
-        if sigil == ".":
-            findings.append(
-                SkwFinding(index + 1, f"stray '$kw.' line outside a declaration: {content!r}")
-            )
-            machinery_spans.append((index, index + 1))
+        open_match = _OPEN_RE.match(line)
+        if open_match is None:
+            flag_match = _FLAG_LINE_RE.match(line)
+            if flag_match is not None:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        f"stray flag line outside a declaration: {flag_match.group(1).strip()!r}",
+                    )
+                )
+                machinery_spans.append((index, index + 1))
             index += 1
             continue
 
-        decl_end, command, label, flags = _read_declaration(lines, index, findings)
-        if command == "label":
-            if label is None:
-                findings.append(
-                    SkwFinding(index + 1, "'label' requires a ^label token")
-                )
-            command = "text"
-        elif not command:
-            findings.append(
-                SkwFinding(index + 1, "declaration carries no command (bare labels are invalid; use 'label ^x')")
-            )
-            index = decl_end
-            continue
-        if command not in COMMANDS:
-            findings.append(SkwFinding(index + 1, f"unknown skw command: {command!r}"))
-            index = decl_end
-            continue
-        if label is not None:
-            if label in seen_labels:
-                findings.append(SkwFinding(index + 1, f"duplicate label: ^{label}"))
-            seen_labels.add(label)
+        decl_end, address, label, flags = _read_block(lines, index, findings)
 
-        if stack and stack[-1]["command"] in PRIMITIVE_COMMANDS:
-            findings.append(
-                SkwFinding(
-                    index + 1,
-                    f"constructs may not nest inside a '{stack[-1]['command']}' body",
-                )
-            )
-        if command in ("when", "then") and (
-            not stack or stack[-1]["command"] != "router"
-        ):
-            findings.append(SkwFinding(index + 1, f"'{command}' outside a router"))
+        if address is not None:
+            if address in seen_addresses:
+                findings.append(SkwFinding(index + 1, f"duplicate address: {address}"))
+            seen_addresses.add(address)
 
+        flag_names = [name for name, _ in flags]
+        bindings = [name for name in flag_names if name in BINDING_FLAGS]
+        roles = [name for name in flag_names if name in ROLE_FLAGS]
         froms = tuple(value for name, value in flags if name == "from")
-        if command in RECIPE_VERBS and not froms:
+        # a binding flag's own trailing text is derivation context, as is --intent
+        intent_parts = [
+            value
+            for name, value in flags
+            if name in ("derived", "copy", "pointer", "intent") and value
+        ]
+        frame_notes = [
+            _parse_note(name, value, decl_end, address)
+            for name, value in flags
+            if name in ("note", "supp")
+        ]
+
+        if len(bindings) > 1:
+            findings.append(
+                SkwFinding(index + 1, f"multiple binding flags: {bindings}")
+            )
+        if len(roles) > 1:
+            findings.append(SkwFinding(index + 1, f"multiple role flags: {roles}"))
+        if roles and bindings:
+            findings.append(
+                SkwFinding(index + 1, "a router row cannot also carry a binding flag")
+            )
+
+        role = roles[0] if roles else None
+        verb = bindings[0] if bindings else None
+
+        if role is not None:
+            if not stack or stack[-1]["command"] in ("when", "then"):
+                # rows peer-close, so a sibling row is legal; only a top-level
+                # row (no parent block) is orphaned
+                if not stack:
+                    findings.append(
+                        SkwFinding(index + 1, f"'{role}' outside a router")
+                    )
+                else:
+                    peer_close_rows(index)
+            command = role
+        elif verb in RECIPE_BINDINGS:
+            command = verb
+        else:
+            # `--pointer` binds by reference (non-materializing); with no
+            # binding at all the block is either a content span or an
+            # annotation — resolved below by whether it carries annotation flags
+            command = "text"
+
+        if command in RECIPE_BINDINGS and not froms:
             findings.append(
                 SkwFinding(index + 1, f"{command} recipe carries no --from flag")
             )
         if command == "copy" and len(froms) > 1:
-            findings.append(
-                SkwFinding(index + 1, "copy takes exactly one --from flag")
-            )
-        if command in VOID_COMMANDS:
-            if not froms:
-                findings.append(
-                    SkwFinding(index + 1, f"{command} declaration carries no --from flag")
-                )
-            if decl_end > index + 1:
-                findings.append(
-                    SkwFinding(
-                        index + 1,
-                        f"{command} is void and cannot carry $kw. body or continuation lines",
-                    )
-                )
-            dependencies.append(
-                SkwDependency(
-                    froms=froms,
-                    heading=heading,
-                    line=index + 1,
-                    label=label,
-                    decl_span=(index, decl_end),
-                )
-            )
-            machinery_spans.append((index, decl_end))
-            index = decl_end
-            continue
-        intent_parts = [value for name, value in flags if name == "intent"]
-        stack.append(
-            {
-                "command": command,
-                "heading": heading,
-                "line": index + 1,
-                "label": label,
-                "decl_span": (index, decl_end),
-                "body_start": decl_end,
-                "froms": froms,
-                "intent": " ".join(intent_parts) if intent_parts else None,
-                "children": [],
-            }
+            findings.append(SkwFinding(index + 1, "copy takes exactly one --from flag"))
+
+        # closure by role: a recipe or a content span (a flag-less block, incl.
+        # a router parent) owns its `end`; a row peer-closes; an annotation
+        # block — one carrying only `--from`/`--note`/`--supp` — self-closes at
+        # its declaration, and following text stays surface.
+        annotation_only = command == "text" and (
+            bool(froms) or bool(frame_notes) or verb == "pointer"
         )
+        needs_end = command in RECIPE_BINDINGS or (
+            command == "text" and not annotation_only
+        )
+
+        # nesting guard: a construct may only nest as a when/then row inside a
+        # router-capable parent; a plain block may not nest inside a recipe body
+        if stack and stack[-1]["verb"] in RECIPE_BINDINGS and role is None:
+            findings.append(
+                SkwFinding(
+                    index + 1,
+                    f"blocks may not nest inside a '{stack[-1]['command']}' body",
+                )
+            )
+
+        frame = {
+            "command": command,
+            "verb": verb if verb in RECIPE_BINDINGS else None,
+            "heading": heading,
+            "line": index + 1,
+            "label": label,
+            "address": address,
+            "decl_span": (index, decl_end),
+            "body_start": decl_end,
+            "froms": froms,
+            "intent": " ".join(intent_parts) if intent_parts else None,
+            "notes": frame_notes,
+            "needs_end": needs_end,
+            "children": [],
+        }
+
         machinery_spans.append((index, decl_end))
+        if annotation_only:
+            # self-close at the declaration: emit now with an empty body so
+            # following native text stays surface (void dependency / note attach)
+            emit_frame(frame, decl_end)
+        else:
+            stack.append(frame)
         index = decl_end
 
-    force_close_open(len(lines), "EOF")
+    force_close(len(lines), "EOF")
     if in_fence:
         findings.append(
             SkwFinding(
@@ -438,21 +549,22 @@ def parse_skw_source(text: str) -> SkwSource:
         recipes=tuple(recipes),
         constructs=tuple(constructs),
         dependencies=tuple(dependencies),
+        notes=tuple(notes),
         machinery_spans=tuple(machinery_spans),
         findings=tuple(findings),
     )
 
 
 __all__ = [
-    "COMMANDS",
+    "BINDING_FLAGS",
     "KNOWN_FLAGS",
-    "PRIMITIVE_COMMANDS",
-    "RECIPE_VERBS",
-    "STRUCTURAL_COMMANDS",
-    "VOID_COMMANDS",
+    "RECIPE_BINDINGS",
+    "ROLE_FLAGS",
+    "VALUE_FLAGS",
     "SkwConstruct",
     "SkwDependency",
     "SkwFinding",
+    "SkwNote",
     "SkwRecipe",
     "SkwSource",
     "parse_skw_source",

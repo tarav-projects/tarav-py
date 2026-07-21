@@ -48,11 +48,23 @@ POI_LEGEND = {
     ),
     "undeclared-dependency": (
         "compiled text mentions a resolving Dotted.Name without declaring the dependency",
-        "declare it with $kw: depends --from <name>, or baseline current findings: agentos skw bless --kind undeclared-dependency --all",
+        "declare it with $kw: --from <name>, or baseline current findings: agentos skw bless --kind undeclared-dependency --all",
     ),
     "unhonored-dependency": (
         "a declared dependency is not mentioned in the compiled text",
         "mention the dependency, remove the declaration, or bless the current finding",
+    ),
+    "dangling-dependency": (
+        "a declared --from no longer resolves in the configured depots",
+        "restore or repoint the target, or bless: agentos skw bless --kind dangling-dependency --all",
+    ),
+    "malformed-note": (
+        "a --note/--supp is missing its [TYPE] act code or its ^anchor",
+        "add the missing [TYPE] and/or trailing ^anchor to the note in src",
+    ),
+    "address-mismatch": (
+        "a fenced element's name does not match the block's declared #address",
+        "rename the element or the address so they agree",
     ),
     "legacy-callout": (
         "a v2 [!skw] callout survives outside a fence — inert prose to the parser",
@@ -192,7 +204,9 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
     if report.pois:
         print("Legend:")
         for kind in dict.fromkeys(poi.kind for poi in report.pois):
-            meaning, response = POI_LEGEND[kind]
+            meaning, response = POI_LEGEND.get(
+                kind, ("a point of interest", "inspect the src")
+            )
             print(f"- {kind} — {meaning}; {response}")
         print("POIs:")
         for poi in report.pois:

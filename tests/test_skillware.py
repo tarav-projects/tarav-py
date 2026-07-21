@@ -28,30 +28,30 @@ Intro prose.
 
 ## Copied
 
-> $kw: copy --from references/lib.skw.md#Alpha
+> $kw: --copy --from references/lib.skw.md#Alpha
 
 - copied body line
 
-> $kw. end-copy
+> $kw. end
 
 ## Derived
 
-> $kw: derived --from references/lib.skw.md#Alpha
-> $kw. --from Concept.One
-> $kw. --intent reshape alpha for
-> $kw. this consumer
+> $kw: --derived --from references/lib.skw.md#Alpha
+> --from Concept.One
+> --intent reshape alpha for
+> --cont this consumer
 
 - derived body
 
-> $kw. end-derived
+> $kw. end
 
 ## Mixed
 
-> $kw: derived --from Concept.One --intent short
+> $kw: --derived --from Concept.One --intent short
 
 - derived part
 
-> $kw. end-derived
+> $kw. end
 
 Hand tail prose.
 
@@ -86,24 +86,24 @@ def test_parse_hand_sections_carry_no_recipe() -> None:
 
 
 def test_parse_findings() -> None:
-    unknown = parse_skw_source("## A\n\n> $kw: transmute --from x.md\n\n- body\n")
-    assert any("transmute" in finding.message for finding in unknown.findings)
+    unknown_flag = parse_skw_source("## A\n\n> $kw: #a --derived\n> --transmute x\n> --from X\n\n- b\n\n> $kw. end\n")
+    assert any("unknown flag: --transmute" in f.message for f in unknown_flag.findings)
 
-    missing_from = parse_skw_source("## A\n\n> $kw: copy\n\n- body\n\n> $kw. end-copy\n")
+    missing_from = parse_skw_source("## A\n\n> $kw: --copy\n\n- body\n\n> $kw. end\n")
     assert any("from" in finding.message for finding in missing_from.findings)
 
-    bare_end = parse_skw_source("## A\n\nprose\n\n> $kw. end\n")
-    assert any("bare 'end' is invalid" in finding.message for finding in bare_end.findings)
+    legacy_end = parse_skw_source("## A\n\n> $kw: #a --derived --from X\n\n- b\n\n> $kw. end-derived\n")
+    assert any("bare 'end'" in finding.message for finding in legacy_end.findings)
 
-    orphan_end = parse_skw_source("## A\n\n> $kw. end-copy\n")
-    assert any("without an open construct" in f.message for f in orphan_end.findings)
+    orphan_end = parse_skw_source("## A\n\nprose\n\n> $kw. end\n")
+    assert any("without an open content block" in f.message for f in orphan_end.findings)
 
 
 # --- v3 grammar: sigil pair, flags, belonging lines ---------------------------
 
 def test_flag_value_may_contain_spaces() -> None:
     source = parse_skw_source(
-        "## A\n\n> $kw: copy --from references/lib.skw.md#Construct Grammar\n\n- b\n\n> $kw. end-copy\n"
+        "## A\n\n> $kw: --copy --from references/lib.skw.md#Construct Grammar\n\n- b\n\n> $kw. end\n"
     )
     assert not source.findings
     assert source.recipes[0].froms == ("references/lib.skw.md#Construct Grammar",)
@@ -111,10 +111,10 @@ def test_flag_value_may_contain_spaces() -> None:
 
 def test_inline_and_belonging_flags_are_equivalent() -> None:
     inline = parse_skw_source(
-        "## A\n\n> $kw: derived --from X.Y --intent one rule\n\n- b\n\n> $kw. end-derived\n"
+        "## A\n\n> $kw: --derived --from X.Y --intent one rule\n\n- b\n\n> $kw. end\n"
     )
     split = parse_skw_source(
-        "## A\n\n> $kw: derived\n> $kw. --from X.Y\n> $kw. --intent one rule\n\n- b\n\n> $kw. end-derived\n"
+        "## A\n\n> $kw: --derived\n> --from X.Y\n> --intent one rule\n\n- b\n\n> $kw. end\n"
     )
     assert not inline.findings and not split.findings
     for source in (inline, split):
@@ -124,24 +124,24 @@ def test_inline_and_belonging_flags_are_equivalent() -> None:
 
 def test_stray_belonging_line_is_a_finding() -> None:
     source = parse_skw_source(
-        "## A\n\n> $kw: derived --from X.Y\n\nbody prose\n\n> $kw. --intent too late\n\n> $kw. end-derived\n"
+        "## A\n\n> $kw: --derived --from X.Y\n\nbody prose\n\n> --intent too late\n\n> $kw. end\n"
     )
     assert any("stray" in f.message for f in source.findings)
 
 
 def test_unknown_flag_in_flag_position_is_a_finding() -> None:
     source = parse_skw_source(
-        "## A\n\n> $kw: derived\n> $kw. --wat nope\n> $kw. --from X.Y\n\n- b\n\n> $kw. end-derived\n"
+        "## A\n\n> $kw: --derived\n> --wat nope\n> --from X.Y\n\n- b\n\n> $kw. end\n"
     )
     assert any("unknown flag: --wat" in f.message for f in source.findings)
 
 
 def test_unregistered_dashes_mid_value_are_prose() -> None:
     source = parse_skw_source(
-        "## A\n\n> $kw: derived --from X.Y\n"
-        "> $kw. --intent restate the levels for the --ground module\n"
-        "> $kw. as the drafting checklist --edit enforces\n"
-        "\n- b\n\n> $kw. end-derived\n"
+        "## A\n\n> $kw: --derived --from X.Y\n"
+        "> --intent restate the levels for the --ground module\n"
+        "> --cont as the drafting checklist --edit enforces\n"
+        "\n- b\n\n> $kw. end\n"
     )
     assert not source.findings
     assert source.recipes[0].intent == (
@@ -149,22 +149,23 @@ def test_unregistered_dashes_mid_value_are_prose() -> None:
     )
 
 
-def test_command_less_declaration_is_a_finding() -> None:
-    source = parse_skw_source("## A\n\n> $kw: ^frag\nbody\n> $kw. end-^frag\n")
-    assert any("command" in f.message for f in source.findings)
+def test_flagless_block_is_a_content_span() -> None:
+    # v2 has no command word: a flag-less block is a content span that owns its
+    # `end`. A nameless one is legal; an addressed one carries its address.
+    nameless = parse_skw_source("## A\n\n> $kw: \nliteral body\n> $kw. end\n")
+    assert not nameless.findings
+    assert nameless.constructs[0].command == "text"
+    assert "literal body" in "\n".join(nameless.constructs[0].body)
 
 
-def test_label_command_declares_labeled_literal() -> None:
+def test_labeled_span_carries_its_address() -> None:
     source = parse_skw_source(
-        "## A\n\n> $kw: label ^frag\nlabeled literal fragment\n> $kw. end-^frag\n"
+        "## A\n\n> $kw: ^frag\nlabeled literal fragment\n> $kw. end\n"
     )
     assert not source.findings
     construct = source.constructs[0]
-    assert (construct.command, construct.label) == ("text", "frag")
+    assert (construct.command, construct.label, construct.address) == ("text", "frag", "^frag")
     assert "labeled literal fragment" in "\n".join(construct.body)
-
-    unlabeled = parse_skw_source("## A\n\n> $kw: label\nbody\n> $kw. end-text\n")
-    assert any("label" in f.message for f in unlabeled.findings)
 
 
 def test_legacy_callout_is_plain_text_to_the_parser() -> None:
@@ -177,16 +178,46 @@ def test_legacy_callout_is_plain_text_to_the_parser() -> None:
     assert source.machinery_spans == ()
 
 
-def test_to_flag_is_accepted() -> None:
+def test_to_flag_is_reserved_and_inert() -> None:
+    # `--to` is parsed and preserved but drives no behavior yet
     source = parse_skw_source(
-        "## A\n\n> $kw: text --to references/lang.md\n\nbody\n\n> $kw. end-text\n"
+        "## A\n\n> $kw: #x --to references/lang.md\nbody\n> $kw. end\n"
     )
     assert not source.findings
+    assert source.constructs[0].address == "#x"
+
+
+def test_note_and_supp_are_parsed_typed_and_anchored() -> None:
+    source = parse_skw_source(
+        "## A\n\n"
+        "> $kw: #register_anchor --note [DF] mints an anchor at a turn ^c20260721-2\n"
+        "> --supp split dangling out of unhonored ^c20260721-3\n\n"
+        "some surface prose\n"
+    )
+    assert not source.findings
+    assert [(n.flag, n.type, n.text, n.anchor) for n in source.notes] == [
+        ("note", "DF", "mints an anchor at a turn", "^c20260721-2"),
+        ("supp", None, "split dangling out of unhonored", "^c20260721-3"),
+    ]
+    # the note block attaches by address and self-closes; prose stays surface
+    assert source.constructs[0].address == "#register_anchor"
+
+
+def test_cont_continues_previous_flag_and_orphan_is_a_finding() -> None:
+    cont = parse_skw_source(
+        "## A\n\n> $kw: #d --derived --from X\n"
+        "> --intent reshape the alpha\n> --cont for this consumer\n\n- b\n\n> $kw. end\n"
+    )
+    assert not cont.findings
+    assert cont.recipes[0].intent == "reshape the alpha for this consumer"
+
+    orphan = parse_skw_source("## A\n\n> $kw: #d --cont nothing before me\n\nprose\n")
+    assert any("orphan --cont" in f.message for f in orphan.findings)
 
 
 def test_depends_is_void_and_records_froms() -> None:
     source = parse_skw_source(
-        "## A\n\n> $kw: depends --from Concept.A --from Concept.B\n\nplain body\n"
+        "## A\n\n> $kw: --from Concept.A --from Concept.B\n\nplain body\n"
     )
     assert not source.findings
     assert [dependency.froms for dependency in source.dependencies] == [
@@ -195,11 +226,15 @@ def test_depends_is_void_and_records_froms() -> None:
     assert source.recipes == ()
 
 
-def test_depends_with_body_is_a_finding() -> None:
+def test_dependency_self_closes_and_following_text_is_surface() -> None:
+    # a declaration-only `--from` block owns no `end`; following native text is
+    # surface, not the block's body, and it is no error.
     source = parse_skw_source(
-        "## A\n\n> $kw: depends --from Concept.A\n> $kw. --intent nope\n"
+        "## A\n\n> $kw: --from Concept.A\n\nplain surface prose that is not body.\n"
     )
-    assert any("void" in finding.message for finding in source.findings)
+    assert not source.findings
+    assert [dep.froms for dep in source.dependencies] == [("Concept.A",)]
+    assert source.constructs == ()
 
 
 # --- S2: locators + expansion + compile -------------------------------------
@@ -220,11 +255,11 @@ LIB = """# lib
 
 ## Beta
 
-> $kw: copy --from references/base.skw.md#Root
+> $kw: --copy --from references/base.skw.md#Root
 
 - stale beta copy
 
-> $kw. end-copy
+> $kw. end
 """
 
 MOD = """# mod
@@ -233,29 +268,29 @@ Intro prose.
 
 ## Copied
 
-> $kw: copy --from references/lib.skw.md#Alpha
+> $kw: --copy --from references/lib.skw.md#Alpha
 
 - stale copy
 
-> $kw. end-copy
+> $kw. end
 
 ## Chained
 
-> $kw: copy --from references/lib.skw.md#Beta
+> $kw: --copy --from references/lib.skw.md#Beta
 
 - stale chain
 
-> $kw. end-copy
+> $kw. end
 
 ## Derived
 
-> $kw: derived --from references/lib.skw.md#Alpha
-> $kw. --from Concept.One
-> $kw. --intent reshape alpha for this consumer
+> $kw: --derived --from references/lib.skw.md#Alpha
+> --from Concept.One
+> --intent reshape alpha for this consumer
 
 - derived solution
 
-> $kw. end-derived
+> $kw. end
 
 Hand tail.
 """
@@ -339,7 +374,7 @@ def test_expand_compiles_and_refreshes_copies(tmp_path: Path) -> None:
     refreshed = "\n".join(expansion.src_refresh_lines)
     assert "- alpha one" in refreshed
     assert "- stale copy" not in refreshed
-    assert "> $kw: copy" in refreshed
+    assert "> $kw: --copy" in refreshed
     assert "- derived solution" in refreshed  # derived bodies never touched
 
 
@@ -356,9 +391,9 @@ def test_locator_findings(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
-        "## A\n\n> $kw: copy --from references/missing.skw.md#X\n\n- body\n\n> $kw. end-copy\n"
-        "\n## B\n\n> $kw: copy --from references/lib.skw.md#Nope\n\n- body\n\n> $kw. end-copy\n"
-        "\n## C\n\n> $kw: copy --from Concept.Missing\n\n- body\n\n> $kw. end-copy\n",
+        "## A\n\n> $kw: --copy --from references/missing.skw.md#X\n\n- body\n\n> $kw. end\n"
+        "\n## B\n\n> $kw: --copy --from references/lib.skw.md#Nope\n\n- body\n\n> $kw. end\n"
+        "\n## C\n\n> $kw: --copy --from Concept.Missing\n\n- body\n\n> $kw. end\n",
         encoding="utf-8",
     )
     skillware = load_skillware(skill)
@@ -372,8 +407,8 @@ def test_locator_findings(tmp_path: Path) -> None:
 def test_cycle_detection(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references"
-    (src / "a.skw.md").write_text("## A\n\n> $kw: copy --from references/b.skw.md#B\n\n- x\n\n> $kw. end-copy\n", encoding="utf-8")
-    (src / "b.skw.md").write_text("## B\n\n> $kw: copy --from references/a.skw.md#A\n\n- x\n\n> $kw. end-copy\n", encoding="utf-8")
+    (src / "a.skw.md").write_text("## A\n\n> $kw: --copy --from references/b.skw.md#B\n\n- x\n\n> $kw. end\n", encoding="utf-8")
+    (src / "b.skw.md").write_text("## B\n\n> $kw: --copy --from references/a.skw.md#A\n\n- x\n\n> $kw. end\n", encoding="utf-8")
     skillware = load_skillware(skill)
     expansion = expand_file(skillware, Path("references/a.skw.md"))
     assert any("cycle" in finding.message for finding in expansion.findings)
@@ -522,8 +557,8 @@ def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
     src.write_text(
         "# mod\n\n"
         "Mentions `Concept.Two` without declaring it.\n\n"
-        "> $kw: depends --from Concept.Missing\n\n"
-        "## Copy\n\n> $kw: copy --from Concept.One\n\n- stale\n\n> $kw. end-copy\n",
+        "> $kw: --from Concept.Missing\n\n"
+        "## Copy\n\n> $kw: --copy --from Concept.One\n\n- stale\n\n> $kw. end\n",
         encoding="utf-8",
     )
 
@@ -555,13 +590,32 @@ def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
     assert changed.poi_hash != first.poi_hash
 
 
+def test_malformed_note_pois(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n"
+        "## Good\n\n> $kw: #good --note [DF] a grounded note ^c20260721-2\n\nprose\n\n"
+        "## No Type\n\n> $kw: #nt --note a note without a type ^c20260721-2\n\nprose\n\n"
+        "## No Anchor\n\n> $kw: #na --note [CT] a note without an anchor\n\nprose\n\n"
+        "## Supp No Anchor\n\n> $kw: #sna --supp own line no anchor\n\nprose\n",
+        encoding="utf-8",
+    )
+    build_skill(skill)
+    keys = {(p.kind, p.key) for p in check_skill(skill).pois}
+    assert ("malformed-note", "#nt") in keys
+    assert ("malformed-note", "#na") in keys
+    assert ("malformed-note", "#sna") in keys
+    assert ("malformed-note", "#good") not in keys
+
+
 def test_alias_mentions_remain_literal_dependency_sync_pois(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     depot_file = tmp_path / "depot" / "design" / "100-design.md"
     depot_file.write_text(DEPOT_ALIAS_CHAPTER, encoding="utf-8")
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
-        "# mod\n\n> $kw: depends --from Concept.One\n\nMentions `Concept.Alias`.\n",
+        "# mod\n\n> $kw: --from Concept.One\n\nMentions `Concept.Alias`.\n",
         encoding="utf-8",
     )
 
@@ -605,7 +659,7 @@ def test_dangling_dependency_catches_unaliased_rename(tmp_path: Path) -> None:
     )
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
-        "# mod\n\n> $kw: depends --from Old.Name\n\nUses `Old.Name` here.\n",
+        "# mod\n\n> $kw: --from Old.Name\n\nUses `Old.Name` here.\n",
         encoding="utf-8",
     )
 
@@ -639,7 +693,7 @@ def test_dangling_dependency_is_blessable(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
-        "# mod\n\n> $kw: depends --from Gone.Block\n\nMentions `Gone.Block`.\n",
+        "# mod\n\n> $kw: --from Gone.Block\n\nMentions `Gone.Block`.\n",
         encoding="utf-8",
     )
     from agentos.skillware.build import bless_skill
@@ -657,8 +711,8 @@ def test_unresolved_recipe_from_is_caught_as_unresolvable(tmp_path: Path) -> Non
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
-        "# mod\n\n## D\n\n> $kw: derived --from Missing.Source\n"
-        "> $kw. --intent x\n\n- body\n\n> $kw. end-derived\n",
+        "# mod\n\n## D\n\n> $kw: --derived --from Missing.Source\n"
+        "> --intent x\n\n- body\n\n> $kw. end\n",
         encoding="utf-8",
     )
     pois = check_skill(skill).pois
@@ -686,7 +740,7 @@ def _write_project(root: Path) -> Path:
     pkg_a_src = root / "packages" / "pkgA" / ".skw" / "src"
     pkg_a_src.mkdir(parents=True)
     (pkg_a_src / "mod.skw.md").write_text(
-        "# mod\n\n> $kw: depends --from Shared.Block\n\nUses `Shared.Block`.\n",
+        "# mod\n\n> $kw: --from Shared.Block\n\nUses `Shared.Block`.\n",
         encoding="utf-8",
     )
     build_skill(root / "packages" / "pkgA")  # a real package is built
@@ -914,12 +968,12 @@ def test_fenced_machinery_is_inert() -> None:
         "```md\n"
         "## Fenced Heading\n"
         "\n"
-        "> $kw: derived --from Some.Block\n"
-        "> $kw. --intent fenced example, not a real recipe\n"
+        "> $kw: --derived --from Some.Block\n"
+        "> --intent fenced example, not a real recipe\n"
         "\n"
         "- example body\n"
         "\n"
-        "> $kw. end-derived\n"
+        "> $kw. end\n"
         "```\n"
         "\n"
         "hand tail after the fence\n"
@@ -931,42 +985,43 @@ def test_fenced_machinery_is_inert() -> None:
 
 # --- strict construct + structural commands --------------------------------
 
-def test_owned_end_mismatch_and_multi_close() -> None:
-    mismatch = parse_skw_source(
-        "## A\n\n> $kw: derived --from X.Y\n\n- body\n\n> $kw. end-copy\n"
-    )
-    assert any("expected end-derived" in f.message for f in mismatch.findings)
+def test_bare_end_closes_and_legacy_end_is_a_finding() -> None:
+    # v2 closes every content block with a bare `$kw. end`
+    ok = parse_skw_source("## A\n\n> $kw: --derived --from X.Y\n\n- body\n\n> $kw. end\n")
+    assert not ok.findings
+    assert [r.verb for r in ok.recipes] == ["derived"]
 
-    multi = parse_skw_source(
-        "## R\n\n> $kw: router\n\n> $kw: when\nsituation\n> $kw. end-when\n"
-        "> $kw: then\nresponse\n> $kw. end-then end-router\n"
+    # a legacy `end-<command>` closer is a clear finding directing to migration
+    legacy = parse_skw_source(
+        "## A\n\n> $kw: --derived --from X.Y\n\n- body\n\n> $kw. end-derived\n"
     )
-    assert not multi.findings
-    assert [c.command for c in multi.constructs] == ["when", "then", "router"]
+    assert any("bare 'end'" in f.message for f in legacy.findings)
 
-    wrong_order = parse_skw_source(
-        "## R\n\n> $kw: router\n\n> $kw: when\ns\n> $kw. end-when\n"
-        "> $kw: then\nr\n> $kw. end-router end-then\n"
+    # a router closes with one bare end; its rows peer-close
+    router = parse_skw_source(
+        "## R\n\n> $kw: #r\n> $kw: --when\nsituation\n"
+        "> $kw: --then\nresponse\n> $kw. end\n"
     )
-    assert any("mismatched close" in f.message for f in wrong_order.findings)
+    assert not router.findings
+    assert [c.command for c in router.constructs] == ["when", "then", "router"]
 
 
 def test_open_construct_at_heading_and_eof() -> None:
     at_heading = parse_skw_source(
-        "## A\n\n> $kw: derived --from X.Y\n\n- body\n\n## B\n\nprose\n"
+        "## A\n\n> $kw: --derived --from X.Y\n\n- body\n\n## B\n\nprose\n"
     )
     assert any("left open at heading" in f.message for f in at_heading.findings)
 
-    at_eof = parse_skw_source("## A\n\n> $kw: derived --from X.Y\n\n- body\n")
+    at_eof = parse_skw_source("## A\n\n> $kw: --derived --from X.Y\n\n- body\n")
     assert any("left open at EOF" in f.message for f in at_eof.findings)
 
 
 def test_position_free_and_text_primitive() -> None:
     source = parse_skw_source(
         "## A\n\nhand prose first.\n\n"
-        "> $kw: derived --from X.Y --intent mid-section derivation\n\n- body\n\n> $kw. end-derived\n\n"
+        "> $kw: --derived --from X.Y --intent mid-section derivation\n\n- body\n\n> $kw. end\n\n"
         "more hand prose.\n\n"
-        "> $kw: text\n\ntagged literal span\n\n> $kw. end-text\n"
+        "> $kw: text\n\ntagged literal span\n\n> $kw. end\n"
     )
     assert not source.findings
     assert [r.verb for r in source.recipes] == ["derived"]
@@ -976,23 +1031,23 @@ def test_position_free_and_text_primitive() -> None:
 
 def test_nesting_inside_primitive_is_a_finding() -> None:
     source = parse_skw_source(
-        "## A\n\n> $kw: derived --from X.Y\n\n"
-        "> $kw: text\nnested\n> $kw. end-text\n\n- body\n\n> $kw. end-derived\n"
+        "## A\n\n> $kw: --derived --from X.Y\n\n"
+        "> $kw: text\nnested\n> $kw. end\n\n- body\n\n> $kw. end\n"
     )
     assert any("may not nest inside" in f.message for f in source.findings)
 
 
 def test_router_structural_checks() -> None:
-    outside = parse_skw_source("## A\n\n> $kw: when\ns\n> $kw. end-when\n")
+    outside = parse_skw_source("## A\n\n> $kw: --when\ns\n")
     assert any("outside a router" in f.message for f in outside.findings)
 
     unpaired = parse_skw_source(
-        "## R\n\n> $kw: router\n\n> $kw: when\ns\n> $kw. end-when\n\n> $kw. end-router\n"
+        "## R\n\n> $kw: #r\n\n> $kw: --when\ns\n\n> $kw. end\n"
     )
     assert any("has no 'then'" in f.message for f in unpaired.findings)
 
     then_first = parse_skw_source(
-        "## R\n\n> $kw: router\n\n> $kw: then\nr\n> $kw. end-then\n\n> $kw. end-router\n"
+        "## R\n\n> $kw: #r\n\n> $kw: --then\nr\n\n> $kw. end\n"
     )
     assert any("alternate when/then" in f.message for f in then_first.findings)
 
@@ -1002,10 +1057,10 @@ def test_router_compiles_to_pure_prose(tmp_path: Path) -> None:
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n## Router Table\n\n"
-        "> $kw: router\n\n"
-        "> $kw: when\nWhen the caller wants alpha context.\n\nSecond paragraph of the key.\n> $kw. end-when\n\n"
-        "> $kw: then\nLoad `references/lib.md`.\n> $kw. end-then\n\n"
-        "> $kw. end-router\n\nHand tail.\n",
+        "> $kw: #r\n\n"
+        "> $kw: --when\nWhen the caller wants alpha context.\n\nSecond paragraph of the key.\n\n"
+        "> $kw: --then\nLoad `references/lib.md`.\n\n"
+        "> $kw. end\n\nHand tail.\n",
         encoding="utf-8",
     )
     skillware = load_skillware(skill)
@@ -1024,8 +1079,8 @@ def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n## Pair\n\n"
-        "> $kw: derived --from references/lib.skw.md#Alpha --intent first\n\n- one\n\n> $kw. end-derived\n\n"
-        "> $kw: derived --from Concept.One --intent second\n\n- two\n\n> $kw. end-derived\n",
+        "> $kw: --derived --from references/lib.skw.md#Alpha --intent first\n\n- one\n\n> $kw. end\n\n"
+        "> $kw: --derived --from Concept.One --intent second\n\n- two\n\n> $kw. end\n",
         encoding="utf-8",
     )
     skillware = load_skillware(skill)
@@ -1052,8 +1107,8 @@ def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
 def test_labeled_text_and_labeled_derived() -> None:
     source = parse_skw_source(
         "## A\n\n"
-        "> $kw: label ^frag-1\nlabeled literal fragment\n> $kw. end-^frag-1\n\n"
-        "> $kw: derived ^model --from X.Y --intent i\n\n- body\n\n> $kw. end-derived\n"
+        "> $kw: ^frag-1\nlabeled literal fragment\n> $kw. end\n\n"
+        "> $kw: ^model --derived --from X.Y --intent i\n\n- body\n\n> $kw. end\n"
     )
     assert not source.findings
     text = source.constructs[0]
@@ -1062,22 +1117,21 @@ def test_labeled_text_and_labeled_derived() -> None:
     assert source.recipes[0].label == "model"
 
 
-def test_label_closer_matching_and_duplicates() -> None:
-    mismatch = parse_skw_source(
-        "## A\n\n> $kw: label ^one\nbody\n> $kw. end-^two\n"
-    )
-    assert any("mismatched close" in f.message for f in mismatch.findings)
+def test_bare_end_closes_top_and_duplicate_address() -> None:
+    # a bare `end` closes the innermost open block — no closer-label matching
+    ok = parse_skw_source("## A\n\n> $kw: ^one\nbody\n> $kw. end\n")
+    assert not ok.findings
 
     dup = parse_skw_source(
-        "## A\n\n> $kw: label ^x\na\n> $kw. end-^x\n\n> $kw: label ^x\nb\n> $kw. end-^x\n"
+        "## A\n\n> $kw: ^x\na\n> $kw. end\n\n> $kw: ^x\nb\n> $kw. end\n"
     )
-    assert any("duplicate label" in f.message for f in dup.findings)
+    assert any("duplicate address" in f.message for f in dup.findings)
 
     mixed = parse_skw_source(
-        "## R\n\n> $kw: router ^table\n\n"
-        "> $kw: when\ns\n> $kw. end-when\n"
-        "> $kw: then\nr\n> $kw. end-then\n"
-        "> $kw. end-^table\n"
+        "## R\n\n> $kw: ^table\n\n"
+        "> $kw: --when\ns\n"
+        "> $kw: --then\nr\n"
+        "> $kw. end\n"
     )
     assert not mixed.findings
 
@@ -1086,7 +1140,7 @@ def test_labels_never_reach_compiled_output(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
-        "# mod\n\n## A\n\n> $kw: label ^frag\nfragment prose\n> $kw. end-^frag\n",
+        "# mod\n\n## A\n\n> $kw: ^frag\nfragment prose\n> $kw. end\n",
         encoding="utf-8",
     )
     skillware = load_skillware(skill)
@@ -1101,15 +1155,15 @@ def test_label_locators_resolve(tmp_path: Path) -> None:
     src = skill / ".skillware" / "src" / "references"
     (src / "lib.skw.md").write_text(
         "# lib\n\n## Alpha\n\nintro prose around the span.\n\n"
-        "> $kw: label ^alpha-core\n- alpha core one\n- alpha core two\n> $kw. end-^alpha-core\n\n"
+        "> $kw: ^alpha-core\n- alpha core one\n- alpha core two\n> $kw. end\n\n"
         "trailing prose outside the span.\n",
         encoding="utf-8",
     )
     (src / "mod.skw.md").write_text(
         "# mod\n\n"
-        "> $kw: label ^local-frag\nlocal fragment\n> $kw. end-^local-frag\n\n"
-        "## Copied\n\n> $kw: copy --from references/lib.skw.md^alpha-core\n\n- stale\n\n> $kw. end-copy\n\n"
-        "## Derived\n\n> $kw: derived --from ^local-frag --intent local digest\n\n- solution\n\n> $kw. end-derived\n",
+        "> $kw: ^local-frag\nlocal fragment\n> $kw. end\n\n"
+        "## Copied\n\n> $kw: --copy --from references/lib.skw.md^alpha-core\n\n- stale\n\n> $kw. end\n\n"
+        "## Derived\n\n> $kw: --derived --from ^local-frag --intent local digest\n\n- solution\n\n> $kw. end\n",
         encoding="utf-8",
     )
     skillware = load_skillware(skill)
@@ -1131,11 +1185,11 @@ def test_label_spans_hash_fine_grained(tmp_path: Path) -> None:
     src = skill / ".skillware" / "src" / "references"
     (src / "lib.skw.md").write_text(
         "# lib\n\n## Alpha\n\nprose outside.\n\n"
-        "> $kw: label ^core\n- core line\n> $kw. end-^core\n",
+        "> $kw: ^core\n- core line\n> $kw. end\n",
         encoding="utf-8",
     )
     (src / "mod.skw.md").write_text(
-        "# mod\n\n## Derived\n\n> $kw: derived ^consumer --from references/lib.skw.md^core --intent i\n\n- solution\n\n> $kw. end-derived\n",
+        "# mod\n\n## Derived\n\n> $kw: ^consumer --derived --from references/lib.skw.md^core --intent i\n\n- solution\n\n> $kw. end\n",
         encoding="utf-8",
     )
     build_skill(skill)
@@ -1166,7 +1220,7 @@ def test_region_body_is_fence_aware(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (src / "mod.skw.md").write_text(
-        "# mod\n\n## Copied\n\n> $kw: copy --from references/lib.skw.md#Spec\n\n- stale\n\n> $kw. end-copy\n",
+        "# mod\n\n## Copied\n\n> $kw: --copy --from references/lib.skw.md#Spec\n\n- stale\n\n> $kw. end\n",
         encoding="utf-8",
     )
     skillware = load_skillware(skill)
@@ -1185,7 +1239,7 @@ def test_ordinal_shift_does_not_bless_stale_derived(tmp_path: Path) -> None:
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n## Pair\n\n"
-        "> $kw: derived --from references/lib.skw.md#Alpha --intent i\n\n- solution\n\n> $kw. end-derived\n",
+        "> $kw: --derived --from references/lib.skw.md#Alpha --intent i\n\n- solution\n\n> $kw. end\n",
         encoding="utf-8",
     )
     build_skill(skill)
@@ -1197,8 +1251,8 @@ def test_ordinal_shift_does_not_bless_stale_derived(tmp_path: Path) -> None:
     # insert a NEW derived above the stale one under the same heading; rebuild
     src.write_text(
         "# mod\n\n## Pair\n\n"
-        "> $kw: derived --from Concept.One --intent new first\n\n- new solution\n\n> $kw. end-derived\n\n"
-        "> $kw: derived --from references/lib.skw.md#Alpha --intent i\n\n- solution\n\n> $kw. end-derived\n",
+        "> $kw: --derived --from Concept.One --intent new first\n\n- new solution\n\n> $kw. end\n\n"
+        "> $kw: --derived --from references/lib.skw.md#Alpha --intent i\n\n- solution\n\n> $kw. end\n",
         encoding="utf-8",
     )
     build_skill(skill)
@@ -1210,10 +1264,10 @@ def test_ordinal_shift_does_not_bless_stale_derived(tmp_path: Path) -> None:
 def test_adjacent_blockquotes_are_body_not_args() -> None:
     source = parse_skw_source(
         "## A\n\n"
-        "> $kw: label ^frag\n"
+        "> $kw: ^frag\n"
         "> a markdown quote that is body content\n"
         "more body\n"
-        "> $kw. end-^frag\n"
+        "> $kw. end\n"
         "> a prose quote right after the end line\n"
     )
     assert not source.findings
@@ -1228,7 +1282,7 @@ def test_quote_after_end_survives_compilation(tmp_path: Path) -> None:
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
         "# mod\n\n## A\n\n"
-        "> $kw: label ^frag\nbody line\n> $kw. end-^frag\n"
+        "> $kw: ^frag\nbody line\n> $kw. end\n"
         "> quoted prose after the construct\n",
         encoding="utf-8",
     )
@@ -1243,7 +1297,7 @@ def test_quote_after_end_survives_compilation(tmp_path: Path) -> None:
 
 def test_copy_with_multiple_froms_is_a_finding() -> None:
     source = parse_skw_source(
-        "## A\n\n> $kw: copy --from a.md#X --from b.md#Y\n\n- body\n\n> $kw. end-copy\n"
+        "## A\n\n> $kw: --copy --from a.md#X --from b.md#Y\n\n- body\n\n> $kw. end\n"
     )
     assert any("copy takes exactly one" in f.message for f in source.findings)
 
@@ -1256,13 +1310,13 @@ def test_labeled_span_resolves_nested_copies_fresh(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (src / "frag.skw.md").write_text(
-        "# frag\n\n## Frag\n\n> $kw: label ^frag\nspan prose.\n\n"
-        "> $kw: copy --from references/lib.skw.md#Alpha\n\n- stale inner copy\n\n> $kw. end-copy\n"
-        "> $kw. end-^frag\n",
+        "# frag\n\n## Frag\n\n> $kw: ^frag\nspan prose.\n\n"
+        "> $kw: --copy --from references/lib.skw.md#Alpha\n\n- stale inner copy\n\n> $kw. end\n"
+        "> $kw. end\n",
         encoding="utf-8",
     )
     (src / "mod.skw.md").write_text(
-        "# mod\n\n## Uses\n\n> $kw: copy --from references/frag.skw.md^frag\n\n- stale\n\n> $kw. end-copy\n",
+        "# mod\n\n## Uses\n\n> $kw: --copy --from references/frag.skw.md^frag\n\n- stale\n\n> $kw. end\n",
         encoding="utf-8",
     )
     skillware = load_skillware(skill)
@@ -1275,7 +1329,7 @@ def test_labeled_span_resolves_nested_copies_fresh(tmp_path: Path) -> None:
 
 def test_force_closed_router_still_checks_rows() -> None:
     source = parse_skw_source(
-        "## R\n\n> $kw: router\n\n> $kw: when\ns\n> $kw. end-when\n\n## Next\n\nprose\n"
+        "## R\n\n> $kw: #r\n\n> $kw: --when\ns\n\n## Next\n\nprose\n"
     )
     assert any("left open" in f.message for f in source.findings)
     assert any("has no 'then'" in f.message for f in source.findings)
@@ -1290,9 +1344,9 @@ def test_status_counts_constructs(tmp_path: Path, capsys: pytest.CaptureFixture[
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
-        "# mod\n\n> $kw: label ^frag\nf\n> $kw. end-^frag\n\n"
-        "## R\n\n> $kw: router\n\n> $kw: when\ns\n> $kw. end-when\n"
-        "> $kw: then\nr\n> $kw. end-then\n> $kw. end-router\n",
+        "# mod\n\n> $kw: ^frag\nf\n> $kw. end\n\n"
+        "## R\n\n> $kw: #r\n\n> $kw: --when\ns\n"
+        "> $kw: --then\nr\n> $kw. end\n",
         encoding="utf-8",
     )
     args = argparse.Namespace(skill=str(skill), json=True)
@@ -1314,7 +1368,7 @@ def test_parse_errors_gate_semantic_checks_per_file(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     extra = skill / ".skillware" / "src" / "references" / "extra.skw.md"
-    extra.write_text("# extra\n\n> $kw: derived --from X.Y\n\nnever closed\n", encoding="utf-8")
+    extra.write_text("# extra\n\n> $kw: --derived --from X.Y\n\nnever closed\n", encoding="utf-8")
 
     check = check_skill(skill)
     extra_entry = _entry(check, "references/extra.md")
@@ -1330,7 +1384,7 @@ def test_parse_errors_gate_semantic_checks_per_file(tmp_path: Path) -> None:
     )
     # a parse-broken file poisons its importers as unresolvable, not silently
     lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    lib.write_text(lib.read_text(encoding="utf-8") + "\n> $kw: derived --from X.Y\n\nopen\n", encoding="utf-8")
+    lib.write_text(lib.read_text(encoding="utf-8") + "\n> $kw: --derived --from X.Y\n\nopen\n", encoding="utf-8")
     check = check_skill(skill)
     assert _entry(check, "references/lib.md").status == "parse-error"
     assert _entry(check, "references/mod.md").status == "unresolvable"
@@ -1436,7 +1490,7 @@ def test_bless_refuses_unblessable_and_unknown_pois(tmp_path: Path) -> None:
         bless_skill(skill, "0000000000")  # unknown hash
 
     src = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    src.write_text(src.read_text(encoding="utf-8") + "\n> $kw: derived --from X.Y\n\nopen\n", encoding="utf-8")
+    src.write_text(src.read_text(encoding="utf-8") + "\n> $kw: --derived --from X.Y\n\nopen\n", encoding="utf-8")
     poi = next(p for p in check_skill(skill).pois if p.kind == "parse-error")
     with pytest.raises(SkillwareError) as excinfo:
         bless_skill(skill, poi.poi_hash)
