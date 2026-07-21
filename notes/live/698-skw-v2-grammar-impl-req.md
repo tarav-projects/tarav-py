@@ -10,23 +10,46 @@
 
 ## The v2 Grammar (target)
 
-- **Block = named annotation**: `# $kw: <address>` opens; the address is the sole identity — declared relative (`#fragment`, resolved against the current surface), cited absolute (`path#fragment`). The `^label` second-id is retired; a nameless span uses `#^label` as its address.
-- **`$kw` marks the fence, `--` fills it**: `# $kw: <address>` open, `# --flag value` belonging lines (each self-marked by `--`), `# $kw. end` close (bare `end` now legal, replacing `end-<command>`). The sigil appears only on the two fence lines.
+- **One block shape**: `$kw: [address] [--flags]` opens; `$kw. end` closes a content block. The **address is optional and orthogonal** — a block may be nameless or named, and naming never changes how it closes. `$kw` marks the fence, `--` fills it (head line *and* belonging lines carry flags, each self-marked by `--`); the sigil appears only on the fence lines. ^c20260720-29u ^c20260720-30u
+- **Address** (when present): the sole identity — declared relative (`#fragment`, resolved against the current surface), cited absolute (`path#fragment`); the `^label` second-id is retired.
 - **Features are flags**:
   - `--note [TYPE] <text> ^anchor` — documentation as an `Index.Line` (typed + grounded)
   - `--from <address>` — a dependency edge (`Skw.Dependency`)
   - `--derived` / `--copy` / `--pointer` — the binding mode (was the command)
   - `--intent <text>` — derivation context
   - `--supp <text> ^anchor` — the annotation's own touched lines
+  - `--when` / `--then` — a router row (see composition)
   - `--cont <text>` — continues the previous flag generically (POI if orphaned)
-- **Fence the target**: content between open and close is the block's materialized/generated body (a `def`, a `.md` region). When the fence wraps a named element, its name must match the declared address — a mismatch is a POI; the fenced element checks the name, it is not the source of it.
+  - `--to <address>` — **reserved, unused** (parsed and preserved, no linter behavior yet); appears today only in teaching text
+- **Composition — a body is native surface text and/or nested blocks**. A `Semantic.Router` is a named block whose children are nameless `--when`/`--then` rows, each carrying a **native-text body** (the situation / the resource — real surface text, never a flag value). ^c20260720-29u
+- **Closure is by role, not by naming — three cases** ^c20260720-30u ^c20260721-1u:
+  - **materializing block** (`--derived` / `--copy` / `text`) — **must** own an `$kw. end`; the body between open and close is its generated target and there is no other way to know where that target stops. This is the v1 "body-bearing command needs an owned end" rule, unchanged.
+  - **router block** (has `--when`/`--then` children) — owns an `$kw. end` (closes the composite); its **row children** (`--when`/`--then`) **peer-close** at the next sibling or the parent's `end` — no owned end. This is the v1 peer-closure principle, re-keyed from commands to the `--when`/`--then` flags — a far smaller registry, and `end-when`/`end-then` disappear.
+  - **declaration-only block** (`--from` / `--note` / `--supp` / `--intent` only — no materializing binding, no children) — **self-closes** at its declaration lines; the following native text is surface, not body, and it owns **no** `end`. This subsumes the v1 void `depends` (`$kw: depends --from X` → `$kw: --from X`, still a one-liner) and pure-note annotations that attach to their address.
+  - **the switch**: writing an `$kw. end` is the author's opt-in from *attach-by-address* into *fence-the-body* — a declaration-only note block that wraps a host element (a `def`) to check its address writes an `end` and thereby fences it; materializing blocks do not get the choice — they always fence, so their `end` is mandatory.
+- **Fence the target**: when a block fences a body (materializing block, or a declaration-only block that opted in with an `end`), the body between open and close is its target (a `def`, a `.md` region); when it wraps a named host element, that name checks the declared address — a mismatch is a POI, the fenced element checks the name rather than sourcing it.
 - **Carrier-agnostic**: `>` in `.skw.md`, `#` in code — as today.
+
+### Router example (markdown carrier)
+
+```md
+> $kw: #workflow-router
+>
+> $kw: --when
+`Workflow:Design` is selected — the caller wants implementation planning.
+>
+> $kw: --then
+Load `references/design.md` — produce an implementation-ready `Impl.Req`.
+>
+> $kw. end
+```
 
 ## Impl.Index
 
-- **[DF] one block model** — `SkwBlock`: `address`, `binding` (`none`/`pointer`/`copy`/`derived`), ordered `flags` (notes, froms, supp, intent), optional fenced `body`. Replaces the `SkwRecipe`/`SkwConstruct`/`SkwDependency` split — the old three were *kinds*; v2 has one kind with feature flags.
+- **[DF] one recursive block model** — `SkwBlock`: optional `address`, ordered `flags` (binding mode, notes, froms, supp, intent, `--when`/`--then` role), `children` (nested `SkwBlock`s), and an optional native/fenced `body`. Replaces the `SkwRecipe`/`SkwConstruct`/`SkwDependency` split — the old three were *kinds*; v2 has one recursive kind whose flags and children express every form (annotation, dependency, router).
 - **[CT] the verb→flag map preserves every current capability** — `text` → a block with a fenced body, no binding; `copy --from X` → `--copy --from X`; `derived --from X --intent I` → `--derived --from X --intent I`; `depends --from X` → `--from X`, no body. Nothing the current grammar expresses is lost; it is re-spelled.
-- **[DC] current parser** (`agentos-py/src/agentos/skillware/model.py`): `parse_skw_source`, `_read_declaration`, `_parse_flags`, `_is_end_content`; `COMMANDS`/`RECIPE_VERBS`/`VOID_COMMANDS` (lines ~23-27); the closer discipline forbids bare `end` (must become legal). This is a grammar-core rewrite, not an extension.
+- **[DC] the structural layer resolves to composition, not flags** — the parser today has *two* layers: an annotation layer (`text`/`copy`/`derived`/`depends`) and a structural layer (`router`/`when`/`then`, with peer-closure + router-row alternation). v2 maps both onto the one block shape: `text` → a fenced body with no binding; `copy`/`derived`/`depends` → `--copy`/`--derived`/`--from`; **`router`/`when`/`then` → a named block whose children are nameless `--when`/`--then` rows with native-text bodies**; `label` → a `^`-addressed span. Closure is role-based (content owns `end`, rows peer-close), which *shrinks* the parser: the peer-closure registry, router-child stack tracking, and `end-when`/`end-then` all collapse into "`--when`/`--then` alternate inside a router." ^c20260720-29u ^c20260720-30u
+- **[DC] current parser** (`agentos-py/src/agentos/skillware/model.py`): `parse_skw_source`, `_read_declaration`, `_parse_flags`, `_is_end_content`, the `close_top`/`force_close_open`/`check_router_children` closure machinery; `COMMANDS`/`RECIPE_VERBS`/`STRUCTURAL_COMMANDS`/`VOID_COMMANDS` (lines ~23-27); bare `end` is currently forbidden (must become legal). This is a grammar-core rewrite, not an extension.
 - **[DC] current linter/build** (`build.py`): `check_skill`, `_dependency_sync_pois`, expansion/derivation, `_resolve_locator`. Binding is currently read off `recipe.verb`/`dependency`; v2 reads it off the block's `--`flags. The dangling/undeclared/unhonored/derived-stale POI logic is preserved but re-sourced from `SkwBlock`.
 - **[DC] address resolution** — `Skw.Address.Schema`: a bare `#fragment` resolves against the current surface; `path#fragment` is absolute. `_resolve_locator` already handles locator forms; extend it for the relative/absolute split and for the address-as-block-identity.
 - **[DC] the 4 live packages** — `agentos-md/skills/{agentos-skillware,agentos-index,agentos-hugentics,agentos-hugentics-impl}/.skw/src/**/*.skw.md` — all in v1 grammar; every `derived`/`copy`/`depends` construct is migrated. The `agentos-skillware` skill additionally *teaches* the grammar (`lang.skw.md`), so its content changes too.
@@ -40,9 +63,9 @@
 - **Check**: depot linter 0/0; agendix candidates removed; router/members updated. This phase is the **authority gate** — code in later phases cites these blocks.
 
 ### Phase 1 — parser rewrite to v2 (`model.py`)
-- **Change**: replace the declaration reader with the v2 grammar — parse `$kw: <address>`, `--`-marked belonging flags, `--cont`, bare `# $kw. end`, and an optional fenced body captured between open and close. Produce `SkwBlock`. Keep `SkwFinding` structural checks (well-formed lines, closed blocks, unique addresses).
-- **Check**: RED→GREEN unit tests over v2 fixtures — a note block, a `--derived --from` block with a fenced body, a `--from`-only (ex-`depends`) block, `--cont` continuation, address relative vs absolute, a mismatched fenced-name, an orphan `--cont`. Bare `end` now parses; `end-derived` legacy is a clear finding directing to migration.
-- **Observable**: `parse_skw_source` returns `SkwBlock`s for v2 sources.
+- **Change**: replace the declaration reader + closure machinery with the v2 grammar — parse `$kw: [address] [--flags]` (optional address, head-line flags), `--`-marked belonging flags, `--cont`, `--to` (reserved: parsed and preserved, no behavior), bare `# $kw. end`, native-text and/or **nested-block** bodies, and **three-case role-based closure**: materializing blocks (`--derived`/`--copy`/`text`) own a mandatory `end`; a router owns an `end` and its `--when`/`--then` rows peer-close; declaration-only blocks (`--from`/`--note`/`--supp`/`--intent` only) **self-close** with no `end` — unless they write one, which opts them into fencing. Produce a recursive `SkwBlock` (address, flags, children, optional fenced body). `--when`/`--then` are legal only inside a router parent and must alternate.
+- **Check**: RED→GREEN unit tests over v2 fixtures — a declaration-only `--note` block (no `end`, attaches by address); the same block *with* an `end` (fences its host `def`, name-checks the address); a `--derived --from` block with a mandatory fenced body (missing `end` = finding); a `--from`-only (ex-`depends`) **self-closing one-liner** with no `end`; a **router with nameless `--when`/`--then` rows carrying native bodies** (peer-closure, alternation, one owned `end`); `--cont` continuation; a `--to` flag round-trips unremarked; address relative vs absolute and a nameless block; a mismatched fenced-name; an orphan `--cont`; a `--then` without a preceding `--when`. Bare `end` now parses; `end-derived`/`end-when` legacy is a clear finding directing to migration.
+- **Observable**: `parse_skw_source` returns the recursive `SkwBlock` tree for v2 sources.
 
 ### Phase 2 — linter/build over `SkwBlock` (`build.py`)
 - **Change**: re-source binding mode from block flags; port `copy`/`derived` materialization and the dependency-sync POIs (undeclared/unhonored/dangling) to `SkwBlock`. Add v2 POIs: `malformed-note` (a `--note` missing its `[TYPE]` or `^anchor`), `address-mismatch` (fenced name ≠ declared address), `orphan-cont`.
@@ -70,5 +93,7 @@
 
 ## Impl.Log
 
+- 2026-07-20 — **closure rule completed to three cases + `--to` reserved, folded in** (`^c20260721-1u`): the v2-vs-all-4-skills survey found two forms the two-case closure did not yet cover — the void `depends` one-liner and the `--to` flag (teaching-text only). Resolved in chat: closure has **three** roles, not two — (1) materializing blocks (`--derived`/`--copy`/`text`) own a **mandatory** `end`; (2) a router owns an `end` and its `--when`/`--then` rows peer-close; (3) **declaration-only blocks** (`--from`/`--note`/`--supp`/`--intent` only) **self-close** with no `end`, subsuming void `depends` and pure-note attach. Writing an `end` is the author's opt-in from attach-by-address into fence-the-body; materializing blocks have no choice. `--to` is carried as a **reserved, unused** flag (parsed and preserved, no linter behavior). Every current agentos-index / 4-skill form now maps to v2 with no ambiguity. No open grammar hole remains for Phase 1.
+- 2026-07-20 — **structural layer resolved and folded in** (`^c20260720-29u` `^c20260720-30u`): the `--exec` executable checkpoint surfaced that the v2 annotation design never covered `router`/`when`/`then`. Resolved in chat: a router is a named block whose children are **nameless `--when`/`--then` rows with native-text bodies** (composition by nesting, not flag values); the **address is optional and orthogonal**; head-line flags are supported; **closure is role-based** (content blocks own `end`, rows peer-close), which shrinks the parser (peer-closure registry + router-child tracking + `end-when`/`end-then` all collapse). `SkwBlock` is now recursive (children). No structural hole remains for the Phase 1 rewrite.
 - 2026-07-20 — **Phase 0 LANDED** (ontology promotion, `^c20260720-13u`-family + design anchors `^c20260720-15u..23u`): `Skw.Annotation` rewritten to the named-block model (binding-as-flag, additive features, `Index.Block ≡ Skw.Annotation`, address-as-identity); `Skw.Language` recut to design-value lines (named-block form, binding-mode-as-flag) with the **grammar itself moved to a fenced v2 code example** in the `Skw.Annotation/Construct.Grammar` appendix (13 v1 grammar lines superseded, git-kept); `Skw.Address.Schema` gained the address-as-block-identity line (relative-declare / absolute-cite). Three agendix candidates promoted out. Depot linter 0/0/21. **One `derived-stale` left unblessed on purpose**: doctrine "The Model" derives from `Skw.Annotation` and still teaches v1 — correct for the current v1 parser, and the standing POI is the honest Phase-3 marker (it resolves when the skill's teaching migrates with the parser, not before). Re-deriving now would teach an unimplemented grammar; blessing would hide real drift.
 - 2026-07-20 — created under `--design --AUTO` as the additive v1 (documentation annotation only), then **rescoped to the full v2 grammar** at the user's direction (`^c20260720-25u`). Sequencing decision: authority-first — promote the agendix design to the 107/108 ontology (Phase 0) before any parser code, so the breaking change implements gated concepts rather than zero-authority chat material. Migration is atomic across the 4 live packages (Phases 1-3 land together; a v1-read shim is the only fallback if execution is interrupted). `note`-as-command (the v1 compromise) is dropped — v2 uses the address-named block throughout. Grounding `^c20260720-25u`; design source anchors `^c20260720-15u..24u`.
