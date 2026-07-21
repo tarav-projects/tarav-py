@@ -248,6 +248,27 @@ def _parse_note(flag: str, value: str, line: int, address: str | None) -> SkwNot
     )
 
 
+@dataclass
+class _Frame:
+    """A block open on the parse stack, closed when its `end` (or a peer/EOF)
+    arrives. Mutable: a router parent's `command`/`needs_end`/`children` are
+    updated in place as its `--when`/`--then` rows attach."""
+
+    command: str
+    verb: str | None
+    heading: str | None
+    line: int
+    label: str | None
+    address: str | None
+    decl_span: tuple[int, int]
+    body_start: int
+    froms: tuple[str, ...]
+    intent: str | None
+    notes: list[SkwNote]
+    needs_end: bool
+    children: list[str] = field(default_factory=list)
+
+
 def parse_skw_source(text: str) -> SkwSource:
     lines = text.splitlines()
     recipes: list[SkwRecipe] = []
@@ -258,87 +279,82 @@ def parse_skw_source(text: str) -> SkwSource:
     findings: list[SkwFinding] = []
 
     heading: str | None = None
-    stack: list[dict] = []
+    stack: list[_Frame] = []
     heading_counts: dict[str, int] = {}
     seen_addresses: set[str] = set()
 
     def _has_content(body: tuple[str, ...]) -> bool:
         return any(line.strip() for line in body)
 
-    def emit_frame(frame: dict, end_index: int) -> None:
-        span = (frame["body_start"], end_index)
+    def emit_frame(frame: _Frame, end_index: int) -> None:
+        span = (frame.body_start, end_index)
         body = tuple(lines[span[0] : span[1]])
-        for note in frame["notes"]:
-            notes.append(note)
-        if frame["verb"] in RECIPE_BINDINGS:
-            key = frame["heading"] or f"line {frame['line']}"
+        notes.extend(frame.notes)
+        if frame.verb in RECIPE_BINDINGS:
+            key = frame.heading or f"line {frame.line}"
             ordinal = heading_counts.get(key, 0)
             heading_counts[key] = ordinal + 1
             recipes.append(
                 SkwRecipe(
-                    verb=frame["verb"],
-                    froms=frame["froms"],
-                    intent=frame["intent"],
-                    heading=frame["heading"],
-                    line=frame["line"],
+                    verb=frame.verb,
+                    froms=frame.froms,
+                    intent=frame.intent,
+                    heading=frame.heading,
+                    line=frame.line,
                     ordinal=ordinal,
-                    label=frame["label"],
-                    address=frame["address"],
-                    callout_span=frame["decl_span"],
+                    label=frame.label,
+                    address=frame.address,
+                    callout_span=frame.decl_span,
                     body_span=span,
                     body=body,
                 )
             )
-        elif (
-            frame["command"] == "text"
-            and frame["froms"]
-            and not _has_content(body)
-        ):
+        elif frame.command == "text" and frame.froms and not _has_content(body):
             # a pure declaration-only `--from` block is the void dependency
             dependencies.append(
                 SkwDependency(
-                    froms=frame["froms"],
-                    heading=frame["heading"],
-                    line=frame["line"],
-                    label=frame["label"],
-                    address=frame["address"],
-                    decl_span=frame["decl_span"],
+                    froms=frame.froms,
+                    heading=frame.heading,
+                    line=frame.line,
+                    label=frame.label,
+                    address=frame.address,
+                    decl_span=frame.decl_span,
                 )
             )
         else:
             constructs.append(
                 SkwConstruct(
-                    command=frame["command"],
-                    heading=frame["heading"],
-                    line=frame["line"],
-                    label=frame["label"],
-                    address=frame["address"],
-                    decl_span=frame["decl_span"],
+                    command=frame.command,
+                    heading=frame.heading,
+                    line=frame.line,
+                    label=frame.label,
+                    address=frame.address,
+                    decl_span=frame.decl_span,
                     body_span=span,
                     body=body,
                 )
             )
         parent = stack[-1] if stack else None
-        if parent is not None and frame["command"] in ("when", "then"):
-            parent["children"].append(frame["command"])
-            parent["command"] = "router"
-            parent["needs_end"] = True
+        if parent is not None and frame.command in ("when", "then"):
+            parent.children.append(frame.command)
+            parent.command = "router"
+            parent.needs_end = True
 
     def close_top(end_index: int) -> None:
         frame = stack.pop()
         emit_frame(frame, end_index)
 
     def peer_close_rows(end_index: int) -> None:
-        while stack and stack[-1]["command"] in ("when", "then"):
+        while stack and stack[-1].command in ("when", "then"):
             close_top(end_index)
 
-    def check_router_children(frame: dict) -> None:
+    def check_router_children(frame: _Frame) -> None:
         expected = "when"
-        for child in frame["children"]:
+        for child in frame.children:
             if child != expected:
                 findings.append(
                     SkwFinding(
-                        frame["line"],
+                        frame.line,
                         f"router rows must alternate when/then: found '{child}' "
                         f"where '{expected}' was expected",
                     )
@@ -347,22 +363,22 @@ def parse_skw_source(text: str) -> SkwSource:
             expected = "then" if expected == "when" else "when"
         if expected == "then":
             findings.append(
-                SkwFinding(frame["line"], "router ends with a 'when' that has no 'then'")
+                SkwFinding(frame.line, "router ends with a 'when' that has no 'then'")
             )
 
     def force_close(end_index: int, where: str) -> None:
         while stack:
             frame = stack[-1]
-            if frame["needs_end"]:
+            if frame.needs_end:
                 findings.append(
                     SkwFinding(
-                        frame["line"],
-                        f"'{frame['command']}' left open at {where} "
+                        frame.line,
+                        f"'{frame.command}' left open at {where} "
                         f"(a content block closes explicitly with $kw. end)",
                     )
                 )
             close_top(end_index)
-            if frame["command"] == "router":
+            if frame.command == "router":
                 check_router_children(frame)
 
     index = 0
@@ -407,7 +423,7 @@ def parse_skw_source(text: str) -> SkwSource:
             else:
                 frame = stack[-1]
                 close_top(index)
-                if frame["command"] == "router":
+                if frame.command == "router":
                     check_router_children(frame)
             machinery_spans.append((index, index + 1))
             index += 1
@@ -465,7 +481,7 @@ def parse_skw_source(text: str) -> SkwSource:
         verb = bindings[0] if bindings else None
 
         if role is not None:
-            if not stack or stack[-1]["command"] in ("when", "then"):
+            if not stack or stack[-1].command in ("when", "then"):
                 # rows peer-close, so a sibling row is legal; only a top-level
                 # row (no parent block) is orphaned
                 if not stack:
@@ -503,29 +519,28 @@ def parse_skw_source(text: str) -> SkwSource:
 
         # nesting guard: a construct may only nest as a when/then row inside a
         # router-capable parent; a plain block may not nest inside a recipe body
-        if stack and stack[-1]["verb"] in RECIPE_BINDINGS and role is None:
+        if stack and stack[-1].verb in RECIPE_BINDINGS and role is None:
             findings.append(
                 SkwFinding(
                     index + 1,
-                    f"blocks may not nest inside a '{stack[-1]['command']}' body",
+                    f"blocks may not nest inside a '{stack[-1].command}' body",
                 )
             )
 
-        frame = {
-            "command": command,
-            "verb": verb if verb in RECIPE_BINDINGS else None,
-            "heading": heading,
-            "line": index + 1,
-            "label": label,
-            "address": address,
-            "decl_span": (index, decl_end),
-            "body_start": decl_end,
-            "froms": froms,
-            "intent": " ".join(intent_parts) if intent_parts else None,
-            "notes": frame_notes,
-            "needs_end": needs_end,
-            "children": [],
-        }
+        frame = _Frame(
+            command=command,
+            verb=verb if verb in RECIPE_BINDINGS else None,
+            heading=heading,
+            line=index + 1,
+            label=label,
+            address=address,
+            decl_span=(index, decl_end),
+            body_start=decl_end,
+            froms=froms,
+            intent=" ".join(intent_parts) if intent_parts else None,
+            notes=frame_notes,
+            needs_end=needs_end,
+        )
 
         machinery_spans.append((index, decl_end))
         if annotation_only:

@@ -29,3 +29,4 @@
 
 ## Impl.Log
 - 2026-07-21 — created under the codebase-cleaner (`--AUTO`) as the scoped cleanup Impl.Req for the 698 parser; single theme (frame typing), design + exec autonomous.
+- 2026-07-21 — **COMPLETE**. Added `_Frame` dataclass; converted every `frame["…"]`/`parent["…"]`/`stack[-1]["…"]` site (~16 across `emit_frame`, `close_top`, `peer_close_rows`, `check_router_children`, `force_close`, the close handler, and the main loop) to attribute access; `stack: list[_Frame]`; `notes.append` loop → `notes.extend`. Behavior-preserving: `tests/test_skillware.py` 76/76, full agentos-py suite 408/408, and `agentos skw check` output unchanged (22 advisory POIs). Checkpoint `4aa9c37`; cleanup edits left uncommitted for review.
