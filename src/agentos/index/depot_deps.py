@@ -39,24 +39,36 @@ def load_depot_registry(home: Path | None = None) -> dict[str, Path]:
     plumbing, never a hard failure. Each entry accepts a ``path`` or
     ``project`` location, matching the `skills.routing.sources` forms.
     """
-    config_path = global_config_path(home)
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    depots = (((payload.get("index") or {}).get("depots")) or {}) if isinstance(
-        payload.get("index"), dict
-    ) else {}
+    depots = _load_index_config(home).get("depots")
     registry: dict[str, Path] = {}
-    for name, entry in depots.items():
+    for name, entry in (depots or {}).items():
         if not isinstance(entry, dict):
             continue
         location = entry.get("path") or entry.get("project")
         if isinstance(location, str) and location:
             registry[str(name)] = Path(location)
     return registry
+
+
+def _load_index_config(home: Path | None) -> dict:
+    """The global config's ``index`` block, or ``{}`` — never a hard failure."""
+    try:
+        payload = json.loads(global_config_path(home).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    index = payload.get("index") if isinstance(payload, dict) else None
+    return index if isinstance(index, dict) else {}
+
+
+def load_default_depends(home: Path | None = None) -> list[str]:
+    """Depot names every *registered* depot depends on by default (the prelude).
+
+    Declared once in the global config's ``index.default_depends`` — e.g.
+    ``["agentos-pkg"]`` so every agentos depot resolves against the shared
+    ontology without repeating the declaration in each router.
+    """
+    names = _load_index_config(home).get("default_depends")
+    return [str(n) for n in names] if isinstance(names, list) else []
 
 
 def declared_dependency_names(depot_root: Path) -> list[str]:
@@ -87,17 +99,26 @@ def resolve_dependency_depots(
     registry does not resolve are returned separately so the linter can flag an
     unresolved dependency. Resolution never recurses into a dependency's own
     dependencies.
+
+    A *registered* depot (one that is itself in the registry) additionally
+    inherits ``index.default_depends`` — the agentos-pkg prelude. The depot is
+    never made to depend on itself.
     """
-    names = declared_dependency_names(depot_root)
+    registry = load_depot_registry(home)
+    self_resolved = Path(depot_root).resolve()
+    is_registered = any(p.resolve() == self_resolved for p in registry.values())
+
+    default_names = load_default_depends(home) if is_registered else []
+    names = list(dict.fromkeys([*default_names, *declared_dependency_names(depot_root)]))
     if not names:
         return [], []
-    registry = load_depot_registry(home)
+
     resolved: list[Path] = []
     unresolved: list[str] = []
     for name in names:
         target = registry.get(name)
         if target is None:
             unresolved.append(name)
-        else:
+        elif target.resolve() != self_resolved:  # never depend on self
             resolved.append(target)
     return resolved, unresolved

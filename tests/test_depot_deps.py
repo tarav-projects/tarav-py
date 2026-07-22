@@ -100,3 +100,53 @@ def test_declared_name_absent_from_registry_is_reported(tmp_path: Path, monkeypa
     resolved, unresolved = resolve_dependency_depots(d)
     assert resolved == []
     assert unresolved == ["ghost"]
+
+
+# ---- default_depends (the agentos-pkg prelude) -------------------------------
+
+
+def _write_index_config(home: Path, depots: dict, default_depends: list) -> None:
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "config.json").write_text(
+        json.dumps({
+            "class": "agentos.global.config",
+            "index": {
+                "depots": {n: {"path": str(p)} for n, p in depots.items()},
+                "default_depends": default_depends,
+            },
+        }),
+        encoding="utf-8",
+    )
+
+
+def test_registered_depot_inherits_default_depends(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    pkg = _write_router(tmp_path / "pkg", "# pkg\n")
+    other = _write_router(tmp_path / "other", "# other\n")  # no directive of its own
+    _write_index_config(home, {"agentos-pkg": pkg, "other-pkg": other}, ["agentos-pkg"])
+    monkeypatch.setenv("AGENTOS_HOME", str(home))
+
+    resolved, unresolved = resolve_dependency_depots(other)
+    assert resolved == [pkg]  # inherits the prelude
+    assert unresolved == []
+
+
+def test_base_depot_does_not_depend_on_itself(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    pkg = _write_router(tmp_path / "pkg", "# pkg\n")
+    _write_index_config(home, {"agentos-pkg": pkg}, ["agentos-pkg"])
+    monkeypatch.setenv("AGENTOS_HOME", str(home))
+
+    resolved, _ = resolve_dependency_depots(pkg)
+    assert resolved == []  # self-exclusion: agentos-pkg is not its own dep
+
+
+def test_unregistered_depot_does_not_inherit_defaults(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    pkg = _write_router(tmp_path / "pkg", "# pkg\n")
+    _write_index_config(home, {"agentos-pkg": pkg}, ["agentos-pkg"])
+    monkeypatch.setenv("AGENTOS_HOME", str(home))
+
+    stranger = _write_router(tmp_path / "stranger", "# s\n")  # not in the registry
+    resolved, _ = resolve_dependency_depots(stranger)
+    assert resolved == []  # defaults are a policy over registered depots only
