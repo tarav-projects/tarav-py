@@ -142,3 +142,41 @@ def test_block_heading_is_not_shadowed_by_inline_pass(tmp_path: Path) -> None:
     provider = IndexSurfaceProvider(depot)
     res = provider.resolve({"Parent.Block", "Other.Block"})
     assert all(not v.startswith("unresolved:") for v in res.values())
+
+
+ALIASED = """# design
+
+****
+
+## Real.Concept
+
+- [DF] `Real.Concept` is the thing that `Alt.Name` also names
+
+### meta
+
+- aliases: `Alt.Name`
+"""
+
+
+def test_declared_alias_resolves(tmp_path: Path) -> None:
+    # a concept's `### meta / - aliases:` name resolves like the concept itself.
+    depot = _write_depot(tmp_path / "d", ALIASED)
+    provider = IndexSurfaceProvider(depot)
+    res = provider.resolve({"Real.Concept", "Alt.Name"})
+    assert not res["Alt.Name"].startswith("unresolved:")
+
+
+def test_cross_depot_resolution(tmp_path: Path) -> None:
+    # a mention resolving to a concept defined in another engaged depot is not
+    # dangling once that depot is engaged.
+    home = _write_depot(
+        tmp_path / "home",
+        "# design\n\n****\n\n## Home.Concept\n\n- [DF] `Home.Concept` leans on `Foreign.Concept`\n",
+    )
+    other = _write_depot(
+        tmp_path / "other",
+        "# design\n\n****\n\n## Foreign.Concept\n\n- [DF] `Foreign.Concept` is defined elsewhere\n",
+    )
+    assert index_dangling_mentions(home) != []  # dangling without the other depot
+    findings = index_dangling_mentions(home, engaged_depots=(other,))
+    assert "Foreign.Concept" not in {f.key for f in findings}

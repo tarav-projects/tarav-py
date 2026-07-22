@@ -8,18 +8,19 @@ The index declares no block->block edges (blocks reference each other only via
 Dotted.Name mentions), so `declared_edges` is empty and the meaningful check is
 `dangling_mention_findings`: a mention that no longer resolves.
 
-DORMANT — deliberately not wired into `agentos index linter`. A low-noise
-production run needs an index-aware resolver that models canonical/plural
-short-forms, `::`-scoped names, inline definitions, and cross-depot concepts;
-this provider's resolver recognizes concept-block *headings* only, which is
-complete for controlled fixtures but floods the real multi-depot index
-(Impl.Req 700, Impl.Log — the deferred resolver design).
+DORMANT — deliberately not wired into `agentos index linter`. The resolver now
+models block headings, `Inline.Definition`s, declared aliases, and resolves
+across every engaged depot (multi-depot). It still does *not* model
+canonical/plural short-forms (`Stable.Surfaces`->`Stable.Surface`), `::`-scoped
+names, illustrative example placeholders, or concepts defined on non-index
+skill surfaces — so it still over-reports on the real index and stays dormant
+pending those (design-laden) rules (Impl.Req 700, Impl.Log).
 """
 
 from pathlib import Path
 
 from agentos.index.model import parse_depot
-from agentos.index.model.nodes import BlockHeading, KernelLine, Node
+from agentos.index.model.nodes import BlockHeading, KernelLine, MetaLine, Node
 from agentos.skwlint import Poi, dangling_mention_findings, extract_mentions
 
 
@@ -38,9 +39,9 @@ def _first_cited_concept(node: Node) -> str | None:
 
 
 def _defined_concepts(depot_root: Path) -> dict[str, str]:
-    """Every concept an index depot defines, mapped to a stable definition token.
+    """Every concept one index depot defines, mapped to a stable definition token.
 
-    Two definition forms are recognized:
+    Three definition forms are recognized:
 
     - **block headings** — a concept with its own `##` block.
     - **`Inline.Definition`** (103) — a `[DF]` line that defines a concept
@@ -48,6 +49,9 @@ def _defined_concepts(depot_root: Path) -> dict[str, str]:
       the first cited concept on the line; the block's own first `[DF]` names
       the heading (already indexed), so only *other* `[DF]` subjects are inline
       definitions.
+    - **declared aliases** — a `### meta` `- aliases:` line naming alternate
+      dotted names for the enclosing concept (e.g. `Touched.Variable` for
+      `Hugentic.Variable`).
 
     The token is the defining line's text, so a later change to the definition
     shifts it — the hook a future `dangling`/stale check keys on.
@@ -63,21 +67,38 @@ def _defined_concepts(depot_root: Path) -> dict[str, str]:
                 subject = _first_cited_concept(node)
                 if subject:
                     concepts.setdefault(subject, node.src)
+            elif isinstance(node, MetaLine) and node.src.strip().startswith("- aliases:"):
+                for alias in extract_mentions(node.src):
+                    concepts.setdefault(alias, node.src)
+    return concepts
+
+
+def _engaged_concepts(depots: tuple[Path, ...]) -> dict[str, str]:
+    """Union the defined concepts across every engaged depot (multi-depot)."""
+    concepts: dict[str, str] = {}
+    for depot in depots:
+        for name, token in _defined_concepts(depot).items():
+            concepts.setdefault(name, token)
     return concepts
 
 
 class IndexSurfaceProvider:
     """`SurfaceProvider` over an index depot.
 
-    Resolves against every concept the depot *defines* — block headings and
-    `Inline.Definition`s. The remaining real-index gaps (canonical/plural
-    short-forms, `::`-scoped names, cross-depot concepts) are the documented
+    Mentions come from `depot_root`; resolution runs against the concepts
+    *defined* across `depot_root` plus any additional `engaged_depots` — block
+    headings, `Inline.Definition`s, and declared aliases. The remaining
+    real-index gaps (canonical/plural short-forms, `::`-scoped names, example
+    placeholders, non-index skill-surface concepts) are the documented
     follow-up resolver work, not a defect in this binding.
     """
 
-    def __init__(self, depot_root: Path) -> None:
+    def __init__(
+        self, depot_root: Path, *, engaged_depots: tuple[Path, ...] = ()
+    ) -> None:
         self._depot_root = Path(depot_root)
-        self._concepts = _defined_concepts(self._depot_root)
+        depots = (self._depot_root, *(Path(d) for d in engaged_depots))
+        self._concepts = _engaged_concepts(depots)
 
     def declared_edges(self) -> tuple[set[str], set[str]]:
         # the index declares no block->block dependencies
@@ -96,8 +117,10 @@ class IndexSurfaceProvider:
         }
 
 
-def index_dangling_mentions(depot_root: Path) -> list[Poi]:
+def index_dangling_mentions(
+    depot_root: Path, engaged_depots: tuple[Path, ...] = ()
+) -> list[Poi]:
     """Run the core dangling-mention check over an index depot (dormant path)."""
-    provider = IndexSurfaceProvider(depot_root)
+    provider = IndexSurfaceProvider(depot_root, engaged_depots=engaged_depots)
     resolutions = provider.resolve(provider.mentions())
     return dangling_mention_findings(Path(Path(depot_root).name), resolutions)
