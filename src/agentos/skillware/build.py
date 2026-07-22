@@ -21,6 +21,14 @@ from pathlib import Path
 
 from agentos.index.model import BlockHeading, KernelLine, MetaLine, parse_depot
 from agentos.skillware.model import SkwFinding, SkwSource, parse_skw_source, recipe_key
+from agentos.skwlint import (
+    Poi,
+    blessed_hashes as _blessed_hashes,
+    extract_mentions,
+    poi as _poi,
+    run_dependency_sync,
+    suppress_blessed as _suppress_blessed,
+)
 
 SRC_SUFFIX = ".skw.md"
 BUILD_DIR = ".skw"
@@ -378,18 +386,10 @@ def _depot_block_body(model, name: str) -> list[str] | None:
 _DOTTED_NAME_RE = re.compile(
     r"^[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+(?:::[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+)?$"
 )
-_BACKTICKED_DOTTED_NAME_RE = re.compile(
-    r"`([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+(?:::[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+)?)`"
-)
 
 
 def _is_dotted_name_locator(locator: str) -> bool:
     return bool(_DOTTED_NAME_RE.match(locator.strip()))
-
-
-def extract_mentions(text: str) -> set[str]:
-    """Return backticked addressable dotted names visible in compiled text."""
-    return set(_BACKTICKED_DOTTED_NAME_RE.findall(text))
 
 
 def _resolved_dotted_names(skillware: Skillware, names: set[str]) -> dict[str, str]:
@@ -558,17 +558,6 @@ class CheckEntry:
 
 
 @dataclass(frozen=True)
-class Poi:
-    """A point of interest: a place worth an agent's attention — advisory, never a verdict."""
-
-    kind: str
-    target: Path
-    key: str | None
-    poi_hash: str
-    detail: str
-
-
-@dataclass(frozen=True)
 class BlessRecord:
     target: Path
     key: str
@@ -589,26 +578,6 @@ SUPPRESSIBLE_KINDS = (
 )
 
 _LEGACY_CALLOUT_RE = re.compile(r"^>\s*\[!skw\]")
-
-
-def _poi(kind: str, target: Path, key: str | None, payload: str, detail: str) -> Poi:
-    digest = hashlib.sha256(f"{target}|{kind}|{key}|{payload}".encode("utf-8")).hexdigest()
-    return Poi(kind=kind, target=target, key=key, poi_hash=digest[:10], detail=detail)
-
-
-def _blessed_hashes(lock: dict) -> set[str]:
-    return {
-        str(record.get("hash"))
-        for record in lock.get("blessings", [])
-        if record.get("hash")
-    }
-
-
-def _suppress_blessed(lock: dict, pois: list[Poi]) -> list[Poi]:
-    blessed = _blessed_hashes(lock)
-    if not blessed:
-        return pois
-    return [poi for poi in pois if poi.poi_hash not in blessed]
 
 
 def _write_lock(skillware: Skillware, lock: dict) -> None:
@@ -769,71 +738,47 @@ def _legacy_callout_pois(target_rel: Path, src_text: str) -> list[Poi]:
     return pois
 
 
+class _SkwSurfaceProvider:
+    """The skw-skills backend's binding into the dependency-sync engine.
+
+    Extracts declared edges from a `SkwSource`'s dependencies and recipes, its
+    mentions from the compiled (`Expansion`) text, and resolves names against
+    the package's configured depots — the `SurfaceProvider` the core drives.
+    """
+
+    def __init__(
+        self, skillware: "Skillware", source: SkwSource, expansion: "Expansion"
+    ) -> None:
+        self._skillware = skillware
+        self._source = source
+        self._expansion = expansion
+
+    def declared_edges(self) -> tuple[set[str], set[str]]:
+        declared: set[str] = set()
+        declared_from_depends: set[str] = set()
+        for dependency in self._source.dependencies:
+            for locator in dependency.froms:
+                if _is_dotted_name_locator(locator):
+                    declared.add(locator)
+                    declared_from_depends.add(locator)
+        for recipe in self._source.recipes:
+            for locator in recipe.froms:
+                if _is_dotted_name_locator(locator):
+                    declared.add(locator)
+        return declared, declared_from_depends
+
+    def mentions(self) -> set[str]:
+        return extract_mentions("\n".join(self._expansion.fresh_lines))
+
+    def resolve(self, names: set[str]) -> dict[str, str]:
+        return _resolved_dotted_names(self._skillware, names)
+
+
 def _dependency_sync_pois(
     skillware: Skillware, target_rel: Path, source: SkwSource, expansion: Expansion
 ) -> list[Poi]:
-    declared: set[str] = set()
-    declared_from_depends: set[str] = set()
-    for dependency in source.dependencies:
-        for locator in dependency.froms:
-            if _is_dotted_name_locator(locator):
-                declared.add(locator)
-                declared_from_depends.add(locator)
-    for recipe in source.recipes:
-        for locator in recipe.froms:
-            if _is_dotted_name_locator(locator):
-                declared.add(locator)
-
-    raw_mentions = extract_mentions("\n".join(expansion.fresh_lines))
-    mention_resolutions = {
-        name: resolution
-        for name, resolution in _resolved_dotted_names(skillware, raw_mentions).items()
-        if not resolution.startswith("unresolved:")
-    }
-    declared_resolutions = _resolved_dotted_names(skillware, declared)
-    dangling = {
-        name
-        for name, resolution in declared_resolutions.items()
-        if resolution.startswith("unresolved:")
-    }
-
-    pois: list[Poi] = []
-    for name in sorted(dangling):
-        pois.append(
-            _poi(
-                "dangling-dependency",
-                target_rel,
-                name,
-                declared_resolutions[name],
-                f"declared dependency `{name}` no longer resolves in the configured depots",
-            )
-        )
-    for name, resolution in sorted(mention_resolutions.items()):
-        if name in declared:
-            continue
-        pois.append(
-            _poi(
-                "undeclared-dependency",
-                target_rel,
-                name,
-                resolution,
-                f"mention `{name}` resolves but has no declared dependency",
-            )
-        )
-    for name in sorted(declared_from_depends):
-        if name in mention_resolutions or name in dangling:
-            continue
-        resolution = declared_resolutions.get(name, "unresolved")
-        pois.append(
-            _poi(
-                "unhonored-dependency",
-                target_rel,
-                name,
-                resolution,
-                f"declared dependency `{name}` is not mentioned in compiled text",
-            )
-        )
-    return pois
+    provider = _SkwSurfaceProvider(skillware, source, expansion)
+    return run_dependency_sync(target_rel, provider)
 
 
 def _note_pois(target_rel: Path, source: SkwSource) -> list[Poi]:

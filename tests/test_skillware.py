@@ -1564,3 +1564,28 @@ def test_crlf_target_reads_ok(tmp_path: Path) -> None:
     target.write_bytes(crlf.encode("utf-8"))
     check = check_skill(skill)
     assert _entry(check, "references/mod.md").status == "ok"
+
+
+def test_skw_backend_satisfies_surface_provider_protocol() -> None:
+    # The skw-skills backend binds into the shared dependency-sync engine
+    # through the SurfaceProvider protocol (Impl.Req 700, slice 2).
+    from agentos.skillware.build import _SkwSurfaceProvider
+    from agentos.skwlint import SurfaceProvider
+
+    assert issubclass(_SkwSurfaceProvider, SurfaceProvider)
+
+
+def test_dependency_sync_findings_are_advisory() -> None:
+    # The surface-agnostic engine raises the three drift kinds and marks every
+    # one advisory — drift is never a gated error in any backend.
+    from agentos.skwlint import ADVISORY, dependency_sync_findings
+
+    findings = dependency_sync_findings(
+        Path("t.md"),
+        declared={"Only.Declared"},
+        declared_from_depends={"Only.Declared"},
+        mention_resolutions={"Some.Mention": "hash"},
+        declared_resolutions={"Only.Declared": "unresolved:gone"},
+    )
+    assert {f.kind for f in findings} == {"dangling-dependency", "undeclared-dependency"}
+    assert all(f.severity == ADVISORY for f in findings)
