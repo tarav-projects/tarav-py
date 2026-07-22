@@ -4,7 +4,7 @@
 
 - **Scope:** remove the duplicated check-selection **CLI surface** between the index linter and the skw linter by hoisting it into the shared `skwlint` core (which already owns the selection *logic*).
 - **What:** the `--list-checks` render loop is byte-identical in `index/commands.py` and `skillware/commands.py`; the `--check`/`--skip`/`--list-checks` argparse block is near-identical. Extract a shared renderer and a shared arg-adder into `skwlint`; both CLIs call them.
-- **Status:** designed (cleanup run, `--AUTO`).
+- **Status:** IMPLEMENTED (cleanup run, `--AUTO`). Both slices done; full `agentos-py` suite 454 passed; live `--list-checks` on both CLIs renders from one code path; flags unchanged.
 - **Source context:** cleanup scan; motivated by the user's "we must not duplicate the linter mechanics" observation after the selection core was shared but its CLI surface was left copied.
 - **Out of scope:** converging the two linter *run-loops* (index gated `CHECKS` vs skw POI-kind stream) — a larger design question, not a cleanup; anything beyond the selection CLI surface.
 
@@ -32,6 +32,11 @@ Test-first at boundaries. Loop: `pytest tests/test_skw_check_selection.py tests/
 - **Observable:** both parsers still accept the three flags with the same behavior.
 - **RED/GREEN:** existing include/exclude/list/unknown-selector CLI tests on both linters still pass; a focused test that `add_check_selection_args` wires all three onto a fresh parser.
 
+## Slice Status
+
+- Slice 1 — shared `render_check_registry` in `skwlint` — ✅ both `_cmd_linter` and `_cmd_skillware_check` render through it
+- Slice 2 — shared `add_check_selection_args(parser, *, unit)` in `skwlint` — ✅ both argparse sites call it; inline blocks deleted
+
 ## Impl.Log
 
-- (execution notes appended here)
+- Net: the byte-identical `--list-checks` render loop and the near-identical `--check`/`--skip`/`--list-checks` argparse block collapsed to one home each in `skwlint`; the two linter CLIs now consume the whole selection surface (logic + rendering + args) from the core. Run-loops remain distinct by design (out of scope).

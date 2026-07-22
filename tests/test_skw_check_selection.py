@@ -74,3 +74,31 @@ def test_list_checks_lists_kinds_and_exits(capsys) -> None:
     assert exit_code == 0
     assert "derived-stale" in out
     assert "parse-error" in out and "structural" in out
+
+
+def test_render_check_registry_formats_rows() -> None:
+    from agentos.skwlint import render_check_registry
+
+    rows = [
+        {"selector": "alpha", "title": "first", "default_on": True, "structural": True},
+        {"selector": "beta", "title": "second", "default_on": False, "structural": False},
+    ]
+    lines = render_check_registry(rows)
+    assert lines[0] == "alpha                    [on ] structural  first"
+    assert lines[1] == "beta                     [off] reportable  second"
+
+
+def test_add_check_selection_args_wires_all_three_flags() -> None:
+    import argparse as _argparse
+
+    from agentos.skwlint import add_check_selection_args
+
+    parser = _argparse.ArgumentParser()
+    add_check_selection_args(parser, unit="POI kind")
+    ns = parser.parse_args(["--check", "a", "--skip", "b", "--list-checks"])
+    assert ns.check == ["a"]
+    assert ns.skip == ["b"]
+    assert ns.list_checks is True
+    # defaults empty / false
+    ns2 = parser.parse_args([])
+    assert ns2.check == [] and ns2.skip == [] and ns2.list_checks is False

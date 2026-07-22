@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentos._core.errors import CliError
+from agentos.skwlint import add_check_selection_args
 from agentos.skillware.build import (
     SkillwareError,
     bless_pois_by_kind,
@@ -222,12 +223,10 @@ def _filter_pois(pois, enabled: set[str], known: set[str]):
 
 def _cmd_skillware_check(args: argparse.Namespace) -> int:
     if getattr(args, "list_checks", False):
-        from agentos.skwlint import check_registry
+        from agentos.skwlint import check_registry, render_check_registry
 
-        for row in check_registry(_skw_check_kinds()):
-            state = "on " if row["default_on"] else "off"
-            tier = "structural" if row["structural"] else "reportable"
-            print(f"{row['selector']:<24} [{state}] {tier:<11} {row['title']}")
+        for line in render_check_registry(check_registry(_skw_check_kinds())):
+            print(line)
         return 0
     if getattr(args, "skill", None) is None:
         return _cmd_skillware_project_check(args)
@@ -413,25 +412,7 @@ def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
         )
         sub.add_argument("--json", action="store_true", help="Emit the report as JSON.")
         if name == "check":
-            sub.add_argument(
-                "--check",
-                action="append",
-                default=[],
-                metavar="KIND",
-                help="Enable a POI kind by selector (repeatable); opts into default-off kinds.",
-            )
-            sub.add_argument(
-                "--skip",
-                action="append",
-                default=[],
-                metavar="KIND",
-                help="Disable a POI kind by selector (repeatable); structural kinds cannot be disabled.",
-            )
-            sub.add_argument(
-                "--list-checks",
-                action="store_true",
-                help="List POI-kind selectors with their default state and tier, then exit.",
-            )
+            add_check_selection_args(sub, unit="POI kind")
         if name == "bless":
             sub.add_argument("--poi", help="POI identity hash from check output.")
             sub.add_argument("--kind", help="POI kind to bulk bless with --all.")

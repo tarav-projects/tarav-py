@@ -6,6 +6,8 @@ import argparse
 import json
 from collections.abc import Sequence
 
+from agentos.skwlint import add_check_selection_args
+
 from .linter import (
     LinterCheck,
     build_linter_config,
@@ -18,10 +20,10 @@ from .linter import (
 
 def _cmd_linter(args: argparse.Namespace) -> int:
     if getattr(args, "list_checks", False):
-        for row in check_registry():
-            state = "on " if row["default_on"] else "off"
-            tier = "structural" if row["structural"] else "reportable"
-            print(f"{row['selector']:<24} [{state}] {tier:<11} {row['title']}")
+        from agentos.skwlint import render_check_registry
+
+        for line in render_check_registry(check_registry()):
+            print(line)
         return 0
     config, raw_depot_paths, raw_index_paths, raw_appendix_paths = build_linter_config(
         depot_paths=tuple(args.depot),
@@ -258,23 +260,5 @@ def register_index_commands(
         action="store_true",
         help="Alias for --coverage line.",
     )
-    linter_parser.add_argument(
-        "--check",
-        action="append",
-        default=[],
-        metavar="SELECTOR",
-        help="Enable a check by selector (repeatable); opts into default-off checks like 'dangling-mention'.",
-    )
-    linter_parser.add_argument(
-        "--skip",
-        action="append",
-        default=[],
-        metavar="SELECTOR",
-        help="Disable a check by selector (repeatable); structural checks cannot be disabled.",
-    )
-    linter_parser.add_argument(
-        "--list-checks",
-        action="store_true",
-        help="List check selectors with their default state and tier, then exit.",
-    )
+    add_check_selection_args(linter_parser, unit="check")
     linter_parser.set_defaults(handler=_cmd_linter, _extra_linter_checks=tuple(extra_linter_checks))

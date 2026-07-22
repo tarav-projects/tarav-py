@@ -175,6 +175,47 @@ def check_registry(checks) -> list[dict]:
     ]
 
 
+def add_check_selection_args(parser, *, unit: str = "check") -> None:
+    """Add the shared ``--check``/``--skip``/``--list-checks`` flags to a parser.
+
+    ``unit`` names the selectable thing in help text ("check", "POI kind", ...)
+    so every linter CLI exposes one selection surface with its own noun.
+    """
+    parser.add_argument(
+        "--check",
+        action="append",
+        default=[],
+        metavar="SELECTOR",
+        help=f"Enable a {unit} by selector (repeatable); opts into default-off {unit}s.",
+    )
+    parser.add_argument(
+        "--skip",
+        action="append",
+        default=[],
+        metavar="SELECTOR",
+        help=f"Disable a {unit} by selector (repeatable); structural {unit}s cannot be disabled.",
+    )
+    parser.add_argument(
+        "--list-checks",
+        action="store_true",
+        help=f"List {unit} selectors with their default state and tier, then exit.",
+    )
+
+
+def render_check_registry(rows) -> list[str]:
+    """Format `check_registry` rows into `--list-checks` lines (one per row).
+
+    Pure — returns lines, prints nothing — so every linter CLI shares one
+    rendering of the selection surface.
+    """
+    lines = []
+    for row in rows:
+        state = "on " if row["default_on"] else "off"
+        tier = "structural" if row["structural"] else "reportable"
+        lines.append(f"{row['selector']:<24} [{state}] {tier:<11} {row['title']}")
+    return lines
+
+
 @runtime_checkable
 class SurfaceProvider(Protocol):
     """A per-surface backend's binding into the dependency-sync engine.
