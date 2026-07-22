@@ -186,6 +186,21 @@ def test_index_linter_reports_invalid_depot_target(monkeypatch, tmp_path: Path) 
     )
 
 
+def test_empty_but_valid_depot_does_not_error(monkeypatch, tmp_path: Path) -> None:
+    # A router-only depot with no chapter files yet is an unpopulated but valid
+    # index depot (an Agentos.Index.Notes scaffold), not a misconfiguration:
+    # nothing to lint, so no CONFIG_NO_SURFACES error.
+    monkeypatch.chdir(tmp_path)
+    depot = tmp_path / "notes-index"
+    _write(depot / "000-INDEX.md", "# Local Index\n\n## Routing\n\n- (no chapter files yet)\n")
+    state = _run(depot_paths=("notes-index",))
+
+    assert state.summary()["error_count"] == 0
+    assert not any(
+        finding.code == "Index.Linter/Config.NoSurfaces" for finding in state.findings
+    )
+
+
 def test_index_linter_maps_mdblocks_errors_and_blocks_inventory(
     monkeypatch,
     tmp_path: Path,
