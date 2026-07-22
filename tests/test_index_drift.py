@@ -10,7 +10,11 @@ deliberately out of scope (see the Impl.Req Impl.Log).
 
 from pathlib import Path
 
-from agentos.index.drift import IndexSurfaceProvider, index_dangling_mentions
+from agentos.index.drift import (
+    IndexSurfaceProvider,
+    index_dangling_mentions,
+    index_depot_collisions,
+)
 from agentos.skwlint import ADVISORY, SurfaceProvider, dangling_mention_findings
 
 
@@ -180,3 +184,34 @@ def test_cross_depot_resolution(tmp_path: Path) -> None:
     assert index_dangling_mentions(home) != []  # dangling without the other depot
     findings = index_dangling_mentions(home, engaged_depots=(other,))
     assert "Foreign.Concept" not in {f.key for f in findings}
+
+
+def test_depot_collision_flagged_when_name_defined_in_two_visible_depots(
+    tmp_path: Path,
+) -> None:
+    # `Shared` is defined in the depot AND in a visible dependency, and the
+    # depot mentions it -> a collision Drift.POI (linter reports, never repairs).
+    home = _write_depot(
+        tmp_path / "home",
+        "# design\n\n****\n\n## Shared.Concept\n\n- [DF] `Shared.Concept` is defined here and leans on `Shared.Concept`\n",
+    )
+    other = _write_depot(
+        tmp_path / "other",
+        "# design\n\n****\n\n## Shared.Concept\n\n- [DF] `Shared.Concept` is also defined over here\n",
+    )
+    assert index_depot_collisions(home) == []  # not visible without the dep
+    collisions = index_depot_collisions(home, engaged_depots=(other,))
+    assert [c.key for c in collisions] == ["Shared.Concept"]
+    assert all(c.severity == ADVISORY for c in collisions)
+
+
+def test_no_collision_when_name_is_unique(tmp_path: Path) -> None:
+    home = _write_depot(
+        tmp_path / "home",
+        "# design\n\n****\n\n## Uniq\n\n- [DF] `Uniq` stands alone\n",
+    )
+    other = _write_depot(
+        tmp_path / "other",
+        "# design\n\n****\n\n## Elsewhere\n\n- [DF] `Elsewhere` is unrelated\n",
+    )
+    assert index_depot_collisions(home, engaged_depots=(other,)) == []

@@ -95,6 +95,12 @@ CHECK_ROUTER_COVERAGE = "Index.Linter/Check.RouterCoverage"
 CHECK_ROUTER_TARGETS = "Index.Linter/Check.RouterTargets"
 CHECK_APPENDIX_ROUTE_ANNOTATIONS = "Index.Linter/Check.AppendixRouteAnnotations"
 
+CHECK_DEPOT_DEPENDENCIES = "Index.Linter/Check.DepotDependencies"
+DEPOT_DEP_UNRESOLVED = "Index.Linter/DepotDependency.Unresolved"
+DEPOT_COLLISION = "Index.Linter/DepotDependency.Collision"
+CHECK_DANGLING_MENTION = "Index.Linter/Check.DanglingMention"
+DEPOT_DANGLING_MENTION = "Index.Linter/DepotDependency.DanglingMention"
+
 MDBLOCKS_CODE_MAP = {
     "no_headings": BLOCK_NO_HEADINGS,
     "unclosed_code_fence": BLOCK_UNCLOSED_CODE_FENCE,
@@ -160,6 +166,87 @@ class LinterCheck:
     title: str
     gate: Callable[["LinterState"], GateResult]
     run: Callable[["LinterState"], list[LinterFinding]]
+    # check-selection metadata (Impl.Req 702):
+    # - default_on: whether the check runs when the caller names no selection
+    # - structural: produces LinterState later checks consume; always runs,
+    #   never disableable (exclude has no effect on it)
+    default_on: bool = True
+    structural: bool = False
+
+
+_CAMEL_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
+
+
+def check_selector(code: str) -> str:
+    """Derive a short, stable kebab selector from a check code.
+
+    ``Index.Linter/Check.DepotDependencies`` -> ``depot-dependencies``;
+    ``Index.Linter/Line.Unlinked`` -> ``line-unlinked``. Drops the surface
+    prefix and a leading ``Check.`` namespace, then kebab-cases the rest.
+    """
+    tail = code.split("/", 1)[-1]
+    if tail.startswith("Check."):
+        tail = tail[len("Check.") :]
+    words: list[str] = []
+    for segment in tail.split("."):
+        words.extend(_CAMEL_RE.findall(segment))
+    return "-".join(word.lower() for word in words)
+
+
+def resolve_enabled_checks(
+    checks: Sequence["LinterCheck"],
+    *,
+    include: Sequence[str] = (),
+    exclude: Sequence[str] = (),
+) -> list["LinterCheck"]:
+    """Resolve which checks run: enable/disable over a default-on baseline.
+
+    - baseline = every check whose ``default_on`` is set;
+    - ``include`` force-enables a check (even a default-off one) — how a caller
+      opts into an off-by-default check like ``dangling-mention``;
+    - ``exclude`` force-disables a check;
+    - on conflict (a selector in both), ``exclude`` wins;
+    - a ``structural`` check always runs and cannot be disabled.
+
+    An ``include``/``exclude`` selector that names no known check is a hard
+    error (`CliError`) — fail fast rather than silently no-op.
+    """
+    from agentos._core.errors import CliError
+
+    by_selector = {check_selector(check.code): check for check in checks}
+    include_set, exclude_set = set(include), set(exclude)
+    unknown = (include_set | exclude_set) - set(by_selector)
+    if unknown:
+        raise CliError(
+            "unknown linter check selector(s): "
+            + ", ".join(sorted(unknown))
+            + f" (known: {', '.join(sorted(by_selector))})"
+        )
+    enabled: list[LinterCheck] = []
+    for selector, check in by_selector.items():
+        if check.structural:
+            enabled.append(check)
+            continue
+        on = check.default_on or selector in include_set
+        if selector in exclude_set:
+            on = False
+        if on:
+            enabled.append(check)
+    return enabled
+
+
+def check_registry(checks: Sequence["LinterCheck"] = ()) -> list[dict[str, Any]]:
+    """Selector + metadata for each registered check (defaults to `CHECKS`)."""
+    return [
+        {
+            "selector": check_selector(check.code),
+            "code": check.code,
+            "title": check.title,
+            "default_on": check.default_on,
+            "structural": check.structural,
+        }
+        for check in (checks or CHECKS)
+    ]
 
 
 @dataclass
@@ -381,6 +468,8 @@ def run_linter(
     raw_appendix_paths: tuple[str, ...],
     *,
     extra_checks: Sequence["LinterCheck"] = (),
+    include: Sequence[str] = (),
+    exclude: Sequence[str] = (),
 ) -> LinterState:
     state = LinterState(
         config=config,
@@ -388,7 +477,10 @@ def run_linter(
         raw_index_paths=raw_index_paths,
         raw_appendix_paths=raw_appendix_paths,
     )
-    for check in (*CHECKS, *extra_checks):
+    enabled = resolve_enabled_checks(
+        (*CHECKS, *extra_checks), include=include, exclude=exclude
+    )
+    for check in enabled:
         gate = check.gate(state)
         if not gate.allowed:
             state.record_blocked(check, gate)
@@ -637,6 +729,76 @@ def _needs_index_surface(state: LinterState) -> GateResult:
     if not state.has_valid_surface("index"):
         return blocked("no valid index surface is configured", SURFACE_MISSING_BY_KIND["index"])
     return allowed()
+
+
+def _check_depot_dependencies(state: LinterState) -> list[LinterFinding]:
+    """`Index.Depot.Dependency` findings: unresolved declared deps + collisions.
+
+    Only the precise, adoption-gated pieces are wired live: a depot that
+    declares no dependencies produces nothing here (guards depots that have not
+    adopted the system from noise). The directed dangling-mention check stays
+    available (`drift.index_dangling_mentions`) but not CLI-wired, pending the
+    resolver-gap work documented on Impl.Req 700/701.
+    """
+    from agentos.index.depot_deps import declared_dependency_names, resolve_dependency_depots
+    from agentos.index.drift import index_depot_collisions
+
+    findings: list[LinterFinding] = []
+    for depot in state.config.depot_paths:
+        if not declared_dependency_names(depot):
+            continue
+        rel = state.rel_path(depot)
+        _, unresolved = resolve_dependency_depots(depot)
+        for name in unresolved:
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=DEPOT_DEP_UNRESOLVED,
+                    path=rel,
+                    message=(
+                        f"declared dependency depot `{name}` does not resolve in the "
+                        "~/.agentos registry (index.depots)."
+                    ),
+                    details={"depot": name},
+                )
+            )
+        for collision in index_depot_collisions(depot):
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=DEPOT_COLLISION,
+                    path=rel,
+                    message=collision.detail,
+                    details={"concept": collision.key, "poi_hash": collision.poi_hash},
+                )
+            )
+    return findings
+
+
+def _check_index_dangling_mentions(state: LinterState) -> list[LinterFinding]:
+    """Advisory dangling-mention `Drift.POI`s per depot — default-off (opt-in).
+
+    Registered but off by default: correct-but-noisy on the real index until the
+    resolver-gap rules (canonical/plural short-forms, `::`-scoped names, example
+    placeholders, non-index skill-surface concepts) land (Impl.Req 700/701).
+    Enable per run with `--check dangling-mention`.
+    """
+    from agentos.index.drift import index_dangling_mentions
+
+    findings: list[LinterFinding] = []
+    for depot in state.config.depot_paths:
+        rel = state.rel_path(depot)
+        for mention in index_dangling_mentions(depot):
+            findings.append(
+                LinterFinding(
+                    severity="warning",
+                    code=DEPOT_DANGLING_MENTION,
+                    path=rel,
+                    message=mention.detail,
+                    details={"concept": mention.key, "poi_hash": mention.poi_hash},
+                )
+            )
+    return findings
 
 
 def _needs_concept_inventory(state: LinterState) -> GateResult:
@@ -1564,18 +1726,21 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Configured surfaces",
         gate=_always,
         run=_check_config_surfaces,
+        structural=True,
     ),
     LinterCheck(
         code=CHECK_DISCOVER_FILES,
         title="Discover markdown files",
         gate=_needs_valid_surface,
         run=_check_discover_files,
+        structural=True,
     ),
     LinterCheck(
         code=CHECK_MDBLOCKS_SYNTAX,
         title="Markdown block syntax",
         gate=_needs_discovered_files,
         run=_check_mdblocks_syntax,
+        structural=True,
     ),
     LinterCheck(
         code=CHECK_BLOCK_SECTIONS,
@@ -1588,6 +1753,20 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Router presence",
         gate=_needs_index_surface,
         run=_check_router_presence,
+        structural=True,
+    ),
+    LinterCheck(
+        code=CHECK_DEPOT_DEPENDENCIES,
+        title="Depot dependencies",
+        gate=_needs_index_surface,
+        run=_check_depot_dependencies,
+    ),
+    LinterCheck(
+        code=CHECK_DANGLING_MENTION,
+        title="Dangling mentions",
+        gate=_needs_index_surface,
+        run=_check_index_dangling_mentions,
+        default_on=False,
     ),
     LinterCheck(
         code=CHECK_INDEX_FILENAMES,
@@ -1600,6 +1779,7 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Concept inventory",
         gate=_needs_index_surface,
         run=_check_concept_inventory,
+        structural=True,
     ),
     LinterCheck(
         code=CHECK_CONCEPT_DUPLICATES,

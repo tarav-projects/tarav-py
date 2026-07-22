@@ -8,20 +8,22 @@ The index declares no block->block edges (blocks reference each other only via
 Dotted.Name mentions), so `declared_edges` is empty and the meaningful check is
 `dangling_mention_findings`: a mention that no longer resolves.
 
-DORMANT — deliberately not wired into `agentos index linter`. The resolver now
-models block headings, `Inline.Definition`s, declared aliases, and resolves
-across every engaged depot (multi-depot). It still does *not* model
-canonical/plural short-forms (`Stable.Surfaces`->`Stable.Surface`), `::`-scoped
-names, illustrative example placeholders, or concepts defined on non-index
-skill surfaces — so it still over-reports on the real index and stays dormant
-pending those (design-laden) rules (Impl.Req 700, Impl.Log).
+Wired into `agentos index linter` as a **default-off** check (`dangling-mention`,
+Impl.Req 702): opt in with `--check dangling-mention`. It is off by default
+because the resolver still over-reports on the real index — it models block
+headings, `Inline.Definition`s, declared aliases, and resolves across declared
+`Index.Depot.Dependency` depots, but not yet canonical/plural short-forms
+(`Stable.Surfaces`->`Stable.Surface`), `::`-scoped names, illustrative example
+placeholders, or concepts defined on non-index skill surfaces (design-laden
+rules, Impl.Req 700/701 Impl.Log).
 """
 
 from pathlib import Path
 
+from agentos.index.depot_deps import resolve_dependency_depots
 from agentos.index.model import parse_depot
 from agentos.index.model.nodes import BlockHeading, KernelLine, MetaLine, Node
-from agentos.skwlint import Poi, dangling_mention_findings, extract_mentions
+from agentos.skwlint import Poi, dangling_mention_findings, extract_mentions, poi
 
 
 def _line_act(node: Node) -> str | None:
@@ -82,6 +84,19 @@ def _engaged_concepts(depots: tuple[Path, ...]) -> dict[str, str]:
     return concepts
 
 
+def _defining_depots(depots: tuple[Path, ...]) -> dict[str, list[Path]]:
+    """Map each concept name to the visible depots that define it.
+
+    A name defined in more than one visible depot is a collision — the
+    `Index.Depot.Dependency` surfaces it (a `Drift.POI`), it does not resolve it.
+    """
+    defining: dict[str, list[Path]] = {}
+    for depot in depots:
+        for name in _defined_concepts(depot):
+            defining.setdefault(name, []).append(depot)
+    return defining
+
+
 class IndexSurfaceProvider:
     """`SurfaceProvider` over an index depot.
 
@@ -94,11 +109,24 @@ class IndexSurfaceProvider:
     """
 
     def __init__(
-        self, depot_root: Path, *, engaged_depots: tuple[Path, ...] = ()
+        self,
+        depot_root: Path,
+        *,
+        engaged_depots: tuple[Path, ...] | None = None,
+        home: Path | None = None,
     ) -> None:
         self._depot_root = Path(depot_root)
-        depots = (self._depot_root, *(Path(d) for d in engaged_depots))
+        if engaged_depots is None:
+            # directed visibility: own + directly declared dependency depots
+            deps, self.unresolved_dependencies = resolve_dependency_depots(
+                self._depot_root, home
+            )
+        else:
+            # explicit override (tests / callers supplying the visible set)
+            deps, self.unresolved_dependencies = [Path(d) for d in engaged_depots], []
+        depots = (self._depot_root, *deps)
         self._concepts = _engaged_concepts(depots)
+        self._defining = _defining_depots(depots)
 
     def declared_edges(self) -> tuple[set[str], set[str]]:
         # the index declares no block->block dependencies
@@ -116,11 +144,49 @@ class IndexSurfaceProvider:
             for name in names
         }
 
+    def collisions(self, names: set[str]) -> dict[str, list[Path]]:
+        """Names (from `names`) defined in more than one visible depot."""
+        return {
+            name: self._defining[name]
+            for name in names
+            if len(self._defining.get(name, ())) > 1
+        }
+
 
 def index_dangling_mentions(
-    depot_root: Path, engaged_depots: tuple[Path, ...] = ()
+    depot_root: Path, engaged_depots: tuple[Path, ...] | None = None
 ) -> list[Poi]:
-    """Run the core dangling-mention check over an index depot (dormant path)."""
+    """Run the core dangling-mention check over an index depot.
+
+    ``engaged_depots=None`` resolves the visible set through the depot's
+    directed `Index.Depot.Dependency` declaration; an explicit tuple overrides it.
+    """
     provider = IndexSurfaceProvider(depot_root, engaged_depots=engaged_depots)
     resolutions = provider.resolve(provider.mentions())
     return dangling_mention_findings(Path(Path(depot_root).name), resolutions)
+
+
+def index_depot_collisions(
+    depot_root: Path, engaged_depots: tuple[Path, ...] | None = None
+) -> list[Poi]:
+    """Advisory collision `Drift.POI`s for mentions defined in >1 visible depot.
+
+    A mention whose name is defined in the depot and in one of its visible
+    dependency depots is ambiguous. The linter reports it; the human resolves it
+    (e.g. by namespacing) — the tool never repairs.
+    """
+    provider = IndexSurfaceProvider(depot_root, engaged_depots=engaged_depots)
+    target_rel = Path(Path(depot_root).name)
+    findings: list[Poi] = []
+    for name, depots in sorted(provider.collisions(provider.mentions()).items()):
+        where = ", ".join(sorted(d.name for d in depots))
+        findings.append(
+            poi(
+                "depot-collision",
+                target_rel,
+                name,
+                where,
+                f"mention `{name}` is defined in {len(depots)} visible depots ({where})",
+            )
+        )
+    return findings

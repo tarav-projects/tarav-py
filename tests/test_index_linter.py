@@ -63,6 +63,8 @@ def _run(
     coverage: tuple[str, ...] = (),
     scope_paths: tuple[str, ...] = (),
     warn_unlinked: bool = False,
+    include: tuple[str, ...] = (),
+    exclude: tuple[str, ...] = (),
 ):
     config, raw_depot_paths, raw_index_paths, raw_appendix_paths = build_linter_config(
         depot_paths=depot_paths,
@@ -72,7 +74,80 @@ def _run(
         scope_paths=scope_paths,
         warn_unlinked=warn_unlinked,
     )
-    return run_linter(config, raw_depot_paths, raw_index_paths, raw_appendix_paths)
+    return run_linter(
+        config,
+        raw_depot_paths,
+        raw_index_paths,
+        raw_appendix_paths,
+        include=include,
+        exclude=exclude,
+    )
+
+
+def _write_registry(home: Path, depots: dict[str, Path]) -> None:
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "config.json").write_text(
+        json.dumps(
+            {
+                "class": "agentos.global.config",
+                "index": {"depots": {n: {"path": str(p)} for n, p in depots.items()}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _depot_defining(root: Path, concept: str, *, depends: str | None = None) -> Path:
+    directive = f"> `Index.Depot.Dependency`: {depends}\n\n" if depends else ""
+    _write(
+        root / "000-INDEX.md",
+        f"# Agentos Index\n\n{directive}## design\n\n- `design/100-design.md` — {concept}\n",
+    )
+    _write(
+        root / "design" / "100-design.md",
+        f"****\n## {concept}\n\n- [DF] `{concept}` is defined and leans on `{concept}`\n****\n",
+    )
+    return root
+
+
+def test_depot_dependency_collision_surfaces_in_linter(monkeypatch, tmp_path: Path) -> None:
+    from agentos.index.linter import DEPOT_COLLISION
+
+    monkeypatch.chdir(tmp_path)
+    home = _depot_defining(tmp_path / "home", "Shared.Concept", depends="other-depot")
+    other = _depot_defining(tmp_path / "other", "Shared.Concept")
+    _write_registry(tmp_path / "agentos-home", {"other-depot": other})
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    state = _run(depot_paths=(str(home),))
+    codes = {f.code: f for f in state.findings}
+    assert DEPOT_COLLISION in codes
+    assert codes[DEPOT_COLLISION].details["concept"] == "Shared.Concept"
+
+
+def test_depot_dependency_unresolved_name_surfaces_in_linter(monkeypatch, tmp_path: Path) -> None:
+    from agentos.index.linter import DEPOT_DEP_UNRESOLVED
+
+    monkeypatch.chdir(tmp_path)
+    home = _depot_defining(tmp_path / "home", "Home.Concept", depends="ghost-depot")
+    _write_registry(tmp_path / "agentos-home", {})
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+
+    state = _run(depot_paths=(str(home),))
+    unresolved = [f for f in state.findings if f.code == DEPOT_DEP_UNRESOLVED]
+    assert [f.details["depot"] for f in unresolved] == ["ghost-depot"]
+
+
+def test_depot_without_declared_dependencies_stays_quiet(monkeypatch, tmp_path: Path) -> None:
+    from agentos.index.linter import DEPOT_COLLISION, DEPOT_DEP_UNRESOLVED
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "empty-home"))
+    depot = _clean_depot(tmp_path)
+    state = _run(depot_paths=(str(depot),))
+    assert not [
+        f for f in state.findings if f.code in {DEPOT_COLLISION, DEPOT_DEP_UNRESOLVED}
+    ]
 
 
 def test_index_linter_accepts_block_path_headings_in_new_layout(
@@ -974,3 +1049,195 @@ def test_index_linter_flags_unprefixed_anchor_citations(
     assert len(hits) == 1
     assert hits[0].details["anchor"] == "20260718-1"
     assert hits[0].severity == "warning"
+
+
+# ---- Linter check selection (Impl.Req 702) -----------------------------------
+
+
+def test_check_selector_derives_stable_kebab_slugs() -> None:
+    from agentos.index.linter import check_selector
+
+    assert check_selector("Index.Linter/Check.DepotDependencies") == "depot-dependencies"
+    assert check_selector("Index.Linter/Line.Unlinked") == "line-unlinked"
+    assert check_selector("Index.Linter/Check.ConfigSurfaces") == "config-surfaces"
+
+
+def test_all_check_selectors_are_unique() -> None:
+    from agentos.index.linter import CHECKS, check_selector
+
+    selectors = [check_selector(c.code) for c in CHECKS]
+    assert len(selectors) == len(set(selectors)), "check selectors must be unique"
+
+
+def test_check_registry_reports_metadata() -> None:
+    from agentos.index.linter import check_registry
+
+    rows = {row["selector"]: row for row in check_registry()}
+    assert "config-surfaces" in rows
+    assert rows["config-surfaces"]["structural"] is True
+    # a reportable, opt-in check registered off by default
+    assert rows["dangling-mention"]["default_on"] is False
+
+
+def _fake_checks():
+    from agentos.index.linter import LinterCheck
+
+    def _noop(state):
+        return []
+
+    def _ok(state):
+        from agentos.index.linter import allowed
+        return allowed()
+
+    return (
+        LinterCheck("S/Check.Structural", "structural", _ok, _noop, structural=True),
+        LinterCheck("S/Check.OnByDefault", "on", _ok, _noop, default_on=True),
+        LinterCheck("S/Check.OffByDefault", "off", _ok, _noop, default_on=False),
+    )
+
+
+def test_resolver_default_runs_default_on_only():
+    from agentos.index.linter import check_selector, resolve_enabled_checks
+
+    enabled = {check_selector(c.code) for c in resolve_enabled_checks(_fake_checks())}
+    assert enabled == {"structural", "on-by-default"}
+
+
+def test_resolver_include_enables_a_default_off_check():
+    from agentos.index.linter import check_selector, resolve_enabled_checks
+
+    enabled = {
+        check_selector(c.code)
+        for c in resolve_enabled_checks(_fake_checks(), include=("off-by-default",))
+    }
+    assert "off-by-default" in enabled
+
+
+def test_resolver_exclude_removes_reportable_but_not_structural():
+    from agentos.index.linter import check_selector, resolve_enabled_checks
+
+    enabled = {
+        check_selector(c.code)
+        for c in resolve_enabled_checks(
+            _fake_checks(), exclude=("on-by-default", "structural")
+        )
+    }
+    assert "on-by-default" not in enabled
+    assert "structural" in enabled  # structural is never disableable
+
+
+def test_resolver_skip_wins_on_conflict():
+    from agentos.index.linter import check_selector, resolve_enabled_checks
+
+    enabled = {
+        check_selector(c.code)
+        for c in resolve_enabled_checks(
+            _fake_checks(), include=("off-by-default",), exclude=("off-by-default",)
+        )
+    }
+    assert "off-by-default" not in enabled
+
+
+def test_resolver_unknown_selector_errors():
+    import pytest
+
+    from agentos._core.errors import CliError
+    from agentos.index.linter import resolve_enabled_checks
+
+    with pytest.raises(CliError):
+        resolve_enabled_checks(_fake_checks(), include=("nope",))
+
+
+def test_run_linter_exclude_skips_a_reportable_check(monkeypatch, tmp_path: Path) -> None:
+    from agentos.index.linter import CHECK_CONCEPT_DUPLICATES
+
+    monkeypatch.chdir(tmp_path)
+    depot = _clean_depot(tmp_path)
+    ran = {r.code for r in _run(depot_paths=(str(depot),)).check_results}
+    assert CHECK_CONCEPT_DUPLICATES in ran  # runs by default
+    ran_excluded = {
+        r.code
+        for r in _run(depot_paths=(str(depot),), exclude=("concept-duplicates",)).check_results
+    }
+    assert CHECK_CONCEPT_DUPLICATES not in ran_excluded
+
+
+def test_run_linter_exclude_cannot_disable_a_structural_check(monkeypatch, tmp_path: Path) -> None:
+    from agentos.index.linter import CHECK_CONFIG_SURFACES
+
+    monkeypatch.chdir(tmp_path)
+    depot = _clean_depot(tmp_path)
+    ran = {
+        r.code
+        for r in _run(depot_paths=(str(depot),), exclude=("config-surfaces",)).check_results
+    }
+    assert CHECK_CONFIG_SURFACES in ran  # structural: exclude has no effect
+
+
+def test_dangling_mention_check_is_default_off_and_opt_in(monkeypatch, tmp_path: Path) -> None:
+    from agentos.index.linter import DEPOT_DANGLING_MENTION
+
+    monkeypatch.chdir(tmp_path)
+    # a depot mentioning a concept whose block does not exist -> a dangling mention
+    depot = tmp_path / "depot"
+    _write(
+        depot / "000-INDEX.md",
+        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Present.Concept\n",
+    )
+    _write(
+        depot / "design" / "100-design.md",
+        "****\n## Present.Concept\n\n- [DF] `Present.Concept` leans on `Missing.Concept`\n****\n",
+    )
+    default_run = _run(depot_paths=(str(depot),))
+    assert not [f for f in default_run.findings if f.code == DEPOT_DANGLING_MENTION]
+
+    opted_in = _run(depot_paths=(str(depot),), include=("dangling-mention",))
+    dangling = [f for f in opted_in.findings if f.code == DEPOT_DANGLING_MENTION]
+    assert "Missing.Concept" in {f.details["concept"] for f in dangling}
+
+
+def _linter_ns(**over):
+    base = dict(
+        depot=[], index=[], appendix=[], json=True, coverage=[], scope=[],
+        warn_unlinked=False, check=[], skip=[], list_checks=False,
+    )
+    base.update(over)
+    return argparse.Namespace(**base)
+
+
+def test_cli_list_checks_lists_selectors_and_exits(capsys) -> None:
+    exit_code = _cmd_linter(_linter_ns(list_checks=True))
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "dangling-mention" in out and "[off]" in out
+    assert "config-surfaces" in out and "structural" in out
+
+
+def test_cli_check_flag_opts_into_dangling_mention(capsys, monkeypatch, tmp_path: Path) -> None:
+    from agentos.index.linter import DEPOT_DANGLING_MENTION
+
+    monkeypatch.chdir(tmp_path)
+    depot = tmp_path / "depot"
+    _write(
+        depot / "000-INDEX.md",
+        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Present.Concept\n",
+    )
+    _write(
+        depot / "design" / "100-design.md",
+        "****\n## Present.Concept\n\n- [DF] `Present.Concept` leans on `Missing.Concept`\n****\n",
+    )
+    _cmd_linter(_linter_ns(depot=["depot"], check=["dangling-mention"]))
+    payload = json.loads(capsys.readouterr().out)
+    codes = {f["code"] for f in payload["findings"]}
+    assert DEPOT_DANGLING_MENTION in codes
+
+
+def test_cli_unknown_selector_is_an_error(monkeypatch, tmp_path: Path) -> None:
+    import pytest
+
+    from agentos._core.errors import CliError
+
+    monkeypatch.chdir(tmp_path)
+    _clean_depot(tmp_path)
+    with pytest.raises(CliError):
+        _cmd_linter(_linter_ns(depot=["depot"], skip=["does-not-exist"]))
