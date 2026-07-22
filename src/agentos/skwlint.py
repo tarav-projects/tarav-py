@@ -74,6 +74,107 @@ def poi(
     )
 
 
+# --- check selection --------------------------------------------------------
+#
+# Surface-agnostic control over which checks a linter run performs, shared by
+# every backend (index gated checks, skw POI kinds, ...). A backend supplies
+# `SelectableCheck`s; the core derives selectors and resolves an enabled set
+# from caller include/exclude (Impl.Req 702, ported into the core so the skw
+# linter gets the same `--check`/`--skip` surface as the index linter).
+
+_SELECTOR_CAMEL_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
+
+
+@runtime_checkable
+class SelectableCheck(Protocol):
+    """A check a caller can turn on or off by selector.
+
+    - ``code`` — the check's identity (a dotted code or a bare POI kind);
+    - ``title`` — a one-line human label;
+    - ``default_on`` — whether it runs when the caller names no selection;
+    - ``structural`` — always runs, never disableable (exclude has no effect).
+    """
+
+    @property
+    def code(self) -> str: ...
+
+    @property
+    def title(self) -> str: ...
+
+    @property
+    def default_on(self) -> bool: ...
+
+    @property
+    def structural(self) -> bool: ...
+
+
+def check_selector(code: str) -> str:
+    """Derive a short, stable kebab selector from a check code or POI kind.
+
+    ``Index.Linter/Check.DepotDependencies`` -> ``depot-dependencies``;
+    ``Index.Linter/Line.Unlinked`` -> ``line-unlinked``; a bare kebab kind like
+    ``derived-stale`` maps to itself. Drops the surface prefix and a leading
+    ``Check.`` namespace, then kebab-cases the rest.
+    """
+    tail = code.split("/", 1)[-1]
+    if tail.startswith("Check."):
+        tail = tail[len("Check.") :]
+    words: list[str] = []
+    for segment in tail.split("."):
+        words.extend(_SELECTOR_CAMEL_RE.findall(segment))
+    return "-".join(word.lower() for word in words)
+
+
+def resolve_enabled_checks(checks, *, include=(), exclude=()):
+    """Resolve which checks run: enable/disable over a default-on baseline.
+
+    - baseline = every check whose ``default_on`` is set;
+    - ``include`` force-enables a check (even a default-off one);
+    - ``exclude`` force-disables a check;
+    - on conflict (a selector in both), ``exclude`` wins;
+    - a ``structural`` check always runs and cannot be disabled.
+
+    An ``include``/``exclude`` selector naming no known check is a hard error
+    (`CliError`) — fail fast rather than silently no-op.
+    """
+    from agentos._core.errors import CliError
+
+    by_selector = {check_selector(check.code): check for check in checks}
+    include_set, exclude_set = set(include), set(exclude)
+    unknown = (include_set | exclude_set) - set(by_selector)
+    if unknown:
+        raise CliError(
+            "unknown linter check selector(s): "
+            + ", ".join(sorted(unknown))
+            + f" (known: {', '.join(sorted(by_selector))})"
+        )
+    enabled = []
+    for selector, check in by_selector.items():
+        if check.structural:
+            enabled.append(check)
+            continue
+        on = check.default_on or selector in include_set
+        if selector in exclude_set:
+            on = False
+        if on:
+            enabled.append(check)
+    return enabled
+
+
+def check_registry(checks) -> list[dict]:
+    """Selector + metadata for each `SelectableCheck`."""
+    return [
+        {
+            "selector": check_selector(check.code),
+            "code": check.code,
+            "title": check.title,
+            "default_on": check.default_on,
+            "structural": check.structural,
+        }
+        for check in checks
+    ]
+
+
 @runtime_checkable
 class SurfaceProvider(Protocol):
     """A per-surface backend's binding into the dependency-sync engine.

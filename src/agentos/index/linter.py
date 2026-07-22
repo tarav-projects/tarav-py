@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Any, Callable, Literal
 
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
+from agentos.skwlint import (
+    check_registry as _core_check_registry,
+    check_selector,
+    resolve_enabled_checks,
+)
 from agentos.mdblocks.core import (
     MarkdownScanConfig,
     lint_markdown_blocks,
@@ -174,79 +179,9 @@ class LinterCheck:
     structural: bool = False
 
 
-_CAMEL_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
-
-
-def check_selector(code: str) -> str:
-    """Derive a short, stable kebab selector from a check code.
-
-    ``Index.Linter/Check.DepotDependencies`` -> ``depot-dependencies``;
-    ``Index.Linter/Line.Unlinked`` -> ``line-unlinked``. Drops the surface
-    prefix and a leading ``Check.`` namespace, then kebab-cases the rest.
-    """
-    tail = code.split("/", 1)[-1]
-    if tail.startswith("Check."):
-        tail = tail[len("Check.") :]
-    words: list[str] = []
-    for segment in tail.split("."):
-        words.extend(_CAMEL_RE.findall(segment))
-    return "-".join(word.lower() for word in words)
-
-
-def resolve_enabled_checks(
-    checks: Sequence["LinterCheck"],
-    *,
-    include: Sequence[str] = (),
-    exclude: Sequence[str] = (),
-) -> list["LinterCheck"]:
-    """Resolve which checks run: enable/disable over a default-on baseline.
-
-    - baseline = every check whose ``default_on`` is set;
-    - ``include`` force-enables a check (even a default-off one) — how a caller
-      opts into an off-by-default check like ``dangling-mention``;
-    - ``exclude`` force-disables a check;
-    - on conflict (a selector in both), ``exclude`` wins;
-    - a ``structural`` check always runs and cannot be disabled.
-
-    An ``include``/``exclude`` selector that names no known check is a hard
-    error (`CliError`) — fail fast rather than silently no-op.
-    """
-    from agentos._core.errors import CliError
-
-    by_selector = {check_selector(check.code): check for check in checks}
-    include_set, exclude_set = set(include), set(exclude)
-    unknown = (include_set | exclude_set) - set(by_selector)
-    if unknown:
-        raise CliError(
-            "unknown linter check selector(s): "
-            + ", ".join(sorted(unknown))
-            + f" (known: {', '.join(sorted(by_selector))})"
-        )
-    enabled: list[LinterCheck] = []
-    for selector, check in by_selector.items():
-        if check.structural:
-            enabled.append(check)
-            continue
-        on = check.default_on or selector in include_set
-        if selector in exclude_set:
-            on = False
-        if on:
-            enabled.append(check)
-    return enabled
-
-
 def check_registry(checks: Sequence["LinterCheck"] = ()) -> list[dict[str, Any]]:
     """Selector + metadata for each registered check (defaults to `CHECKS`)."""
-    return [
-        {
-            "selector": check_selector(check.code),
-            "code": check.code,
-            "title": check.title,
-            "default_on": check.default_on,
-            "structural": check.structural,
-        }
-        for check in (checks or CHECKS)
-    ]
+    return _core_check_registry(checks or CHECKS)
 
 
 @dataclass

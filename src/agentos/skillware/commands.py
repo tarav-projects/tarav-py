@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from agentos._core.errors import CliError
@@ -130,6 +131,11 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
         report = check_project(project_root)
     except SkillwareError as exc:
         raise CliError(str(exc)) from exc
+    enabled, known = _enabled_poi_selectors(args)
+    package_pois = [
+        (pkg, _filter_pois(pr.pois, enabled, known)) for pkg, pr in report.packages
+    ]
+    poi_count = sum(len(pois) for _pkg, pois in package_pois)
     payload = {
         "command": "agentos skw check",
         "project_root": str(report.project_root),
@@ -140,29 +146,89 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
                 else ".",
                 "pois": [
                     {"kind": poi.kind, "target": str(poi.target), "key": poi.key, "hash": poi.poi_hash}
-                    for poi in pr.pois
+                    for poi in pois
                 ],
             }
-            for pkg, pr in report.packages
+            for pkg, pois in package_pois
         ],
-        "summary": {"packages": len(report.packages), "pois": report.poi_count},
+        "summary": {"packages": len(report.packages), "pois": poi_count},
     }
-    exit_code = 1 if report.poi_count else 0
+    exit_code = 1 if poi_count else 0
     if args.json:
         print(json.dumps(payload, indent=2))
         return exit_code
     print(f"skw check (project scope): {report.project_root}")
-    for pkg, pr in report.packages:
+    for pkg, pois in package_pois:
         rel = pkg.relative_to(report.project_root) if pkg != report.project_root else Path(".")
-        print(f"- {rel}: {len(pr.pois)} POI(s)")
-        for poi in pr.pois:
+        print(f"- {rel}: {len(pois)} POI(s)")
+        for poi in pois:
             location = f"{poi.target} :: {poi.key}" if poi.key else str(poi.target)
             print(f"    [{poi.kind}] {location} ({poi.poi_hash})")
-    print(f"Summary: {len(report.packages)} package(s), {report.poi_count} POI(s).")
+    print(f"Summary: {len(report.packages)} package(s), {poi_count} POI(s).")
     return exit_code
 
 
+# POI kinds are the skw linter's selectable checks. The hard, never-blessable
+# kinds that gate a file's other checks are structural (always shown); the rest
+# are advisory drift a caller may include/exclude (Impl.Req 702, shared core).
+_SKW_STRUCTURAL_KINDS = frozenset({"parse-error", "unresolvable"})
+
+
+@dataclass(frozen=True)
+class _SkwCheckKind:
+    code: str
+    title: str
+    default_on: bool = True
+    structural: bool = False
+
+
+def _skw_check_kinds() -> tuple[_SkwCheckKind, ...]:
+    return tuple(
+        _SkwCheckKind(
+            code=kind,
+            title=meaning,
+            structural=kind in _SKW_STRUCTURAL_KINDS,
+        )
+        for kind, (meaning, _response) in POI_LEGEND.items()
+    )
+
+
+def _enabled_poi_selectors(args: argparse.Namespace) -> tuple[set[str], set[str]]:
+    """(enabled selectors, all known selectors) resolved from --check/--skip."""
+    from agentos.skwlint import check_selector, resolve_enabled_checks
+
+    kinds = _skw_check_kinds()
+    enabled = resolve_enabled_checks(
+        kinds,
+        include=tuple(getattr(args, "check", ()) or ()),
+        exclude=tuple(getattr(args, "skip", ()) or ()),
+    )
+    known = {check_selector(k.code) for k in kinds}
+    return {check_selector(k.code) for k in enabled}, known
+
+
+def _filter_pois(pois, enabled: set[str], known: set[str]):
+    """Keep enabled kinds; an unknown kind (absent from the registry) always
+    passes — selection never silently hides a POI the registry does not model."""
+    from agentos.skwlint import check_selector
+
+    kept = []
+    for poi in pois:
+        selector = check_selector(poi.kind)
+        if selector not in known or selector in enabled:
+            kept.append(poi)
+    return kept
+
+
 def _cmd_skillware_check(args: argparse.Namespace) -> int:
+    if getattr(args, "list_checks", False):
+        from agentos.skwlint import check_registry
+
+        for row in check_registry(_skw_check_kinds()):
+            state = "on " if row["default_on"] else "off"
+            tier = "structural" if row["structural"] else "reportable"
+            print(f"{row['selector']:<24} [{state}] {tier:<11} {row['title']}")
+        return 0
     if getattr(args, "skill", None) is None:
         return _cmd_skillware_project_check(args)
     _load(args)
@@ -170,6 +236,8 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
         report = check_skill(Path(args.skill))
     except SkillwareError as exc:
         raise CliError(str(exc)) from exc
+    enabled, known = _enabled_poi_selectors(args)
+    pois = _filter_pois(report.pois, enabled, known)
     payload = {
         "command": "agentos skw check",
         "skill": str(args.skill),
@@ -190,29 +258,29 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
                 "hash": poi.poi_hash,
                 "detail": poi.detail,
             }
-            for poi in report.pois
+            for poi in pois
         ],
-        "summary": {"files": len(report.entries), "pois": len(report.pois)},
+        "summary": {"files": len(report.entries), "pois": len(pois)},
     }
-    exit_code = 1 if report.pois else 0
+    exit_code = 1 if pois else 0
     if args.json:
         print(json.dumps(payload, indent=2))
         return exit_code
     print("Skillware check")
     for entry in report.entries:
         print(f"- [{entry.status}] {entry.target}")
-    if report.pois:
+    if pois:
         print("Legend:")
-        for kind in dict.fromkeys(poi.kind for poi in report.pois):
+        for kind in dict.fromkeys(poi.kind for poi in pois):
             meaning, response = POI_LEGEND.get(
                 kind, ("a point of interest", "inspect the src")
             )
             print(f"- {kind} — {meaning}; {response}")
         print("POIs:")
-        for poi in report.pois:
+        for poi in pois:
             location = f"{poi.target} :: {poi.key}" if poi.key else f"{poi.target} :: {poi.detail}"
             print(f"- [{poi.kind}] {location} ({poi.poi_hash})")
-    print(f"Summary: {len(report.entries)} file(s), {len(report.pois)} POI(s).")
+    print(f"Summary: {len(report.entries)} file(s), {len(pois)} POI(s).")
     return exit_code
 
 
@@ -344,6 +412,26 @@ def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
             help="Package root containing .skw/src (omit on check for project scope).",
         )
         sub.add_argument("--json", action="store_true", help="Emit the report as JSON.")
+        if name == "check":
+            sub.add_argument(
+                "--check",
+                action="append",
+                default=[],
+                metavar="KIND",
+                help="Enable a POI kind by selector (repeatable); opts into default-off kinds.",
+            )
+            sub.add_argument(
+                "--skip",
+                action="append",
+                default=[],
+                metavar="KIND",
+                help="Disable a POI kind by selector (repeatable); structural kinds cannot be disabled.",
+            )
+            sub.add_argument(
+                "--list-checks",
+                action="store_true",
+                help="List POI-kind selectors with their default state and tier, then exit.",
+            )
         if name == "bless":
             sub.add_argument("--poi", help="POI identity hash from check output.")
             sub.add_argument("--kind", help="POI kind to bulk bless with --all.")
