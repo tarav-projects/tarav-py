@@ -72,6 +72,10 @@ POI_LEGEND = {
         "a v2 [!skw] callout survives outside a fence — inert prose to the parser",
         "rewrite it in the $kw grammar",
     ),
+    "non-skw-annotation": (
+        "a comment on a skw-managed code surface is not a Skw.Annotation — an annotation leaking outside the language",
+        "wrap it as a skw annotation (# $kw: --note/--from …), or accept a throwaway: agentos skw bless --poi <hash>",
+    ),
 }
 
 
@@ -173,6 +177,9 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
 # kinds that gate a file's other checks are structural (always shown); the rest
 # are advisory drift a caller may include/exclude (Impl.Req 702, shared core).
 _SKW_STRUCTURAL_KINDS = frozenset({"parse-error", "unresolvable"})
+# opt-in kinds: over-report on real surfaces, so they stay off unless
+# `--check`ed (mirrors the index `dangling-mention` default-off pattern)
+_SKW_DEFAULT_OFF_KINDS = frozenset({"non-skw-annotation"})
 
 
 @dataclass(frozen=True)
@@ -188,6 +195,7 @@ def _skw_check_kinds() -> tuple[_SkwCheckKind, ...]:
         _SkwCheckKind(
             code=kind,
             title=meaning,
+            default_on=kind not in _SKW_DEFAULT_OFF_KINDS,
             structural=kind in _SKW_STRUCTURAL_KINDS,
         )
         for kind, (meaning, _response) in POI_LEGEND.items()

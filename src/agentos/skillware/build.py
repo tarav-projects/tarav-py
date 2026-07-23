@@ -20,7 +20,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentos.index.model import BlockHeading, KernelLine, MetaLine, parse_depot
-from agentos.skillware.model import SkwFinding, SkwSource, parse_skw_source, recipe_key
+from agentos.skillware.model import (
+    SkwFinding,
+    SkwSource,
+    parse_skw_code,
+    parse_skw_source,
+    recipe_key,
+)
 from agentos.skwlint import (
     Poi,
     blessed_hashes as _blessed_hashes,
@@ -575,6 +581,7 @@ SUPPRESSIBLE_KINDS = (
     "undeclared-dependency",
     "unhonored-dependency",
     "dangling-dependency",
+    "non-skw-annotation",
 )
 
 _LEGACY_CALLOUT_RE = re.compile(r"^>\s*\[!skw\]")
@@ -834,6 +841,57 @@ def _address_mismatch_pois(target_rel: Path, source: SkwSource) -> list[Poi]:
     return pois
 
 
+# A skw-code surface is discovered by the presence of machinery: a code file
+# carrying at least one `# $kw:` comment is opted into skw management, and its
+# other full-line comments become `Non.Skw.Annotation` POIs. Config-free and
+# per-file opt-in; declared globs are a future refinement. `Non.Skw.Annotation`
+# is default-off (opt-in via `--check non-skw-annotation`).
+_CODE_SKIP_DIRS = frozenset(
+    {".skw", ".skillware", ".git", "__pycache__", ".agentos", ".venv", "node_modules"}
+)
+
+
+def _iter_code_files(skill_root: Path):
+    for path in sorted(skill_root.rglob("*.py")):
+        rel = path.relative_to(skill_root)
+        if any(part in _CODE_SKIP_DIRS for part in rel.parts):
+            continue
+        if path.is_file():
+            yield path
+
+
+def _code_surface_pois(skill_root: Path) -> list[Poi]:
+    """`Non.Skw.Annotation`: on a skw-managed code surface (a code file carrying
+    `# $kw:` machinery), every full-line comment that is not part of a
+    `Skw.Annotation` is a raw comment leaking outside the language."""
+    pois: list[Poi] = []
+    for path in _iter_code_files(skill_root):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "$kw" not in text:
+            continue  # cheap prefilter: not a managed code surface
+        source = parse_skw_code(text)
+        if source.findings:
+            continue  # below the Parse.Floor — the machinery is malformed, not the comments
+        machinery: set[int] = set()
+        for start, end in source.machinery_spans:
+            machinery.update(range(start, end))
+        rel = path.relative_to(skill_root)
+        for i, line in enumerate(source.lines):
+            if i in machinery or not line.lstrip().startswith("#"):
+                continue
+            text_i = line.strip()
+            pois.append(
+                _poi(
+                    "non-skw-annotation",
+                    rel,
+                    f"line {i + 1}",
+                    text_i,
+                    f"line {i + 1}: comment is not a Skw.Annotation — {text_i!r}",
+                )
+            )
+    return pois
+
+
 def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckReport:
     """The `Poi.Linter` pass: lint parse results, emit advisory POIs.
 
@@ -962,6 +1020,8 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
                     "a dependency changed since the derived body was written",
                 )
             )
+
+    pois.extend(_code_surface_pois(skillware.skill_root))
 
     return CheckReport(entries=tuple(entries), pois=tuple(_suppress_blessed(lock, pois)))
 

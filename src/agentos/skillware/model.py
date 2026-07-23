@@ -45,14 +45,76 @@ ROLE_FLAGS = ("when", "then")
 VALUE_FLAGS = ("from", "intent", "to", "note", "supp", "cont")
 KNOWN_FLAGS = BINDING_FLAGS + ROLE_FLAGS + VALUE_FLAGS
 
-_OPEN_RE = re.compile(r"^>\s*\$kw:\s?(.*)$")
-_CLOSE_RE = re.compile(r"^>\s*\$kw\.\s*(.*)$")
-_FLAG_LINE_RE = re.compile(r"^>\s*(--\S.*)$")
 _ADDRESS_RE = re.compile(r"^[#^@]?[A-Za-z0-9_./#:^-]+$")
 _FLAG_RE = re.compile(rf"(?:^|\s)--({'|'.join(KNOWN_FLAGS)})(?=\s|$)")
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _NOTE_TYPE_RE = re.compile(r"^\[([A-Z]{2})\]\s*(.*)$")
 _TRAILING_ANCHOR_RE = re.compile(r"\s+(\^[A-Za-z0-9_-]+)\s*$")
+
+
+@dataclass(frozen=True)
+class Carrier:
+    """Surface-specific recognition of skw machinery (`Skw.Backend` carrier).
+
+    The `$kw` frame core is surface-agnostic; only *how a raw line carries
+    machinery* is per-surface. A carrier answers five questions about one line —
+    is it an open, a close, a belonging flag, a fence toggle, or a structural
+    boundary that force-closes open blocks — returning the carrier-stripped
+    machinery content so the shared core never sees the carrier syntax.
+    """
+
+    name: str
+    open_re: re.Pattern
+    close_re: re.Pattern
+    flag_re: re.Pattern
+    fence_re: re.Pattern | None
+    boundary_re: re.Pattern | None
+    boundary_label: str = "boundary"
+
+    def open_content(self, line: str) -> str | None:
+        match = self.open_re.match(line)
+        return match.group(1) if match is not None else None
+
+    def close_content(self, line: str) -> str | None:
+        match = self.close_re.match(line)
+        return match.group(1) if match is not None else None
+
+    def flag_content(self, line: str) -> str | None:
+        match = self.flag_re.match(line)
+        return match.group(1) if match is not None else None
+
+    def is_fence(self, line: str) -> bool:
+        return self.fence_re is not None and self.fence_re.match(line) is not None
+
+    def boundary_name(self, line: str) -> str | None:
+        if self.boundary_re is None:
+            return None
+        match = self.boundary_re.match(line)
+        return match.group("name").strip() if match is not None else None
+
+
+# The markdown carrier: machinery rides `>` blockquote lines; ``` / ~~~ fence
+# code inert; ATX headings are the structural boundary. The original grammar.
+MARKDOWN_CARRIER = Carrier(
+    name="skw-skills",
+    open_re=re.compile(r"^>\s*\$kw:\s?(.*)$"),
+    close_re=re.compile(r"^>\s*\$kw\.\s*(.*)$"),
+    flag_re=re.compile(r"^>\s*(--\S.*)$"),
+    fence_re=re.compile(r"^\s*(?:```|~~~)"),
+    boundary_re=re.compile(r"^#{1,6}\s+(?P<name>.*)$"),
+    boundary_label="heading",
+)
+
+# The code carrier (carrier B): the comment *is* the carrier — `# $kw: …`. No
+# blockquote, no markdown fence; boundaries (def/class Annotation.Points) are a
+# per-language concern layered in Slice 3.
+CODE_CARRIER = Carrier(
+    name="skw-code",
+    open_re=re.compile(r"^#\s*\$kw:\s?(.*)$"),
+    close_re=re.compile(r"^#\s*\$kw\.\s*(.*)$"),
+    flag_re=re.compile(r"^#\s*(--\S.*)$"),
+    fence_re=None,
+    boundary_re=None,
+)
 
 
 @dataclass(frozen=True)
@@ -184,15 +246,16 @@ def _parse_flag_segments(
 
 
 def _read_block(
-    lines: list[str], start: int, findings: list[SkwFinding]
+    lines: list[str], start: int, findings: list[SkwFinding], carrier: Carrier
 ) -> tuple[int, str | None, str | None, list[tuple[str, str]]]:
-    """Read a ``> $kw:`` open line plus contiguous ``> --flag`` belonging
-    lines. Returns (end_exclusive, address, label, flags). The address is the
-    first non-flag token on the open line; ``^label`` addresses also yield a
-    bare label for lock-key continuity."""
-    match = _OPEN_RE.match(lines[start])
-    assert match is not None
-    content = match.group(1).strip()
+    """Read a ``$kw:`` open line plus contiguous ``--flag`` belonging lines.
+    Returns (end_exclusive, address, label, flags). The address is the first
+    non-flag token on the open line; ``^label`` addresses also yield a bare
+    label for lock-key continuity. Carrier-agnostic: the carrier strips its own
+    syntax before this sees machinery content."""
+    open_content = carrier.open_content(lines[start])
+    assert open_content is not None
+    content = open_content.strip()
 
     matches = list(_FLAG_RE.finditer(content))
     head = content[: matches[0].start()] if matches else content
@@ -211,10 +274,10 @@ def _read_block(
 
     index = start + 1
     while index < len(lines):
-        flag_line = _FLAG_LINE_RE.match(lines[index])
-        if flag_line is None:
+        flag_content = carrier.flag_content(lines[index])
+        if flag_content is None:
             break
-        _parse_flag_segments(flag_line.group(1).strip(), flags, findings, index + 1)
+        _parse_flag_segments(flag_content.strip(), flags, findings, index + 1)
         index += 1
 
     if extras:
@@ -269,7 +332,7 @@ class _Frame:
     children: list[str] = field(default_factory=list)
 
 
-def parse_skw_source(text: str) -> SkwSource:
+def _parse_source(text: str, carrier: Carrier) -> SkwSource:
     lines = text.splitlines()
     recipes: list[SkwRecipe] = []
     constructs: list[SkwConstruct] = []
@@ -386,7 +449,7 @@ def parse_skw_source(text: str) -> SkwSource:
     fence_line = 0
     while index < len(lines):
         line = lines[index]
-        if line.lstrip().startswith(("```", "~~~")):
+        if carrier.is_fence(line):
             in_fence = not in_fence
             fence_line = index + 1
             index += 1
@@ -395,16 +458,16 @@ def parse_skw_source(text: str) -> SkwSource:
             index += 1
             continue
 
-        heading_match = _HEADING_RE.match(line)
-        if heading_match is not None:
-            force_close(index, f"heading '{heading_match.group(2).strip()}'")
-            heading = heading_match.group(2).strip()
+        boundary = carrier.boundary_name(line)
+        if boundary is not None:
+            force_close(index, f"{carrier.boundary_label} {boundary!r}")
+            heading = boundary
             index += 1
             continue
 
-        close_match = _CLOSE_RE.match(line)
-        if close_match is not None:
-            content = close_match.group(1).strip()
+        close_content = carrier.close_content(line)
+        if close_content is not None:
+            content = close_content.strip()
             if not _is_bare_end(content):
                 findings.append(
                     SkwFinding(
@@ -429,21 +492,20 @@ def parse_skw_source(text: str) -> SkwSource:
             index += 1
             continue
 
-        open_match = _OPEN_RE.match(line)
-        if open_match is None:
-            flag_match = _FLAG_LINE_RE.match(line)
-            if flag_match is not None:
+        if carrier.open_content(line) is None:
+            flag_content = carrier.flag_content(line)
+            if flag_content is not None:
                 findings.append(
                     SkwFinding(
                         index + 1,
-                        f"stray flag line outside a declaration: {flag_match.group(1).strip()!r}",
+                        f"stray flag line outside a declaration: {flag_content.strip()!r}",
                     )
                 )
                 machinery_spans.append((index, index + 1))
             index += 1
             continue
 
-        decl_end, address, label, flags = _read_block(lines, index, findings)
+        decl_end, address, label, flags = _read_block(lines, index, findings, carrier)
 
         if address is not None:
             if address in seen_addresses:
@@ -570,18 +632,33 @@ def parse_skw_source(text: str) -> SkwSource:
     )
 
 
+def parse_skw_source(text: str) -> SkwSource:
+    """Parse a markdown `.skw.md` source (the skw-skills backend carrier)."""
+    return _parse_source(text, MARKDOWN_CARRIER)
+
+
+def parse_skw_code(text: str) -> SkwSource:
+    """Parse a code source carrying skw machinery in `# $kw:` comments
+    (the skw-code backend carrier, carrier B)."""
+    return _parse_source(text, CODE_CARRIER)
+
+
 __all__ = [
     "BINDING_FLAGS",
+    "CODE_CARRIER",
     "KNOWN_FLAGS",
+    "MARKDOWN_CARRIER",
     "RECIPE_BINDINGS",
     "ROLE_FLAGS",
     "VALUE_FLAGS",
+    "Carrier",
     "SkwConstruct",
     "SkwDependency",
     "SkwFinding",
     "SkwNote",
     "SkwRecipe",
     "SkwSource",
+    "parse_skw_code",
     "parse_skw_source",
     "recipe_key",
 ]

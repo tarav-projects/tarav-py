@@ -59,12 +59,15 @@ D1/D0 resolved. Test-first at each boundary. Loop: `pytest tests/test_skw_carrie
 
 ## Slice Status
 
-- Slice 1 — core/surface split (carrier abstraction), skw-skills green — ⏳
-- Slice 2 — code carrier B + code parse — ⏳
-- Slice 3 — code surface provider + discovery — ⏳
-- Slice 4 — `Non.Skw.Annotation` POI, default-off, blessable — ⏳
-- Slice 5 — AGENTS.md — ⏳
+- Slice 1 — core/surface split (`Carrier` abstraction), skw-skills green — ✅ 87 skw tests unchanged; `_parse_source(text, carrier)` + `MARKDOWN_CARRIER`/`CODE_CARRIER`
+- Slice 2 — code carrier B + code parse — ✅ `parse_skw_code`; 6 backend tests
+- Slice 3 — code surface discovery (by-machinery) — ✅ `_code_surface_pois` / `_iter_code_files`, `"$kw"` prefilter
+- Slice 4 — `non-skw-annotation` POI, default-off, suppress-blessable — ✅ 4 check tests; live CLI verified
+- Slice 5 — AGENTS.md — ✅ carrier split + new POI kind documented
 
 ## Impl.Log
 
-- Designed under `--dev --AUTO`. Halted before execution: the task presupposes a `skw-code` backend that does not exist, and its first slice is a language-design decision (D1, the code carrier grammar) that `--AUTO` must not commit unilaterally. Faithful action per the design module's failure behavior ("if design cannot produce an executable Impl.Req, stop before execution") and the executer's scope-broadening hard boundary. Awaiting the D1 decision to unblock Slice 1+.
+- Designed under `--dev --AUTO`. Halted before execution once: the task presupposes a `skw-code` backend that did not exist, and its first slice was a language-design decision (D1, the code carrier grammar) that `--AUTO` must not commit unilaterally. Surfaced to the user; they resolved **D1 → carrier B** and directed the **core/surface split** (D0). Execution then proceeded end-to-end.
+- **Deviation — discovery mechanism.** Slice 3 designed "declared code globs in `skw.json`". Implemented instead as **discovery-by-machinery** (a `.py` carrying `# $kw:` is a managed surface), config-free and per-file opt-in, reusing the existing schema. Reason: reusing `surfaces` at package scope would collide with its project-scope package-set meaning, and a 5th config key was unwanted churn for a default-off first cut. Declared globs remain a clean future refinement.
+- **Scope note — Python only, full-line comments only.** First host is `.py`; inline trailing comments (`x = 1  # …`) and `#` inside string literals are not distinguished (the `"$kw"` prefilter + machinery-span exclusion keep false positives to shebang/encoding lines, acceptable for a default-off check). Documented as follow-ups.
+- Result: full suite **467 passed** (+10). Live `agentos skw check`: `--list-checks` shows `non-skw-annotation [off] reportable`; default run emits none; `--check non-skw-annotation` emits exactly the bare comments (machinery line excluded); suppress-bless clears them.
