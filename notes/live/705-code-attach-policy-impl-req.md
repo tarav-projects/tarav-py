@@ -44,11 +44,15 @@ Test-first at boundaries. Loop: `pytest tests/test_skw_code_check.py tests/test_
 
 ## Slice Status
 
-- Slice 1 — policy struct + block enumeration + two checks — ⏳
-- Slice 2 — POI_LEGEND + defaults — ⏳
-- Slice 3 — realign existing fixture — ⏳
-- Slice 4 — prove on model.py + AGENTS.md — ⏳
+- Slice 1 — `CodeAttachPolicy` + `_block_open_lines` + two checks — ✅ 5 tests
+- Slice 2 — POI_LEGEND + default-on/non-blessable — ✅ 2 selection tests; `--list-checks` shows `[on]`
+- Slice 3 — realign existing fixture (header→line 1) — ✅
+- Slice 4 — proof on `model.py` + AGENTS.md — ✅ first real skw-code annotation, 0 policy POIs, 22 non-skw residual
 
 ## Impl.Log
 
-- Developed under `--capture --dev --auto`. Design fully pre-landed in 107 this session, so no design deviation expected; the executer's pre-execution checkpoint is the rollback floor. Slice 4 annotates a real production file (model.py) — a deliberate first-adoption to satisfy "prove on the skw subsystem"; left uncommitted for review, trivially revertible.
+- Developed under `--capture --dev --auto`. Design fully pre-landed in 107; checkpoint `ef8f48f` is the rollback floor.
+- **Discovery bug found + fixed (in-scope).** `missing-header` reasoning over `model.py` exposed that the `"$kw" in text` prefilter is too loose: `build.py`/`commands.py` mention `$kw` in *strings* (the POI prescription text) but carry no machinery, so they would falsely trip `missing-header`. Tightened discovery — a surface is managed iff `parse_skw_code` yields ≥1 real block (`if not block_lines: continue`); mention-only files are skipped. Added a regression test. This also correctly narrowed `non-skw-annotation` (mention-only files no longer flag their comments).
+- **Proof.** `model.py` carries the first real skw-code annotation (a line-1 `--note` header, `^c20260722-24u`). Over real `src/agentos/skillware/`: `model.py` managed, **0 policy POIs** (header legal at line 1), 22 `non-skw-annotation` residual (default-off, silent); `build.py`/`commands.py` correctly unmanaged (no false positives). Import intact (docstring survives the leading comment).
+- **CLI boundary noted (not a bug).** The code-surface scan rides `check_skill`, which requires a `.skw/` package — so code surfaces are checked as members of a `Skw.Package`, not standalone. `src/agentos/skillware/` isn't itself a package, so the proof ran the library entrypoint directly. Making agentos-py (or a subtree) a package to dogfood via the CLI is a separate adoption step.
+- Result: full suite **474 passed** (+7). Slice 4's `model.py` annotation is a real production edit, left uncommitted for review, trivially revertible.

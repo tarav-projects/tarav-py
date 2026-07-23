@@ -18,8 +18,8 @@ def _managed_pkg(root: Path, code: str) -> Path:
 
 
 CODE = (
-    "# a bare leading comment\n"
     "# $kw: ^retry --note [CT] broker can double-deliver ^c20260722-21u\n"
+    "# a bare leading comment\n"
     "def send(msg):\n"
     "    # an inner bare comment\n"
     "    return _do(msg)\n"
@@ -37,7 +37,7 @@ def test_non_skw_annotation_flags_bare_comments_only(tmp_path: Path) -> None:
     # exactly the two bare comments; the `# $kw:` machinery line is not flagged
     assert len(flagged) == 2
     keys = sorted(p.key for p in flagged)
-    assert keys == ["line 1", "line 4"]
+    assert keys == ["line 2", "line 4"]
 
 
 def test_unmanaged_code_surface_is_not_scanned(tmp_path: Path) -> None:

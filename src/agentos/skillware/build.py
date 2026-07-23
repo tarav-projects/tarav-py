@@ -860,10 +860,39 @@ def _iter_code_files(skill_root: Path):
             yield path
 
 
-def _code_surface_pois(skill_root: Path) -> list[Poi]:
-    """`Non.Skw.Annotation`: on a skw-managed code surface (a code file carrying
-    `# $kw:` machinery), every full-line comment that is not part of a
-    `Skw.Annotation` is a raw comment leaking outside the language."""
+@dataclass(frozen=True)
+class CodeAttachPolicy:
+    """The `Annotation.Point` policy for a skw-code surface: the configurable
+    allow-set of attach points and their placement/cardinality/presence rules,
+    which the linter enforces. These are the strict starting defaults — the file
+    is the only point, its block at line 1, exactly one, required. `skw.json`
+    relaxing them (finer points, presence exemptions) is a future refinement;
+    for now the struct is the policy."""
+
+    file_line: int = 1
+    file_required: bool = True
+
+
+DEFAULT_CODE_POLICY = CodeAttachPolicy()
+
+
+def _block_open_lines(source: SkwSource) -> list[int]:
+    """The 1-based open line of every `# $kw:` annotation block in the source."""
+    blocks = (*source.recipes, *source.constructs, *source.dependencies)
+    return sorted({block.line for block in blocks})
+
+
+def _code_surface_pois(
+    skill_root: Path, policy: CodeAttachPolicy = DEFAULT_CODE_POLICY
+) -> list[Poi]:
+    """Lint each skw-managed code surface (a code file carrying `# $kw:`):
+
+    - `illegal-attachment` — a block attached at a point outside the allow-set;
+      under the strict default only the `file_line` block is legal, so every
+      other block is illegal (finer points open illegal→legal via config).
+    - `missing-header` — a required file point with no `file_line` block.
+    - `non-skw-annotation` — a full-line comment that is not machinery.
+    """
     pois: list[Poi] = []
     for path in _iter_code_files(skill_root):
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -872,10 +901,37 @@ def _code_surface_pois(skill_root: Path) -> list[Poi]:
         source = parse_skw_code(text)
         if source.findings:
             continue  # below the Parse.Floor — the machinery is malformed, not the comments
+        block_lines = _block_open_lines(source)
+        if not block_lines:
+            continue  # mentions "$kw" (in a string/docstring) but carries no machinery — not managed
+        rel = path.relative_to(skill_root)
+
+        if policy.file_required and policy.file_line not in block_lines:
+            pois.append(
+                _poi(
+                    "missing-header",
+                    rel,
+                    "file",
+                    "missing-header",
+                    f"skw-managed code file has no line-{policy.file_line} annotation (the required file point)",
+                )
+            )
+        for line_no in block_lines:
+            if line_no == policy.file_line:
+                continue
+            pois.append(
+                _poi(
+                    "illegal-attachment",
+                    rel,
+                    f"line {line_no}",
+                    f"line {line_no}",
+                    f"line {line_no}: skw block attaches off the file point (line {policy.file_line})",
+                )
+            )
+
         machinery: set[int] = set()
         for start, end in source.machinery_spans:
             machinery.update(range(start, end))
-        rel = path.relative_to(skill_root)
         for i, line in enumerate(source.lines):
             if i in machinery or not line.lstrip().startswith("#"):
                 continue

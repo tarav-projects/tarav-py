@@ -1,3 +1,4 @@
+# $kw: ^skw-model --note [DF] the skw parser — a surface-agnostic $kw frame core plus per-surface Carrier adapters ^c20260722-24u
 """Skillware src surface model: `.skw.md` parsing.
 
 v2 grammar — the annotation as a *named block*. The surface grammar is the

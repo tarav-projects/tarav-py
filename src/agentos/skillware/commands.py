@@ -76,6 +76,14 @@ POI_LEGEND = {
         "a comment on a skw-managed code surface is not a Skw.Annotation — an annotation leaking outside the language",
         "wrap it as a skw annotation (# $kw: --note/--from …), delete the comment, or accept a throwaway: agentos skw bless --poi <hash>",
     ),
+    "illegal-attachment": (
+        "a skw block attaches at a point outside the surface's allow-set (skw-code: only the line-1 file point is open)",
+        "move the block to a sanctioned point (the line-1 file header), or open a finer point in config",
+    ),
+    "missing-header": (
+        "a skw-managed code file has no line-1 annotation — the required file point is empty",
+        "add the line-1 # $kw: header, or relax the presence policy in config",
+    ),
 }
 
 
