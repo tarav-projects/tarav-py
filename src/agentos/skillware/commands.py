@@ -74,7 +74,7 @@ POI_LEGEND = {
     ),
     "non-skw-annotation": (
         "a comment on a skw-managed code surface is not a Skw.Annotation — an annotation leaking outside the language",
-        "wrap it as a skw annotation (# $kw: --note/--from …), or accept a throwaway: agentos skw bless --poi <hash>",
+        "wrap it as a skw annotation (# $kw: --note/--from …), delete the comment, or accept a throwaway: agentos skw bless --poi <hash>",
     ),
 }
 
