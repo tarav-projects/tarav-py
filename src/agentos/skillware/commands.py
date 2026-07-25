@@ -79,7 +79,7 @@ POI_LEGEND = {
         "cite the target visibly, change the dependency role, or bless the current finding",
     ),
     "context-assembly-bypass": (
-        "a surface depends on an assembly-claimed source without loading its context assembly",
+        "a surface depends on an assembly-covered source without loading its context assembly",
         "add --dev-from <assembly-file>, or bless the intentional bypass",
     ),
     "malformed-note": (

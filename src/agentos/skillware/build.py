@@ -1281,10 +1281,10 @@ def _citation_pois(
     return pois
 
 
-def _context_assembly_claims(
+def _context_assembly_coverage(
     skillware: Skillware,
 ) -> dict[str, set[Path]]:
-    claims: dict[str, set[Path]] = {}
+    coverage: dict[str, set[Path]] = {}
     for src_rel in skillware.src_files():
         source = parse_skw_source(
             (skillware.src_root / src_rel).read_text(encoding="utf-8")
@@ -1295,15 +1295,15 @@ def _context_assembly_claims(
             if not dependency.context_assembly:
                 continue
             for locator in dependency.froms:
-                claims.setdefault(locator, set()).add(src_rel)
-    return claims
+                coverage.setdefault(locator, set()).add(src_rel)
+    return coverage
 
 
 def _context_assembly_bypass_pois(
     target_rel: Path,
     src_rel: Path,
     source: SkwSource,
-    claims: dict[str, set[Path]],
+    coverage: dict[str, set[Path]],
 ) -> list[Poi]:
     blocks = (*source.dependencies, *source.recipes, *source.constructs)
     dev_froms = {
@@ -1316,7 +1316,7 @@ def _context_assembly_bypass_pois(
     }
     pois: list[Poi] = []
     for locator in sorted(dependencies):
-        for assembly in sorted(claims.get(locator, set())):
+        for assembly in sorted(coverage.get(locator, set())):
             if assembly == src_rel or assembly.as_posix() in dev_froms:
                 continue
             pois.append(
@@ -1325,7 +1325,7 @@ def _context_assembly_bypass_pois(
                     target_rel,
                     locator,
                     f"{assembly.as_posix()}|{locator}",
-                    f"dependency `{locator}` is claimed by `{assembly.as_posix()}` "
+                    f"dependency `{locator}` is covered by `{assembly.as_posix()}` "
                     f"but the surface has no `--dev-from {assembly.as_posix()}`",
                 )
             )
@@ -1503,7 +1503,7 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
     lock = _read_lock(skillware)
     entries: list[CheckEntry] = []
     pois: list[Poi] = []
-    context_assembly_claims = _context_assembly_claims(skillware)
+    context_assembly_coverage = _context_assembly_coverage(skillware)
 
     for src_rel in skillware.src_files():
         target_rel = skillware.target_rel(src_rel)
@@ -1602,7 +1602,7 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
                 target_rel,
                 src_rel,
                 source,
-                context_assembly_claims,
+                context_assembly_coverage,
             )
         )
         pois.extend(_note_pois(target_rel, source))

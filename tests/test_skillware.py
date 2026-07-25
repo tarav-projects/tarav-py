@@ -729,6 +729,8 @@ def test_context_assembly_bypass_requires_companion_dev_from(
     ]
     assert len(bypass) == 1
     assert bypass[0].key == "Concept.One"
+    assert "is covered by" in bypass[0].detail
+    assert "claimed by" not in bypass[0].detail
     assert "references/context.skw.md" in bypass[0].detail
 
     from agentos.skillware.build import bless_skill
