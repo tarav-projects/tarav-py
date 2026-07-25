@@ -49,6 +49,16 @@
 - `agentos anchory ...` is registered by `agentos-cli` as a thin wrapper over the library.
 - `agentos anchory scan --depot ... --src-file ... --regex ... [--json]` is a read-only source-file query feed: it extracts anchor candidates from text, resolves them against the depot, and never mutates records.
 
+## Bloberia System
+
+- `src/agentos/bloberia/` owns the importable query:value record library and thin command registrar.
+- `BloberiaDepot` receives one exact explicit root; v1 has no discovery, implicit/global depot, namespaces, or Anchory integration.
+- canonical records are `{"_bloberia": {...}, "value": ...}`; the library owns opaque UUID identity, timestamps, and revision while applications own any JSON-serializable value.
+- records live individually under `<depot>/records/`; create/edit use depot locking and atomic replacement, and `check` reports corruption without mutation.
+- structural queries are recursive JSON-object subset matches over the complete canonical record; arrays and scalars compare by equality.
+- public operations are `create`, `get`, `edit`, `query`, and `check`; edit replaces the full application value.
+- `agentos bloberia ...` is registered by `agentos-cli` as a thin JSON CLI over the library and requires `--depot` for every operation.
+
 ## Markdown Block Scanning Preference
 
 - When a task requires extracting markdown blocks, use `agentos stdlib mdblocks blocks` first.

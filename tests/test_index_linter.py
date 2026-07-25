@@ -1279,12 +1279,15 @@ def test_reviewed_surface_citing_real_agendix_block_raises_closure(monkeypatch, 
     assert hits[0].details["target"] == "Example.Concept/Agendix/Real.Lead"
 
 
-def test_reviewed_surface_citing_real_agendix_file_raises_closure(monkeypatch, tmp_path: Path) -> None:
+def test_reviewed_surface_naming_agendix_file_stays_quiet(monkeypatch, tmp_path: Path) -> None:
+    # naming the agendix surface/file (as the Index.Agendix definition does) is
+    # not a content cite -> no violation; only a Block.Path into a real agendix
+    # block is the forbidden edge
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
     depot = _depot_with_agendix(tmp_path, cite="see `agendix/Example.Concept-agendix.md`")
     state = _run(depot_paths=(str(depot),))
-    assert [f for f in state.findings if f.code == REVIEWED_CITE_CLOSURE]
+    assert not [f for f in state.findings if f.code == REVIEWED_CITE_CLOSURE]
 
 
 def test_agendix_format_placeholders_do_not_raise_closure(monkeypatch, tmp_path: Path) -> None:

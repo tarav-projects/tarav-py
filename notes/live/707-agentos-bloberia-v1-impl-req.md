@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** implement the first `Agentos.Bloberia` vertical slice as an importable Python library and thin `agentos bloberia ...` CLI
-- **status:** ready for implementation
+- **status:** implemented; focused verification and both full test suites pass, with unrelated pre-existing `agentos-py` Ruff residue recorded below
 - **source:** reviewed `Agentos.Bloberia` index block plus the current `--design` and `exec` requests
 - **support set:** `Agentos.Bloberia` and its accepted contract ^c20260724-31u
 - **target projects:** `agentos-py` owns the library and command-domain registration; `agentos-cli` aggregates the command
@@ -14,6 +14,8 @@
 - **touched (chat):** no legacy format or compatibility path ^c20260724-31u
 - **touched (chat):** Bloberia is independent of application payload mutability and dataflow ^c20260724-31u
 - **structural:** `agentos-cli` depends on `agentos-py` and imports its command registrar
+- **implementation:** Slice 1 grounds `agentos.bloberia` and its boundary tests at the file annotation point from `Agentos.Bloberia` ^c20260724-31u
+- **implementation:** Slice 4 grounds the Bloberia command handlers, umbrella registrar, and CLI boundary tests at file annotation points from `Agentos.Bloberia` ^c20260724-31u
 - **open space:** internal helper decomposition remains agent-owned; no index surface fixes a Python file layout below the public `agentos.bloberia` boundary
 
 ## Impl.Index
@@ -98,7 +100,7 @@
 - RED: library tests cover arbitrary JSON values, envelope ownership, UUID identity, timestamps/revision, detached reads, missing IDs, serialization rejection, collision rejection, and atomic-write failure preservation
 - observable: a fresh `BloberiaDepot` can create and retrieve the same canonical record from disk
 - check: `cd agentos-py && uv run pytest tests/test_bloberia.py`
-- status: not started
+- status: completed
 
 ### Slice 2 - Edit and structural query
 
@@ -107,7 +109,7 @@
 - RED: tests cover object-subset recursion, exact array/scalar matching, empty-query selection, envelope queries, nonmatching records, edit invariants, and concurrent mutation safety
 - observable: callers can replace values and select records without application-specific storage code
 - check: `cd agentos-py && uv run pytest tests/test_bloberia.py`
-- status: not started
+- status: completed
 
 ### Slice 3 - Depot check
 
@@ -115,7 +117,7 @@
 - RED: tests introduce malformed JSON, invalid record shape, invalid filename identity, and identity mismatch, then verify deterministic findings and zero mutation
 - observable: a consumer can distinguish a valid depot from corrupt storage without reading internal files itself
 - check: `cd agentos-py && uv run pytest tests/test_bloberia.py`
-- status: not started
+- status: completed
 
 ### Slice 4 - Thin CLI and umbrella registration
 
@@ -124,7 +126,7 @@
 - add focused end-to-end tests for command discovery, create/get/edit/query/check, JSON-file inputs, explicit depot requirement, and error exits
 - observable: `agentos bloberia ...` exposes the library contract without a second implementation
 - check: `cd agentos-cli && uv run pytest tests/test_e2e_bloberia.py`
-- status: not started
+- status: completed
 
 ### Slice 5 - Documentation and full verification
 
@@ -137,7 +139,7 @@
 - reinstall the executable from `agentos-cli` with `uv tool install --reinstall --editable .`
 - smoke a scratch explicit depot through installed create/get/edit/query/check commands
 - observable: library and CLI suites pass, documentation matches reality, and the installed executable serves the new command
-- status: not started
+- status: completed with unrelated pre-existing full-Ruff findings
 
 ## Risks And Deviation Triggers
 
@@ -163,4 +165,10 @@
 - 2026-07-25: designed from the reviewed `Agentos.Bloberia` block and current implementation inspection
 - 2026-07-25: readiness checkpoint approved; exact CLI verbs, envelope fields, subset-query semantics, full-value edit, UUID identity, and one-file-per-record layout accepted as implementation decisions
 - 2026-07-25: latest Chatlas turns were not yet materialized at artifact creation; no unresolved anchor was written
-- no execution deviations or blockers
+- 2026-07-25: mandatory pre-execution checkpoints created in `agentos-py` (`910e6a5`) and `agentos-cli` (`e41f404`)
+- 2026-07-25: implemented `agentos.bloberia` create/get/edit/query/check plus the thin umbrella CLI; no scope deviation
+- 2026-07-25: focused verification passed - 19 library tests, 4 CLI boundary tests, and scoped Ruff checks in both projects
+- 2026-07-25: full suites passed - `agentos-py` 512 tests and `agentos-cli` 60 tests; full `agentos-cli` Ruff passed
+- 2026-07-25: full `agentos-py` Ruff remains nonzero on five unrelated findings outside Bloberia (`index/depot_deps.py`, `index/linter.py`, `test_depot_deps.py`, `test_index_linter.py`, `test_skw_check_selection.py`); Bloberia-scoped Ruff is clean and those files were not modified by this execution
+- 2026-07-25: installed CLI was reinstalled and scratch-depot smoke passed create/get/edit/query/check with revision `1 -> 2`, one query result, and `check` status `ok`
+- 2026-07-25: the execution-gate turn remained outside Chatlas after repeated scoped refreshes; no unresolved or guessed anchor was written
