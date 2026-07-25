@@ -63,9 +63,10 @@
 
 - `src/agentos/skillware/edition_history.py` owns the importable `EditionHistoryService`, backed by one explicit `BloberiaDepot`.
 - file identity is the stable Agentos `project_id` plus project-relative POSIX path; record inputs resolve the full Git commit identity and commit time.
-- one `skw.edition-session` application record associates one file edition with one provider-native chat session; repeated equivalent record calls are idempotent.
+- one `skw.edition-session` application record associates one file edition with one neutral Chatlas session identity; repeated equivalent record calls are idempotent.
+- every association embeds a required `chatlas.support-set.v1` object with nonempty exact event members, including at least one member from the associated session; `agentos-py` validates this intrinsic structure without importing Chatlas for live resolution.
 - `list` validates and groups associations by edition; `check` requires at least one valid association for every explicit target and reports malformed, duplicate, or structurally corrupt records.
-- `agentos skw edition-history record|list|check` is the thin JSON CLI. Chatlas discovery and association judgment remain outside `agentos-py`.
+- `agentos skw edition-history record|list|check` is the thin JSON CLI; `record` requires `--support-json` or `--support-file`. Chatlas discovery, live resolution, and association judgment remain outside `agentos-py`.
 
 ## Markdown Block Scanning Preference
 

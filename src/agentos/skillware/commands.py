@@ -1,4 +1,4 @@
-# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including the thin edition-history service consumer ^c20260725-7u
+# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including required-support edition-history recording ^c20260725-12u --supp schema migration authorized ^c20260725-14u
 from __future__ import annotations
 
 import argparse
@@ -460,10 +460,10 @@ def _print_edition_history_json(payload: object) -> None:
 
 
 def _cmd_edition_history_record(args: argparse.Namespace) -> int:
-    evidence = load_json_object_arg(
-        args.evidence_json,
-        args.evidence_file,
-        field_name="evidence",
+    support = load_json_object_arg(
+        args.support_json,
+        args.support_file,
+        field_name="support",
     )
     service = _edition_history_service(args)
     try:
@@ -471,8 +471,8 @@ def _cmd_edition_history_record(args: argparse.Namespace) -> int:
             args.file,
             args.commit,
             args.session,
+            support=support,
             session_started_at=args.session_started_at,
-            evidence=evidence,
         )
         file = EditionFile.resolve(args.file)
     except EditionHistoryError as exc:
@@ -555,20 +555,20 @@ def _add_edition_history_commands(
     record_parser.add_argument(
         "--session",
         required=True,
-        help="Provider-native chat session identity.",
+        help="Neutral Chatlas session identity hash.",
     )
     record_parser.add_argument(
         "--session-started-at",
         help="Optional Chatlas session start time as ISO 8601.",
     )
-    evidence = record_parser.add_mutually_exclusive_group()
-    evidence.add_argument(
-        "--evidence-json",
-        help="Association evidence as a JSON object.",
+    support = record_parser.add_mutually_exclusive_group(required=True)
+    support.add_argument(
+        "--support-json",
+        help="Embedded chatlas.support-set.v1 JSON object.",
     )
-    evidence.add_argument(
-        "--evidence-file",
-        help="Path to association-evidence JSON.",
+    support.add_argument(
+        "--support-file",
+        help="Path to embedded chatlas.support-set.v1 JSON.",
     )
     record_parser.add_argument(
         "--depot",

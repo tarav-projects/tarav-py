@@ -1,7 +1,6 @@
-# $kw: ^edition-history-service --from Skw.Edition.History.Service --note [DF] validated Skillware edition/session associations over an explicit BloberiaDepot ^c20260725-7u
+# $kw: ^edition-history-service --from Skw.Edition.History.Service --note [DF] validated Skillware edition/session associations with required embedded Chat.Support.Set records ^c20260725-12u --supp schema migration authorized ^c20260725-14u
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 from dataclasses import dataclass
@@ -19,6 +18,7 @@ from agentos.bloberia import (
 
 EDITION_SESSION_KIND = "skw.edition-session"
 EDITION_SESSION_SCHEMA_VERSION = 1
+CHATLAS_SUPPORT_SET_SCHEMA = "chatlas.support-set.v1"
 _COMMIT_RE = re.compile(r"^[0-9a-fA-F]{4,64}$")
 
 
@@ -43,14 +43,14 @@ class EditionFile:
 class EditionSession:
     session_id: str
     started_at: str | None
-    evidence: dict[str, object]
+    support: dict[str, object]
     record_id: str
 
     def as_dict(self) -> dict[str, object]:
         return {
             "id": self.session_id,
             "started_at": self.started_at,
-            "evidence": self.evidence,
+            "support": self.support,
             "record_id": self.record_id,
         }
 
@@ -150,8 +150,8 @@ class EditionHistoryService:
         commit: str,
         session_id: str,
         *,
+        support: dict[str, object],
         session_started_at: str | None = None,
-        evidence: dict[str, object] | None = None,
     ) -> RecordEditionSessionResult:
         resolved_file = _resolve_file(file)
         full_commit, committed_at = _resolve_git_edition(
@@ -163,9 +163,10 @@ class EditionHistoryService:
             session_started_at,
             field="session_started_at",
         )
-        if evidence is not None and not isinstance(evidence, dict):
-            raise EditionHistoryError("evidence must be a JSON object")
-        normalized_evidence = _json_object(evidence or {}, field="evidence")
+        normalized_support = _support_set(
+            support,
+            session_id=normalized_session_id,
+        )
 
         identity_query = {
             "value": {
@@ -199,7 +200,7 @@ class EditionHistoryService:
                 "id": normalized_session_id,
                 "started_at": normalized_started_at,
             },
-            "evidence": normalized_evidence,
+            "support": normalized_support,
         }
         try:
             record = self.depot.create(value)
@@ -416,7 +417,7 @@ def _association_from_record(record: BloberiaRecord) -> _Association:
                 "file",
                 "edition",
                 "session",
-                "evidence",
+                "support",
             },
             field="record value",
         )
@@ -439,7 +440,6 @@ def _association_from_record(record: BloberiaRecord) -> _Association:
             keys={"id", "started_at"},
             field="session",
         )
-        evidence = _json_object(value["evidence"], field="evidence")
         file = EditionFile(
             project_id=_nonempty_string(
                 file_value["project_id"],
@@ -456,13 +456,15 @@ def _association_from_record(record: BloberiaRecord) -> _Association:
             edition_value["committed_at"],
             field="edition.committed_at",
         )
+        session_id = _nonempty_string(session_value["id"], field="session.id")
+        support = _support_set(value["support"], session_id=session_id)
         session = EditionSession(
-            session_id=_nonempty_string(session_value["id"], field="session.id"),
+            session_id=session_id,
             started_at=_optional_iso_timestamp(
                 session_value["started_at"],
                 field="session.started_at",
             ),
-            evidence=evidence,
+            support=support,
             record_id=record.id,
         )
     except EditionHistoryError as exc:
@@ -521,15 +523,70 @@ def _exact_object(
     return value
 
 
-def _json_object(value: object, *, field: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        raise EditionHistoryError(f"{field} must be a JSON object")
-    try:
-        normalized = json.loads(json.dumps(value))
-    except (TypeError, ValueError) as exc:
-        raise EditionHistoryError(f"{field} must be JSON serializable: {exc}") from exc
-    assert isinstance(normalized, dict)
-    return normalized
+def _support_set(
+    value: object,
+    *,
+    session_id: str,
+) -> dict[str, object]:
+    support = _exact_object(
+        value,
+        keys={"app", "schema", "hint", "members"},
+        field="support",
+    )
+    if support["app"] != "chatlas":
+        raise EditionHistoryError("support.app must be 'chatlas'")
+    if support["schema"] != CHATLAS_SUPPORT_SET_SCHEMA:
+        raise EditionHistoryError(
+            f"support.schema must be {CHATLAS_SUPPORT_SET_SCHEMA!r}"
+        )
+    hint = _nonempty_string(support["hint"], field="support.hint")
+    raw_members = support["members"]
+    if not isinstance(raw_members, list) or not raw_members:
+        raise EditionHistoryError("support.members must be a non-empty list")
+
+    members: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    includes_session = False
+    for index, raw_member in enumerate(raw_members):
+        member = _exact_object(
+            raw_member,
+            keys={"session", "event_id", "at"},
+            field=f"support.members[{index}]",
+        )
+        member_session = _nonempty_string(
+            member["session"],
+            field=f"support.members[{index}].session",
+        )
+        event_id = _nonempty_string(
+            member["event_id"],
+            field=f"support.members[{index}].event_id",
+        )
+        at = _validated_iso_timestamp(
+            member["at"],
+            field=f"support.members[{index}].at",
+        )
+        identity = (member_session, event_id)
+        if identity in seen:
+            raise EditionHistoryError(
+                f"support.members[{index}] duplicates "
+                f"{member_session}:{event_id}"
+            )
+        seen.add(identity)
+        includes_session = includes_session or member_session == session_id
+        members.append(
+            {"session": member_session, "event_id": event_id, "at": at}
+        )
+
+    if not includes_session:
+        raise EditionHistoryError(
+            "support.members must include associated session.id"
+        )
+    return {
+        "app": "chatlas",
+        "schema": CHATLAS_SUPPORT_SET_SCHEMA,
+        "hint": hint,
+        "members": members,
+    }
 
 
 def _nonempty_string(value: object, *, field: str) -> str:
@@ -556,7 +613,19 @@ def _iso_timestamp(value: object, *, field: str) -> str:
     return utc.isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def _validated_iso_timestamp(value: object, *, field: str) -> str:
+    text = _nonempty_string(value, field=field)
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise EditionHistoryError(f"{field} must be an ISO 8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise EditionHistoryError(f"{field} must include a timezone")
+    return text
+
+
 __all__ = [
+    "CHATLAS_SUPPORT_SET_SCHEMA",
     "EDITION_SESSION_KIND",
     "EDITION_SESSION_SCHEMA_VERSION",
     "EditionFile",

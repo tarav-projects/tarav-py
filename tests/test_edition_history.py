@@ -1,4 +1,4 @@
-# $kw: ^test-edition-history --from Skw.Edition.History.Service --note [DF] service and command-boundary coverage for edition/session history ^c20260725-7u
+# $kw: ^test-edition-history --from Skw.Edition.History.Service --note [DF] service and command-boundary coverage for required-support edition/session history ^c20260725-12u --supp schema migration authorized ^c20260725-14u
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,20 @@ from agentos.skillware.commands import register_skillware_commands
 
 
 PROJECT_ID = "b49973ef-a0d1-47d2-b2dc-f12bbbf424a4"
+
+
+def _support(
+    session: str,
+    *,
+    event_id: str = "event-1",
+    at: str = "2026-07-25T10:00:00.123Z",
+) -> dict[str, object]:
+    return {
+        "app": "chatlas",
+        "schema": "chatlas.support-set.v1",
+        "hint": "The session edited this file.",
+        "members": [{"session": session, "event_id": event_id, "at": at}],
+    }
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -95,21 +109,27 @@ def test_record_is_idempotent_and_list_groups_deterministically(
         first_commit[:12],
         "session-b",
         session_started_at="2026-07-25T10:00:00Z",
-        evidence={"method": "chatlas-file-write"},
+        support=_support("session-b"),
     )
     repeated = service.record(
         source,
         first_commit,
         "session-b",
         session_started_at="2026-07-25T10:00:00Z",
-        evidence={"method": "chatlas-file-write"},
+        support=_support("session-b"),
     )
-    service.record(source, second_commit, "session-c")
+    service.record(
+        source,
+        second_commit,
+        "session-c",
+        support=_support("session-c"),
+    )
     service.record(
         source,
         first_commit,
         "session-a",
         session_started_at="2026-07-25T09:00:00+00:00",
+        support=_support("session-a", event_id="event-2"),
     )
 
     assert first.created is True
@@ -127,9 +147,7 @@ def test_record_is_idempotent_and_list_groups_deterministically(
         "session-b",
     ]
     assert first_edition.sessions[0].started_at == "2026-07-25T09:00:00Z"
-    assert first_edition.sessions[1].evidence == {
-        "method": "chatlas-file-write"
-    }
+    assert first_edition.sessions[1].support == _support("session-b")
 
 
 def test_record_rejects_invalid_session_metadata(tmp_path: Path) -> None:
@@ -137,11 +155,59 @@ def test_record_rejects_invalid_session_metadata(tmp_path: Path) -> None:
     service = EditionHistoryService(BloberiaDepot(tmp_path / "bloberia"))
 
     with pytest.raises(EditionHistoryError, match="session id"):
-        service.record(source, commit, " ")
+        service.record(source, commit, " ", support=_support("session"))
     with pytest.raises(EditionHistoryError, match="session_started_at"):
-        service.record(source, commit, "session", session_started_at="yesterday")
-    with pytest.raises(EditionHistoryError, match="evidence"):
-        service.record(source, commit, "session", evidence=["not", "an", "object"])  # type: ignore[arg-type]
+        service.record(
+            source,
+            commit,
+            "session",
+            session_started_at="yesterday",
+            support=_support("session"),
+        )
+
+
+def test_record_requires_support(tmp_path: Path) -> None:
+    _root, source, commit = _project(tmp_path)
+    service = EditionHistoryService(BloberiaDepot(tmp_path / "bloberia"))
+
+    with pytest.raises(TypeError, match="support"):
+        service.record(source, commit, "session")
+
+
+@pytest.mark.parametrize(
+    ("support", "message"),
+    [
+        (["not", "an", "object"], "support must contain exactly"),
+        (
+            {
+                "app": "chatlas",
+                "schema": "chatlas.support-set.v1",
+                "hint": "Proof.",
+                "members": [],
+            },
+            "members must be a non-empty list",
+        ),
+        (
+            {
+                **_support("session"),
+                "members": _support("session")["members"] * 2,  # type: ignore[operator]
+            },
+            "duplicate",
+        ),
+        (_support("other-session"), "must include associated session"),
+        (_support("session", at="yesterday"), "support.members\\[0\\].at"),
+    ],
+)
+def test_record_rejects_invalid_support(
+    tmp_path: Path,
+    support: object,
+    message: str,
+) -> None:
+    _root, source, commit = _project(tmp_path)
+    service = EditionHistoryService(BloberiaDepot(tmp_path / "bloberia"))
+
+    with pytest.raises(EditionHistoryError, match=message):
+        service.record(source, commit, "session", support=support)  # type: ignore[arg-type]
 
 
 def test_list_rejects_malformed_matching_record(tmp_path: Path) -> None:
@@ -157,7 +223,7 @@ def test_list_rejects_malformed_matching_record(tmp_path: Path) -> None:
                 "committed_at": "2026-07-25T10:00:00Z",
             },
             "session": {"id": "session", "started_at": None},
-            "evidence": {},
+            "support": _support("session"),
         }
     )
 
@@ -170,7 +236,7 @@ def test_check_requires_history_for_each_explicit_target(tmp_path: Path) -> None
     other = root / "src" / "other.py"
     other.write_text("other = 1\n", encoding="utf-8")
     service = EditionHistoryService(BloberiaDepot(tmp_path / "bloberia"))
-    service.record(source, commit, "session")
+    service.record(source, commit, "session", support=_support("session"))
 
     result = service.check([source, other])
 
@@ -187,7 +253,7 @@ def test_check_reports_duplicate_and_malformed_associations(
     _root, source, commit = _project(tmp_path)
     depot = BloberiaDepot(tmp_path / "bloberia")
     service = EditionHistoryService(depot)
-    service.record(source, commit, "session")
+    service.record(source, commit, "session", support=_support("session"))
     valid_record = depot.query(
         {
             "value": {
@@ -207,7 +273,6 @@ def test_check_reports_duplicate_and_malformed_associations(
             "file": {"project_id": PROJECT_ID, "path": "src/example.py"},
             "edition": {"commit": commit},
             "session": {"id": "broken"},
-            "evidence": {},
         }
     )
 
@@ -260,8 +325,8 @@ def test_cli_record_list_and_check_round_trip(
         "session-1",
         "--session-started-at",
         "2026-07-25T10:00:00Z",
-        "--evidence-json",
-        '{"method":"chatlas-file-write"}',
+        "--support-json",
+        json.dumps(_support("session-1")),
         "--depot",
         str(depot),
     ]
@@ -316,6 +381,29 @@ def test_cli_requires_explicit_depot(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exc_info:
         _parser().parse_args(
             ["skw", "edition-history", "list", "--file", str(source)]
+        )
+
+    assert exc_info.value.code == 2
+
+
+def test_cli_record_requires_support(tmp_path: Path) -> None:
+    _root, source, commit = _project(tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _parser().parse_args(
+            [
+                "skw",
+                "edition-history",
+                "record",
+                "--file",
+                str(source),
+                "--commit",
+                commit,
+                "--session",
+                "session",
+                "--depot",
+                str(tmp_path / "bloberia"),
+            ]
         )
 
     assert exc_info.value.code == 2
