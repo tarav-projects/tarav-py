@@ -23,7 +23,7 @@ import json
 import re
 from pathlib import Path
 
-from agentos._core.project import agentos_home_dir, global_config_path
+from agentos._core.project import global_config_path
 
 _DEPENDS_DIRECTIVE_RE = re.compile(
     r"^\s*>\s*`Index\.Depot\.Dependency`\s*:\s*(?P<names>.+?)\s*$", re.MULTILINE

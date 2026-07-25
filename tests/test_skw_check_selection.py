@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from agentos._core.errors import CliError
-from agentos.skwlint import check_registry, check_selector, poi, resolve_enabled_checks
+from agentos.skwlint import check_registry, check_selector, poi
 from agentos.skillware.commands import (
     _cmd_skillware_check,
     _enabled_poi_selectors,

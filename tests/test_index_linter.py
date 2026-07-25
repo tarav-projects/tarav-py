@@ -6,6 +6,7 @@ from pathlib import Path
 
 from agentos.index.commands import _cmd_linter
 from agentos.index.linter import (
+    REVIEWED_CITE_CLOSURE,
     build_linter_config,
     render_linter_json,
     render_linter_text,
@@ -1244,8 +1245,6 @@ def test_cli_unknown_selector_is_an_error(monkeypatch, tmp_path: Path) -> None:
 
 
 # --- Reviewed.Cite.Closure: reviewed surfaces may not cite the agendix --------
-
-from agentos.index.linter import REVIEWED_CITE_CLOSURE
 
 
 def _depot_with_agendix(root: Path, *, cite: str) -> Path:

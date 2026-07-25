@@ -10,7 +10,7 @@ from typing import Any, Callable, Literal
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.skwlint import (
     check_registry as _core_check_registry,
-    check_selector,
+    check_selector as check_selector,
     resolve_enabled_checks,
 )
 from agentos.mdblocks.core import (

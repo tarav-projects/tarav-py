@@ -8,8 +8,6 @@ Slice 3 — directed, non-transitive visibility resolution.
 import json
 from pathlib import Path
 
-import pytest
-
 from agentos.index.depot_deps import (
     declared_dependency_names,
     load_depot_registry,
