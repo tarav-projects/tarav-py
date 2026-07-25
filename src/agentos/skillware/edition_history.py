@@ -1,4 +1,4 @@
-# $kw: ^edition-history-service --from Skw.Edition.History.Service --note [DF] validated Skillware edition/session associations with required embedded Chat.Support.Set records ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project-default depot authorized ^c20260725-25u
+# $kw: ^edition-history-service --from Skw.Edition.History.Service --note [DF] validated Skillware edition/session associations with required embedded Chat.Support.Set records ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project-default depot authorized ^c20260725-25u --supp Git-complete projection and amendment authorized ^c20260725-32u
 from __future__ import annotations
 
 import re
@@ -77,10 +77,15 @@ class EditionHistoryEntry:
     committed_at: str
     sessions: tuple[EditionSession, ...]
 
+    @property
+    def supported(self) -> bool:
+        return bool(self.sessions)
+
     def as_dict(self) -> dict[str, object]:
         return {
             "commit": self.commit,
             "committed_at": self.committed_at,
+            "supported": self.supported,
             "sessions": [session.as_dict() for session in self.sessions],
         }
 
@@ -89,6 +94,14 @@ class EditionHistoryEntry:
 class EditionHistory:
     file: EditionFile
     editions: tuple[EditionHistoryEntry, ...]
+
+    @property
+    def supported_editions(self) -> int:
+        return sum(edition.supported for edition in self.editions)
+
+    @property
+    def unsupported_editions(self) -> int:
+        return len(self.editions) - self.supported_editions
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -104,6 +117,20 @@ class RecordEditionSessionResult:
 
     def as_dict(self) -> dict[str, object]:
         return {"created": self.created, "record_id": self.record_id}
+
+
+@dataclass(frozen=True)
+class AmendEditionSessionResult:
+    amended: bool
+    record_id: str
+    revision: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "amended": self.amended,
+            "record_id": self.record_id,
+            "revision": self.revision,
+        }
 
 
 @dataclass(frozen=True)
@@ -233,7 +260,8 @@ class EditionHistoryService:
         return RecordEditionSessionResult(created=True, record_id=record.id)
 
     def list(self, file: Path | str) -> EditionHistory:
-        identity = EditionFile.resolve(file)
+        resolved_file = _resolve_file(file)
+        identity = resolved_file.identity
         query = {
             "value": {
                 "kind": EDITION_SESSION_KIND,
@@ -247,20 +275,89 @@ class EditionHistoryService:
         associations = tuple(_association_from_record(record) for record in records)
         for association in associations:
             self._resolve_support(association.session.support)
-        return _build_history(identity, associations)
+        return _build_history(
+            identity,
+            associations,
+            git_editions=_git_file_editions(resolved_file),
+        )
+
+    def amend(
+        self,
+        file: Path | str,
+        record_id: str,
+        *,
+        support: dict[str, object],
+        session_started_at: str | None = None,
+    ) -> AmendEditionSessionResult:
+        resolved_file = _resolve_file(file)
+        try:
+            record = self.depot.get(record_id)
+        except BloberiaError as exc:
+            raise EditionHistoryError(str(exc)) from exc
+        association = _association_from_record(record)
+        if association.file != resolved_file.identity:
+            raise EditionHistoryError(
+                f"edition-history record {record_id} does not belong to "
+                f"{resolved_file.identity.path}"
+            )
+        normalized_support = _support_set(
+            support,
+            session_id=association.session.session_id,
+        )
+        self._resolve_support(normalized_support)
+        started_at = (
+            association.session.started_at
+            if session_started_at is None
+            else _optional_iso_timestamp(
+                session_started_at,
+                field="session_started_at",
+            )
+        )
+        value = {
+            "kind": EDITION_SESSION_KIND,
+            "schema_version": EDITION_SESSION_SCHEMA_VERSION,
+            "file": association.file.as_dict(),
+            "edition": {
+                "commit": association.commit,
+                "committed_at": association.committed_at,
+            },
+            "session": {
+                "id": association.session.session_id,
+                "started_at": started_at,
+            },
+            "support": normalized_support,
+        }
+        if value == record.value:
+            return AmendEditionSessionResult(
+                amended=False,
+                record_id=record.id,
+                revision=record.revision,
+            )
+        try:
+            amended = self.depot.edit(record_id, value)
+        except BloberiaError as exc:
+            raise EditionHistoryError(str(exc)) from exc
+        return AmendEditionSessionResult(
+            amended=True,
+            record_id=amended.id,
+            revision=amended.revision,
+        )
 
     def check(
         self,
         targets: list[Path | str] | tuple[Path | str, ...],
+        *,
+        require_complete: bool = False,
     ) -> EditionHistoryCheckResult:
-        resolved_targets = tuple(
+        resolved_files = tuple(
             sorted(
-                (EditionFile.resolve(target) for target in targets),
-                key=lambda file: (file.project_id, file.path),
+                (_resolve_file(target) for target in targets),
+                key=lambda item: (item.identity.project_id, item.identity.path),
             )
         )
-        if not resolved_targets:
+        if not resolved_files:
             raise EditionHistoryError("at least one edition-history target is required")
+        resolved_targets = tuple(item.identity for item in resolved_files)
 
         depot_check = self.depot.check()
         if not depot_check.ok:
@@ -295,6 +392,7 @@ class EditionHistoryService:
 
         findings: list[EditionHistoryFinding] = []
         associations: list[_Association] = []
+        supported_associations: list[_Association] = []
         for record in records:
             try:
                 association = _association_from_record(record)
@@ -320,6 +418,8 @@ class EditionHistoryService:
                         record_ids=(record.id,),
                     )
                 )
+            else:
+                supported_associations.append(association)
 
         target_keys = {
             (target.project_id, target.path) for target in resolved_targets
@@ -327,6 +427,11 @@ class EditionHistoryService:
         matching = [
             association
             for association in associations
+            if (association.file.project_id, association.file.path) in target_keys
+        ]
+        supported_matching = [
+            association
+            for association in supported_associations
             if (association.file.project_id, association.file.path) in target_keys
         ]
         grouped: dict[tuple[str, str, str, str], list[str]] = {}
@@ -365,6 +470,33 @@ class EditionHistoryService:
                         message="target has no valid edition/session association",
                     )
                 )
+        if require_complete:
+            supported_commits = {
+                (
+                    association.file.project_id,
+                    association.file.path,
+                    association.commit,
+                )
+                for association in supported_matching
+            }
+            for resolved_file in resolved_files:
+                for commit, committed_at in _git_file_editions(resolved_file):
+                    key = (
+                        resolved_file.identity.project_id,
+                        resolved_file.identity.path,
+                        commit,
+                    )
+                    if key not in supported_commits:
+                        findings.append(
+                            EditionHistoryFinding(
+                                code="unsupported-git-edition",
+                                target=resolved_file.identity.path,
+                                message=(
+                                    f"Git edition {commit} at {committed_at} "
+                                    "has no resolvable session association"
+                                ),
+                            )
+                        )
 
         return EditionHistoryCheckResult(
             findings=tuple(
@@ -441,6 +573,33 @@ def _resolve_git_edition(project_root: Path, commit: str) -> tuple[str, str]:
         full_commit,
     )
     return full_commit, _iso_timestamp(committed_at, field="Git committed_at")
+
+
+def _git_file_editions(
+    file: _ResolvedEditionFile,
+) -> tuple[tuple[str, str], ...]:
+    output = _run_git(
+        file.project_root,
+        "log",
+        "--follow",
+        "--format=%H%x09%cI",
+        "--",
+        file.identity.path,
+    )
+    editions: list[tuple[str, str]] = []
+    for line in output.splitlines():
+        commit, separator, committed_at = line.partition("\t")
+        if not separator:
+            raise EditionHistoryError(
+                f"cannot parse Git edition history for {file.identity.path}"
+            )
+        editions.append(
+            (
+                commit.lower(),
+                _iso_timestamp(committed_at, field="Git committed_at"),
+            )
+        )
+    return tuple(reversed(editions))
 
 
 def _run_git(root: Path, *args: str) -> str:
@@ -536,13 +695,19 @@ def _association_from_record(record: BloberiaRecord) -> _Association:
 def _build_history(
     file: EditionFile,
     associations: tuple[_Association, ...],
+    *,
+    git_editions: tuple[tuple[str, str], ...],
 ) -> EditionHistory:
-    grouped: dict[tuple[str, str], list[EditionSession]] = {}
+    git_keys = [(committed_at, commit) for commit, committed_at in git_editions]
+    grouped: dict[tuple[str, str], list[EditionSession]] = {
+        key: [] for key in git_keys
+    }
     for association in associations:
         grouped.setdefault(
             (association.committed_at, association.commit),
             [],
         ).append(association.session)
+    extra_keys = sorted(set(grouped) - set(git_keys))
     editions = tuple(
         EditionHistoryEntry(
             commit=commit,
@@ -559,7 +724,8 @@ def _build_history(
                 )
             ),
         )
-        for (committed_at, commit), sessions in sorted(grouped.items())
+        for committed_at, commit in (*git_keys, *extra_keys)
+        for sessions in (grouped[(committed_at, commit)],)
     )
     return EditionHistory(file=file, editions=editions)
 

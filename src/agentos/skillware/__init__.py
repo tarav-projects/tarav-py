@@ -7,6 +7,7 @@
 
 from agentos.skillware.model import SkwFinding, SkwRecipe, SkwSource, parse_skw_source
 from agentos.skillware.edition_history import (
+    AmendEditionSessionResult,
     EditionFile,
     EditionHistory,
     EditionHistoryCheckResult,
@@ -21,6 +22,7 @@ from agentos.skillware.edition_history import (
 )
 
 __all__ = [
+    "AmendEditionSessionResult",
     "EditionFile",
     "EditionHistory",
     "EditionHistoryCheckResult",

@@ -1,6 +1,7 @@
 {
   "edition_history": {
     "targets": [
+      "src/agentos/skillware/commands.py",
       "src/agentos/skillware/edition_history.py"
     ],
     "exclude": []

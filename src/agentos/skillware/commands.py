@@ -1,4 +1,4 @@
-# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including required-support edition-history recording ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project policy integration authorized ^c20260725-25u --supp CLI diagnostics expose context-assembly and citation POIs ^c20260725-27u
+# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including required-support edition-history recording ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project policy integration authorized ^c20260725-25u --supp CLI diagnostics expose context-assembly and citation POIs ^c20260725-27u --supp opt-in completeness and amendment authorized ^c20260725-32u
 from __future__ import annotations
 
 import argparse
@@ -122,6 +122,10 @@ POI_LEGEND = {
         "an edition/session support set cannot be resolved through Chatlas",
         "repair the exact session/event support members",
     ),
+    "unsupported-git-edition": (
+        "a Git edition has no resolvable edition/session association",
+        "recover candidate chats and record supported associations",
+    ),
 }
 
 
@@ -176,6 +180,7 @@ def _edition_history_project_pois(
     project_root: Path,
     *,
     support_resolver: EditionSupportResolver | None,
+    require_complete: bool,
 ):
     config = load_project_skw_config(project_root)
     policy = config.edition_history
@@ -190,7 +195,7 @@ def _edition_history_project_pois(
     result = EditionHistoryService(
         BloberiaDepot(depot),
         support_resolver=support_resolver,
-    ).check(targets)
+    ).check(targets, require_complete=require_complete)
     return tuple(
         make_poi(
             finding.code,
@@ -210,17 +215,23 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
             "no .agentos/project.json found from the current directory; "
             "pass --skill to check a single package"
         )
+    enabled, known = _enabled_poi_selectors(args)
+    from agentos.skwlint import check_selector
+
+    require_complete = (
+        check_selector("unsupported-git-edition") in enabled
+    )
     try:
         report = check_project(project_root)
         project_pois = _edition_history_project_pois(
             project_root,
             support_resolver=getattr(args, "edition_history_support_resolver", None),
+            require_complete=require_complete,
         )
     except SkillwareError as exc:
         raise CliError(str(exc)) from exc
     except EditionHistoryError as exc:
         raise CliError(str(exc)) from exc
-    enabled, known = _enabled_poi_selectors(args)
     package_pois = [
         (pkg, _filter_pois(pr.pois, enabled, known)) for pkg, pr in report.packages
     ]
@@ -289,7 +300,9 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
 _SKW_STRUCTURAL_KINDS = frozenset({"parse-error", "unresolvable"})
 # opt-in kinds: over-report on real surfaces, so they stay off unless
 # `--check`ed (mirrors the index `dangling-mention` default-off pattern)
-_SKW_DEFAULT_OFF_KINDS = frozenset({"non-skw-annotation"})
+_SKW_DEFAULT_OFF_KINDS = frozenset(
+    {"non-skw-annotation", "unsupported-git-edition"}
+)
 
 
 @dataclass(frozen=True)
@@ -600,6 +613,8 @@ def _cmd_edition_history_list(args: argparse.Namespace) -> int:
             "depot": str(service.depot.root),
             "summary": {
                 "editions": len(history.editions),
+                "supported_editions": history.supported_editions,
+                "unsupported_editions": history.unsupported_editions,
                 "sessions": sum(
                     len(edition.sessions) for edition in history.editions
                 ),
@@ -614,7 +629,10 @@ def _cmd_edition_history_check(args: argparse.Namespace) -> int:
     try:
         service = _edition_history_service(args, tuple(args.target))
         targets = [EditionFile.resolve(target) for target in args.target]
-        result = service.check(args.target)
+        result = service.check(
+            args.target,
+            require_complete=args.complete,
+        )
     except EditionHistoryError as exc:
         raise CliError(str(exc)) from exc
     payload = result.as_dict()
@@ -627,6 +645,34 @@ def _cmd_edition_history_check(args: argparse.Namespace) -> int:
     )
     _print_edition_history_json(payload)
     return 0 if result.ok else 1
+
+
+def _cmd_edition_history_amend(args: argparse.Namespace) -> int:
+    support = load_json_object_arg(
+        args.support_json,
+        args.support_file,
+        field_name="support",
+    )
+    try:
+        service = _edition_history_service(args, (args.file,))
+        result = service.amend(
+            args.file,
+            args.record,
+            support=support,
+            session_started_at=args.session_started_at,
+        )
+        file = EditionFile.resolve(args.file)
+    except EditionHistoryError as exc:
+        raise CliError(str(exc)) from exc
+    _print_edition_history_json(
+        {
+            "command": "agentos skw edition-history amend",
+            "depot": str(service.depot.root),
+            "file": file.as_dict(),
+            "result": result.as_dict(),
+        }
+    )
+    return 0
 
 
 def _add_edition_history_commands(
@@ -703,7 +749,41 @@ def _add_edition_history_commands(
         "--depot",
         help="Bloberia depot override; defaults below the targets' Agentos project.",
     )
+    check_parser.add_argument(
+        "--complete",
+        action="store_true",
+        help="Report every Git edition lacking resolvable session support.",
+    )
     check_parser.set_defaults(handler=_cmd_edition_history_check)
+
+    amend_parser = commands.add_parser(
+        "amend",
+        help="Replace one association's support set.",
+    )
+    amend_parser.add_argument("--file", required=True, help="Managed file path.")
+    amend_parser.add_argument(
+        "--record",
+        required=True,
+        help="Bloberia record identity from edition-history list.",
+    )
+    amend_parser.add_argument(
+        "--session-started-at",
+        help="Replacement Chatlas session start time as ISO 8601.",
+    )
+    support = amend_parser.add_mutually_exclusive_group(required=True)
+    support.add_argument(
+        "--support-json",
+        help="Replacement chatlas.support-set.v1 JSON object.",
+    )
+    support.add_argument(
+        "--support-file",
+        help="Path to replacement chatlas.support-set.v1 JSON.",
+    )
+    amend_parser.add_argument(
+        "--depot",
+        help="Bloberia depot override; defaults below the file's Agentos project.",
+    )
+    amend_parser.set_defaults(handler=_cmd_edition_history_amend)
 
 
 def register_skillware_commands(

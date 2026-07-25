@@ -1,4 +1,4 @@
-# $kw: ^test-edition-history --from Skw.Edition.History.Service --note [DF] service and command-boundary coverage for required, resolvable edition/session support ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project policy integration authorized ^c20260725-25u
+# $kw: ^test-edition-history --from Skw.Edition.History.Service --note [DF] service and command-boundary coverage for required, resolvable edition/session support ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project policy integration authorized ^c20260725-25u --supp completeness and amendment coverage authorized ^c20260725-32u
 from __future__ import annotations
 
 import argparse
@@ -166,6 +166,89 @@ def test_record_is_idempotent_and_list_groups_deterministically(
     assert first_edition.sessions[1].support == _support("session-b")
 
 
+def test_list_keeps_git_editions_without_session_support(tmp_path: Path) -> None:
+    root, source, first_commit = _project(tmp_path)
+    source.write_text("first = 1\nsecond = 2\n", encoding="utf-8")
+    _git(root, "add", ".")
+    _git(root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "second")
+    second_commit = _git(root, "rev-parse", "HEAD")
+    service = _service(BloberiaDepot(tmp_path / "bloberia"))
+    service.record(
+        source,
+        second_commit,
+        "session",
+        support=_support("session"),
+    )
+
+    history = service.list(source)
+
+    assert [edition.commit for edition in history.editions] == [
+        first_commit,
+        second_commit,
+    ]
+    assert [edition.supported for edition in history.editions] == [False, True]
+    assert history.supported_editions == 1
+    assert history.unsupported_editions == 1
+
+
+def test_amend_replaces_support_and_session_start_time(tmp_path: Path) -> None:
+    _root, source, commit = _project(tmp_path)
+    depot = BloberiaDepot(tmp_path / "bloberia")
+    service = _service(depot)
+    recorded = service.record(
+        source,
+        commit,
+        "session",
+        support=_support("session"),
+    )
+
+    result = service.amend(
+        source,
+        recorded.record_id,
+        support=_support("session", event_id="event-2"),
+        session_started_at="2026-07-25T09:30:00Z",
+    )
+
+    assert result.record_id == recorded.record_id
+    assert result.amended is True
+    assert result.revision == 2
+    session = service.list(source).editions[0].sessions[0]
+    assert session.support == _support("session", event_id="event-2")
+    assert session.started_at == "2026-07-25T09:30:00Z"
+
+    repeated = service.amend(
+        source,
+        recorded.record_id,
+        support=_support("session", event_id="event-2"),
+        session_started_at="2026-07-25T09:30:00Z",
+    )
+    assert repeated.amended is False
+    assert repeated.revision == 2
+
+
+def test_amend_rejects_wrong_file_without_mutation(tmp_path: Path) -> None:
+    root, source, commit = _project(tmp_path)
+    other = root / "src" / "other.py"
+    other.write_text("other = 1\n", encoding="utf-8")
+    depot = BloberiaDepot(tmp_path / "bloberia")
+    service = _service(depot)
+    recorded = service.record(
+        source,
+        commit,
+        "session",
+        support=_support("session"),
+    )
+
+    with pytest.raises(EditionHistoryError, match="does not belong"):
+        service.amend(
+            other,
+            recorded.record_id,
+            support=_support("session", event_id="event-2"),
+        )
+
+    assert depot.get(recorded.record_id).revision == 1
+
+
 def test_record_rejects_invalid_session_metadata(tmp_path: Path) -> None:
     _root, source, commit = _project(tmp_path)
     service = _service(BloberiaDepot(tmp_path / "bloberia"))
@@ -308,6 +391,31 @@ def test_check_requires_history_for_each_explicit_target(tmp_path: Path) -> None
     assert service.check([source]).ok is True
 
 
+def test_complete_check_reports_each_unsupported_git_edition(
+    tmp_path: Path,
+) -> None:
+    root, source, first_commit = _project(tmp_path)
+    source.write_text("first = 1\nsecond = 2\n", encoding="utf-8")
+    _git(root, "add", ".")
+    _git(root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "second")
+    second_commit = _git(root, "rev-parse", "HEAD")
+    service = _service(BloberiaDepot(tmp_path / "bloberia"))
+    service.record(
+        source,
+        second_commit,
+        "session",
+        support=_support("session"),
+    )
+
+    assert service.check([source]).ok is True
+    complete = service.check([source], require_complete=True)
+
+    assert [(finding.code, finding.target) for finding in complete.findings] == [
+        ("unsupported-git-edition", "src/example.py")
+    ]
+    assert first_commit in complete.findings[0].message
+
+
 def test_check_reports_duplicate_and_malformed_associations(
     tmp_path: Path,
 ) -> None:
@@ -415,8 +523,32 @@ def test_cli_record_list_and_check_round_trip(
     )
     assert args.handler(args) == 0
     listed = json.loads(capsys.readouterr().out)
-    assert listed["summary"] == {"editions": 1, "sessions": 1}
+    assert listed["summary"] == {
+        "editions": 1,
+        "supported_editions": 1,
+        "unsupported_editions": 0,
+        "sessions": 1,
+    }
     assert listed["editions"][0]["sessions"][0]["id"] == "session-1"
+
+    amend_args = parser.parse_args(
+        [
+            "skw",
+            "edition-history",
+            "amend",
+            "--file",
+            str(source),
+            "--record",
+            listed["editions"][0]["sessions"][0]["record_id"],
+            "--support-json",
+            json.dumps(_support("session-1", event_id="event-2")),
+            "--depot",
+            str(depot),
+        ]
+    )
+    assert amend_args.handler(amend_args) == 0
+    amended = json.loads(capsys.readouterr().out)
+    assert amended["result"]["revision"] == 2
 
     missing = root / "src" / "missing.py"
     missing.write_text("missing = 1\n", encoding="utf-8")
@@ -507,13 +639,30 @@ def test_project_check_enforces_configured_edition_history(
     assert args.handler(args) == 0
     assert json.loads(capsys.readouterr().out)["project_pois"] == []
 
+    source.write_text("value = 2\n", encoding="utf-8")
+    _git(root, "add", ".")
+    _git(root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "second")
+    second_commit = _git(root, "rev-parse", "HEAD")
     service = _service(BloberiaDepot(root / DEFAULT_EDITION_HISTORY_DEPOT))
-    service.record(source, commit, "session", support=_support("session"))
+    service.record(
+        source,
+        second_commit,
+        "session",
+        support=_support("session"),
+    )
     args = parser.parse_args(["skw", "check", "--json"])
     assert args.handler(args) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["project_pois"] == []
     assert payload["summary"]["pois"] == 0
+
+    args = parser.parse_args(
+        ["skw", "check", "--json", "--check", "unsupported-git-edition"]
+    )
+    assert args.handler(args) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["project_pois"][0]["kind"] == "unsupported-git-edition"
+    assert commit in payload["project_pois"][0]["detail"]
 
 
 def test_project_check_without_policy_does_not_require_history(

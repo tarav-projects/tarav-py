@@ -66,8 +66,8 @@
 - file identity is the stable Agentos `project_id` plus project-relative POSIX path; record inputs resolve the full Git commit identity and commit time.
 - one `skw.edition-session` application record associates one file edition with one neutral Chatlas session identity; repeated equivalent record calls are idempotent.
 - every association embeds a required `chatlas.support-set.v1` object with nonempty exact event members, including at least one member from the associated session; `agentos-py` validates intrinsic structure and requires an injected `EditionSupportResolver` for live resolution without importing Chatlas.
-- `list` validates and groups associations by edition; `check` requires at least one valid association for every target and reports malformed, duplicate, or structurally corrupt records. Project-scope `agentos skw check` applies the project-level `.skw/skw.json` `edition_history` selectors once when configured.
-- `agentos skw edition-history record|list|check` is the thin JSON CLI; `record` requires `--support-json` or `--support-file`. The umbrella `agentos-cli` injects Chatlas exact-event resolution; discovery and semantic association judgment remain outside `agentos-py`.
+- `list` validates associations and merges them onto the file's complete `git log --follow` edition sequence; unsupported Git commits remain visible with empty sessions and supported/unsupported metrics. The default `check` only requires one valid association per target; opt-in completeness reports `unsupported-git-edition` through `edition-history check --complete` or project `skw check --check unsupported-git-edition`.
+- `agentos skw edition-history record|amend|list|check` is the thin JSON CLI; `record` requires support and `amend` replaces a named association's complete support set after file-identity and live-resolution validation. The umbrella `agentos-cli` injects Chatlas exact-event resolution; discovery and semantic association judgment remain outside `agentos-py`.
 
 ## Markdown Block Scanning Preference
 
