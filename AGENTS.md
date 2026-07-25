@@ -59,6 +59,14 @@
 - public operations are `create`, `get`, `edit`, `query`, and `check`; edit replaces the full application value.
 - `agentos bloberia ...` is registered by `agentos-cli` as a thin JSON CLI over the library and requires `--depot` for every operation.
 
+## Skillware Edition History
+
+- `src/agentos/skillware/edition_history.py` owns the importable `EditionHistoryService`, backed by one explicit `BloberiaDepot`.
+- file identity is the stable Agentos `project_id` plus project-relative POSIX path; record inputs resolve the full Git commit identity and commit time.
+- one `skw.edition-session` application record associates one file edition with one provider-native chat session; repeated equivalent record calls are idempotent.
+- `list` validates and groups associations by edition; `check` requires at least one valid association for every explicit target and reports malformed, duplicate, or structurally corrupt records.
+- `agentos skw edition-history record|list|check` is the thin JSON CLI. Chatlas discovery and association judgment remain outside `agentos-py`.
+
 ## Markdown Block Scanning Preference
 
 - When a task requires extracting markdown blocks, use `agentos stdlib mdblocks blocks` first.

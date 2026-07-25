@@ -1,3 +1,4 @@
+# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including the thin edition-history service consumer ^c20260725-7u
 from __future__ import annotations
 
 import argparse
@@ -6,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentos._core.errors import CliError
+from agentos._core.json_input import load_json_object_arg
+from agentos.bloberia import BloberiaDepot
 from agentos.skwlint import add_check_selection_args
 from agentos.skillware.build import (
     SkillwareError,
@@ -20,6 +23,11 @@ from agentos.skillware.build import (
     unlock_requirements,
 )
 from agentos.skillware.model import parse_skw_source
+from agentos.skillware.edition_history import (
+    EditionFile,
+    EditionHistoryError,
+    EditionHistoryService,
+)
 
 # once-per-kind legend: meaning + prescribed response; the full fix protocols
 # live in the agentos-skillware skill (references/check.md)
@@ -443,6 +451,162 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _edition_history_service(args: argparse.Namespace) -> EditionHistoryService:
+    return EditionHistoryService(BloberiaDepot(Path(args.depot)))
+
+
+def _print_edition_history_json(payload: object) -> None:
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def _cmd_edition_history_record(args: argparse.Namespace) -> int:
+    evidence = load_json_object_arg(
+        args.evidence_json,
+        args.evidence_file,
+        field_name="evidence",
+    )
+    service = _edition_history_service(args)
+    try:
+        result = service.record(
+            args.file,
+            args.commit,
+            args.session,
+            session_started_at=args.session_started_at,
+            evidence=evidence,
+        )
+        file = EditionFile.resolve(args.file)
+    except EditionHistoryError as exc:
+        raise CliError(str(exc)) from exc
+    _print_edition_history_json(
+        {
+            "command": "agentos skw edition-history record",
+            "depot": str(service.depot.root),
+            "file": file.as_dict(),
+            "result": result.as_dict(),
+        }
+    )
+    return 0
+
+
+def _cmd_edition_history_list(args: argparse.Namespace) -> int:
+    service = _edition_history_service(args)
+    try:
+        history = service.list(args.file)
+    except EditionHistoryError as exc:
+        raise CliError(str(exc)) from exc
+    payload = history.as_dict()
+    payload.update(
+        {
+            "command": "agentos skw edition-history list",
+            "depot": str(service.depot.root),
+            "summary": {
+                "editions": len(history.editions),
+                "sessions": sum(
+                    len(edition.sessions) for edition in history.editions
+                ),
+            },
+        }
+    )
+    _print_edition_history_json(payload)
+    return 0
+
+
+def _cmd_edition_history_check(args: argparse.Namespace) -> int:
+    service = _edition_history_service(args)
+    try:
+        targets = [EditionFile.resolve(target) for target in args.target]
+        result = service.check(args.target)
+    except EditionHistoryError as exc:
+        raise CliError(str(exc)) from exc
+    payload = result.as_dict()
+    payload.update(
+        {
+            "command": "agentos skw edition-history check",
+            "depot": str(service.depot.root),
+            "targets": [target.as_dict() for target in targets],
+        }
+    )
+    _print_edition_history_json(payload)
+    return 0 if result.ok else 1
+
+
+def _add_edition_history_commands(
+    subparsers: argparse._SubParsersAction,
+) -> None:
+    parser = subparsers.add_parser(
+        "edition-history",
+        help="Record, list, and check file edition/chat provenance.",
+    )
+    commands = parser.add_subparsers(
+        dest="edition_history_command",
+        required=True,
+    )
+
+    record_parser = commands.add_parser(
+        "record",
+        help="Record one file edition/session association.",
+    )
+    record_parser.add_argument("--file", required=True, help="Managed file path.")
+    record_parser.add_argument(
+        "--commit",
+        required=True,
+        help="Git commit identity for the file edition.",
+    )
+    record_parser.add_argument(
+        "--session",
+        required=True,
+        help="Provider-native chat session identity.",
+    )
+    record_parser.add_argument(
+        "--session-started-at",
+        help="Optional Chatlas session start time as ISO 8601.",
+    )
+    evidence = record_parser.add_mutually_exclusive_group()
+    evidence.add_argument(
+        "--evidence-json",
+        help="Association evidence as a JSON object.",
+    )
+    evidence.add_argument(
+        "--evidence-file",
+        help="Path to association-evidence JSON.",
+    )
+    record_parser.add_argument(
+        "--depot",
+        required=True,
+        help="Exact Bloberia depot root.",
+    )
+    record_parser.set_defaults(handler=_cmd_edition_history_record)
+
+    list_parser = commands.add_parser(
+        "list",
+        help="List grouped edition history for one file.",
+    )
+    list_parser.add_argument("--file", required=True, help="Managed file path.")
+    list_parser.add_argument(
+        "--depot",
+        required=True,
+        help="Exact Bloberia depot root.",
+    )
+    list_parser.set_defaults(handler=_cmd_edition_history_list)
+
+    check_parser = commands.add_parser(
+        "check",
+        help="Require edition history for explicit target files.",
+    )
+    check_parser.add_argument(
+        "--target",
+        action="append",
+        required=True,
+        help="Managed file requiring edition history; repeatable.",
+    )
+    check_parser.add_argument(
+        "--depot",
+        required=True,
+        help="Exact Bloberia depot root.",
+    )
+    check_parser.set_defaults(handler=_cmd_edition_history_check)
+
+
 def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
     skillware_parser = subparsers.add_parser(
         "skw",
@@ -456,6 +620,7 @@ def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     skillware_subparsers = skillware_parser.add_subparsers(dest="skillware_command")
+    _add_edition_history_commands(skillware_subparsers)
 
     for name, handler, help_text in (
         (

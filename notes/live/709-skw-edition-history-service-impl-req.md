@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** implement the first `Skw.Edition.History.Service` vertical slice as an importable Skillware library, thin `agentos skw edition-history ...` CLI, explicit-target linter, and specialized developer module
-- **status:** implementation-ready
+- **status:** implemented and fully verified
 - **source:** autonomous develop request for the accepted Skillware/Chatlas/Git/Bloberia responsibility split
 - **support set:** implementation and execution authorization ^c20260725-7u
 - **target projects:** `agentos-py` owns the service and command domain; `agentos-cli` owns end-to-end umbrella coverage; `agentos-md` owns the Skillware developer module and accepted ontology
@@ -14,6 +14,9 @@
 - **touched (index):** `Agentos.Bloberia` defines the explicit-depot query:value substrate and application-owned payload boundary ^c20260724-31u
 - **touched (chat):** the service/API, developer skill, linter, and generic-storage responsibility split ^c20260725-7u
 - **structural:** the umbrella CLI already consumes `register_skillware_commands` from `agentos-py`; no second command implementation belongs in `agentos-cli`
+- **implementation:** Slice 1 grounds the service module, public imports, and focused tests at their file annotation points from `Skw.Edition.History.Service` ^c20260725-7u
+- **implementation:** Slice 3 grounds the Skillware command registrar and umbrella boundary test at their file annotation points from `Skw.Edition.History.Service` ^c20260725-7u
+- **implementation:** Slice 4 grounds the developer module through its source annotation and compiled Skillware dependency from `Skw.Edition.History.Service` ^c20260725-7u
 - **open space:** exact Python helper decomposition, diagnostic wording, and JSON presentation remain implementation-owned within the public contracts below
 
 ## Impl.Index
@@ -107,7 +110,7 @@
 - derive canonical commit identity and commit time from Git for record inputs
 - observable: a caller can record one file/commit/session association twice and list one grouped edition
 - check: `cd agentos-py && uv run pytest tests/test_edition_history.py`
-- status: pending
+- status: completed
 
 ### Slice 2 - Explicit-target linter
 
@@ -115,7 +118,7 @@
 - implement deterministic findings and an `ok` result over explicit target files
 - observable: configured targets without any association fail with `missing-edition-history`
 - check: `cd agentos-py && uv run pytest tests/test_edition_history.py`
-- status: pending
+- status: completed
 
 ### Slice 3 - Thin Skillware CLI
 
@@ -124,7 +127,7 @@
 - update `agentos-py/AGENTS.md` for the new service and CLI surface
 - observable: both `agentos skw edition-history ...` and the existing `skillware` alias reach the same library behavior
 - checks: `cd agentos-py && uv run pytest tests/test_edition_history.py tests/test_skillware.py`; `cd agentos-cli && uv run pytest tests/test_e2e_edition_history.py`
-- status: pending
+- status: completed
 
 ### Slice 4 - Specialized developer module
 
@@ -133,7 +136,7 @@
 - build and check the package
 - observable: an agent loading `agentos-skillware` is routed to a concrete Git/Chatlas/service maintenance workflow
 - checks: `agentos skw build --skill skills/agentos-skillware`; `agentos skw check --skill skills/agentos-skillware`
-- status: pending
+- status: completed
 
 ### Slice 5 - Full verification and installed CLI
 
@@ -142,7 +145,7 @@
 - smoke record/list/check against a scratch initialized Git/Agentos project and explicit Bloberia depot
 - run the full `agentos-pkg` index linter to preserve the accepted ontology relocation
 - observable: library, CLI, developer module, and ontology operate together without regressions
-- status: pending
+- status: completed
 
 ## Risks And Deviation Triggers
 
@@ -167,3 +170,10 @@
 - 2026-07-25: automatic target discovery and generic `skw check` integration deferred; v1 check takes explicit repeatable targets
 - 2026-07-25: session start time and evidence are optional record metadata supplied by the Chatlas-aware developer workflow, avoiding a foundation-to-Chatlas dependency
 - 2026-07-25: execution gate anchored at `^c20260725-7u`
+- 2026-07-25: mandatory pre-execution checkpoints created in `agentos-py` (`222a03c`), `agentos-cli` (`1d2118f`), and `agentos-md` (`14add20`)
+- 2026-07-25: implemented validated association records, stable project/file identity, Git commit dating, idempotent record, grouped list, and explicit-target check
+- 2026-07-25: added the nested `skw edition-history` CLI and umbrella boundary coverage; no parser-shape deviation was required
+- 2026-07-25: added and built the Skillware edition-history developer module; two initial dependency-graph POIs were corrected in source, leaving zero POIs
+- 2026-07-25: full verification passed - 521 `agentos-py` tests, 62 `agentos-cli` tests, and full Ruff checks in both projects
+- 2026-07-25: installed CLI smoke passed create-versus-existing idempotency, one-edition/one-session grouping, and a clean explicit-target check
+- 2026-07-25: full `agentos-pkg` index lint passed with 23 checks and no findings
