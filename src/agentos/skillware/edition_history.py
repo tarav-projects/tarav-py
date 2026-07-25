@@ -1,8 +1,9 @@
-# $kw: ^edition-history-service --from Skw.Edition.History.Service --note [DF] validated Skillware edition/session associations with required embedded Chat.Support.Set records ^c20260725-12u --supp schema migration authorized ^c20260725-14u
+# $kw: ^edition-history-service --from Skw.Edition.History.Service --note [DF] validated Skillware edition/session associations with required embedded Chat.Support.Set records ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u
 from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,13 @@ _COMMIT_RE = re.compile(r"^[0-9a-fA-F]{4,64}$")
 
 class EditionHistoryError(RuntimeError):
     pass
+
+
+class EditionSupportResolutionError(EditionHistoryError):
+    pass
+
+
+EditionSupportResolver = Callable[[dict[str, object]], object]
 
 
 @dataclass(frozen=True)
@@ -141,8 +149,14 @@ class _Association:
 class EditionHistoryService:
     """Skillware's validated edition-history boundary over one Bloberia depot."""
 
-    def __init__(self, depot: BloberiaDepot) -> None:
+    def __init__(
+        self,
+        depot: BloberiaDepot,
+        *,
+        support_resolver: EditionSupportResolver | None = None,
+    ) -> None:
         self.depot = depot
+        self.support_resolver = support_resolver
 
     def record(
         self,
@@ -167,6 +181,7 @@ class EditionHistoryService:
             support,
             session_id=normalized_session_id,
         )
+        self._resolve_support(normalized_support)
 
         identity_query = {
             "value": {
@@ -183,6 +198,7 @@ class EditionHistoryService:
             raise EditionHistoryError(str(exc)) from exc
         if existing:
             association = _association_from_record(existing[0])
+            self._resolve_support(association.session.support)
             return RecordEditionSessionResult(
                 created=False,
                 record_id=association.session.record_id,
@@ -221,6 +237,8 @@ class EditionHistoryService:
         except BloberiaError as exc:
             raise EditionHistoryError(str(exc)) from exc
         associations = tuple(_association_from_record(record) for record in records)
+        for association in associations:
+            self._resolve_support(association.session.support)
         return _build_history(identity, associations)
 
     def check(
@@ -271,12 +289,25 @@ class EditionHistoryService:
         associations: list[_Association] = []
         for record in records:
             try:
-                associations.append(_association_from_record(record))
+                association = _association_from_record(record)
             except EditionHistoryError as exc:
                 findings.append(
                     EditionHistoryFinding(
                         code="invalid-edition-history-record",
                         target=f"records/{record.id}.json",
+                        message=str(exc),
+                        record_ids=(record.id,),
+                    )
+                )
+                continue
+            associations.append(association)
+            try:
+                self._resolve_support(association.session.support)
+            except EditionSupportResolutionError as exc:
+                findings.append(
+                    EditionHistoryFinding(
+                        code="unresolvable-edition-support",
+                        target=association.file.path,
                         message=str(exc),
                         record_ids=(record.id,),
                     )
@@ -339,6 +370,21 @@ class EditionHistoryService:
                 )
             )
         )
+
+    def _resolve_support(self, support: dict[str, object]) -> None:
+        if self.support_resolver is None:
+            raise EditionSupportResolutionError(
+                "edition support resolver is required"
+            )
+        try:
+            self.support_resolver(support)
+        except EditionSupportResolutionError:
+            raise
+        except Exception as exc:
+            detail = str(exc).strip() or type(exc).__name__
+            raise EditionSupportResolutionError(
+                f"edition support is not resolvable: {detail}"
+            ) from exc
 
 
 def _resolve_file(path: Path | str) -> _ResolvedEditionFile:
@@ -636,5 +682,7 @@ __all__ = [
     "EditionHistoryFinding",
     "EditionHistoryService",
     "EditionSession",
+    "EditionSupportResolutionError",
+    "EditionSupportResolver",
     "RecordEditionSessionResult",
 ]

@@ -1,4 +1,4 @@
-# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including required-support edition-history recording ^c20260725-12u --supp schema migration authorized ^c20260725-14u
+# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including required-support edition-history recording ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u
 from __future__ import annotations
 
 import argparse
@@ -27,6 +27,7 @@ from agentos.skillware.edition_history import (
     EditionFile,
     EditionHistoryError,
     EditionHistoryService,
+    EditionSupportResolver,
 )
 
 # once-per-kind legend: meaning + prescribed response; the full fix protocols
@@ -452,7 +453,10 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
 
 
 def _edition_history_service(args: argparse.Namespace) -> EditionHistoryService:
-    return EditionHistoryService(BloberiaDepot(Path(args.depot)))
+    return EditionHistoryService(
+        BloberiaDepot(Path(args.depot)),
+        support_resolver=args.edition_history_support_resolver,
+    )
 
 
 def _print_edition_history_json(payload: object) -> None:
@@ -532,11 +536,14 @@ def _cmd_edition_history_check(args: argparse.Namespace) -> int:
 
 def _add_edition_history_commands(
     subparsers: argparse._SubParsersAction,
+    *,
+    support_resolver: EditionSupportResolver | None,
 ) -> None:
     parser = subparsers.add_parser(
         "edition-history",
         help="Record, list, and check file edition/chat provenance.",
     )
+    parser.set_defaults(edition_history_support_resolver=support_resolver)
     commands = parser.add_subparsers(
         dest="edition_history_command",
         required=True,
@@ -607,7 +614,11 @@ def _add_edition_history_commands(
     check_parser.set_defaults(handler=_cmd_edition_history_check)
 
 
-def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
+def register_skillware_commands(
+    subparsers: argparse._SubParsersAction,
+    *,
+    edition_history_support_resolver: EditionSupportResolver | None = None,
+) -> None:
     skillware_parser = subparsers.add_parser(
         "skw",
         aliases=["skillware"],
@@ -620,7 +631,10 @@ def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     skillware_subparsers = skillware_parser.add_subparsers(dest="skillware_command")
-    _add_edition_history_commands(skillware_subparsers)
+    _add_edition_history_commands(
+        skillware_subparsers,
+        support_resolver=edition_history_support_resolver,
+    )
 
     for name, handler, help_text in (
         (

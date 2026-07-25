@@ -1,4 +1,4 @@
-# $kw: ^test-edition-history --from Skw.Edition.History.Service --note [DF] service and command-boundary coverage for required-support edition/session history ^c20260725-12u --supp schema migration authorized ^c20260725-14u
+# $kw: ^test-edition-history --from Skw.Edition.History.Service --note [DF] service and command-boundary coverage for required, resolvable edition/session support ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,17 @@ from agentos.skillware.commands import register_skillware_commands
 
 
 PROJECT_ID = "b49973ef-a0d1-47d2-b2dc-f12bbbf424a4"
+
+
+def _accept_support(_support: dict[str, object]) -> None:
+    return None
+
+
+def _service(depot: BloberiaDepot) -> EditionHistoryService:
+    return EditionHistoryService(
+        depot,
+        support_resolver=_accept_support,
+    )
 
 
 def _support(
@@ -102,7 +113,7 @@ def test_record_is_idempotent_and_list_groups_deterministically(
         "second",
     )
     second_commit = _git(root, "rev-parse", "HEAD")
-    service = EditionHistoryService(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(BloberiaDepot(tmp_path / "bloberia"))
 
     first = service.record(
         source,
@@ -152,7 +163,7 @@ def test_record_is_idempotent_and_list_groups_deterministically(
 
 def test_record_rejects_invalid_session_metadata(tmp_path: Path) -> None:
     _root, source, commit = _project(tmp_path)
-    service = EditionHistoryService(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(BloberiaDepot(tmp_path / "bloberia"))
 
     with pytest.raises(EditionHistoryError, match="session id"):
         service.record(source, commit, " ", support=_support("session"))
@@ -168,7 +179,7 @@ def test_record_rejects_invalid_session_metadata(tmp_path: Path) -> None:
 
 def test_record_requires_support(tmp_path: Path) -> None:
     _root, source, commit = _project(tmp_path)
-    service = EditionHistoryService(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(BloberiaDepot(tmp_path / "bloberia"))
 
     with pytest.raises(TypeError, match="support"):
         service.record(source, commit, "session")
@@ -204,10 +215,55 @@ def test_record_rejects_invalid_support(
     message: str,
 ) -> None:
     _root, source, commit = _project(tmp_path)
-    service = EditionHistoryService(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(BloberiaDepot(tmp_path / "bloberia"))
 
     with pytest.raises(EditionHistoryError, match=message):
         service.record(source, commit, "session", support=support)  # type: ignore[arg-type]
+
+
+def test_record_requires_resolvable_support(tmp_path: Path) -> None:
+    _root, source, commit = _project(tmp_path)
+    depot = BloberiaDepot(tmp_path / "bloberia")
+
+    with pytest.raises(EditionHistoryError, match="support resolver is required"):
+        EditionHistoryService(depot).record(
+            source,
+            commit,
+            "session",
+            support=_support("session"),
+        )
+
+    assert depot.query({"value": {"kind": "skw.edition-session"}}) == ()
+
+
+def test_list_rejects_and_check_reports_unresolvable_support(
+    tmp_path: Path,
+) -> None:
+    _root, source, commit = _project(tmp_path)
+    depot = BloberiaDepot(tmp_path / "bloberia")
+    _service(depot).record(
+        source,
+        commit,
+        "session",
+        support=_support("session"),
+    )
+
+    def reject_support(_support: dict[str, object]) -> None:
+        raise RuntimeError("event is unavailable")
+
+    service = EditionHistoryService(
+        depot,
+        support_resolver=reject_support,
+    )
+    with pytest.raises(EditionHistoryError, match="event is unavailable"):
+        service.list(source)
+
+    result = service.check([source])
+
+    assert [finding.code for finding in result.findings] == [
+        "unresolvable-edition-support"
+    ]
+    assert "event is unavailable" in result.findings[0].message
 
 
 def test_list_rejects_malformed_matching_record(tmp_path: Path) -> None:
@@ -228,14 +284,14 @@ def test_list_rejects_malformed_matching_record(tmp_path: Path) -> None:
     )
 
     with pytest.raises(EditionHistoryError, match="invalid edition-history record"):
-        EditionHistoryService(depot).list(source)
+        _service(depot).list(source)
 
 
 def test_check_requires_history_for_each_explicit_target(tmp_path: Path) -> None:
     root, source, commit = _project(tmp_path)
     other = root / "src" / "other.py"
     other.write_text("other = 1\n", encoding="utf-8")
-    service = EditionHistoryService(BloberiaDepot(tmp_path / "bloberia"))
+    service = _service(BloberiaDepot(tmp_path / "bloberia"))
     service.record(source, commit, "session", support=_support("session"))
 
     result = service.check([source, other])
@@ -252,7 +308,7 @@ def test_check_reports_duplicate_and_malformed_associations(
 ) -> None:
     _root, source, commit = _project(tmp_path)
     depot = BloberiaDepot(tmp_path / "bloberia")
-    service = EditionHistoryService(depot)
+    service = _service(depot)
     service.record(source, commit, "session", support=_support("session"))
     valid_record = depot.query(
         {
@@ -291,7 +347,7 @@ def test_check_surfaces_bloberia_corruption(tmp_path: Path) -> None:
     records.mkdir(parents=True)
     (records / "not-a-uuid.json").write_text("{}\n", encoding="utf-8")
 
-    result = EditionHistoryService(BloberiaDepot(depot_root)).check([source])
+    result = _service(BloberiaDepot(depot_root)).check([source])
 
     assert result.ok is False
     assert [finding.code for finding in result.findings] == [
@@ -301,7 +357,10 @@ def test_check_surfaces_bloberia_corruption(tmp_path: Path) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agentos")
-    register_skillware_commands(parser.add_subparsers(dest="command"))
+    register_skillware_commands(
+        parser.add_subparsers(dest="command"),
+        edition_history_support_resolver=_accept_support,
+    )
     return parser
 
 
