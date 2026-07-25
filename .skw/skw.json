@@ -1,0 +1,8 @@
+{
+  "edition_history": {
+    "targets": [
+      "src/agentos/skillware/edition_history.py"
+    ],
+    "exclude": []
+  }
+}

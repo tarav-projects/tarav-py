@@ -1,4 +1,5 @@
 # $kw: ^skw-model --note [DF] the skw parser — a surface-agnostic $kw frame core plus per-surface Carrier adapters ^c20260722-24u
+# --supp context assemblies are whole-file modules declared at the file point; dependency roles remain distinct ^c20260725-27u
 """Skillware src surface model: `.skw.md` parsing.
 
 v2 grammar — the annotation as a *named block*. The surface grammar is the
@@ -11,12 +12,14 @@ v2 grammar — the annotation as a *named block*. The surface grammar is the
     > $kw. end                      # closes a content block (bare `end`)
 
 Features are additive `--flags`, not commands: the binding mode is a flag
-(`--derived`/`--copy`/`--pointer`), `--from` is a dependency edge, `--note`
-is a typed+anchored documentation line, `--supp` the block's own touched
-lines, `--unlock-surface` marks a context surface represented by an unlock
-registry, `--intent` derivation context, `--cont` a generic continuation of
-the previous flag, and `--to` a reserved (parsed, inert) flag. Router rows are
-nameless child blocks opened with `--when` / `--then`.
+(`--derived`/`--copy`/`--pointer`), `--from` is a generic dependency edge,
+`--dev-from` is builder context, `--cite` is a visible citation obligation,
+`--context-assembly` marks the whole source file as a context assembly,
+`--note` is a typed+anchored documentation line, `--supp` the block's own
+touched lines, `--unlock-surface` marks a context surface represented by an
+unlock registry, `--intent` derivation context, `--cont` a generic
+continuation of the previous flag, and `--to` a reserved (parsed, inert) flag.
+Router rows are nameless child blocks opened with `--when` / `--then`.
 
 **Closure is by role, in three cases** (`Closure.Parser::Skw`):
 
@@ -44,8 +47,8 @@ from dataclasses import dataclass, field
 RECIPE_BINDINGS = ("derived", "copy")
 BINDING_FLAGS = ("derived", "copy", "pointer")
 ROLE_FLAGS = ("when", "then")
-VALUE_FLAGS = ("from", "intent", "to", "note", "supp", "cont")
-BOOLEAN_FLAGS = ("unlock-surface",)
+VALUE_FLAGS = ("from", "dev-from", "cite", "intent", "to", "note", "supp", "cont")
+BOOLEAN_FLAGS = ("unlock-surface", "context-assembly")
 KNOWN_FLAGS = BINDING_FLAGS + ROLE_FLAGS + VALUE_FLAGS + BOOLEAN_FLAGS
 
 _ADDRESS_RE = re.compile(r"^[#^@]?[A-Za-z0-9_./#:^-]+$")
@@ -143,6 +146,8 @@ class SkwNote:
 class SkwRecipe:
     verb: str
     froms: tuple[str, ...]
+    dev_froms: tuple[str, ...]
+    cites: tuple[str, ...]
     intent: str | None
     heading: str | None
     line: int
@@ -164,6 +169,9 @@ class SkwConstruct:
     line: int
     label: str | None
     address: str | None
+    froms: tuple[str, ...]
+    dev_froms: tuple[str, ...]
+    cites: tuple[str, ...]
     decl_span: tuple[int, int]
     body_span: tuple[int, int]
     body: tuple[str, ...]
@@ -172,7 +180,10 @@ class SkwConstruct:
 @dataclass(frozen=True)
 class SkwDependency:
     froms: tuple[str, ...]
+    dev_froms: tuple[str, ...]
+    cites: tuple[str, ...]
     unlock_surface: bool
+    context_assembly: bool
     heading: str | None
     line: int
     label: str | None
@@ -330,7 +341,10 @@ class _Frame:
     decl_span: tuple[int, int]
     body_start: int
     froms: tuple[str, ...]
+    dev_froms: tuple[str, ...]
+    cites: tuple[str, ...]
     unlock_surface: bool
+    context_assembly: bool
     intent: str | None
     notes: list[SkwNote]
     needs_end: bool
@@ -366,6 +380,8 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                 SkwRecipe(
                     verb=frame.verb,
                     froms=frame.froms,
+                    dev_froms=frame.dev_froms,
+                    cites=frame.cites,
                     intent=frame.intent,
                     heading=frame.heading,
                     line=frame.line,
@@ -377,12 +393,19 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                     body=body,
                 )
             )
-        elif frame.command == "text" and frame.froms and not _has_content(body):
-            # a pure declaration-only `--from` block is the void dependency
+        elif (
+            frame.command == "text"
+            and (frame.froms or frame.dev_froms or frame.cites)
+            and not _has_content(body)
+        ):
+            # A declaration-only dependency block owns no native body.
             dependencies.append(
                 SkwDependency(
                     froms=frame.froms,
+                    dev_froms=frame.dev_froms,
+                    cites=frame.cites,
                     unlock_surface=frame.unlock_surface,
+                    context_assembly=frame.context_assembly,
                     heading=frame.heading,
                     line=frame.line,
                     label=frame.label,
@@ -398,6 +421,9 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                     line=frame.line,
                     label=frame.label,
                     address=frame.address,
+                    froms=frame.froms,
+                    dev_froms=frame.dev_froms,
+                    cites=frame.cites,
                     decl_span=frame.decl_span,
                     body_span=span,
                     body=body,
@@ -522,10 +548,16 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
         bindings = [name for name in flag_names if name in BINDING_FLAGS]
         roles = [name for name in flag_names if name in ROLE_FLAGS]
         froms = tuple(value for name, value in flags if name == "from")
+        dev_froms = tuple(value for name, value in flags if name == "dev-from")
+        cites = tuple(value for name, value in flags if name == "cite")
         unlock_surface_values = [
             value for name, value in flags if name == "unlock-surface"
         ]
         unlock_surface = bool(unlock_surface_values)
+        context_assembly_values = [
+            value for name, value in flags if name == "context-assembly"
+        ]
+        context_assembly = bool(context_assembly_values)
         # a binding flag's own trailing text is derivation context, as is --intent
         intent_parts = [
             value
@@ -596,13 +628,45 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                     "--unlock-surface cannot carry a binding or router role",
                 )
             )
+        if len(context_assembly_values) > 1:
+            findings.append(
+                SkwFinding(index + 1, "--context-assembly may appear only once")
+            )
+        if any(context_assembly_values):
+            findings.append(SkwFinding(index + 1, "--context-assembly takes no value"))
+        if context_assembly and index != 0:
+            findings.append(
+                SkwFinding(
+                    index + 1,
+                    "--context-assembly must be declared at the file point (line 1)",
+                )
+            )
+        if context_assembly and not froms:
+            findings.append(
+                SkwFinding(
+                    index + 1, "--context-assembly requires at least one --from"
+                )
+            )
+        if context_assembly and (address is not None or verb is not None or role is not None):
+            findings.append(
+                SkwFinding(
+                    index + 1,
+                    "--context-assembly is a self-closing file declaration",
+                )
+            )
 
         # closure by role: a recipe or a content span (a flag-less block, incl.
         # a router parent) owns its `end`; a row peer-closes; an annotation
         # block — one carrying only `--from`/`--note`/`--supp` — self-closes at
         # its declaration, and following text stays surface.
         annotation_only = command == "text" and (
-            bool(froms) or bool(frame_notes) or verb == "pointer" or unlock_surface
+            bool(froms)
+            or bool(dev_froms)
+            or bool(cites)
+            or bool(frame_notes)
+            or verb == "pointer"
+            or unlock_surface
+            or context_assembly
         )
         needs_end = command in RECIPE_BINDINGS or (
             command == "text" and not annotation_only
@@ -628,7 +692,10 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             decl_span=(index, decl_end),
             body_start=decl_end,
             froms=froms,
+            dev_froms=dev_froms,
+            cites=cites,
             unlock_surface=unlock_surface,
+            context_assembly=context_assembly,
             intent=" ".join(intent_parts) if intent_parts else None,
             notes=frame_notes,
             needs_end=needs_end,

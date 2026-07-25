@@ -1,4 +1,4 @@
-# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including required-support edition-history recording ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u
+# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including required-support edition-history recording ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project policy integration authorized ^c20260725-25u --supp CLI diagnostics expose context-assembly and citation POIs ^c20260725-27u
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,7 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos._core.json_input import load_json_object_arg
 from agentos.bloberia import BloberiaDepot
-from agentos.skwlint import add_check_selection_args
+from agentos.skwlint import add_check_selection_args, poi as make_poi
 from agentos.skillware.build import (
     SkillwareError,
     bless_pois_by_kind,
@@ -17,8 +17,10 @@ from agentos.skillware.build import (
     build_skill,
     check_project,
     check_skill,
+    expand_edition_history_targets,
     expand_file,
     find_project_root,
+    load_project_skw_config,
     load_skillware,
     unlock_requirements,
 )
@@ -28,6 +30,8 @@ from agentos.skillware.edition_history import (
     EditionHistoryError,
     EditionHistoryService,
     EditionSupportResolver,
+    DEFAULT_EDITION_HISTORY_DEPOT,
+    default_edition_history_depot,
 )
 
 # once-per-kind legend: meaning + prescribed response; the full fix protocols
@@ -70,6 +74,14 @@ POI_LEGEND = {
         "a declared --from no longer resolves in the configured depots",
         "restore or repoint the target, or bless: agentos skw bless --kind dangling-dependency --all",
     ),
+    "uncited-dependency": (
+        "a --cite target is not explicit in the compiled surface",
+        "cite the target visibly, change the dependency role, or bless the current finding",
+    ),
+    "context-assembly-bypass": (
+        "a surface depends on an assembly-claimed source without loading its context assembly",
+        "add --dev-from <assembly-file>, or bless the intentional bypass",
+    ),
     "malformed-note": (
         "a --note/--supp is missing its [TYPE] act code or its ^anchor",
         "add the missing [TYPE] and/or trailing ^anchor to the note in src",
@@ -93,6 +105,22 @@ POI_LEGEND = {
     "missing-header": (
         "a skw-managed code file has no line-1 annotation — the required file point is empty",
         "add the line-1 # $kw: header, or relax the presence policy in config",
+    ),
+    "missing-edition-history": (
+        "a configured file has no valid edition/session association",
+        "inspect Git and Chatlas, then record a supported association",
+    ),
+    "invalid-edition-history-record": (
+        "an edition-history record violates the service schema",
+        "repair or replace the invalid Bloberia record",
+    ),
+    "duplicate-edition-session": (
+        "one file edition/session association is recorded more than once",
+        "remove the duplicate Bloberia record",
+    ),
+    "unresolvable-edition-support": (
+        "an edition/session support set cannot be resolved through Chatlas",
+        "repair the exact session/event support members",
     ),
 }
 
@@ -144,6 +172,37 @@ def _cmd_skillware_build(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def _edition_history_project_pois(
+    project_root: Path,
+    *,
+    support_resolver: EditionSupportResolver | None,
+):
+    config = load_project_skw_config(project_root)
+    policy = config.edition_history
+    if policy is None:
+        return ()
+    targets = expand_edition_history_targets(project_root, policy)
+    depot = (
+        (project_root / policy.depot).resolve()
+        if policy.depot is not None
+        else project_root / DEFAULT_EDITION_HISTORY_DEPOT
+    )
+    result = EditionHistoryService(
+        BloberiaDepot(depot),
+        support_resolver=support_resolver,
+    ).check(targets)
+    return tuple(
+        make_poi(
+            finding.code,
+            Path(finding.target),
+            None,
+            json.dumps(finding.as_dict(), sort_keys=True),
+            finding.message,
+        )
+        for finding in result.findings
+    )
+
+
 def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
     project_root = find_project_root(Path.cwd())
     if project_root is None:
@@ -153,13 +212,22 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
         )
     try:
         report = check_project(project_root)
+        project_pois = _edition_history_project_pois(
+            project_root,
+            support_resolver=getattr(args, "edition_history_support_resolver", None),
+        )
     except SkillwareError as exc:
+        raise CliError(str(exc)) from exc
+    except EditionHistoryError as exc:
         raise CliError(str(exc)) from exc
     enabled, known = _enabled_poi_selectors(args)
     package_pois = [
         (pkg, _filter_pois(pr.pois, enabled, known)) for pkg, pr in report.packages
     ]
-    poi_count = sum(len(pois) for _pkg, pois in package_pois)
+    project_pois = _filter_pois(project_pois, enabled, known)
+    poi_count = len(project_pois) + sum(
+        len(pois) for _pkg, pois in package_pois
+    )
     payload = {
         "command": "agentos skw check",
         "project_root": str(report.project_root),
@@ -180,6 +248,16 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
             }
             for pkg, pois in package_pois
         ],
+        "project_pois": [
+            {
+                "kind": poi.kind,
+                "target": str(poi.target),
+                "key": poi.key,
+                "hash": poi.poi_hash,
+                "detail": poi.detail,
+            }
+            for poi in project_pois
+        ],
         "summary": {"packages": len(report.packages), "pois": poi_count},
     }
     exit_code = 1 if poi_count else 0
@@ -187,6 +265,10 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2))
         return exit_code
     print(f"skw check (project scope): {report.project_root}")
+    if project_pois:
+        print(f"- project policy: {len(project_pois)} POI(s)")
+        for poi in project_pois:
+            print(f"    [{poi.kind}] {poi.target} ({poi.poi_hash})")
     for pkg, pois in package_pois:
         rel = (
             pkg.relative_to(report.project_root)
@@ -452,9 +534,22 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def _edition_history_service(args: argparse.Namespace) -> EditionHistoryService:
+def _edition_history_service(
+    args: argparse.Namespace,
+    references: tuple[Path | str, ...],
+) -> EditionHistoryService:
+    if args.depot is not None:
+        depot = Path(args.depot)
+    else:
+        depots = {default_edition_history_depot(reference) for reference in references}
+        if len(depots) != 1:
+            raise EditionHistoryError(
+                "edition-history targets span multiple Agentos projects; "
+                "pass --depot explicitly"
+            )
+        depot = depots.pop()
     return EditionHistoryService(
-        BloberiaDepot(Path(args.depot)),
+        BloberiaDepot(depot),
         support_resolver=args.edition_history_support_resolver,
     )
 
@@ -469,8 +564,8 @@ def _cmd_edition_history_record(args: argparse.Namespace) -> int:
         args.support_file,
         field_name="support",
     )
-    service = _edition_history_service(args)
     try:
+        service = _edition_history_service(args, (args.file,))
         result = service.record(
             args.file,
             args.commit,
@@ -493,8 +588,8 @@ def _cmd_edition_history_record(args: argparse.Namespace) -> int:
 
 
 def _cmd_edition_history_list(args: argparse.Namespace) -> int:
-    service = _edition_history_service(args)
     try:
+        service = _edition_history_service(args, (args.file,))
         history = service.list(args.file)
     except EditionHistoryError as exc:
         raise CliError(str(exc)) from exc
@@ -516,8 +611,8 @@ def _cmd_edition_history_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_edition_history_check(args: argparse.Namespace) -> int:
-    service = _edition_history_service(args)
     try:
+        service = _edition_history_service(args, tuple(args.target))
         targets = [EditionFile.resolve(target) for target in args.target]
         result = service.check(args.target)
     except EditionHistoryError as exc:
@@ -579,8 +674,7 @@ def _add_edition_history_commands(
     )
     record_parser.add_argument(
         "--depot",
-        required=True,
-        help="Exact Bloberia depot root.",
+        help="Bloberia depot override; defaults below the file's Agentos project.",
     )
     record_parser.set_defaults(handler=_cmd_edition_history_record)
 
@@ -591,8 +685,7 @@ def _add_edition_history_commands(
     list_parser.add_argument("--file", required=True, help="Managed file path.")
     list_parser.add_argument(
         "--depot",
-        required=True,
-        help="Exact Bloberia depot root.",
+        help="Bloberia depot override; defaults below the file's Agentos project.",
     )
     list_parser.set_defaults(handler=_cmd_edition_history_list)
 
@@ -608,8 +701,7 @@ def _add_edition_history_commands(
     )
     check_parser.add_argument(
         "--depot",
-        required=True,
-        help="Exact Bloberia depot root.",
+        help="Bloberia depot override; defaults below the targets' Agentos project.",
     )
     check_parser.set_defaults(handler=_cmd_edition_history_check)
 
@@ -629,6 +721,9 @@ def register_skillware_commands(
             "copy bodies; check lints for POIs; bless accepts a derived-stale POI; "
             "status inventories the managed files. (skillware is a deprecated alias.)"
         ),
+    )
+    skillware_parser.set_defaults(
+        edition_history_support_resolver=edition_history_support_resolver
     )
     skillware_subparsers = skillware_parser.add_subparsers(dest="skillware_command")
     _add_edition_history_commands(

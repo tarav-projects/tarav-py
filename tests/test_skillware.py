@@ -1,3 +1,4 @@
+# $kw: ^test-skillware --supp boundary coverage for dependency roles and whole-file context assemblies ^c20260725-27u
 from __future__ import annotations
 
 import argparse
@@ -235,6 +236,46 @@ def test_dependency_self_closes_and_following_text_is_surface() -> None:
     assert not source.findings
     assert [dep.froms for dep in source.dependencies] == [("Concept.A",)]
     assert source.constructs == ()
+
+
+def test_parse_dependency_roles_and_context_assembly() -> None:
+    source = parse_skw_source(
+        "> $kw: --context-assembly\n"
+        "> --from Concept.One\n"
+        "> --from references/context.md#Rules\n\n"
+        "# Capture Context\n\n"
+        "Curated context.\n\n"
+        "> $kw: --from Concept.Two\n"
+        "> --dev-from references/capture-context.skw.md\n"
+        "> --cite Concept.Three\n"
+    )
+
+    assert not source.findings
+    assembly = source.dependencies[0]
+    assert assembly.context_assembly is True
+    assert assembly.froms == ("Concept.One", "references/context.md#Rules")
+
+    dependency = source.dependencies[1]
+    assert dependency.froms == ("Concept.Two",)
+    assert dependency.dev_froms == (
+        "references/capture-context.skw.md",
+    )
+    assert dependency.cites == ("Concept.Three",)
+
+
+@pytest.mark.parametrize(
+    ("declaration", "message"),
+    [
+        ("--context-assembly", "requires at least one --from"),
+        ("--context-assembly --from Concept.One", "must be declared at the file point"),
+    ],
+)
+def test_context_assembly_requires_identity_and_sources(
+    declaration: str, message: str
+) -> None:
+    prefix = "prose before the declaration\n\n" if "--from" in declaration else ""
+    source = parse_skw_source(f"{prefix}> $kw: {declaration}\n")
+    assert any(message in finding.message for finding in source.findings)
 
 
 # --- S2: locators + expansion + compile -------------------------------------
@@ -590,6 +631,127 @@ def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
     assert changed.poi_hash != first.poi_hash
 
 
+def test_dependency_roles_resolve_and_citations_must_be_visible(
+    tmp_path: Path,
+) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n"
+        "> $kw: --dev-from references/missing.skw.md\n"
+        "> --cite Concept.One\n\n"
+        "No visible citation.\n",
+        encoding="utf-8",
+    )
+
+    check = check_skill(skill)
+    assert any(
+        poi.kind == "unresolvable" and "dev-from" in poi.detail
+        for poi in check.pois
+    )
+
+    context = skill / ".skillware" / "src" / "references" / "context.skw.md"
+    context.write_text("# context\n\nAll builder context.\n", encoding="utf-8")
+    src.write_text(
+        "# mod\n\n"
+        "> $kw: --dev-from references/context.skw.md\n"
+        "> --cite Concept.One\n\n"
+        "No visible citation.\n",
+        encoding="utf-8",
+    )
+    build_skill(skill)
+    check = check_skill(skill)
+    assert any(
+        poi.kind == "uncited-dependency" and poi.key == "Concept.One"
+        for poi in check.pois
+    )
+
+    src.write_text(
+        src.read_text(encoding="utf-8").replace(
+            "No visible citation.", "Uses `Concept.One` explicitly."
+        ),
+        encoding="utf-8",
+    )
+    build_skill(skill)
+    assert not any(
+        poi.kind == "uncited-dependency" for poi in check_skill(skill).pois
+    )
+
+
+def test_dev_from_participates_in_derived_staleness(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    context = skill / ".skillware" / "src" / "references" / "context.skw.md"
+    context.write_text("# context\n\nContext v1.\n", encoding="utf-8")
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n"
+        "## Derived\n\n"
+        "> $kw: --derived --from Concept.One\n"
+        "> --dev-from references/context.skw.md\n\n"
+        "- derived solution\n\n"
+        "> $kw. end\n",
+        encoding="utf-8",
+    )
+    build_skill(skill)
+    assert not any(poi.kind == "derived-stale" for poi in check_skill(skill).pois)
+
+    context.write_text("# context\n\nContext v2.\n", encoding="utf-8")
+    assert any(
+        poi.kind == "derived-stale" and poi.key == "Derived"
+        for poi in check_skill(skill).pois
+    )
+
+
+def test_context_assembly_bypass_requires_companion_dev_from(
+    tmp_path: Path,
+) -> None:
+    skill = _write_skill(tmp_path)
+    context = skill / ".skillware" / "src" / "references" / "context.skw.md"
+    context.write_text(
+        "> $kw: --context-assembly --from Concept.One\n\n"
+        "# Context\n\n"
+        "Curates `Concept.One` for builders.\n",
+        encoding="utf-8",
+    )
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n"
+        "> $kw: --cite Concept.One\n\n"
+        "Uses `Concept.One` explicitly.\n",
+        encoding="utf-8",
+    )
+    build_skill(skill)
+
+    bypass = [
+        poi
+        for poi in check_skill(skill).pois
+        if poi.kind == "context-assembly-bypass"
+    ]
+    assert len(bypass) == 1
+    assert bypass[0].key == "Concept.One"
+    assert "references/context.skw.md" in bypass[0].detail
+
+    from agentos.skillware.build import bless_skill
+
+    bless_skill(skill, bypass[0].poi_hash)
+    assert not any(
+        poi.kind == "context-assembly-bypass" for poi in check_skill(skill).pois
+    )
+
+    src.write_text(
+        src.read_text(encoding="utf-8").replace(
+            "> $kw: --cite Concept.One",
+            "> $kw: --cite Concept.One\n"
+            "> --dev-from references/context.skw.md",
+        ),
+        encoding="utf-8",
+    )
+    build_skill(skill)
+    assert not any(
+        poi.kind == "context-assembly-bypass" for poi in check_skill(skill).pois
+    )
+
+
 def test_malformed_note_pois(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
@@ -816,6 +978,93 @@ def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(tmp_path: Pat
     bad.write_text(json.dumps({"depots": "not-a-list"}), encoding="utf-8")
     with pytest.raises(SkillwareError):
         parse_skw_config(bad)
+
+
+def test_skw_config_parses_strict_edition_history_policy(tmp_path: Path) -> None:
+    from agentos.skillware.build import parse_skw_config
+
+    config_path = tmp_path / "skw.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "edition_history": {
+                    "targets": ["src/**/*.py", "tools/*.py"],
+                    "exclude": ["src/**/__init__.py"],
+                    "depot": ".state/history",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    policy = parse_skw_config(config_path).edition_history
+    assert policy is not None
+    assert policy.targets == ("src/**/*.py", "tools/*.py")
+    assert policy.exclude == ("src/**/__init__.py",)
+    assert policy.depot == ".state/history"
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {},
+        {"targets": []},
+        {"targets": "src/*.py"},
+        {"targets": ["../outside.py"]},
+        {"targets": ["src/*.py"], "unknown": True},
+        {"targets": ["src/*.py"], "exclude": "tests/*.py"},
+        {"targets": ["src/*.py"], "depot": 7},
+    ],
+)
+def test_skw_config_rejects_invalid_edition_history_policy(
+    tmp_path: Path,
+    policy: object,
+) -> None:
+    from agentos.skillware.build import SkillwareError, parse_skw_config
+
+    config_path = tmp_path / "skw.json"
+    config_path.write_text(
+        json.dumps({"edition_history": policy}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SkillwareError, match="edition_history"):
+        parse_skw_config(config_path)
+
+
+def test_expand_edition_history_targets_is_deterministic(
+    tmp_path: Path,
+) -> None:
+    from agentos.skillware.build import (
+        EditionHistoryConfig,
+        SkillwareError,
+        expand_edition_history_targets,
+    )
+
+    (tmp_path / "src" / "nested").mkdir(parents=True)
+    for relative in (
+        "src/a.py",
+        "src/nested/b.py",
+        "src/nested/__init__.py",
+        "src/readme.md",
+    ):
+        path = tmp_path / relative
+        path.write_text(relative, encoding="utf-8")
+    policy = EditionHistoryConfig(
+        targets=("src/**/*.py",),
+        exclude=("src/**/__init__.py",),
+    )
+
+    assert expand_edition_history_targets(tmp_path, policy) == (
+        (tmp_path / "src/a.py").resolve(),
+        (tmp_path / "src/nested/b.py").resolve(),
+    )
+
+    with pytest.raises(SkillwareError, match="matched no files"):
+        expand_edition_history_targets(
+            tmp_path,
+            EditionHistoryConfig(targets=("missing/**/*.py",)),
+        )
 
 
 def test_find_project_root_walks_to_marker(tmp_path: Path) -> None:

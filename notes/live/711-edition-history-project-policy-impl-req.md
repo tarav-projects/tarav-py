@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** give edition-history commands a project-local default depot and make project-scope `agentos skw check` enforce configured edition-history target selectors
-- **status:** designed; execution authorized
+- **status:** implemented and verified
 - **source:** accepted edition-history configuration discussion followed by autonomous develop invocation
 - **support set:** design and execution authorization ^c20260725-25u
 - **target projects:** `agentos-py` owns policy parsing, target expansion, service composition, and command behavior; `agentos-cli` owns umbrella integration coverage
@@ -86,6 +86,7 @@
 - expose project-root/default-depot and target-expansion helpers without importing Chatlas
 - observable: normal commands work without `--depot`, while overrides remain exact
 - check: `uv run pytest tests/test_edition_history.py tests/test_skillware.py`
+- status: completed
 
 ### Slice 2 - Project linter integration
 
@@ -95,6 +96,7 @@
 - add the narrow real `agentos-py` policy
 - observable: `agentos skw check` enforces the configured file set exactly once
 - checks: focused `agentos-py` tests and installed CLI smoke
+- status: completed
 
 ### Slice 3 - Umbrella and regression
 
@@ -103,6 +105,7 @@
 - run full tests and maintained Ruff scopes in both target projects
 - refresh the editable umbrella executable and smoke the real project check
 - observable: library, thin registrar, and composition root agree on the policy
+- status: completed
 
 ## Risks And Deviation Triggers
 
@@ -127,3 +130,8 @@
 - 2026-07-25: project POIs selected over fake package attribution
 - 2026-07-25: separate blocked-versus-unresolvable status deferred because the resolver boundary currently exposes one undifferentiated failure channel
 - 2026-07-25: execution gate anchored at `^c20260725-25u`
+- 2026-07-25: mandatory checkpoints created in `agentos-py` (`84674ee`) and `agentos-cli` (`41c2125`)
+- 2026-07-25: strict `edition_history` policy parsing, project-relative glob expansion, canonical default-depot derivation, and optional depot overrides implemented
+- 2026-07-25: project-scope `agentos skw check` now reports configured edition-history findings as selectable top-level project POIs
+- 2026-07-25: `agentos-py` adopted a narrow policy for `src/agentos/skillware/edition_history.py`
+- 2026-07-25: verification passed 544 `agentos-py` tests, 62 `agentos-cli` tests, maintained `src`/`tests` Ruff checks, editable CLI reinstall, default-depot list smoke, and the real configured project check with zero POIs

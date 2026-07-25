@@ -1,4 +1,4 @@
-# $kw: ^test-edition-history --from Skw.Edition.History.Service --note [DF] service and command-boundary coverage for required, resolvable edition/session support ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u
+# $kw: ^test-edition-history --from Skw.Edition.History.Service --note [DF] service and command-boundary coverage for required, resolvable edition/session support ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project policy integration authorized ^c20260725-25u
 from __future__ import annotations
 
 import argparse
@@ -10,9 +10,11 @@ import pytest
 
 from agentos.bloberia import BloberiaDepot
 from agentos.skillware.edition_history import (
+    DEFAULT_EDITION_HISTORY_DEPOT,
     EditionFile,
     EditionHistoryError,
     EditionHistoryService,
+    default_edition_history_depot,
 )
 from agentos.skillware.commands import register_skillware_commands
 
@@ -89,11 +91,14 @@ def _project(tmp_path: Path) -> tuple[Path, Path, str]:
 
 
 def test_resolve_file_uses_project_identity_and_relative_path(tmp_path: Path) -> None:
-    _root, source, _commit = _project(tmp_path)
+    root, source, _commit = _project(tmp_path)
 
     assert EditionFile.resolve(source) == EditionFile(
         project_id=PROJECT_ID,
         path="src/example.py",
+    )
+    assert default_edition_history_depot(source) == (
+        root / DEFAULT_EDITION_HISTORY_DEPOT
     )
 
 
@@ -434,15 +439,94 @@ def test_cli_record_list_and_check_round_trip(
     assert checked["findings"][0]["code"] == "missing-edition-history"
 
 
-def test_cli_requires_explicit_depot(tmp_path: Path) -> None:
-    _root, source, _commit = _project(tmp_path)
+def test_cli_uses_project_default_depot(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root, source, commit = _project(tmp_path)
+    parser = _parser()
+    args = parser.parse_args(
+        [
+            "skw",
+            "edition-history",
+            "record",
+            "--file",
+            str(source),
+            "--commit",
+            commit,
+            "--session",
+            "session",
+            "--support-json",
+            json.dumps(_support("session")),
+        ]
+    )
 
-    with pytest.raises(SystemExit) as exc_info:
-        _parser().parse_args(
-            ["skw", "edition-history", "list", "--file", str(source)]
-        )
+    assert args.handler(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert Path(payload["depot"]) == root / DEFAULT_EDITION_HISTORY_DEPOT
 
-    assert exc_info.value.code == 2
+    args = parser.parse_args(
+        ["skw", "edition-history", "list", "--file", str(source)]
+    )
+    assert args.handler(args) == 0
+    assert json.loads(capsys.readouterr().out)["summary"]["sessions"] == 1
+
+
+def test_project_check_enforces_configured_edition_history(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, source, commit = _project(tmp_path)
+    (root / ".skw").mkdir()
+    (root / ".skw" / "skw.json").write_text(
+        json.dumps(
+            {
+                "edition_history": {
+                    "targets": ["src/*.py"],
+                    "exclude": ["src/excluded.py"],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    excluded = root / "src" / "excluded.py"
+    excluded.write_text("excluded = True\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+    parser = _parser()
+
+    args = parser.parse_args(["skw", "check", "--json"])
+    assert args.handler(args) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["project_pois"][0]["kind"] == "missing-edition-history"
+    assert payload["project_pois"][0]["target"] == "src/example.py"
+
+    args = parser.parse_args(
+        ["skw", "check", "--json", "--skip", "missing-edition-history"]
+    )
+    assert args.handler(args) == 0
+    assert json.loads(capsys.readouterr().out)["project_pois"] == []
+
+    service = _service(BloberiaDepot(root / DEFAULT_EDITION_HISTORY_DEPOT))
+    service.record(source, commit, "session", support=_support("session"))
+    args = parser.parse_args(["skw", "check", "--json"])
+    assert args.handler(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["project_pois"] == []
+    assert payload["summary"]["pois"] == 0
+
+
+def test_project_check_without_policy_does_not_require_history(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, _source, _commit = _project(tmp_path)
+    monkeypatch.chdir(root)
+    args = _parser().parse_args(["skw", "check", "--json"])
+
+    assert args.handler(args) == 0
+    assert json.loads(capsys.readouterr().out)["project_pois"] == []
 
 
 def test_cli_record_requires_support(tmp_path: Path) -> None:

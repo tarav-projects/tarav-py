@@ -1,4 +1,4 @@
-# $kw: ^edition-history-service --from Skw.Edition.History.Service --note [DF] validated Skillware edition/session associations with required embedded Chat.Support.Set records ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u
+# $kw: ^edition-history-service --from Skw.Edition.History.Service --note [DF] validated Skillware edition/session associations with required embedded Chat.Support.Set records ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project-default depot authorized ^c20260725-25u
 from __future__ import annotations
 
 import re
@@ -20,6 +20,9 @@ from agentos.bloberia import (
 EDITION_SESSION_KIND = "skw.edition-session"
 EDITION_SESSION_SCHEMA_VERSION = 1
 CHATLAS_SUPPORT_SET_SCHEMA = "chatlas.support-set.v1"
+DEFAULT_EDITION_HISTORY_DEPOT = (
+    Path(".agentos") / "state" / "bloberia" / "edition-history"
+)
 _COMMIT_RE = re.compile(r"^[0-9a-fA-F]{4,64}$")
 
 
@@ -45,6 +48,11 @@ class EditionFile:
 
     def as_dict(self) -> dict[str, str]:
         return {"project_id": self.project_id, "path": self.path}
+
+
+def default_edition_history_depot(path: Path | str) -> Path:
+    """Return the canonical depot below the Agentos project owning `path`."""
+    return _resolve_file(path).project_root / DEFAULT_EDITION_HISTORY_DEPOT
 
 
 @dataclass(frozen=True)

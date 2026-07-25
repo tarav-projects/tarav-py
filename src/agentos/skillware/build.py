@@ -1,3 +1,4 @@
+# $kw: ^skw-build --supp dependency roles and whole-file context-assembly bypass supervision authorized ^c20260725-27u
 """Skillware expansion: locator resolution, src compilation, and refresh.
 
 Deterministic by construction — `derived` bodies are spliced as materialized
@@ -108,12 +109,22 @@ PROJECT_MARKER = Path(".agentos") / "project.json"
 _SKW_CONFIG_KEYS = (
     "depots",
     "deps",
+    "edition_history",
     "surfaces",
     "exclude",
     "projects",
     "unlock_registries",
 )
 _UNLOCK_TOKEN_RE = re.compile(r"^skw-unlock:[0-9a-f]{12,64}$")
+
+
+@dataclass(frozen=True)
+class EditionHistoryConfig:
+    """Project-level file selectors for the edition-history linter."""
+
+    targets: tuple[str, ...]
+    exclude: tuple[str, ...] = ()
+    depot: str | None = None
 
 
 @dataclass(frozen=True)
@@ -134,6 +145,7 @@ class SkwConfig:
     exclude: tuple[str, ...] = ()
     projects: tuple[str, ...] = ()
     unlock_registries: tuple[str, ...] = ()
+    edition_history: EditionHistoryConfig | None = None
     warnings: tuple[str, ...] = ()
 
 
@@ -165,6 +177,61 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
             )
         return dict(value)
 
+    def _edition_history() -> EditionHistoryConfig | None:
+        value = raw.get("edition_history")
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise SkillwareError(
+                f"skw.json `edition_history` must be an object: {config_path}"
+            )
+        unknown = set(value) - {"targets", "exclude", "depot"}
+        if unknown:
+            raise SkillwareError(
+                "unknown skw.json `edition_history` key(s) "
+                f"{', '.join(sorted(unknown))}: {config_path}"
+            )
+
+        def _patterns(key: str, *, required: bool = False) -> tuple[str, ...]:
+            patterns = value.get(key)
+            if patterns is None and not required:
+                return ()
+            if (
+                not isinstance(patterns, list)
+                or (required and not patterns)
+                or not all(isinstance(pattern, str) and pattern for pattern in patterns)
+            ):
+                qualifier = "non-empty " if required else ""
+                raise SkillwareError(
+                    f"skw.json `edition_history.{key}` must be a "
+                    f"{qualifier}list of strings: {config_path}"
+                )
+            for pattern in patterns:
+                path = Path(pattern)
+                if path.is_absolute() or ".." in path.parts:
+                    raise SkillwareError(
+                        f"skw.json `edition_history.{key}` patterns must be "
+                        f"project-relative: {config_path}"
+                    )
+            return tuple(patterns)
+
+        depot = value.get("depot")
+        if depot is not None and (
+            not isinstance(depot, str)
+            or not depot
+            or Path(depot).is_absolute()
+            or ".." in Path(depot).parts
+        ):
+            raise SkillwareError(
+                "skw.json `edition_history.depot` must be a non-empty "
+                f"project-relative string: {config_path}"
+            )
+        return EditionHistoryConfig(
+            targets=_patterns("targets", required=True),
+            exclude=_patterns("exclude"),
+            depot=depot,
+        )
+
     return SkwConfig(
         depots=_list("depots"),
         deps=_map("deps"),
@@ -172,6 +239,7 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
         exclude=_list("exclude"),
         projects=_list("projects"),
         unlock_registries=_list("unlock_registries"),
+        edition_history=_edition_history(),
         warnings=warnings,
     )
 
@@ -386,6 +454,36 @@ def _config_path(root: Path) -> Path | None:
     return _settings_path(build_root)
 
 
+def load_project_skw_config(project_root: Path) -> SkwConfig:
+    """Load the project-level Skillware configuration, if present."""
+    config_path = _config_path(Path(project_root).resolve())
+    return parse_skw_config(config_path) if config_path is not None else SkwConfig()
+
+
+def expand_edition_history_targets(
+    project_root: Path,
+    config: EditionHistoryConfig,
+) -> tuple[Path, ...]:
+    """Expand a project's edition-history include set, then subtract excludes."""
+    project_root = Path(project_root).resolve()
+
+    def _files(patterns: tuple[str, ...]) -> set[Path]:
+        matches: set[Path] = set()
+        for pattern in patterns:
+            for candidate in project_root.glob(pattern):
+                resolved = candidate.resolve()
+                if resolved.is_file() and resolved.is_relative_to(project_root):
+                    matches.add(resolved)
+        return matches
+
+    targets = _files(config.targets) - _files(config.exclude)
+    if not targets:
+        raise SkillwareError(
+            "skw.json `edition_history.targets` matched no files after exclusions"
+        )
+    return tuple(sorted(targets))
+
+
 def resolve_project_depots(project_root: Path) -> list[Path]:
     """Project-scope default depots: the project config's own `depots` plus,
     one level deep, each sibling `projects` root's project-level `depots`."""
@@ -456,6 +554,18 @@ def content_hash(lines: list[str] | tuple[str, ...]) -> str:
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
+def _role_edges(block) -> tuple[tuple[str, str], ...]:
+    edges: list[tuple[str, str]] = []
+    edges.extend(("from", locator) for locator in block.froms)
+    edges.extend(("dev-from", locator) for locator in block.dev_froms)
+    edges.extend(("cite", locator) for locator in block.cites)
+    return tuple(edges)
+
+
+def _edge_hash_key(role: str, locator: str) -> str:
+    return locator if role == "from" else f"{role}:{locator}"
+
+
 def expand_file(skillware: Skillware, src_rel: Path) -> Expansion:
     src_rel = Path(src_rel)
     text = (skillware.src_root / src_rel).read_text(encoding="utf-8")
@@ -466,18 +576,38 @@ def expand_file(skillware: Skillware, src_rel: Path) -> Expansion:
     resolved_copies: dict[tuple[int, int], list[str]] = {}
     for recipe in source.recipes:
         recipe_deps: dict[str, str | None] = {}
-        for locator in recipe.froms:
+        for role, locator in _role_edges(recipe):
+            lines, detail = _resolve_locator(skillware, locator, stack=(src_rel,))
+            key = _edge_hash_key(role, locator)
+            if lines is None:
+                findings.append(
+                    SkwFinding(
+                        recipe.line, f"unresolvable {role}: {locator} ({detail})"
+                    )
+                )
+                recipe_deps[key] = None
+                continue
+            recipe_deps[key] = content_hash(lines)
+            if role == "from" and recipe.verb == "copy" and locator == recipe.froms[0]:
+                resolved_copies[recipe.body_span] = lines
+        dep_hashes[recipe_key(recipe)] = recipe_deps
+
+    # Declaration and native-content blocks do not materialize dependencies,
+    # but builder-context and citation roles must still resolve. A context
+    # assembly's claimed `--from` set is also a checked contract.
+    for block in (*source.dependencies, *source.constructs):
+        edges = list(("dev-from", locator) for locator in block.dev_froms)
+        edges.extend(("cite", locator) for locator in block.cites)
+        if getattr(block, "context_assembly", False):
+            edges.extend(("from", locator) for locator in block.froms)
+        for role, locator in edges:
             lines, detail = _resolve_locator(skillware, locator, stack=(src_rel,))
             if lines is None:
                 findings.append(
-                    SkwFinding(recipe.line, f"unresolvable from: {locator} ({detail})")
+                    SkwFinding(
+                        block.line, f"unresolvable {role}: {locator} ({detail})"
+                    )
                 )
-                recipe_deps[locator] = None
-                continue
-            recipe_deps[locator] = content_hash(lines)
-            if recipe.verb == "copy" and locator == recipe.froms[0]:
-                resolved_copies[recipe.body_span] = lines
-        dep_hashes[recipe_key(recipe)] = recipe_deps
 
     fresh = _emit(source, resolved_copies, keep_machinery=False)
     refreshed = _emit(source, resolved_copies, keep_machinery=True)
@@ -890,6 +1020,8 @@ SUPPRESSIBLE_KINDS = (
     "undeclared-dependency",
     "unhonored-dependency",
     "dangling-dependency",
+    "uncited-dependency",
+    "context-assembly-bypass",
     "non-skw-annotation",
 )
 
@@ -1095,8 +1227,15 @@ class _SkwSurfaceProvider:
                 if _is_dotted_name_locator(locator):
                     declared.add(locator)
                     declared_from_depends.add(locator)
+            for locator in (*dependency.dev_froms, *dependency.cites):
+                if _is_dotted_name_locator(locator):
+                    declared.add(locator)
         for recipe in self._source.recipes:
-            for locator in recipe.froms:
+            for _role, locator in _role_edges(recipe):
+                if _is_dotted_name_locator(locator):
+                    declared.add(locator)
+        for construct in self._source.constructs:
+            for _role, locator in _role_edges(construct):
                 if _is_dotted_name_locator(locator):
                     declared.add(locator)
         return declared, declared_from_depends
@@ -1113,6 +1252,84 @@ def _dependency_sync_pois(
 ) -> list[Poi]:
     provider = _SkwSurfaceProvider(skillware, source, expansion)
     return run_dependency_sync(target_rel, provider)
+
+
+def _citation_pois(
+    target_rel: Path, source: SkwSource, expansion: Expansion
+) -> list[Poi]:
+    text = "\n".join(expansion.fresh_lines)
+    mentions = extract_mentions(text)
+    pois: list[Poi] = []
+    blocks = (*source.dependencies, *source.recipes, *source.constructs)
+    for block in blocks:
+        for locator in block.cites:
+            visible = (
+                locator in mentions
+                if _is_dotted_name_locator(locator)
+                else locator in text
+            )
+            if not visible:
+                pois.append(
+                    _poi(
+                        "uncited-dependency",
+                        target_rel,
+                        locator,
+                        f"{block.line}|{locator}",
+                        f"`--cite {locator}` is not explicit in the compiled surface",
+                    )
+                )
+    return pois
+
+
+def _context_assembly_claims(
+    skillware: Skillware,
+) -> dict[str, set[Path]]:
+    claims: dict[str, set[Path]] = {}
+    for src_rel in skillware.src_files():
+        source = parse_skw_source(
+            (skillware.src_root / src_rel).read_text(encoding="utf-8")
+        )
+        if source.findings:
+            continue
+        for dependency in source.dependencies:
+            if not dependency.context_assembly:
+                continue
+            for locator in dependency.froms:
+                claims.setdefault(locator, set()).add(src_rel)
+    return claims
+
+
+def _context_assembly_bypass_pois(
+    target_rel: Path,
+    src_rel: Path,
+    source: SkwSource,
+    claims: dict[str, set[Path]],
+) -> list[Poi]:
+    blocks = (*source.dependencies, *source.recipes, *source.constructs)
+    dev_froms = {
+        locator for block in blocks for locator in block.dev_froms
+    }
+    dependencies = {
+        locator
+        for block in blocks
+        for _role, locator in _role_edges(block)
+    }
+    pois: list[Poi] = []
+    for locator in sorted(dependencies):
+        for assembly in sorted(claims.get(locator, set())):
+            if assembly == src_rel or assembly.as_posix() in dev_froms:
+                continue
+            pois.append(
+                _poi(
+                    "context-assembly-bypass",
+                    target_rel,
+                    locator,
+                    f"{assembly.as_posix()}|{locator}",
+                    f"dependency `{locator}` is claimed by `{assembly.as_posix()}` "
+                    f"but the surface has no `--dev-from {assembly.as_posix()}`",
+                )
+            )
+    return pois
 
 
 def _note_pois(target_rel: Path, source: SkwSource) -> list[Poi]:
@@ -1286,6 +1503,7 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
     lock = _read_lock(skillware)
     entries: list[CheckEntry] = []
     pois: list[Poi] = []
+    context_assembly_claims = _context_assembly_claims(skillware)
 
     for src_rel in skillware.src_files():
         target_rel = skillware.target_rel(src_rel)
@@ -1378,6 +1596,15 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
         )
         entries.append(entry)
         pois.extend(_dependency_sync_pois(skillware, target_rel, source, expansion))
+        pois.extend(_citation_pois(target_rel, source, expansion))
+        pois.extend(
+            _context_assembly_bypass_pois(
+                target_rel,
+                src_rel,
+                source,
+                context_assembly_claims,
+            )
+        )
         pois.extend(_note_pois(target_rel, source))
         pois.extend(_address_mismatch_pois(target_rel, source))
         if entry.status != "ok":
@@ -1430,8 +1657,7 @@ def discover_packages(project_root: Path) -> list[Path]:
     (explicit set) and `exclude` (trim). A config-only project root — a
     `.skw/` with no `src/` — is not itself a package."""
     project_root = Path(project_root).resolve()
-    config_path = _config_path(project_root)
-    config = parse_skw_config(config_path) if config_path is not None else SkwConfig()
+    config = load_project_skw_config(project_root)
     excluded = {(project_root / raw).resolve() for raw in config.exclude}
 
     roots: dict[Path, None] = {}
