@@ -1589,3 +1589,96 @@ def test_dependency_sync_findings_are_advisory() -> None:
     )
     assert {f.kind for f in findings} == {"dangling-dependency", "undeclared-dependency"}
     assert all(f.severity == ADVISORY for f in findings)
+
+
+# --- cross-package deps: the Skw.Pkg.Dependency registry (@<id>/…) ------------
+
+_PRODUCER_TEMPLATE = """# template
+
+## Body
+
+- canonical line one
+- canonical line two
+"""
+
+
+def _write_pkg_pair(root: Path, *, dep_path: str, from_locator: str) -> Path:
+    """A producer package holding a copyable region, and a consumer that pulls
+    it through the named `deps` registry. Returns the consumer root."""
+    producer = root / "producer"
+    psrc = producer / ".skw" / "src" / "references"
+    psrc.mkdir(parents=True)
+    (psrc / "template.skw.md").write_text(_PRODUCER_TEMPLATE, encoding="utf-8")
+    (producer / ".skw" / "skw.json").write_text(json.dumps({}), encoding="utf-8")
+
+    consumer = root / "consumer"
+    csrc = consumer / ".skw" / "src" / "references"
+    csrc.mkdir(parents=True)
+    (csrc / "copy.skw.md").write_text(
+        f"# copy\n\n> $kw: #body --copy --from {from_locator}\n\n> $kw. end\n",
+        encoding="utf-8",
+    )
+    (consumer / ".skw" / "skw.json").write_text(
+        json.dumps({"deps": {"producer": dep_path}}), encoding="utf-8"
+    )
+    return consumer
+
+
+def test_cross_package_dep_resolves_through_registry(tmp_path: Path) -> None:
+    consumer = _write_pkg_pair(
+        tmp_path,
+        dep_path="../producer",
+        from_locator="@<producer>/references/template.skw.md#Body",
+    )
+    expansion = expand_file(load_skillware(consumer), Path("references/copy.skw.md"))
+    assert not expansion.findings
+    fresh = "\n".join(expansion.fresh_lines)
+    assert "- canonical line one" in fresh
+    assert "- canonical line two" in fresh
+    # the lock records the LOGICAL id, not a filesystem path
+    assert list(expansion.dep_hashes["copy"]) == [
+        "@<producer>/references/template.skw.md#Body"
+    ]
+
+
+def test_cross_package_dep_layout_independent(tmp_path: Path) -> None:
+    """Moving the producer and pointing skw.json at the new location keeps the
+    dependency resolving with an unchanged logical key."""
+    consumer = _write_pkg_pair(
+        tmp_path,
+        dep_path="../producer",
+        from_locator="@<producer>/references/template.skw.md#Body",
+    )
+    build_skill(consumer)
+    assert not check_skill(consumer).pois
+
+    (tmp_path / "packages").mkdir()
+    (tmp_path / "producer").rename(tmp_path / "packages" / "producer")
+    (consumer / ".skw" / "skw.json").write_text(
+        json.dumps({"deps": {"producer": "../packages/producer"}}), encoding="utf-8"
+    )
+    assert not check_skill(consumer).pois
+
+
+def test_raw_path_escape_is_rejected(tmp_path: Path) -> None:
+    """The CT: a --from may not climb out of the package with `..`; it must go
+    through a registered dependency id."""
+    consumer = _write_pkg_pair(
+        tmp_path,
+        dep_path="../producer",
+        from_locator="../../../producer/.skw/src/references/template.skw.md#Body",
+    )
+    expansion = expand_file(load_skillware(consumer), Path("references/copy.skw.md"))
+    messages = " | ".join(f.message for f in expansion.findings)
+    assert "registered dependency id" in messages
+
+
+def test_unknown_dep_id_is_unresolvable(tmp_path: Path) -> None:
+    consumer = _write_pkg_pair(
+        tmp_path,
+        dep_path="../producer",
+        from_locator="@<ghost>/references/template.skw.md#Body",
+    )
+    expansion = expand_file(load_skillware(consumer), Path("references/copy.skw.md"))
+    messages = " | ".join(f.message for f in expansion.findings)
+    assert "unknown dependency id <ghost>" in messages

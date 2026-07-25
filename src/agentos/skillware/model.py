@@ -13,8 +13,9 @@ v2 grammar — the annotation as a *named block*. The surface grammar is the
 Features are additive `--flags`, not commands: the binding mode is a flag
 (`--derived`/`--copy`/`--pointer`), `--from` is a dependency edge, `--note`
 is a typed+anchored documentation line, `--supp` the block's own touched
-lines, `--intent` derivation context, `--cont` a generic continuation of the
-previous flag, and `--to` a reserved (parsed, inert) flag. Router rows are
+lines, `--unlock-surface` marks a context surface represented by an unlock
+registry, `--intent` derivation context, `--cont` a generic continuation of
+the previous flag, and `--to` a reserved (parsed, inert) flag. Router rows are
 nameless child blocks opened with `--when` / `--then`.
 
 **Closure is by role, in three cases** (`Closure.Parser::Skw`):
@@ -44,7 +45,8 @@ RECIPE_BINDINGS = ("derived", "copy")
 BINDING_FLAGS = ("derived", "copy", "pointer")
 ROLE_FLAGS = ("when", "then")
 VALUE_FLAGS = ("from", "intent", "to", "note", "supp", "cont")
-KNOWN_FLAGS = BINDING_FLAGS + ROLE_FLAGS + VALUE_FLAGS
+BOOLEAN_FLAGS = ("unlock-surface",)
+KNOWN_FLAGS = BINDING_FLAGS + ROLE_FLAGS + VALUE_FLAGS + BOOLEAN_FLAGS
 
 _ADDRESS_RE = re.compile(r"^[#^@]?[A-Za-z0-9_./#:^-]+$")
 _FLAG_RE = re.compile(rf"(?:^|\s)--({'|'.join(KNOWN_FLAGS)})(?=\s|$)")
@@ -170,6 +172,7 @@ class SkwConstruct:
 @dataclass(frozen=True)
 class SkwDependency:
     froms: tuple[str, ...]
+    unlock_surface: bool
     heading: str | None
     line: int
     label: str | None
@@ -327,6 +330,7 @@ class _Frame:
     decl_span: tuple[int, int]
     body_start: int
     froms: tuple[str, ...]
+    unlock_surface: bool
     intent: str | None
     notes: list[SkwNote]
     needs_end: bool
@@ -378,6 +382,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             dependencies.append(
                 SkwDependency(
                     froms=frame.froms,
+                    unlock_surface=frame.unlock_surface,
                     heading=frame.heading,
                     line=frame.line,
                     label=frame.label,
@@ -517,6 +522,10 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
         bindings = [name for name in flag_names if name in BINDING_FLAGS]
         roles = [name for name in flag_names if name in ROLE_FLAGS]
         froms = tuple(value for name, value in flags if name == "from")
+        unlock_surface_values = [
+            value for name, value in flags if name == "unlock-surface"
+        ]
+        unlock_surface = bool(unlock_surface_values)
         # a binding flag's own trailing text is derivation context, as is --intent
         intent_parts = [
             value
@@ -548,9 +557,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                 # rows peer-close, so a sibling row is legal; only a top-level
                 # row (no parent block) is orphaned
                 if not stack:
-                    findings.append(
-                        SkwFinding(index + 1, f"'{role}' outside a router")
-                    )
+                    findings.append(SkwFinding(index + 1, f"'{role}' outside a router"))
                 else:
                     peer_close_rows(index)
             command = role
@@ -568,13 +575,34 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             )
         if command == "copy" and len(froms) > 1:
             findings.append(SkwFinding(index + 1, "copy takes exactly one --from flag"))
+        if len(unlock_surface_values) > 1:
+            findings.append(
+                SkwFinding(index + 1, "--unlock-surface may appear only once")
+            )
+        if any(unlock_surface_values):
+            findings.append(SkwFinding(index + 1, "--unlock-surface takes no value"))
+        if unlock_surface and address is None:
+            findings.append(
+                SkwFinding(index + 1, "--unlock-surface requires an explicit address")
+            )
+        if unlock_surface and len(froms) != 1:
+            findings.append(
+                SkwFinding(index + 1, "--unlock-surface requires exactly one --from")
+            )
+        if unlock_surface and (verb is not None or role is not None):
+            findings.append(
+                SkwFinding(
+                    index + 1,
+                    "--unlock-surface cannot carry a binding or router role",
+                )
+            )
 
         # closure by role: a recipe or a content span (a flag-less block, incl.
         # a router parent) owns its `end`; a row peer-closes; an annotation
         # block — one carrying only `--from`/`--note`/`--supp` — self-closes at
         # its declaration, and following text stays surface.
         annotation_only = command == "text" and (
-            bool(froms) or bool(frame_notes) or verb == "pointer"
+            bool(froms) or bool(frame_notes) or verb == "pointer" or unlock_surface
         )
         needs_end = command in RECIPE_BINDINGS or (
             command == "text" and not annotation_only
@@ -600,6 +628,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             decl_span=(index, decl_end),
             body_start=decl_end,
             froms=froms,
+            unlock_surface=unlock_surface,
             intent=" ".join(intent_parts) if intent_parts else None,
             notes=frame_notes,
             needs_end=needs_end,
@@ -646,6 +675,7 @@ def parse_skw_code(text: str) -> SkwSource:
 
 __all__ = [
     "BINDING_FLAGS",
+    "BOOLEAN_FLAGS",
     "CODE_CARRIER",
     "KNOWN_FLAGS",
     "MARKDOWN_CARRIER",

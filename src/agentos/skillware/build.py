@@ -29,7 +29,6 @@ from agentos.skillware.model import (
 )
 from agentos.skwlint import (
     Poi,
-    blessed_hashes as _blessed_hashes,
     extract_mentions,
     poi as _poi,
     run_dependency_sync,
@@ -74,6 +73,7 @@ class Skillware:
     build_root: Path
     src_root: Path
     depots: tuple[Path, ...]
+    pkg_deps: dict[str, Path] = field(default_factory=dict)
     _depot_cache: dict = field(default_factory=dict, repr=False)
 
     def src_files(self) -> list[Path]:
@@ -105,21 +105,35 @@ class _DepotNameEntry:
 
 
 PROJECT_MARKER = Path(".agentos") / "project.json"
-_SKW_CONFIG_KEYS = ("depots", "surfaces", "exclude", "projects")
+_SKW_CONFIG_KEYS = (
+    "depots",
+    "deps",
+    "surfaces",
+    "exclude",
+    "projects",
+    "unlock_registries",
+)
+_UNLOCK_TOKEN_RE = re.compile(r"^skw-unlock:[0-9a-f]{12,64}$")
 
 
 @dataclass(frozen=True)
 class SkwConfig:
     """A `skw.json` — the same schema at project and package scope.
 
-    All keys optional: `depots` (resolution roots), `surfaces` (managed set;
-    empty → discover), `exclude` (trim), `projects` (sibling project roots
-    whose project-level depots extend cross-repo resolution)."""
+    All keys optional: `depots` (resolution roots), `deps` (the named
+    `Skw.Pkg.Dependency` registry — `id → package-root`, serving both the
+    concept domain, folded into the depot search, and the file domain,
+    addressed as `@<id>/…`), `surfaces` (managed set; empty → discover),
+    `exclude` (trim), `projects` (sibling project roots whose project-level
+    depots extend cross-repo resolution), and `unlock_registries` (explicit
+    Poi.Unlock.Token registry files)."""
 
     depots: tuple[str, ...] = ()
+    deps: dict[str, str] = field(default_factory=dict)
     surfaces: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
     projects: tuple[str, ...] = ()
+    unlock_registries: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
 
 
@@ -128,21 +142,233 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
     if not isinstance(raw, dict):
         raise SkillwareError(f"skw config is not a JSON object: {config_path}")
     warnings = tuple(
-        f"unknown skw.json key `{key}` in {config_path}" for key in raw if key not in _SKW_CONFIG_KEYS
+        f"unknown skw.json key `{key}` in {config_path}"
+        for key in raw
+        if key not in _SKW_CONFIG_KEYS
     )
 
     def _list(key: str) -> tuple[str, ...]:
         value = raw.get(key, [])
         if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
-            raise SkillwareError(f"skw.json `{key}` must be a list of strings: {config_path}")
+            raise SkillwareError(
+                f"skw.json `{key}` must be a list of strings: {config_path}"
+            )
         return tuple(value)
+
+    def _map(key: str) -> dict[str, str]:
+        value = raw.get(key, {})
+        if not isinstance(value, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+        ):
+            raise SkillwareError(
+                f"skw.json `{key}` must be an object of string→string: {config_path}"
+            )
+        return dict(value)
 
     return SkwConfig(
         depots=_list("depots"),
+        deps=_map("deps"),
         surfaces=_list("surfaces"),
         exclude=_list("exclude"),
         projects=_list("projects"),
+        unlock_registries=_list("unlock_registries"),
         warnings=warnings,
+    )
+
+
+@dataclass(frozen=True)
+class UnlockRequirement:
+    token: str
+    surface: str
+    registry: Path
+
+
+@dataclass(frozen=True)
+class _UnlockKindRequirement(UnlockRequirement):
+    kind: str
+
+
+def _parse_unlock_registry(
+    registry_path: Path,
+) -> tuple[_UnlockKindRequirement, ...]:
+    try:
+        raw = json.loads(registry_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SkillwareError(
+            f"cannot read unlock registry {registry_path}: {exc}"
+        ) from exc
+    if not isinstance(raw, dict):
+        raise SkillwareError(f"unlock registry is not a JSON object: {registry_path}")
+    if set(raw) != {"schema_version", "tokens"}:
+        raise SkillwareError(
+            f"unlock registry must contain exactly schema_version and tokens: {registry_path}"
+        )
+    if raw["schema_version"] != 1:
+        raise SkillwareError(
+            f"unsupported unlock registry schema_version in {registry_path}: "
+            f"{raw['schema_version']!r}"
+        )
+    entries = raw["tokens"]
+    if not isinstance(entries, list):
+        raise SkillwareError(f"unlock registry tokens must be a list: {registry_path}")
+
+    requirements: list[_UnlockKindRequirement] = []
+    seen_tokens: set[str] = set()
+    seen_surfaces: set[str] = set()
+    for index, entry in enumerate(entries):
+        where = f"{registry_path} tokens[{index}]"
+        if not isinstance(entry, dict) or set(entry) != {"token", "surface", "unlocks"}:
+            raise SkillwareError(
+                f"{where} must contain exactly token, surface, and unlocks"
+            )
+        token = entry["token"]
+        surface = entry["surface"]
+        unlocks = entry["unlocks"]
+        if not isinstance(token, str) or _UNLOCK_TOKEN_RE.fullmatch(token) is None:
+            raise SkillwareError(
+                f"{where} token must match skw-unlock:<12-64 lowercase hex>"
+            )
+        if not isinstance(surface, str) or not surface.strip():
+            raise SkillwareError(f"{where} surface must be a non-empty string")
+        if token in seen_tokens:
+            raise SkillwareError(f"duplicate unlock token: {token}")
+        if surface in seen_surfaces:
+            raise SkillwareError(
+                f"duplicate unlock surface: {surface} ({registry_path})"
+            )
+        seen_tokens.add(token)
+        seen_surfaces.add(surface)
+        if (
+            not isinstance(unlocks, list)
+            or not unlocks
+            or not all(isinstance(kind, str) and kind for kind in unlocks)
+            or len(unlocks) != len(set(unlocks))
+        ):
+            raise SkillwareError(
+                f"{where} unlocks must be a non-empty list of unique POI kinds"
+            )
+        requirements.extend(
+            _UnlockKindRequirement(
+                token=token,
+                surface=surface,
+                registry=registry_path,
+                kind=kind,
+            )
+            for kind in unlocks
+        )
+    return tuple(requirements)
+
+
+def _split_unlock_surface(surface: str, registry_path: Path) -> tuple[Path, str]:
+    separators = [separator for separator in ("^", "#") if separator in surface]
+    if len(separators) != 1:
+        raise SkillwareError(
+            f"unlock surface must be one addressed source locator: "
+            f"{surface} ({registry_path})"
+        )
+    separator = separators[0]
+    path_part, address_part = surface.split(separator, 1)
+    if not path_part or not address_part:
+        raise SkillwareError(
+            f"unlock surface must include a source path and address: "
+            f"{surface} ({registry_path})"
+        )
+    return Path(path_part), f"{separator}{address_part}"
+
+
+def _validate_unlock_surface(requirement: UnlockRequirement) -> None:
+    registry_path = requirement.registry
+    if registry_path.parent.name != BUILD_DIR:
+        raise SkillwareError(
+            f"unlock registry must live at <package>/{BUILD_DIR}/: {registry_path}"
+        )
+    owner = registry_path.parent.parent
+    source_rel, address = _split_unlock_surface(requirement.surface, registry_path)
+    source_path = owner / BUILD_DIR / "src" / source_rel
+    if not source_path.is_file():
+        raise SkillwareError(
+            f"unlock surface source not found: {requirement.surface} "
+            f"(registry: {registry_path})"
+        )
+    source = parse_skw_source(source_path.read_text(encoding="utf-8"))
+    if source.findings:
+        first = source.findings[0]
+        raise SkillwareError(
+            f"unlock surface does not parse: {requirement.surface}:{first.line}: "
+            f"{first.message}"
+        )
+    matches = [
+        dependency
+        for dependency in source.dependencies
+        if dependency.address == address and dependency.unlock_surface
+    ]
+    if not matches:
+        raise SkillwareError(
+            f"unlock surface is not marked --unlock-surface: "
+            f"{requirement.surface} (registry: {registry_path})"
+        )
+    dependency = matches[0]
+    back_references = []
+    for raw in dependency.froms:
+        for base in (owner / BUILD_DIR / "src", owner):
+            candidate = (base / raw).resolve()
+            if candidate.is_file():
+                back_references.append(candidate)
+                break
+    if registry_path.resolve() not in back_references:
+        raise SkillwareError(
+            f"unlock surface does not --from its registry: "
+            f"{requirement.surface} (registry: {registry_path})"
+        )
+
+
+def _all_unlock_requirements(skill_root: Path) -> tuple[_UnlockKindRequirement, ...]:
+    skill_root = Path(skill_root)
+    build_root = resolve_build_root(skill_root)
+    settings_path = _settings_path(build_root)
+    if settings_path is None:
+        return ()
+    config = parse_skw_config(settings_path)
+    requirements: list[_UnlockKindRequirement] = []
+    for raw_registry in config.unlock_registries:
+        registry_path = (skill_root / raw_registry).resolve()
+        if not registry_path.is_file():
+            raise SkillwareError(
+                f"configured unlock registry is not a file: {raw_registry}"
+            )
+        requirements.extend(_parse_unlock_registry(registry_path))
+
+    token_surfaces: dict[str, tuple[Path, str]] = {}
+    surface_tokens: dict[tuple[Path, str], str] = {}
+    validated: set[tuple[Path, str]] = set()
+    for requirement in requirements:
+        surface_key = (requirement.registry, requirement.surface)
+        prior_surface = token_surfaces.setdefault(requirement.token, surface_key)
+        if prior_surface != surface_key:
+            raise SkillwareError(f"duplicate unlock token: {requirement.token}")
+        prior_token = surface_tokens.setdefault(surface_key, requirement.token)
+        if prior_token != requirement.token:
+            raise SkillwareError(
+                f"duplicate unlock surface: {requirement.surface} "
+                f"({requirement.registry})"
+            )
+        if surface_key not in validated:
+            _validate_unlock_surface(requirement)
+            validated.add(surface_key)
+    return tuple(requirements)
+
+
+def unlock_requirements(
+    skill_root: Path, poi_kind: str
+) -> tuple[UnlockRequirement, ...]:
+    return tuple(
+        UnlockRequirement(
+            token=requirement.token,
+            surface=requirement.surface,
+            registry=requirement.registry,
+        )
+        for requirement in _all_unlock_requirements(skill_root)
+        if requirement.kind == poi_kind
     )
 
 
@@ -191,18 +417,38 @@ def load_skillware(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> Ski
     if not src_root.is_dir():
         raise SkillwareError(f"not a skw package (no {BUILD_DIR}/src): {skill_root}")
     depots: list[Path] = []
+    pkg_deps: dict[str, Path] = {}
     settings_path = _settings_path(build_root)
     if settings_path is not None:
-        for raw_depot in parse_skw_config(settings_path).depots:
+        config = parse_skw_config(settings_path)
+        for raw_depot in config.depots:
             depot = (skill_root / raw_depot).resolve()
             if not depot.is_dir():
-                raise SkillwareError(f"configured depot is not a directory: {raw_depot}")
+                raise SkillwareError(
+                    f"configured depot is not a directory: {raw_depot}"
+                )
             depots.append(depot)
+        # the named `deps` registry serves both domains: each package root is a
+        # concept depot (folded into the search below) and the target of an
+        # `@<id>/…` file locator (Skw.Pkg.Dependency).
+        for dep_id, raw_root in config.deps.items():
+            dep_root = (skill_root / raw_root).resolve()
+            if not dep_root.is_dir():
+                raise SkillwareError(
+                    f"configured dep `{dep_id}` is not a directory: {raw_root}"
+                )
+            pkg_deps[dep_id] = dep_root
+            if dep_root not in depots:
+                depots.append(dep_root)
     for depot in extra_depots:
         if depot not in depots:
             depots.append(depot)
     return Skillware(
-        skill_root=skill_root, build_root=build_root, src_root=src_root, depots=tuple(depots)
+        skill_root=skill_root,
+        build_root=build_root,
+        src_root=src_root,
+        depots=tuple(depots),
+        pkg_deps=pkg_deps,
     )
 
 
@@ -223,7 +469,9 @@ def expand_file(skillware: Skillware, src_rel: Path) -> Expansion:
         for locator in recipe.froms:
             lines, detail = _resolve_locator(skillware, locator, stack=(src_rel,))
             if lines is None:
-                findings.append(SkwFinding(recipe.line, f"unresolvable from: {locator} ({detail})"))
+                findings.append(
+                    SkwFinding(recipe.line, f"unresolvable from: {locator} ({detail})")
+                )
                 recipe_deps[locator] = None
                 continue
             recipe_deps[locator] = content_hash(lines)
@@ -243,7 +491,9 @@ def expand_file(skillware: Skillware, src_rel: Path) -> Expansion:
     )
 
 
-def _expand_lines(skillware: Skillware, src_rel: Path, stack: tuple[Path, ...]) -> tuple[list[str], list[SkwFinding]]:
+def _expand_lines(
+    skillware: Skillware, src_rel: Path, stack: tuple[Path, ...]
+) -> tuple[list[str], list[SkwFinding]]:
     if src_rel in stack:
         chain = " -> ".join(str(entry) for entry in (*stack, src_rel))
         return [], [SkwFinding(0, f"import cycle: {chain}")]
@@ -256,21 +506,76 @@ def _expand_lines(skillware: Skillware, src_rel: Path, stack: tuple[Path, ...]) 
     for recipe in source.recipes:
         if recipe.verb != "copy":
             continue
-        lines, detail = _resolve_locator(skillware, recipe.froms[0], stack=(*stack, src_rel)) if recipe.froms else (None, "no from")
+        lines, detail = (
+            _resolve_locator(skillware, recipe.froms[0], stack=(*stack, src_rel))
+            if recipe.froms
+            else (None, "no from")
+        )
         if lines is None:
-            findings.append(SkwFinding(recipe.line, f"{src_rel}: unresolvable from: {recipe.froms[0] if recipe.froms else '?'} ({detail})"))
+            findings.append(
+                SkwFinding(
+                    recipe.line,
+                    f"{src_rel}: unresolvable from: {recipe.froms[0] if recipe.froms else '?'} ({detail})",
+                )
+            )
             continue
         resolved_copies[recipe.body_span] = lines
     return _emit(source, resolved_copies, keep_machinery=False), findings
 
 
+_PKG_DEP_RE = re.compile(r"^@<([^<>/]+)>/(.+)$")
+
+_ESCAPE_DETAIL = (
+    "cross-package --from must go through a registered dependency id "
+    "(@<id>/…), not a path leaving the package"
+)
+
+
+def _escapes(path_part: str) -> bool:
+    """A file locator whose path leaves the package — absolute, or climbing out
+    with `..`. The only sanctioned way across the boundary is `@<id>/…`."""
+    parts = Path(path_part)
+    return parts.is_absolute() or ".." in parts.parts
+
+
+def _target_skillware(skillware: Skillware, pkg_root: Path) -> Skillware | None:
+    key = ("pkgskw", pkg_root)
+    cached = skillware._depot_cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        target = load_skillware(pkg_root)
+    except SkillwareError:
+        return None
+    skillware._depot_cache[key] = target
+    return target
+
+
 def _resolve_locator(
     skillware: Skillware, locator: str, *, stack: tuple[Path, ...]
 ) -> tuple[list[str] | None, str | None]:
+    locator = locator.strip()
+
+    # cross-package: a registered dependency id resolves through skw.json `deps`
+    # to a package root, then the tail resolves inside that package's own src —
+    # the only legal way for a --from to leave the package (Skw.Pkg.Dependency).
+    pkg_match = _PKG_DEP_RE.match(locator)
+    if pkg_match:
+        dep_id, tail = pkg_match.group(1), pkg_match.group(2)
+        pkg_root = skillware.pkg_deps.get(dep_id)
+        if pkg_root is None:
+            return None, f"unknown dependency id <{dep_id}>: declare it in skw.json `deps`"
+        target = _target_skillware(skillware, pkg_root)
+        if target is None:
+            return None, f"dependency id <{dep_id}> is not a skw package: {pkg_root}"
+        return _resolve_locator(target, tail, stack=(Path("."),))
+
     if "^" in locator and "#" not in locator:
         path_part, label = locator.split("^", 1)
         path_part = path_part.strip()
         label = label.strip()
+        if path_part and _escapes(path_part):
+            return None, _ESCAPE_DETAIL
         src_rel = Path(path_part) if path_part else stack[-1]
         path = skillware.src_root / src_rel
         if not path.is_file():
@@ -285,6 +590,8 @@ def _resolve_locator(
     path_part = path_part.strip()
 
     if "/" in path_part or path_part.endswith(".md"):
+        if _escapes(path_part):
+            return None, _ESCAPE_DETAIL
         if path_part.endswith(SRC_SUFFIX):
             src_rel = Path(path_part)
             if not (skillware.src_root / src_rel).is_file():
@@ -434,9 +741,9 @@ def _labeled_span(
         if recipe.label == label and recipe.verb == "copy" and recipe.froms:
             # a labeled copy resolves to its target, fresh — same semantics as regions
             return _resolve_locator(skillware, recipe.froms[0], stack=stack)
-    spans = [
-        (r.label, r.body) for r in source.recipes
-    ] + [(c.label, c.body) for c in source.constructs]
+    spans = [(r.label, r.body) for r in source.recipes] + [
+        (c.label, c.body) for c in source.constructs
+    ]
     for span_label, body in spans:
         if span_label != label:
             continue
@@ -558,7 +865,9 @@ class BuildReport:
 @dataclass(frozen=True)
 class CheckEntry:
     target: Path
-    status: str  # ok | never-built | stale-build | hand-edited | parse-error | unresolvable
+    status: (
+        str  # ok | never-built | stale-build | hand-edited | parse-error | unresolvable
+    )
     copy_drift: tuple[str, ...]
     derived_stale: tuple[str, ...]
 
@@ -588,7 +897,9 @@ _LEGACY_CALLOUT_RE = re.compile(r"^>\s*\[!skw\]")
 
 
 def _write_lock(skillware: Skillware, lock: dict) -> None:
-    _lock_path(skillware).write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+    _lock_path(skillware).write_text(
+        json.dumps(lock, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def _append_poi_blessing(skillware: Skillware, poi: Poi) -> None:
@@ -631,8 +942,12 @@ def _read_lock(skillware: Skillware) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _recipe_states(skillware: Skillware, src_rel: Path, expansion: Expansion) -> list[dict]:
-    source = parse_skw_source((skillware.src_root / src_rel).read_text(encoding="utf-8"))
+def _recipe_states(
+    skillware: Skillware, src_rel: Path, expansion: Expansion
+) -> list[dict]:
+    source = parse_skw_source(
+        (skillware.src_root / src_rel).read_text(encoding="utf-8")
+    )
     states = []
     for recipe in source.recipes:
         key = recipe_key(recipe)
@@ -647,7 +962,9 @@ def _recipe_states(skillware: Skillware, src_rel: Path, expansion: Expansion) ->
     return states
 
 
-def _match_locked_derived(entries: list[dict], key: str, body_sha256: str) -> dict | None:
+def _match_locked_derived(
+    entries: list[dict], key: str, body_sha256: str
+) -> dict | None:
     """Locked state for a derived recipe: by key, else by unchanged body.
 
     The body-hash fallback keeps lock continuity when positional keys shift
@@ -704,11 +1021,17 @@ def build_skill(skill_root: Path) -> BuildReport:
         # derived dep hashes persist until the derived body itself changes:
         # build never blesses a stale derived body — only a re-derive does.
         recipes = _recipe_states(skillware, src_rel, expansion)
-        old_entries = old_lock.get("files", {}).get(str(expansion.target_rel), {}).get("recipes", [])
+        old_entries = (
+            old_lock.get("files", {})
+            .get(str(expansion.target_rel), {})
+            .get("recipes", [])
+        )
         for state in recipes:
             if state["verb"] != "derived":
                 continue
-            old = _match_locked_derived(old_entries, state["heading"], state["body_sha256"])
+            old = _match_locked_derived(
+                old_entries, state["heading"], state["body_sha256"]
+            )
             if old is not None:
                 state["deps"] = old.get("deps", state["deps"])
 
@@ -717,10 +1040,14 @@ def build_skill(skill_root: Path) -> BuildReport:
             "recipes": recipes,
         }
         entries.append(
-            BuildEntry(target=expansion.target_rel, action=action, src_refreshed=src_refreshed)
+            BuildEntry(
+                target=expansion.target_rel, action=action, src_refreshed=src_refreshed
+            )
         )
 
-    _lock_path(skillware).write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+    _lock_path(skillware).write_text(
+        json.dumps(lock, indent=2) + "\n", encoding="utf-8"
+    )
     (skillware.build_root / AGENTS_NAME).write_text(AGENTS_MD_TEXT, encoding="utf-8")
     return BuildReport(entries=tuple(entries), findings=tuple(findings))
 
@@ -1024,7 +1351,8 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
                     continue  # new or re-derived body: stale-build covers the rebuild
                 current = expansion.dep_hashes.get(key, {})
                 if any(
-                    current.get(locator) != sha for locator, sha in old.get("deps", {}).items()
+                    current.get(locator) != sha
+                    for locator, sha in old.get("deps", {}).items()
                 ):
                     derived_stale.append(key)
 
@@ -1053,7 +1381,9 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
         pois.extend(_note_pois(target_rel, source))
         pois.extend(_address_mismatch_pois(target_rel, source))
         if entry.status != "ok":
-            pois.append(_poi(entry.status, target_rel, None, entry.status, entry.status))
+            pois.append(
+                _poi(entry.status, target_rel, None, entry.status, entry.status)
+            )
         for key in entry.copy_drift:
             pois.append(
                 _poi(
@@ -1061,7 +1391,7 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
                     target_rel,
                     key,
                     json.dumps(expansion.dep_hashes.get(key, {}), sort_keys=True),
-                    f"copy body no longer equals its target's expansion",
+                    "copy body no longer equals its target's expansion",
                 )
             )
         for key in entry.derived_stale:
@@ -1079,7 +1409,9 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
 
     pois.extend(_code_surface_pois(skillware.skill_root))
 
-    return CheckReport(entries=tuple(entries), pois=tuple(_suppress_blessed(lock, pois)))
+    return CheckReport(
+        entries=tuple(entries), pois=tuple(_suppress_blessed(lock, pois))
+    )
 
 
 @dataclass(frozen=True)
@@ -1127,12 +1459,45 @@ def check_project(project_root: Path) -> ProjectCheckReport:
     project_root = Path(project_root).resolve()
     extra = tuple(resolve_project_depots(project_root))
     packages = tuple(
-        (pkg, check_skill(pkg, extra_depots=extra)) for pkg in discover_packages(project_root)
+        (pkg, check_skill(pkg, extra_depots=extra))
+        for pkg in discover_packages(project_root)
     )
     return ProjectCheckReport(project_root=project_root, packages=packages)
 
 
-def bless_skill(skill_root: Path, poi_hash: str) -> BlessRecord:
+def _require_unlock_receipts(
+    skill_root: Path,
+    poi_kind: str,
+    unlocks: tuple[str, ...],
+    *,
+    poi_hash: str | None = None,
+) -> None:
+    provided = set(unlocks)
+    missing = [
+        requirement
+        for requirement in unlock_requirements(skill_root, poi_kind)
+        if requirement.token not in provided
+    ]
+    if not missing:
+        return
+    subject = f"POI {poi_hash} ({poi_kind})" if poi_hash else f"POI kind {poi_kind}"
+    surfaces = "\n".join(
+        f"- {requirement.surface} (registry: {requirement.registry})"
+        for requirement in missing
+    )
+    raise SkillwareError(
+        f"{subject} requires unlock token(s) from these context surfaces:\n"
+        f"{surfaces}\n"
+        "read every surface and provide each receipt with --unlock <token>"
+    )
+
+
+def bless_skill(
+    skill_root: Path,
+    poi_hash: str,
+    *,
+    unlocks: tuple[str, ...] = (),
+) -> BlessRecord:
     """`Poi.Bless`: accept a current POI's situation as correct.
 
     `derived-stale` updates the locked dependency hashes. Suppressible linter
@@ -1143,18 +1508,26 @@ def bless_skill(skill_root: Path, poi_hash: str) -> BlessRecord:
     match = next((p for p in report.pois if p.poi_hash == poi_hash), None)
     if match is None:
         raise SkillwareError(f"no POI with hash {poi_hash} in the current check")
-    if match.kind in SUPPRESSIBLE_KINDS:
-        _append_poi_blessing(skillware, match)
-        return BlessRecord(target=match.target, key=match.key or "", deps={})
-    if match.kind not in BLESSABLE_KINDS:
-        accepted = (*BLESSABLE_KINDS, *SUPPRESSIBLE_KINDS)
+    accepted = (*BLESSABLE_KINDS, *SUPPRESSIBLE_KINDS)
+    if match.kind not in accepted:
         raise SkillwareError(
             f"POI {poi_hash} ({match.kind}) is not blessable — only "
             f"{', '.join(accepted)} can be accepted; fix the surface instead"
         )
+    _require_unlock_receipts(
+        skill_root,
+        match.kind,
+        unlocks,
+        poi_hash=poi_hash,
+    )
+    if match.kind in SUPPRESSIBLE_KINDS:
+        _append_poi_blessing(skillware, match)
+        return BlessRecord(target=match.target, key=match.key or "", deps={})
 
     src_rel = next(
-        rel for rel in skillware.src_files() if skillware.target_rel(rel) == match.target
+        rel
+        for rel in skillware.src_files()
+        if skillware.target_rel(rel) == match.target
     )
     expansion = expand_file(skillware, src_rel)
     current = expansion.dep_hashes.get(match.key, {})
@@ -1170,7 +1543,9 @@ def bless_skill(skill_root: Path, poi_hash: str) -> BlessRecord:
         None,
     )
     if recipe_entry is None:
-        raise SkillwareError(f"no locked derived recipe for {match.target} :: {match.key}")
+        raise SkillwareError(
+            f"no locked derived recipe for {match.target} :: {match.key}"
+        )
     old_deps = dict(recipe_entry.get("deps", {}))
     recipe_entry["deps"] = current
     _write_lock(skillware, lock)
@@ -1184,7 +1559,12 @@ def bless_skill(skill_root: Path, poi_hash: str) -> BlessRecord:
     )
 
 
-def bless_pois_by_kind(skill_root: Path, kind: str) -> tuple[Poi, ...]:
+def bless_pois_by_kind(
+    skill_root: Path,
+    kind: str,
+    *,
+    unlocks: tuple[str, ...] = (),
+) -> tuple[Poi, ...]:
     """Bless all currently visible POIs of one kind."""
     accepted = (*BLESSABLE_KINDS, *SUPPRESSIBLE_KINDS)
     if kind not in accepted:
@@ -1193,6 +1573,8 @@ def bless_pois_by_kind(skill_root: Path, kind: str) -> tuple[Poi, ...]:
         )
     report = check_skill(skill_root)
     matches = tuple(poi for poi in report.pois if poi.kind == kind)
+    if matches:
+        _require_unlock_receipts(skill_root, kind, unlocks)
     if kind in SUPPRESSIBLE_KINDS:
         skillware = load_skillware(skill_root)
         lock = _read_lock(skillware)
@@ -1213,7 +1595,7 @@ def bless_pois_by_kind(skill_root: Path, kind: str) -> tuple[Poi, ...]:
         _write_lock(skillware, lock)
         return matches
     for poi in matches:
-        bless_skill(skill_root, poi.poi_hash)
+        bless_skill(skill_root, poi.poi_hash, unlocks=unlocks)
     return matches
 
 
@@ -1226,6 +1608,7 @@ __all__ += [
     "CheckReport",
     "Poi",
     "SUPPRESSIBLE_KINDS",
+    "UnlockRequirement",
     "bless_pois_by_kind",
     "bless_skill",
     "build_skill",
@@ -1233,4 +1616,5 @@ __all__ += [
     "extract_mentions",
     "resolve_dotted_name_canonical",
     "resolve_mentions",
+    "unlock_requirements",
 ]
