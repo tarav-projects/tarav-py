@@ -1375,6 +1375,8 @@ LINE_UNLINKED = "Index.Linter/Line.Unlinked"
 CHECK_LINE_UNLINKED = "Index.Linter/Line.Unlinked"
 BLOCK_UNGROUNDED = "Index.Linter/Block.Ungrounded"
 CHECK_BLOCK_UNGROUNDED = "Index.Linter/Block.Ungrounded"
+REVIEWED_CITE_CLOSURE = "Index.Linter/Reviewed.Cite.Closure"
+CHECK_REVIEWED_CITE_CLOSURE = "Index.Linter/Reviewed.Cite.Closure"
 
 # act codes: keep aligned with `Line.Type.Vocabulary` in the agentos-pkg index
 _LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX", "GR")
@@ -1655,6 +1657,69 @@ def _parsed_documents_by_kind(state: LinterState, surface_kind: str) -> list[Ind
     ]
 
 
+def _agendix_block_paths(state: LinterState) -> set[str]:
+    """The `Block.Path`s of every real agendix candidate block in the depot.
+
+    A reviewed cite violates the closure only when it addresses one of these — a
+    specific agendix block, i.e. an actual cite of unreviewed content. This
+    resolves against real blocks, so a definition that merely *names* the
+    agendix (a placeholder `Concept.X/Agendix/...`, or a bare `agendix/…md` file
+    mention) points at no real block and does not violate."""
+    blocks: set[str] = set()
+    for document in state.parsed_documents:
+        if document.surface_kind != "agendix":
+            continue
+        for node in document.nodes:
+            if isinstance(node, BlockHeading):
+                path = str(node.parsed.get("path", "")).strip()
+                if path:
+                    blocks.add(path)
+    return blocks
+
+
+def _check_reviewed_cite_closure(state: LinterState) -> list[LinterFinding]:
+    """`Reviewed.Cite.Closure`: a reviewed surface may not cite the agendix.
+
+    Surface-level v1: the agendix is the sole unreviewed surface, so a reviewed
+    line (`chapter`/`appendix`) that addresses a real agendix candidate block by
+    its `Block.Path` is the forbidden reviewed->unreviewed edge. Directional
+    (agendix->reviewed stays legal) and an error — not blessable: the fix is to
+    promote the target into the reviewed index, or drop the cite. Naming the
+    agendix surface (a bare `agendix/…md` file mention, as its definition does)
+    is not a content cite and does not violate.
+    """
+    findings: list[LinterFinding] = []
+    _ensure_parsed_documents(state)
+    agendix_blocks = _agendix_block_paths(state)
+    if not agendix_blocks:
+        return findings
+    for document, line in parsed_linter_kernel_lines(state):
+        if document.surface_kind not in {"chapter", "appendix"}:
+            continue  # only reviewed surfaces are bound by the closure
+        for span in line.spans:
+            if span.kind != "file_mention":
+                continue
+            value = str(span.parsed.get("value", ""))
+            if value not in agendix_blocks:
+                continue  # not a real agendix block cite (naming / placeholder)
+            findings.append(
+                LinterFinding(
+                    severity="error",
+                    code=REVIEWED_CITE_CLOSURE,
+                    path=state.rel_path(line.path) if line.path else ".",
+                    line=line.start_line,
+                    message=(
+                        f"Reviewed surface cites an agendix target `{value}` — "
+                        "Reviewed.Cite.Closure forbids a reviewed line citing the "
+                        "unreviewed agendix; promote the target into the reviewed "
+                        "index, or drop the cite."
+                    ),
+                    details={"target": value, "surface_kind": document.surface_kind},
+                )
+            )
+    return findings
+
+
 CHECKS: tuple[LinterCheck, ...] = (
     LinterCheck(
         code=CHECK_CONFIG_SURFACES,
@@ -1793,5 +1858,11 @@ CHECKS: tuple[LinterCheck, ...] = (
         title="Ungrounded concept blocks",
         gate=_needs_valid_surface,
         run=_check_block_ungrounded,
+    ),
+    LinterCheck(
+        code=CHECK_REVIEWED_CITE_CLOSURE,
+        title="Reviewed surfaces do not cite the agendix",
+        gate=_needs_valid_surface,
+        run=_check_reviewed_cite_closure,
     ),
 )
