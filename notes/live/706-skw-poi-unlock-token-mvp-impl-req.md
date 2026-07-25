@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Scope:** implement the first general `Poi.Unlock.Token` gate for `agentos skw bless`, including registry-backed requirements, machine-checkable `--unlock-surface` annotations, multiple required tokens, clear missing-token failures, CLI receipts, and a disposable `skw-testground/` E2E.
-- **Status:** READY. The design is settled in `agentos-pkg/design/107-design.md` under `Poi.Unlock.Token`; this request implements the smallest end-to-end level.
+- **Status:** IMPLEMENTED. The design is settled in `agentos-pkg/design/107-design.md` under `Poi.Unlock.Token`; the smallest end-to-end level is now live.
 - **Authority:** the user authorized autonomous development with `$agentos-hugentics-impl --dev --auto`. ^c20260723-17u
 - **Out of scope:** `Poi.Bless.Question`; claims that a token proves understanding; token secrecy or adversarial protection; production adoption by real Agentos skills; automatic registry discovery across arbitrary depots; changing which POI kinds are blessable.
 
@@ -55,11 +55,11 @@
 
 ## Slice Status
 
-- Slice 1 — pending
-- Slice 2 — pending
-- Slice 3 — pending
-- Slice 4 — pending
-- Slice 5 — pending
+- Slice 1 — complete; parser marker and malformed-combination tests green
+- Slice 2 — complete; strict schema-v1 registry, multiplicity, and bidirectional annotation validation green
+- Slice 3 — complete; single and bulk blessing refuse before mutation until every receipt is present
+- Slice 4 — complete; check surfaces requirements without tokens and CLI accepts repeatable `--unlock`
+- Slice 5 — complete; ignored two-package `skw-testground/` proved missing, partial, complete, and cleared states
 
 ## Impl.Agendix
 
@@ -71,4 +71,9 @@
 
 ## Impl.Log
 
-- Opened from a clean `agentos-py` worktree at `cbdacb9`.
+- Execution authorized by the user turn anchored at `^c20260723-17u`.
+- Checkpoint `90b95d5` preserved the clean `agentos-py` implementation floor and this request.
+- Checkpoint `d4f7c69` preserved the pre-existing `agentos-md` Skillware lock state before operational documentation edits.
+- The live testground emitted `derived-stale` POI `2a887f307e` with two required context surfaces. Zero receipts named both missing surfaces; one receipt named only the remaining surface; both receipts blessed; the following check returned zero POIs.
+- Operational language and bless guidance were updated in the `agentos-skillware` src and rebuilt. Its own check is clean for the touched surfaces; one unrelated pre-existing `references/doctrine.md :: The Model` `derived-stale` POI remains untouched.
+- Verification: `uv run ruff check src/agentos/skillware tests/test_skw_unlock_tokens.py`; full suite `485 passed`.

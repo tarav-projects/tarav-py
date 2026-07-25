@@ -17,6 +17,7 @@ from agentos.skillware.build import (
     expand_file,
     find_project_root,
     load_skillware,
+    unlock_requirements,
 )
 from agentos.skillware.model import parse_skw_source
 
@@ -112,7 +113,8 @@ def _cmd_skillware_build(args: argparse.Namespace) -> int:
             for entry in report.entries
         ],
         "findings": [
-            {"line": finding.line, "message": finding.message} for finding in report.findings
+            {"line": finding.line, "message": finding.message}
+            for finding in report.findings
         ],
     }
     exit_code = 1 if report.findings else 0
@@ -158,7 +160,12 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
                 if pkg != report.project_root
                 else ".",
                 "pois": [
-                    {"kind": poi.kind, "target": str(poi.target), "key": poi.key, "hash": poi.poi_hash}
+                    {
+                        "kind": poi.kind,
+                        "target": str(poi.target),
+                        "key": poi.key,
+                        "hash": poi.poi_hash,
+                    }
                     for poi in pois
                 ],
             }
@@ -172,7 +179,11 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
         return exit_code
     print(f"skw check (project scope): {report.project_root}")
     for pkg, pois in package_pois:
-        rel = pkg.relative_to(report.project_root) if pkg != report.project_root else Path(".")
+        rel = (
+            pkg.relative_to(report.project_root)
+            if pkg != report.project_root
+            else Path(".")
+        )
         print(f"- {rel}: {len(pois)} POI(s)")
         for poi in pois:
             location = f"{poi.target} :: {poi.key}" if poi.key else str(poi.target)
@@ -253,6 +264,10 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
         raise CliError(str(exc)) from exc
     enabled, known = _enabled_poi_selectors(args)
     pois = _filter_pois(report.pois, enabled, known)
+    requirements_by_kind = {
+        kind: unlock_requirements(Path(args.skill), kind)
+        for kind in {poi.kind for poi in pois}
+    }
     payload = {
         "command": "agentos skw check",
         "skill": str(args.skill),
@@ -272,6 +287,13 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
                 "key": poi.key,
                 "hash": poi.poi_hash,
                 "detail": poi.detail,
+                "unlock_requirements": [
+                    {
+                        "surface": requirement.surface,
+                        "registry": str(requirement.registry),
+                    }
+                    for requirement in requirements_by_kind[poi.kind]
+                ],
             }
             for poi in pois
         ],
@@ -293,19 +315,33 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
             print(f"- {kind} — {meaning}; {response}")
         print("POIs:")
         for poi in pois:
-            location = f"{poi.target} :: {poi.key}" if poi.key else f"{poi.target} :: {poi.detail}"
+            location = (
+                f"{poi.target} :: {poi.key}"
+                if poi.key
+                else f"{poi.target} :: {poi.detail}"
+            )
             print(f"- [{poi.kind}] {location} ({poi.poi_hash})")
+            for requirement in requirements_by_kind[poi.kind]:
+                print(
+                    f"  - requires context: {requirement.surface} "
+                    f"(registry: {requirement.registry})"
+                )
     print(f"Summary: {len(report.entries)} file(s), {len(pois)} POI(s).")
     return exit_code
 
 
 def _cmd_skillware_bless(args: argparse.Namespace) -> int:
     _load(args)
+    unlocks = tuple(getattr(args, "unlock", ()) or ())
     if getattr(args, "all", False) or getattr(args, "kind", None):
         if not args.all or not args.kind:
             raise CliError("bulk bless requires both --kind <poi-kind> and --all")
         try:
-            records = bless_pois_by_kind(Path(args.skill), args.kind)
+            records = bless_pois_by_kind(
+                Path(args.skill),
+                args.kind,
+                unlocks=unlocks,
+            )
         except SkillwareError as exc:
             raise CliError(str(exc)) from exc
         payload = {
@@ -332,7 +368,7 @@ def _cmd_skillware_bless(args: argparse.Namespace) -> int:
     if not args.poi:
         raise CliError("bless requires --poi <hash> or --kind <poi-kind> --all")
     try:
-        record = bless_skill(Path(args.skill), args.poi)
+        record = bless_skill(Path(args.skill), args.poi, unlocks=unlocks)
     except SkillwareError as exc:
         raise CliError(str(exc)) from exc
     payload = {
@@ -359,13 +395,17 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
     lock_present = (skillware.build_root / "lock.json").is_file()
     files = []
     for src_rel in skillware.src_files():
-        source = parse_skw_source((skillware.src_root / src_rel).read_text(encoding="utf-8"))
+        source = parse_skw_source(
+            (skillware.src_root / src_rel).read_text(encoding="utf-8")
+        )
         expansion = expand_file(skillware, src_rel)
         files.append(
             {
                 "src": str(src_rel),
                 "target": str(expansion.target_rel),
-                "target_exists": (skillware.skill_root / expansion.target_rel).is_file(),
+                "target_exists": (
+                    skillware.skill_root / expansion.target_rel
+                ).is_file(),
                 "recipes": {
                     verb: sum(1 for r in source.recipes if r.verb == verb)
                     for verb in ("copy", "derived")
@@ -373,7 +413,11 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
                 "constructs": {
                     command: count
                     for command in ("text", "router", "when", "then")
-                    if (count := sum(1 for c in source.constructs if c.command == command))
+                    if (
+                        count := sum(
+                            1 for c in source.constructs if c.command == command
+                        )
+                    )
                 },
             }
         )
@@ -414,10 +458,26 @@ def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
     skillware_subparsers = skillware_parser.add_subparsers(dest="skillware_command")
 
     for name, handler, help_text in (
-        ("build", _cmd_skillware_build, "Refresh copy bodies, compile targets, write the lock."),
-        ("check", _cmd_skillware_check, "Lint for POIs; exits non-zero when any are raised."),
-        ("bless", _cmd_skillware_bless, "Accept a derived-stale POI: rewrite its locked dep hashes."),
-        ("status", _cmd_skillware_status, "Inventory managed files, recipes, and lock state."),
+        (
+            "build",
+            _cmd_skillware_build,
+            "Refresh copy bodies, compile targets, write the lock.",
+        ),
+        (
+            "check",
+            _cmd_skillware_check,
+            "Lint for POIs; exits non-zero when any are raised.",
+        ),
+        (
+            "bless",
+            _cmd_skillware_bless,
+            "Accept a derived-stale POI: rewrite its locked dep hashes.",
+        ),
+        (
+            "status",
+            _cmd_skillware_status,
+            "Inventory managed files, recipes, and lock state.",
+        ),
     ):
         sub = skillware_subparsers.add_parser(name, help=help_text)
         # check with no --skill runs project-scope over every discovered package
@@ -432,7 +492,15 @@ def register_skillware_commands(subparsers: argparse._SubParsersAction) -> None:
         if name == "bless":
             sub.add_argument("--poi", help="POI identity hash from check output.")
             sub.add_argument("--kind", help="POI kind to bulk bless with --all.")
-            sub.add_argument("--all", action="store_true", help="Bless all current POIs of --kind.")
+            sub.add_argument(
+                "--all", action="store_true", help="Bless all current POIs of --kind."
+            )
+            sub.add_argument(
+                "--unlock",
+                action="append",
+                default=[],
+                help="Unlock-token receipt from a required context surface; repeatable.",
+            )
         sub.set_defaults(handler=handler)
 
 
