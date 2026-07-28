@@ -36,14 +36,14 @@ def _service(depot: BloberiaDepot) -> EditionHistoryService:
 def _support(
     session: str,
     *,
-    event_id: str = "event-1",
+    turn_id: str = "turn-1",
     at: str = "2026-07-25T10:00:00.123Z",
 ) -> dict[str, object]:
     return {
         "app": "chatlas",
-        "schema": "chatlas.support-set.v1",
+        "schema": "chatlas.support-set.v2",
         "hint": "The session edited this file.",
-        "members": [{"session": session, "event_id": event_id, "at": at}],
+        "members": [{"session": session, "turn_id": turn_id, "at": at}],
     }
 
 
@@ -145,7 +145,7 @@ def test_record_is_idempotent_and_list_groups_deterministically(
         first_commit,
         "session-a",
         session_started_at="2026-07-25T09:00:00+00:00",
-        support=_support("session-a", event_id="event-2"),
+        support=_support("session-a", turn_id="event-2"),
     )
 
     assert first.created is True
@@ -205,7 +205,7 @@ def test_amend_replaces_support_and_session_start_time(tmp_path: Path) -> None:
     result = service.amend(
         source,
         recorded.record_id,
-        support=_support("session", event_id="event-2"),
+        support=_support("session", turn_id="event-2"),
         session_started_at="2026-07-25T09:30:00Z",
     )
 
@@ -213,13 +213,13 @@ def test_amend_replaces_support_and_session_start_time(tmp_path: Path) -> None:
     assert result.amended is True
     assert result.revision == 2
     session = service.list(source).editions[0].sessions[0]
-    assert session.support == _support("session", event_id="event-2")
+    assert session.support == _support("session", turn_id="event-2")
     assert session.started_at == "2026-07-25T09:30:00Z"
 
     repeated = service.amend(
         source,
         recorded.record_id,
-        support=_support("session", event_id="event-2"),
+        support=_support("session", turn_id="event-2"),
         session_started_at="2026-07-25T09:30:00Z",
     )
     assert repeated.amended is False
@@ -243,7 +243,7 @@ def test_amend_rejects_wrong_file_without_mutation(tmp_path: Path) -> None:
         service.amend(
             other,
             recorded.record_id,
-            support=_support("session", event_id="event-2"),
+            support=_support("session", turn_id="event-2"),
         )
 
     assert depot.get(recorded.record_id).revision == 1
@@ -280,7 +280,7 @@ def test_record_requires_support(tmp_path: Path) -> None:
         (
             {
                 "app": "chatlas",
-                "schema": "chatlas.support-set.v1",
+                "schema": "chatlas.support-set.v2",
                 "hint": "Proof.",
                 "members": [],
             },
@@ -541,7 +541,7 @@ def test_cli_record_list_and_check_round_trip(
             "--record",
             listed["editions"][0]["sessions"][0]["record_id"],
             "--support-json",
-            json.dumps(_support("session-1", event_id="event-2")),
+            json.dumps(_support("session-1", turn_id="event-2")),
             "--depot",
             str(depot),
         ]

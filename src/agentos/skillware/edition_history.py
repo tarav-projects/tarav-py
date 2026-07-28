@@ -19,7 +19,7 @@ from agentos.bloberia import (
 
 EDITION_SESSION_KIND = "skw.edition-session"
 EDITION_SESSION_SCHEMA_VERSION = 1
-CHATLAS_SUPPORT_SET_SCHEMA = "chatlas.support-set.v1"
+CHATLAS_SUPPORT_SET_SCHEMA = "chatlas.support-set.v2"
 DEFAULT_EDITION_HISTORY_DEPOT = (
     Path(".agentos") / "state" / "bloberia" / "edition-history"
 )
@@ -770,31 +770,31 @@ def _support_set(
     for index, raw_member in enumerate(raw_members):
         member = _exact_object(
             raw_member,
-            keys={"session", "event_id", "at"},
+            keys={"session", "turn_id", "at"},
             field=f"support.members[{index}]",
         )
         member_session = _nonempty_string(
             member["session"],
             field=f"support.members[{index}].session",
         )
-        event_id = _nonempty_string(
-            member["event_id"],
-            field=f"support.members[{index}].event_id",
+        turn_id = _nonempty_string(
+            member["turn_id"],
+            field=f"support.members[{index}].turn_id",
         )
         at = _validated_iso_timestamp(
             member["at"],
             field=f"support.members[{index}].at",
         )
-        identity = (member_session, event_id)
+        identity = (member_session, turn_id)
         if identity in seen:
             raise EditionHistoryError(
                 f"support.members[{index}] duplicates "
-                f"{member_session}:{event_id}"
+                f"{member_session}:{turn_id}"
             )
         seen.add(identity)
         includes_session = includes_session or member_session == session_id
         members.append(
-            {"session": member_session, "event_id": event_id, "at": at}
+            {"session": member_session, "turn_id": turn_id, "at": at}
         )
 
     if not includes_session:
