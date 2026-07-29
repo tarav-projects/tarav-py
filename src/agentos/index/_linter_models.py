@@ -102,6 +102,16 @@ class CoverageItem:
 
 
 @dataclass(frozen=True)
+class LineSupportStanding:
+    anchors: tuple[str, ...]
+    resolved_anchors: tuple[str, ...]
+
+    @property
+    def grounded(self) -> bool:
+        return bool(self.resolved_anchors)
+
+
+@dataclass(frozen=True)
 class SurfacePath:
     kind: SurfaceKind
     raw_path: str
@@ -150,6 +160,9 @@ class LinterState:
     finding_check_codes: dict[int, str] = field(default_factory=dict)
     check_results: list[CheckResult] = field(default_factory=list)
     coverage_items: dict[str, list[CoverageItem]] = field(default_factory=dict)
+    line_support_standings: dict[tuple[str, int], LineSupportStanding] = field(
+        default_factory=dict
+    )
 
     def rel_path(self, path: Path) -> str:
         try:
@@ -174,6 +187,25 @@ class LinterState:
             for node in document.nodes
             if isinstance(node, KernelLine)
         ]
+
+    def line_key(self, line: KernelLine) -> tuple[str, int]:
+        return (
+            self.rel_path(line.path) if line.path else ".",
+            line.start_line,
+        )
+
+    def record_line_support_standing(
+        self,
+        line: KernelLine,
+        standing: LineSupportStanding,
+    ) -> None:
+        self.line_support_standings[self.line_key(line)] = standing
+
+    def line_support_standing(
+        self,
+        line: KernelLine,
+    ) -> LineSupportStanding | None:
+        return self.line_support_standings.get(self.line_key(line))
 
     def record_check(self, check: LinterCheck, findings: list[LinterFinding]) -> None:
         self.findings.extend(findings)

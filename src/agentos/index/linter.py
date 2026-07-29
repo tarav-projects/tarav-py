@@ -21,6 +21,7 @@ from ._linter_models import (
     LinterConfig,
     LinterFinding,
     LinterState,
+    LineSupportStanding,
     RouterEntry,
     Severity,
     SurfaceKind,
@@ -178,6 +179,7 @@ __all__ = [
     "LinterConfig",
     "LinterFinding",
     "LinterState",
+    "LineSupportStanding",
     "MDBLOCKS_BLOCKING_CODES",
     "MDBLOCKS_CODE_MAP",
     "MDBLOCKS_SYNTAX",
@@ -301,6 +303,10 @@ def run_linter(
     enabled = resolve_enabled_checks(
         (*CHECKS, *extra_checks), include=include, exclude=exclude
     )
+    enabled = [
+        *(check for check in enabled if check.structural),
+        *(check for check in enabled if not check.structural),
+    ]
     for check in enabled:
         gate = check.gate(state)
         if not gate.allowed:

@@ -185,7 +185,7 @@ def _check_depot_dependencies(state: LinterState) -> list[LinterFinding]:
                     path=rel,
                     message=(
                         f"declared dependency depot `{name}` does not resolve in the "
-                        "~/.agentos registry (index.depots)."
+                        "global Wayfinder registry."
                     ),
                     details={"depot": name},
                 )

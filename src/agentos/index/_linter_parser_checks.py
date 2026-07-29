@@ -183,6 +183,7 @@ def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
         if "line" in state.config.coverage and document.surface_kind in {
             "chapter",
             "appendix",
+            "agendix",
         }:
             state.coverage_items.setdefault("line", []).append(
                 CoverageItem(
@@ -192,8 +193,6 @@ def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
             )
         if has_anchor:
             continue
-        if document.surface_kind != "agendix" and "line" not in state.config.coverage:
-            continue
         if document.surface_kind not in {"chapter", "appendix", "agendix"}:
             continue
         findings.append(
@@ -202,8 +201,14 @@ def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
                 code=LINE_UNLINKED,
                 path=state.rel_path(line.path) if line.path else ".",
                 line=line.start_line,
-                message="Kernel line carries no evidence pointer (no trailing Anchory anchor).",
-                details={"surface_kind": document.surface_kind},
+                message=(
+                    "Live index line has no Support.Reference; it remains live "
+                    "under Index.Presumption while grounding is unresolved."
+                ),
+                details={
+                    "surface_kind": document.surface_kind,
+                    "standing": "index-presumption",
+                },
             )
         )
     return findings
@@ -228,7 +233,10 @@ def _check_block_ungrounded(state: LinterState) -> list[LinterFinding]:
             ungrounded_lines = sum(
                 1
                 for line in lines
-                if not any(span.kind == "anchor" for span in line.spans)
+                if (
+                    (standing := state.line_support_standing(line)) is None
+                    or not standing.grounded
+                )
             )
             grounded = ungrounded_lines == 0
             if "block" in state.config.coverage:
@@ -243,7 +251,10 @@ def _check_block_ungrounded(state: LinterState) -> list[LinterFinding]:
                     code=BLOCK_UNGROUNDED,
                     path=rel_path,
                     line=block.start_line,
-                    message="Index concept block has ungrounded kernel lines (lines missing trailing anchors).",
+                    message=(
+                        "Index concept block has kernel lines without a resolvable "
+                        "nonempty support set."
+                    ),
                     details={
                         "block_path": block_path,
                         "ungrounded_lines": ungrounded_lines,
@@ -354,7 +365,7 @@ PARSER_CHECKS: tuple[LinterCheck, ...] = (
     ),
     LinterCheck(
         code=CHECK_LINE_UNLINKED,
-        title="Unlinked kernel lines",
+        title="Live lines missing support references",
         gate=_needs_valid_surface,
         run=_check_line_unlinked,
     ),

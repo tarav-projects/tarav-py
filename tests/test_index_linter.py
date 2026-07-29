@@ -7,7 +7,11 @@ from pathlib import Path
 from agentos.index.commands import _cmd_linter
 from agentos.index.linter import (
     REVIEWED_CITE_CLOSURE,
+    GateResult,
+    LineSupportStanding,
+    LinterCheck,
     build_linter_config,
+    parsed_linter_kernel_lines,
     render_linter_json,
     render_linter_text,
     run_linter,
@@ -86,16 +90,14 @@ def _run(
 
 
 def _write_registry(home: Path, depots: dict[str, Path]) -> None:
-    home.mkdir(parents=True, exist_ok=True)
-    (home / "config.json").write_text(
-        json.dumps(
-            {
-                "class": "agentos.global.config",
-                "index": {"depots": {n: {"path": str(p)} for n, p in depots.items()}},
-            }
-        ),
-        encoding="utf-8",
-    )
+    from agentos.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
+
+    registry = WayfinderRegistry(home=home)
+    for name, path in depots.items():
+        registry.register(
+            WayfinderReferenceRoot(type="package.skill", id=name),
+            path,
+        )
 
 
 def _depot_defining(root: Path, concept: str, *, depends: str | None = None) -> Path:
@@ -111,7 +113,9 @@ def _depot_defining(root: Path, concept: str, *, depends: str | None = None) -> 
     return root
 
 
-def test_depot_dependency_collision_surfaces_in_linter(monkeypatch, tmp_path: Path) -> None:
+def test_depot_dependency_collision_surfaces_in_linter(
+    monkeypatch, tmp_path: Path
+) -> None:
     from agentos.index.linter import DEPOT_COLLISION
 
     monkeypatch.chdir(tmp_path)
@@ -126,7 +130,9 @@ def test_depot_dependency_collision_surfaces_in_linter(monkeypatch, tmp_path: Pa
     assert codes[DEPOT_COLLISION].details["concept"] == "Shared.Concept"
 
 
-def test_depot_dependency_unresolved_name_surfaces_in_linter(monkeypatch, tmp_path: Path) -> None:
+def test_depot_dependency_unresolved_name_surfaces_in_linter(
+    monkeypatch, tmp_path: Path
+) -> None:
     from agentos.index.linter import DEPOT_DEP_UNRESOLVED
 
     monkeypatch.chdir(tmp_path)
@@ -139,7 +145,9 @@ def test_depot_dependency_unresolved_name_surfaces_in_linter(monkeypatch, tmp_pa
     assert [f.details["depot"] for f in unresolved] == ["ghost-depot"]
 
 
-def test_depot_without_declared_dependencies_stays_quiet(monkeypatch, tmp_path: Path) -> None:
+def test_depot_without_declared_dependencies_stays_quiet(
+    monkeypatch, tmp_path: Path
+) -> None:
     from agentos.index.linter import DEPOT_COLLISION, DEPOT_DEP_UNRESOLVED
 
     monkeypatch.chdir(tmp_path)
@@ -210,7 +218,9 @@ def test_index_linter_rejects_old_index_suffix_in_chapter_directory(
     )
 
 
-def test_index_linter_clean_surface_renders_text_and_json(monkeypatch, tmp_path: Path) -> None:
+def test_index_linter_clean_surface_renders_text_and_json(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.chdir(tmp_path)
     index_dir, appendix_dir = _clean_index(tmp_path)
 
@@ -220,8 +230,11 @@ def test_index_linter_clean_surface_renders_text_and_json(monkeypatch, tmp_path:
     )
 
     assert state.summary()["error_count"] == 0
-    assert state.summary()["warning_count"] == 0
-    assert "Summary: 0 error(s), 0 warning(s)" in render_linter_text(state)
+    assert state.summary()["warning_count"] == 2
+    assert {finding.code for finding in state.findings} == {
+        "Index.Linter/Line.Unlinked"
+    }
+    assert "Summary: 0 error(s), 2 warning(s)" in render_linter_text(state)
 
     payload = json.loads(render_linter_json(state))
     assert payload["summary"]["error_count"] == 0
@@ -229,13 +242,18 @@ def test_index_linter_clean_surface_renders_text_and_json(monkeypatch, tmp_path:
     assert payload["exit_code"] == 0
 
 
-def test_index_linter_missing_surface_blocks_dependent_checks(monkeypatch, tmp_path: Path) -> None:
+def test_index_linter_missing_surface_blocks_dependent_checks(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.chdir(tmp_path)
     state = _run(index_paths=("missing-index",))
 
     assert state.summary()["error_count"] == 1
     assert state.summary()["blocked_count"] > 0
-    assert any(finding.code == "Index.Linter/Surface.IndexMissing" for finding in state.findings)
+    assert any(
+        finding.code == "Index.Linter/Surface.IndexMissing"
+        for finding in state.findings
+    )
     assert any(result.status == "blocked" for result in state.check_results)
 
 
@@ -245,7 +263,8 @@ def test_index_linter_requires_at_least_one_target(monkeypatch, tmp_path: Path) 
 
     assert any(
         finding.code == "Index.Linter/Config.NoSurfaces"
-        and finding.message == "Configure at least one --depot, --index, or --appendix path."
+        and finding.message
+        == "Configure at least one --depot, --index, or --appendix path."
         for finding in state.findings
     )
 
@@ -268,7 +287,10 @@ def test_empty_but_valid_depot_does_not_error(monkeypatch, tmp_path: Path) -> No
     # nothing to lint, so no CONFIG_NO_SURFACES error.
     monkeypatch.chdir(tmp_path)
     depot = tmp_path / "notes-index"
-    _write(depot / "000-INDEX.md", "# Local Index\n\n## Routing\n\n- (no chapter files yet)\n")
+    _write(
+        depot / "000-INDEX.md",
+        "# Local Index\n\n## Routing\n\n- (no chapter files yet)\n",
+    )
     state = _run(depot_paths=("notes-index",))
 
     assert state.summary()["error_count"] == 0
@@ -297,7 +319,8 @@ def test_index_linter_maps_mdblocks_errors_and_blocks_inventory(
         for finding in state.findings
     )
     assert any(
-        result.code == "Index.Linter/Check.ConceptDuplicates" and result.status == "blocked"
+        result.code == "Index.Linter/Check.ConceptDuplicates"
+        and result.status == "blocked"
         for result in state.check_results
     )
 
@@ -400,7 +423,9 @@ def test_index_linter_reports_duplicate_concepts(monkeypatch, tmp_path: Path) ->
 
     state = _run(index_paths=("design",))
 
-    assert any(finding.code == "Index.Linter/Concept.Duplicate" for finding in state.findings)
+    assert any(
+        finding.code == "Index.Linter/Concept.Duplicate" for finding in state.findings
+    )
 
 
 def test_index_linter_reports_index_filename_and_missing_router_file(
@@ -420,8 +445,13 @@ def test_index_linter_reports_index_filename_and_missing_router_file(
 
     state = _run(index_paths=("design",))
 
-    assert any(finding.code == "Index.Linter/Index.InvalidFilename" for finding in state.findings)
-    assert any(finding.code == "Index.Linter/Router.MissingFile" for finding in state.findings)
+    assert any(
+        finding.code == "Index.Linter/Index.InvalidFilename"
+        for finding in state.findings
+    )
+    assert any(
+        finding.code == "Index.Linter/Router.MissingFile" for finding in state.findings
+    )
 
 
 def test_index_linter_ignores_agents_md_in_index_directory(
@@ -526,7 +556,12 @@ def test_index_linter_accepts_router_appendix_annotation(
         finding.code.startswith("Index.Linter/Appendix.RouteAnnotation")
         for finding in state.findings
     )
-    assert state.router_entries["Alignment.Backend:InChat:What"][0].appendix_annotation_count == 1
+    assert (
+        state.router_entries["Alignment.Backend:InChat:What"][
+            0
+        ].appendix_annotation_count
+        == 1
+    )
 
 
 def test_index_linter_accepts_double_colon_router_appendix_annotation(
@@ -556,10 +591,14 @@ def test_index_linter_accepts_double_colon_router_appendix_annotation(
         for finding in state.findings
     )
     assert not any(
-        finding.code.startswith("Index.Linter/Appendix.")
-        for finding in state.findings
+        finding.code.startswith("Index.Linter/Appendix.") for finding in state.findings
     )
-    assert state.router_entries["Alignment.Backend::InChat::What"][0].appendix_annotation_count == 1
+    assert (
+        state.router_entries["Alignment.Backend::InChat::What"][
+            0
+        ].appendix_annotation_count
+        == 1
+    )
 
 
 def test_index_linter_records_appendix_page_inventory(
@@ -577,14 +616,21 @@ def test_index_linter_records_appendix_page_inventory(
         index_dir / "100-design.md",
         "****\n## Example.Concept\n\n- compact definition\n****\n",
     )
-    _write(appendix_dir / "Example.Concept-appendix.md", "****\n## Example.Concept/One\n\n- one\n****\n")
-    _write(appendix_dir / "Example.Concept-appendix-2.md", "****\n## Example.Concept/Two\n\n- two\n****\n")
+    _write(
+        appendix_dir / "Example.Concept-appendix.md",
+        "****\n## Example.Concept/One\n\n- one\n****\n",
+    )
+    _write(
+        appendix_dir / "Example.Concept-appendix-2.md",
+        "****\n## Example.Concept/Two\n\n- two\n****\n",
+    )
 
     state = _run(index_paths=("design",), appendix_paths=("appendix",))
 
     assert sorted(state.appendix_pages["Example.Concept"]) == [1, 2]
     assert not any(
-        finding.code in {
+        finding.code
+        in {
             "Index.Linter/Appendix.RouteAnnotationMissing",
             "Index.Linter/Appendix.RouteAnnotationStale",
             "Index.Linter/Appendix.PageGap",
@@ -649,8 +695,14 @@ def test_index_linter_reports_appendix_page_gap(
         index_dir / "100-design.md",
         "****\n## Example.Concept\n\n- compact definition\n****\n",
     )
-    _write(appendix_dir / "Example.Concept-appendix.md", "****\n## Example.Concept/One\n\n- one\n****\n")
-    _write(appendix_dir / "Example.Concept-appendix-3.md", "****\n## Example.Concept/Three\n\n- three\n****\n")
+    _write(
+        appendix_dir / "Example.Concept-appendix.md",
+        "****\n## Example.Concept/One\n\n- one\n****\n",
+    )
+    _write(
+        appendix_dir / "Example.Concept-appendix-3.md",
+        "****\n## Example.Concept/Three\n\n- three\n****\n",
+    )
 
     state = _run(index_paths=("design",), appendix_paths=("appendix",))
 
@@ -675,8 +727,13 @@ def test_index_linter_reports_appendix_filename_and_orphan(
         appendix_paths=(appendix_dir.name,),
     )
 
-    assert any(finding.code == "Index.Linter/Appendix.InvalidFilename" for finding in state.findings)
-    assert any(finding.code == "Index.Linter/Appendix.Orphan" for finding in state.findings)
+    assert any(
+        finding.code == "Index.Linter/Appendix.InvalidFilename"
+        for finding in state.findings
+    )
+    assert any(
+        finding.code == "Index.Linter/Appendix.Orphan" for finding in state.findings
+    )
 
 
 def test_index_linter_accepts_file_paths(monkeypatch, tmp_path: Path) -> None:
@@ -767,7 +824,9 @@ def test_index_linter_line_type_syntax_checks(monkeypatch, tmp_path: Path) -> No
     assert "Index.Linter/Line.Type.Syntax" in codes
     assert "Index.Linter/Line.Type.UnknownCode" in codes
     assert "Index.Linter/Line.Type.GR.MissingAnchor" in codes
-    typed_findings = [f for f in state.findings if f.code.startswith("Index.Linter/Line.Type")]
+    typed_findings = [
+        f for f in state.findings if f.code.startswith("Index.Linter/Line.Type")
+    ]
     assert all(f.severity == "warning" for f in typed_findings)
 
 
@@ -788,7 +847,9 @@ def test_index_linter_source_axis_placement(monkeypatch, tmp_path: Path) -> None
         "****\n",
     )
     state = _run(depot_paths=(str(depot_dir),))
-    placement = [f for f in state.findings if f.code == "Index.Linter/Source.Axis.Placement"]
+    placement = [
+        f for f in state.findings if f.code == "Index.Linter/Source.Axis.Placement"
+    ]
     assert len(placement) == 1
     assert placement[0].severity == "error"
     assert "100-design.md" in placement[0].path
@@ -813,7 +874,9 @@ def test_index_linter_reports_legacy_anchor_sigil(monkeypatch, tmp_path: Path) -
     assert hits[0].details["anchor"] == "20260101-0"
 
 
-def test_index_linter_reports_legacy_type_statement_sigil(monkeypatch, tmp_path: Path) -> None:
+def test_index_linter_reports_legacy_type_statement_sigil(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.chdir(tmp_path)
     depot_dir = _clean_depot(tmp_path)
     _write(
@@ -831,12 +894,19 @@ def test_index_linter_reports_legacy_type_statement_sigil(monkeypatch, tmp_path:
     )
 
     state = _run(depot_paths=(str(depot_dir),))
-    hits = [f for f in state.findings if f.code == "Index.Linter/TypeStatement.LegacySigil"]
+    hits = [
+        f for f in state.findings if f.code == "Index.Linter/TypeStatement.LegacySigil"
+    ]
 
     assert len(hits) == 2
-    assert {hit.path for hit in hits} == {"depot/000-INDEX.md", "depot/design/100-design.md"}
+    assert {hit.path for hit in hits} == {
+        "depot/000-INDEX.md",
+        "depot/design/100-design.md",
+    }
     assert {hit.details["legacy"] for hit in hits} == {"Alignment.Mode:Autonomous"}
-    assert {hit.details["replacement"] for hit in hits} == {"Alignment.Mode::Autonomous"}
+    assert {hit.details["replacement"] for hit in hits} == {
+        "Alignment.Mode::Autonomous"
+    }
 
 
 def test_index_linter_line_unlinked_scope(monkeypatch, tmp_path: Path) -> None:
@@ -858,9 +928,15 @@ def test_index_linter_line_unlinked_scope(monkeypatch, tmp_path: Path) -> None:
     )
 
     default_state = _run(depot_paths=(str(depot_dir),))
-    default_hits = [f for f in default_state.findings if f.code == "Index.Linter/Line.Unlinked"]
-    assert len(default_hits) == 1
-    assert "agendix" in default_hits[0].path
+    default_hits = [
+        f for f in default_state.findings if f.code == "Index.Linter/Line.Unlinked"
+    ]
+    assert len(default_hits) == 3
+    assert {hit.details["surface_kind"] for hit in default_hits} == {
+        "chapter",
+        "appendix",
+        "agendix",
+    }
 
     config, raw_d, raw_i, raw_a = build_linter_config(
         depot_paths=(str(depot_dir),),
@@ -869,11 +945,15 @@ def test_index_linter_line_unlinked_scope(monkeypatch, tmp_path: Path) -> None:
         warn_unlinked=True,
     )
     warned_state = run_linter(config, raw_d, raw_i, raw_a)
-    warned_hits = [f for f in warned_state.findings if f.code == "Index.Linter/Line.Unlinked"]
+    warned_hits = [
+        f for f in warned_state.findings if f.code == "Index.Linter/Line.Unlinked"
+    ]
     assert len(warned_hits) == 3
 
 
-def test_index_linter_coverage_line_replaces_warn_unlinked(monkeypatch, tmp_path: Path) -> None:
+def test_index_linter_coverage_line_replaces_warn_unlinked(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.chdir(tmp_path)
     depot_dir = _clean_depot(tmp_path, include_appendix=False)
     _write(
@@ -892,7 +972,9 @@ def test_index_linter_coverage_line_replaces_warn_unlinked(monkeypatch, tmp_path
     assert payload["coverage"]["line"] == {"linked": 1, "total": 2}
 
     alias_state = _run(depot_paths=(str(depot_dir),), warn_unlinked=True)
-    alias_hits = [f for f in alias_state.findings if f.code == "Index.Linter/Line.Unlinked"]
+    alias_hits = [
+        f for f in alias_state.findings if f.code == "Index.Linter/Line.Unlinked"
+    ]
     assert len(alias_hits) == len(hits)
 
 
@@ -929,14 +1011,73 @@ def test_index_linter_block_ungrounded_meter(monkeypatch, tmp_path: Path) -> Non
     hits = [f for f in state.findings if f.code == "Index.Linter/Block.Ungrounded"]
     payload = json.loads(render_linter_json(state))
 
-    assert payload["coverage"]["block"] == {"grounded": 2, "total": 4}
+    # Anchor syntax alone cannot establish grounding without a support resolver.
+    assert payload["coverage"]["block"] == {"grounded": 1, "total": 4}
     assert {hit.details["block_path"] for hit in hits} == {
+        "Example.Grounded",
         "Example.Ungrounded",
         "Example.HeadOnly",
     }
     by_path = {hit.details["block_path"]: hit for hit in hits}
-    assert by_path["Example.Ungrounded"].details["ungrounded_lines"] == 1
+    assert by_path["Example.Ungrounded"].details["ungrounded_lines"] == 2
     assert by_path["Example.HeadOnly"].details["ungrounded_lines"] == 1
+
+
+def test_block_grounding_uses_resolved_line_standing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path, include_appendix=False)
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n- resolved support ^c20260101-0u\n****\n",
+    )
+
+    def record_support(state):
+        for _document, line in parsed_linter_kernel_lines(state):
+            anchors = tuple(
+                str(span.parsed["anchor"])
+                for span in line.spans
+                if span.kind == "anchor"
+            )
+            state.record_line_support_standing(
+                line,
+                LineSupportStanding(
+                    anchors=anchors,
+                    resolved_anchors=anchors,
+                ),
+            )
+        return []
+
+    support_check = LinterCheck(
+        code="Test/Support.Standing",
+        title="test support standing",
+        gate=lambda _state: GateResult(allowed=True),
+        run=record_support,
+        structural=True,
+    )
+    config, raw_d, raw_i, raw_a = build_linter_config(
+        depot_paths=(str(depot_dir),),
+        index_paths=(),
+        appendix_paths=(),
+        coverage=("block",),
+    )
+    state = run_linter(
+        config,
+        raw_d,
+        raw_i,
+        raw_a,
+        extra_checks=(support_check,),
+    )
+    payload = json.loads(render_linter_json(state))
+
+    assert payload["coverage"]["block"] == {"grounded": 1, "total": 1}
+    assert not [
+        finding
+        for finding in state.findings
+        if finding.code == "Index.Linter/Block.Ungrounded"
+    ]
 
 
 def test_index_linter_scope_filters_findings_counts_and_meters(
@@ -953,9 +1094,7 @@ def test_index_linter_scope_filters_findings_counts_and_meters(
     )
     _write(
         depot_dir / "design" / "100-design.md",
-        "****\n## Example.One\n\n"
-        "- scoped unlinked line\n"
-        "****\n",
+        "****\n## Example.One\n\n- scoped unlinked line\n****\n",
     )
     _write(
         depot_dir / "other" / "100-other.md",
@@ -975,7 +1114,9 @@ def test_index_linter_scope_filters_findings_counts_and_meters(
     assert payload["coverage"]["line"] == {"linked": 0, "total": 1}
     assert payload["coverage"]["block"] == {"grounded": 0, "total": 1}
     assert payload["summary"]["finding_count"] == 2
-    assert all(finding["path"].startswith("depot/design/") for finding in payload["findings"])
+    assert all(
+        finding["path"].startswith("depot/design/") for finding in payload["findings"]
+    )
 
 
 def test_index_linter_scope_rejects_unmatched_path(monkeypatch, tmp_path: Path) -> None:
@@ -985,8 +1126,7 @@ def test_index_linter_scope_rejects_unmatched_path(monkeypatch, tmp_path: Path) 
     state = _run(depot_paths=(str(depot_dir),), scope_paths=("missing",))
 
     assert any(
-        finding.code == "Index.Linter/Surface.Invalid"
-        and finding.path == "missing"
+        finding.code == "Index.Linter/Surface.Invalid" and finding.path == "missing"
         for finding in state.findings
     )
 
@@ -1015,9 +1155,14 @@ def test_index_linter_runs_extra_checks(monkeypatch, tmp_path: Path) -> None:
     def _gate_blocked(state) -> GateResult:
         return GateResult(allowed=False, reason="backend unavailable")
 
-    extra = LinterCheck(code="External.Check", title="External probe", gate=_gate_ok, run=_run_extra)
+    extra = LinterCheck(
+        code="External.Check", title="External probe", gate=_gate_ok, run=_run_extra
+    )
     blocked = LinterCheck(
-        code="External.Blocked", title="External blocked", gate=_gate_blocked, run=_run_extra
+        code="External.Blocked",
+        title="External blocked",
+        gate=_gate_blocked,
+        run=_run_extra,
     )
     config, raw_d, raw_i, raw_a = build_linter_config(
         depot_paths=(str(depot_dir),), index_paths=(), appendix_paths=()
@@ -1025,7 +1170,10 @@ def test_index_linter_runs_extra_checks(monkeypatch, tmp_path: Path) -> None:
     state = run_linter(config, raw_d, raw_i, raw_a, extra_checks=(extra, blocked))
     assert ran == ["yes"]
     assert "External.Check/Probe" in _finding_codes(state)
-    assert any(r.code == "External.Blocked" and r.status == "blocked" for r in state.check_results)
+    assert any(
+        r.code == "External.Blocked" and r.status == "blocked"
+        for r in state.check_results
+    )
 
 
 def test_index_linter_flags_unprefixed_anchor_citations(
@@ -1058,7 +1206,9 @@ def test_index_linter_flags_unprefixed_anchor_citations(
 def test_check_selector_derives_stable_kebab_slugs() -> None:
     from agentos.index.linter import check_selector
 
-    assert check_selector("Index.Linter/Check.DepotDependencies") == "depot-dependencies"
+    assert (
+        check_selector("Index.Linter/Check.DepotDependencies") == "depot-dependencies"
+    )
     assert check_selector("Index.Linter/Line.Unlinked") == "line-unlinked"
     assert check_selector("Index.Linter/Check.ConfigSurfaces") == "config-surfaces"
 
@@ -1088,6 +1238,7 @@ def _fake_checks():
 
     def _ok(state):
         from agentos.index.linter import allowed
+
         return allowed()
 
     return (
@@ -1149,7 +1300,9 @@ def test_resolver_unknown_selector_errors():
         resolve_enabled_checks(_fake_checks(), include=("nope",))
 
 
-def test_run_linter_exclude_skips_a_reportable_check(monkeypatch, tmp_path: Path) -> None:
+def test_run_linter_exclude_skips_a_reportable_check(
+    monkeypatch, tmp_path: Path
+) -> None:
     from agentos.index.linter import CHECK_CONCEPT_DUPLICATES
 
     monkeypatch.chdir(tmp_path)
@@ -1158,24 +1311,32 @@ def test_run_linter_exclude_skips_a_reportable_check(monkeypatch, tmp_path: Path
     assert CHECK_CONCEPT_DUPLICATES in ran  # runs by default
     ran_excluded = {
         r.code
-        for r in _run(depot_paths=(str(depot),), exclude=("concept-duplicates",)).check_results
+        for r in _run(
+            depot_paths=(str(depot),), exclude=("concept-duplicates",)
+        ).check_results
     }
     assert CHECK_CONCEPT_DUPLICATES not in ran_excluded
 
 
-def test_run_linter_exclude_cannot_disable_a_structural_check(monkeypatch, tmp_path: Path) -> None:
+def test_run_linter_exclude_cannot_disable_a_structural_check(
+    monkeypatch, tmp_path: Path
+) -> None:
     from agentos.index.linter import CHECK_CONFIG_SURFACES
 
     monkeypatch.chdir(tmp_path)
     depot = _clean_depot(tmp_path)
     ran = {
         r.code
-        for r in _run(depot_paths=(str(depot),), exclude=("config-surfaces",)).check_results
+        for r in _run(
+            depot_paths=(str(depot),), exclude=("config-surfaces",)
+        ).check_results
     }
     assert CHECK_CONFIG_SURFACES in ran  # structural: exclude has no effect
 
 
-def test_dangling_mention_check_is_default_off_and_opt_in(monkeypatch, tmp_path: Path) -> None:
+def test_dangling_mention_check_is_default_off_and_opt_in(
+    monkeypatch, tmp_path: Path
+) -> None:
     from agentos.index.linter import DEPOT_DANGLING_MENTION
 
     monkeypatch.chdir(tmp_path)
@@ -1199,8 +1360,16 @@ def test_dangling_mention_check_is_default_off_and_opt_in(monkeypatch, tmp_path:
 
 def _linter_ns(**over):
     base = dict(
-        depot=[], index=[], appendix=[], json=True, coverage=[], scope=[],
-        warn_unlinked=False, check=[], skip=[], list_checks=False,
+        depot=[],
+        index=[],
+        appendix=[],
+        json=True,
+        coverage=[],
+        scope=[],
+        warn_unlinked=False,
+        check=[],
+        skip=[],
+        list_checks=False,
     )
     base.update(over)
     return argparse.Namespace(**base)
@@ -1214,7 +1383,30 @@ def test_cli_list_checks_lists_selectors_and_exits(capsys) -> None:
     assert "config-surfaces" in out and "structural" in out
 
 
-def test_cli_check_flag_opts_into_dangling_mention(capsys, monkeypatch, tmp_path: Path) -> None:
+def test_cli_list_checks_includes_composition_root_checks(capsys) -> None:
+    extra = LinterCheck(
+        code="Index.Linter/Line.Approval",
+        title="external approval check",
+        gate=lambda _state: GateResult(allowed=True),
+        run=lambda _state: [],
+        default_on=False,
+    )
+    exit_code = _cmd_linter(
+        _linter_ns(
+            list_checks=True,
+            _extra_linter_checks=(extra,),
+        )
+    )
+    out = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "line-approval" in out
+    assert "external approval check" in out
+
+
+def test_cli_check_flag_opts_into_dangling_mention(
+    capsys, monkeypatch, tmp_path: Path
+) -> None:
     from agentos.index.linter import DEPOT_DANGLING_MENTION
 
     monkeypatch.chdir(tmp_path)
@@ -1252,7 +1444,10 @@ def _depot_with_agendix(root: Path, *, cite: str) -> Path:
     holding file `agendix/Example.Concept-agendix.md` with block
     `Example.Concept/Agendix/Real.Lead`."""
     depot = root / "depot"
-    _write(depot / "000-INDEX.md", "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n")
+    _write(
+        depot / "000-INDEX.md",
+        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
+    )
     _write(
         depot / "design" / "100-design.md",
         "****\n## Example.Concept\n\n"
@@ -1267,10 +1462,14 @@ def _depot_with_agendix(root: Path, *, cite: str) -> Path:
     return depot
 
 
-def test_reviewed_surface_citing_real_agendix_block_raises_closure(monkeypatch, tmp_path: Path) -> None:
+def test_reviewed_surface_citing_real_agendix_block_raises_closure(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
-    depot = _depot_with_agendix(tmp_path, cite="the lead is `Example.Concept/Agendix/Real.Lead`")
+    depot = _depot_with_agendix(
+        tmp_path, cite="the lead is `Example.Concept/Agendix/Real.Lead`"
+    )
     state = _run(depot_paths=(str(depot),))
     hits = [f for f in state.findings if f.code == REVIEWED_CITE_CLOSURE]
     assert len(hits) == 1
@@ -1278,18 +1477,24 @@ def test_reviewed_surface_citing_real_agendix_block_raises_closure(monkeypatch, 
     assert hits[0].details["target"] == "Example.Concept/Agendix/Real.Lead"
 
 
-def test_reviewed_surface_naming_agendix_file_stays_quiet(monkeypatch, tmp_path: Path) -> None:
+def test_reviewed_surface_naming_agendix_file_stays_quiet(
+    monkeypatch, tmp_path: Path
+) -> None:
     # naming the agendix surface/file (as the Index.Agendix definition does) is
     # not a content cite -> no violation; only a Block.Path into a real agendix
     # block is the forbidden edge
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
-    depot = _depot_with_agendix(tmp_path, cite="see `agendix/Example.Concept-agendix.md`")
+    depot = _depot_with_agendix(
+        tmp_path, cite="see `agendix/Example.Concept-agendix.md`"
+    )
     state = _run(depot_paths=(str(depot),))
     assert not [f for f in state.findings if f.code == REVIEWED_CITE_CLOSURE]
 
 
-def test_agendix_format_placeholders_do_not_raise_closure(monkeypatch, tmp_path: Path) -> None:
+def test_agendix_format_placeholders_do_not_raise_closure(
+    monkeypatch, tmp_path: Path
+) -> None:
     # a reviewed block that DESCRIBES the agendix format with placeholder paths
     # resolves to no real target -> no violation
     monkeypatch.chdir(tmp_path)
@@ -1302,7 +1507,9 @@ def test_agendix_format_placeholders_do_not_raise_closure(monkeypatch, tmp_path:
     assert not [f for f in state.findings if f.code == REVIEWED_CITE_CLOSURE]
 
 
-def test_reviewed_surface_citing_appendix_or_concept_stays_quiet(monkeypatch, tmp_path: Path) -> None:
+def test_reviewed_surface_citing_appendix_or_concept_stays_quiet(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
     depot = _depot_with_agendix(

@@ -1,6 +1,6 @@
-"""Index.Depot.Dependency: the two-tier declaration readers (Impl.Req 701).
+"""Index.Depot.Dependency: local declarations resolved through Wayfinder.
 
-Slice 1 — the global `~/.agentos` registry (name -> path).
+Slice 1 — the global Wayfinder registry (package identity -> last location).
 Slice 2 — the local `000-INDEX.md` dependency-name declaration.
 Slice 3 — directed, non-transitive visibility resolution.
 """
@@ -13,6 +13,7 @@ from agentos.index.depot_deps import (
     load_depot_registry,
     resolve_dependency_depots,
 )
+from agentos.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
 
 
 def _write_global_config(home: Path, index_block: dict) -> None:
@@ -23,20 +24,23 @@ def _write_global_config(home: Path, index_block: dict) -> None:
     )
 
 
+def _register_depots(home: Path, depots: dict[str, Path]) -> None:
+    registry = WayfinderRegistry(home=home)
+    for name, path in depots.items():
+        registry.register(
+            WayfinderReferenceRoot(type="package.skill", id=name),
+            path,
+        )
+
+
 # ---- Slice 1: registry reader ------------------------------------------------
 
 
 def test_registry_resolves_declared_depots(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
-    pkg = tmp_path / "pkg"
-    chat = tmp_path / "chat"
-    _write_global_config(
-        home,
-        {"index": {"depots": {
-            "agentos-pkg": {"path": str(pkg)},
-            "agentos-chatlas-pkg": {"path": str(chat)},
-        }}},
-    )
+    pkg = _write_router(tmp_path / "pkg", "# pkg\n")
+    chat = _write_router(tmp_path / "chat", "# chat\n")
+    _register_depots(home, {"agentos-pkg": pkg, "agentos-chatlas-pkg": chat})
     monkeypatch.setenv("AGENTOS_HOME", str(home))
     registry = load_depot_registry()
     assert registry == {"agentos-pkg": pkg, "agentos-chatlas-pkg": chat}
@@ -47,7 +51,20 @@ def test_registry_empty_when_config_or_key_missing(tmp_path: Path, monkeypatch) 
     monkeypatch.setenv("AGENTOS_HOME", str(home))
     assert load_depot_registry() == {}  # no file
     _write_global_config(home, {"skills": {"routing": {"sources": {}}}})
-    assert load_depot_registry() == {}  # file present, no index.depots key
+    assert load_depot_registry() == {}  # unrelated config is not a registry
+
+
+def test_legacy_index_depots_do_not_establish_registration(
+    tmp_path: Path, monkeypatch
+) -> None:
+    home = tmp_path / "home"
+    depot = _write_router(tmp_path / "legacy", "# legacy\n")
+    _write_global_config(
+        home,
+        {"index": {"depots": {"legacy-pkg": {"path": str(depot)}}}},
+    )
+    monkeypatch.setenv("AGENTOS_HOME", str(home))
+    assert load_depot_registry() == {}
 
 
 # ---- Slice 2: local declaration reader ---------------------------------------
@@ -81,7 +98,7 @@ def test_resolution_is_direct_and_non_transitive(tmp_path: Path, monkeypatch) ->
     c = tmp_path / "c"
     _write_router(b, "# B\n\n> `Index.Depot.Dependency`: cc\n")  # B depends on C
     _write_router(c, "# C\n")
-    _write_global_config(home, {"index": {"depots": {"bb": {"path": str(b)}, "cc": {"path": str(c)}}}})
+    _register_depots(home, {"bb": b, "cc": c})
     monkeypatch.setenv("AGENTOS_HOME", str(home))
 
     d = _write_router(tmp_path / "d", "# D\n\n> `Index.Depot.Dependency`: bb\n")  # D depends on B only
@@ -92,7 +109,6 @@ def test_resolution_is_direct_and_non_transitive(tmp_path: Path, monkeypatch) ->
 
 def test_declared_name_absent_from_registry_is_reported(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
-    _write_global_config(home, {"index": {"depots": {}}})
     monkeypatch.setenv("AGENTOS_HOME", str(home))
     d = _write_router(tmp_path / "d", "# D\n\n> `Index.Depot.Dependency`: ghost\n")
     resolved, unresolved = resolve_dependency_depots(d)
@@ -103,13 +119,12 @@ def test_declared_name_absent_from_registry_is_reported(tmp_path: Path, monkeypa
 # ---- default_depends (the agentos-pkg prelude) -------------------------------
 
 
-def _write_index_config(home: Path, depots: dict, default_depends: list) -> None:
+def _write_index_config(home: Path, default_depends: list[str]) -> None:
     home.mkdir(parents=True, exist_ok=True)
     (home / "config.json").write_text(
         json.dumps({
             "class": "agentos.global.config",
             "index": {
-                "depots": {n: {"path": str(p)} for n, p in depots.items()},
                 "default_depends": default_depends,
             },
         }),
@@ -121,7 +136,8 @@ def test_registered_depot_inherits_default_depends(tmp_path: Path, monkeypatch) 
     home = tmp_path / "home"
     pkg = _write_router(tmp_path / "pkg", "# pkg\n")
     other = _write_router(tmp_path / "other", "# other\n")  # no directive of its own
-    _write_index_config(home, {"agentos-pkg": pkg, "other-pkg": other}, ["agentos-pkg"])
+    _write_index_config(home, ["agentos-pkg"])
+    _register_depots(home, {"agentos-pkg": pkg, "other-pkg": other})
     monkeypatch.setenv("AGENTOS_HOME", str(home))
 
     resolved, unresolved = resolve_dependency_depots(other)
@@ -132,7 +148,8 @@ def test_registered_depot_inherits_default_depends(tmp_path: Path, monkeypatch) 
 def test_base_depot_does_not_depend_on_itself(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     pkg = _write_router(tmp_path / "pkg", "# pkg\n")
-    _write_index_config(home, {"agentos-pkg": pkg}, ["agentos-pkg"])
+    _write_index_config(home, ["agentos-pkg"])
+    _register_depots(home, {"agentos-pkg": pkg})
     monkeypatch.setenv("AGENTOS_HOME", str(home))
 
     resolved, _ = resolve_dependency_depots(pkg)
@@ -142,7 +159,8 @@ def test_base_depot_does_not_depend_on_itself(tmp_path: Path, monkeypatch) -> No
 def test_unregistered_depot_does_not_inherit_defaults(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     pkg = _write_router(tmp_path / "pkg", "# pkg\n")
-    _write_index_config(home, {"agentos-pkg": pkg}, ["agentos-pkg"])
+    _write_index_config(home, ["agentos-pkg"])
+    _register_depots(home, {"agentos-pkg": pkg})
     monkeypatch.setenv("AGENTOS_HOME", str(home))
 
     stranger = _write_router(tmp_path / "stranger", "# s\n")  # not in the registry

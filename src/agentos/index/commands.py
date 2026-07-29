@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from agentos.skwlint import add_check_selection_args
 
 from .linter import (
+    CHECKS,
     LinterCheck,
     build_linter_config,
     check_registry,
@@ -22,7 +23,8 @@ def _cmd_linter(args: argparse.Namespace) -> int:
     if getattr(args, "list_checks", False):
         from agentos.skwlint import render_check_registry
 
-        for line in render_check_registry(check_registry()):
+        extra_checks = tuple(getattr(args, "_extra_linter_checks", ()) or ())
+        for line in render_check_registry(check_registry((*CHECKS, *extra_checks))):
             print(line)
         return 0
     config, raw_depot_paths, raw_index_paths, raw_appendix_paths = build_linter_config(
@@ -62,6 +64,12 @@ def _cmd_blocks(args: argparse.Namespace) -> int:
     from .model import parse_depot
     from .model.stats import block_grounding_stats
 
+    support_resolver = getattr(args, "_support_reference_resolver", None)
+    if support_resolver is None:
+        raise CliError(
+            "agentos index blocks requires a support-reference resolver; "
+            "grounding cannot be inferred from anchor syntax"
+        )
     sort = getattr(args, "sort", None)
     if sort is not None and sort not in _BLOCKS_SORT_KEYS:
         raise CliError(
@@ -73,8 +81,15 @@ def _cmd_blocks(args: argparse.Namespace) -> int:
     for raw_depot in args.depot:
         depot = (root / raw_depot).resolve()
         if not depot.is_dir():
-            raise CliError(f"agentos index blocks depot is not a directory: {raw_depot}")
-        rows.extend(block_grounding_stats(parse_depot(depot)))
+            raise CliError(
+                f"agentos index blocks depot is not a directory: {raw_depot}"
+            )
+        rows.extend(
+            block_grounding_stats(
+                parse_depot(depot),
+                resolve_support_reference=support_resolver,
+            )
+        )
 
     def _rel(path: Path | None) -> str:
         if path is None:
@@ -132,7 +147,9 @@ def _cmd_blocks(args: argparse.Namespace) -> int:
             "blocks": len(rows),
             "kernel_lines": summary_lines,
             "unique_anchors": summary_anchors,
-            "gr_density": round(summary_anchors / summary_lines, 4) if summary_lines else 0.0,
+            "gr_density": round(summary_anchors / summary_lines, 4)
+            if summary_lines
+            else 0.0,
         },
     }
     if args.json:
@@ -159,6 +176,7 @@ def register_index_commands(
     subparsers: argparse._SubParsersAction,
     *,
     extra_linter_checks: Sequence[LinterCheck] = (),
+    support_reference_resolver: Callable[[str], bool] | None = None,
 ) -> None:
     index_parser = subparsers.add_parser(
         "index",
@@ -171,8 +189,9 @@ def register_index_commands(
         help="List concept blocks with grounding statistics.",
         description=(
             "Query the parsed index model: one row per concept block with its "
-            "Grounding.Density (unique inline anchors / kernel lines) and grounded-line "
-            "coverage. `--sort gr-density` returns the grounding/enrichment worklist."
+            "Grounding.Density (unique resolvable support references / kernel lines) "
+            "and grounded-line coverage. `--sort gr-density` returns the "
+            "grounding/enrichment worklist."
         ),
     )
     blocks_parser.add_argument(
@@ -201,7 +220,10 @@ def register_index_commands(
         action="store_true",
         help="Emit structured JSON output.",
     )
-    blocks_parser.set_defaults(handler=_cmd_blocks)
+    blocks_parser.set_defaults(
+        handler=_cmd_blocks,
+        _support_reference_resolver=support_reference_resolver,
+    )
 
     linter_parser = index_subparsers.add_parser(
         "linter",
@@ -261,4 +283,6 @@ def register_index_commands(
         help="Alias for --coverage line.",
     )
     add_check_selection_args(linter_parser, unit="check")
-    linter_parser.set_defaults(handler=_cmd_linter, _extra_linter_checks=tuple(extra_linter_checks))
+    linter_parser.set_defaults(
+        handler=_cmd_linter, _extra_linter_checks=tuple(extra_linter_checks)
+    )

@@ -6,6 +6,7 @@ agents importing the library) reads the same numbers from the same parse.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,15 +28,27 @@ class BlockGroundingStats:
         return len(self.anchors)
 
 
-def block_grounding_stats(model: IndexDepotModel) -> list[BlockGroundingStats]:
+def block_grounding_stats(
+    model: IndexDepotModel,
+    *,
+    resolve_support_reference: Callable[[str], bool],
+) -> list[BlockGroundingStats]:
     """Per-concept-block grounding stats: `Grounding.Density` plus line coverage.
 
     Concept blocks are chapter-surface top-level headings (valid path, no
     segments) — the same denominator the linter's block coverage meter uses.
     Grounding is a line property: `grounded_lines` counts kernel lines carrying
-    at least one trailing anchor; density counts unique inline anchors only.
+    at least one reference that resolves to a nonempty support set; density
+    counts unique resolved references only.
     """
     stats: list[BlockGroundingStats] = []
+    resolution_cache: dict[str, bool] = {}
+
+    def resolves(anchor: str) -> bool:
+        if anchor not in resolution_cache:
+            resolution_cache[anchor] = resolve_support_reference(anchor)
+        return resolution_cache[anchor]
+
     for document in model.documents:
         if document.surface_kind != "chapter":
             continue
@@ -51,17 +64,21 @@ def block_grounding_stats(model: IndexDepotModel) -> list[BlockGroundingStats]:
                 continue
             block_path = str(node.parsed["path"]).strip()
             lines = lines_by_block.get(block_path, [])
-            anchors = {
+            cited_anchors = {
                 str(span.parsed["anchor"])
                 for line in lines
                 for span in line.spans
                 if span.kind == "anchor"
             }
+            anchors = {anchor for anchor in cited_anchors if resolves(anchor)}
             kernel_lines = len(lines)
             grounded_lines = sum(
                 1
                 for line in lines
-                if any(span.kind == "anchor" for span in line.spans)
+                if any(
+                    span.kind == "anchor" and resolves(str(span.parsed["anchor"]))
+                    for span in line.spans
+                )
             )
             stats.append(
                 BlockGroundingStats(

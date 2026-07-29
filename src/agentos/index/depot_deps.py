@@ -1,4 +1,4 @@
-"""`Index.Depot.Dependency`: the two-tier dependency declaration (Impl.Req 701).
+"""`Index.Depot.Dependency`: direct dependency declaration and resolution.
 
 A depot resolves cross-depot mentions only against depots it *declares* as
 dependencies (directed, non-transitive — `agentos-pkg` `Index.Depot.Dependency`).
@@ -8,10 +8,8 @@ Declaration is two-tier:
   **by name**, as a directive line (mirrors the existing ``> `Appendix.Discovery`:``
   router directive). This is the authoritative local declaration for this cut
   (see Impl.Req 701 Impl.Log: router-as-config).
-- **global** — the ``~/.agentos`` registry resolves each name -> a filesystem
-  location, so local declarations carry no absolute paths. The registry reuses
-  the `skills.routing.sources` name->location shape as a sibling `index.depots`
-  key.
+- **global** — the Wayfinder registry resolves each package identity to its last
+  verified filesystem location, so local declarations carry no absolute paths.
 
 Resolution is non-transitive: a depot sees its own concepts plus those of its
 *directly* declared dependencies only.
@@ -24,6 +22,7 @@ import re
 from pathlib import Path
 
 from agentos._core.project import global_config_path
+from agentos.wayfinder import CorruptWayfinderRegistry, WayfinderRegistry
 
 _DEPENDS_DIRECTIVE_RE = re.compile(
     r"^\s*>\s*`Index\.Depot\.Dependency`\s*:\s*(?P<names>.+?)\s*$", re.MULTILINE
@@ -31,23 +30,16 @@ _DEPENDS_DIRECTIVE_RE = re.compile(
 
 
 def load_depot_registry(home: Path | None = None) -> dict[str, Path]:
-    """The global depot registry: depot name -> depot root `Path`.
-
-    Read from ``<home>/config.json`` (``AGENTOS_HOME`` honored via
-    `agentos_home_dir`). Missing config, malformed JSON, or a missing
-    ``index.depots`` key all yield an empty map — the registry is optional
-    plumbing, never a hard failure. Each entry accepts a ``path`` or
-    ``project`` location, matching the `skills.routing.sources` forms.
-    """
-    depots = _load_index_config(home).get("depots")
-    registry: dict[str, Path] = {}
-    for name, entry in (depots or {}).items():
-        if not isinstance(entry, dict):
-            continue
-        location = entry.get("path") or entry.get("project")
-        if isinstance(location, str) and location:
-            registry[str(name)] = Path(location)
-    return registry
+    """Return registered Index roots keyed by their stable root identity."""
+    try:
+        entries = WayfinderRegistry(home=home).entries()
+    except CorruptWayfinderRegistry:
+        return {}
+    return {
+        entry.root.id: entry.path
+        for entry in entries
+        if entry.root.type in {"package.skill", "index.depot"}
+    }
 
 
 def _load_index_config(home: Path | None) -> dict:

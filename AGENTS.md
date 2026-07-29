@@ -38,6 +38,15 @@
 - Do not add backward-compatibility aliases or compatibility layers unless explicitly requested.
 - Prefer clean namespace and interface changes over preserving legacy command paths.
 
+## Wayfinder System
+
+- `src/agentos/wayfinder/` owns portable `Wayfinder.Reference` models, global root-location memory, composable resolution, traces, and structured resolution POIs.
+- Canonical references are strict versioned JSON. `index://<package-id>/<block-path>` is sugar for the first `index.block` reference type and must parse back to that canonical object.
+- The global registry lives at `~/.agentos/wayfinder/registry.json` (`AGENTOS_WAYFINDER_REGISTRY` override). It stores a root's last verified absolute location plus open relocation hints; the location is operational evidence, never resource identity or authority.
+- `Wayfinder` resolves roots through the registry and delegates the remaining address to the existing domain model. The `index.block` resolver uses `agentos.index.model.parse_depot`; it does not implement a second Index parser.
+- `agentos wayfinder register|resolve|check` is a thin structured-JSON CLI. Index depot dependencies now resolve package identities from Wayfinder, while `index.default_depends` remains policy in the global Agentos config.
+- Agents may inspect and discover resources directly. Wayfinder is deterministic code infrastructure, not a constraint on agent exploration.
+
 ## Anchory System
 
 - `src/agentos/anchory/` owns depot-scoped anchor dictionaries and their public library interface.

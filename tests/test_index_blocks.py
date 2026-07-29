@@ -62,7 +62,9 @@ def _write_depot(root: Path) -> Path:
         encoding="utf-8",
     )
     (depot / "design" / "100-design.md").write_text(CHAPTER, encoding="utf-8")
-    (depot / "appendix" / "Worked.Block-appendix.md").write_text(APPENDIX, encoding="utf-8")
+    (depot / "appendix" / "Worked.Block-appendix.md").write_text(
+        APPENDIX, encoding="utf-8"
+    )
     return depot
 
 
@@ -73,6 +75,7 @@ def _blocks_args(depot: Path, **overrides: object) -> argparse.Namespace:
         "sort": None,
         "limit": None,
         "json": True,
+        "_support_reference_resolver": lambda _anchor: True,
     }
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -80,9 +83,20 @@ def _blocks_args(depot: Path, **overrides: object) -> argparse.Namespace:
 
 def test_block_grounding_stats_computation(tmp_path: Path) -> None:
     depot = _write_depot(tmp_path)
-    stats = {row.block_path: row for row in block_grounding_stats(parse_depot(depot))}
+    stats = {
+        row.block_path: row
+        for row in block_grounding_stats(
+            parse_depot(depot),
+            resolve_support_reference=lambda _anchor: True,
+        )
+    }
 
-    assert set(stats) == {"Stamped.Block", "Worked.Block", "Bare.Block", "Line.Type:Param"}
+    assert set(stats) == {
+        "Stamped.Block",
+        "Worked.Block",
+        "Bare.Block",
+        "Line.Type:Param",
+    }
 
     stamped = stats["Stamped.Block"]
     assert stamped.kernel_lines == 3
@@ -105,6 +119,21 @@ def test_block_grounding_stats_computation(tmp_path: Path) -> None:
     param = stats["Line.Type:Param"]
     assert param.kernel_lines == 1
     assert param.unique_anchors == 1
+
+
+def test_block_grounding_stats_reject_anchor_only_grounding(tmp_path: Path) -> None:
+    depot = _write_depot(tmp_path)
+    stats = {
+        row.block_path: row
+        for row in block_grounding_stats(
+            parse_depot(depot),
+            resolve_support_reference=lambda _anchor: False,
+        )
+    }
+
+    assert stats["Stamped.Block"].unique_anchors == 0
+    assert stats["Stamped.Block"].grounded_lines == 0
+    assert stats["Stamped.Block"].gr_density == 0.0
 
 
 def test_blocks_cli_sorts_by_gr_density(
@@ -170,3 +199,12 @@ def test_blocks_cli_rejects_unknown_sort(
     monkeypatch.chdir(tmp_path)
     with pytest.raises(CliError):
         _cmd_blocks(_blocks_args(Path("skills/fixture-pkg"), sort="alphabetical"))
+
+
+def test_blocks_cli_requires_support_resolver(tmp_path: Path) -> None:
+    depot = _write_depot(tmp_path)
+    args = _blocks_args(depot)
+    delattr(args, "_support_reference_resolver")
+
+    with pytest.raises(CliError, match="support-reference resolver"):
+        _cmd_blocks(args)
