@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** split the 1,868-line index linter into cohesive orchestration, shared-model, structural-check, and parser-check modules without changing its public API or behavior
-- **status:** ready for execution
+- **status:** implemented and fully verified
 - **source:** `hugentics-codebase-cleaner --AUTO --codebase agentos-py`, focused on long files
 - **target project:** `agentos-py`
 
@@ -33,14 +33,14 @@
 - extract shared state, finding, gate, check, and coverage models into a private index-linter module
 - re-export the existing public model names from `agentos.index.linter`
 - observable: public imports continue to resolve and focused tests pass
-- status: pending
+- status: completed
 
 ### Slice 2 - Structural checks
 
 - extract surface discovery, Markdown-block, depot, concept, appendix, and router checks into a private structural-check module
 - expose one ordered structural check tuple for composition by the facade
 - observable: structural check order and focused linter results remain unchanged
-- status: pending
+- status: completed
 
 ### Slice 3 - Parser-backed checks and verification
 
@@ -48,7 +48,7 @@
 - compose the complete public `CHECKS` tuple in the original order and re-export existing check constants
 - update the local architecture guidance, run focused tests, Ruff, and the complete test suite
 - observable: the original file is materially smaller and all repository verification passes
-- status: pending
+- status: completed
 
 ## Risks And Deviation Triggers
 
@@ -70,3 +70,8 @@
 
 - 2026-07-29: selected the index linter after a maintained-source inventory; it is the longest production module and has clear existing state/check seams
 - 2026-07-29: focused baseline passed with 57 tests
+- 2026-07-29: mandatory pre-execution checkpoint created at `b42ed67`
+- 2026-07-29: extracted shared state/parsing support, structural checks, and parser-backed checks while retaining `agentos.index.linter` as the public facade
+- 2026-07-29: focused Ruff and all 57 index-linter tests passed after extraction
+- 2026-07-29: full Ruff passed, all 551 repository tests passed, and an API audit confirmed all 98 original defined public symbols plus the exact order of all 23 checks
+- 2026-07-29: repository-wide Ruff formatting is not an existing clean gate (154 pre-existing files differ); all four touched Python files pass focused formatting checks
