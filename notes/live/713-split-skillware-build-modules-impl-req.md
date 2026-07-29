@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **scope:** split the 1,846-line Skillware build module into cohesive source-expansion and build/check operation modules behind the stable `agentos.skillware.build` facade
-- **status:** ready for execution
+- **status:** implemented and fully verified
 - **source:** continuation of `hugentics-codebase-cleaner --AUTO --codebase agentos-py`, focused on long files
 - **target project:** `agentos-py`
 
@@ -33,14 +33,14 @@
 - extract configuration models/loaders, depot and package resolution, source expansion, and locator helpers
 - keep expansion behavior and `_resolve_locator` reachable through the facade
 - observable: focused expansion/configuration tests pass
-- status: pending
+- status: completed
 
 ### Slice 2 - Build/check operations extraction
 
 - extract lock management, build/check reports, POI checks, project checks, and blessing operations
 - keep `_SkwSurfaceProvider` and `_code_surface_pois` reachable through the facade
 - observable: focused build/check/unlock tests pass with unchanged POI and lock behavior
-- status: pending
+- status: completed
 
 ### Slice 3 - Facade and repository verification
 
@@ -48,7 +48,7 @@
 - document module ownership and audit defined public symbol parity against the checkpoint
 - run focused tests, full Ruff, focused formatting, Skillware project check, and the full test suite
 - observable: no implementation module remains comparably oversized or mixed-concern, and all verification passes
-- status: pending
+- status: completed
 
 ## Risks And Deviation Triggers
 
@@ -72,3 +72,9 @@
 
 - 2026-07-29: selected `skillware/build.py` after the post-linter inventory; its existing build/check section boundary provides the strongest next split
 - 2026-07-29: focused baseline passed with 126 tests
+- 2026-07-29: mandatory pre-execution checkpoint created at `56122c5`
+- 2026-07-29: extracted configuration/expansion and build/check operations behind the stable `agentos.skillware.build` facade
+- 2026-07-29: all 126 focused Skillware tests and focused Ruff passed after extraction
+- 2026-07-29: facade audit preserved all 43 defined public symbols, the exact ordered 25-name `__all__`, and the three test-backed private hooks
+- 2026-07-29: project-scope `agentos skw check --json` loaded both packages with zero package POIs; its 11 project POIs are existing edition-history data findings targeting unrelated records, `commands.py`, and `edition_history.py`
+- 2026-07-29: full Ruff, focused formatting, all 126 focused tests, and all 551 repository tests passed
