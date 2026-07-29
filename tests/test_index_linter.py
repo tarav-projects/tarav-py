@@ -16,7 +16,9 @@ from agentos.index.linter import (
     render_linter_text,
     run_linter,
 )
-from agentos.index.poi import INDEX_POI_CATALOG, INDEX_POI_CODES, finding_to_poi
+from agentos.index.poi import finding_to_poi
+from agentos.poi import POICatalog, POIClassRegistration
+from agentos.wayfinder import poi_class_reference
 
 
 def _write(path: Path, text: str) -> None:
@@ -253,15 +255,6 @@ def test_index_linter_clean_surface_renders_text_and_json(
     )
 
 
-def test_index_poi_catalog_registers_every_declared_finding_code() -> None:
-    assert len(INDEX_POI_CATALOG) == len(INDEX_POI_CODES)
-    assert len(set(INDEX_POI_CODES)) == len(INDEX_POI_CODES)
-    for code in INDEX_POI_CODES:
-        reference = INDEX_POI_CATALOG.require(code)
-        assert reference.root.id == "agentos-pkg"
-        assert reference.address == code
-
-
 def test_index_finding_adapter_preserves_occurrence_evidence() -> None:
     from agentos.index.linter import LinterFinding
 
@@ -274,12 +267,41 @@ def test_index_finding_adapter_preserves_occurrence_evidence() -> None:
         details={"line_span": 45, "max_block_lines": 40},
     )
 
-    poi = finding_to_poi(finding, INDEX_POI_CATALOG)
+    poi = finding_to_poi(finding, POICatalog())
 
+    assert poi.class_reference.root.id == "agentos-pkg"
     assert poi.class_reference.address == finding.code
     assert poi.target.display == "design/100-design.md:18"
     assert poi.situation == finding.message
     assert poi.evidence == finding.details
+
+
+def test_index_finding_adapter_preserves_external_check_ownership() -> None:
+    from agentos.index.linter import LinterFinding
+
+    finding = LinterFinding(
+        severity="warning",
+        code="Index.Linter/Anchor.Chatlas.Tag",
+        message="anchor is missing the Chatlas user-evidence tag",
+        path="design/100-design.md",
+        line=18,
+    )
+    catalog = POICatalog(
+        (
+            POIClassRegistration(
+                finding_code=finding.code,
+                reference=poi_class_reference("agentos-chatlas-pkg", finding.code),
+            ),
+        )
+    )
+
+    poi = finding_to_poi(
+        finding,
+        catalog,
+        package_id="agentos-chatlas-pkg",
+    )
+
+    assert poi.class_reference.root.id == "agentos-chatlas-pkg"
 
 
 def test_index_linter_missing_surface_blocks_dependent_checks(

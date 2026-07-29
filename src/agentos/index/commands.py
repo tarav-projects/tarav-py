@@ -19,9 +19,6 @@ from .linter import (
     render_linter_text,
     run_linter,
 )
-from .poi import INDEX_POI_CATALOG
-
-
 def _cmd_linter(args: argparse.Namespace) -> int:
     if getattr(args, "list_checks", False):
         from agentos.skwlint import render_check_registry
@@ -47,7 +44,7 @@ def _cmd_linter(args: argparse.Namespace) -> int:
         include=tuple(getattr(args, "check", ()) or ()),
         exclude=tuple(getattr(args, "skip", ()) or ()),
     )
-    poi_catalog = getattr(args, "_poi_catalog", INDEX_POI_CATALOG)
+    poi_catalog = getattr(args, "_poi_catalog", None)
     poi_report = build_linter_poi_report(state, catalog=poi_catalog)
     json_output = render_linter_json(
         state,
@@ -192,7 +189,7 @@ def register_index_commands(
     *,
     extra_linter_checks: Sequence[LinterCheck] = (),
     support_reference_resolver: Callable[[str], bool] | None = None,
-    poi_catalog: POICatalog = INDEX_POI_CATALOG,
+    poi_catalog: POICatalog | None = None,
 ) -> None:
     index_parser = subparsers.add_parser(
         "index",
@@ -252,9 +249,8 @@ def register_index_commands(
             "  agentos index linter --index skills/agentos-pkg/design "
             "--appendix skills/agentos-pkg/appendix\n"
             "  agentos index linter --index skills/agentos-pkg/000-INDEX.md --json\n\n"
-            "Finding and check codes are Agentos Index concepts under Index.Linter/*.\n"
-            "Resolve their meaning through the agentos-pkg Index.Linter concept\n"
-            "and normal appendix discovery."
+            "Finding codes resolve through registered Package.Skill POI catalogs.\n"
+            "Use `agentos poi explain <class>` for authoritative documentation."
         ),
     )
     linter_parser.add_argument(

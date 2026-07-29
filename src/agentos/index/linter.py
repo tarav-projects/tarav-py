@@ -112,7 +112,7 @@ from ._linter_structure import (
     SURFACE_MISSING_BY_KIND,
     SURFACE_NOT_MARKDOWN_BY_KIND,
 )
-from .poi import INDEX_POI_CATALOG, finding_to_poi
+from .poi import finding_to_poi
 
 
 __all__ = [
@@ -322,18 +322,24 @@ def run_linter(
 def build_linter_poi_report(
     state: LinterState,
     *,
-    catalog: POICatalog = INDEX_POI_CATALOG,
+    catalog: POICatalog | None = None,
 ) -> POIReport:
     view = _scoped_view(state)
+    selected_catalog = catalog if catalog is not None else POICatalog.discover()
     return build_poi_report(
-        finding_to_poi(finding, catalog) for finding in view["findings"]
+        finding_to_poi(
+            finding,
+            selected_catalog,
+            package_id=state.finding_poi_package_ids.get(id(finding), "agentos-pkg"),
+        )
+        for finding in view["findings"]
     )
 
 
 def render_linter_json(
     state: LinterState,
     *,
-    catalog: POICatalog = INDEX_POI_CATALOG,
+    catalog: POICatalog | None = None,
     poi_report: POIReport | None = None,
 ) -> str:
     report = poi_report or build_linter_poi_report(state, catalog=catalog)
@@ -343,7 +349,7 @@ def render_linter_json(
 def render_linter_text(
     state: LinterState,
     *,
-    catalog: POICatalog = INDEX_POI_CATALOG,
+    catalog: POICatalog | None = None,
     poi_report: POIReport | None = None,
 ) -> str:
     view = _scoped_view(state)

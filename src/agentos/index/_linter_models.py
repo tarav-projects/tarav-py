@@ -66,6 +66,7 @@ class LinterCheck:
     #   never disableable (exclude has no effect on it)
     default_on: bool = True
     structural: bool = False
+    poi_package_id: str = "agentos-pkg"
 
 
 @dataclass
@@ -158,6 +159,7 @@ class LinterState:
     parsed_documents: list[IndexDocument] = field(default_factory=list)
     findings: list[LinterFinding] = field(default_factory=list)
     finding_check_codes: dict[int, str] = field(default_factory=dict)
+    finding_poi_package_ids: dict[int, str] = field(default_factory=dict)
     check_results: list[CheckResult] = field(default_factory=list)
     coverage_items: dict[str, list[CoverageItem]] = field(default_factory=dict)
     line_support_standings: dict[tuple[str, int], LineSupportStanding] = field(
@@ -211,6 +213,7 @@ class LinterState:
         self.findings.extend(findings)
         for finding in findings:
             self.finding_check_codes[id(finding)] = check.code
+            self.finding_poi_package_ids[id(finding)] = check.poi_package_id
         error_count = sum(1 for finding in findings if finding.severity == "error")
         warning_count = sum(1 for finding in findings if finding.severity == "warning")
         self.check_results.append(

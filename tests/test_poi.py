@@ -88,6 +88,52 @@ def test_catalog_composes_class_references_and_rejects_duplicates() -> None:
         POICatalog((_registration(), _registration()))
 
 
+def test_catalog_discovers_classes_from_registered_poi_chapters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "AGENTOS_WAYFINDER_REGISTRY",
+        str(tmp_path / "state" / "registry.json"),
+    )
+    depot = _write_depot(tmp_path / "depot")
+    registry = WayfinderRegistry()
+    registry.register(
+        WayfinderReferenceRoot(type="package.skill", id="example-pkg"),
+        depot,
+    )
+
+    catalog = POICatalog.discover(registry=registry)
+
+    assert catalog.require("Example.Linter/Problem") == _registration().reference
+
+
+def test_catalog_ignores_blocks_outside_poi_chapters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "AGENTOS_WAYFINDER_REGISTRY",
+        str(tmp_path / "state" / "registry.json"),
+    )
+    depot = _write_depot(tmp_path / "depot")
+    (depot / "design").mkdir()
+    (depot / "design" / "100-design.md").write_text(
+        "****\n\n## Example.Linter/NotAClass\n\n- [DF] ordinary design block\n",
+        encoding="utf-8",
+    )
+    registry = WayfinderRegistry()
+    registry.register(
+        WayfinderReferenceRoot(type="package.skill", id="example-pkg"),
+        depot,
+    )
+
+    catalog = POICatalog.discover(registry=registry)
+
+    with pytest.raises(UnknownPOIClass, match="Example.Linter/NotAClass"):
+        catalog.require("Example.Linter/NotAClass")
+
+
 def test_poi_instance_identity_is_deterministic_for_material_occurrence() -> None:
     first = _instance()
     repeated = _instance()

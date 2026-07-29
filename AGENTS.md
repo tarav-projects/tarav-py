@@ -51,10 +51,11 @@
 
 - `src/agentos/poi/` owns the shared `POI.Instance`, `POI.Catalog`, grouped renderer, and `POI.Explain` command machinery.
 - A POI class identity is its canonical Wayfinder `index.block` reference. Producer finding codes are catalog lookup keys, not a second class identity.
+- `POI.Catalog.discover()` derives class registrations from the dedicated `poi/` Index chapters of Package.Skill roots registered in Wayfinder; blocks in other chapters are not POI classes.
 - `POI.Instance.create` derives a stable occurrence ID from class identity, target, and concrete evidence; presentation wording and severity do not churn identity.
 - Renderers resolve each class once, present its authoritative description once, then list compact instances. A class-resolution POI remains visible beside the original instances.
-- The Index linter keeps `LinterFinding` inside check execution and converts scoped findings at the reporting boundary. Public JSON uses `poi_classes` and `pois`, not a duplicate `findings` representation.
-- `agentos poi explain <class> [--json]` accepts a composed-catalog finding code or a canonical/sugar Wayfinder reference. `agentos-cli` injects feature-owned catalogs without reversing foundation dependencies.
+- The Index linter keeps `LinterFinding` inside check execution and converts scoped findings at the reporting boundary. Each `LinterCheck` declares its POI-owning package; an undocumented finding still produces the expected class reference so documentation failure remains visible. Public JSON uses `poi_classes` and `pois`, not a duplicate `findings` representation.
+- `agentos poi explain <class> [--json]` accepts a discovered finding code or a canonical/sugar Wayfinder reference. `agentos-cli` discovers one index-backed catalog and injects it into both explanation and Index rendering.
 
 ## Anchory System
 

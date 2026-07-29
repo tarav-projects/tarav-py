@@ -14,16 +14,21 @@ from agentos.wayfinder import (
     parse_reference,
 )
 
-from .catalog import POICatalog
+from .catalog import POICatalog, POICatalogError
 from .model import reference_sugar
 
 
 def _cmd_explain(args: argparse.Namespace) -> int:
-    catalog: POICatalog = args._poi_catalog
+    configured_catalog: POICatalog | None = args._poi_catalog
     try:
+        catalog = (
+            configured_catalog
+            if configured_catalog is not None
+            else POICatalog.discover()
+        )
         reference = _class_reference(args.class_name, catalog)
         result = Wayfinder().resolve(reference)
-    except WayfinderError as exc:
+    except (POICatalogError, WayfinderError) as exc:
         raise CliError(str(exc)) from exc
 
     if args.json:
@@ -50,7 +55,7 @@ def _class_reference(value: str, catalog: POICatalog) -> WayfinderReference:
 def register_poi_commands(
     subparsers: argparse._SubParsersAction,
     *,
-    catalog: POICatalog,
+    catalog: POICatalog | None = None,
 ) -> None:
     parser = subparsers.add_parser(
         "poi",
