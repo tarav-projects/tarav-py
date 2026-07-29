@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from agentos.poi import POICatalog, POIReport, build_poi_report
 from agentos.skwlint import (
     check_registry as _core_check_registry,
     check_selector as check_selector,
@@ -111,6 +112,7 @@ from ._linter_structure import (
     SURFACE_MISSING_BY_KIND,
     SURFACE_NOT_MARKDOWN_BY_KIND,
 )
+from .poi import INDEX_POI_CATALOG, finding_to_poi
 
 
 __all__ = [
@@ -206,6 +208,7 @@ __all__ = [
     "allowed",
     "blocked",
     "build_linter_config",
+    "build_linter_poi_report",
     "check_registry",
     "check_selector",
     "parsed_linter_kernel_lines",
@@ -316,23 +319,39 @@ def run_linter(
     return state
 
 
-def render_linter_json(state: LinterState) -> str:
-    return json.dumps(_state_payload(state), indent=2)
+def build_linter_poi_report(
+    state: LinterState,
+    *,
+    catalog: POICatalog = INDEX_POI_CATALOG,
+) -> POIReport:
+    view = _scoped_view(state)
+    return build_poi_report(
+        finding_to_poi(finding, catalog) for finding in view["findings"]
+    )
 
 
-def render_linter_text(state: LinterState) -> str:
+def render_linter_json(
+    state: LinterState,
+    *,
+    catalog: POICatalog = INDEX_POI_CATALOG,
+    poi_report: POIReport | None = None,
+) -> str:
+    report = poi_report or build_linter_poi_report(state, catalog=catalog)
+    return json.dumps(_state_payload(state, report), indent=2)
+
+
+def render_linter_text(
+    state: LinterState,
+    *,
+    catalog: POICatalog = INDEX_POI_CATALOG,
+    poi_report: POIReport | None = None,
+) -> str:
     view = _scoped_view(state)
     lines = ["Index linter"]
-    if view["findings"]:
+    report = poi_report or build_linter_poi_report(state, catalog=catalog)
+    if report.groups:
         lines.append("")
-        lines.append("Findings:")
-        for finding in view["findings"]:
-            location = finding.path
-            if finding.line is not None:
-                location = f"{location}:{finding.line}"
-            lines.append(
-                f"- [{finding.severity.upper()}] {finding.code} @ {location} - {finding.message}"
-            )
+        lines.extend(report.render_text().splitlines())
 
     blocked_results = [
         result for result in view["check_results"] if result.status == "blocked"
@@ -386,7 +405,7 @@ def _relativize_under_root(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
-def _state_payload(state: LinterState) -> dict[str, Any]:
+def _state_payload(state: LinterState, poi_report: POIReport) -> dict[str, Any]:
     view = _scoped_view(state)
     config: dict[str, Any] = {
         "depot": list(state.raw_depot_paths),
@@ -397,6 +416,7 @@ def _state_payload(state: LinterState) -> dict[str, Any]:
         config["coverage"] = sorted(state.config.coverage)
     if state.config.scope_paths:
         config["scope"] = [state.rel_path(path) for path in state.config.scope_paths]
+    poi_payload = poi_report.as_dict()
     payload = {
         "root": str(state.config.root),
         "config": config,
@@ -410,7 +430,8 @@ def _state_payload(state: LinterState) -> dict[str, Any]:
         ],
         "files": {kind: list(paths) for kind, paths in state.files_by_kind.items()},
         "checks": [result.to_payload() for result in view["check_results"]],
-        "findings": [finding.to_payload() for finding in view["findings"]],
+        "poi_classes": poi_payload["classes"],
+        "pois": poi_payload["instances"],
         "summary": view["summary"],
         "exit_code": 1 if view["summary"]["error_count"] else 0,
     }

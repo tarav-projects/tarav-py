@@ -16,6 +16,7 @@ from agentos.index.linter import (
     render_linter_text,
     run_linter,
 )
+from agentos.index.poi import INDEX_POI_CATALOG, INDEX_POI_CODES, finding_to_poi
 
 
 def _write(path: Path, text: str) -> None:
@@ -240,6 +241,45 @@ def test_index_linter_clean_surface_renders_text_and_json(
     assert payload["summary"]["error_count"] == 0
     assert payload["summary"]["blocked_count"] == 0
     assert payload["exit_code"] == 0
+    assert "findings" not in payload
+    assert len(payload["poi_classes"]) == 1
+    assert len(payload["pois"]) == 2
+    assert {poi["class"]["address"] for poi in payload["pois"]} == {
+        "Index.Linter/Line.Unlinked"
+    }
+    assert (
+        payload["pois"][0]["instance_id"]
+        == json.loads(render_linter_json(state))["pois"][0]["instance_id"]
+    )
+
+
+def test_index_poi_catalog_registers_every_declared_finding_code() -> None:
+    assert len(INDEX_POI_CATALOG) == len(INDEX_POI_CODES)
+    assert len(set(INDEX_POI_CODES)) == len(INDEX_POI_CODES)
+    for code in INDEX_POI_CODES:
+        reference = INDEX_POI_CATALOG.require(code)
+        assert reference.root.id == "agentos-pkg"
+        assert reference.address == code
+
+
+def test_index_finding_adapter_preserves_occurrence_evidence() -> None:
+    from agentos.index.linter import LinterFinding
+
+    finding = LinterFinding(
+        severity="warning",
+        code="Index.Linter/Block.TooLong",
+        message="block exceeds the line limit",
+        path="design/100-design.md",
+        line=18,
+        details={"line_span": 45, "max_block_lines": 40},
+    )
+
+    poi = finding_to_poi(finding, INDEX_POI_CATALOG)
+
+    assert poi.class_reference.address == finding.code
+    assert poi.target.display == "design/100-design.md:18"
+    assert poi.situation == finding.message
+    assert poi.evidence == finding.details
 
 
 def test_index_linter_missing_surface_blocks_dependent_checks(
@@ -1115,7 +1155,7 @@ def test_index_linter_scope_filters_findings_counts_and_meters(
     assert payload["coverage"]["block"] == {"grounded": 0, "total": 1}
     assert payload["summary"]["finding_count"] == 2
     assert all(
-        finding["path"].startswith("depot/design/") for finding in payload["findings"]
+        poi["target"]["path"].startswith("depot/design/") for poi in payload["pois"]
     )
 
 
@@ -1421,7 +1461,7 @@ def test_cli_check_flag_opts_into_dangling_mention(
     )
     _cmd_linter(_linter_ns(depot=["depot"], check=["dangling-mention"]))
     payload = json.loads(capsys.readouterr().out)
-    codes = {f["code"] for f in payload["findings"]}
+    codes = {poi["class"]["address"] for poi in payload["pois"]}
     assert DEPOT_DANGLING_MENTION in codes
 
 

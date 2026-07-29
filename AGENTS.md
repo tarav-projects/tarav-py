@@ -22,7 +22,7 @@
 - `src/agentos/index/model/` is the parser-backed model layer for index surfaces. It exposes `parse_index_file`, `parse_depot`, typed nodes such as `BlockHeading`/`KernelLine`/`RouterEntry`, and block-anchor query helpers for parser consumers.
 - index concept refs in block headings, router entries, and appendix/agendix filenames now accept both legacy `:` and canonical `::` type-statement sigils during the migration window; `agentos index linter` warns on legacy single-colon usage via `Index.Linter/TypeStatement.LegacySigil`, including router surfaces.
 - the linter exposes an external-check socket: `run_linter(..., extra_checks=...)` and `register_index_commands(..., extra_linter_checks=...)`; bridges (e.g. the chatlas grounding-provenance check) register at the composition root (`agentos-cli`), the core never imports them (`Dependency.Profile.Split`).
-- index-linter ownership is split by concern: `index/linter.py` is the stable public orchestration/reporting facade, `_linter_models.py` owns shared state and parsed-document loading, `_linter_structure.py` owns surface/router/depot checks, and `_linter_parser_checks.py` owns line/anchor/grounding semantic checks.
+- index-linter ownership is split by concern: `index/linter.py` is the stable public orchestration/reporting facade, `index/poi.py` maps internal findings to registered POI classes and deterministic instances, `_linter_models.py` owns shared state and parsed-document loading, `_linter_structure.py` owns surface/router/depot checks, and `_linter_parser_checks.py` owns line/anchor/grounding semantic checks.
 - core parser-backed line checks: typed-line bracket syntax, known act codes, `[GR]` trailing anchor (warnings), and `AS:` outside `agendix/` as `Index.Linter/Source.Axis.Placement` (error); `agendix/` files are discovered next to `appendix/` for these checks.
 - `agentos index linter --coverage line` enables `Index.Linter/Line.Unlinked` warnings for chapter and appendix kernel lines; `--warn-unlinked` is a compatibility alias for this meter. Agendix kernel lines are checked for anchors by default.
 - `agentos index linter --coverage block` enables `Index.Linter/Block.Ungrounded`: a chapter concept block is covered iff every kernel line in it carries a trailing anchor (grounding is a line property; empty blocks count covered). `--coverage all` enables both block and line meters.
@@ -46,6 +46,15 @@
 - `Wayfinder` resolves roots through the registry and delegates the remaining address to the existing domain model. The `index.block` resolver uses `agentos.index.model.parse_depot`; it does not implement a second Index parser.
 - `agentos wayfinder register|resolve|check` is a thin structured-JSON CLI. Index depot dependencies now resolve package identities from Wayfinder, while `index.default_depends` remains policy in the global Agentos config.
 - Agents may inspect and discover resources directly. Wayfinder is deterministic code infrastructure, not a constraint on agent exploration.
+
+## POI System
+
+- `src/agentos/poi/` owns the shared `POI.Instance`, `POI.Catalog`, grouped renderer, and `POI.Explain` command machinery.
+- A POI class identity is its canonical Wayfinder `index.block` reference. Producer finding codes are catalog lookup keys, not a second class identity.
+- `POI.Instance.create` derives a stable occurrence ID from class identity, target, and concrete evidence; presentation wording and severity do not churn identity.
+- Renderers resolve each class once, present its authoritative description once, then list compact instances. A class-resolution POI remains visible beside the original instances.
+- The Index linter keeps `LinterFinding` inside check execution and converts scoped findings at the reporting boundary. Public JSON uses `poi_classes` and `pois`, not a duplicate `findings` representation.
+- `agentos poi explain <class> [--json]` accepts a composed-catalog finding code or a canonical/sugar Wayfinder reference. `agentos-cli` injects feature-owned catalogs without reversing foundation dependencies.
 
 ## Anchory System
 

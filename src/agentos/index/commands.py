@@ -6,17 +6,20 @@ import argparse
 import json
 from collections.abc import Callable, Sequence
 
+from agentos.poi import POICatalog
 from agentos.skwlint import add_check_selection_args
 
 from .linter import (
     CHECKS,
     LinterCheck,
     build_linter_config,
+    build_linter_poi_report,
     check_registry,
     render_linter_json,
     render_linter_text,
     run_linter,
 )
+from .poi import INDEX_POI_CATALOG
 
 
 def _cmd_linter(args: argparse.Namespace) -> int:
@@ -44,11 +47,23 @@ def _cmd_linter(args: argparse.Namespace) -> int:
         include=tuple(getattr(args, "check", ()) or ()),
         exclude=tuple(getattr(args, "skip", ()) or ()),
     )
-    json_output = render_linter_json(state)
+    poi_catalog = getattr(args, "_poi_catalog", INDEX_POI_CATALOG)
+    poi_report = build_linter_poi_report(state, catalog=poi_catalog)
+    json_output = render_linter_json(
+        state,
+        catalog=poi_catalog,
+        poi_report=poi_report,
+    )
     if args.json:
         print(json_output)
     else:
-        print(render_linter_text(state))
+        print(
+            render_linter_text(
+                state,
+                catalog=poi_catalog,
+                poi_report=poi_report,
+            )
+        )
     payload = json.loads(json_output)
     return int(payload["exit_code"])
 
@@ -177,6 +192,7 @@ def register_index_commands(
     *,
     extra_linter_checks: Sequence[LinterCheck] = (),
     support_reference_resolver: Callable[[str], bool] | None = None,
+    poi_catalog: POICatalog = INDEX_POI_CATALOG,
 ) -> None:
     index_parser = subparsers.add_parser(
         "index",
@@ -284,5 +300,7 @@ def register_index_commands(
     )
     add_check_selection_args(linter_parser, unit="check")
     linter_parser.set_defaults(
-        handler=_cmd_linter, _extra_linter_checks=tuple(extra_linter_checks)
+        handler=_cmd_linter,
+        _extra_linter_checks=tuple(extra_linter_checks),
+        _poi_catalog=poi_catalog,
     )
