@@ -1,3 +1,4 @@
+# $kw: ^anchory-poi-command --from POI.System --from POI.Linter --note [CT] Anchory check output uses the common POI report boundary ^c20260729-49u
 from __future__ import annotations
 
 import argparse
@@ -10,6 +11,7 @@ from agentos._core.json_input import load_json_object_arg
 
 from .core import AnchoryDepot, AnchoryEntry, AnchoryError, AnchoryResolution
 from .core import GLOBAL_NAMESPACE, AnchorySourceMatch, scan_anchory_source
+from .poi import build_anchory_linter_report
 from .registry import discover_resolve
 
 
@@ -126,22 +128,7 @@ def _cmd_amend(args: argparse.Namespace) -> int:
 def _cmd_check(args: argparse.Namespace) -> int:
     depot = _depot(args)
     result = depot.check()
-    _print_json(
-        {
-            "depot": str(depot.root),
-            "status": "ok" if result.ok else "error",
-            "findings": [
-                {
-                    "severity": finding.severity,
-                    "code": finding.code,
-                    "path": finding.path,
-                    "message": finding.message,
-                    **({"anchor": finding.anchor} if finding.anchor is not None else {}),
-                }
-                for finding in result.findings
-            ],
-        }
-    )
+    _print_json(build_anchory_linter_report(result, depot=depot.root).as_dict())
     return 0 if result.ok else 1
 
 
@@ -350,7 +337,9 @@ def register_anchory_commands(subparsers: argparse._SubParsersAction) -> None:
     query_parser.add_argument("--prefix", help="Only return anchors with this prefix.")
     query_parser.set_defaults(handler=_cmd_query)
 
-    amend_parser = anchory_subparsers.add_parser("amend", help="Amend an existing anchor.")
+    amend_parser = anchory_subparsers.add_parser(
+        "amend", help="Amend an existing anchor."
+    )
     _add_depot_argument(amend_parser)
     _add_namespace_argument(amend_parser)
     _add_anchor_argument(amend_parser)
@@ -406,7 +395,8 @@ def register_anchory_commands(subparsers: argparse._SubParsersAction) -> None:
         "--prefix", required=True, help="Single-letter namespace key prefix."
     )
     ns_set_parser.add_argument(
-        "--intention", help="What this namespace's anchors mean — the resolution fallback."
+        "--intention",
+        help="What this namespace's anchors mean — the resolution fallback.",
     )
     ns_set_parser.add_argument(
         "--semantics", help="Pointer to the owning system's documentation."

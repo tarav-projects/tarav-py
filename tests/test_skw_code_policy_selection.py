@@ -17,7 +17,7 @@ def test_policy_kinds_are_default_on_reportable() -> None:
 
 
 def test_policy_kinds_are_skippable() -> None:
-    from agentos.skwlint import check_selector, resolve_enabled_checks
+    from agentos.poi import check_selector, resolve_enabled_checks
 
     kinds = _skw_check_kinds()
     enabled = resolve_enabled_checks(kinds, include=(), exclude=("illegal-attachment",))

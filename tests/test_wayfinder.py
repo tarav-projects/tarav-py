@@ -19,6 +19,7 @@ from agentos.wayfinder import (
     parse_reference,
     poi_class_reference,
 )
+from agentos.wayfinder.poi import build_wayfinder_registry_linter_report
 
 
 def _write_depot(root: Path, *, block: str = "POI.Example") -> Path:
@@ -130,9 +131,7 @@ def test_index_resolution_returns_authoritative_block_content(
         relocation_hints=({"repository": "demo"},),
     )
 
-    result = Wayfinder(registry).resolve(
-        poi_class_reference("demo-pkg", "POI.Example")
-    )
+    result = Wayfinder(registry).resolve(poi_class_reference("demo-pkg", "POI.Example"))
 
     assert isinstance(result, WayfinderResolutionResult)
     assert result.target["block_path"] == "POI.Example"
@@ -159,6 +158,11 @@ def test_resolution_pois_preserve_reference_trace_and_hints(
     assert missing_registration.kind == "missing"
     assert missing_registration.reference == reference
     assert missing_registration.trace[0].stage == "registry.lookup"
+    payload = missing_registration.as_dict()["poi"]
+    assert payload["class"]["address"] == "Wayfinder.Resolution.POI"
+    assert payload["class_sugar"] == ("index://agentos-pkg/Wayfinder.Resolution.POI")
+    assert payload["target"]["reference"] == reference.as_dict()
+    assert payload["evidence"]["kind"] == "missing"
 
     depot = _write_depot(tmp_path / "demo")
     root = WayfinderReferenceRoot(type="package.skill", id="demo-pkg")
@@ -168,7 +172,9 @@ def test_resolution_pois_preserve_reference_trace_and_hints(
     assert missing_block.kind == "missing"
     assert missing_block.remembered_location == str(depot.resolve())
     assert missing_block.relocation_hints == ("search demo",)
-    assert missing_block.instance_id == Wayfinder(registry).resolve(reference).instance_id
+    assert (
+        missing_block.instance_id == Wayfinder(registry).resolve(reference).instance_id
+    )
 
     for path in sorted(depot.rglob("*"), reverse=True):
         if path.is_file():
@@ -228,3 +234,11 @@ def test_registry_check_reports_stale_location(
 
     assert not check.ok
     assert check.findings[0].code == "stale-location"
+    report = build_wayfinder_registry_linter_report(
+        check,
+        registry_path=str(registry.path),
+    ).as_dict()
+    assert report["pois"][0]["class"]["address"] == (
+        "Wayfinder.Registry.Linter/Location.Stale"
+    )
+    assert report["domain"]["status"] == "poi"

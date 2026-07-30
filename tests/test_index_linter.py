@@ -238,6 +238,15 @@ def test_index_linter_clean_surface_renders_text_and_json(
         "Index.Linter/Line.Unlinked"
     }
     assert "Summary: 0 error(s), 2 warning(s)" in render_linter_text(state)
+    default_text = render_linter_text(state)
+    assert "Passed checks:" not in default_text
+
+    verbose_text = render_linter_text(state, show_passed=True)
+    assert "Passed checks:" in verbose_text
+    assert (
+        "- [OK] Index.Linter/Check.ConfigSurfaces - Configured surfaces" in verbose_text
+    )
+    assert "- [OK] Index.Linter/Line.Unlinked" not in verbose_text
 
     payload = json.loads(render_linter_json(state))
     assert payload["summary"]["error_count"] == 0

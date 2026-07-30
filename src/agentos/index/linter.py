@@ -1,3 +1,4 @@
+# $kw: ^index-poi-linter --from POI.System --from POI.Linter --note [CT] Index findings adapt into the shared POI report at the public boundary ^c20260729-49u
 from __future__ import annotations
 
 import json
@@ -5,8 +6,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from agentos.poi import POICatalog, POIReport, build_poi_report
-from agentos.skwlint import (
+from agentos.poi import (
+    POICatalog,
+    POIReport,
+    build_poi_report,
     check_registry as _core_check_registry,
     check_selector as check_selector,
     resolve_enabled_checks,
@@ -351,6 +354,7 @@ def render_linter_text(
     *,
     catalog: POICatalog | None = None,
     poi_report: POIReport | None = None,
+    show_passed: bool = False,
 ) -> str:
     view = _scoped_view(state)
     lines = ["Index linter"]
@@ -358,6 +362,16 @@ def render_linter_text(
     if report.groups:
         lines.append("")
         lines.extend(report.render_text().splitlines())
+
+    if show_passed:
+        passed_results = [
+            result for result in view["check_results"] if result.status == "passed"
+        ]
+        if passed_results:
+            lines.append("")
+            lines.append("Passed checks:")
+            for result in passed_results:
+                lines.append(f"- [OK] {result.code} - {result.title}")
 
     blocked_results = [
         result for result in view["check_results"] if result.status == "blocked"

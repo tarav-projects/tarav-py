@@ -1,6 +1,7 @@
+# $kw: ^index-skw-network --from POI.System --from POI.Linter --note [CT] Index drift consumes domain-owned Skw.Network findings before POI adaptation ^c20260729-49u
 """The index `Skw.Backend`'s binding into the shared linter core.
 
-Implements `SurfaceProvider` (`agentos.skwlint`) over an index depot so the
+Implements `SurfaceProvider` (`agentos.skw.network`) over an index depot so the
 surface-agnostic drift engine can run over the index — the extensibility point
 of Impl.Req 700: a new surface is a new provider, no new engine.
 
@@ -23,7 +24,12 @@ from pathlib import Path
 from agentos.index.depot_deps import resolve_dependency_depots
 from agentos.index.model import parse_depot
 from agentos.index.model.nodes import BlockHeading, KernelLine, MetaLine, Node
-from agentos.skwlint import Poi, dangling_mention_findings, extract_mentions, poi
+from agentos.skw import (
+    NetworkFinding,
+    dangling_mention_findings,
+    extract_mentions,
+    network_finding,
+)
 
 
 def _line_act(node: Node) -> str | None:
@@ -69,7 +75,9 @@ def _defined_concepts(depot_root: Path) -> dict[str, str]:
                 subject = _first_cited_concept(node)
                 if subject:
                     concepts.setdefault(subject, node.src)
-            elif isinstance(node, MetaLine) and node.src.strip().startswith("- aliases:"):
+            elif isinstance(node, MetaLine) and node.src.strip().startswith(
+                "- aliases:"
+            ):
                 for alias in extract_mentions(node.src):
                     concepts.setdefault(alias, node.src)
     return concepts
@@ -155,7 +163,7 @@ class IndexSurfaceProvider:
 
 def index_dangling_mentions(
     depot_root: Path, engaged_depots: tuple[Path, ...] | None = None
-) -> list[Poi]:
+) -> list[NetworkFinding]:
     """Run the core dangling-mention check over an index depot.
 
     ``engaged_depots=None`` resolves the visible set through the depot's
@@ -168,7 +176,7 @@ def index_dangling_mentions(
 
 def index_depot_collisions(
     depot_root: Path, engaged_depots: tuple[Path, ...] | None = None
-) -> list[Poi]:
+) -> list[NetworkFinding]:
     """Advisory collision `Drift.POI`s for mentions defined in >1 visible depot.
 
     A mention whose name is defined in the depot and in one of its visible
@@ -177,11 +185,11 @@ def index_depot_collisions(
     """
     provider = IndexSurfaceProvider(depot_root, engaged_depots=engaged_depots)
     target_rel = Path(Path(depot_root).name)
-    findings: list[Poi] = []
+    findings: list[NetworkFinding] = []
     for name, depots in sorted(provider.collisions(provider.mentions()).items()):
         where = ", ".join(sorted(d.name for d in depots))
         findings.append(
-            poi(
+            network_finding(
                 "depot-collision",
                 target_rel,
                 name,

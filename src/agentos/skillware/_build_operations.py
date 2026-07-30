@@ -1,3 +1,4 @@
+# $kw: ^skillware-poi-operations --from POI.System --from POI.Linter --note [CT] Skillware operations preserve legacy hashes blessing and parser diagnostics through common POI instances ^c20260729-49u
 """Skillware build, check, project-check, and blessing operations."""
 
 from __future__ import annotations
@@ -8,19 +9,14 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentos.poi import POIDiagnostic
+from agentos.skw import extract_mentions, run_dependency_sync
 from agentos.skillware.model import (
     SkwFinding,
     SkwSource,
     parse_skw_code,
     parse_skw_source,
     recipe_key,
-)
-from agentos.skwlint import (
-    Poi,
-    extract_mentions,
-    poi as _poi,
-    run_dependency_sync,
-    suppress_blessed as _suppress_blessed,
 )
 
 from ._build_core import (
@@ -39,6 +35,13 @@ from ._build_core import (
     load_skillware,
     resolve_project_depots,
     unlock_requirements,
+)
+from .poi import (
+    SkillwarePOIInstance,
+    network_finding_to_poi,
+    parser_diagnostics,
+    skillware_poi as _poi,
+    suppress_blessed as _suppress_blessed,
 )
 
 
@@ -78,7 +81,8 @@ class BlessRecord:
 @dataclass(frozen=True)
 class CheckReport:
     entries: tuple[CheckEntry, ...]
-    pois: tuple[Poi, ...]
+    pois: tuple[SkillwarePOIInstance, ...]
+    diagnostics: tuple[POIDiagnostic, ...] = ()
 
 
 BLESSABLE_KINDS = ("derived-stale",)
@@ -100,7 +104,10 @@ def _write_lock(skillware: Skillware, lock: dict) -> None:
     )
 
 
-def _append_poi_blessing(skillware: Skillware, poi: Poi) -> None:
+def _append_poi_blessing(
+    skillware: Skillware,
+    poi: SkillwarePOIInstance,
+) -> None:
     lock = _read_lock(skillware)
     blessings = lock.setdefault("blessings", [])
     if not any(record.get("hash") == poi.poi_hash for record in blessings):
@@ -250,8 +257,11 @@ def build_skill(skill_root: Path) -> BuildReport:
     return BuildReport(entries=tuple(entries), findings=tuple(findings))
 
 
-def _legacy_callout_pois(target_rel: Path, src_text: str) -> list[Poi]:
-    pois: list[Poi] = []
+def _legacy_callout_pois(
+    target_rel: Path,
+    src_text: str,
+) -> list[SkillwarePOIInstance]:
+    pois: list[SkillwarePOIInstance] = []
     in_fence = False
     for number, line in enumerate(src_text.splitlines(), start=1):
         if line.lstrip().startswith(("```", "~~~")):
@@ -315,17 +325,20 @@ class _SkwSurfaceProvider:
 
 def _dependency_sync_pois(
     skillware: Skillware, target_rel: Path, source: SkwSource, expansion: Expansion
-) -> list[Poi]:
+) -> list[SkillwarePOIInstance]:
     provider = _SkwSurfaceProvider(skillware, source, expansion)
-    return run_dependency_sync(target_rel, provider)
+    return [
+        network_finding_to_poi(finding)
+        for finding in run_dependency_sync(target_rel, provider)
+    ]
 
 
 def _citation_pois(
     target_rel: Path, source: SkwSource, expansion: Expansion
-) -> list[Poi]:
+) -> list[SkillwarePOIInstance]:
     text = "\n".join(expansion.fresh_lines)
     mentions = extract_mentions(text)
-    pois: list[Poi] = []
+    pois: list[SkillwarePOIInstance] = []
     blocks = (*source.dependencies, *source.recipes, *source.constructs)
     for block in blocks:
         for locator in block.cites:
@@ -370,13 +383,13 @@ def _context_assembly_bypass_pois(
     src_rel: Path,
     source: SkwSource,
     coverage: dict[str, set[Path]],
-) -> list[Poi]:
+) -> list[SkillwarePOIInstance]:
     blocks = (*source.dependencies, *source.recipes, *source.constructs)
     dev_froms = {locator for block in blocks for locator in block.dev_froms}
     dependencies = {
         locator for block in blocks for _role, locator in _role_edges(block)
     }
-    pois: list[Poi] = []
+    pois: list[SkillwarePOIInstance] = []
     for locator in sorted(dependencies):
         for assembly in sorted(coverage.get(locator, set())):
             if assembly == src_rel or assembly.as_posix() in dev_froms:
@@ -394,10 +407,13 @@ def _context_assembly_bypass_pois(
     return pois
 
 
-def _note_pois(target_rel: Path, source: SkwSource) -> list[Poi]:
+def _note_pois(
+    target_rel: Path,
+    source: SkwSource,
+) -> list[SkillwarePOIInstance]:
     """`--note`/`--supp` are typed, anchored `Index.Line`s: a `--note` missing
     its `[TYPE]` act code, or either flag missing its `^anchor`, is malformed."""
-    pois: list[Poi] = []
+    pois: list[SkillwarePOIInstance] = []
     for note in source.notes:
         problems: list[str] = []
         if note.flag == "note" and note.type is None:
@@ -417,11 +433,14 @@ def _note_pois(target_rel: Path, source: SkwSource) -> list[Poi]:
     return pois
 
 
-def _address_mismatch_pois(target_rel: Path, source: SkwSource) -> list[Poi]:
+def _address_mismatch_pois(
+    target_rel: Path,
+    source: SkwSource,
+) -> list[SkillwarePOIInstance]:
     """A block that fences a named host element checks its declared `#address`
     against that element's name — a mismatch is a POI (the fence checks the
     name, it does not source it)."""
-    pois: list[Poi] = []
+    pois: list[SkillwarePOIInstance] = []
     blocks: list = [*source.recipes, *source.constructs]
     for block in blocks:
         address = getattr(block, "address", None)
@@ -490,7 +509,7 @@ def _block_open_lines(source: SkwSource) -> list[int]:
 
 def _code_surface_pois(
     skill_root: Path, policy: CodeAttachPolicy = DEFAULT_CODE_POLICY
-) -> list[Poi]:
+) -> list[SkillwarePOIInstance]:
     """Lint each skw-managed code surface (a code file carrying `# $kw:`):
 
     - `illegal-attachment` — a block attached at a point outside the allow-set;
@@ -499,7 +518,7 @@ def _code_surface_pois(
     - `missing-header` — a required file point with no `file_line` block.
     - `non-skw-annotation` — a full-line comment that is not machinery.
     """
-    pois: list[Poi] = []
+    pois: list[SkillwarePOIInstance] = []
     for path in _iter_code_files(skill_root):
         text = path.read_text(encoding="utf-8", errors="replace")
         if "$kw" not in text:
@@ -564,7 +583,7 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
     skillware = load_skillware(skill_root, extra_depots=extra_depots)
     lock = _read_lock(skillware)
     entries: list[CheckEntry] = []
-    pois: list[Poi] = []
+    pois: list[SkillwarePOIInstance] = []
     context_assembly_coverage = _context_assembly_coverage(skillware)
 
     for src_rel in skillware.src_files():
@@ -698,8 +717,11 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
 
     pois.extend(_code_surface_pois(skillware.skill_root))
 
+    visible_pois = tuple(_suppress_blessed(lock, pois))
     return CheckReport(
-        entries=tuple(entries), pois=tuple(_suppress_blessed(lock, pois))
+        entries=tuple(entries),
+        pois=visible_pois,
+        diagnostics=parser_diagnostics(visible_pois),
     )
 
 
@@ -810,12 +832,12 @@ def bless_skill(
     )
     if match.kind in SUPPRESSIBLE_KINDS:
         _append_poi_blessing(skillware, match)
-        return BlessRecord(target=match.target, key=match.key or "", deps={})
+        return BlessRecord(target=match.target_path, key=match.key or "", deps={})
 
     src_rel = next(
         rel
         for rel in skillware.src_files()
-        if skillware.target_rel(rel) == match.target
+        if skillware.target_rel(rel) == match.target_path
     )
     expansion = expand_file(skillware, src_rel)
     current = expansion.dep_hashes.get(match.key, {})
@@ -838,7 +860,7 @@ def bless_skill(
     recipe_entry["deps"] = current
     _write_lock(skillware, lock)
     return BlessRecord(
-        target=match.target,
+        target=match.target_path,
         key=match.key,
         deps={
             locator: {"old": old_deps.get(locator), "new": sha}
@@ -852,7 +874,7 @@ def bless_pois_by_kind(
     kind: str,
     *,
     unlocks: tuple[str, ...] = (),
-) -> tuple[Poi, ...]:
+) -> tuple[SkillwarePOIInstance, ...]:
     """Bless all currently visible POIs of one kind."""
     accepted = (*BLESSABLE_KINDS, *SUPPRESSIBLE_KINDS)
     if kind not in accepted:

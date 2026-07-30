@@ -1,9 +1,9 @@
-# $kw: ^skw-build --supp dependency roles and whole-file context-assembly bypass supervision authorized ^c20260725-27u
+# $kw: ^skw-build --from POI.System --from POI.Linter --supp dependency roles and whole-file context-assembly bypass supervision authorized ^c20260725-27u --supp common POI migration execution ^c20260729-49u
 """Stable public facade for Skillware expansion, build, check, and blessing."""
 
 from __future__ import annotations
 
-from agentos.skwlint import Poi, extract_mentions
+from agentos.skw import extract_mentions
 
 from ._build_core import (
     BUILD_DIR,
@@ -55,6 +55,7 @@ from ._build_operations import (
     check_skill,
     discover_packages,
 )
+from .poi import SkillwarePOIInstance
 
 
 __all__ = [
@@ -72,7 +73,7 @@ __all__ = [
     "BuildReport",
     "CheckEntry",
     "CheckReport",
-    "Poi",
+    "SkillwarePOIInstance",
     "SUPPRESSIBLE_KINDS",
     "UnlockRequirement",
     "bless_pois_by_kind",

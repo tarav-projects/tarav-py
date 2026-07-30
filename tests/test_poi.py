@@ -10,7 +10,9 @@ from agentos.poi import (
     DuplicatePOIClass,
     POICatalog,
     POIClassRegistration,
+    POIDiagnostic,
     POIInstance,
+    POILinterReport,
     POILocation,
     UnknownPOIClass,
     build_poi_report,
@@ -151,6 +153,54 @@ def test_poi_instance_identity_is_deterministic_for_material_occurrence() -> Non
     )
 
 
+def test_poi_instance_accepts_a_producer_established_identity() -> None:
+    instance = POIInstance.create(
+        class_reference=_registration().reference,
+        target=POILocation(path="design/100-design.md", line=7),
+        severity="advisory",
+        situation="legacy situation",
+        evidence={"legacy": True},
+        instance_id="a1b2c3d4e5",
+    )
+
+    assert instance.instance_id == "a1b2c3d4e5"
+    assert instance.severity == "advisory"
+
+
+def test_linter_report_keeps_diagnostics_separate_from_pois() -> None:
+    diagnostic = POIDiagnostic(
+        code="parse-error",
+        target=POILocation(path=".skw/src/SKILL.skw.md", line=4),
+        message="unclosed annotation",
+        evidence={"origin": "Closure.Parser"},
+    )
+    report = POILinterReport(
+        poi_report=build_poi_report((_instance(),)),
+        diagnostics=(diagnostic,),
+        summary={"poi_count": 1, "diagnostic_count": 1},
+        domain={"entries": [{"target": "SKILL.md", "status": "parse-error"}]},
+    )
+
+    payload = report.as_dict()
+
+    assert len(payload["pois"]) == 1
+    assert payload["diagnostics"] == [diagnostic.as_dict()]
+    assert payload["summary"]["diagnostic_count"] == 1
+    assert payload["domain"]["entries"][0]["status"] == "parse-error"
+    assert "Diagnostics:" in report.render_text()
+    assert "unclosed annotation" in report.render_text()
+
+
+def test_catalog_reports_missing_runtime_codes() -> None:
+    catalog = POICatalog((_registration(),))
+
+    assert catalog.missing(("Example.Linter/Problem", "Missing.Linter/Problem")) == (
+        "Missing.Linter/Problem",
+    )
+    with pytest.raises(UnknownPOIClass, match="Missing.Linter/Problem"):
+        catalog.require_complete(("Example.Linter/Problem", "Missing.Linter/Problem"))
+
+
 def test_renderer_groups_instances_and_resolves_class_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -274,4 +324,6 @@ def test_poi_explain_surfaces_resolution_poi(
     assert args.handler(args) == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "poi"
-    assert payload["poi"]["reference"] == _registration().reference.as_dict()
+    assert payload["poi"]["target"]["reference"] == (
+        _registration().reference.as_dict()
+    )

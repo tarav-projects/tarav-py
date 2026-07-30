@@ -1,3 +1,4 @@
+# $kw: ^mdblocks-poi-command --from POI.System --from POI.Linter --note [CT] Markdown block lint output uses the common POI report boundary ^c20260729-49u
 from __future__ import annotations
 
 import argparse
@@ -22,6 +23,7 @@ from .core import (
     validate_markdown_level_range,
     validate_markdown_scan_window,
 )
+from .poi import build_mdblocks_linter_report
 
 
 def _build_markdown_scan_config(args: argparse.Namespace) -> MarkdownScanConfig:
@@ -200,27 +202,21 @@ def _cmd_md_lint(args: argparse.Namespace) -> int:
         hard_max_block_lines=HARD_MAX_BLOCK_LINES,
         **lint_payload,
     )
+    report = build_mdblocks_linter_report(payload)
 
     if args.json:
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(report.as_dict(), indent=2))
     else:
         if payload["issue_count"] == 0:
-            print(f"No markdown lint issues found across {payload['file_count']} file(s).")
+            print(
+                f"No markdown lint issues found across {payload['file_count']} file(s)."
+            )
         else:
             print(
                 f"Scanned {payload['file_count']} file(s): "
                 f"{payload['error_count']} error(s), {payload['warning_count']} warning(s)"
             )
-            for file_report in payload["files"]:
-                if file_report["issue_count"] == 0:
-                    continue
-                print(f"{file_report['path']}:")
-                for issue in file_report["issues"]:
-                    location = issue.get("path_line", issue["path"])
-                    print(
-                        f"  [{issue['severity'].upper()}] {issue['code']} "
-                        f"@ {location} - {issue['message']}"
-                    )
+            print(report.render_text())
 
     if args.fail_on == "warning" and payload["issue_count"] > 0:
         return 1

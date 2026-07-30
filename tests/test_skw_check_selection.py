@@ -1,12 +1,14 @@
-"""skw check selection over POI kinds via the shared skwlint core (Impl.Req 702 port)."""
+"""Skillware check selection through the shared POI linter boundary."""
 
 import argparse
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from agentos._core.errors import CliError
-from agentos.skwlint import check_registry, check_selector, poi
+from agentos.poi import check_registry, check_selector
+from agentos.skillware.poi import skillware_poi as poi
 from agentos.skillware.commands import (
     _cmd_skillware_check,
     _enabled_poi_selectors,
@@ -57,7 +59,7 @@ def test_filter_cannot_exclude_a_structural_kind() -> None:
 
 def test_filter_keeps_unknown_kind_not_in_registry() -> None:
     enabled, known = _enabled_poi_selectors(_kinds_args())
-    extra = _fake_pois() + [poi("mystery-kind", Path("a"), None, "h", "?")]
+    extra = _fake_pois() + [SimpleNamespace(kind="mystery-kind")]
     kept = {p.kind for p in _filter_pois(extra, enabled, known)}
     assert "mystery-kind" in kept  # never silently hidden
 
@@ -68,7 +70,9 @@ def test_unknown_selector_is_an_error() -> None:
 
 
 def test_list_checks_lists_kinds_and_exits(capsys) -> None:
-    args = argparse.Namespace(skill=None, json=False, check=[], skip=[], list_checks=True)
+    args = argparse.Namespace(
+        skill=None, json=False, check=[], skip=[], list_checks=True
+    )
     exit_code = _cmd_skillware_check(args)
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -77,11 +81,16 @@ def test_list_checks_lists_kinds_and_exits(capsys) -> None:
 
 
 def test_render_check_registry_formats_rows() -> None:
-    from agentos.skwlint import render_check_registry
+    from agentos.poi import render_check_registry
 
     rows = [
         {"selector": "alpha", "title": "first", "default_on": True, "structural": True},
-        {"selector": "beta", "title": "second", "default_on": False, "structural": False},
+        {
+            "selector": "beta",
+            "title": "second",
+            "default_on": False,
+            "structural": False,
+        },
     ]
     lines = render_check_registry(rows)
     assert lines[0] == "alpha                    [on ] structural  first"
@@ -91,7 +100,7 @@ def test_render_check_registry_formats_rows() -> None:
 def test_add_check_selection_args_wires_all_three_flags() -> None:
     import argparse as _argparse
 
-    from agentos.skwlint import add_check_selection_args
+    from agentos.poi import add_check_selection_args
 
     parser = _argparse.ArgumentParser()
     add_check_selection_args(parser, unit="POI kind")

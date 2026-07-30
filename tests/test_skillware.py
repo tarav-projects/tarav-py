@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -87,20 +88,27 @@ def test_parse_hand_sections_carry_no_recipe() -> None:
 
 
 def test_parse_findings() -> None:
-    unknown_flag = parse_skw_source("## A\n\n> $kw: #a --derived\n> --transmute x\n> --from X\n\n- b\n\n> $kw. end\n")
+    unknown_flag = parse_skw_source(
+        "## A\n\n> $kw: #a --derived\n> --transmute x\n> --from X\n\n- b\n\n> $kw. end\n"
+    )
     assert any("unknown flag: --transmute" in f.message for f in unknown_flag.findings)
 
     missing_from = parse_skw_source("## A\n\n> $kw: --copy\n\n- body\n\n> $kw. end\n")
     assert any("from" in finding.message for finding in missing_from.findings)
 
-    legacy_end = parse_skw_source("## A\n\n> $kw: #a --derived --from X\n\n- b\n\n> $kw. end-derived\n")
+    legacy_end = parse_skw_source(
+        "## A\n\n> $kw: #a --derived --from X\n\n- b\n\n> $kw. end-derived\n"
+    )
     assert any("bare 'end'" in finding.message for finding in legacy_end.findings)
 
     orphan_end = parse_skw_source("## A\n\nprose\n\n> $kw. end\n")
-    assert any("without an open content block" in f.message for f in orphan_end.findings)
+    assert any(
+        "without an open content block" in f.message for f in orphan_end.findings
+    )
 
 
 # --- v3 grammar: sigil pair, flags, belonging lines ---------------------------
+
 
 def test_flag_value_may_contain_spaces() -> None:
     source = parse_skw_source(
@@ -165,7 +173,11 @@ def test_labeled_span_carries_its_address() -> None:
     )
     assert not source.findings
     construct = source.constructs[0]
-    assert (construct.command, construct.label, construct.address) == ("text", "frag", "^frag")
+    assert (construct.command, construct.label, construct.address) == (
+        "text",
+        "frag",
+        "^frag",
+    )
     assert "labeled literal fragment" in "\n".join(construct.body)
 
 
@@ -257,9 +269,7 @@ def test_parse_dependency_roles_and_context_assembly() -> None:
 
     dependency = source.dependencies[1]
     assert dependency.froms == ("Concept.Two",)
-    assert dependency.dev_froms == (
-        "references/capture-context.skw.md",
-    )
+    assert dependency.dev_froms == ("references/capture-context.skw.md",)
     assert dependency.cites == ("Concept.Three",)
 
 
@@ -397,10 +407,14 @@ def _write_skill(root: Path) -> Path:
         json.dumps({"depots": ["../depot"]}), encoding="utf-8"
     )
     (skill / "references").mkdir()
-    (skill / "references" / "hand.md").write_text("# hand\n\nhand-owned\n", encoding="utf-8")
+    (skill / "references" / "hand.md").write_text(
+        "# hand\n\nhand-owned\n", encoding="utf-8"
+    )
     depot = root / "depot"
     (depot / "design").mkdir(parents=True)
-    (depot / "000-INDEX.md").write_text("- `design/100-design.md` — Concept.One\n", encoding="utf-8")
+    (depot / "000-INDEX.md").write_text(
+        "- `design/100-design.md` — Concept.One\n", encoding="utf-8"
+    )
     (depot / "design" / "100-design.md").write_text(DEPOT_CHAPTER, encoding="utf-8")
     return skill
 
@@ -448,8 +462,14 @@ def test_locator_findings(tmp_path: Path) -> None:
 def test_cycle_detection(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references"
-    (src / "a.skw.md").write_text("## A\n\n> $kw: --copy --from references/b.skw.md#B\n\n- x\n\n> $kw. end\n", encoding="utf-8")
-    (src / "b.skw.md").write_text("## B\n\n> $kw: --copy --from references/a.skw.md#A\n\n- x\n\n> $kw. end\n", encoding="utf-8")
+    (src / "a.skw.md").write_text(
+        "## A\n\n> $kw: --copy --from references/b.skw.md#B\n\n- x\n\n> $kw. end\n",
+        encoding="utf-8",
+    )
+    (src / "b.skw.md").write_text(
+        "## B\n\n> $kw: --copy --from references/a.skw.md#A\n\n- x\n\n> $kw. end\n",
+        encoding="utf-8",
+    )
     skillware = load_skillware(skill)
     expansion = expand_file(skillware, Path("references/a.skw.md"))
     assert any("cycle" in finding.message for finding in expansion.findings)
@@ -494,20 +514,27 @@ def test_dotted_name_locator_resolves_meta_aliases(tmp_path: Path) -> None:
 
     alias_lines, alias_detail = __import__(
         "agentos.skillware.build", fromlist=["_resolve_locator"]
-    )._resolve_locator(skillware, "Concept.Alias", stack=(Path("references/mod.skw.md"),))
+    )._resolve_locator(
+        skillware, "Concept.Alias", stack=(Path("references/mod.skw.md"),)
+    )
     canonical_lines, canonical_detail = __import__(
         "agentos.skillware.build", fromlist=["_resolve_locator"]
     )._resolve_locator(skillware, "Concept.One", stack=(Path("references/mod.skw.md"),))
     collision_lines, collision_detail = __import__(
         "agentos.skillware.build", fromlist=["_resolve_locator"]
-    )._resolve_locator(skillware, "Concept.Taken", stack=(Path("references/mod.skw.md"),))
+    )._resolve_locator(
+        skillware, "Concept.Taken", stack=(Path("references/mod.skw.md"),)
+    )
 
-    assert alias_detail is None and canonical_detail is None and collision_detail is None
+    assert (
+        alias_detail is None and canonical_detail is None and collision_detail is None
+    )
     assert alias_lines == canonical_lines == ["- canonical line"]
     assert collision_lines == ["- taken canonical line"]
 
 
 # --- S3: build + lock + check ------------------------------------------------
+
 
 def _entry(report, target: str):
     return next(entry for entry in report.entries if str(entry.target) == target)
@@ -526,7 +553,9 @@ def test_build_then_check_ok(tmp_path: Path) -> None:
     compiled = (skill / "references" / "mod.md").read_text(encoding="utf-8")
     assert "$kw" not in compiled
     # src refreshed: stale copy body replaced in the src file
-    src_text = (skill / ".skillware" / "src" / "references" / "mod.skw.md").read_text(encoding="utf-8")
+    src_text = (skill / ".skillware" / "src" / "references" / "mod.skw.md").read_text(
+        encoding="utf-8"
+    )
     assert "- stale copy" not in src_text
 
     second = build_skill(skill)
@@ -545,7 +574,9 @@ def test_check_never_built_and_hand_edited(tmp_path: Path) -> None:
 
     build_skill(skill)
     target = skill / "references" / "mod.md"
-    target.write_text(target.read_text(encoding="utf-8") + "\nrogue edit\n", encoding="utf-8")
+    target.write_text(
+        target.read_text(encoding="utf-8") + "\nrogue edit\n", encoding="utf-8"
+    )
     check = check_skill(skill)
     assert _entry(check, "references/mod.md").status == "hand-edited"
 
@@ -554,7 +585,12 @@ def test_check_stale_build_on_src_edit(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     build_skill(skill)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
-    src.write_text(src.read_text(encoding="utf-8").replace("Intro prose.", "Intro prose, revised."), encoding="utf-8")
+    src.write_text(
+        src.read_text(encoding="utf-8").replace(
+            "Intro prose.", "Intro prose, revised."
+        ),
+        encoding="utf-8",
+    )
     check = check_skill(skill)
     assert _entry(check, "references/mod.md").status == "stale-build"
 
@@ -563,7 +599,10 @@ def test_copy_drift_and_derived_stale_on_dep_edit(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     build_skill(skill)
     lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two revised"), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two revised"),
+        encoding="utf-8",
+    )
 
     check = check_skill(skill)
     entry = _entry(check, "references/mod.md")
@@ -572,7 +611,9 @@ def test_copy_drift_and_derived_stale_on_dep_edit(tmp_path: Path) -> None:
 
     # rebuild repairs the copy but must NOT silently bless the stale derived body
     build_skill(skill)
-    assert "- alpha two revised" in (skill / "references" / "mod.md").read_text(encoding="utf-8")
+    assert "- alpha two revised" in (skill / "references" / "mod.md").read_text(
+        encoding="utf-8"
+    )
     check = check_skill(skill)
     entry = _entry(check, "references/mod.md")
     assert not entry.copy_drift
@@ -580,7 +621,12 @@ def test_copy_drift_and_derived_stale_on_dep_edit(tmp_path: Path) -> None:
 
     # the agent re-derives (edits the derived body in src) and rebuilds: flag clears
     mod = skill / ".skillware" / "src" / "references" / "mod.skw.md"
-    mod.write_text(mod.read_text(encoding="utf-8").replace("- derived solution", "- derived solution v2"), encoding="utf-8")
+    mod.write_text(
+        mod.read_text(encoding="utf-8").replace(
+            "- derived solution", "- derived solution v2"
+        ),
+        encoding="utf-8",
+    )
     build_skill(skill)
     check = check_skill(skill)
     assert not check.pois
@@ -619,15 +665,22 @@ def test_dependency_sync_pois_and_hashes(tmp_path: Path) -> None:
     )
 
     first = next(p for p in check.pois if p.kind == "undeclared-dependency")
-    second = next(p for p in check_skill(skill).pois if p.kind == "undeclared-dependency")
+    second = next(
+        p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"
+    )
     assert first.poi_hash == second.poi_hash
 
-    src.write_text(src.read_text(encoding="utf-8").replace("Concept.Two", "Concept.Three"), encoding="utf-8")
+    src.write_text(
+        src.read_text(encoding="utf-8").replace("Concept.Two", "Concept.Three"),
+        encoding="utf-8",
+    )
     depot.write_text(
         depot.read_text(encoding="utf-8") + "\n## Concept.Three\n\n- concept three\n",
         encoding="utf-8",
     )
-    changed = next(p for p in check_skill(skill).pois if p.kind == "undeclared-dependency")
+    changed = next(
+        p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"
+    )
     assert changed.poi_hash != first.poi_hash
 
 
@@ -646,8 +699,7 @@ def test_dependency_roles_resolve_and_citations_must_be_visible(
 
     check = check_skill(skill)
     assert any(
-        poi.kind == "unresolvable" and "dev-from" in poi.detail
-        for poi in check.pois
+        poi.kind == "unresolvable" and "dev-from" in poi.detail for poi in check.pois
     )
 
     context = skill / ".skillware" / "src" / "references" / "context.skw.md"
@@ -673,9 +725,7 @@ def test_dependency_roles_resolve_and_citations_must_be_visible(
         encoding="utf-8",
     )
     build_skill(skill)
-    assert not any(
-        poi.kind == "uncited-dependency" for poi in check_skill(skill).pois
-    )
+    assert not any(poi.kind == "uncited-dependency" for poi in check_skill(skill).pois)
 
 
 def test_dev_from_participates_in_derived_staleness(tmp_path: Path) -> None:
@@ -715,17 +765,13 @@ def test_context_assembly_bypass_requires_companion_dev_from(
     )
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
-        "# mod\n\n"
-        "> $kw: --cite Concept.One\n\n"
-        "Uses `Concept.One` explicitly.\n",
+        "# mod\n\n> $kw: --cite Concept.One\n\nUses `Concept.One` explicitly.\n",
         encoding="utf-8",
     )
     build_skill(skill)
 
     bypass = [
-        poi
-        for poi in check_skill(skill).pois
-        if poi.kind == "context-assembly-bypass"
+        poi for poi in check_skill(skill).pois if poi.kind == "context-assembly-bypass"
     ]
     assert len(bypass) == 1
     assert bypass[0].key == "Concept.One"
@@ -743,8 +789,7 @@ def test_context_assembly_bypass_requires_companion_dev_from(
     src.write_text(
         src.read_text(encoding="utf-8").replace(
             "> $kw: --cite Concept.One",
-            "> $kw: --cite Concept.One\n"
-            "> --dev-from references/context.skw.md",
+            "> $kw: --cite Concept.One\n> --dev-from references/context.skw.md",
         ),
         encoding="utf-8",
     )
@@ -789,7 +834,9 @@ def test_alias_mentions_remain_literal_dependency_sync_pois(tmp_path: Path) -> N
     assert ("unhonored-dependency", "Concept.One") in kinds
 
     first = next(p for p in check.pois if p.kind == "undeclared-dependency")
-    second = next(p for p in check_skill(skill).pois if p.kind == "undeclared-dependency")
+    second = next(
+        p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"
+    )
     assert first.poi_hash == second.poi_hash
 
     from agentos.skillware.build import bless_skill
@@ -801,7 +848,9 @@ def test_alias_mentions_remain_literal_dependency_sync_pois(tmp_path: Path) -> N
     )
 
     depot_file.write_text(
-        depot_file.read_text(encoding="utf-8").replace("- canonical line", "- canonical line v2"),
+        depot_file.read_text(encoding="utf-8").replace(
+            "- canonical line", "- canonical line v2"
+        ),
         encoding="utf-8",
     )
     reminted = next(
@@ -926,7 +975,9 @@ def test_project_check_catches_cross_package_dangling(tmp_path: Path) -> None:
 
     # RED: rename the shared block without an alias — pkgA's --from dangles.
     depot_chapter.write_text(
-        depot_chapter.read_text(encoding="utf-8").replace("## Shared.Block", "## Renamed.Block"),
+        depot_chapter.read_text(encoding="utf-8").replace(
+            "## Shared.Block", "## Renamed.Block"
+        ),
         encoding="utf-8",
     )
     report = check_project(proj)
@@ -963,7 +1014,10 @@ def test_project_check_honors_exclude(tmp_path: Path) -> None:
 
 # --- S4: CLI -------------------------------------------------------------------
 
-def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(tmp_path: Path) -> None:
+
+def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(
+    tmp_path: Path,
+) -> None:
     from agentos.skillware.build import SkillwareError, parse_skw_config
 
     good = tmp_path / "skw.json"
@@ -1095,7 +1149,9 @@ def test_cascade_extends_package_depots_across_repos(tmp_path: Path) -> None:
     (sib / "depot" / "design" / "100-design.md").write_text(
         "## Sib.Concept\n\n- from the sibling repo\n", encoding="utf-8"
     )
-    (sib / ".skw" / "skw.json").write_text(json.dumps({"depots": ["depot"]}), encoding="utf-8")
+    (sib / ".skw" / "skw.json").write_text(
+        json.dumps({"depots": ["depot"]}), encoding="utf-8"
+    )
 
     # project with a package and a project-scope config pointing at the sibling
     proj = tmp_path / "proj"
@@ -1148,17 +1204,20 @@ def test_skw_verb_with_skillware_alias() -> None:
         assert args.skill == "some/path"
 
 
-def test_check_payload_uses_skw_command_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_check_payload_uses_skw_command_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     skill = _write_skill(tmp_path)
     _cmd_skillware_build(argparse.Namespace(skill=str(skill), json=True))
     capsys.readouterr()
     _cmd_skillware_check(argparse.Namespace(skill=str(skill), json=True))
     payload = json.loads(capsys.readouterr().out)
-    assert payload["command"] == "agentos skw check"
+    assert payload["domain"]["command"] == "agentos skw check"
 
 
-
-def test_cli_build_check_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_build_check_status(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     skill = _write_skill(tmp_path)
     args = argparse.Namespace(skill=str(skill), json=True)
 
@@ -1168,23 +1227,32 @@ def test_cli_build_check_status(tmp_path: Path, capsys: pytest.CaptureFixture[st
 
     assert _cmd_skillware_check(args) == 0
     check_payload = json.loads(capsys.readouterr().out)
-    assert check_payload["summary"]["pois"] == 0
+    assert check_payload["summary"]["poi_count"] == 0
+    assert check_payload["pois"] == []
 
     target = skill / "references" / "mod.md"
-    target.write_text(target.read_text(encoding="utf-8") + "\nrogue\n", encoding="utf-8")
+    target.write_text(
+        target.read_text(encoding="utf-8") + "\nrogue\n", encoding="utf-8"
+    )
     assert _cmd_skillware_check(args) == 1
     check_payload = json.loads(capsys.readouterr().out)
-    statuses = {entry["target"]: entry["status"] for entry in check_payload["entries"]}
+    statuses = {
+        entry["target"]: entry["status"] for entry in check_payload["domain"]["entries"]
+    }
     assert statuses["references/mod.md"] == "hand-edited"
 
     assert _cmd_skillware_status(args) == 0
     status_payload = json.loads(capsys.readouterr().out)
     assert status_payload["lock_present"] is True
-    mod = next(f for f in status_payload["files"] if f["src"] == "references/mod.skw.md")
+    mod = next(
+        f for f in status_payload["files"] if f["src"] == "references/mod.skw.md"
+    )
     assert mod["recipes"] == {"copy": 2, "derived": 1}
 
     with pytest.raises(CliError):
-        _cmd_skillware_build(argparse.Namespace(skill=str(tmp_path / "nope"), json=True))
+        _cmd_skillware_build(
+            argparse.Namespace(skill=str(tmp_path / "nope"), json=True)
+        )
 
 
 def test_build_stamps_agents_md(tmp_path: Path) -> None:
@@ -1236,9 +1304,12 @@ def test_fenced_machinery_is_inert() -> None:
 
 # --- strict construct + structural commands --------------------------------
 
+
 def test_bare_end_closes_and_legacy_end_is_a_finding() -> None:
     # v2 closes every content block with a bare `$kw. end`
-    ok = parse_skw_source("## A\n\n> $kw: --derived --from X.Y\n\n- body\n\n> $kw. end\n")
+    ok = parse_skw_source(
+        "## A\n\n> $kw: --derived --from X.Y\n\n- body\n\n> $kw. end\n"
+    )
     assert not ok.findings
     assert [r.verb for r in ok.recipes] == ["derived"]
 
@@ -1292,9 +1363,7 @@ def test_router_structural_checks() -> None:
     outside = parse_skw_source("## A\n\n> $kw: --when\ns\n")
     assert any("outside a router" in f.message for f in outside.findings)
 
-    unpaired = parse_skw_source(
-        "## R\n\n> $kw: #r\n\n> $kw: --when\ns\n\n> $kw. end\n"
-    )
+    unpaired = parse_skw_source("## R\n\n> $kw: #r\n\n> $kw: --when\ns\n\n> $kw. end\n")
     assert any("has no 'then'" in f.message for f in unpaired.findings)
 
     then_first = parse_skw_source(
@@ -1345,7 +1414,9 @@ def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
     # editing the second recipe's dep flags only Pair@1
     depot_file = tmp_path / "depot" / "design" / "100-design.md"
     depot_file.write_text(
-        depot_file.read_text(encoding="utf-8").replace("- concept line", "- concept line v2"),
+        depot_file.read_text(encoding="utf-8").replace(
+            "- concept line", "- concept line v2"
+        ),
         encoding="utf-8",
     )
     check = check_skill(skill)
@@ -1354,6 +1425,7 @@ def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
 
 
 # --- span labels ---------------------------------------------------------------
+
 
 def test_labeled_text_and_labeled_derived() -> None:
     source = parse_skw_source(
@@ -1379,10 +1451,7 @@ def test_bare_end_closes_top_and_duplicate_address() -> None:
     assert any("duplicate address" in f.message for f in dup.findings)
 
     mixed = parse_skw_source(
-        "## R\n\n> $kw: ^table\n\n"
-        "> $kw: --when\ns\n"
-        "> $kw: --then\nr\n"
-        "> $kw. end\n"
+        "## R\n\n> $kw: ^table\n\n> $kw: --when\ns\n> $kw: --then\nr\n> $kw. end\n"
     )
     assert not mixed.findings
 
@@ -1425,7 +1494,9 @@ def test_label_locators_resolve(tmp_path: Path) -> None:
     assert "- stale" not in refreshed
     assert set(expansion.dep_hashes["Derived"]) == {"^local-frag"}
 
-    missing = (src / "mod.skw.md").read_text(encoding="utf-8").replace("^alpha-core", "^nope")
+    missing = (
+        (src / "mod.skw.md").read_text(encoding="utf-8").replace("^alpha-core", "^nope")
+    )
     (src / "mod.skw.md").write_text(missing, encoding="utf-8")
     expansion = expand_file(skillware, Path("references/mod.skw.md"))
     assert any("nope" in f.message for f in expansion.findings)
@@ -1449,13 +1520,21 @@ def test_label_spans_hash_fine_grained(tmp_path: Path) -> None:
 
     # edit OUTSIDE the labeled span: no drift
     lib = src / "lib.skw.md"
-    lib.write_text(lib.read_text(encoding="utf-8").replace("prose outside.", "prose outside, edited."), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace(
+            "prose outside.", "prose outside, edited."
+        ),
+        encoding="utf-8",
+    )
     build_skill(skill)
     check = check_skill(skill)
     assert not check.pois
 
     # edit INSIDE the span: derived-stale, keyed by the consumer's label
-    lib.write_text(lib.read_text(encoding="utf-8").replace("- core line", "- core line v2"), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- core line", "- core line v2"),
+        encoding="utf-8",
+    )
     check = check_skill(skill)
     entry = _entry(check, "references/mod.md")
     assert entry.derived_stale == ("^consumer",)
@@ -1485,6 +1564,7 @@ def test_region_body_is_fence_aware(tmp_path: Path) -> None:
 
 # --- review fixes: lock continuity + adjacent blockquotes -----------------------
 
+
 def test_ordinal_shift_does_not_bless_stale_derived(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
@@ -1495,7 +1575,10 @@ def test_ordinal_shift_does_not_bless_stale_derived(tmp_path: Path) -> None:
     )
     build_skill(skill)
     lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha one", "- alpha one v2"), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- alpha one", "- alpha one v2"),
+        encoding="utf-8",
+    )
     check = check_skill(skill)
     assert _entry(check, "references/mod.md").derived_stale == ("Pair",)
 
@@ -1546,6 +1629,7 @@ def test_quote_after_end_survives_compilation(tmp_path: Path) -> None:
 
 # --- review cleanup pass --------------------------------------------------------
 
+
 def test_copy_with_multiple_froms_is_a_finding() -> None:
     source = parse_skw_source(
         "## A\n\n> $kw: --copy --from a.md#X --from b.md#Y\n\n- body\n\n> $kw. end\n"
@@ -1574,7 +1658,7 @@ def test_labeled_span_resolves_nested_copies_fresh(tmp_path: Path) -> None:
     expansion = expand_file(skillware, Path("references/mod.skw.md"))
     assert not expansion.findings
     refreshed = "\n".join(expansion.src_refresh_lines)
-    assert "- alpha one" in refreshed          # fresh, not the stale inner body
+    assert "- alpha one" in refreshed  # fresh, not the stale inner body
     assert "- stale inner copy" not in refreshed
 
 
@@ -1591,7 +1675,9 @@ def test_unclosed_fence_is_a_finding() -> None:
     assert any("unclosed code fence" in f.message for f in source.findings)
 
 
-def test_status_counts_constructs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_status_counts_constructs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
     src.write_text(
@@ -1609,17 +1695,22 @@ def test_status_counts_constructs(tmp_path: Path, capsys: pytest.CaptureFixture[
 
 # --- Poi.Linter: gating, identity, output; Poi.Bless -----------------------------
 
+
 def test_parse_errors_gate_semantic_checks_per_file(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     build_skill(skill)
     # make mod's derived stale AND break a standalone file with a parse error
     depot_file = tmp_path / "depot" / "design" / "100-design.md"
     depot_file.write_text(
-        depot_file.read_text(encoding="utf-8").replace("- concept line", "- concept line v2"),
+        depot_file.read_text(encoding="utf-8").replace(
+            "- concept line", "- concept line v2"
+        ),
         encoding="utf-8",
     )
     extra = skill / ".skillware" / "src" / "references" / "extra.skw.md"
-    extra.write_text("# extra\n\n> $kw: --derived --from X.Y\n\nnever closed\n", encoding="utf-8")
+    extra.write_text(
+        "# extra\n\n> $kw: --derived --from X.Y\n\nnever closed\n", encoding="utf-8"
+    )
 
     check = check_skill(skill)
     extra_entry = _entry(check, "references/extra.md")
@@ -1627,15 +1718,23 @@ def test_parse_errors_gate_semantic_checks_per_file(tmp_path: Path) -> None:
     assert extra_entry.copy_drift == () and extra_entry.derived_stale == ()
     extra_pois = [p for p in check.pois if str(p.target) == "references/extra.md"]
     assert extra_pois and all(p.kind == "parse-error" for p in extra_pois)
+    assert len(check.diagnostics) == len(extra_pois)
+    assert all(
+        diagnostic.evidence["origin"] == "Closure.Parser"
+        and diagnostic.evidence["compatibility_poi"]
+        in {poi.instance_id for poi in extra_pois}
+        for diagnostic in check.diagnostics
+    )
     # the sibling file still checks semantically
     mod_entry = _entry(check, "references/mod.md")
     assert "Derived" in mod_entry.derived_stale
-    assert any(
-        p.kind == "derived-stale" and p.key == "Derived" for p in check.pois
-    )
+    assert any(p.kind == "derived-stale" and p.key == "Derived" for p in check.pois)
     # a parse-broken file poisons its importers as unresolvable, not silently
     lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    lib.write_text(lib.read_text(encoding="utf-8") + "\n> $kw: --derived --from X.Y\n\nopen\n", encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8") + "\n> $kw: --derived --from X.Y\n\nopen\n",
+        encoding="utf-8",
+    )
     check = check_skill(skill)
     assert _entry(check, "references/lib.md").status == "parse-error"
     assert _entry(check, "references/mod.md").status == "unresolvable"
@@ -1645,19 +1744,57 @@ def test_poi_hash_is_stable_and_situation_bound(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     build_skill(skill)
     lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two v2"), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two v2"),
+        encoding="utf-8",
+    )
     build_skill(skill)
 
     first = [p for p in check_skill(skill).pois if p.kind == "derived-stale"]
     second = [p for p in check_skill(skill).pois if p.kind == "derived-stale"]
     assert first and [p.poi_hash for p in first] == [p.poi_hash for p in second]
+    identity = (
+        f"{first[0].target_path}|{first[0].kind}|{first[0].key}|"
+        f"{first[0].evidence['identity_payload']}"
+    )
+    assert (
+        first[0].poi_hash == hashlib.sha256(identity.encode("utf-8")).hexdigest()[:10]
+    )
 
     # the dependency moves again: same POI kind/key, new situation, new hash
-    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha two v2", "- alpha two v3"), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- alpha two v2", "- alpha two v3"),
+        encoding="utf-8",
+    )
     build_skill(skill)
     third = [p for p in check_skill(skill).pois if p.kind == "derived-stale"]
     assert third and third[0].key == first[0].key
     assert third[0].poi_hash != first[0].poi_hash
+
+
+def test_cli_parse_failure_has_distinct_diagnostic_and_compatibility_poi(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "lib.skw.md"
+    src.write_text(
+        src.read_text(encoding="utf-8") + "\n> $kw: --derived --from X.Y\n\nopen\n",
+        encoding="utf-8",
+    )
+
+    assert _cmd_skillware_check(argparse.Namespace(skill=str(skill), json=True)) == 1
+    payload = json.loads(capsys.readouterr().out)
+    parse_poi = next(
+        poi for poi in payload["pois"] if poi["evidence"]["kind"] == "parse-error"
+    )
+    diagnostic = next(
+        item for item in payload["diagnostics"] if item["code"] == "parse-error"
+    )
+    assert diagnostic["evidence"] == {
+        "compatibility_poi": parse_poi["instance_id"],
+        "origin": "Closure.Parser",
+    }
 
 
 def test_legacy_callout_raises_a_poi(tmp_path: Path) -> None:
@@ -1683,23 +1820,28 @@ def test_legacy_callout_raises_a_poi(tmp_path: Path) -> None:
     assert not any(p.kind == "legacy-callout" for p in check.pois)
 
 
-def test_cli_check_prints_legend_and_bare_rows(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_check_uses_common_grouped_renderer(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     skill = _write_skill(tmp_path)
     build_skill(skill)
     lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two v2"), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two v2"),
+        encoding="utf-8",
+    )
     build_skill(skill)
 
     args = argparse.Namespace(skill=str(skill), json=False)
     assert _cmd_skillware_check(args) == 1
     out = capsys.readouterr().out
-    # legend: once per present kind, with the prescribed response
-    assert out.count("derived-stale —") == 1
-    assert "bless" in out
-    # bare row: kind, target, key, hash
-    row = next(line for line in out.splitlines() if line.startswith("- [derived-stale]"))
-    assert "references/mod.md" in row and "Derived" in row
-    assert any(len(tok.strip("()")) == 10 for tok in row.split())
+    assert (
+        sum(line == "Skillware.Linter/Derived.Stale" for line in out.splitlines()) == 1
+    )
+    assert out.count("Documentation: index://agentos-pkg/") == 1
+    row = next(line for line in out.splitlines() if "[ADVISORY]" in line)
+    assert "references/mod.md" in row
+    assert any(len(token.strip("[]")) == 10 for token in row.split())
 
 
 def test_bless_clears_derived_stale_without_touching_the_body(tmp_path: Path) -> None:
@@ -1708,11 +1850,16 @@ def test_bless_clears_derived_stale_without_touching_the_body(tmp_path: Path) ->
     skill = _write_skill(tmp_path)
     build_skill(skill)
     lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two v2"), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two v2"),
+        encoding="utf-8",
+    )
     build_skill(skill)
 
     poi = next(p for p in check_skill(skill).pois if p.kind == "derived-stale")
-    src_before = (skill / ".skillware" / "src" / "references" / "mod.skw.md").read_text(encoding="utf-8")
+    src_before = (skill / ".skillware" / "src" / "references" / "mod.skw.md").read_text(
+        encoding="utf-8"
+    )
     target_before = (skill / "references" / "mod.md").read_text(encoding="utf-8")
 
     record = bless_skill(skill, poi.poi_hash)
@@ -1720,13 +1867,20 @@ def test_bless_clears_derived_stale_without_touching_the_body(tmp_path: Path) ->
     assert record.deps  # old -> new dep hashes named
 
     # body and target untouched; flag cleared
-    assert (skill / ".skillware" / "src" / "references" / "mod.skw.md").read_text(encoding="utf-8") == src_before
-    assert (skill / "references" / "mod.md").read_text(encoding="utf-8") == target_before
+    assert (skill / ".skillware" / "src" / "references" / "mod.skw.md").read_text(
+        encoding="utf-8"
+    ) == src_before
+    assert (skill / "references" / "mod.md").read_text(
+        encoding="utf-8"
+    ) == target_before
     check = check_skill(skill)
     assert not check.pois
 
     # the dependency moves again: a NEW POI with a new hash appears
-    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha two v2", "- alpha two v3"), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- alpha two v2", "- alpha two v3"),
+        encoding="utf-8",
+    )
     build_skill(skill)
     fresh = next(p for p in check_skill(skill).pois if p.kind == "derived-stale")
     assert fresh.poi_hash != poi.poi_hash
@@ -1741,20 +1895,28 @@ def test_bless_refuses_unblessable_and_unknown_pois(tmp_path: Path) -> None:
         bless_skill(skill, "0000000000")  # unknown hash
 
     src = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    src.write_text(src.read_text(encoding="utf-8") + "\n> $kw: --derived --from X.Y\n\nopen\n", encoding="utf-8")
+    src.write_text(
+        src.read_text(encoding="utf-8") + "\n> $kw: --derived --from X.Y\n\nopen\n",
+        encoding="utf-8",
+    )
     poi = next(p for p in check_skill(skill).pois if p.kind == "parse-error")
     with pytest.raises(SkillwareError) as excinfo:
         bless_skill(skill, poi.poi_hash)
     assert "not blessable" in str(excinfo.value)
 
 
-def test_cli_bless_round_trip(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_bless_round_trip(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     from agentos.skillware.commands import _cmd_skillware_bless
 
     skill = _write_skill(tmp_path)
     build_skill(skill)
     lib = skill / ".skillware" / "src" / "references" / "lib.skw.md"
-    lib.write_text(lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two v2"), encoding="utf-8")
+    lib.write_text(
+        lib.read_text(encoding="utf-8").replace("- alpha two", "- alpha two v2"),
+        encoding="utf-8",
+    )
     build_skill(skill)
     poi = next(p for p in check_skill(skill).pois if p.kind == "derived-stale")
 
@@ -1765,7 +1927,9 @@ def test_cli_bless_round_trip(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert check_skill(skill).pois == ()
 
     with pytest.raises(CliError):
-        _cmd_skillware_bless(argparse.Namespace(skill=str(skill), poi="ffffffffff", json=True))
+        _cmd_skillware_bless(
+            argparse.Namespace(skill=str(skill), poi="ffffffffff", json=True)
+        )
 
 
 def test_cli_bulk_bless_clears_kind_only_for_current_situations(
@@ -1788,20 +1952,18 @@ def test_cli_bulk_bless_clears_kind_only_for_current_situations(
     assert _cmd_skillware_bless(args) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["summary"]["blessed"] == 1
-    assert not any(
-        p.kind == "undeclared-dependency" for p in check_skill(skill).pois
-    )
+    assert not any(p.kind == "undeclared-dependency" for p in check_skill(skill).pois)
     build_skill(skill)
-    assert not any(
-        p.kind == "undeclared-dependency" for p in check_skill(skill).pois
-    )
+    assert not any(p.kind == "undeclared-dependency" for p in check_skill(skill).pois)
 
     depot = tmp_path / "depot" / "design" / "100-design.md"
     depot.write_text(
         depot.read_text(encoding="utf-8") + "\n## Concept.Two\n\n- concept two\n",
         encoding="utf-8",
     )
-    src.write_text(src.read_text(encoding="utf-8") + "\nAlso `Concept.Two`.\n", encoding="utf-8")
+    src.write_text(
+        src.read_text(encoding="utf-8") + "\nAlso `Concept.Two`.\n", encoding="utf-8"
+    )
     fresh = [p for p in check_skill(skill).pois if p.kind == "undeclared-dependency"]
     assert [poi.key for poi in fresh] == ["Concept.Two"]
 
@@ -1821,7 +1983,7 @@ def test_skw_backend_satisfies_surface_provider_protocol() -> None:
     # The skw-skills backend binds into the shared dependency-sync engine
     # through the SurfaceProvider protocol (Impl.Req 700, slice 2).
     from agentos.skillware.build import _SkwSurfaceProvider
-    from agentos.skwlint import SurfaceProvider
+    from agentos.skw import SurfaceProvider
 
     assert issubclass(_SkwSurfaceProvider, SurfaceProvider)
 
@@ -1829,7 +1991,9 @@ def test_skw_backend_satisfies_surface_provider_protocol() -> None:
 def test_dependency_sync_findings_are_advisory() -> None:
     # The surface-agnostic engine raises the three drift kinds and marks every
     # one advisory — drift is never a gated error in any backend.
-    from agentos.skwlint import ADVISORY, dependency_sync_findings
+    from agentos.skw import dependency_sync_findings
+
+    ADVISORY = "advisory"
 
     findings = dependency_sync_findings(
         Path("t.md"),
@@ -1838,7 +2002,10 @@ def test_dependency_sync_findings_are_advisory() -> None:
         mention_resolutions={"Some.Mention": "hash"},
         declared_resolutions={"Only.Declared": "unresolved:gone"},
     )
-    assert {f.kind for f in findings} == {"dangling-dependency", "undeclared-dependency"}
+    assert {f.kind for f in findings} == {
+        "dangling-dependency",
+        "undeclared-dependency",
+    }
     assert all(f.severity == ADVISORY for f in findings)
 
 

@@ -1,3 +1,4 @@
+# $kw: ^tara-poi-command --from POI.System --from POI.Linter --note [CT] Tara check output uses the common POI report without changing exit policy ^c20260729-49u
 from __future__ import annotations
 
 import argparse
@@ -6,6 +7,7 @@ from pathlib import Path
 
 from agentos._core.json_input import load_json_arg, load_json_object_arg
 from agentos.tara_tapes.check import check_tape
+from agentos.tara_tapes.poi import build_tara_linter_report
 from agentos.tara_tapes.core import (
     append_tara_tape_stage_record,
     bootstrap_tara_tape,
@@ -149,7 +151,7 @@ def _cmd_tara_tapes_verify(args: argparse.Namespace) -> int:
 def _cmd_tara_tapes_check(args: argparse.Namespace) -> int:
     root = _resolve_root(args.root)
     result = check_tape(root)
-    print(json.dumps(result, indent=2))
+    print(json.dumps(build_tara_linter_report(result).as_dict(), indent=2))
     return 0
 
 

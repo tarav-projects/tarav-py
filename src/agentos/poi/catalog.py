@@ -1,3 +1,4 @@
+# $kw: ^poi-catalog-completeness --from POI.System --from POI.Linter --note [CT] catalog discovery and runtime completeness checks use package-owned poi chapters ^c20260729-49u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -69,6 +70,18 @@ class POICatalog:
                 f"no POI class registered for finding code: {finding_code}"
             )
         return reference
+
+    def missing(self, finding_codes: Iterable[str]) -> tuple[str, ...]:
+        return tuple(
+            code for code in dict.fromkeys(finding_codes) if code not in self._by_code
+        )
+
+    def require_complete(self, finding_codes: Iterable[str]) -> None:
+        missing = self.missing(finding_codes)
+        if missing:
+            raise UnknownPOIClass(
+                "no POI class registered for finding code(s): " + ", ".join(missing)
+            )
 
     @classmethod
     def compose(cls, *catalogs: POICatalog) -> POICatalog:

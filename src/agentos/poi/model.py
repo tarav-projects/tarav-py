@@ -1,3 +1,4 @@
+# $kw: ^poi-instance-identity --from POI.System --from POI.Linter --note [CT] POI instances support producer-established identities and advisory severity ^c20260729-49u
 from __future__ import annotations
 
 import hashlib
@@ -9,7 +10,7 @@ from urllib.parse import quote
 from agentos.wayfinder import WayfinderReference
 
 
-POISeverity = Literal["error", "warning"]
+POISeverity = Literal["error", "warning", "advisory"]
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,9 @@ class POILocation:
     @property
     def display(self) -> str:
         return f"{self.path}:{self.line}" if self.line is not None else self.path
+
+    def __str__(self) -> str:
+        return self.display
 
     def as_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {"path": self.path}
@@ -53,20 +57,24 @@ class POIInstance:
         severity: POISeverity,
         situation: str,
         evidence: dict[str, Any] | None = None,
+        instance_id: str | None = None,
     ) -> POIInstance:
-        if severity not in {"error", "warning"}:
+        if severity not in {"error", "warning", "advisory"}:
             raise ValueError(f"unsupported POI severity: {severity!r}")
         if not situation:
             raise ValueError("POI situation must be non-empty")
+        if instance_id is not None and not instance_id:
+            raise ValueError("producer-established POI instance ID must be non-empty")
         normalized_evidence = _normalize_json_object(evidence or {})
-        identity = {
-            "class": class_reference.as_dict(),
-            "target": target.as_dict(),
-            "evidence": normalized_evidence,
-        }
-        instance_id = hashlib.sha256(
-            _canonical_json(identity).encode("utf-8")
-        ).hexdigest()[:12]
+        if instance_id is None:
+            identity = {
+                "class": class_reference.as_dict(),
+                "target": target.as_dict(),
+                "evidence": normalized_evidence,
+            }
+            instance_id = hashlib.sha256(
+                _canonical_json(identity).encode("utf-8")
+            ).hexdigest()[:12]
         return cls(
             instance_id=instance_id,
             class_reference=class_reference,

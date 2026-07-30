@@ -1,4 +1,4 @@
-# $kw: ^bloberia-commands --from Agentos.Bloberia --note [DF] thin argparse handlers over the importable BloberiaDepot contract ^c20260724-31u
+# $kw: ^bloberia-commands --from Agentos.Bloberia --from POI.System --from POI.Linter --note [DF] thin argparse handlers over the importable BloberiaDepot and common POI report contracts ^c20260724-31u --supp POI migration execution ^c20260729-49u
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,7 @@ from agentos._core.errors import CliError
 from agentos._core.json_input import load_json_arg, load_json_object_arg
 
 from .core import BloberiaDepot, BloberiaError, BloberiaRecord
+from .poi import build_bloberia_linter_report
 
 
 def _depot(args: argparse.Namespace) -> BloberiaDepot:
@@ -23,9 +24,7 @@ def _value_arg(args: argparse.Namespace) -> object:
     return load_json_arg(args.value_json, args.value_file, field_name="value")
 
 
-def _record_payload(
-    depot: BloberiaDepot, record: BloberiaRecord
-) -> dict[str, object]:
+def _record_payload(depot: BloberiaDepot, record: BloberiaRecord) -> dict[str, object]:
     return {"depot": str(depot.root), "record": record.as_dict()}
 
 
@@ -83,25 +82,7 @@ def _cmd_query(args: argparse.Namespace) -> int:
 def _cmd_check(args: argparse.Namespace) -> int:
     depot = _depot(args)
     result = depot.check()
-    _print_json(
-        {
-            "depot": str(depot.root),
-            "status": "ok" if result.ok else "error",
-            "findings": [
-                {
-                    "code": finding.code,
-                    "path": finding.path,
-                    "message": finding.message,
-                    **(
-                        {"record_id": finding.record_id}
-                        if finding.record_id is not None
-                        else {}
-                    ),
-                }
-                for finding in result.findings
-            ],
-        }
-    )
+    _print_json(build_bloberia_linter_report(result, depot=depot.root).as_dict())
     return 0 if result.ok else 1
 
 
@@ -152,7 +133,9 @@ def register_bloberia_commands(
     _add_depot_argument(query_parser)
     query_group = query_parser.add_mutually_exclusive_group()
     query_group.add_argument("--query-json", help="Structural query as a JSON object.")
-    query_group.add_argument("--query-file", help="Path to a structural-query JSON file.")
+    query_group.add_argument(
+        "--query-file", help="Path to a structural-query JSON file."
+    )
     query_parser.set_defaults(handler=_cmd_query)
 
     check_parser = commands.add_parser("check", help="Check depot structure.")

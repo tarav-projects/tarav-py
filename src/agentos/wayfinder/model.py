@@ -1,10 +1,10 @@
-# $kw: ^wayfinder-model --from Wayfinder.Reference --from Wayfinder.Resolution --note [DF] canonical reference, trace, result, and resolution-POI models ^c20260729-46u
+# $kw: ^wayfinder-model --from Wayfinder.Reference --from Wayfinder.Resolution --from POI.System --note [DF] canonical reference trace result and bootstrap-safe resolution-POI models ^c20260729-46u --supp common POI migration execution ^c20260729-49u
 from __future__ import annotations
 
 import hashlib
 import json
 from dataclasses import dataclass
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 
 REFERENCE_SCHEMA = "agentos.wayfinder.reference.v1"
@@ -142,18 +142,23 @@ class WayfinderResolutionPOI:
     candidates: tuple[dict[str, object], ...] = ()
 
     def as_dict(self) -> dict[str, object]:
+        class_reference = poi_class_reference("agentos-pkg", "Wayfinder.Resolution.POI")
         return {
             "status": "poi",
             "poi": {
                 "instance_id": self.instance_id,
-                "class": "Wayfinder.Resolution.POI",
-                "kind": self.kind,
-                "reference": self.reference.as_dict(),
-                "message": self.message,
-                "trace": [step.as_dict() for step in self.trace],
-                "remembered_location": self.remembered_location,
-                "relocation_hints": list(self.relocation_hints),
-                "candidates": list(self.candidates),
+                "class": class_reference.as_dict(),
+                "class_sugar": _index_reference_sugar(class_reference),
+                "target": {"reference": self.reference.as_dict()},
+                "severity": "error",
+                "situation": self.message,
+                "evidence": {
+                    "kind": self.kind,
+                    "trace": [step.as_dict() for step in self.trace],
+                    "remembered_location": self.remembered_location,
+                    "relocation_hints": list(self.relocation_hints),
+                    "candidates": list(self.candidates),
+                },
             },
         }
 
@@ -182,9 +187,18 @@ def parse_reference(value: str) -> WayfinderReference:
             "reference sugar must be index://<package-id>/<block-path>"
         )
     if parsed.query or parsed.fragment:
-        raise InvalidWayfinderReference("index reference sugar cannot carry query or fragment")
+        raise InvalidWayfinderReference(
+            "index reference sugar cannot carry query or fragment"
+        )
     block_path = unquote(parsed.path.lstrip("/"))
     return index_block_reference(unquote(parsed.netloc), block_path)
+
+
+def _index_reference_sugar(reference: WayfinderReference) -> str:
+    return (
+        f"index://{quote(reference.root.id, safe='')}/"
+        f"{quote(str(reference.address), safe='/.')}"
+    )
 
 
 def resolution_poi_id(

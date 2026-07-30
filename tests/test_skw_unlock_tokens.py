@@ -261,10 +261,12 @@ def test_cli_check_reports_context_without_disclosing_tokens(
         )
     )
     payload = json.loads(capsys.readouterr().out)
-    poi = next(item for item in payload["pois"] if item["kind"] == "derived-stale")
+    poi = next(
+        item for item in payload["pois"] if item["evidence"]["kind"] == "derived-stale"
+    )
 
     assert exit_code == 1
-    assert poi["unlock_requirements"] == [
+    assert payload["domain"]["unlock_requirements"]["derived-stale"] == [
         {
             "surface": "references/check.skw.md^bless-context",
             "registry": str(
@@ -282,6 +284,7 @@ def test_cli_check_reports_context_without_disclosing_tokens(
             ),
         },
     ]
+    assert poi["instance_id"]
     assert "skw-unlock:" not in json.dumps(payload)
 
 

@@ -567,8 +567,8 @@ def test_cli_record_list_and_check_round_trip(
     )
     assert args.handler(args) == 1
     checked = json.loads(capsys.readouterr().out)
-    assert checked["status"] == "error"
-    assert checked["findings"][0]["code"] == "missing-edition-history"
+    assert checked["domain"]["status"] == "error"
+    assert checked["pois"][0]["evidence"]["kind"] == "missing-edition-history"
 
 
 def test_cli_uses_project_default_depot(
@@ -597,9 +597,7 @@ def test_cli_uses_project_default_depot(
     payload = json.loads(capsys.readouterr().out)
     assert Path(payload["depot"]) == root / DEFAULT_EDITION_HISTORY_DEPOT
 
-    args = parser.parse_args(
-        ["skw", "edition-history", "list", "--file", str(source)]
-    )
+    args = parser.parse_args(["skw", "edition-history", "list", "--file", str(source)])
     assert args.handler(args) == 0
     assert json.loads(capsys.readouterr().out)["summary"]["sessions"] == 1
 
@@ -630,14 +628,21 @@ def test_project_check_enforces_configured_edition_history(
     args = parser.parse_args(["skw", "check", "--json"])
     assert args.handler(args) == 1
     payload = json.loads(capsys.readouterr().out)
-    assert payload["project_pois"][0]["kind"] == "missing-edition-history"
-    assert payload["project_pois"][0]["target"] == "src/example.py"
+    project_poi = next(
+        poi
+        for poi in payload["pois"]
+        if poi["evidence"]["kind"] == "missing-edition-history"
+    )
+    assert project_poi["instance_id"] in payload["domain"]["project_poi_ids"]
+    assert project_poi["target"]["path"] == "src/example.py"
 
     args = parser.parse_args(
         ["skw", "check", "--json", "--skip", "missing-edition-history"]
     )
     assert args.handler(args) == 0
-    assert json.loads(capsys.readouterr().out)["project_pois"] == []
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["domain"]["project_poi_ids"] == []
+    assert payload["pois"] == []
 
     source.write_text("value = 2\n", encoding="utf-8")
     _git(root, "add", ".")
@@ -653,16 +658,21 @@ def test_project_check_enforces_configured_edition_history(
     args = parser.parse_args(["skw", "check", "--json"])
     assert args.handler(args) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["project_pois"] == []
-    assert payload["summary"]["pois"] == 0
+    assert payload["domain"]["project_poi_ids"] == []
+    assert payload["summary"]["poi_count"] == 0
 
     args = parser.parse_args(
         ["skw", "check", "--json", "--check", "unsupported-git-edition"]
     )
     assert args.handler(args) == 1
     payload = json.loads(capsys.readouterr().out)
-    assert payload["project_pois"][0]["kind"] == "unsupported-git-edition"
-    assert commit in payload["project_pois"][0]["detail"]
+    project_poi = next(
+        poi
+        for poi in payload["pois"]
+        if poi["evidence"]["kind"] == "unsupported-git-edition"
+    )
+    assert project_poi["instance_id"] in payload["domain"]["project_poi_ids"]
+    assert commit in project_poi["situation"]
 
 
 def test_project_check_without_policy_does_not_require_history(
@@ -675,7 +685,9 @@ def test_project_check_without_policy_does_not_require_history(
     args = _parser().parse_args(["skw", "check", "--json"])
 
     assert args.handler(args) == 0
-    assert json.loads(capsys.readouterr().out)["project_pois"] == []
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["domain"]["project_poi_ids"] == []
+    assert payload["pois"] == []
 
 
 def test_cli_record_requires_support(tmp_path: Path) -> None:

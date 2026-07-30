@@ -1,7 +1,7 @@
 """Index backend on the shared linter core (Impl.Req 700, slice 3).
 
 Proves the extensibility point: the index depot plugs into the surface-agnostic
-`agentos.skwlint` engine through `IndexSurfaceProvider`, and the edge-free
+`agentos.skw.network` engine through `IndexSurfaceProvider`, and the edge-free
 `dangling_mention_findings` fires exactly on a mention whose concept was
 removed. Runs over a controlled fixture where every concept is a heading, so
 the headings-only resolver is complete — the real-index resolver gap is
@@ -15,7 +15,9 @@ from agentos.index.drift import (
     index_dangling_mentions,
     index_depot_collisions,
 )
-from agentos.skwlint import ADVISORY, SurfaceProvider, dangling_mention_findings
+from agentos.skw import SurfaceProvider, dangling_mention_findings
+
+ADVISORY = "advisory"
 
 
 def _write_depot(root: Path, design: str) -> Path:
@@ -130,7 +132,9 @@ def test_inline_definition_resolves(tmp_path: Path) -> None:
     depot = _write_depot(tmp_path / "d", INLINE_DEFINED)
     provider = IndexSurfaceProvider(depot)
     assert "Child.Inline" in provider.resolve({"Child.Inline"})
-    assert not provider.resolve({"Child.Inline"})["Child.Inline"].startswith("unresolved:")
+    assert not provider.resolve({"Child.Inline"})["Child.Inline"].startswith(
+        "unresolved:"
+    )
     assert index_dangling_mentions(depot) == []
 
 

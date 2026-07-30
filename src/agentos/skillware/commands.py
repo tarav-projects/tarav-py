@@ -1,4 +1,4 @@
-# $kw: ^skillware-commands --from Skw.Edition.History.Service --note [DF] Skillware command registration including required-support edition-history recording ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project policy integration authorized ^c20260725-25u --supp CLI diagnostics expose context-assembly and citation POIs ^c20260725-27u --supp opt-in completeness and amendment authorized ^c20260725-32u
+# $kw: ^skillware-commands --from Skw.Edition.History.Service --from POI.System --from POI.Linter --note [DF] Skillware command registration including required-support edition-history recording and common POI reporting ^c20260725-12u --supp schema migration authorized ^c20260725-14u --supp live Chatlas resolution authorized ^c20260725-15u --supp project policy integration authorized ^c20260725-25u --supp CLI diagnostics expose context-assembly and citation POIs ^c20260725-27u --supp opt-in completeness and amendment authorized ^c20260725-32u --supp common POI migration execution ^c20260729-49u
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,11 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos._core.json_input import load_json_object_arg
 from agentos.bloberia import BloberiaDepot
-from agentos.skwlint import add_check_selection_args, poi as make_poi
+from agentos.poi import (
+    POILinterReport,
+    add_check_selection_args,
+    build_poi_report,
+)
 from agentos.skillware.build import (
     SkillwareError,
     bless_pois_by_kind,
@@ -32,6 +36,9 @@ from agentos.skillware.edition_history import (
     EditionSupportResolver,
     DEFAULT_EDITION_HISTORY_DEPOT,
     default_edition_history_depot,
+)
+from agentos.skillware.poi import (
+    edition_history_findings_to_pois,
 )
 
 # once-per-kind legend: meaning + prescribed response; the full fix protocols
@@ -196,16 +203,7 @@ def _edition_history_project_pois(
         BloberiaDepot(depot),
         support_resolver=support_resolver,
     ).check(targets, require_complete=require_complete)
-    return tuple(
-        make_poi(
-            finding.code,
-            Path(finding.target),
-            None,
-            json.dumps(finding.as_dict(), sort_keys=True),
-            finding.message,
-        )
-        for finding in result.findings
-    )
+    return edition_history_findings_to_pois(result.findings)
 
 
 def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
@@ -216,11 +214,9 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
             "pass --skill to check a single package"
         )
     enabled, known = _enabled_poi_selectors(args)
-    from agentos.skwlint import check_selector
+    from agentos.poi import check_selector
 
-    require_complete = (
-        check_selector("unsupported-git-edition") in enabled
-    )
+    require_complete = check_selector("unsupported-git-edition") in enabled
     try:
         report = check_project(project_root)
         project_pois = _edition_history_project_pois(
@@ -236,10 +232,18 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
         (pkg, _filter_pois(pr.pois, enabled, known)) for pkg, pr in report.packages
     ]
     project_pois = _filter_pois(project_pois, enabled, known)
-    poi_count = len(project_pois) + sum(
-        len(pois) for _pkg, pois in package_pois
+    poi_count = len(project_pois) + sum(len(pois) for _pkg, pois in package_pois)
+    all_pois = [poi for _package, pois in package_pois for poi in pois] + list(
+        project_pois
     )
-    payload = {
+    diagnostics = tuple(
+        diagnostic
+        for _package, package_report in report.packages
+        for diagnostic in package_report.diagnostics
+        if diagnostic.evidence.get("compatibility_poi")
+        in {poi.instance_id for poi in all_pois}
+    )
+    domain = {
         "command": "agentos skw check",
         "project_root": str(report.project_root),
         "packages": [
@@ -247,33 +251,25 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
                 "package": str(pkg.relative_to(report.project_root))
                 if pkg != report.project_root
                 else ".",
-                "pois": [
-                    {
-                        "kind": poi.kind,
-                        "target": str(poi.target),
-                        "key": poi.key,
-                        "hash": poi.poi_hash,
-                    }
-                    for poi in pois
-                ],
+                "poi_ids": [poi.instance_id for poi in pois],
             }
             for pkg, pois in package_pois
         ],
-        "project_pois": [
-            {
-                "kind": poi.kind,
-                "target": str(poi.target),
-                "key": poi.key,
-                "hash": poi.poi_hash,
-                "detail": poi.detail,
-            }
-            for poi in project_pois
-        ],
-        "summary": {"packages": len(report.packages), "pois": poi_count},
+        "project_poi_ids": [poi.instance_id for poi in project_pois],
     }
+    linter_report = POILinterReport(
+        poi_report=build_poi_report(all_pois),
+        diagnostics=diagnostics,
+        summary={
+            "packages": len(report.packages),
+            "poi_count": poi_count,
+            "diagnostic_count": len(diagnostics),
+        },
+        domain=domain,
+    )
     exit_code = 1 if poi_count else 0
     if args.json:
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(linter_report.as_dict(), indent=2))
         return exit_code
     print(f"skw check (project scope): {report.project_root}")
     if project_pois:
@@ -290,7 +286,13 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
         for poi in pois:
             location = f"{poi.target} :: {poi.key}" if poi.key else str(poi.target)
             print(f"    [{poi.kind}] {location} ({poi.poi_hash})")
-    print(f"Summary: {len(report.packages)} package(s), {poi_count} POI(s).")
+    rendered = linter_report.render_text()
+    if rendered:
+        print(rendered)
+    print(
+        f"Summary: {len(report.packages)} package(s), {poi_count} POI(s), "
+        f"{len(diagnostics)} diagnostic(s)."
+    )
     return exit_code
 
 
@@ -300,9 +302,7 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
 _SKW_STRUCTURAL_KINDS = frozenset({"parse-error", "unresolvable"})
 # opt-in kinds: over-report on real surfaces, so they stay off unless
 # `--check`ed (mirrors the index `dangling-mention` default-off pattern)
-_SKW_DEFAULT_OFF_KINDS = frozenset(
-    {"non-skw-annotation", "unsupported-git-edition"}
-)
+_SKW_DEFAULT_OFF_KINDS = frozenset({"non-skw-annotation", "unsupported-git-edition"})
 
 
 @dataclass(frozen=True)
@@ -327,7 +327,7 @@ def _skw_check_kinds() -> tuple[_SkwCheckKind, ...]:
 
 def _enabled_poi_selectors(args: argparse.Namespace) -> tuple[set[str], set[str]]:
     """(enabled selectors, all known selectors) resolved from --check/--skip."""
-    from agentos.skwlint import check_selector, resolve_enabled_checks
+    from agentos.poi import check_selector, resolve_enabled_checks
 
     kinds = _skw_check_kinds()
     enabled = resolve_enabled_checks(
@@ -342,7 +342,7 @@ def _enabled_poi_selectors(args: argparse.Namespace) -> tuple[set[str], set[str]
 def _filter_pois(pois, enabled: set[str], known: set[str]):
     """Keep enabled kinds; an unknown kind (absent from the registry) always
     passes — selection never silently hides a POI the registry does not model."""
-    from agentos.skwlint import check_selector
+    from agentos.poi import check_selector
 
     kept = []
     for poi in pois:
@@ -354,7 +354,7 @@ def _filter_pois(pois, enabled: set[str], known: set[str]):
 
 def _cmd_skillware_check(args: argparse.Namespace) -> int:
     if getattr(args, "list_checks", False):
-        from agentos.skwlint import check_registry, render_check_registry
+        from agentos.poi import check_registry, render_check_registry
 
         for line in render_check_registry(check_registry(_skw_check_kinds())):
             print(line)
@@ -372,65 +372,66 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
         kind: unlock_requirements(Path(args.skill), kind)
         for kind in {poi.kind for poi in pois}
     }
-    payload = {
-        "command": "agentos skw check",
-        "skill": str(args.skill),
-        "entries": [
-            {
-                "target": str(entry.target),
-                "status": entry.status,
-                "copy_drift": list(entry.copy_drift),
-                "derived_stale": list(entry.derived_stale),
-            }
-            for entry in report.entries
-        ],
-        "pois": [
-            {
-                "kind": poi.kind,
-                "target": str(poi.target),
-                "key": poi.key,
-                "hash": poi.poi_hash,
-                "detail": poi.detail,
-                "unlock_requirements": [
+    visible_ids = {poi.instance_id for poi in pois}
+    diagnostics = tuple(
+        diagnostic
+        for diagnostic in report.diagnostics
+        if diagnostic.evidence.get("compatibility_poi") in visible_ids
+    )
+    linter_report = POILinterReport(
+        poi_report=build_poi_report(pois),
+        diagnostics=diagnostics,
+        summary={
+            "files": len(report.entries),
+            "poi_count": len(pois),
+            "diagnostic_count": len(diagnostics),
+        },
+        domain={
+            "command": "agentos skw check",
+            "skill": str(args.skill),
+            "entries": [
+                {
+                    "target": str(entry.target),
+                    "status": entry.status,
+                    "copy_drift": list(entry.copy_drift),
+                    "derived_stale": list(entry.derived_stale),
+                }
+                for entry in report.entries
+            ],
+            "unlock_requirements": {
+                kind: [
                     {
                         "surface": requirement.surface,
                         "registry": str(requirement.registry),
                     }
-                    for requirement in requirements_by_kind[poi.kind]
-                ],
-            }
-            for poi in pois
-        ],
-        "summary": {"files": len(report.entries), "pois": len(pois)},
-    }
+                    for requirement in requirements
+                ]
+                for kind, requirements in requirements_by_kind.items()
+            },
+        },
+    )
     exit_code = 1 if pois else 0
     if args.json:
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(linter_report.as_dict(), indent=2))
         return exit_code
     print("Skillware check")
     for entry in report.entries:
         print(f"- [{entry.status}] {entry.target}")
-    if pois:
-        print("Legend:")
-        for kind in dict.fromkeys(poi.kind for poi in pois):
-            meaning, response = POI_LEGEND.get(
-                kind, ("a point of interest", "inspect the src")
-            )
-            print(f"- {kind} — {meaning}; {response}")
-        print("POIs:")
-        for poi in pois:
-            location = (
-                f"{poi.target} :: {poi.key}"
-                if poi.key
-                else f"{poi.target} :: {poi.detail}"
-            )
-            print(f"- [{poi.kind}] {location} ({poi.poi_hash})")
-            for requirement in requirements_by_kind[poi.kind]:
+    rendered = linter_report.render_text()
+    if rendered:
+        print(rendered)
+    if any(requirements_by_kind.values()):
+        print("Context requirements:")
+        for kind, requirements in requirements_by_kind.items():
+            for requirement in requirements:
                 print(
-                    f"  - requires context: {requirement.surface} "
+                    f"- {kind}: {requirement.surface} "
                     f"(registry: {requirement.registry})"
                 )
-    print(f"Summary: {len(report.entries)} file(s), {len(pois)} POI(s).")
+    print(
+        f"Summary: {len(report.entries)} file(s), {len(pois)} POI(s), "
+        f"{len(diagnostics)} diagnostic(s)."
+    )
     return exit_code
 
 
@@ -615,9 +616,7 @@ def _cmd_edition_history_list(args: argparse.Namespace) -> int:
                 "editions": len(history.editions),
                 "supported_editions": history.supported_editions,
                 "unsupported_editions": history.unsupported_editions,
-                "sessions": sum(
-                    len(edition.sessions) for edition in history.editions
-                ),
+                "sessions": sum(len(edition.sessions) for edition in history.editions),
             },
         }
     )
@@ -635,15 +634,21 @@ def _cmd_edition_history_check(args: argparse.Namespace) -> int:
         )
     except EditionHistoryError as exc:
         raise CliError(str(exc)) from exc
-    payload = result.as_dict()
-    payload.update(
-        {
+    pois = edition_history_findings_to_pois(result.findings)
+    linter_report = POILinterReport(
+        poi_report=build_poi_report(pois),
+        summary={
+            "target_count": len(targets),
+            "poi_count": len(pois),
+        },
+        domain={
             "command": "agentos skw edition-history check",
             "depot": str(service.depot.root),
             "targets": [target.as_dict() for target in targets],
-        }
+            "status": "ok" if result.ok else "error",
+        },
     )
-    _print_edition_history_json(payload)
+    _print_edition_history_json(linter_report.as_dict())
     return 0 if result.ok else 1
 
 

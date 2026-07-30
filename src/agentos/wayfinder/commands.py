@@ -1,3 +1,4 @@
+# $kw: ^wayfinder-poi-command --from POI.System --from POI.Linter --note [CT] Wayfinder registry checks use the common POI report boundary ^c20260729-49u
 """CLI adapter for the Agentos Wayfinder library."""
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from .model import (
 )
 from .registry import WayfinderRegistry
 from .resolver import Wayfinder
+from .poi import build_wayfinder_registry_linter_report
 
 
 def _cmd_register(args: argparse.Namespace) -> int:
@@ -72,9 +74,12 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
 def _cmd_check(args: argparse.Namespace) -> int:
     registry = WayfinderRegistry()
     result = registry.check()
-    payload = result.as_dict()
-    payload["registry"] = str(registry.path)
-    _print_json(payload)
+    _print_json(
+        build_wayfinder_registry_linter_report(
+            result,
+            registry_path=str(registry.path),
+        ).as_dict()
+    )
     return 0 if result.ok else 1
 
 

@@ -1,3 +1,4 @@
+# $kw: ^index-poi-command --from POI.System --from POI.Linter --note [CT] Index command output uses the common POI report boundary ^c20260729-49u
 """CLI commands for agentos index."""
 
 from __future__ import annotations
@@ -7,7 +8,7 @@ import json
 from collections.abc import Callable, Sequence
 
 from agentos.poi import POICatalog
-from agentos.skwlint import add_check_selection_args
+from agentos.poi import add_check_selection_args
 
 from .linter import (
     CHECKS,
@@ -19,9 +20,11 @@ from .linter import (
     render_linter_text,
     run_linter,
 )
+
+
 def _cmd_linter(args: argparse.Namespace) -> int:
     if getattr(args, "list_checks", False):
-        from agentos.skwlint import render_check_registry
+        from agentos.poi import render_check_registry
 
         extra_checks = tuple(getattr(args, "_extra_linter_checks", ()) or ())
         for line in render_check_registry(check_registry((*CHECKS, *extra_checks))):
@@ -59,6 +62,7 @@ def _cmd_linter(args: argparse.Namespace) -> int:
                 state,
                 catalog=poi_catalog,
                 poi_report=poi_report,
+                show_passed=bool(getattr(args, "show_passed", False)),
             )
         )
     payload = json.loads(json_output)
@@ -275,6 +279,11 @@ def register_index_commands(
         "--json",
         action="store_true",
         help="Emit structured JSON output.",
+    )
+    linter_parser.add_argument(
+        "--show-passed",
+        action="store_true",
+        help="Print each check that completed successfully in text output.",
     )
     linter_parser.add_argument(
         "--coverage",
