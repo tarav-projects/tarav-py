@@ -45,6 +45,12 @@ def test_environment_builds_loader_valid_agentos_state(
     assert environment.environment_variables() == {
         "HOME": str(environment.home),
         "AGENTOS_HOME": str(environment.agentos_home),
+        "AGENTOS_ANCHORY_REGISTRY": str(
+            environment.agentos_home / "anchory" / "registry.json"
+        ),
+        "AGENTOS_ANCHORY_GLOBAL_DEPOT": str(
+            environment.agentos_home / "anchory" / "depot"
+        ),
     }
     assert (
         load_global_config(environment.agentos_home / "config.json")["class"]

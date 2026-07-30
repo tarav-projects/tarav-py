@@ -12,6 +12,7 @@ from agentos.anchory import (
     AnchorNotFoundError,
     AnchoryDepot,
     AnchoryEntry,
+    AnchoryRuntimeCache,
     AnchorySourceMatch,
     InvalidAnchoryInputError,
     scan_anchory_source,
@@ -56,9 +57,9 @@ def test_register_and_resolve_round_trip_in_expected_shard(tmp_path: Path) -> No
     assert entry == AnchoryEntry(anchor=anchor, record=record)
     assert AnchoryDepot(root).resolve(anchor).record == record
     shard = hashlib.sha256(anchor.encode("utf-8")).hexdigest()[:2]
-    assert json.loads((root / "global" / f"{shard}.json").read_text(encoding="utf-8")) == {
-        anchor: record
-    }
+    assert json.loads(
+        (root / "global" / f"{shard}.json").read_text(encoding="utf-8")
+    ) == {anchor: record}
 
 
 def test_same_anchor_is_independent_per_depot(tmp_path: Path) -> None:
@@ -70,6 +71,45 @@ def test_same_anchor_is_independent_per_depot(tmp_path: Path) -> None:
 
     assert first.resolve("shared").record == {"value": 1}
     assert second.resolve("shared").record == {"value": 2}
+
+
+def test_runtime_cache_reuses_resolution_and_mutation_invalidates_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import agentos.anchory.core as core
+
+    cache = AnchoryRuntimeCache(capacity=8)
+    depot = AnchoryDepot(tmp_path / "anchory", runtime_cache=cache)
+    depot.register({"value": 1}, anchor="stable")
+    original_read = core._read_shard
+    reads = 0
+
+    def counted_read(path: Path):
+        nonlocal reads
+        reads += 1
+        return original_read(path)
+
+    monkeypatch.setattr(core, "_read_shard", counted_read)
+    assert depot.resolve("stable").record == {"value": 1}
+    assert depot.resolve("stable").record == {"value": 1}
+    assert reads == 1
+
+    depot.amend("stable", {"value": 2})
+    assert depot.resolve("stable").record == {"value": 2}
+    assert reads == 3
+
+
+def test_runtime_cache_capacity_evicts_old_resolutions(tmp_path: Path) -> None:
+    cache = AnchoryRuntimeCache(capacity=1)
+    depot = AnchoryDepot(tmp_path / "anchory", runtime_cache=cache)
+    depot.register({"value": 1}, anchor="first")
+    depot.register({"value": 2}, anchor="second")
+
+    depot.resolve("first")
+    depot.resolve("second")
+
+    assert cache.resolution_count == 1
 
 
 def test_duplicate_registration_is_rejected_and_amend_requires_existing_anchor(
@@ -90,7 +130,9 @@ def test_duplicate_registration_is_rejected_and_amend_requires_existing_anchor(
         depot.amend("missing", {"value": 4})
 
 
-def test_concurrent_same_shard_registrations_do_not_lose_records(tmp_path: Path) -> None:
+def test_concurrent_same_shard_registrations_do_not_lose_records(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "anchory"
     first_anchor, second_anchor = _same_shard_anchors()
     context = multiprocessing.get_context("spawn")

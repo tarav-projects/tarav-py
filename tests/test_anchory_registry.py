@@ -9,6 +9,7 @@ from agentos.anchory import AnchoryDepot
 from agentos.anchory.registry import (
     discover_resolve,
     read_registry,
+    record_depot_touch,
     registry_path,
 )
 
@@ -83,3 +84,50 @@ def test_corrupt_registry_never_raises(registry_env: Path, tmp_path: Path) -> No
 
     hit = discover_resolve(entry.anchor, cwd=tmp_path / "project")
     assert hit is not None
+
+
+def test_equivalent_touch_does_not_rewrite_recent_registry_entry(
+    registry_env: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import agentos.anchory.registry as registry_module
+
+    depot = _project_depot(tmp_path)
+    depot.register({"v": 1}, anchor="stable")
+    writes = 0
+    original_write = registry_module._write_registry_atomic
+
+    def counted_write(payload):
+        nonlocal writes
+        writes += 1
+        original_write(payload)
+
+    monkeypatch.setattr(registry_module, "_write_registry_atomic", counted_write)
+    record_depot_touch(AnchoryDepot(depot.root))
+
+    assert writes == 0
+
+
+def test_touch_prunes_registry_entries_for_missing_depots(
+    registry_env: Path,
+    tmp_path: Path,
+) -> None:
+    live = _project_depot(tmp_path)
+    stale = tmp_path / "deleted-pytest-depot"
+    registry_env.parent.mkdir(parents=True, exist_ok=True)
+    registry_env.write_text(
+        json.dumps(
+            {
+                "depots": [
+                    {"root": str(stale), "namespaces": {}, "last_touched": "old"},
+                    {"root": str(live.root), "namespaces": {}, "last_touched": "old"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    record_depot_touch(live)
+
+    assert [entry["root"] for entry in read_registry()["depots"]] == [str(live.root)]

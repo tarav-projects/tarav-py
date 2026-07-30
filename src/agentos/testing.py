@@ -91,6 +91,12 @@ class AgentosTestEnvironment:
         return {
             "HOME": str(self.home),
             "AGENTOS_HOME": str(self.agentos_home),
+            "AGENTOS_ANCHORY_REGISTRY": str(
+                self.agentos_home / "anchory" / "registry.json"
+            ),
+            "AGENTOS_ANCHORY_GLOBAL_DEPOT": str(
+                self.agentos_home / "anchory" / "depot"
+            ),
         }
 
     def apply_environment(self, setenv: Callable[[str, str], object]) -> None:

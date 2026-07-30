@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections import OrderedDict
 import hashlib
 import fcntl
 import json
@@ -83,11 +84,82 @@ class AnchoryCheckResult:
         return not any(finding.severity == "error" for finding in self.findings)
 
 
+class AnchoryRuntimeCache:
+    """Bounded, caller-owned cache for one Anchory operation."""
+
+    def __init__(self, *, capacity: int = 4096) -> None:
+        if capacity < 0:
+            raise ValueError("Anchory runtime cache capacity must be non-negative")
+        self.capacity = capacity
+        self._resolutions: OrderedDict[
+            tuple[str, str, str | None], AnchoryResolution | None
+        ] = OrderedDict()
+        self._registered_depots: set[tuple[str, str]] = set()
+
+    @property
+    def resolution_count(self) -> int:
+        return len(self._resolutions)
+
+    def get_resolution(
+        self,
+        root: Path,
+        anchor: str,
+        namespace: str | None,
+    ) -> tuple[bool, AnchoryResolution | None]:
+        key = (str(root), anchor, namespace)
+        if key not in self._resolutions:
+            return False, None
+        resolution = self._resolutions.pop(key)
+        self._resolutions[key] = resolution
+        return True, _copy_resolution(resolution)
+
+    def put_resolution(
+        self,
+        root: Path,
+        anchor: str,
+        namespace: str | None,
+        resolution: AnchoryResolution | None,
+    ) -> None:
+        if self.capacity == 0:
+            return
+        key = (str(root), anchor, namespace)
+        self._resolutions.pop(key, None)
+        self._resolutions[key] = _copy_resolution(resolution)
+        while len(self._resolutions) > self.capacity:
+            self._resolutions.popitem(last=False)
+
+    def invalidate_depot(self, root: Path) -> None:
+        root_text = str(root)
+        self._resolutions = OrderedDict(
+            (key, value)
+            for key, value in self._resolutions.items()
+            if key[0] != root_text
+        )
+
+    def registry_touched(self, root: Path, registry: Path) -> bool:
+        return (str(root), str(registry)) in self._registered_depots
+
+    def mark_registry_touched(self, root: Path, registry: Path) -> None:
+        self._registered_depots.add((str(root), str(registry)))
+
+    def invalidate_registry_touch(self, root: Path) -> None:
+        root_text = str(root)
+        self._registered_depots = {
+            key for key in self._registered_depots if key[0] != root_text
+        }
+
+
 class AnchoryDepot:
     """A single Anchory store rooted at an explicit directory."""
 
-    def __init__(self, root: Path | str) -> None:
+    def __init__(
+        self,
+        root: Path | str,
+        *,
+        runtime_cache: AnchoryRuntimeCache | None = None,
+    ) -> None:
         self.root = Path(root).expanduser().resolve()
+        self.runtime_cache = runtime_cache or AnchoryRuntimeCache()
 
     def register(
         self,
@@ -123,44 +195,67 @@ class AnchoryDepot:
                 raise AnchorExistsError(f"anchor already exists: {anchor}")
             records[anchor] = normalized_record
             _write_shard_atomic(path, records)
-        self._touch_registry()
+        self._invalidate_runtime_cache()
+        self._touch_registry(refresh=True)
         return AnchoryEntry(anchor=anchor, record=dict(normalized_record))
 
-    def _touch_registry(self) -> None:
-        from .registry import record_depot_touch
+    def _touch_registry(self, *, refresh: bool = False) -> None:
+        from .registry import record_depot_touch, registry_path
 
+        registry = registry_path().expanduser().resolve()
+        if refresh:
+            self.runtime_cache.invalidate_registry_touch(self.root)
+        if self.runtime_cache.registry_touched(self.root, registry):
+            return
         record_depot_touch(self)
+        self.runtime_cache.mark_registry_touched(self.root, registry)
+
+    def _invalidate_runtime_cache(self) -> None:
+        self.runtime_cache.invalidate_depot(self.root)
 
     def resolve(
         self, anchor: str, *, namespace: str | None = None
     ) -> AnchoryResolution | None:
         anchor = _validate_anchor(anchor)
+        namespace = _validate_namespace(namespace) if namespace is not None else None
         base = _base_key(anchor)
         self._touch_registry()
-        namespaces = (
-            [_validate_namespace(namespace)]
-            if namespace is not None
-            else self.namespaces()
+        cached, resolution = self.runtime_cache.get_resolution(
+            self.root,
+            anchor,
+            namespace,
         )
+        if cached:
+            return resolution
+        namespaces = [namespace] if namespace is not None else self.namespaces()
         with self._lock(exclusive=False, create=False):
             for candidate in namespaces:
                 records = _read_shard(self._shard_path(candidate, anchor))
                 record = records.get(anchor)
                 if record is not None:
-                    return AnchoryResolution(
+                    resolution = AnchoryResolution(
                         anchor=anchor,
                         namespace=candidate,
                         record=dict(record),
                         tag_mismatch=False,
                     )
+                    self.runtime_cache.put_resolution(
+                        self.root, anchor, namespace, resolution
+                    )
+                    return resolution
                 for existing, existing_record in records.items():
                     if existing != anchor and _base_key(existing) == base:
-                        return AnchoryResolution(
+                        resolution = AnchoryResolution(
                             anchor=existing,
                             namespace=candidate,
                             record=dict(existing_record),
                             tag_mismatch=True,
                         )
+                        self.runtime_cache.put_resolution(
+                            self.root, anchor, namespace, resolution
+                        )
+                        return resolution
+        self.runtime_cache.put_resolution(self.root, anchor, namespace, None)
         return None
 
     def amend(
@@ -184,7 +279,8 @@ class AnchoryDepot:
                 if anchor in records:
                     records[anchor] = normalized_record
                     _write_shard_atomic(path, records)
-                    self._touch_registry()
+                    self._invalidate_runtime_cache()
+                    self._touch_registry(refresh=True)
                     return AnchoryEntry(anchor=anchor, record=dict(normalized_record))
         raise AnchorNotFoundError(f"anchor does not exist: {anchor}")
 
@@ -234,7 +330,9 @@ class AnchoryDepot:
                 f"cannot read namespace meta {path}: {exc}"
             ) from exc
         if not isinstance(payload, dict):
-            raise CorruptAnchoryDepotError(f"namespace meta must be a JSON object: {path}")
+            raise CorruptAnchoryDepotError(
+                f"namespace meta must be a JSON object: {path}"
+            )
         return payload
 
     def write_namespace_meta(
@@ -258,7 +356,11 @@ class AnchoryDepot:
         with self._lock(exclusive=True, create=True):
             path = self.root / namespace / META_FILENAME
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            path.write_text(
+                json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+        self._invalidate_runtime_cache()
+        self._touch_registry(refresh=True)
         return meta
 
     def _composed_prefix(self, namespace: str, alloc_prefix: str) -> str:
@@ -284,7 +386,11 @@ class AnchoryDepot:
             findings=tuple(
                 sorted(
                     findings,
-                    key=lambda finding: (finding.path, finding.anchor or "", finding.code),
+                    key=lambda finding: (
+                        finding.path,
+                        finding.anchor or "",
+                        finding.code,
+                    ),
                 )
             )
         )
@@ -309,12 +415,16 @@ class AnchoryDepot:
             meta = self.namespace_meta(namespace)
         except CorruptAnchoryDepotError:
             meta = None
-        prefixed_namespace = isinstance(meta, dict) and isinstance(meta.get("prefix"), str)
+        prefixed_namespace = isinstance(meta, dict) and isinstance(
+            meta.get("prefix"), str
+        )
         for path in sorted(namespace_root.glob("*.json")):
             if path.name == META_FILENAME:
                 continue
             relative_path = str(path.relative_to(self.root))
-            if len(path.stem) != 2 or any(char not in "0123456789abcdef" for char in path.stem):
+            if len(path.stem) != 2 or any(
+                char not in "0123456789abcdef" for char in path.stem
+            ):
                 findings.append(
                     AnchoryCheckFinding(
                         code="invalid-shard-name",
@@ -384,10 +494,7 @@ class AnchoryDepot:
                         )
                     )
                 seen.add(anchor)
-                if (
-                    prefixed_namespace
-                    and re.fullmatch(r".*-\d+", anchor)
-                ):
+                if prefixed_namespace and re.fullmatch(r".*-\d+", anchor):
                     findings.append(
                         AnchoryCheckFinding(
                             code="tagless-anchor",
@@ -402,7 +509,9 @@ class AnchoryDepot:
     def _shard_path(self, namespace: str, anchor: str) -> Path:
         return self.root / namespace / f"{_shard_name(_base_key(anchor))}.json"
 
-    def _allocate_anchor(self, namespace: str, full_prefix: str, tag: str | None) -> str:
+    def _allocate_anchor(
+        self, namespace: str, full_prefix: str, tag: str | None
+    ) -> str:
         pattern = re.compile(rf"^{re.escape(full_prefix)}-(\d+)[a-z]?$")
         max_suffix: int | None = None
         namespace_root = self.root / namespace
@@ -451,7 +560,12 @@ def _base_key(anchor: str) -> str:
 
 
 def _validate_namespace(namespace: str) -> str:
-    if not isinstance(namespace, str) or not namespace or "/" in namespace or namespace.startswith("."):
+    if (
+        not isinstance(namespace, str)
+        or not namespace
+        or "/" in namespace
+        or namespace.startswith(".")
+    ):
         raise InvalidAnchoryInputError("namespace must be a plain directory name")
     return namespace
 
@@ -462,10 +576,25 @@ def _normalize_record(record: Mapping[str, object]) -> dict[str, object]:
     try:
         normalized = json.loads(json.dumps(dict(record)))
     except (TypeError, ValueError) as exc:
-        raise InvalidAnchoryInputError(f"record must be JSON serializable: {exc}") from exc
+        raise InvalidAnchoryInputError(
+            f"record must be JSON serializable: {exc}"
+        ) from exc
     if not isinstance(normalized, dict):
         raise InvalidAnchoryInputError("record must be a JSON object")
     return normalized
+
+
+def _copy_resolution(
+    resolution: AnchoryResolution | None,
+) -> AnchoryResolution | None:
+    if resolution is None:
+        return None
+    return AnchoryResolution(
+        anchor=resolution.anchor,
+        namespace=resolution.namespace,
+        record=dict(resolution.record),
+        tag_mismatch=resolution.tag_mismatch,
+    )
 
 
 def scan_anchory_source(text: str, regex: str) -> tuple[AnchorySourceMatch, ...]:
@@ -524,7 +653,9 @@ def _read_shard(path: Path) -> dict[str, dict[str, object]]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise CorruptAnchoryDepotError(f"cannot read Anchory shard {path}: {exc}") from exc
+        raise CorruptAnchoryDepotError(
+            f"cannot read Anchory shard {path}: {exc}"
+        ) from exc
     if not isinstance(payload, dict):
         raise CorruptAnchoryDepotError(f"Anchory shard must be a JSON object: {path}")
     records: dict[str, dict[str, object]] = {}
@@ -537,7 +668,9 @@ def _read_shard(path: Path) -> dict[str, dict[str, object]]:
     return records
 
 
-def _write_shard_atomic(path: Path, records: Mapping[str, Mapping[str, object]]) -> None:
+def _write_shard_atomic(
+    path: Path, records: Mapping[str, Mapping[str, object]]
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path: Path | None = None
     try:

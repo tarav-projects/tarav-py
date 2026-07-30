@@ -13,12 +13,15 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .core import AnchoryDepot, AnchoryResolution
+
+
+REGISTRY_TOUCH_INTERVAL = timedelta(minutes=5)
 
 
 def registry_path() -> Path:
@@ -48,8 +51,8 @@ def read_registry() -> dict[str, object]:
     return payload
 
 
-def record_depot_touch(depot: "AnchoryDepot") -> None:
-    """Best-effort auto-registration; swallows every error."""
+def record_depot_touch(depot: "AnchoryDepot") -> bool:
+    """Best-effort idempotent registration; return whether the file changed."""
     try:
         namespaces: dict[str, object] = {}
         for namespace in depot.namespaces():
@@ -62,22 +65,61 @@ def record_depot_touch(depot: "AnchoryDepot") -> None:
                 entry["prefix"] = meta["prefix"]
             namespaces[namespace] = entry
         registry = read_registry()
+        original_depots = registry["depots"]
+        live_depots = [
+            entry for entry in original_depots if _entry_has_live_root(entry)
+        ]
+        depot_root = str(depot.root)
+        existing = next(
+            (
+                entry
+                for entry in live_depots
+                if isinstance(entry, dict) and entry.get("root") == depot_root
+            ),
+            None,
+        )
+        pruned = len(live_depots) != len(original_depots)
+        if (
+            depot.root.is_dir()
+            and isinstance(existing, dict)
+            and existing.get("namespaces") == namespaces
+            and _entry_was_touched_recently(existing)
+            and not pruned
+        ):
+            return False
+
         depots = [
             entry
-            for entry in registry["depots"]
-            if isinstance(entry, dict) and entry.get("root") != str(depot.root)
+            for entry in live_depots
+            if isinstance(entry, dict) and entry.get("root") != depot_root
         ]
-        depots.append(
-            {
-                "root": str(depot.root),
-                "namespaces": namespaces,
-                "last_touched": datetime.now(timezone.utc).isoformat(),
-            }
-        )
+        if depot.root.is_dir():
+            depots.append(
+                {
+                    "root": depot_root,
+                    "namespaces": namespaces,
+                    "last_touched": datetime.now(timezone.utc).isoformat(),
+                }
+            )
         depots.sort(key=lambda entry: str(entry.get("root", "")))
         _write_registry_atomic({"depots": depots})
+        return True
     except Exception:
-        return
+        return False
+
+
+def prune_dead_registry_entries() -> int:
+    """Best-effort removal of registrations whose depot roots disappeared."""
+    try:
+        registry = read_registry()
+        original = registry["depots"]
+        live = [entry for entry in original if _entry_has_live_root(entry)]
+        removed = len(original) - len(live)
+        if removed:
+            _write_registry_atomic({"depots": live})
+        return removed
+    except Exception:
+        return 0
 
 
 def discover_resolve(
@@ -95,6 +137,7 @@ def discover_resolve(
     working = working.resolve()
     ns_letter = anchor[0] if anchor and anchor[0].isalpha() else None
 
+    prune_dead_registry_entries()
     candidates: list[tuple[int, Path]] = []
     for entry in read_registry()["depots"]:
         if not isinstance(entry, dict):
@@ -142,6 +185,26 @@ def discover_resolve(
     return None
 
 
+def _entry_has_live_root(entry: object) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    root = entry.get("root")
+    return isinstance(root, str) and Path(root).is_dir()
+
+
+def _entry_was_touched_recently(entry: dict[str, object]) -> bool:
+    touched = entry.get("last_touched")
+    if not isinstance(touched, str):
+        return False
+    try:
+        timestamp = datetime.fromisoformat(touched)
+    except ValueError:
+        return False
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - timestamp < REGISTRY_TOUCH_INTERVAL
+
+
 def _write_registry_atomic(payload: dict[str, object]) -> None:
     path = registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,6 +224,7 @@ def _write_registry_atomic(payload: dict[str, object]) -> None:
 __all__ = [
     "discover_resolve",
     "global_depot_root",
+    "prune_dead_registry_entries",
     "read_registry",
     "record_depot_touch",
     "registry_path",
