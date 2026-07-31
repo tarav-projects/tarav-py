@@ -19,7 +19,7 @@ from agentos.bloberia import (
 
 EDITION_SESSION_KIND = "skw.edition-session"
 EDITION_SESSION_SCHEMA_VERSION = 1
-CHATLAS_SUPPORT_SET_SCHEMA = "chatlas.support-set.v2"
+CHATLAS_SUPPORT_SET_SCHEMA = "chatlas.support-set.v3"
 DEFAULT_EDITION_HISTORY_DEPOT = (
     Path(".agentos") / "state" / "bloberia" / "edition-history"
 )
@@ -770,7 +770,7 @@ def _support_set(
     for index, raw_member in enumerate(raw_members):
         member = _exact_object(
             raw_member,
-            keys={"session", "turn_id", "at"},
+            keys={"session", "turn_id", "turn_hash", "at"},
             field=f"support.members[{index}]",
         )
         member_session = _nonempty_string(
@@ -781,6 +781,14 @@ def _support_set(
             member["turn_id"],
             field=f"support.members[{index}].turn_id",
         )
+        turn_hash = _nonempty_string(
+            member["turn_hash"],
+            field=f"support.members[{index}].turn_hash",
+        )
+        if len(turn_hash) != 64:
+            raise EditionHistoryError(
+                f"support.members[{index}].turn_hash must be a full SHA-256 digest"
+            )
         at = _validated_iso_timestamp(
             member["at"],
             field=f"support.members[{index}].at",
@@ -794,7 +802,12 @@ def _support_set(
         seen.add(identity)
         includes_session = includes_session or member_session == session_id
         members.append(
-            {"session": member_session, "turn_id": turn_id, "at": at}
+            {
+                "session": member_session,
+                "turn_id": turn_id,
+                "turn_hash": turn_hash,
+                "at": at,
+            }
         )
 
     if not includes_session:

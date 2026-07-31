@@ -37,13 +37,21 @@ def _support(
     session: str,
     *,
     turn_id: str = "turn-1",
+    turn_hash: str = "a" * 64,
     at: str = "2026-07-25T10:00:00.123Z",
 ) -> dict[str, object]:
     return {
         "app": "chatlas",
-        "schema": "chatlas.support-set.v2",
+        "schema": "chatlas.support-set.v3",
         "hint": "The session edited this file.",
-        "members": [{"session": session, "turn_id": turn_id, "at": at}],
+        "members": [
+            {
+                "session": session,
+                "turn_id": turn_id,
+                "turn_hash": turn_hash,
+                "at": at,
+            }
+        ],
     }
 
 
@@ -280,7 +288,7 @@ def test_record_requires_support(tmp_path: Path) -> None:
         (
             {
                 "app": "chatlas",
-                "schema": "chatlas.support-set.v2",
+                "schema": "chatlas.support-set.v3",
                 "hint": "Proof.",
                 "members": [],
             },
