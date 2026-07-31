@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Scope:** split the two oversized `agentos-py` test modules into behavior-owned modules with private shared fixture helpers.
-- **Status:** approved for autonomous execution.
+- **Status:** executed and verified.
 - **Source:** codebase-cleaner scan at checkpoint `607e356` and direct user authorization ^c20260731-5u
 - **Out of scope:** production behavior, assertion changes, AGENTS.md architecture changes, broad formatting, and splitting cohesive modules below the outlier tier.
 
@@ -35,18 +35,21 @@
 - Extract reusable Skillware source/depot writers into `tests/_skillware_helpers.py`.
 - Create focused parser and project/CLI modules; retain build/check lifecycle in the original module.
 - Preserve every test function and fixture payload.
+- Status: done; Skillware is separated into lifecycle (865 lines), parser (625), and project/CLI (457), backed by a 180-line private helper.
 
 ### Slice 2 - Split Index linter tests
 
 - Extract generic index/depot writers and the linter runner into `tests/_index_linter_helpers.py`.
 - Create line/coverage, selector/CLI, and agendix-closure modules; retain structural checks in the original module.
 - Preserve every test function and fixture payload.
+- Status: done; Index linter is separated into structure (796 lines), line/coverage (413), selectors/CLI (245), and agendix closure (89), backed by a 76-line private helper.
 
 ### Slice 3 - Regression verification
 
 - Compare sorted test-function inventories before and after each split.
 - Confirm the repository still collects 592 tests.
 - Run the split modules directly, Ruff over `src/` and `tests/`, and the full suite.
+- Status: done; all 159 affected tests and the full 592-test suite pass, with exact function inventory parity and clean Ruff output.
 
 ## Risks And Deviation Triggers
 
@@ -65,3 +68,5 @@
 
 - Cleanup preparation checkpoint: `607e356` (`feat: support application-owned anchor amendment validation`).
 - Execution authority: ^c20260731-5u
+- Execution rollback checkpoint: `6334cb2` (`chore: checkpoint long test module split`).
+- No implementation deviations or blockers.
