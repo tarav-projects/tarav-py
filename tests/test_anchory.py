@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import multiprocessing
@@ -17,6 +18,7 @@ from agentos.anchory import (
     InvalidAnchoryInputError,
     scan_anchory_source,
 )
+from agentos.anchory.commands import register_anchory_commands
 
 
 def _register_after_signal(root: str, anchor: str, value: int, start: object) -> None:
@@ -128,6 +130,61 @@ def test_duplicate_registration_is_rejected_and_amend_requires_existing_anchor(
     assert depot.resolve("stable").record == {"value": 3}
     with pytest.raises(AnchorNotFoundError, match="anchor does not exist"):
         depot.amend("missing", {"value": 4})
+
+
+def test_amend_validator_rejection_preserves_current_record(tmp_path: Path) -> None:
+    depot = AnchoryDepot(tmp_path / "anchory")
+    depot.register({"value": 1}, anchor="stable")
+    seen: list[tuple[dict[str, object], dict[str, object]]] = []
+
+    def reject(
+        depot_root: Path,
+        current: dict[str, object],
+        proposed: dict[str, object],
+    ) -> None:
+        assert depot_root == depot.root
+        seen.append((current, proposed))
+        raise InvalidAnchoryInputError("application rejected replacement")
+
+    with pytest.raises(InvalidAnchoryInputError, match="application rejected"):
+        depot.amend("stable", {"value": 2}, validator=reject)
+
+    assert seen == [({"value": 1}, {"value": 2})]
+    assert depot.resolve("stable").record == {"value": 1}
+
+
+def test_anchory_command_registrar_injects_amend_validator(tmp_path: Path) -> None:
+    depot = AnchoryDepot(tmp_path / "anchory")
+    depot.register({"value": 1}, anchor="stable")
+    seen: list[tuple[dict[str, object], dict[str, object]]] = []
+
+    def validator(
+        depot_root: Path,
+        current: dict[str, object],
+        proposed: dict[str, object],
+    ) -> None:
+        assert depot_root == depot.root
+        seen.append((current, proposed))
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command")
+    register_anchory_commands(subparsers, amend_validator=validator)
+    args = parser.parse_args(
+        [
+            "anchory",
+            "amend",
+            "--depot",
+            str(depot.root),
+            "--anchor",
+            "stable",
+            "--record-json",
+            '{"value":2}',
+        ]
+    )
+
+    assert args.handler(args) == 0
+    assert seen == [({"value": 1}, {"value": 2})]
+    assert depot.resolve("stable").record == {"value": 2}
 
 
 def test_concurrent_same_shard_registrations_do_not_lose_records(

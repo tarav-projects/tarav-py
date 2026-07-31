@@ -1,4 +1,4 @@
-# $kw: ^anchory-poi-command --from POI.System --from POI.Linter --note [CT] Anchory check output uses the common POI report boundary ^c20260729-49u
+# $kw: ^anchory-poi-command --from POI.System --from POI.Linter --from Anchory.System --note [CT] Anchory commands use the common POI report boundary and keep application semantics injectable ^c20260729-49u --supp amendment validation authorized ^c20260730-33u
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,13 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos._core.json_input import load_json_object_arg
 
-from .core import AnchoryDepot, AnchoryEntry, AnchoryError, AnchoryResolution
+from .core import (
+    AnchoryAmendValidator,
+    AnchoryDepot,
+    AnchoryEntry,
+    AnchoryError,
+    AnchoryResolution,
+)
 from .core import GLOBAL_NAMESPACE, AnchorySourceMatch, scan_anchory_source
 from .poi import build_anchory_linter_report
 from .registry import discover_resolve
@@ -118,7 +124,12 @@ def _cmd_query(args: argparse.Namespace) -> int:
 def _cmd_amend(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        entry = depot.amend(args.anchor, _record_arg(args), namespace=args.namespace)
+        entry = depot.amend(
+            args.anchor,
+            _record_arg(args),
+            namespace=args.namespace,
+            validator=args.anchory_amend_validator,
+        )
     except AnchoryError as exc:
         raise CliError(str(exc)) from exc
     _print_json(_entry_payload(depot, entry))
@@ -290,7 +301,11 @@ def _add_record_arguments(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--record-file", help="Path to a JSON record file.")
 
 
-def register_anchory_commands(subparsers: argparse._SubParsersAction) -> None:
+def register_anchory_commands(
+    subparsers: argparse._SubParsersAction,
+    *,
+    amend_validator: AnchoryAmendValidator | None = None,
+) -> None:
     anchory_parser = subparsers.add_parser(
         "anchory",
         help="Depot-scoped stable anchor dictionaries.",
@@ -344,7 +359,10 @@ def register_anchory_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_namespace_argument(amend_parser)
     _add_anchor_argument(amend_parser)
     _add_record_arguments(amend_parser)
-    amend_parser.set_defaults(handler=_cmd_amend)
+    amend_parser.set_defaults(
+        handler=_cmd_amend,
+        anchory_amend_validator=amend_validator,
+    )
 
     check_parser = anchory_subparsers.add_parser("check", help="Check depot structure.")
     _add_depot_argument(check_parser)

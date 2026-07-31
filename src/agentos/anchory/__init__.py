@@ -3,6 +3,7 @@
 from .core import (
     AnchorExistsError,
     AnchorNotFoundError,
+    AnchoryAmendValidator,
     AnchoryCheckFinding,
     AnchoryCheckResult,
     AnchoryDepot,
@@ -19,6 +20,7 @@ from .core import (
 __all__ = [
     "AnchorExistsError",
     "AnchorNotFoundError",
+    "AnchoryAmendValidator",
     "AnchoryCheckFinding",
     "AnchoryCheckResult",
     "AnchoryDepot",

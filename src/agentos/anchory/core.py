@@ -1,3 +1,4 @@
+# $kw: ^anchory-amend-validator --from Anchory.System --note [CT] applications may validate replacement meaning inside Anchory's atomic amendment boundary --supp ^c20260730-33u
 from __future__ import annotations
 
 from bisect import bisect_right
@@ -11,7 +12,7 @@ import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Mapping, Pattern
+from typing import Callable, Iterator, Mapping, Pattern
 
 
 GLOBAL_NAMESPACE = "global"
@@ -82,6 +83,12 @@ class AnchoryCheckResult:
     @property
     def ok(self) -> bool:
         return not any(finding.severity == "error" for finding in self.findings)
+
+
+AnchoryAmendValidator = Callable[
+    [Path, dict[str, object], dict[str, object]],
+    None,
+]
 
 
 class AnchoryRuntimeCache:
@@ -264,6 +271,7 @@ class AnchoryDepot:
         record: Mapping[str, object],
         *,
         namespace: str | None = None,
+        validator: AnchoryAmendValidator | None = None,
     ) -> AnchoryEntry:
         anchor = _validate_anchor(anchor)
         normalized_record = _normalize_record(record)
@@ -277,6 +285,12 @@ class AnchoryDepot:
                 path = self._shard_path(candidate, anchor)
                 records = _read_shard(path)
                 if anchor in records:
+                    if validator is not None:
+                        validator(
+                            self.root,
+                            _normalize_record(records[anchor]),
+                            _normalize_record(normalized_record),
+                        )
                     records[anchor] = normalized_record
                     _write_shard_atomic(path, records)
                     self._invalidate_runtime_cache()
