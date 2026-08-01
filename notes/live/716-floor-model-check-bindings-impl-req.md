@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-- status: ready for execution
+- status: complete
 - scope: make Index linter check applicability explicit over its parser-produced `Floor.Model`, include agendix in depot inventory, and bind reviewed-only Chatlas checks to reviewed surfaces
 - source: the current Hugentics design discussion and the existing `Floor.Model`, `POI.Linter`, `POI.Check`, and `POI.Class` contracts
 - out of scope: new public CLI flags, new regression tests, changes to POI class semantics, and a repository-wide generic checker framework
@@ -39,7 +39,7 @@
 
 ### Vertical.Slice::Binding.Model
 
-- status: pending
+- status: complete
 - change: introduce the Index-linter check binding and floor projection, then register existing structural and parser-backed checks through it
 - observable result: applicability is declared at registration and parser check loops consume selected target documents
 - check: run the existing Index linter selector and line-check suites
@@ -47,7 +47,7 @@
 
 ### Vertical.Slice::Agendix.Inventory
 
-- status: pending
+- status: complete
 - change: derive agendix paths from depots and include them in configured surfaces, discovered files, parser loading, JSON inventory, and scoped reporting
 - observable result: depot-wide JSON lists `files.agendix` and an agendix-only scope is recognized without a new flag
 - check: run the existing Index linter suite and a direct CLI JSON probe against `agentos-pkg/agendix`
@@ -55,7 +55,7 @@
 
 ### Vertical.Slice::Reviewed.Bindings
 
-- status: pending
+- status: complete
 - change: bind Chatlas approval and verbatim checks to chapter/appendix while keeping grounding provenance on all content surfaces
 - observable result: the external checks receive explicit target projections rather than scanning every parsed kernel line
 - check: run the existing Chatlas Index-check suites
@@ -63,7 +63,7 @@
 
 ### Vertical.Slice::Documentation
 
-- status: pending
+- status: complete
 - change: update affected `AGENTS.md` architecture notes and this artifact's final state
 - observable result: project guidance describes agendix depot inventory and explicit check bindings accurately
 - check: inspect final diffs and run focused lint/type checks already present in the repositories
@@ -93,3 +93,7 @@
 ## Impl.Log
 
 - 2026-08-01: Design phase completed from the current code and index contracts. The user explicitly excluded new regression tests; verification will use existing suites and direct CLI probes.
+- 2026-08-01: Implemented `LinterCheckBinding` and `bind_floor_check`; parser-backed checks now receive explicit projections selected by `IndexSurfaceKind` while retaining complete-state access for cross-surface evidence.
+- 2026-08-01: Added depot-derived agendix surfaces to structural discovery, markdown scanning, public file inventory, parser loading, and ordinary `--scope` resolution without adding a CLI input flag.
+- 2026-08-01: Bound Chatlas grounding provenance to chapter/appendix/agendix and approval/verbatim checks to chapter/appendix only.
+- 2026-08-01: Verification passed: `agentos-py` 600 tests, `agentos-chatlas-py` 298 tests, Ruff on changed Python surfaces, and a real `agentos-pkg/agendix` scoped probe with 21 inventoried files and zero findings.

@@ -20,6 +20,7 @@ from ._linter_models import (
     ConceptBlock,
     GateResult,
     LinterCheck,
+    LinterCheckBinding,
     LinterFinding,
     LinterState,
     RouterEntry,
@@ -52,14 +53,17 @@ SURFACE_INVALID = "Index.Linter/Surface.Invalid"
 SURFACE_MISSING_BY_KIND: dict[SurfaceKind, str] = {
     "index": "Index.Linter/Surface.IndexMissing",
     "appendix": "Index.Linter/Surface.AppendixMissing",
+    "agendix": "Index.Linter/Surface.AgendixMissing",
 }
 SURFACE_NOT_MARKDOWN_BY_KIND: dict[SurfaceKind, str] = {
     "index": "Index.Linter/Surface.IndexNotMarkdown",
     "appendix": "Index.Linter/Surface.AppendixNotMarkdown",
+    "agendix": "Index.Linter/Surface.AgendixNotMarkdown",
 }
 SURFACE_INVALID_BY_KIND: dict[SurfaceKind, str] = {
     "index": "Index.Linter/Surface.IndexInvalid",
     "appendix": "Index.Linter/Surface.AppendixInvalid",
+    "agendix": "Index.Linter/Surface.AgendixInvalid",
 }
 FILES_NONE = "Index.Linter/Files.None"
 MDBLOCKS_SYNTAX = "Index.Linter/Mdblocks.Syntax"
@@ -271,7 +275,11 @@ def _needs_appendix_route_annotation_inputs(state: LinterState) -> GateResult:
 
 def _check_config_surfaces(state: LinterState) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    if not state.config.index_paths and not state.config.appendix_paths:
+    if not (
+        state.config.index_paths
+        or state.config.appendix_paths
+        or state.config.agendix_paths
+    ):
         if state.raw_depot_paths:
             # A valid index depot that simply has no chapter surfaces yet — a
             # `000-INDEX.md` router with no `NNN-<chapter>.md` files — is
@@ -306,6 +314,11 @@ def _check_config_surfaces(state: LinterState) -> list[LinterFinding]:
     for kind, raw_paths, paths in (
         ("index", state.raw_index_paths, state.config.index_paths),
         ("appendix", state.raw_appendix_paths, state.config.appendix_paths),
+        (
+            "agendix",
+            tuple(state.rel_path(path) for path in state.config.agendix_paths),
+            state.config.agendix_paths,
+        ),
     ):
         for raw_path, path in zip(raw_paths, paths, strict=True):
             rel_path = state.rel_path(path)
@@ -397,7 +410,7 @@ def _check_scope_paths(state: LinterState) -> list[LinterFinding]:
 
 def _check_mdblocks_syntax(state: LinterState) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    for kind in ("index", "appendix"):
+    for kind in ("index", "appendix", "agendix"):
         surfaces = [
             surface
             for surface in state.surfaces
@@ -868,21 +881,21 @@ STRUCTURAL_CHECKS: tuple[LinterCheck, ...] = (
         title="Configured surfaces",
         gate=_always,
         run=_check_config_surfaces,
-        structural=True,
+        binding=LinterCheckBinding(structural=True),
     ),
     LinterCheck(
         code=CHECK_DISCOVER_FILES,
         title="Discover markdown files",
         gate=_needs_valid_surface,
         run=_check_discover_files,
-        structural=True,
+        binding=LinterCheckBinding(structural=True),
     ),
     LinterCheck(
         code=CHECK_MDBLOCKS_SYNTAX,
         title="Markdown block syntax",
         gate=_needs_discovered_files,
         run=_check_mdblocks_syntax,
-        structural=True,
+        binding=LinterCheckBinding(structural=True),
     ),
     LinterCheck(
         code=CHECK_BLOCK_SECTIONS,
@@ -895,7 +908,7 @@ STRUCTURAL_CHECKS: tuple[LinterCheck, ...] = (
         title="Router presence",
         gate=_needs_index_surface,
         run=_check_router_presence,
-        structural=True,
+        binding=LinterCheckBinding(structural=True),
     ),
     LinterCheck(
         code=CHECK_DEPOT_DEPENDENCIES,
@@ -908,7 +921,7 @@ STRUCTURAL_CHECKS: tuple[LinterCheck, ...] = (
         title="Dangling mentions",
         gate=_needs_index_surface,
         run=_check_index_dangling_mentions,
-        default_on=False,
+        binding=LinterCheckBinding(default_on=False),
     ),
     LinterCheck(
         code=CHECK_INDEX_FILENAMES,
@@ -921,7 +934,7 @@ STRUCTURAL_CHECKS: tuple[LinterCheck, ...] = (
         title="Concept inventory",
         gate=_needs_index_surface,
         run=_check_concept_inventory,
-        structural=True,
+        binding=LinterCheckBinding(structural=True),
     ),
     LinterCheck(
         code=CHECK_CONCEPT_DUPLICATES,

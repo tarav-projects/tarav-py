@@ -10,6 +10,7 @@ from ._linter_models import (
     LinterFinding,
     LinterState,
     _ensure_parsed_documents,
+    bind_floor_check,
     parsed_linter_kernel_lines,
 )
 from ._linter_structure import _needs_valid_surface
@@ -47,9 +48,12 @@ _LEGACY_TYPE_STATEMENT_RE = re.compile(
 )
 
 
-def _check_line_types(state: LinterState) -> list[LinterFinding]:
+def _check_line_types(
+    state: LinterState,
+    documents: tuple[IndexDocument, ...],
+) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    for document, line in parsed_linter_kernel_lines(state):
+    for document, line in parsed_linter_kernel_lines(state, documents):
         if not _TYPED_LINE_CANDIDATE_RE.match(line.src):
             continue
         rel = state.rel_path(line.path) if line.path else "."
@@ -99,12 +103,12 @@ def _check_line_types(state: LinterState) -> list[LinterFinding]:
     return findings
 
 
-def _check_legacy_anchor_sigil(state: LinterState) -> list[LinterFinding]:
+def _check_legacy_anchor_sigil(
+    state: LinterState,
+    documents: tuple[IndexDocument, ...],
+) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    _ensure_parsed_documents(state)
-    for document in state.parsed_documents:
-        if document.surface_kind not in {"chapter", "appendix", "agendix"}:
-            continue
+    for document in documents:
         for node in document.nodes:
             for match in _LEGACY_ANCHOR_SIGIL_RE.finditer(node.src):
                 anchor = match.group("anchor")
@@ -124,11 +128,12 @@ def _check_legacy_anchor_sigil(state: LinterState) -> list[LinterFinding]:
     return findings
 
 
-def _check_unprefixed_anchor(state: LinterState) -> list[LinterFinding]:
+def _check_unprefixed_anchor(
+    state: LinterState,
+    documents: tuple[IndexDocument, ...],
+) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    for document, line in parsed_linter_kernel_lines(state):
-        if document.surface_kind not in {"chapter", "appendix", "agendix"}:
-            continue
+    for _document, line in parsed_linter_kernel_lines(state, documents):
         for span in line.spans:
             if span.kind != "anchor":
                 continue
@@ -151,12 +156,12 @@ def _check_unprefixed_anchor(state: LinterState) -> list[LinterFinding]:
     return findings
 
 
-def _check_legacy_type_statement_sigil(state: LinterState) -> list[LinterFinding]:
+def _check_legacy_type_statement_sigil(
+    state: LinterState,
+    documents: tuple[IndexDocument, ...],
+) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    _ensure_parsed_documents(state)
-    for document in state.parsed_documents:
-        if document.surface_kind not in {"router", "chapter", "appendix", "agendix"}:
-            continue
+    for document in documents:
         for node in document.nodes:
             for match in _LEGACY_TYPE_STATEMENT_RE.finditer(node.src):
                 legacy = match.group(0)
@@ -176,15 +181,14 @@ def _check_legacy_type_statement_sigil(state: LinterState) -> list[LinterFinding
     return findings
 
 
-def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
+def _check_line_unlinked(
+    state: LinterState,
+    documents: tuple[IndexDocument, ...],
+) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    for document, line in parsed_linter_kernel_lines(state):
+    for document, line in parsed_linter_kernel_lines(state, documents):
         has_anchor = any(span.kind == "anchor" for span in line.spans)
-        if "line" in state.config.coverage and document.surface_kind in {
-            "chapter",
-            "appendix",
-            "agendix",
-        }:
+        if "line" in state.config.coverage:
             state.coverage_items.setdefault("line", []).append(
                 CoverageItem(
                     path=state.rel_path(line.path) if line.path else ".",
@@ -192,8 +196,6 @@ def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
                 )
             )
         if has_anchor:
-            continue
-        if document.surface_kind not in {"chapter", "appendix", "agendix"}:
             continue
         findings.append(
             LinterFinding(
@@ -214,9 +216,12 @@ def _check_line_unlinked(state: LinterState) -> list[LinterFinding]:
     return findings
 
 
-def _check_block_ungrounded(state: LinterState) -> list[LinterFinding]:
+def _check_block_ungrounded(
+    state: LinterState,
+    documents: tuple[IndexDocument, ...],
+) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
-    for document in _parsed_documents_by_kind(state, "chapter"):
+    for document in documents:
         lines_by_block: dict[str, list[KernelLine]] = {}
         for node in document.nodes:
             if isinstance(node, KernelLine):
@@ -264,17 +269,6 @@ def _check_block_ungrounded(state: LinterState) -> list[LinterFinding]:
     return findings
 
 
-def _parsed_documents_by_kind(
-    state: LinterState, surface_kind: str
-) -> list[IndexDocument]:
-    _ensure_parsed_documents(state)
-    return [
-        document
-        for document in state.parsed_documents
-        if document.surface_kind == surface_kind
-    ]
-
-
 def _agendix_block_paths(state: LinterState) -> set[str]:
     """The `Block.Path`s of every real agendix candidate block in the depot.
 
@@ -295,7 +289,10 @@ def _agendix_block_paths(state: LinterState) -> set[str]:
     return blocks
 
 
-def _check_reviewed_cite_closure(state: LinterState) -> list[LinterFinding]:
+def _check_reviewed_cite_closure(
+    state: LinterState,
+    documents: tuple[IndexDocument, ...],
+) -> list[LinterFinding]:
     """`Reviewed.Cite.Closure`: a reviewed surface may not cite the agendix.
 
     Surface-level v1: the agendix is the sole unreviewed surface, so a reviewed
@@ -311,9 +308,7 @@ def _check_reviewed_cite_closure(state: LinterState) -> list[LinterFinding]:
     agendix_blocks = _agendix_block_paths(state)
     if not agendix_blocks:
         return findings
-    for document, line in parsed_linter_kernel_lines(state):
-        if document.surface_kind not in {"chapter", "appendix"}:
-            continue  # only reviewed surfaces are bound by the closure
+    for document, line in parsed_linter_kernel_lines(state, documents):
         for span in line.spans:
             if span.kind != "file_mention":
                 continue
@@ -339,46 +334,53 @@ def _check_reviewed_cite_closure(state: LinterState) -> list[LinterFinding]:
 
 
 PARSER_CHECKS: tuple[LinterCheck, ...] = (
-    LinterCheck(
+    bind_floor_check(
         code=CHECK_LINE_TYPES,
         title="Line.Type syntax and source axis",
         gate=_needs_valid_surface,
         run=_check_line_types,
+        surface_kinds=frozenset({"chapter", "appendix", "agendix"}),
     ),
-    LinterCheck(
+    bind_floor_check(
         code=CHECK_ANCHOR_LEGACY_SIGIL,
         title="Legacy anchor sigils",
         gate=_needs_valid_surface,
         run=_check_legacy_anchor_sigil,
+        surface_kinds=frozenset({"chapter", "appendix", "agendix"}),
     ),
-    LinterCheck(
+    bind_floor_check(
         code=CHECK_ANCHOR_UNPREFIXED,
         title="Unprefixed anchor citations",
         gate=_needs_valid_surface,
         run=_check_unprefixed_anchor,
+        surface_kinds=frozenset({"chapter", "appendix", "agendix"}),
     ),
-    LinterCheck(
+    bind_floor_check(
         code=CHECK_TYPE_STATEMENT_LEGACY_SIGIL,
         title="Legacy type-statement sigils",
         gate=_needs_valid_surface,
         run=_check_legacy_type_statement_sigil,
+        surface_kinds=frozenset({"router", "chapter", "appendix", "agendix"}),
     ),
-    LinterCheck(
+    bind_floor_check(
         code=CHECK_LINE_UNLINKED,
         title="Live lines missing support references",
         gate=_needs_valid_surface,
         run=_check_line_unlinked,
+        surface_kinds=frozenset({"chapter", "appendix", "agendix"}),
     ),
-    LinterCheck(
+    bind_floor_check(
         code=CHECK_BLOCK_UNGROUNDED,
         title="Ungrounded concept blocks",
         gate=_needs_valid_surface,
         run=_check_block_ungrounded,
+        surface_kinds=frozenset({"chapter"}),
     ),
-    LinterCheck(
+    bind_floor_check(
         code=CHECK_REVIEWED_CITE_CLOSURE,
         title="Reviewed surfaces do not cite the agendix",
         gate=_needs_valid_surface,
         run=_check_reviewed_cite_closure,
+        surface_kinds=frozenset({"chapter", "appendix"}),
     ),
 )

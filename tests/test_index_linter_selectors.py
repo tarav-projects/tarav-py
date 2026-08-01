@@ -8,6 +8,7 @@ from agentos.index.commands import _cmd_linter
 from agentos.index.linter import (
     GateResult,
     LinterCheck,
+    LinterCheckBinding,
 )
 from _index_linter_helpers import _clean_depot, _run, _write
 
@@ -51,9 +52,21 @@ def _fake_checks():
         return allowed()
 
     return (
-        LinterCheck("S/Check.Structural", "structural", _ok, _noop, structural=True),
-        LinterCheck("S/Check.OnByDefault", "on", _ok, _noop, default_on=True),
-        LinterCheck("S/Check.OffByDefault", "off", _ok, _noop, default_on=False),
+        LinterCheck(
+            "S/Check.Structural",
+            "structural",
+            _ok,
+            _noop,
+            binding=LinterCheckBinding(structural=True),
+        ),
+        LinterCheck("S/Check.OnByDefault", "on", _ok, _noop),
+        LinterCheck(
+            "S/Check.OffByDefault",
+            "off",
+            _ok,
+            _noop,
+            binding=LinterCheckBinding(default_on=False),
+        ),
     )
 
 
@@ -198,7 +211,7 @@ def test_cli_list_checks_includes_composition_root_checks(capsys) -> None:
         title="external approval check",
         gate=lambda _state: GateResult(allowed=True),
         run=lambda _state: [],
-        default_on=False,
+        binding=LinterCheckBinding(default_on=False),
     )
     exit_code = _cmd_linter(
         _linter_ns(

@@ -244,8 +244,11 @@ def register_index_commands(
 
     linter_parser = index_subparsers.add_parser(
         "linter",
-        help="Lint index and appendix surfaces.",
-        description="Lint explicit Agentos index and appendix files or directories, or derive them from depot roots.",
+        help="Lint Agentos Index depot surfaces.",
+        description=(
+            "Lint explicit Agentos index and appendix files or directories, "
+            "or derive chapter, appendix, and agendix surfaces from depot roots."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
@@ -261,7 +264,10 @@ def register_index_commands(
         "--depot",
         action="append",
         default=[],
-        help="Depot root to derive index chapter directories and appendix surfaces from. Repeat to lint multiple depots.",
+        help=(
+            "Depot root to derive index chapter, appendix, and agendix surfaces "
+            "from. Repeat to lint multiple depots."
+        ),
     )
     linter_parser.add_argument(
         "--index",

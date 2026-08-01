@@ -4,12 +4,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal
 
-from agentos.index.model import IndexDocument, KernelLine, parse_index_file
+from agentos.index.model import (
+    IndexDocument,
+    IndexSurfaceKind,
+    KernelLine,
+    parse_index_file,
+)
 
 
 Severity = Literal["error", "warning"]
 CheckStatus = Literal["passed", "failed", "blocked"]
-SurfaceKind = Literal["index", "appendix"]
+SurfaceKind = Literal["index", "appendix", "agendix"]
 
 
 @dataclass(frozen=True)
@@ -18,6 +23,7 @@ class LinterConfig:
     depot_paths: tuple[Path, ...]
     index_paths: tuple[Path, ...]
     appendix_paths: tuple[Path, ...]
+    agendix_paths: tuple[Path, ...]
     coverage: frozenset[str] = frozenset()
     scope_paths: tuple[Path, ...] = ()
 
@@ -55,18 +61,28 @@ class GateResult:
 
 
 @dataclass(frozen=True)
+class LinterCheckBinding:
+    surface_kinds: frozenset[IndexSurfaceKind] | None = None
+    default_on: bool = True
+    structural: bool = False
+
+
+@dataclass(frozen=True)
 class LinterCheck:
     code: str
     title: str
     gate: Callable[["LinterState"], GateResult]
     run: Callable[["LinterState"], list[LinterFinding]]
-    # check-selection metadata (Impl.Req 702):
-    # - default_on: whether the check runs when the caller names no selection
-    # - structural: produces LinterState later checks consume; always runs,
-    #   never disableable (exclude has no effect on it)
-    default_on: bool = True
-    structural: bool = False
+    binding: LinterCheckBinding = LinterCheckBinding()
     poi_package_id: str = "agentos-pkg"
+
+    @property
+    def default_on(self) -> bool:
+        return self.binding.default_on
+
+    @property
+    def structural(self) -> bool:
+        return self.binding.structural
 
 
 @dataclass
@@ -146,10 +162,10 @@ class LinterState:
     raw_appendix_paths: tuple[str, ...]
     surfaces: list[SurfacePath] = field(default_factory=list)
     files_by_kind: dict[SurfaceKind, list[str]] = field(
-        default_factory=lambda: {"index": [], "appendix": []}
+        default_factory=lambda: {"index": [], "appendix": [], "agendix": []}
     )
     mdblock_files_by_kind: dict[SurfaceKind, list[dict[str, Any]]] = field(
-        default_factory=lambda: {"index": [], "appendix": []}
+        default_factory=lambda: {"index": [], "appendix": [], "agendix": []}
     )
     concepts: dict[str, list[ConceptBlock]] = field(default_factory=dict)
     appendix_concepts: dict[str, list[str]] = field(default_factory=dict)
@@ -182,10 +198,14 @@ class LinterState:
     def has_valid_surface(self, kind: SurfaceKind) -> bool:
         return any(surface.kind == kind and surface.valid for surface in self.surfaces)
 
-    def parsed_kernel_lines(self) -> list[tuple[IndexDocument, KernelLine]]:
+    def parsed_kernel_lines(
+        self,
+        documents: tuple[IndexDocument, ...] | None = None,
+    ) -> list[tuple[IndexDocument, KernelLine]]:
+        selected = tuple(self.parsed_documents) if documents is None else documents
         return [
             (document, node)
-            for document in self.parsed_documents
+            for document in selected
             for node in document.nodes
             if isinstance(node, KernelLine)
         ]
@@ -289,10 +309,50 @@ def _surface_depot_root(surface: SurfacePath) -> Path:
 
 def parsed_linter_kernel_lines(
     state: LinterState,
+    documents: tuple[IndexDocument, ...] | None = None,
 ) -> list[tuple[IndexDocument, KernelLine]]:
     """Public parser-backed kernel-line feed for core and external linter checks."""
     _ensure_parsed_documents(state)
-    return state.parsed_kernel_lines()
+    return state.parsed_kernel_lines(documents)
+
+
+def bind_floor_check(
+    *,
+    code: str,
+    title: str,
+    gate: Callable[[LinterState], GateResult],
+    run: Callable[
+        [LinterState, tuple[IndexDocument, ...]], list[LinterFinding]
+    ],
+    surface_kinds: frozenset[IndexSurfaceKind],
+    default_on: bool = True,
+    structural: bool = False,
+    poi_package_id: str = "agentos-pkg",
+) -> LinterCheck:
+    """Bind one reusable check function to a projection of the Index floor model."""
+    binding = LinterCheckBinding(
+        surface_kinds=surface_kinds,
+        default_on=default_on,
+        structural=structural,
+    )
+
+    def run_bound(state: LinterState) -> list[LinterFinding]:
+        _ensure_parsed_documents(state)
+        documents = tuple(
+            document
+            for document in state.parsed_documents
+            if document.surface_kind in surface_kinds
+        )
+        return run(state, documents)
+
+    return LinterCheck(
+        code=code,
+        title=title,
+        gate=gate,
+        run=run_bound,
+        binding=binding,
+        poi_package_id=poi_package_id,
+    )
 
 
 def _ensure_parsed_documents(state: LinterState) -> None:
@@ -325,6 +385,7 @@ def _parser_surface_files(state: LinterState) -> list[tuple[Path, str]]:
     for paths, surface_kind in (
         (state.config.index_paths, "chapter"),
         (state.config.appendix_paths, "appendix"),
+        (state.config.agendix_paths, "agendix"),
     ):
         for surface in paths:
             if surface.is_file():
@@ -337,15 +398,4 @@ def _parser_surface_files(state: LinterState) -> list[tuple[Path, str]]:
                 if path.name != "AGENTS.md" and path not in seen:
                     seen.add(path)
                     typed_files.append((path, surface_kind))
-    agendix_dirs = {
-        appendix.parent / "agendix" for appendix in state.config.appendix_paths
-    }
-    agendix_dirs.update(depot / "agendix" for depot in state.config.depot_paths)
-    for agendix_dir in sorted(agendix_dirs):
-        if not agendix_dir.is_dir():
-            continue
-        for path in sorted(agendix_dir.glob("*.md")):
-            if path.name != "AGENTS.md" and path not in seen:
-                seen.add(path)
-                typed_files.append((path, "agendix"))
     return typed_files

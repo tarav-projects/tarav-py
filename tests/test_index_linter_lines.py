@@ -7,6 +7,7 @@ from agentos.index.linter import (
     GateResult,
     LineSupportStanding,
     LinterCheck,
+    LinterCheckBinding,
     build_linter_config,
     parsed_linter_kernel_lines,
     render_linter_json,
@@ -268,7 +269,7 @@ def test_block_grounding_uses_resolved_line_standing(
         title="test support standing",
         gate=lambda _state: GateResult(allowed=True),
         run=record_support,
-        structural=True,
+        binding=LinterCheckBinding(structural=True),
     )
     config, raw_d, raw_i, raw_a = build_linter_config(
         depot_paths=(str(depot_dir),),
