@@ -11,6 +11,8 @@ from pathlib import Path
 from agentos.index.model import BlockHeading, KernelLine, MetaLine, parse_depot
 from agentos.skillware.model import (
     SkwFinding,
+    SkwRouterRow,
+    SkwRoutingView,
     SkwSource,
     parse_skw_source,
     recipe_key,
@@ -546,6 +548,19 @@ def _edge_hash_key(role: str, locator: str) -> str:
     return locator if role == "from" else f"{role}:{locator}"
 
 
+def _routing_load_exists(skillware: Skillware, raw: str) -> bool:
+    path = Path(raw)
+    if path.is_absolute() or ".." in path.parts:
+        return False
+    target = skillware.skill_root / path
+    if target.exists():
+        return True
+    if path.suffix != ".md":
+        return (skillware.src_root / path).exists()
+    source_name = path.name[: -len(".md")] + SRC_SUFFIX
+    return (skillware.src_root / path.with_name(source_name)).exists()
+
+
 def expand_file(skillware: Skillware, src_rel: Path) -> Expansion:
     src_rel = Path(src_rel)
     text = (skillware.src_root / src_rel).read_text(encoding="utf-8")
@@ -585,6 +600,13 @@ def expand_file(skillware: Skillware, src_rel: Path) -> Expansion:
             if lines is None:
                 findings.append(
                     SkwFinding(block.line, f"unresolvable {role}: {locator} ({detail})")
+                )
+
+    for row in source.router_rows:
+        for load in row.loads:
+            if not _routing_load_exists(skillware, load):
+                findings.append(
+                    SkwFinding(row.line, f"unresolvable router load: {load}")
                 )
 
     fresh = _emit(source, resolved_copies, keep_machinery=False)
@@ -848,6 +870,16 @@ def _labeled_span(
 ) -> tuple[list[str] | None, str | None]:
     text = (skillware.src_root / src_rel).read_text(encoding="utf-8")
     source = parse_skw_source(text)
+    address = f"^{label}"
+    for table in source.routing_tables:
+        if table.address == address:
+            return _routing_table_dependency_lines(table.address, table.selection), None
+    for row in source.router_rows:
+        if row.address == address:
+            return _routing_row_dependency_lines(row), None
+    for view in source.routing_views:
+        if view.address == address:
+            return _routing_view_dependency_lines(view), None
     for recipe in source.recipes:
         if recipe.label == label and recipe.verb == "copy" and recipe.froms:
             # a labeled copy resolves to its target, fresh — same semantics as regions
@@ -905,6 +937,208 @@ def _trim(lines: list[str]) -> list[str]:
     return result
 
 
+def _code(value: str) -> str:
+    escaped = value.replace("`", r"\`").replace("|", r"\|")
+    return f"`{escaped}`"
+
+
+def _row_resolution(row: SkwRouterRow) -> str:
+    parts = [row.match]
+    if row.defaults:
+        parts.append("default: " + "; ".join(row.defaults))
+    return "; ".join(parts)
+
+
+def _row_route(row: SkwRouterRow) -> str:
+    configured = [*row.flags, *row.aliases]
+    route = ", ".join(_code(value) for value in configured) or "semantic"
+    if row.defaults:
+        route += "; default: " + "; ".join(row.defaults)
+    return route
+
+
+def _row_effect(row: SkwRouterRow) -> str:
+    if row.then:
+        return row.then
+    parts: list[str] = []
+    if row.destinations:
+        parts.append("route to " + ", ".join(_code(value) for value in row.destinations))
+    if row.loads:
+        parts.append("load " + ", ".join(_code(value) for value in row.loads))
+    return "; ".join(parts)
+
+
+def _routing_table_dependency_lines(address: str, selection: str) -> list[str]:
+    return [f"Routing.Table {address}", f"selection: {selection}"]
+
+
+def _routing_row_dependency_lines(row: SkwRouterRow) -> list[str]:
+    lines = [f"Batchy.Router.Row {row.address}", f"table: {row.table}"]
+    lines.append(f"match: {row.match}")
+    for value in row.flags:
+        lines.append(f"flag: {value}")
+    for value in row.aliases:
+        lines.append(f"alias: {value}")
+    for value in row.defaults:
+        lines.append(f"default: {value}")
+    for value in row.destinations:
+        lines.append(f"destination: {value}")
+    for value in row.loads:
+        lines.append(f"load: {value}")
+    if row.when:
+        lines.append(f"when: {row.when}")
+    if row.then:
+        lines.append(f"then: {row.then}")
+    return lines
+
+
+def _routing_view_dependency_lines(view: SkwRoutingView) -> list[str]:
+    return [
+        f"Routing.View {view.address}",
+        f"table: {view.table}",
+        f"kind: {view.kind}",
+    ]
+
+
+def _render_calls(rows: list[SkwRouterRow]) -> list[str]:
+    explicit = [row for row in rows if row.flags]
+    lines = [
+        "| Canonical configuration | Aliases | Resolution | Routed effect |",
+        "|---|---|---|---|",
+    ]
+    for row in explicit:
+        lines.append(
+            "| "
+            + "<br>".join(_code(value) for value in row.flags)
+            + " | "
+            + ("<br>".join(_code(value) for value in row.aliases) or "-")
+            + " | "
+            + _row_resolution(row).replace("|", r"\|")
+            + " | "
+            + _row_effect(row).replace("|", r"\|")
+            + " |"
+        )
+    return lines
+
+
+_MODULE_GROUPS = (
+    ("Router Modules", ".Router.Module"),
+    ("Workflow Modules", ".Workflow.Module"),
+    ("Knowledge Modules", ".Knowledge.Module"),
+    ("Operation Modules", ".Operation.Module"),
+    ("Context Assembly Modules", ".Assembly.Module"),
+)
+
+
+def _module_loads(row: SkwRouterRow, position: int) -> tuple[str, ...]:
+    if len(row.destinations) == len(row.loads):
+        return (row.loads[position],)
+    return row.loads
+
+
+def _render_modules(rows: list[SkwRouterRow]) -> list[str]:
+    modules: dict[str, dict[str, list[str]]] = {}
+    order: list[str] = []
+    for row in rows:
+        for position, destination in enumerate(row.destinations):
+            if not destination.endswith(".Module"):
+                continue
+            if destination not in modules:
+                modules[destination] = {"loads": [], "routes": []}
+                order.append(destination)
+            entry = modules[destination]
+            for load in _module_loads(row, position):
+                if load not in entry["loads"]:
+                    entry["loads"].append(load)
+            route = _row_route(row)
+            if route not in entry["routes"]:
+                entry["routes"].append(route)
+
+    lines: list[str] = []
+    grouped: set[str] = set()
+    for heading, suffix in _MODULE_GROUPS:
+        names = [name for name in order if name.endswith(suffix)]
+        if not names:
+            continue
+        if lines:
+            lines.append("")
+        lines.extend(
+            [
+                f"### {heading}",
+                "",
+                "| Canonical module | Load target | Routing |",
+                "|---|---|---|",
+            ]
+        )
+        for name in names:
+            grouped.add(name)
+            entry = modules[name]
+            loads = "<br>".join(_code(value) for value in entry["loads"]) or "-"
+            routes = "<br>".join(entry["routes"]).replace("|", r"\|")
+            lines.append(f"| {_code(name)} | {loads} | {routes} |")
+
+    other = [name for name in order if name not in grouped]
+    if other:
+        if lines:
+            lines.append("")
+        lines.extend(
+            [
+                "### Other Modules",
+                "",
+                "| Canonical module | Load target | Routing |",
+                "|---|---|---|",
+            ]
+        )
+        for name in other:
+            entry = modules[name]
+            loads = "<br>".join(_code(value) for value in entry["loads"]) or "-"
+            routes = "<br>".join(entry["routes"]).replace("|", r"\|")
+            lines.append(f"| {_code(name)} | {loads} | {routes} |")
+    return lines
+
+
+def _render_full(table_selection: str, rows: list[SkwRouterRow]) -> list[str]:
+    lines = [f"Selection cardinality: `{table_selection}`."]
+    for row in rows:
+        lines.extend(["", f"### {_code(row.address)}", ""])
+        lines.append(f"- match: `{row.match}`")
+        if row.flags:
+            lines.append("- flags: " + ", ".join(_code(value) for value in row.flags))
+        if row.aliases:
+            lines.append(
+                "- aliases: " + ", ".join(_code(value) for value in row.aliases)
+            )
+        if row.defaults:
+            lines.append("- defaults: " + "; ".join(row.defaults))
+        if row.destinations:
+            lines.append(
+                "- destinations: "
+                + ", ".join(_code(value) for value in row.destinations)
+            )
+        if row.loads:
+            lines.append("- loads: " + ", ".join(_code(value) for value in row.loads))
+        if row.when:
+            lines.append(f"- when: {row.when}")
+        if row.then:
+            lines.append(f"- then: {row.then}")
+    return lines
+
+
+def _render_routing_view(source: SkwSource, view: SkwRoutingView) -> list[str]:
+    table = next(
+        (candidate for candidate in source.routing_tables if candidate.address == view.table),
+        None,
+    )
+    if table is None:
+        return []
+    rows = [row for row in source.router_rows if row.table == table.address]
+    if view.kind == "calls":
+        return _render_calls(rows)
+    if view.kind == "modules":
+        return _render_modules(rows)
+    return _render_full(table.selection, rows)
+
+
 def _emit(
     source: SkwSource,
     resolved_copies: dict[tuple[int, int], list[str]],
@@ -917,6 +1151,12 @@ def _emit(
 
     if not keep_machinery:
         skip_ranges.extend(source.machinery_spans)
+        for view in source.routing_views:
+            replacements[view.decl_span[0]] = [
+                "",
+                *_render_routing_view(source, view),
+                "",
+            ]
     for span, lines in resolved_copies.items():
         replacements[span[0]] = ["", *lines, ""]
         skip_ranges.append((span[0], span[1]))

@@ -41,8 +41,6 @@ def _agent_default_run_args(family_name: str) -> tuple[str, ...]:
 
 
 def _agent_default_model(family_name: str) -> str | None:
-    if family_name == "codex":
-        return "gpt-5.4"
     return None
 
 

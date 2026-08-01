@@ -552,6 +552,30 @@ def test_status_counts_constructs(
     assert mod["constructs"] == {"text": 1, "router": 1, "when": 1, "then": 1}
 
 
+def test_status_counts_annotated_router_constructs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n"
+        "> $kw: ^driver --routing-table --select many\n"
+        "> $kw: ^row --router-row --table ^driver --flag --x "
+        "--match explicit --to X.Module\n"
+        "> $kw: ^view --routing-view calls --table ^driver\n",
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(skill=str(skill), json=True)
+    assert _cmd_skillware_status(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    mod = next(f for f in payload["files"] if f["src"] == "references/mod.skw.md")
+    assert mod["constructs"] == {
+        "routing-table": 1,
+        "router-row": 1,
+        "routing-view": 1,
+    }
+
+
 def test_parse_errors_gate_semantic_checks_per_file(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     build_skill(skill)

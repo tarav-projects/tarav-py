@@ -517,7 +517,15 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
                 },
                 "constructs": {
                     command: count
-                    for command in ("text", "router", "when", "then")
+                    for command in (
+                        "text",
+                        "router",
+                        "when",
+                        "then",
+                        "routing-table",
+                        "router-row",
+                        "routing-view",
+                    )
                     if (
                         count := sum(
                             1 for c in source.constructs if c.command == command

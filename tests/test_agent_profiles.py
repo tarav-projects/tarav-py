@@ -97,6 +97,28 @@ def test_profile_file_loads_home_current_account_policy(
     assert config.summary()["account_policy"] == "home-current"
 
 
+def test_profile_file_without_default_model_uses_provider_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-main"
+    environment.write_global_config(agent={"providers": _provider_configs()})
+    environment.write_profile(
+        "codex-main",
+        **{
+            "provider": "codex",
+            "homes": [str(home)],
+            "accounts": ["jp"],
+        },
+    )
+
+    config = load_agent_configs()[0]
+
+    assert config.default_model is None
+
+
 def test_profile_file_rejects_unknown_account_policy(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

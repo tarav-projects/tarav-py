@@ -18,8 +18,10 @@ Features are additive `--flags`, not commands: the binding mode is a flag
 `--note` is a typed+anchored documentation line, `--supp` the block's own
 touched lines, `--unlock-surface` marks a context surface represented by an
 unlock registry, `--intent` derivation context, `--cont` a generic
-continuation of the previous flag, and `--to` a reserved (parsed, inert) flag.
-Router rows are nameless child blocks opened with `--when` / `--then`.
+continuation of the previous flag, and `--to` names a routed destination.
+`Routing.Table`s and their addressed `Batchy.Router.Row` annotations use
+`--routing-table`, `--router-row`, and `--routing-view`; legacy positional
+`--when` / `--then` router blocks remain parseable while packages migrate.
 
 **Closure is by role, in three cases** (`Closure.Parser::Skw`):
 
@@ -47,8 +49,28 @@ from dataclasses import dataclass, field
 RECIPE_BINDINGS = ("derived", "copy")
 BINDING_FLAGS = ("derived", "copy", "pointer")
 ROLE_FLAGS = ("when", "then")
-VALUE_FLAGS = ("from", "dev-from", "cite", "intent", "to", "note", "supp", "cont")
-BOOLEAN_FLAGS = ("unlock-surface", "context-assembly")
+ROUTING_VALUE_FLAGS = (
+    "routing-view",
+    "table",
+    "select",
+    "flag",
+    "alias",
+    "match",
+    "default",
+    "load",
+)
+VALUE_FLAGS = (
+    "from",
+    "dev-from",
+    "cite",
+    "intent",
+    "to",
+    "note",
+    "supp",
+    "cont",
+) + ROUTING_VALUE_FLAGS
+ROUTING_BOOLEAN_FLAGS = ("routing-table", "router-row")
+BOOLEAN_FLAGS = ("unlock-surface", "context-assembly") + ROUTING_BOOLEAN_FLAGS
 KNOWN_FLAGS = BINDING_FLAGS + ROLE_FLAGS + VALUE_FLAGS + BOOLEAN_FLAGS
 
 _ADDRESS_RE = re.compile(r"^[#^@]?[A-Za-z0-9_./#:^-]+$")
@@ -192,11 +214,47 @@ class SkwDependency:
 
 
 @dataclass(frozen=True)
+class SkwRoutingTable:
+    address: str
+    line: int
+    selection: str
+    decl_span: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class SkwRouterRow:
+    address: str
+    line: int
+    table: str
+    flags: tuple[str, ...]
+    aliases: tuple[str, ...]
+    match: str
+    defaults: tuple[str, ...]
+    destinations: tuple[str, ...]
+    loads: tuple[str, ...]
+    when: str | None
+    then: str | None
+    decl_span: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class SkwRoutingView:
+    address: str
+    line: int
+    table: str
+    kind: str
+    decl_span: tuple[int, int]
+
+
+@dataclass(frozen=True)
 class SkwSource:
     lines: tuple[str, ...]
     recipes: tuple[SkwRecipe, ...]
     constructs: tuple[SkwConstruct, ...]
     dependencies: tuple[SkwDependency, ...]
+    routing_tables: tuple[SkwRoutingTable, ...]
+    router_rows: tuple[SkwRouterRow, ...]
+    routing_views: tuple[SkwRoutingView, ...]
     notes: tuple[SkwNote, ...]
     machinery_spans: tuple[tuple[int, int], ...]
     findings: tuple[SkwFinding, ...]
@@ -356,6 +414,9 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
     recipes: list[SkwRecipe] = []
     constructs: list[SkwConstruct] = []
     dependencies: list[SkwDependency] = []
+    routing_tables: list[SkwRoutingTable] = []
+    router_rows: list[SkwRouterRow] = []
+    routing_views: list[SkwRoutingView] = []
     notes: list[SkwNote] = []
     machinery_spans: list[tuple[int, int]] = []
     findings: list[SkwFinding] = []
@@ -546,7 +607,22 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
 
         flag_names = [name for name, _ in flags]
         bindings = [name for name in flag_names if name in BINDING_FLAGS]
-        roles = [name for name in flag_names if name in ROLE_FLAGS]
+        routing_table_values = [
+            value for name, value in flags if name == "routing-table"
+        ]
+        router_row_values = [value for name, value in flags if name == "router-row"]
+        routing_view_values = [
+            value for name, value in flags if name == "routing-view"
+        ]
+        is_routing_table = bool(routing_table_values)
+        is_router_row = bool(router_row_values)
+        is_routing_view = bool(routing_view_values)
+        routing_kinds = sum((is_routing_table, is_router_row, is_routing_view))
+        roles = (
+            []
+            if is_router_row
+            else [name for name in flag_names if name in ROLE_FLAGS]
+        )
         froms = tuple(value for name, value in flags if name == "from")
         dev_froms = tuple(value for name, value in flags if name == "dev-from")
         cites = tuple(value for name, value in flags if name == "cite")
@@ -580,11 +656,28 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             findings.append(
                 SkwFinding(index + 1, "a router row cannot also carry a binding flag")
             )
+        if routing_kinds > 1:
+            findings.append(
+                SkwFinding(
+                    index + 1,
+                    "a declaration cannot be a routing table, row, and view at once",
+                )
+            )
+        if routing_kinds and bindings:
+            findings.append(
+                SkwFinding(index + 1, "routing annotations cannot carry a binding flag")
+            )
 
         role = roles[0] if roles else None
         verb = bindings[0] if bindings else None
 
-        if role is not None:
+        if is_routing_table:
+            command = "routing-table"
+        elif is_router_row:
+            command = "router-row"
+        elif is_routing_view:
+            command = "routing-view"
+        elif role is not None:
             if not stack or stack[-1].command in ("when", "then"):
                 # rows peer-close, so a sibling row is legal; only a top-level
                 # row (no parent block) is orphaned
@@ -655,18 +748,174 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                 )
             )
 
+        if is_routing_table:
+            selections = [value for name, value in flags if name == "select"]
+            if any(routing_table_values):
+                findings.append(SkwFinding(index + 1, "--routing-table takes no value"))
+            if address is None:
+                findings.append(
+                    SkwFinding(index + 1, "--routing-table requires an explicit address")
+                )
+            if len(selections) != 1 or selections[0] not in {
+                "zero-or-one",
+                "one",
+                "many",
+            }:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "--routing-table requires one --select value: "
+                        "zero-or-one, one, or many",
+                    )
+                )
+            if address is not None and len(selections) == 1:
+                routing_tables.append(
+                    SkwRoutingTable(
+                        address=address,
+                        line=index + 1,
+                        selection=selections[0],
+                        decl_span=(index, decl_end),
+                    )
+                )
+
+        if is_router_row:
+            table_values = [value for name, value in flags if name == "table"]
+            explicit_flags = tuple(value for name, value in flags if name == "flag")
+            aliases = tuple(value for name, value in flags if name == "alias")
+            matches = [value for name, value in flags if name == "match"]
+            defaults = tuple(value for name, value in flags if name == "default")
+            destinations = tuple(value for name, value in flags if name == "to")
+            loads = tuple(value for name, value in flags if name == "load")
+            whens = [value for name, value in flags if name == "when"]
+            thens = [value for name, value in flags if name == "then"]
+            if any(router_row_values):
+                findings.append(SkwFinding(index + 1, "--router-row takes no value"))
+            if address is None:
+                findings.append(
+                    SkwFinding(index + 1, "--router-row requires an explicit address")
+                )
+            if len(table_values) != 1 or not table_values[0]:
+                findings.append(
+                    SkwFinding(index + 1, "--router-row requires exactly one --table")
+                )
+            if len(matches) != 1 or matches[0] not in {
+                "explicit",
+                "semantic",
+                "explicit-or-semantic",
+            }:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "--router-row requires one --match value: explicit, semantic, "
+                        "or explicit-or-semantic",
+                    )
+                )
+            if aliases and not explicit_flags:
+                findings.append(
+                    SkwFinding(index + 1, "--alias requires at least one --flag")
+                )
+            if len(whens) > 1:
+                findings.append(SkwFinding(index + 1, "--when may appear only once"))
+            if len(thens) > 1:
+                findings.append(SkwFinding(index + 1, "--then may appear only once"))
+            if matches and matches[0] == "explicit" and not explicit_flags:
+                findings.append(
+                    SkwFinding(index + 1, "explicit router row requires --flag")
+                )
+            if matches and matches[0] in {
+                "semantic",
+                "explicit-or-semantic",
+            } and not any(whens):
+                findings.append(
+                    SkwFinding(index + 1, "semantic router row requires --when")
+                )
+            if matches and matches[0] == "explicit-or-semantic" and not explicit_flags:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "explicit-or-semantic router row requires --flag",
+                    )
+                )
+            if not destinations and not loads and not any(thens):
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "--router-row requires --to, --load, or --then",
+                    )
+                )
+            if (
+                address is not None
+                and len(table_values) == 1
+                and len(matches) == 1
+            ):
+                router_rows.append(
+                    SkwRouterRow(
+                        address=address,
+                        line=index + 1,
+                        table=table_values[0],
+                        flags=explicit_flags,
+                        aliases=aliases,
+                        match=matches[0],
+                        defaults=defaults,
+                        destinations=destinations,
+                        loads=loads,
+                        when=whens[0] if whens else None,
+                        then=thens[0] if thens else None,
+                        decl_span=(index, decl_end),
+                    )
+                )
+
+        if is_routing_view:
+            table_values = [value for name, value in flags if name == "table"]
+            if address is None:
+                findings.append(
+                    SkwFinding(index + 1, "--routing-view requires an explicit address")
+                )
+            if len(routing_view_values) != 1 or routing_view_values[0] not in {
+                "calls",
+                "modules",
+                "full",
+            }:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "--routing-view requires one value: calls, modules, or full",
+                    )
+                )
+            if len(table_values) != 1 or not table_values[0]:
+                findings.append(
+                    SkwFinding(index + 1, "--routing-view requires exactly one --table")
+                )
+            if (
+                address is not None
+                and len(routing_view_values) == 1
+                and len(table_values) == 1
+            ):
+                routing_views.append(
+                    SkwRoutingView(
+                        address=address,
+                        line=index + 1,
+                        table=table_values[0],
+                        kind=routing_view_values[0],
+                        decl_span=(index, decl_end),
+                    )
+                )
+
         # closure by role: a recipe or a content span (a flag-less block, incl.
         # a router parent) owns its `end`; a row peer-closes; an annotation
         # block — one carrying only `--from`/`--note`/`--supp` — self-closes at
         # its declaration, and following text stays surface.
-        annotation_only = command == "text" and (
-            bool(froms)
-            or bool(dev_froms)
-            or bool(cites)
-            or bool(frame_notes)
-            or verb == "pointer"
-            or unlock_surface
-            or context_assembly
+        annotation_only = routing_kinds > 0 or (
+            command == "text"
+            and (
+                bool(froms)
+                or bool(dev_froms)
+                or bool(cites)
+                or bool(frame_notes)
+                or verb == "pointer"
+                or unlock_surface
+                or context_assembly
+            )
         )
         needs_end = command in RECIPE_BINDINGS or (
             command == "text" and not annotation_only
@@ -711,6 +960,30 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
         index = decl_end
 
     force_close(len(lines), "EOF")
+    table_addresses = {table.address for table in routing_tables}
+    route_keys: dict[tuple[str, str], SkwRouterRow] = {}
+    for row in router_rows:
+        if row.table not in table_addresses:
+            findings.append(
+                SkwFinding(row.line, f"router row references unknown table: {row.table}")
+            )
+        for key in (*row.flags, *row.aliases):
+            prior = route_keys.setdefault((row.table, key), row)
+            if prior is not row:
+                findings.append(
+                    SkwFinding(
+                        row.line,
+                        f"duplicate explicit route key {key!r} in table {row.table}; "
+                        f"first declared by {prior.address}",
+                    )
+                )
+    for view in routing_views:
+        if view.table not in table_addresses:
+            findings.append(
+                SkwFinding(
+                    view.line, f"routing view references unknown table: {view.table}"
+                )
+            )
     if in_fence:
         findings.append(
             SkwFinding(
@@ -723,6 +996,9 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
         recipes=tuple(recipes),
         constructs=tuple(constructs),
         dependencies=tuple(dependencies),
+        routing_tables=tuple(routing_tables),
+        router_rows=tuple(router_rows),
+        routing_views=tuple(routing_views),
         notes=tuple(notes),
         machinery_spans=tuple(machinery_spans),
         findings=tuple(findings),
@@ -748,6 +1024,8 @@ __all__ = [
     "MARKDOWN_CARRIER",
     "RECIPE_BINDINGS",
     "ROLE_FLAGS",
+    "ROUTING_BOOLEAN_FLAGS",
+    "ROUTING_VALUE_FLAGS",
     "VALUE_FLAGS",
     "Carrier",
     "SkwConstruct",
@@ -755,6 +1033,9 @@ __all__ = [
     "SkwFinding",
     "SkwNote",
     "SkwRecipe",
+    "SkwRouterRow",
+    "SkwRoutingTable",
+    "SkwRoutingView",
     "SkwSource",
     "parse_skw_code",
     "parse_skw_source",

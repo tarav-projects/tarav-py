@@ -7,6 +7,7 @@ import pytest
 from agentos.skillware.build import (
     build_skill,
     check_skill,
+    content_hash,
     expand_file,
     load_skillware,
 )
@@ -331,6 +332,68 @@ def test_router_structural_checks() -> None:
     assert any("alternate when/then" in f.message for f in then_first.findings)
 
 
+def test_annotated_routing_table_rows_are_addressed_objects() -> None:
+    source = parse_skw_source(
+        "## Routing.Table\n\n"
+        "> $kw: ^driver --routing-table --select many\n\n"
+        "> $kw: ^impl-develop --router-row --table ^driver\n"
+        "> --flag --impl --develop\n"
+        "> --alias --develop\n"
+        "> --alias --dev\n"
+        "> --match explicit-or-semantic\n"
+        "> --default implementation input without an Impl.Req\n"
+        "> --to Implementation.Develop.Workflow.Module\n"
+        "> --load references/lib.md\n"
+        "> --when the caller wants end-to-end implementation\n"
+        "> --then design an Impl.Req and execute it\n\n"
+        "> $kw: ^calls --routing-view calls --table ^driver\n"
+    )
+
+    assert not source.findings
+    assert source.routing_tables[0].address == "^driver"
+    row = source.router_rows[0]
+    assert row.address == "^impl-develop"
+    assert row.flags == ("--impl --develop",)
+    assert row.aliases == ("--develop", "--dev")
+    assert row.match == "explicit-or-semantic"
+    assert row.destinations == ("Implementation.Develop.Workflow.Module",)
+    assert row.loads == ("references/lib.md",)
+    assert source.routing_views[0].kind == "calls"
+    assert [c.command for c in source.constructs] == [
+        "routing-table",
+        "router-row",
+        "routing-view",
+    ]
+
+
+def test_annotated_router_row_validation() -> None:
+    source = parse_skw_source(
+        "> $kw: ^driver --routing-table --select many\n"
+        "> $kw: ^bad --router-row --table ^missing --alias --x "
+        "--match semantic --to X.Module\n"
+        "> $kw: ^view --routing-view unknown --table ^driver\n"
+    )
+    messages = [finding.message for finding in source.findings]
+    assert "--alias requires at least one --flag" in messages
+    assert "semantic router row requires --when" in messages
+    assert "router row references unknown table: ^missing" in messages
+    assert "--routing-view requires one value: calls, modules, or full" in messages
+
+
+def test_annotated_router_rejects_duplicate_explicit_keys() -> None:
+    source = parse_skw_source(
+        "> $kw: ^driver --routing-table --select many\n"
+        "> $kw: ^one --router-row --table ^driver --flag --x "
+        "--match explicit --to One.Module\n"
+        "> $kw: ^two --router-row --table ^driver --alias --x --flag --y "
+        "--match explicit --to Two.Module\n"
+    )
+    assert any(
+        "duplicate explicit route key '--x'" in finding.message
+        for finding in source.findings
+    )
+
+
 def test_router_compiles_to_pure_prose(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
@@ -351,6 +414,91 @@ def test_router_compiles_to_pure_prose(tmp_path: Path) -> None:
     assert "Second paragraph of the key." in compiled
     assert "Load `references/lib.md`." in compiled
     assert "Hand tail." in compiled
+
+
+def test_annotated_router_views_compile_from_one_table(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n"
+        "## Public Calls\n\n"
+        "> $kw: ^calls --routing-view calls --table ^driver\n\n"
+        "## Modules\n\n"
+        "> $kw: ^modules --routing-view modules --table ^driver\n\n"
+        "## Routing.Table\n\n"
+        "> $kw: ^driver --routing-table --select many\n\n"
+        "> $kw: ^impl-develop --router-row --table ^driver\n"
+        "> --flag --impl --develop\n"
+        "> --alias --develop\n"
+        "> --alias --dev\n"
+        "> --match explicit-or-semantic\n"
+        "> --default actionable implementation input\n"
+        "> --to Implementation.Develop.Workflow.Module\n"
+        "> --load references/lib.md\n"
+        "> --when the caller wants end-to-end implementation\n"
+        "> --then design an Impl.Req and execute it\n\n"
+        "> $kw: ^full --routing-view full --table ^driver\n",
+        encoding="utf-8",
+    )
+
+    skillware = load_skillware(skill)
+    expansion = expand_file(skillware, Path("references/mod.skw.md"))
+    assert not expansion.findings
+    compiled = "\n".join(expansion.fresh_lines)
+    assert "| Canonical configuration | Aliases | Resolution | Routed effect |" in compiled
+    assert "`--impl --develop`" in compiled
+    assert "`--develop`<br>`--dev`" in compiled
+    assert "### Workflow Modules" in compiled
+    assert "`Implementation.Develop.Workflow.Module`" in compiled
+    assert "Selection cardinality: `many`." in compiled
+    assert "### `^impl-develop`" in compiled
+    assert "$kw" not in compiled
+
+
+def test_annotated_router_load_target_must_resolve(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n"
+        "> $kw: ^driver --routing-table --select many\n"
+        "> $kw: ^bad --router-row --table ^driver --flag --bad "
+        "--match explicit --load references/missing.md\n",
+        encoding="utf-8",
+    )
+    expansion = expand_file(load_skillware(skill), Path("references/mod.skw.md"))
+    assert any(
+        finding.message == "unresolvable router load: references/missing.md"
+        for finding in expansion.findings
+    )
+
+
+def test_addressed_router_row_is_nonempty_dependency_content(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path)
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n"
+        "> $kw: ^driver --routing-table --select many\n"
+        "> $kw: ^search --router-row --table ^driver --flag --search "
+        "--alias --ground --match explicit --to Search.Module\n\n"
+        "> $kw: ^summary --derived --from ^search\n"
+        "Search summary.\n"
+        "> $kw. end\n",
+        encoding="utf-8",
+    )
+
+    expansion = expand_file(load_skillware(skill), Path("references/mod.skw.md"))
+    assert not expansion.findings
+    digest = expansion.dep_hashes["^summary"]["^search"]
+    assert digest == content_hash(
+        [
+            "Batchy.Router.Row ^search",
+            "table: ^driver",
+            "match: explicit",
+            "flag: --search",
+            "alias: --ground",
+            "destination: Search.Module",
+        ]
+    )
 
 
 def test_two_derived_under_one_heading_key_distinctly(tmp_path: Path) -> None:
