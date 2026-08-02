@@ -226,6 +226,91 @@ def test_parse_dependency_roles_and_context_assembly() -> None:
     assert dependency.cites == ("Concept.Three",)
 
 
+def test_parse_context_loading_paths_at_file_point() -> None:
+    source = parse_skw_source(
+        "> $kw: ^direct --context-loading-path\n"
+        "> --step SKILL.md\n"
+        "> $kw: ^workspace-local --context-loading-path\n"
+        "> --step AGENTS.md\n"
+        "> --step SKILL.md\n\n"
+        "# Module\n"
+    )
+
+    assert not source.findings
+    assert [(path.address, path.steps) for path in source.context_loading_paths] == [
+        ("^direct", ("SKILL.md",)),
+        ("^workspace-local", ("AGENTS.md", "SKILL.md")),
+    ]
+    assert [construct.command for construct in source.constructs] == [
+        "context-loading-path",
+        "context-loading-path",
+    ]
+
+
+def test_parse_loading_dependencies_on_any_annotation() -> None:
+    source = parse_skw_source(
+        "> $kw: ^direct --context-loading-path\n"
+        "> --step SKILL.md\n"
+        "> --loading-dep SKILL.skw.md^run-contract\n"
+        "> --loading-dep SKILL.skw.md^command-contract\n\n"
+        "# Module\n\n"
+        "> $kw: ^body --derived --from Concept.Source\n"
+        "> --loading-dep SKILL.skw.md^authority-contract\n"
+        "Derived body.\n\n"
+        "> $kw. end\n"
+    )
+
+    assert not source.findings
+    assert [
+        (dependency.locator, dependency.line, dependency.address)
+        for dependency in source.context_loading_dependencies
+    ] == [
+        ("SKILL.skw.md^run-contract", 1, "^direct"),
+        ("SKILL.skw.md^command-contract", 1, "^direct"),
+        ("SKILL.skw.md^authority-contract", 8, "^body"),
+    ]
+    assert source.constructs[0].loading_deps == (
+        "SKILL.skw.md^run-contract",
+        "SKILL.skw.md^command-contract",
+    )
+    assert source.recipes[0].loading_deps == ("SKILL.skw.md^authority-contract",)
+
+
+def test_loading_dependency_requires_a_locator() -> None:
+    source = parse_skw_source("> $kw: ^deps --loading-dep\n")
+    assert any(
+        "--loading-dep requires a locator" in finding.message
+        for finding in source.findings
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        (
+            "> $kw: --context-loading-path --step SKILL.md\n",
+            "requires an explicit address",
+        ),
+        ("> $kw: ^path --context-loading-path\n", "requires at least one --step"),
+        (
+            "> $kw: ^path --context-loading-path --step AGENTS.md\n",
+            "must contain SKILL.md",
+        ),
+        (
+            "# Module\n\n> $kw: ^path --context-loading-path --step SKILL.md\n",
+            "must be declared at the file point",
+        ),
+        (
+            "> $kw: ^path --context-loading-path --step .skw/AGENTS.md --step SKILL.md\n",
+            ".skw/AGENTS.md is builder guidance",
+        ),
+    ],
+)
+def test_context_loading_path_parse_findings(text: str, message: str) -> None:
+    source = parse_skw_source(text)
+    assert any(message in finding.message for finding in source.findings)
+
+
 @pytest.mark.parametrize(
     ("declaration", "message"),
     [
@@ -445,7 +530,9 @@ def test_annotated_router_views_compile_from_one_table(tmp_path: Path) -> None:
     expansion = expand_file(skillware, Path("references/mod.skw.md"))
     assert not expansion.findings
     compiled = "\n".join(expansion.fresh_lines)
-    assert "| Canonical configuration | Aliases | Resolution | Routed effect |" in compiled
+    assert (
+        "| Canonical configuration | Aliases | Resolution | Routed effect |" in compiled
+    )
     assert "`--impl --develop`" in compiled
     assert "`--develop`<br>`--dev`" in compiled
     assert "### Workflow Modules" in compiled

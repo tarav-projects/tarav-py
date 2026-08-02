@@ -29,6 +29,7 @@ from agentos.skillware.build import (
     unlock_requirements,
 )
 from agentos.skillware.model import parse_skw_source
+from agentos.skillware.context import project_context
 from agentos.skillware.edition_history import (
     EditionFile,
     EditionHistoryError,
@@ -525,6 +526,7 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
                         "routing-table",
                         "router-row",
                         "routing-view",
+                        "context-loading-path",
                     )
                     if (
                         count := sum(
@@ -553,6 +555,35 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
             f"({'exists' if entry['target_exists'] else 'missing'}; "
             f"copy: {recipes['copy']}, derived: {recipes['derived']})"
         )
+    return 0
+
+
+def _cmd_skillware_context(args: argparse.Namespace) -> int:
+    try:
+        report = project_context(Path(args.skill), args.target)
+    except SkillwareError as exc:
+        raise CliError(str(exc)) from exc
+    payload = report.as_dict()
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+    print("Projected.Context")
+    print(f"- target: {report.target}")
+    for path in report.paths:
+        print(f"\n## {path.address}")
+        for index, step in enumerate(path.steps, start=1):
+            provenance = ", ".join(step.edge.provenance)
+            print(f"{index}. {step.path} [{step.edge.kind}: {provenance}]")
+        if path.dependencies:
+            print("\nDependencies")
+            for dependency in path.dependencies:
+                print(
+                    f"- {dependency.locator} [{dependency.status} at step "
+                    f"{dependency.satisfied_at}: {dependency.provider}]"
+                )
+        print("\n```text")
+        print(path.projected_context)
+        print("```")
     return 0
 
 
@@ -812,7 +843,8 @@ def register_skillware_commands(
             "skw: a package's files can be produced from .skw/src/**/*.skw.md "
             "sources — markdown plus $kw machinery lines. build compiles and refreshes "
             "copy bodies; check lints for POIs; bless accepts a derived-stale POI; "
-            "status inventories the managed files. (skillware is a deprecated alias.)"
+            "status inventories the managed files; context projects declared runtime "
+            "loading paths. (skillware is a deprecated alias.)"
         ),
     )
     skillware_parser.set_defaults(
@@ -823,6 +855,27 @@ def register_skillware_commands(
         skillware_subparsers,
         support_resolver=edition_history_support_resolver,
     )
+
+    context_parser = skillware_subparsers.add_parser(
+        "context",
+        help="Project the declared runtime context for one managed target.",
+    )
+    context_parser.add_argument(
+        "--skill",
+        required=True,
+        help="Package root containing .skw/src.",
+    )
+    context_parser.add_argument(
+        "--target",
+        required=True,
+        help="Runnable skill-root-relative target file.",
+    )
+    context_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the path-specific projection as JSON.",
+    )
+    context_parser.set_defaults(handler=_cmd_skillware_context)
 
     for name, handler, help_text in (
         (

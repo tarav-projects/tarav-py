@@ -6,6 +6,14 @@
 """
 
 from agentos.skillware.model import SkwFinding, SkwRecipe, SkwSource, parse_skw_source
+from agentos.skillware.context import (
+    ContextLoadingEdge,
+    ProjectedContextDependency,
+    ProjectedContextPath,
+    ProjectedContextReport,
+    ProjectedContextStep,
+    project_context,
+)
 from agentos.skillware.edition_history import (
     AmendEditionSessionResult,
     EditionFile,
@@ -34,8 +42,14 @@ __all__ = [
     "EditionSupportResolutionError",
     "EditionSupportResolver",
     "RecordEditionSessionResult",
+    "ContextLoadingEdge",
+    "ProjectedContextDependency",
+    "ProjectedContextPath",
+    "ProjectedContextReport",
+    "ProjectedContextStep",
     "SkwFinding",
     "SkwRecipe",
     "SkwSource",
     "parse_skw_source",
+    "project_context",
 ]

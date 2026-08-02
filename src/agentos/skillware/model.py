@@ -15,6 +15,8 @@ Features are additive `--flags`, not commands: the binding mode is a flag
 (`--derived`/`--copy`/`--pointer`), `--from` is a generic dependency edge,
 `--dev-from` is builder context, `--cite` is a visible citation obligation,
 `--context-assembly` marks the whole source file as a context assembly,
+`--context-loading-path` declares one normal runtime loading path for the
+current file,
 `--note` is a typed+anchored documentation line, `--supp` the block's own
 touched lines, `--unlock-surface` marks a context surface represented by an
 unlock registry, `--intent` derivation context, `--cont` a generic
@@ -59,18 +61,31 @@ ROUTING_VALUE_FLAGS = (
     "default",
     "load",
 )
+CONTEXT_LOADING_VALUE_FLAGS = ("step", "loading-dep")
 VALUE_FLAGS = (
-    "from",
-    "dev-from",
-    "cite",
-    "intent",
-    "to",
-    "note",
-    "supp",
-    "cont",
-) + ROUTING_VALUE_FLAGS
+    (
+        "from",
+        "dev-from",
+        "cite",
+        "intent",
+        "to",
+        "note",
+        "supp",
+        "cont",
+    )
+    + ROUTING_VALUE_FLAGS
+    + CONTEXT_LOADING_VALUE_FLAGS
+)
 ROUTING_BOOLEAN_FLAGS = ("routing-table", "router-row")
-BOOLEAN_FLAGS = ("unlock-surface", "context-assembly") + ROUTING_BOOLEAN_FLAGS
+CONTEXT_LOADING_BOOLEAN_FLAGS = ("context-loading-path",)
+BOOLEAN_FLAGS = (
+    (
+        "unlock-surface",
+        "context-assembly",
+    )
+    + ROUTING_BOOLEAN_FLAGS
+    + CONTEXT_LOADING_BOOLEAN_FLAGS
+)
 KNOWN_FLAGS = BINDING_FLAGS + ROLE_FLAGS + VALUE_FLAGS + BOOLEAN_FLAGS
 
 _ADDRESS_RE = re.compile(r"^[#^@]?[A-Za-z0-9_./#:^-]+$")
@@ -170,6 +185,7 @@ class SkwRecipe:
     froms: tuple[str, ...]
     dev_froms: tuple[str, ...]
     cites: tuple[str, ...]
+    loading_deps: tuple[str, ...]
     intent: str | None
     heading: str | None
     line: int
@@ -194,6 +210,7 @@ class SkwConstruct:
     froms: tuple[str, ...]
     dev_froms: tuple[str, ...]
     cites: tuple[str, ...]
+    loading_deps: tuple[str, ...]
     decl_span: tuple[int, int]
     body_span: tuple[int, int]
     body: tuple[str, ...]
@@ -204,6 +221,7 @@ class SkwDependency:
     froms: tuple[str, ...]
     dev_froms: tuple[str, ...]
     cites: tuple[str, ...]
+    loading_deps: tuple[str, ...]
     unlock_surface: bool
     context_assembly: bool
     heading: str | None
@@ -247,6 +265,21 @@ class SkwRoutingView:
 
 
 @dataclass(frozen=True)
+class SkwContextLoadingPath:
+    address: str
+    line: int
+    steps: tuple[str, ...]
+    decl_span: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class SkwContextLoadingDependency:
+    locator: str
+    line: int
+    address: str | None
+
+
+@dataclass(frozen=True)
 class SkwSource:
     lines: tuple[str, ...]
     recipes: tuple[SkwRecipe, ...]
@@ -255,6 +288,8 @@ class SkwSource:
     routing_tables: tuple[SkwRoutingTable, ...]
     router_rows: tuple[SkwRouterRow, ...]
     routing_views: tuple[SkwRoutingView, ...]
+    context_loading_paths: tuple[SkwContextLoadingPath, ...]
+    context_loading_dependencies: tuple[SkwContextLoadingDependency, ...]
     notes: tuple[SkwNote, ...]
     machinery_spans: tuple[tuple[int, int], ...]
     findings: tuple[SkwFinding, ...]
@@ -401,6 +436,7 @@ class _Frame:
     froms: tuple[str, ...]
     dev_froms: tuple[str, ...]
     cites: tuple[str, ...]
+    loading_deps: tuple[str, ...]
     unlock_surface: bool
     context_assembly: bool
     intent: str | None
@@ -417,6 +453,8 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
     routing_tables: list[SkwRoutingTable] = []
     router_rows: list[SkwRouterRow] = []
     routing_views: list[SkwRoutingView] = []
+    context_loading_paths: list[SkwContextLoadingPath] = []
+    context_loading_dependencies: list[SkwContextLoadingDependency] = []
     notes: list[SkwNote] = []
     machinery_spans: list[tuple[int, int]] = []
     findings: list[SkwFinding] = []
@@ -443,6 +481,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                     froms=frame.froms,
                     dev_froms=frame.dev_froms,
                     cites=frame.cites,
+                    loading_deps=frame.loading_deps,
                     intent=frame.intent,
                     heading=frame.heading,
                     line=frame.line,
@@ -456,7 +495,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             )
         elif (
             frame.command == "text"
-            and (frame.froms or frame.dev_froms or frame.cites)
+            and (frame.froms or frame.dev_froms or frame.cites or frame.loading_deps)
             and not _has_content(body)
         ):
             # A declaration-only dependency block owns no native body.
@@ -465,6 +504,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                     froms=frame.froms,
                     dev_froms=frame.dev_froms,
                     cites=frame.cites,
+                    loading_deps=frame.loading_deps,
                     unlock_surface=frame.unlock_surface,
                     context_assembly=frame.context_assembly,
                     heading=frame.heading,
@@ -485,6 +525,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                     froms=frame.froms,
                     dev_froms=frame.dev_froms,
                     cites=frame.cites,
+                    loading_deps=frame.loading_deps,
                     decl_span=frame.decl_span,
                     body_span=span,
                     body=body,
@@ -540,9 +581,12 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
     index = 0
     in_fence = False
     fence_line = 0
+    file_point_open = True
     while index < len(lines):
         line = lines[index]
         if carrier.is_fence(line):
+            if line.strip():
+                file_point_open = False
             in_fence = not in_fence
             fence_line = index + 1
             index += 1
@@ -553,6 +597,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
 
         boundary = carrier.boundary_name(line)
         if boundary is not None:
+            file_point_open = False
             force_close(index, f"{carrier.boundary_label} {boundary!r}")
             heading = boundary
             index += 1
@@ -595,9 +640,12 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                     )
                 )
                 machinery_spans.append((index, index + 1))
+            elif line.strip():
+                file_point_open = False
             index += 1
             continue
 
+        declaration_at_file_point = file_point_open
         decl_end, address, label, flags = _read_block(lines, index, findings, carrier)
 
         if address is not None:
@@ -611,21 +659,35 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             value for name, value in flags if name == "routing-table"
         ]
         router_row_values = [value for name, value in flags if name == "router-row"]
-        routing_view_values = [
-            value for name, value in flags if name == "routing-view"
+        routing_view_values = [value for name, value in flags if name == "routing-view"]
+        context_loading_path_values = [
+            value for name, value in flags if name == "context-loading-path"
         ]
         is_routing_table = bool(routing_table_values)
         is_router_row = bool(router_row_values)
         is_routing_view = bool(routing_view_values)
+        is_context_loading_path = bool(context_loading_path_values)
         routing_kinds = sum((is_routing_table, is_router_row, is_routing_view))
+        declaration_kinds = routing_kinds + int(is_context_loading_path)
         roles = (
-            []
-            if is_router_row
-            else [name for name in flag_names if name in ROLE_FLAGS]
+            [] if is_router_row else [name for name in flag_names if name in ROLE_FLAGS]
         )
         froms = tuple(value for name, value in flags if name == "from")
         dev_froms = tuple(value for name, value in flags if name == "dev-from")
         cites = tuple(value for name, value in flags if name == "cite")
+        loading_deps = tuple(
+            value for name, value in flags if name == "loading-dep" and value
+        )
+        if any(name == "loading-dep" and not value for name, value in flags):
+            findings.append(SkwFinding(index + 1, "--loading-dep requires a locator"))
+        context_loading_dependencies.extend(
+            SkwContextLoadingDependency(
+                locator=value,
+                line=index + 1,
+                address=address,
+            )
+            for value in loading_deps
+        )
         unlock_surface_values = [
             value for name, value in flags if name == "unlock-surface"
         ]
@@ -656,16 +718,27 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             findings.append(
                 SkwFinding(index + 1, "a router row cannot also carry a binding flag")
             )
-        if routing_kinds > 1:
+        if declaration_kinds > 1:
             findings.append(
                 SkwFinding(
                     index + 1,
-                    "a declaration cannot be a routing table, row, and view at once",
+                    "a declaration cannot carry several structural declaration kinds",
                 )
             )
         if routing_kinds and bindings:
             findings.append(
                 SkwFinding(index + 1, "routing annotations cannot carry a binding flag")
+            )
+        if is_context_loading_path and any(
+            name not in {"context-loading-path", "step", "loading-dep"}
+            for name in flag_names
+        ):
+            findings.append(
+                SkwFinding(
+                    index + 1,
+                    "--context-loading-path may carry only repeatable --step and "
+                    "--loading-dep fields",
+                )
             )
 
         role = roles[0] if roles else None
@@ -677,6 +750,8 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             command = "router-row"
         elif is_routing_view:
             command = "routing-view"
+        elif is_context_loading_path:
+            command = "context-loading-path"
         elif role is not None:
             if not stack or stack[-1].command in ("when", "then"):
                 # rows peer-close, so a sibling row is legal; only a top-level
@@ -736,11 +811,11 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             )
         if context_assembly and not froms:
             findings.append(
-                SkwFinding(
-                    index + 1, "--context-assembly requires at least one --from"
-                )
+                SkwFinding(index + 1, "--context-assembly requires at least one --from")
             )
-        if context_assembly and (address is not None or verb is not None or role is not None):
+        if context_assembly and (
+            address is not None or verb is not None or role is not None
+        ):
             findings.append(
                 SkwFinding(
                     index + 1,
@@ -748,13 +823,73 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                 )
             )
 
+        if is_context_loading_path:
+            steps = tuple(value for name, value in flags if name == "step" and value)
+            if any(context_loading_path_values):
+                findings.append(
+                    SkwFinding(index + 1, "--context-loading-path takes no value")
+                )
+            if address is None:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "--context-loading-path requires an explicit address",
+                    )
+                )
+            if not declaration_at_file_point:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "--context-loading-path must be declared at the file point",
+                    )
+                )
+            if not steps:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "--context-loading-path requires at least one --step",
+                    )
+                )
+            if steps and "SKILL.md" not in steps:
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "--context-loading-path must contain SKILL.md",
+                    )
+                )
+            if len(steps) != len(set(steps)):
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        "--context-loading-path cannot repeat a --step",
+                    )
+                )
+            if any(step == ".skw/AGENTS.md" for step in steps):
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        ".skw/AGENTS.md is builder guidance, not consumer context",
+                    )
+                )
+            if address is not None and steps:
+                context_loading_paths.append(
+                    SkwContextLoadingPath(
+                        address=address,
+                        line=index + 1,
+                        steps=steps,
+                        decl_span=(index, decl_end),
+                    )
+                )
+
         if is_routing_table:
             selections = [value for name, value in flags if name == "select"]
             if any(routing_table_values):
                 findings.append(SkwFinding(index + 1, "--routing-table takes no value"))
             if address is None:
                 findings.append(
-                    SkwFinding(index + 1, "--routing-table requires an explicit address")
+                    SkwFinding(
+                        index + 1, "--routing-table requires an explicit address"
+                    )
                 )
             if len(selections) != 1 or selections[0] not in {
                 "zero-or-one",
@@ -822,10 +957,15 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                 findings.append(
                     SkwFinding(index + 1, "explicit router row requires --flag")
                 )
-            if matches and matches[0] in {
-                "semantic",
-                "explicit-or-semantic",
-            } and not any(whens):
+            if (
+                matches
+                and matches[0]
+                in {
+                    "semantic",
+                    "explicit-or-semantic",
+                }
+                and not any(whens)
+            ):
                 findings.append(
                     SkwFinding(index + 1, "semantic router row requires --when")
                 )
@@ -843,11 +983,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                         "--router-row requires --to, --load, or --then",
                     )
                 )
-            if (
-                address is not None
-                and len(table_values) == 1
-                and len(matches) == 1
-            ):
+            if address is not None and len(table_values) == 1 and len(matches) == 1:
                 router_rows.append(
                     SkwRouterRow(
                         address=address,
@@ -905,12 +1041,13 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
         # a router parent) owns its `end`; a row peer-closes; an annotation
         # block — one carrying only `--from`/`--note`/`--supp` — self-closes at
         # its declaration, and following text stays surface.
-        annotation_only = routing_kinds > 0 or (
+        annotation_only = declaration_kinds > 0 or (
             command == "text"
             and (
                 bool(froms)
                 or bool(dev_froms)
                 or bool(cites)
+                or bool(loading_deps)
                 or bool(frame_notes)
                 or verb == "pointer"
                 or unlock_surface
@@ -943,6 +1080,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             froms=froms,
             dev_froms=dev_froms,
             cites=cites,
+            loading_deps=loading_deps,
             unlock_surface=unlock_surface,
             context_assembly=context_assembly,
             intent=" ".join(intent_parts) if intent_parts else None,
@@ -965,7 +1103,9 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
     for row in router_rows:
         if row.table not in table_addresses:
             findings.append(
-                SkwFinding(row.line, f"router row references unknown table: {row.table}")
+                SkwFinding(
+                    row.line, f"router row references unknown table: {row.table}"
+                )
             )
         for key in (*row.flags, *row.aliases):
             prior = route_keys.setdefault((row.table, key), row)
@@ -999,6 +1139,8 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
         routing_tables=tuple(routing_tables),
         router_rows=tuple(router_rows),
         routing_views=tuple(routing_views),
+        context_loading_paths=tuple(context_loading_paths),
+        context_loading_dependencies=tuple(context_loading_dependencies),
         notes=tuple(notes),
         machinery_spans=tuple(machinery_spans),
         findings=tuple(findings),
@@ -1026,9 +1168,13 @@ __all__ = [
     "ROLE_FLAGS",
     "ROUTING_BOOLEAN_FLAGS",
     "ROUTING_VALUE_FLAGS",
+    "CONTEXT_LOADING_BOOLEAN_FLAGS",
+    "CONTEXT_LOADING_VALUE_FLAGS",
     "VALUE_FLAGS",
     "Carrier",
     "SkwConstruct",
+    "SkwContextLoadingDependency",
+    "SkwContextLoadingPath",
     "SkwDependency",
     "SkwFinding",
     "SkwNote",
