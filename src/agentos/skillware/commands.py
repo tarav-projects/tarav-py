@@ -29,7 +29,7 @@ from agentos.skillware.build import (
     unlock_requirements,
 )
 from agentos.skillware.model import parse_skw_source
-from agentos.skillware.context import project_context
+from agentos.skillware.context import audit_context, project_context
 from agentos.skillware.edition_history import (
     EditionFile,
     EditionHistoryError,
@@ -560,12 +560,24 @@ def _cmd_skillware_status(args: argparse.Namespace) -> int:
 
 def _cmd_skillware_context(args: argparse.Namespace) -> int:
     try:
-        report = project_context(Path(args.skill), args.target)
+        report = (
+            project_context(Path(args.skill), args.target)
+            if args.target is not None
+            else audit_context(Path(args.skill))
+        )
     except SkillwareError as exc:
         raise CliError(str(exc)) from exc
     payload = report.as_dict()
     if args.json:
         print(json.dumps(payload, indent=2))
+        return 0
+    if args.target is None:
+        print("Context.Loading.Graph")
+        print(f"- targets: {len(report.targets)}")
+        for target in report.targets:
+            for path in target.paths:
+                print(f"- [satisfied] {target.target}{path.address}")
+                print("  " + " -> ".join(step.path for step in path.steps))
         return 0
     print("Projected.Context")
     print(f"- target: {report.target}")
@@ -858,7 +870,7 @@ def register_skillware_commands(
 
     context_parser = skillware_subparsers.add_parser(
         "context",
-        help="Project the declared runtime context for one managed target.",
+        help="Audit runtime reachability or project one managed target.",
     )
     context_parser.add_argument(
         "--skill",
@@ -867,8 +879,7 @@ def register_skillware_commands(
     )
     context_parser.add_argument(
         "--target",
-        required=True,
-        help="Runnable skill-root-relative target file.",
+        help="Optional local or package-qualified runnable target file.",
     )
     context_parser.add_argument(
         "--json",

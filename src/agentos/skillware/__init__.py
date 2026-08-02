@@ -7,11 +7,14 @@
 
 from agentos.skillware.model import SkwFinding, SkwRecipe, SkwSource, parse_skw_source
 from agentos.skillware.context import (
+    ContextReachabilityAudit,
     ContextLoadingEdge,
     ProjectedContextDependency,
     ProjectedContextPath,
     ProjectedContextReport,
     ProjectedContextStep,
+    RuntimeFileRef,
+    audit_context,
     project_context,
 )
 from agentos.skillware.edition_history import (
@@ -43,13 +46,16 @@ __all__ = [
     "EditionSupportResolver",
     "RecordEditionSessionResult",
     "ContextLoadingEdge",
+    "ContextReachabilityAudit",
     "ProjectedContextDependency",
     "ProjectedContextPath",
     "ProjectedContextReport",
     "ProjectedContextStep",
+    "RuntimeFileRef",
     "SkwFinding",
     "SkwRecipe",
     "SkwSource",
     "parse_skw_source",
+    "audit_context",
     "project_context",
 ]

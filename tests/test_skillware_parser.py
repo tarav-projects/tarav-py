@@ -284,6 +284,47 @@ def test_loading_dependency_requires_a_locator() -> None:
     )
 
 
+def test_parse_context_reachability_at_file_point() -> None:
+    source = parse_skw_source(
+        "> $kw: ^root-reachability\n"
+        "> --reachable-from @<agentos-pkg>/SKILL.md\n"
+        "> --reachable-from SKILL.md\n\n"
+        "# Skill\n"
+    )
+
+    assert not source.findings
+    assert [
+        (requirement.locator, requirement.line, requirement.address)
+        for requirement in source.context_reachabilities
+    ] == [
+        ("@<agentos-pkg>/SKILL.md", 1, "^root-reachability"),
+        ("SKILL.md", 1, "^root-reachability"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("> $kw: ^reachability --reachable-from\n", "requires a runtime file"),
+        (
+            "# Skill\n\n> $kw: ^reachability --reachable-from SKILL.md\n",
+            "must be declared at the file point",
+        ),
+        (
+            "> $kw: ^reachability --reachable-from @<agentos-pkg>\n",
+            "must name a runtime file",
+        ),
+        (
+            "> $kw: ^reachability --reachable-from ../SKILL.md\n",
+            "must name a runtime file",
+        ),
+    ],
+)
+def test_context_reachability_parse_findings(text: str, message: str) -> None:
+    source = parse_skw_source(text)
+    assert any(message in finding.message for finding in source.findings)
+
+
 @pytest.mark.parametrize(
     ("text", "message"),
     [
@@ -557,6 +598,31 @@ def test_annotated_router_load_target_must_resolve(tmp_path: Path) -> None:
         finding.message == "unresolvable router load: references/missing.md"
         for finding in expansion.findings
     )
+
+
+def test_annotated_router_load_resolves_registered_package_file(
+    tmp_path: Path,
+) -> None:
+    dependency = tmp_path / "dependency"
+    dependency.mkdir()
+    (dependency / "SKILL.md").write_text("# Dependency\n", encoding="utf-8")
+    skill = _write_skill(tmp_path)
+    (skill / ".skillware" / "skillware.json").write_text(
+        '{"deps": {"dependency": "../dependency"}}\n',
+        encoding="utf-8",
+    )
+    src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
+    src.write_text(
+        "# mod\n\n"
+        "> $kw: ^driver --routing-table --select many\n"
+        "> $kw: ^dependency --router-row --table ^driver --match semantic "
+        "--load @<dependency>/SKILL.md --when load the dependency\n",
+        encoding="utf-8",
+    )
+
+    expansion = expand_file(load_skillware(skill), Path("references/mod.skw.md"))
+
+    assert not expansion.findings
 
 
 def test_addressed_router_row_is_nonempty_dependency_content(tmp_path: Path) -> None:

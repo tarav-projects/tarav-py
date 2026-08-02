@@ -111,10 +111,18 @@ def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(
 
     good = tmp_path / "skw.json"
     good.write_text(
-        json.dumps({"depots": ["../pkg"], "projects": ["../sib"], "mystery": 1}),
+        json.dumps(
+            {
+                "id": "agentos-pkg",
+                "depots": ["../pkg"],
+                "projects": ["../sib"],
+                "mystery": 1,
+            }
+        ),
         encoding="utf-8",
     )
     config = parse_skw_config(good)
+    assert config.id == "agentos-pkg"
     assert config.depots == ("../pkg",)
     assert config.projects == ("../sib",)
     assert any("mystery" in w for w in config.warnings)
@@ -123,6 +131,11 @@ def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(
     bad.write_text(json.dumps({"depots": "not-a-list"}), encoding="utf-8")
     with pytest.raises(SkillwareError):
         parse_skw_config(bad)
+
+    invalid_id = tmp_path / "invalid-id.json"
+    invalid_id.write_text(json.dumps({"id": "Agentos Pkg"}), encoding="utf-8")
+    with pytest.raises(SkillwareError, match="package id"):
+        parse_skw_config(invalid_id)
 
 
 def test_skw_config_parses_strict_edition_history_policy(tmp_path: Path) -> None:

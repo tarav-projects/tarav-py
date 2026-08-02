@@ -56,6 +56,7 @@ class Skillware:
     build_root: Path
     src_root: Path
     depots: tuple[Path, ...]
+    package_id: str | None = None
     pkg_deps: dict[str, Path] = field(default_factory=dict)
     _depot_cache: dict = field(default_factory=dict, repr=False)
 
@@ -89,6 +90,7 @@ class _DepotNameEntry:
 
 PROJECT_MARKER = Path(".agentos") / "project.json"
 _SKW_CONFIG_KEYS = (
+    "id",
     "depots",
     "deps",
     "edition_history",
@@ -97,6 +99,7 @@ _SKW_CONFIG_KEYS = (
     "projects",
     "unlock_registries",
 )
+_PACKAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _UNLOCK_TOKEN_RE = re.compile(r"^skw-unlock:[0-9a-f]{12,64}$")
 
 
@@ -113,7 +116,8 @@ class EditionHistoryConfig:
 class SkwConfig:
     """A `skw.json` — the same schema at project and package scope.
 
-    All keys optional: `depots` (resolution roots), `deps` (the named
+    All keys optional: `id` (stable package identity), `depots` (resolution
+    roots), `deps` (the named
     `Skw.Pkg.Dependency` registry — `id → package-root`, serving both the
     concept domain, folded into the depot search, and the file domain,
     addressed as `@<id>/…`), `surfaces` (managed set; empty → discover),
@@ -121,6 +125,7 @@ class SkwConfig:
     depots extend cross-repo resolution), and `unlock_registries` (explicit
     Poi.Unlock.Token registry files)."""
 
+    id: str | None = None
     depots: tuple[str, ...] = ()
     deps: dict[str, str] = field(default_factory=dict)
     surfaces: tuple[str, ...] = ()
@@ -158,6 +163,14 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
                 f"skw.json `{key}` must be an object of string→string: {config_path}"
             )
         return dict(value)
+
+    package_id = raw.get("id")
+    if package_id is not None and (
+        not isinstance(package_id, str) or _PACKAGE_ID_RE.fullmatch(package_id) is None
+    ):
+        raise SkillwareError(
+            f"skw.json `id` must be a canonical package id: {config_path}"
+        )
 
     def _edition_history() -> EditionHistoryConfig | None:
         value = raw.get("edition_history")
@@ -215,6 +228,7 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
         )
 
     return SkwConfig(
+        id=package_id,
         depots=_list("depots"),
         deps=_map("deps"),
         surfaces=_list("surfaces"),
@@ -498,9 +512,11 @@ def load_skillware(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> Ski
         raise SkillwareError(f"not a skw package (no {BUILD_DIR}/src): {skill_root}")
     depots: list[Path] = []
     pkg_deps: dict[str, Path] = {}
+    package_id: str | None = None
     settings_path = _settings_path(build_root)
     if settings_path is not None:
         config = parse_skw_config(settings_path)
+        package_id = config.id
         for raw_depot in config.depots:
             depot = (skill_root / raw_depot).resolve()
             if not depot.is_dir():
@@ -528,6 +544,7 @@ def load_skillware(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> Ski
         build_root=build_root,
         src_root=src_root,
         depots=tuple(depots),
+        package_id=package_id,
         pkg_deps=pkg_deps,
     )
 
@@ -549,12 +566,32 @@ def _edge_hash_key(role: str, locator: str) -> str:
 
 
 def _routing_load_exists(skillware: Skillware, raw: str) -> bool:
+    package_match = _PKG_DEP_RE.fullmatch(raw)
+    if package_match is not None:
+        dep_id, raw = package_match.groups()
+        package_root = skillware.pkg_deps.get(dep_id)
+        if package_root is None:
+            return False
+        root = package_root
+    elif raw.startswith("@<"):
+        return False
+    else:
+        root = skillware.skill_root
     path = Path(raw)
     if path.is_absolute() or ".." in path.parts:
         return False
-    target = skillware.skill_root / path
+    target = root / path
     if target.exists():
         return True
+    if root != skillware.skill_root:
+        try:
+            dependency = load_skillware(root)
+        except SkillwareError:
+            return False
+        if path.suffix != ".md":
+            return (dependency.src_root / path).exists()
+        source_name = path.name[: -len(".md")] + SRC_SUFFIX
+        return (dependency.src_root / path.with_name(source_name)).exists()
     if path.suffix != ".md":
         return (skillware.src_root / path).exists()
     source_name = path.name[: -len(".md")] + SRC_SUFFIX

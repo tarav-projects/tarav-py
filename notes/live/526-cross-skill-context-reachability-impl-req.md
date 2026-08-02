@@ -2,7 +2,7 @@
 
 ## Impl.Abstract
 
-- status: ready
+- status: complete
 - scope: extend `Context.Loading.Model` across Skillware package boundaries, type cross-skill router loads as whole-file graph edges, add target-side `--reachable-from` assertions, expose graph-wide reachability auditing, and make every Skillware-managed public skill in `agentos-md/skills` reachable from `agentos-pkg/SKILL.md`
 - source: the current autonomous Hugentics implementation request ^c20260802-12u
 - out of scope: Workspace.Context.Path composition, addressed-content dependency modes beyond the existing local model, converting unmanaged external skills to Skillware, and inferring load edges from free-form `--to` text
@@ -43,28 +43,28 @@
 
 ### Vertical.Slice::Language.And.Identity
 
-- status: pending
+- status: complete
 - change: add explicit package ids, parse `--reachable-from`, and validate canonical runtime-file locators
 - RED.GREEN.Test.Suite: parser and config tests reject missing values, malformed locators, misplaced declarations, duplicate ids, and registry/id disagreement while accepting repeatable file-level assertions
 - observable result: Skillware sources and package configs carry stable runtime graph identities
 
 ### Vertical.Slice::Cross.Package.Graph
 
-- status: pending
+- status: complete
 - change: generalize router `--load` edges across registered packages and add deterministic reachability witness resolution
 - RED.GREEN.Test.Suite: context tests cover direct and transitive cross-package paths, an unmanaged runnable target, unknown packages, missing files, and unreachable assertions
 - observable result: qualified router loads behave as typed whole-file edges without interpreting `--to`
 
 ### Vertical.Slice::Audit.Command
 
-- status: pending
+- status: complete
 - change: make `--target` optional for graph-wide audit and support package-qualified target projection
 - RED.GREEN.Test.Suite: command tests cover compact audit output, JSON witness paths, failure on an unsatisfied declaration, and unchanged local projection behavior
 - observable result: one command verifies all reachability assertions visible from a root skill
 
 ### Vertical.Slice::Agentos.Adoption
 
-- status: pending
+- status: complete
 - change: register and route every managed public Agentos skill from `agentos-pkg`, annotate each target, rebuild managed surfaces, and update Skillware operator/developer documentation plus `agentos-py/AGENTS.md`
 - check: run the real root graph audit, all affected Skillware builds/checks, focused and full `agentos-py` suites, Ruff, and `git diff --check`
 - observable result: every managed public Agentos skill has a verified path from `agentos-pkg/SKILL.md`; all existing root cross-skill rows carry typed load edges
@@ -78,3 +78,6 @@
 ## Impl.Log
 
 - 2026-08-02: autonomous execution authorized by the current `--impl --dev --AUTO` turn ^c20260802-12u
+- 2026-08-02: the first real package build exposed a second local-only router-load validator in expansion; generalized it to the same registered package-qualified runtime locator contract rather than special-casing the Agentos root.
+- 2026-08-02: Agentos Project Doctor still depended on the retired Hugentics `^index-ground-entry`; reconciled it to `^driver-index-literacy` and re-derived the consumer wording before final checks.
+- 2026-08-02: completed with thirteen managed public Agentos skill witnesses from `agentos-pkg/SKILL.md`, typed loading to the unmanaged Chatlas skill, zero affected Skillware POIs, 102 focused tests, 632 full-suite tests, and Ruff/diff checks clean.

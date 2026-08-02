@@ -17,6 +17,8 @@ Features are additive `--flags`, not commands: the binding mode is a flag
 `--context-assembly` marks the whole source file as a context assembly,
 `--context-loading-path` declares one normal runtime loading path for the
 current file,
+`--reachable-from` asserts that some typed loading path reaches the current
+file from a named runtime file,
 `--note` is a typed+anchored documentation line, `--supp` the block's own
 touched lines, `--unlock-surface` marks a context surface represented by an
 unlock registry, `--intent` derivation context, `--cont` a generic
@@ -47,6 +49,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 
 RECIPE_BINDINGS = ("derived", "copy")
 BINDING_FLAGS = ("derived", "copy", "pointer")
@@ -61,7 +64,7 @@ ROUTING_VALUE_FLAGS = (
     "default",
     "load",
 )
-CONTEXT_LOADING_VALUE_FLAGS = ("step", "loading-dep")
+CONTEXT_LOADING_VALUE_FLAGS = ("step", "loading-dep", "reachable-from")
 VALUE_FLAGS = (
     (
         "from",
@@ -92,6 +95,25 @@ _ADDRESS_RE = re.compile(r"^[#^@]?[A-Za-z0-9_./#:^-]+$")
 _FLAG_RE = re.compile(rf"(?:^|\s)--({'|'.join(KNOWN_FLAGS)})(?=\s|$)")
 _NOTE_TYPE_RE = re.compile(r"^\[([A-Z]{2})\]\s*(.*)$")
 _TRAILING_ANCHOR_RE = re.compile(r"\s+(\^[A-Za-z0-9_-]+)\s*$")
+_RUNTIME_PACKAGE_RE = re.compile(r"^@<([a-z0-9][a-z0-9._-]*)>/(.+)$")
+
+
+def _valid_runtime_file_locator(locator: str) -> bool:
+    tail = locator
+    package = _RUNTIME_PACKAGE_RE.fullmatch(locator)
+    if package is not None:
+        tail = package.group(2)
+    elif locator.startswith("@<"):
+        return False
+    if not tail or "\\" in tail or "^" in tail or "#" in tail:
+        return False
+    path = PurePosixPath(tail)
+    return not (
+        path.is_absolute()
+        or path == PurePosixPath(".")
+        or ".." in path.parts
+        or path.parts[0] in {".skw", ".skillware"}
+    )
 
 
 @dataclass(frozen=True)
@@ -280,6 +302,13 @@ class SkwContextLoadingDependency:
 
 
 @dataclass(frozen=True)
+class SkwContextReachability:
+    locator: str
+    line: int
+    address: str
+
+
+@dataclass(frozen=True)
 class SkwSource:
     lines: tuple[str, ...]
     recipes: tuple[SkwRecipe, ...]
@@ -290,6 +319,7 @@ class SkwSource:
     routing_views: tuple[SkwRoutingView, ...]
     context_loading_paths: tuple[SkwContextLoadingPath, ...]
     context_loading_dependencies: tuple[SkwContextLoadingDependency, ...]
+    context_reachabilities: tuple[SkwContextReachability, ...]
     notes: tuple[SkwNote, ...]
     machinery_spans: tuple[tuple[int, int], ...]
     findings: tuple[SkwFinding, ...]
@@ -455,6 +485,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
     routing_views: list[SkwRoutingView] = []
     context_loading_paths: list[SkwContextLoadingPath] = []
     context_loading_dependencies: list[SkwContextLoadingDependency] = []
+    context_reachabilities: list[SkwContextReachability] = []
     notes: list[SkwNote] = []
     machinery_spans: list[tuple[int, int]] = []
     findings: list[SkwFinding] = []
@@ -688,6 +719,43 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             )
             for value in loading_deps
         )
+        has_reachable_from_flag = any(
+            name == "reachable-from" for name, _ in flags
+        )
+        reachable_froms = tuple(
+            value for name, value in flags if name == "reachable-from" and value
+        )
+        if any(name == "reachable-from" and not value for name, value in flags):
+            findings.append(
+                SkwFinding(index + 1, "--reachable-from requires a runtime file")
+            )
+        if reachable_froms and address is None:
+            findings.append(
+                SkwFinding(index + 1, "--reachable-from requires an explicit address")
+            )
+        if reachable_froms and not declaration_at_file_point:
+            findings.append(
+                SkwFinding(
+                    index + 1,
+                    "--reachable-from must be declared at the file point",
+                )
+            )
+        for locator in reachable_froms:
+            if not _valid_runtime_file_locator(locator):
+                findings.append(
+                    SkwFinding(
+                        index + 1,
+                        f"--reachable-from must name a runtime file: {locator!r}",
+                    )
+                )
+            elif address is not None:
+                context_reachabilities.append(
+                    SkwContextReachability(
+                        locator=locator,
+                        line=index + 1,
+                        address=address,
+                    )
+                )
         unlock_surface_values = [
             value for name, value in flags if name == "unlock-surface"
         ]
@@ -730,7 +798,13 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                 SkwFinding(index + 1, "routing annotations cannot carry a binding flag")
             )
         if is_context_loading_path and any(
-            name not in {"context-loading-path", "step", "loading-dep"}
+            name
+            not in {
+                "context-loading-path",
+                "step",
+                "loading-dep",
+                "reachable-from",
+            }
             for name in flag_names
         ):
             findings.append(
@@ -1048,6 +1122,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
                 or bool(dev_froms)
                 or bool(cites)
                 or bool(loading_deps)
+                or has_reachable_from_flag
                 or bool(frame_notes)
                 or verb == "pointer"
                 or unlock_surface
@@ -1141,6 +1216,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
         routing_views=tuple(routing_views),
         context_loading_paths=tuple(context_loading_paths),
         context_loading_dependencies=tuple(context_loading_dependencies),
+        context_reachabilities=tuple(context_reachabilities),
         notes=tuple(notes),
         machinery_spans=tuple(machinery_spans),
         findings=tuple(findings),
@@ -1175,6 +1251,7 @@ __all__ = [
     "SkwConstruct",
     "SkwContextLoadingDependency",
     "SkwContextLoadingPath",
+    "SkwContextReachability",
     "SkwDependency",
     "SkwFinding",
     "SkwNote",
