@@ -1,8 +1,17 @@
+# $kw: --from Index.Linter/Anchor.Collision --note [IMPL] distinct canonical contents cannot share one support anchor --supp ^c20260802-103u
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 
-from agentos.index.model import BlockHeading, IndexDocument, KernelLine
+from agentos.index.model import (
+    BlockHeading,
+    IndexDocument,
+    KernelLine,
+    canonical_index_line_content,
+    index_line_content_hash,
+    index_line_content_parts,
+)
 
 from ._linter_models import (
     CoverageItem,
@@ -25,6 +34,8 @@ ANCHOR_LEGACY_SIGIL = "Index.Linter/Anchor.LegacySigil"
 CHECK_ANCHOR_LEGACY_SIGIL = "Index.Linter/Anchor.LegacySigil"
 ANCHOR_UNPREFIXED = "Index.Linter/Anchor.Unprefixed"
 CHECK_ANCHOR_UNPREFIXED = "Index.Linter/Anchor.Unprefixed"
+ANCHOR_COLLISION = "Index.Linter/Anchor.Collision"
+CHECK_ANCHOR_COLLISION = "Index.Linter/Anchor.Collision"
 TYPE_STATEMENT_LEGACY_SIGIL = "Index.Linter/TypeStatement.LegacySigil"
 CHECK_TYPE_STATEMENT_LEGACY_SIGIL = "Index.Linter/TypeStatement.LegacySigil"
 LINE_UNLINKED = "Index.Linter/Line.Unlinked"
@@ -153,6 +164,69 @@ def _check_unprefixed_anchor(
                     details={"anchor": anchor},
                 )
             )
+    return findings
+
+
+def _check_anchor_collision(
+    state: LinterState,
+    documents: tuple[IndexDocument, ...],
+) -> list[LinterFinding]:
+    occurrences: dict[str, dict[str, list[dict[str, object]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    content_details: dict[str, dict[str, str | None]] = {}
+    for _document, line in parsed_linter_kernel_lines(state, documents):
+        content_hash = index_line_content_hash(line.src)
+        line_type, body = index_line_content_parts(line.src)
+        content_details.setdefault(
+            content_hash,
+            {
+                "content_hash": content_hash,
+                "line_type": line_type,
+                "body": body,
+                "canonical": canonical_index_line_content(line.src),
+            },
+        )
+        location: dict[str, object] = {
+            "path": state.rel_path(line.path) if line.path else ".",
+            "line": line.start_line,
+        }
+        location["path_line"] = f"{location['path']}:{line.start_line}"
+        for span in line.spans:
+            if span.kind == "anchor":
+                occurrences[str(span.parsed["anchor"])][content_hash].append(location)
+
+    findings: list[LinterFinding] = []
+    for anchor, by_content in sorted(occurrences.items()):
+        if len(by_content) < 2:
+            continue
+        locations = [
+            location
+            for content_hash in sorted(by_content)
+            for location in by_content[content_hash]
+        ]
+        first = locations[0]
+        findings.append(
+            LinterFinding(
+                severity="error",
+                code=ANCHOR_COLLISION,
+                path=str(first["path"]),
+                line=int(first["line"]),
+                message=(
+                    f"Anchor ^{anchor} is attached to more than one distinct "
+                    "Index line content; retain one relationship and reanchor "
+                    "the other contents with equivalent support sets."
+                ),
+                details={
+                    "anchor": anchor,
+                    "contents": [
+                        content_details[content_hash]
+                        for content_hash in sorted(by_content)
+                    ],
+                    "locations": locations,
+                },
+            )
+        )
     return findings
 
 
@@ -353,6 +427,13 @@ PARSER_CHECKS: tuple[LinterCheck, ...] = (
         title="Unprefixed anchor citations",
         gate=_needs_valid_surface,
         run=_check_unprefixed_anchor,
+        surface_kinds=frozenset({"chapter", "appendix", "agendix"}),
+    ),
+    bind_floor_check(
+        code=CHECK_ANCHOR_COLLISION,
+        title="Anchor ownership by distinct Index line content",
+        gate=_needs_valid_surface,
+        run=_check_anchor_collision,
         surface_kinds=frozenset({"chapter", "appendix", "agendix"}),
     ),
     bind_floor_check(

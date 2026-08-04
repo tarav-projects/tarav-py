@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from .identity import (
+    INDEX_LINE_CONTENT_SCHEMA,
+    canonical_index_line_content,
+    index_line_content_hash,
+    index_line_content_parts,
+)
 from .nodes import (
     BlankLine,
     BlockHeading,
@@ -27,6 +33,7 @@ __all__ = [
     "BlockHeading",
     "CodeFence",
     "Diagnostic",
+    "INDEX_LINE_CONTENT_SCHEMA",
     "IndexDepotModel",
     "IndexDocument",
     "IndexSurfaceKind",
@@ -38,6 +45,9 @@ __all__ = [
     "RouterEntry",
     "Separator",
     "Text",
+    "canonical_index_line_content",
+    "index_line_content_hash",
+    "index_line_content_parts",
     "parse_depot",
     "parse_index_file",
 ]

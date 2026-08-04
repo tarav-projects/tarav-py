@@ -9,6 +9,9 @@ from agentos.index.model import (
     KernelLine,
     MetaLine,
     RouterEntry,
+    canonical_index_line_content,
+    index_line_content_hash,
+    index_line_content_parts,
     parse_depot,
     parse_index_file,
 )
@@ -104,7 +107,9 @@ def test_index_model_parses_kernel_lines_spans_meta_and_fences() -> None:
     ]
 
 
-def test_index_model_parses_router_dialects_depot_and_anchor_queries(tmp_path: Path) -> None:
+def test_index_model_parses_router_dialects_depot_and_anchor_queries(
+    tmp_path: Path,
+) -> None:
     depot = tmp_path / "depot"
     _write(
         depot / "000-INDEX.md",
@@ -119,9 +124,17 @@ def test_index_model_parses_router_dialects_depot_and_anchor_queries(tmp_path: P
         depot / "design" / "100-design.md",
         "****\n## Example.Concept\n\n- [GR] linked ^20260705-0\n****\n",
     )
-    _write(depot / "design" / "101-design.md", "****\n## Third.Concept\n\n- text\n****\n")
-    _write(depot / "appendix" / "Example.Concept-appendix.md", "****\n## Example.Concept/Depth\n\n- depth\n****\n")
-    _write(depot / "agendix" / "Example.Concept-agendix.md", "****\n## Example.Concept/Agendix\n\n- [AS:CT] capture ^20260708-0\n****\n")
+    _write(
+        depot / "design" / "101-design.md", "****\n## Third.Concept\n\n- text\n****\n"
+    )
+    _write(
+        depot / "appendix" / "Example.Concept-appendix.md",
+        "****\n## Example.Concept/Depth\n\n- depth\n****\n",
+    )
+    _write(
+        depot / "agendix" / "Example.Concept-agendix.md",
+        "****\n## Example.Concept/Agendix\n\n- [AS:CT] capture ^20260708-0\n****\n",
+    )
     _write(depot / "design" / "AGENTS.md", "# ignored\n")
 
     model = parse_depot(depot)
@@ -147,10 +160,14 @@ def test_index_model_parses_router_dialects_depot_and_anchor_queries(tmp_path: P
         "appendix",
         "agendix",
     }
-    assert all(document.path is None or document.path.name != "AGENTS.md" for document in model.documents)
-    assert [(line.path.name, line.start_line) for line in model.blocks_by_anchor("20260705-0")] == [
-        ("100-design.md", 4)
-    ]
+    assert all(
+        document.path is None or document.path.name != "AGENTS.md"
+        for document in model.documents
+    )
+    assert [
+        (line.path.name, line.start_line)
+        for line in model.blocks_by_anchor("20260705-0")
+    ] == [("100-design.md", 4)]
     assert model.anchors_by_block("Example.Concept") == ["20260705-0"]
 
 
@@ -174,3 +191,22 @@ def test_anchor_spans_accept_namespace_prefix_and_tag(tmp_path: Path) -> None:
         if span.kind == "anchor"
     ]
     assert anchors == ["c20260718-4u", "c20260718-5", "20260718-6"]
+
+
+def test_index_line_content_identity_excludes_links_and_attachment() -> None:
+    first = "- [CT]  Same `Line.Content` here  ^c20260802-1u ^c20260802-2u"
+    second = "- [CT] Same `Line.Content` here ^c20260802-9u"
+
+    assert index_line_content_parts(first) == ("CT", "Same `Line.Content` here")
+    assert canonical_index_line_content(first) == canonical_index_line_content(second)
+    assert index_line_content_hash(first) == index_line_content_hash(second)
+    assert index_line_content_hash(
+        "- [DC] Same `Line.Content` here"
+    ) != index_line_content_hash(first)
+    assert index_line_content_hash(
+        "- [CT] Same line elsewhere"
+    ) != index_line_content_hash(first)
+    assert index_line_content_parts("- legacy grounded line ^c20260802-1u") == (
+        None,
+        "legacy grounded line",
+    )

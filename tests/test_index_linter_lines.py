@@ -412,3 +412,38 @@ def test_index_linter_flags_unprefixed_anchor_citations(
     assert len(hits) == 1
     assert hits[0].details["anchor"] == "20260718-1"
     assert hits[0].severity == "warning"
+
+
+def test_index_linter_reports_anchor_collision_across_depots(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    first = _clean_depot(tmp_path / "first", include_appendix=False)
+    second = _clean_depot(tmp_path / "second", include_appendix=False)
+    _write(
+        first / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n"
+        "- [CT] first content ^c20260802-1u\n"
+        "- [CT] repeated content ^c20260802-2u\n"
+        "****\n",
+    )
+    _write(
+        second / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n"
+        "- [DC] distinct content ^c20260802-1u\n"
+        "- [CT] repeated content ^c20260802-2u\n"
+        "****\n",
+    )
+
+    state = _run(depot_paths=(str(first), str(second)))
+    hits = [
+        finding
+        for finding in state.findings
+        if finding.code == "Index.Linter/Anchor.Collision"
+    ]
+
+    assert len(hits) == 1
+    assert hits[0].severity == "error"
+    assert hits[0].details["anchor"] == "c20260802-1u"
+    assert len(hits[0].details["contents"]) == 2
+    assert len(hits[0].details["locations"]) == 2

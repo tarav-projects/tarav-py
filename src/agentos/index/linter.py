@@ -38,9 +38,11 @@ from ._linter_models import (
     parsed_linter_kernel_lines,
 )
 from ._linter_parser_checks import (
+    ANCHOR_COLLISION,
     ANCHOR_LEGACY_SIGIL,
     ANCHOR_UNPREFIXED,
     BLOCK_UNGROUNDED,
+    CHECK_ANCHOR_COLLISION,
     CHECK_ANCHOR_LEGACY_SIGIL,
     CHECK_ANCHOR_UNPREFIXED,
     CHECK_BLOCK_UNGROUNDED,
@@ -121,6 +123,7 @@ from .poi import finding_to_poi
 
 
 __all__ = [
+    "ANCHOR_COLLISION",
     "ANCHOR_LEGACY_SIGIL",
     "ANCHOR_UNPREFIXED",
     "APPENDIX_FILENAME_RE",
@@ -139,6 +142,7 @@ __all__ = [
     "BLOCK_UNCLOSED_CODE_FENCE",
     "BLOCK_UNGROUNDED",
     "CHECKS",
+    "CHECK_ANCHOR_COLLISION",
     "CHECK_ANCHOR_LEGACY_SIGIL",
     "CHECK_ANCHOR_UNPREFIXED",
     "CHECK_APPENDIX_FILENAMES",
