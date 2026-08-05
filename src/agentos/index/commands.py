@@ -188,11 +188,80 @@ def _cmd_blocks(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_issues(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from agentos._core.errors import CliError
+
+    from .issues import issue_inventory
+    from .model import parse_depot
+
+    support_resolver = getattr(args, "_support_reference_resolver", None)
+    review_resolver = getattr(args, "_review_reference_resolver", None)
+    if support_resolver is None or review_resolver is None:
+        raise CliError(
+            "agentos index issues requires support and review reference resolvers"
+        )
+    root = Path.cwd().resolve()
+    rows = []
+    for raw_depot in args.depot:
+        depot = (root / raw_depot).resolve()
+        if not depot.is_dir():
+            raise CliError(f"agentos index issues depot is not a directory: {raw_depot}")
+        rows.extend(
+            issue_inventory(
+                parse_depot(depot),
+                resolve_support_reference=support_resolver,
+                resolve_review_reference=review_resolver,
+            )
+        )
+    payload = {
+        "command": "agentos index issues",
+        "issues": [
+            {
+                "identity": issue.identity,
+                "number": issue.number,
+                "name": issue.name,
+                "block_path": issue.block_path,
+                "path": str(issue.path),
+                "line": issue.line,
+                "state": issue.state,
+                "healthy": issue.healthy,
+                "resolution_lines": list(issue.resolution_lines),
+                "line_count": len(issue.lines),
+                "grounded_line_count": sum(line.grounded for line in issue.lines),
+                "reviewed_line_count": sum(line.reviewed for line in issue.lines),
+            }
+            for issue in rows
+        ],
+        "summary": {
+            "issues": len(rows),
+            "open": sum(issue.state == "open" for issue in rows),
+            "resolved": sum(issue.state == "resolved" for issue in rows),
+            "healthy": sum(issue.healthy for issue in rows),
+        },
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+    print("Index issues")
+    for issue in rows:
+        health = "healthy" if issue.healthy else "needs attention"
+        print(f"- {issue.block_path}: {issue.state}, {health}")
+    summary = payload["summary"]
+    print(
+        f"Summary: {summary['issues']} issue(s), {summary['open']} open, "
+        f"{summary['resolved']} resolved."
+    )
+    return 0
+
+
 def register_index_commands(
     subparsers: argparse._SubParsersAction,
     *,
     extra_linter_checks: Sequence[LinterCheck] = (),
     support_reference_resolver: Callable[[str], bool] | None = None,
+    review_reference_resolver: Callable[[str, str], bool] | None = None,
     poi_catalog: POICatalog | None = None,
 ) -> None:
     index_parser = subparsers.add_parser(
@@ -200,6 +269,27 @@ def register_index_commands(
         help="Index knowledge surface operations.",
     )
     index_subparsers = index_parser.add_subparsers(dest="index_command")
+
+    issues_parser = index_subparsers.add_parser(
+        "issues",
+        help="List Issue.Blocks with computed open or resolved standing.",
+    )
+    issues_parser.add_argument(
+        "--depot",
+        action="append",
+        required=True,
+        help="Index depot containing issues/. Repeat for multiple depots.",
+    )
+    issues_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit structured JSON output.",
+    )
+    issues_parser.set_defaults(
+        handler=_cmd_issues,
+        _support_reference_resolver=support_reference_resolver,
+        _review_reference_resolver=review_reference_resolver,
+    )
 
     blocks_parser = index_subparsers.add_parser(
         "blocks",
@@ -247,7 +337,7 @@ def register_index_commands(
         help="Lint Agentos Index depot surfaces.",
         description=(
             "Lint explicit Agentos index and appendix files or directories, "
-            "or derive chapter, appendix, and agendix surfaces from depot roots."
+            "or derive chapter, appendix, agendix, and issues surfaces from depot roots."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -265,7 +355,7 @@ def register_index_commands(
         action="append",
         default=[],
         help=(
-            "Depot root to derive index chapter, appendix, and agendix surfaces "
+            "Depot root to derive index chapter, appendix, agendix, and issues surfaces "
             "from. Repeat to lint multiple depots."
         ),
     )

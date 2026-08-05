@@ -263,13 +263,14 @@ def build_linter_config(
     derived_index_paths: list[str] = list(index_paths)
     derived_appendix_paths: list[str] = list(appendix_paths)
     derived_agendix_paths: list[str] = []
+    derived_issues_paths: list[str] = []
     for depot_path in resolved_depots:
         if not depot_path.is_dir():
             continue
         for chapter_dir in sorted(
             path for path in depot_path.iterdir() if path.is_dir()
         ):
-            if chapter_dir.name in {"appendix", "agendix"}:
+            if chapter_dir.name in {"appendix", "agendix", "issues"}:
                 continue
             if any(
                 (match := INDEX_FILENAME_RE.fullmatch(path.name)) is not None
@@ -289,6 +290,11 @@ def build_linter_config(
             derived_agendix_paths.append(
                 _relativize_under_root(resolved_root, agendix_dir)
             )
+        issues_dir = depot_path / "issues"
+        if issues_dir.is_dir():
+            derived_issues_paths.append(
+                _relativize_under_root(resolved_root, issues_dir)
+            )
     return (
         LinterConfig(
             root=resolved_root,
@@ -303,6 +309,10 @@ def build_linter_config(
             agendix_paths=tuple(
                 _resolve_under_root(resolved_root, path)
                 for path in derived_agendix_paths
+            ),
+            issues_paths=tuple(
+                _resolve_under_root(resolved_root, path)
+                for path in derived_issues_paths
             ),
             coverage=resolved_coverage,
             scope_paths=resolved_scope_paths,

@@ -5,7 +5,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 
-IndexSurfaceKind = Literal["router", "chapter", "appendix", "agendix", "unknown"]
+IndexSurfaceKind = Literal[
+    "router", "chapter", "appendix", "agendix", "issues", "unknown"
+]
 
 
 @dataclass(frozen=True)

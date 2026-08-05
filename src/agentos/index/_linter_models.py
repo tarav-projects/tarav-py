@@ -14,7 +14,7 @@ from agentos.index.model import (
 
 Severity = Literal["error", "warning"]
 CheckStatus = Literal["passed", "failed", "blocked"]
-SurfaceKind = Literal["index", "appendix", "agendix"]
+SurfaceKind = Literal["index", "appendix", "agendix", "issues"]
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,7 @@ class LinterConfig:
     index_paths: tuple[Path, ...]
     appendix_paths: tuple[Path, ...]
     agendix_paths: tuple[Path, ...]
+    issues_paths: tuple[Path, ...]
     coverage: frozenset[str] = frozenset()
     scope_paths: tuple[Path, ...] = ()
 
@@ -162,10 +163,20 @@ class LinterState:
     raw_appendix_paths: tuple[str, ...]
     surfaces: list[SurfacePath] = field(default_factory=list)
     files_by_kind: dict[SurfaceKind, list[str]] = field(
-        default_factory=lambda: {"index": [], "appendix": [], "agendix": []}
+        default_factory=lambda: {
+            "index": [],
+            "appendix": [],
+            "agendix": [],
+            "issues": [],
+        }
     )
     mdblock_files_by_kind: dict[SurfaceKind, list[dict[str, Any]]] = field(
-        default_factory=lambda: {"index": [], "appendix": [], "agendix": []}
+        default_factory=lambda: {
+            "index": [],
+            "appendix": [],
+            "agendix": [],
+            "issues": [],
+        }
     )
     concepts: dict[str, list[ConceptBlock]] = field(default_factory=dict)
     appendix_concepts: dict[str, list[str]] = field(default_factory=dict)
@@ -386,6 +397,7 @@ def _parser_surface_files(state: LinterState) -> list[tuple[Path, str]]:
         (state.config.index_paths, "chapter"),
         (state.config.appendix_paths, "appendix"),
         (state.config.agendix_paths, "agendix"),
+        (state.config.issues_paths, "issues"),
     ):
         for surface in paths:
             if surface.is_file():

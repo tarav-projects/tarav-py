@@ -34,6 +34,7 @@ _BLOCK_PATH_SEGMENT = rf"(?:{_CONCEPT_REF}|{_CONCEPT_SEGMENT})"
 BLOCK_PATH_RE = re.compile(rf"^{_CONCEPT_REF}(?:/{_BLOCK_PATH_SEGMENT})*$")
 APPENDIX_FILENAME_RE = re.compile(rf"^(?P<concept>{_CONCEPT_REF})-appendix(?:-(?P<page>[2-9][0-9]*))?\.md$")
 AGENDIX_FILENAME_RE = re.compile(rf"^(?:{_CONCEPT_REF}|Unassigned)-agendix\.md$")
+ISSUE_FILENAME_RE = re.compile(r"^[1-9][0-9]{2}-issues\.md$")
 INDEX_FILENAME_RE = re.compile(r"^(?P<number>[1-9][0-9]{2})-(?P<chapter>[a-z0-9][a-z0-9-]*)\.md$")
 ROUTER_ENTRY_RE = re.compile(r"^-\s+`(?P<file>[^`]+\.md)`\s+[—-]\s+(?P<concepts>.+)$")
 APPENDIX_ROUTE_ANNOTATION_RE = re.compile(r"\[\+(?P<count>[1-9][0-9]*)\]$")
@@ -332,6 +333,12 @@ def _classify_surface(root: Path, path: Path) -> IndexSurfaceKind:
     rel = path.relative_to(root)
     if path.name == "000-INDEX.md" and len(rel.parts) == 1:
         return "router"
+    if (
+        len(rel.parts) == 2
+        and rel.parts[0] == "issues"
+        and ISSUE_FILENAME_RE.fullmatch(path.name)
+    ):
+        return "issues"
     if len(rel.parts) == 2 and INDEX_FILENAME_RE.fullmatch(path.name):
         match = INDEX_FILENAME_RE.fullmatch(path.name)
         if match and match.group("chapter") == rel.parts[0]:

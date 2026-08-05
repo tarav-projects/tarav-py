@@ -50,7 +50,7 @@ def block_grounding_stats(
         return resolution_cache[anchor]
 
     for document in model.documents:
-        if document.surface_kind != "chapter":
+        if document.surface_kind not in {"chapter", "issues"}:
             continue
         lines_by_block: dict[str, list[KernelLine]] = {}
         for node in document.nodes:

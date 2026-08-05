@@ -54,16 +54,19 @@ SURFACE_MISSING_BY_KIND: dict[SurfaceKind, str] = {
     "index": "Index.Linter/Surface.IndexMissing",
     "appendix": "Index.Linter/Surface.AppendixMissing",
     "agendix": "Index.Linter/Surface.AgendixMissing",
+    "issues": "Index.Linter/Surface.IssuesMissing",
 }
 SURFACE_NOT_MARKDOWN_BY_KIND: dict[SurfaceKind, str] = {
     "index": "Index.Linter/Surface.IndexNotMarkdown",
     "appendix": "Index.Linter/Surface.AppendixNotMarkdown",
     "agendix": "Index.Linter/Surface.AgendixNotMarkdown",
+    "issues": "Index.Linter/Surface.IssuesNotMarkdown",
 }
 SURFACE_INVALID_BY_KIND: dict[SurfaceKind, str] = {
     "index": "Index.Linter/Surface.IndexInvalid",
     "appendix": "Index.Linter/Surface.AppendixInvalid",
     "agendix": "Index.Linter/Surface.AgendixInvalid",
+    "issues": "Index.Linter/Surface.IssuesInvalid",
 }
 FILES_NONE = "Index.Linter/Files.None"
 MDBLOCKS_SYNTAX = "Index.Linter/Mdblocks.Syntax"
@@ -87,6 +90,10 @@ APPENDIX_ORPHAN = "Index.Linter/Appendix.Orphan"
 APPENDIX_ROUTE_ANNOTATION_MISSING = "Index.Linter/Appendix.RouteAnnotationMissing"
 APPENDIX_ROUTE_ANNOTATION_STALE = "Index.Linter/Appendix.RouteAnnotationStale"
 APPENDIX_PAGE_GAP = "Index.Linter/Appendix.PageGap"
+ISSUE_INVALID_FILENAME = "Index.Linter/Issue.InvalidFilename"
+ISSUE_INVALID_IDENTITY = "Index.Linter/Issue.InvalidIdentity"
+ISSUE_LINE_TYPE_REQUIRED = "Index.Linter/Issue.Line.TypeRequired"
+ISSUE_LINE_GROUNDING_REQUIRED = "Index.Linter/Issue.Line.GroundingRequired"
 ROUTER_INVALID_CONCEPT = "Index.Linter/Router.InvalidConcept"
 ROUTER_ENTRIES_EMPTY = "Index.Linter/Router.EntriesEmpty"
 ROUTER_MISSING_ENTRY = "Index.Linter/Router.MissingEntry"
@@ -108,6 +115,7 @@ CHECK_ROUTER_ENTRIES = "Index.Linter/Check.RouterEntries"
 CHECK_ROUTER_COVERAGE = "Index.Linter/Check.RouterCoverage"
 CHECK_ROUTER_TARGETS = "Index.Linter/Check.RouterTargets"
 CHECK_APPENDIX_ROUTE_ANNOTATIONS = "Index.Linter/Check.AppendixRouteAnnotations"
+CHECK_ISSUE_STRUCTURE = "Index.Linter/Check.IssueStructure"
 
 CHECK_DEPOT_DEPENDENCIES = "Index.Linter/Check.DepotDependencies"
 DEPOT_DEP_UNRESOLVED = "Index.Linter/DepotDependency.Unresolved"
@@ -279,6 +287,7 @@ def _check_config_surfaces(state: LinterState) -> list[LinterFinding]:
         state.config.index_paths
         or state.config.appendix_paths
         or state.config.agendix_paths
+        or state.config.issues_paths
     ):
         if state.raw_depot_paths:
             # A valid index depot that simply has no chapter surfaces yet — a
@@ -318,6 +327,11 @@ def _check_config_surfaces(state: LinterState) -> list[LinterFinding]:
             "agendix",
             tuple(state.rel_path(path) for path in state.config.agendix_paths),
             state.config.agendix_paths,
+        ),
+        (
+            "issues",
+            tuple(state.rel_path(path) for path in state.config.issues_paths),
+            state.config.issues_paths,
         ),
     ):
         for raw_path, path in zip(raw_paths, paths, strict=True):
@@ -550,7 +564,7 @@ def _check_concept_inventory(state: LinterState) -> list[LinterFinding]:
     findings: list[LinterFinding] = []
     _ensure_parsed_documents(state)
     for document in state.parsed_documents:
-        if document.surface_kind != "chapter":
+        if document.surface_kind not in {"chapter", "issues"}:
             continue
         for block in (
             node for node in document.nodes if isinstance(node, BlockHeading)
@@ -630,6 +644,71 @@ def _check_appendix_filenames(state: LinterState) -> list[LinterFinding]:
         state.appendix_pages.setdefault(concept, {}).setdefault(page, []).append(
             rel_path
         )
+    return findings
+
+
+def _check_issue_structure(state: LinterState) -> list[LinterFinding]:
+    from agentos.index.issues import ISSUE_BLOCK_RE, ISSUE_FILENAME_RE
+    from agentos.index.model import KernelLine
+
+    findings: list[LinterFinding] = []
+    _ensure_parsed_documents(state)
+    for rel_path in state.files_by_kind["issues"]:
+        if ISSUE_FILENAME_RE.fullmatch(Path(rel_path).name):
+            continue
+        findings.append(
+            LinterFinding(
+                severity="error",
+                code=ISSUE_INVALID_FILENAME,
+                path=rel_path,
+                message="Issue filename must match `NNN-issues.md`.",
+            )
+        )
+    for document in state.parsed_documents:
+        if document.surface_kind != "issues":
+            continue
+        for node in document.nodes:
+            rel = state.rel_path(node.path) if node.path else "."
+            if isinstance(node, BlockHeading):
+                path = str(node.parsed.get("path", ""))
+                if ISSUE_BLOCK_RE.fullmatch(path) is None:
+                    findings.append(
+                        LinterFinding(
+                            severity="error",
+                            code=ISSUE_INVALID_IDENTITY,
+                            path=rel,
+                            line=node.start_line,
+                            message=(
+                                "Issue block identity must match "
+                                "`Issue.I####[.Dotted.Name]`."
+                            ),
+                            details={"block_path": path},
+                        )
+                    )
+            if not isinstance(node, KernelLine):
+                continue
+            if node.parsed.get("act") is None:
+                findings.append(
+                    LinterFinding(
+                        severity="error",
+                        code=ISSUE_LINE_TYPE_REQUIRED,
+                        path=rel,
+                        line=node.start_line,
+                        message="Every Issue.Block line must carry a Line.Type.",
+                    )
+                )
+            if not any(span.kind == "anchor" for span in node.spans):
+                findings.append(
+                    LinterFinding(
+                        severity="error",
+                        code=ISSUE_LINE_GROUNDING_REQUIRED,
+                        path=rel,
+                        line=node.start_line,
+                        message=(
+                            "Every Issue.Block line must carry a Support.Reference."
+                        ),
+                    )
+                )
     return findings
 
 
@@ -947,6 +1026,12 @@ STRUCTURAL_CHECKS: tuple[LinterCheck, ...] = (
         title="Appendix filenames",
         gate=_needs_valid_surface,
         run=_check_appendix_filenames,
+    ),
+    LinterCheck(
+        code=CHECK_ISSUE_STRUCTURE,
+        title="Issue filenames, identities, typing, and support references",
+        gate=_needs_valid_surface,
+        run=_check_issue_structure,
     ),
     LinterCheck(
         code=CHECK_APPENDIX_ORPHANS,
