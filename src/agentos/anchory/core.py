@@ -90,6 +90,23 @@ AnchoryAmendValidator = Callable[
     None,
 ]
 
+# Decides one record's replacement, or None to leave it alone.
+AnchoryBulkAmendment = Callable[[str, dict[str, object]], Mapping[str, object] | None]
+
+
+@dataclass(frozen=True)
+class AnchoryBulkAmendResult:
+    """What one bulk amendment saw and changed."""
+
+    scanned: int
+    changed: tuple[str, ...]
+    shards: int
+    dry_run: bool
+
+    @property
+    def changed_count(self) -> int:
+        return len(self.changed)
+
 
 class AnchoryRuntimeCache:
     """Bounded, caller-owned cache for one Anchory operation."""
@@ -297,6 +314,74 @@ class AnchoryDepot:
                     self._touch_registry(refresh=True)
                     return AnchoryEntry(anchor=anchor, record=dict(normalized_record))
         raise AnchorNotFoundError(f"anchor does not exist: {anchor}")
+
+    def bulk_amend(
+        self,
+        amendment: AnchoryBulkAmendment,
+        *,
+        namespace: str | None = None,
+        validator: AnchoryAmendValidator | None = None,
+        dry_run: bool = False,
+    ) -> AnchoryBulkAmendResult:
+        """Amend every record in the depot under one exclusive lock.
+
+        This is `amend` over the whole depot rather than one named anchor. It
+        takes the same optional validator and applies it to each record it
+        would change, so the rules do not depend on how many anchors a caller
+        happens to be touching.
+
+        The lock is what this exists for. Reading each shard, deciding, and
+        writing it back is a read-modify-write; done without the lock held for
+        the whole sweep, a concurrent `register` landing in an already-read
+        shard is silently dropped. `dry_run` reports what would change without
+        writing, under the same lock.
+        """
+        namespaces = (
+            [_validate_namespace(namespace)]
+            if namespace is not None
+            else self.namespaces()
+        )
+        scanned = 0
+        changed: list[str] = []
+        shards = 0
+        with self._lock(exclusive=True, create=True):
+            for candidate in namespaces:
+                namespace_root = self.root / candidate
+                for path in sorted(namespace_root.glob("*.json")):
+                    if path.name == META_FILENAME:
+                        continue
+                    records = _read_shard(path)
+                    updated: dict[str, object] = {}
+                    shard_changed = False
+                    for anchor, record in records.items():
+                        scanned += 1
+                        current = _normalize_record(record)
+                        proposed = amendment(anchor, dict(current))
+                        if proposed is None:
+                            updated[anchor] = record
+                            continue
+                        normalized = _normalize_record(proposed)
+                        if normalized == current:
+                            updated[anchor] = record
+                            continue
+                        if validator is not None:
+                            validator(self.root, dict(current), dict(normalized))
+                        updated[anchor] = normalized
+                        changed.append(anchor)
+                        shard_changed = True
+                    if shard_changed:
+                        shards += 1
+                        if not dry_run:
+                            _write_shard_atomic(path, updated)
+        if changed and not dry_run:
+            self._invalidate_runtime_cache()
+            self._touch_registry(refresh=True)
+        return AnchoryBulkAmendResult(
+            scanned=scanned,
+            changed=tuple(sorted(changed)),
+            shards=shards,
+            dry_run=dry_run,
+        )
 
     def query(
         self, *, namespace: str | None = None, prefix: str | None = None

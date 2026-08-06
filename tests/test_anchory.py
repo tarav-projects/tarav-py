@@ -370,3 +370,154 @@ def test_scan_anchory_source_deduplicates_after_first_occurrence() -> None:
         AnchorySourceMatch(anchor="alpha", line=1, column=2, start=1, end=6),
         AnchorySourceMatch(anchor="beta", line=2, column=2, start=8, end=12),
     )
+
+
+# `a18`, `a174`, `a306` and `a345` all shard together, so a sweep and a racing
+# register contend for one file rather than merely for the depot.
+_SHARED_SHARD = ("a18", "a174", "a306")
+_RACING_ANCHOR = "a345"
+
+
+def _bulk_amend_holding_a_read(root: str, start: object, read_done: object) -> None:
+    """A bulk amend that pauses between reading a shard and writing it back."""
+    import time
+
+    def amendment(_anchor: str, record: dict) -> dict:
+        read_done.set()  # type: ignore[attr-defined]
+        time.sleep(0.5)
+        return {**record, "swept": True}
+
+    start.wait()  # type: ignore[attr-defined]
+    AnchoryDepot(root).bulk_amend(amendment)
+
+
+def _register_inside_the_read_window(
+    root: str, anchor: str, start: object, read_done: object
+) -> None:
+    start.wait()  # type: ignore[attr-defined]
+    read_done.wait(timeout=10)  # type: ignore[attr-defined]
+    AnchoryDepot(root).register({"value": "late"}, anchor=anchor)
+
+
+def test_bulk_amend_rewrites_every_record(tmp_path: Path) -> None:
+    depot = AnchoryDepot(tmp_path / "anchory")
+    for index in range(5):
+        depot.register({"value": index, "keep": "me"}, anchor=f"a{index}")
+
+    result = depot.bulk_amend(
+        lambda _anchor, record: {**record, "value": record["value"] + 100}
+    )
+
+    assert result.scanned == 5
+    assert result.changed_count == 5
+    assert result.dry_run is False
+    assert [depot.resolve(f"a{i}").record["value"] for i in range(5)] == [
+        100,
+        101,
+        102,
+        103,
+        104,
+    ]
+    assert depot.resolve("a0").record["keep"] == "me"
+
+
+def test_bulk_amend_reports_only_records_it_actually_changed(tmp_path: Path) -> None:
+    depot = AnchoryDepot(tmp_path / "anchory")
+    depot.register({"value": 1}, anchor="a0")
+    depot.register({"value": 2}, anchor="a1")
+
+    # None leaves a record alone; an identical record is also not a change.
+    result = depot.bulk_amend(
+        lambda anchor, record: None if anchor == "a0" else {**record, "value": 2}
+    )
+
+    assert result.scanned == 2
+    assert result.changed == ()
+    assert result.shards == 0
+
+
+def test_bulk_amend_dry_run_writes_nothing(tmp_path: Path) -> None:
+    depot = AnchoryDepot(tmp_path / "anchory")
+    depot.register({"value": 1}, anchor="a0")
+
+    result = depot.bulk_amend(lambda _a, record: {**record, "value": 99}, dry_run=True)
+
+    assert result.dry_run is True
+    assert result.changed == ("a0",)
+    assert depot.resolve("a0").record["value"] == 1
+
+
+def test_bulk_amend_applies_the_same_validator_amend_takes(tmp_path: Path) -> None:
+    """One rule system: the caller's validator, whatever the anchor count."""
+    depot = AnchoryDepot(tmp_path / "anchory")
+    depot.register({"value": 1}, anchor="a0")
+    depot.register({"value": 2}, anchor="a1")
+    seen: list[tuple[dict, dict]] = []
+
+    def validator(_root, current, proposed):
+        seen.append((current, proposed))
+        if proposed["value"] > 50:
+            raise InvalidAnchoryInputError("value is out of range")
+
+    with pytest.raises(InvalidAnchoryInputError):
+        depot.bulk_amend(
+            lambda _a, record: {**record, "value": record["value"] + 99},
+            validator=validator,
+        )
+
+    # It refused on the first offending record and wrote nothing.
+    assert len(seen) == 1
+    assert depot.resolve("a0").record["value"] == 1
+    assert depot.resolve("a1").record["value"] == 2
+
+
+def test_bulk_amend_does_not_validate_records_it_leaves_alone(tmp_path: Path) -> None:
+    depot = AnchoryDepot(tmp_path / "anchory")
+    depot.register({"value": 1}, anchor="a0")
+
+    def validator(_root, _current, _proposed):
+        raise AssertionError("an unchanged record must not be validated")
+
+    result = depot.bulk_amend(lambda _a, record: dict(record), validator=validator)
+
+    assert result.scanned == 1
+    assert result.changed == ()
+
+
+def test_a_concurrent_register_cannot_land_inside_a_bulk_amend(tmp_path: Path) -> None:
+    """The hazard this path exists to remove: a lost concurrent write.
+
+    The bulk amend pauses between reading the shard and writing it back, and
+    the racing register fires inside exactly that window, against a record that
+    shares the shard. Without the exclusive lock the write-back drops it.
+    """
+    root = tmp_path / "anchory"
+    depot = AnchoryDepot(root)
+    for index, anchor in enumerate(_SHARED_SHARD):
+        depot.register({"value": index}, anchor=anchor)
+
+    context = multiprocessing.get_context("spawn")
+    start = context.Event()
+    read_done = context.Event()
+    processes = [
+        context.Process(
+            target=_bulk_amend_holding_a_read, args=(str(root), start, read_done)
+        ),
+        context.Process(
+            target=_register_inside_the_read_window,
+            args=(str(root), _RACING_ANCHOR, start, read_done),
+        ),
+    ]
+    for process in processes:
+        process.start()
+    start.set()
+    for process in processes:
+        process.join(timeout=60)
+
+    assert [process.exitcode for process in processes] == [0, 0]
+    fresh = AnchoryDepot(root)
+    for anchor in _SHARED_SHARD:
+        assert fresh.resolve(anchor).record["swept"] is True
+    racer = fresh.resolve(_RACING_ANCHOR)
+    assert racer is not None, "the concurrent register was clobbered by the bulk amend"
+    assert racer.record["value"] == "late"
