@@ -1,4 +1,4 @@
-# $kw: ^test-tournament-store --from Agentos.Tournament --from Tournament.Verdict --note [DF] boundary tests for the verdict record split and the append-only store ^<anchor-on-landing>
+# $kw: ^test-tournament-store --from Agentos.Tournament --from Tournament.Verdict --from Tournament.Depot --note [DF] boundary tests for the verdict record split and the append-only, namespace-scoped store ^<anchor-on-landing>
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,8 +21,11 @@ def _tournament(store: TournamentStore) -> str:
     return store.create_tournament(
         definition_path="/defs/lines.py",
         definition_digest="sha256:" + "0" * 64,
-        players=("a", "b", "c"),
     ).tournament_id
+
+
+def _judge() -> dict[str, object]:
+    return {"provider": "claude-code", "model": None, "account": None}
 
 
 def test_verdict_round_trips_envelope_and_consumer_slot(tmp_path: Path) -> None:
@@ -58,7 +61,7 @@ def test_append_only_store_exposes_no_mutation(tmp_path: Path) -> None:
             players=("a", "b"),
             outcome=VerdictOutcome.PREFERRED,
             preferred="a",
-            judge={"provider": "claude-code", "model": None, "account": None},
+            judge=_judge(),
             presented=("a", "b"),
             verbatim_hash="sha256:" + "2" * 64,
         )
@@ -78,7 +81,7 @@ def test_repeated_match_id_accumulates_rather_than_replacing(tmp_path: Path) -> 
             players=("a", "b"),
             outcome=VerdictOutcome.PREFERRED,
             preferred=preferred,
-            judge={"provider": "claude-code", "model": None, "account": None},
+            judge=_judge(),
             presented=("a", "b"),
             verbatim_hash="sha256:" + "3" * 64,
         )
@@ -98,7 +101,7 @@ def test_missing_match_id_is_rejected_rather_than_generated(tmp_path: Path) -> N
             players=("a", "b"),
             outcome=VerdictOutcome.PREFERRED,
             preferred="a",
-            judge={"provider": "claude-code", "model": None, "account": None},
+            judge=_judge(),
             presented=("a", "b"),
             verbatim_hash="sha256:" + "4" * 64,
         )
@@ -115,7 +118,7 @@ def test_consumer_slot_may_not_shadow_an_envelope_field(tmp_path: Path) -> None:
             players=("a", "b"),
             outcome=VerdictOutcome.PREFERRED,
             preferred="a",
-            judge={"provider": "claude-code", "model": None, "account": None},
+            judge=_judge(),
             presented=("a", "b"),
             verbatim_hash="sha256:" + "5" * 64,
             slot={"outcome": "b"},
@@ -133,7 +136,7 @@ def test_no_contest_verdict_requires_and_keeps_its_reason(tmp_path: Path) -> Non
         outcome=VerdictOutcome.NO_CONTEST,
         no_contest_reason="the two lines are not comparable",
         no_contest_attribution="question",
-        judge={"provider": "claude-code", "model": None, "account": None},
+        judge=_judge(),
         presented=("a", "b"),
         verbatim_hash="sha256:" + "6" * 64,
     )
@@ -145,7 +148,7 @@ def test_no_contest_verdict_requires_and_keeps_its_reason(tmp_path: Path) -> Non
     assert verdict.envelope["preferred"] is None
 
 
-def test_verdicts_are_scoped_to_their_tournament(tmp_path: Path) -> None:
+def test_verdicts_never_read_another_tournaments_namespace(tmp_path: Path) -> None:
     store = _store(tmp_path)
     first = _tournament(store)
     second = _tournament(store)
@@ -155,10 +158,12 @@ def test_verdicts_are_scoped_to_their_tournament(tmp_path: Path) -> None:
         players=("a", "b"),
         outcome=VerdictOutcome.PREFERRED,
         preferred="a",
-        judge={"provider": "claude-code", "model": None, "account": None},
+        judge=_judge(),
         presented=("a", "b"),
         verbatim_hash="sha256:" + "7" * 64,
     )
 
     assert len(store.verdicts(first)) == 1
     assert store.verdicts(second) == ()
+    assert (store.root / "records" / first).is_dir()
+    assert (store.root / "records" / second).is_dir()

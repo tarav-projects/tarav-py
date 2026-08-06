@@ -31,7 +31,7 @@ def _record_payload(depot: BloberiaDepot, record: BloberiaRecord) -> dict[str, o
 def _cmd_create(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        record = depot.create(_value_arg(args))
+        record = depot.create(_value_arg(args), namespace=args.namespace)
     except BloberiaError as exc:
         raise CliError(str(exc)) from exc
     _print_json(_record_payload(depot, record))
@@ -41,7 +41,7 @@ def _cmd_create(args: argparse.Namespace) -> int:
 def _cmd_get(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        record = depot.get(args.id)
+        record = depot.get(args.id, namespace=args.namespace)
     except BloberiaError as exc:
         raise CliError(str(exc)) from exc
     _print_json(_record_payload(depot, record))
@@ -51,7 +51,7 @@ def _cmd_get(args: argparse.Namespace) -> int:
 def _cmd_edit(args: argparse.Namespace) -> int:
     depot = _depot(args)
     try:
-        record = depot.edit(args.id, _value_arg(args))
+        record = depot.edit(args.id, _value_arg(args), namespace=args.namespace)
     except BloberiaError as exc:
         raise CliError(str(exc)) from exc
     _print_json(_record_payload(depot, record))
@@ -66,7 +66,7 @@ def _cmd_query(args: argparse.Namespace) -> int:
         field_name="query",
     )
     try:
-        records = depot.query(query)
+        records = depot.query(query, namespace=args.namespace)
     except BloberiaError as exc:
         raise CliError(str(exc)) from exc
     _print_json(
@@ -90,6 +90,16 @@ def _add_depot_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--depot", required=True, help="Exact Bloberia depot root.")
 
 
+def _add_namespace_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--namespace",
+        help=(
+            "Placement-only record namespace under records/, as a relative path "
+            "prefix. Omitted, reads walk every namespace and writes land at the root."
+        ),
+    )
+
+
 def _add_record_id_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--id", required=True, help="Opaque Bloberia record identity.")
 
@@ -111,11 +121,13 @@ def register_bloberia_commands(
 
     create_parser = commands.add_parser("create", help="Create a record.")
     _add_depot_argument(create_parser)
+    _add_namespace_argument(create_parser)
     _add_value_arguments(create_parser)
     create_parser.set_defaults(handler=_cmd_create)
 
     get_parser = commands.add_parser("get", help="Read one record by identity.")
     _add_depot_argument(get_parser)
+    _add_namespace_argument(get_parser)
     _add_record_id_argument(get_parser)
     get_parser.set_defaults(handler=_cmd_get)
 
@@ -123,6 +135,7 @@ def register_bloberia_commands(
         "edit", help="Atomically replace one record's application value."
     )
     _add_depot_argument(edit_parser)
+    _add_namespace_argument(edit_parser)
     _add_record_id_argument(edit_parser)
     _add_value_arguments(edit_parser)
     edit_parser.set_defaults(handler=_cmd_edit)
@@ -131,6 +144,7 @@ def register_bloberia_commands(
         "query", help="Select records by structural JSON subset."
     )
     _add_depot_argument(query_parser)
+    _add_namespace_argument(query_parser)
     query_group = query_parser.add_mutually_exclusive_group()
     query_group.add_argument("--query-json", help="Structural query as a JSON object.")
     query_group.add_argument(

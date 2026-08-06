@@ -1,4 +1,4 @@
-# $kw: ^tournament-store --from Agentos.Tournament --from Tournament.Verdict --from Agentos.Bloberia --note [CT] append-only is a Tournament-layer rule; BloberiaDepot.edit exists and this store never calls it ^<anchor-on-landing>
+# $kw: ^tournament-store --from Agentos.Tournament --from Tournament.Verdict --from Tournament.Depot --from Bloberia.Record.Namespace --note [CT] append-only is a Tournament-layer rule; BloberiaDepot.edit exists and this store never calls it --supp ^c20260806-28u ^<anchor-on-landing>
 """Bloberia-backed tournament and verdict storage.
 
 Append-only is enforced here, not by Bloberia: ``BloberiaDepot.edit`` mutates in
@@ -12,7 +12,9 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from agentos._core.clock import iso_z, utc_now_iso
+from agentos._core.ids import generate_uuid4_string
 from agentos.bloberia import BloberiaDepot, BloberiaRecord
+from agentos.tournament.depot import DEFINITIONS_DIRNAME, resolve_depot_root
 from agentos.tournament.model import (
     ENVELOPE_KEY,
     KIND_KEY,
@@ -33,51 +35,56 @@ class TournamentNotFoundError(TournamentError):
 
 
 class TournamentStore:
-    """One tournament depot rooted at an explicit directory."""
+    """One `Tournament.Depot`: frozen definitions beside namespaced records."""
 
-    def __init__(self, root: Path | str) -> None:
-        self.depot = BloberiaDepot(root)
+    def __init__(self, root: Path | str | None = None) -> None:
+        self.root = resolve_depot_root(root)
+        self.depot = BloberiaDepot(self.root)
+
+    def definition_dir(self, tournament_id: str) -> Path:
+        return self.root / DEFINITIONS_DIRNAME / tournament_id
 
     def create_tournament(
         self,
         *,
         definition_path: str,
         definition_digest: str,
-        players: tuple[str, ...] | list[str],
     ) -> Tournament:
-        players = tuple(str(player) for player in players)
-        if len(set(players)) != len(players):
-            raise TournamentError("player identities must be unique within a pool")
-        if len(players) < 2:
-            raise TournamentError("a tournament pool needs at least two players")
-        record = self.depot.create(
+        # The store mints the identity rather than adopting Bloberia's record id:
+        # the namespace has to exist before the record is written, and a tournament
+        # is a namespace rather than a record.
+        tournament_id = generate_uuid4_string()
+        self.depot.create(
             {
                 KIND_KEY: RECORD_KIND_TOURNAMENT,
+                "tournament_id": tournament_id,
                 "definition_path": definition_path,
                 "definition_digest": definition_digest,
-                "players": list(players),
                 "created_at": utc_now_iso(),
-            }
+            },
+            namespace=tournament_id,
         )
-        return _tournament_from_record(record)
+        return self.tournament(tournament_id)
 
     def tournament(self, tournament_id: str) -> Tournament:
-        matches = self.depot.query(
-            {"value": {KIND_KEY: RECORD_KIND_TOURNAMENT}}
+        records = self.depot.query(
+            {"value": {KIND_KEY: RECORD_KIND_TOURNAMENT}}, namespace=tournament_id
         )
-        for record in matches:
-            if record.id == tournament_id:
-                return _tournament_from_record(record)
+        for record in records:
+            return _tournament_from_record(record)
         raise TournamentNotFoundError(f"tournament does not exist: {tournament_id}")
 
     def tournaments(self) -> tuple[Tournament, ...]:
-        records = self.depot.query({"value": {KIND_KEY: RECORD_KIND_TOURNAMENT}})
-        return tuple(
-            sorted(
-                (_tournament_from_record(record) for record in records),
-                key=lambda item: item.created_at,
-            )
-        )
+        """List by namespace directory rather than by scanning every record."""
+        found: list[Tournament] = []
+        for namespace in self.depot.namespaces():
+            if "/" in namespace:
+                continue
+            try:
+                found.append(self.tournament(namespace))
+            except TournamentNotFoundError:
+                continue
+        return tuple(sorted(found, key=lambda item: item.created_at))
 
     def append_verdict(
         self,
@@ -135,7 +142,8 @@ class TournamentStore:
                 KIND_KEY: RECORD_KIND_VERDICT,
                 ENVELOPE_KEY: envelope,
                 SLOT_KEY: slot_value,
-            }
+            },
+            namespace=tournament_id,
         )
         return _verdict_from_record(record)
 
@@ -151,7 +159,7 @@ class TournamentStore:
                 "tournament_id": tournament_id,
                 "match_id": match_id,
             }
-        records = self.depot.query({"value": query})
+        records = self.depot.query({"value": query}, namespace=tournament_id)
         return tuple(
             sorted(
                 (_verdict_from_record(record) for record in records),
@@ -165,10 +173,9 @@ def _tournament_from_record(record: BloberiaRecord) -> Tournament:
     if not isinstance(value, dict):
         raise TournamentError(f"corrupt tournament record: {record.id}")
     return Tournament(
-        tournament_id=record.id,
+        tournament_id=str(value["tournament_id"]),
         definition_path=str(value["definition_path"]),
         definition_digest=str(value["definition_digest"]),
-        players=tuple(str(player) for player in value["players"]),
         created_at=str(value["created_at"]),
     )
 

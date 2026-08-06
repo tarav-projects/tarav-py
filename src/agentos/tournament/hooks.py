@@ -1,31 +1,43 @@
-# $kw: ^tournament-hooks --from Tournament.Hook --from Tournament.Definition --note [DF] named consumer functions the engine calls at fixed points; every hook has a working default and none may perform effects ^<anchor-on-landing>
+# $kw: ^tournament-hooks --from Tournament.Hook --from Tournament.Definition --note [DC] the match-players and match-identity hooks are required and have no default; every other hook defaults --supp ^c20260806-21u ^<anchor-on-landing>
 """Consumer-owned tournament definitions, loaded as snapshotted Python.
 
-A definition file exposes named functions. Each has a working default, so a file
-declaring none still runs end to end. Hooks return values; the engine performs
-every effect. The file is snapshotted at load and matches execute the snapshot,
-so a definition edited mid-tournament cannot silently make later verdicts
-incomparable with earlier ones.
+A definition file exposes named functions. Two are required and have no default:
+``match_players`` names the two competitors of one match, and ``match_identity``
+supplies that match's opaque identity. The engine computes neither — a generated
+pool would not be the consumer's, and a generated identity would silently stop
+accumulation.
+
+``present_player`` and ``verdict_slot`` default, so a definition supplies only
+what its domain forces. Hooks return values; the engine performs every effect.
+The file is snapshotted at load and matches execute the snapshot, so a definition
+edited mid-tournament cannot silently make later verdicts incomparable with
+earlier ones.
+
+A hook may randomize *which* players meet — that is sampling strategy, and
+`random` writes nothing that purity verification would catch. Only presentation
+order is engine business, because the engine decodes the judge's answer through
+the order it ran.
 """
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 
 from agentos.tournament import locking
 from agentos.tournament.model import TournamentError
 
-RENDER_MATCH = "render_match"
+MATCH_PLAYERS = "match_players"
 MATCH_IDENTITY = "match_identity"
+PRESENT_PLAYER = "present_player"
 VERDICT_SLOT = "verdict_slot"
-SELECT_PAIRS = "select_pairs"
 
-HOOK_NAMES = (RENDER_MATCH, MATCH_IDENTITY, VERDICT_SLOT, SELECT_PAIRS)
+REQUIRED_HOOKS = (MATCH_PLAYERS, MATCH_IDENTITY)
+DEFAULTED_HOOKS = (PRESENT_PLAYER, VERDICT_SLOT)
+HOOK_NAMES = REQUIRED_HOOKS + DEFAULTED_HOOKS
 
 DEFAULT_QUESTION = "Which of the two candidates below is better?"
 
@@ -48,16 +60,21 @@ class HookPurityError(HookError):
 
 @dataclass(frozen=True)
 class HookContext:
-    """Read-only data handed to a hook. Carries data, nothing callable."""
+    """Read-only data handed to a hook. Carries data, nothing callable.
+
+    It never carries the presented order. Identity that varied with the shuffle
+    would make every repeat run a different match and stop accumulation.
+    """
 
     question: str
-    players: tuple[str, ...]
-    presented: tuple[str, ...]
-    snapshot_path: str
-    rendering: str | None = None
+    criteria: str | None = None
+    player: str | None = None
+    players: tuple[str, ...] = ()
+    presentations: tuple[str, ...] = ()
     verdicts: tuple[dict[str, object], ...] = ()
-    pool: tuple[str, ...] = ()
+    match_index: int = 0
     budget: int = 0
+    snapshot_path: str = ""
 
 
 @dataclass
@@ -72,38 +89,48 @@ class TournamentDefinition:
 
     @property
     def question(self) -> str:
-        value = getattr(self.module, "question", DEFAULT_QUESTION)
-        return str(value)
+        return str(getattr(self.module, "question", DEFAULT_QUESTION))
 
-    def render_match(
-        self, *, players: tuple[str, ...], presented: tuple[str, ...]
-    ) -> str:
-        context = self._context(players=players, presented=presented)
-        hook = getattr(self.module, RENDER_MATCH, None)
+    @property
+    def criteria(self) -> str | None:
+        value = getattr(self.module, "criteria", None)
+        return None if value is None else str(value)
+
+    def match_players(
+        self,
+        *,
+        verdicts: tuple[dict[str, object], ...],
+        match_index: int,
+        budget: int,
+    ) -> tuple[str, str] | None:
+        context = self._context(
+            verdicts=verdicts, match_index=match_index, budget=budget
+        )
+        value = self._call(MATCH_PLAYERS, getattr(self.module, MATCH_PLAYERS), context)
+        if value is None:
+            return None
+        return _validated_pair(value)
+
+    def present_player(self, player: str) -> str:
+        hook = getattr(self.module, PRESENT_PLAYER, None)
         if hook is None:
-            return _default_render(context)
-        value = self._call(RENDER_MATCH, hook, context)
+            return str(player)
+        context = self._context(player=str(player))
+        value = self._call(PRESENT_PLAYER, hook, context)
         if not isinstance(value, str) or not value.strip():
             raise HookReturnError(
-                f"{RENDER_MATCH} must return a non-empty string "
+                f"{PRESENT_PLAYER} must return a non-empty string "
                 f"(got {type(value).__name__})"
             )
         return value
 
     def match_identity(
-        self,
-        *,
-        players: tuple[str, ...],
-        presented: tuple[str, ...],
-        rendering: str,
+        self, *, players: tuple[str, ...], presentations: tuple[str, ...]
     ) -> str:
-        context = self._context(
-            players=players, presented=presented, rendering=rendering
+        context = self._context(players=players, presentations=presentations)
+        value = self._call(
+            MATCH_IDENTITY, getattr(self.module, MATCH_IDENTITY), context
         )
-        hook = getattr(self.module, MATCH_IDENTITY, None)
-        if hook is None:
-            return _default_identity(rendering)
-        value = self._call(MATCH_IDENTITY, hook, context)
         if not isinstance(value, str) or not value.strip():
             raise HookReturnError(
                 f"{MATCH_IDENTITY} must return a non-empty string "
@@ -112,18 +139,12 @@ class TournamentDefinition:
         return value
 
     def verdict_slot(
-        self,
-        *,
-        players: tuple[str, ...],
-        presented: tuple[str, ...],
-        rendering: str,
+        self, *, players: tuple[str, ...], presentations: tuple[str, ...]
     ) -> dict[str, object]:
-        context = self._context(
-            players=players, presented=presented, rendering=rendering
-        )
         hook = getattr(self.module, VERDICT_SLOT, None)
         if hook is None:
             return {}
+        context = self._context(players=players, presentations=presentations)
         value = self._call(VERDICT_SLOT, hook, context)
         if value is None:
             return {}
@@ -134,41 +155,26 @@ class TournamentDefinition:
             )
         return dict(value)
 
-    def select_pairs(
-        self,
-        *,
-        pool: tuple[str, ...],
-        budget: int,
-        verdicts: tuple[dict[str, object], ...],
-    ) -> tuple[tuple[str, str], ...] | None:
-        hook = getattr(self.module, SELECT_PAIRS, None)
-        if hook is None:
-            return None
-        context = self._context(
-            players=pool, presented=(), pool=pool, budget=budget, verdicts=verdicts
-        )
-        value = self._call(SELECT_PAIRS, hook, context)
-        return _validated_pairs(value, pool)
-
     def _context(
         self,
         *,
-        players: tuple[str, ...],
-        presented: tuple[str, ...],
-        rendering: str | None = None,
-        pool: tuple[str, ...] = (),
-        budget: int = 0,
+        player: str | None = None,
+        players: tuple[str, ...] = (),
+        presentations: tuple[str, ...] = (),
         verdicts: tuple[dict[str, object], ...] = (),
+        match_index: int = 0,
+        budget: int = 0,
     ) -> HookContext:
         return HookContext(
             question=self.question,
+            criteria=self.criteria,
+            player=player,
             players=tuple(players),
-            presented=tuple(presented),
-            snapshot_path=str(self.snapshot_path),
-            rendering=rendering,
-            pool=pool,
-            budget=budget,
+            presentations=tuple(presentations),
             verdicts=verdicts,
+            match_index=match_index,
+            budget=budget,
+            snapshot_path=str(self.snapshot_path),
         )
 
     def _call(self, name: str, hook: object, context: HookContext) -> object:
@@ -211,6 +217,7 @@ def load_definition(
         locking.record(item)
 
     module = _load_module(snapshot)
+    _require_hooks(module, origin)
     return TournamentDefinition(
         origin_path=origin,
         snapshot_path=snapshot,
@@ -242,14 +249,30 @@ def open_definition(
             f"the tournament's definition snapshot changed outside the system: {error}"
         ) from error
 
-    guarded = tuple(Path(item).resolve() for item in guarded_paths)
+    module = _load_module(snapshot)
+    _require_hooks(module, Path(origin_path))
     return TournamentDefinition(
         origin_path=Path(origin_path),
         snapshot_path=snapshot,
         digest="sha256:" + locking.content_hash(snapshot),
-        module=_load_module(snapshot),
-        guarded_paths=guarded,
+        module=module,
+        guarded_paths=tuple(Path(item).resolve() for item in guarded_paths),
     )
+
+
+def _require_hooks(module: ModuleType, origin: Path) -> None:
+    """Fail at load, naming every missing required hook.
+
+    Failing here rather than mid-run is the point: a tournament that starts and
+    then cannot name a match is a tournament that accumulates nothing.
+    """
+    missing = [name for name in REQUIRED_HOOKS if not callable(getattr(module, name, None))]
+    if missing:
+        raise HookLoadError(
+            f"tournament definition {origin} must define "
+            + " and ".join(f"{name}(ctx)" for name in missing)
+            + "; the engine supplies no default for either"
+        )
 
 
 def _load_module(path: Path) -> ModuleType:
@@ -261,45 +284,19 @@ def _load_module(path: Path) -> ModuleType:
     return module
 
 
-def _default_render(context: HookContext) -> str:
-    first, second = context.presented
-    return (
-        f"{context.question}\n\n"
-        f"A:\n{first}\n\n"
-        f"B:\n{second}\n\n"
-        'Answer with exactly one JSON object: {"outcome": "A" | "B" | "no_contest", '
-        '"attribution": "none" | "question" | "player" | "prompt", "reason": "..."}\n'
-        'Use "no_contest" when the comparison cannot honestly be made, and attribute '
-        "it to the question, to one player, or to this prompt. Use \"none\" only when "
-        "you decided."
-    )
-
-
-def _default_identity(rendering: str) -> str:
-    return "sha256:" + hashlib.sha256(rendering.encode("utf-8")).hexdigest()
-
-
-def _validated_pairs(
-    value: object, pool: tuple[str, ...]
-) -> tuple[tuple[str, str], ...]:
-    if not isinstance(value, (list, tuple)):
+def _validated_pair(value: object) -> tuple[str, str]:
+    if isinstance(value, str) or not isinstance(value, (list, tuple)):
         raise HookReturnError(
-            f"{SELECT_PAIRS} must return a sequence of player pairs "
+            f"{MATCH_PLAYERS} must return a pair of players or None "
             f"(got {type(value).__name__})"
         )
-    known = set(pool)
-    pairs: list[tuple[str, str]] = []
-    for index, item in enumerate(value):
-        if not isinstance(item, (list, tuple)) or len(item) != 2:
-            raise HookReturnError(f"{SELECT_PAIRS} item {index} must be a pair")
-        first, second = str(item[0]), str(item[1])
-        if first == second:
-            raise HookReturnError(f"{SELECT_PAIRS} item {index} pairs a player with itself")
-        missing = sorted({first, second} - known)
-        if missing:
-            raise HookReturnError(
-                f"{SELECT_PAIRS} item {index} names players outside the pool: "
-                + ", ".join(missing)
-            )
-        pairs.append((first, second))
-    return tuple(pairs)
+    if len(value) != 2:
+        raise HookReturnError(
+            f"{MATCH_PLAYERS} must return exactly two players (got {len(value)})"
+        )
+    first, second = str(value[0]), str(value[1])
+    if not first.strip() or not second.strip():
+        raise HookReturnError(f"{MATCH_PLAYERS} returned an empty player")
+    if first == second:
+        raise HookReturnError(f"{MATCH_PLAYERS} paired a player with itself")
+    return (first, second)

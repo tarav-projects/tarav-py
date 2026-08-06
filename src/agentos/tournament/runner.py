@@ -1,10 +1,20 @@
-# $kw: ^tournament-runner --from Tournament.Match --from Tournament.Judge --note [DC] one judge run serves one match and carries no state from any other; a failed run produces no match record ^<anchor-on-landing>
-"""One match: render, randomize, spawn, validate, record.
+# $kw: ^tournament-runner --from Tournament.Match --from Tournament.Judge --note [DC] the engine composes the Match.Verbatim from the consumer's player presentations and its own frame --supp ^c20260806-7u ^<anchor-on-landing>
+"""One match: present, identify, shuffle, compose, spawn, validate, record.
 
-The engine performs every effect here. Hooks supplied the rendering and the
-identity; this module shuffles the pair, hands the rendered text to one judge in
-a fresh context, validates the answer at the boundary, and appends the verdict.
-A run that fails to produce a valid answer appends nothing.
+The engine performs every effect here. The definition supplied the two players
+and each one's presentation; this module frames them — question, criteria,
+position labels, answer contract — hands the result to one judge in a fresh
+context, validates the answer at the boundary, and appends the verdict.
+
+Two orderings matter and are deliberately separated. Identity is derived from the
+players in *canonical* order, before any shuffle, so repeat runs of one match
+accumulate against one identity. The verbatim hash is taken *after* the shuffle,
+because it is evidence of what the judge actually saw. A run that fails to
+produce a valid answer appends nothing.
+
+The consumer never sees a position label, so it cannot disagree with the decode
+that turns the judge's answer back into a player. That hazard is unreachable
+rather than guarded.
 """
 
 from __future__ import annotations
@@ -23,12 +33,13 @@ from agentos.agent.run_runtime import (
     AgentRunResult,
 )
 from agentos.tournament.contract import (
+    ATTRIBUTIONS,
     OUTCOME_NO_CONTEST,
     ContractError,
     parse_judge_answer,
     validate_verdict_answer,
 )
-from agentos.tournament.hooks import TournamentDefinition
+from agentos.tournament.hooks import HookError, TournamentDefinition
 from agentos.tournament.model import Tournament, Verdict, VerdictOutcome
 from agentos.tournament.store import TournamentStore
 
@@ -70,6 +81,30 @@ class MatchResult:
         return self.verdict is None
 
 
+def compose_verbatim(
+    *,
+    question: str,
+    criteria: str | None,
+    presented_presentations: tuple[str, str],
+) -> str:
+    """Frame two presentations as one match prompt. Engine-owned, start to end."""
+    first, second = presented_presentations
+    parts = [question.strip()]
+    if criteria and criteria.strip():
+        parts.append(criteria.strip())
+    parts.append(f"{_POSITIONS[0]}:\n{first}")
+    parts.append(f"{_POSITIONS[1]}:\n{second}")
+    parts.append(
+        'Answer with exactly one JSON object: {"outcome": "A" | "B" | "no_contest", '
+        f'"attribution": {" | ".join(repr(item) for item in ATTRIBUTIONS)}, '
+        '"reason": "..."}\n'
+        'Use "no_contest" when the comparison cannot honestly be made, and attribute '
+        'it to the question, to one player, or to this prompt. Use "none" only when '
+        "you decided."
+    )
+    return "\n\n".join(parts)
+
+
 def run_match(
     *,
     store: TournamentStore,
@@ -80,12 +115,18 @@ def run_match(
     rng_seed: int | None = None,
     dry_run: bool = False,
 ) -> MatchResult:
-    presented = _presented_order(players, rng_seed)
-    verbatim = definition.render_match(players=players, presented=presented)
-    verbatim_hash = "sha256:" + hashlib.sha256(verbatim.encode("utf-8")).hexdigest()
-    match_id = definition.match_identity(
-        players=players, presented=presented, rendering=verbatim
+    presentations = tuple(definition.present_player(player) for player in players)
+    # Identity before the shuffle: it must not vary with presentation order.
+    match_id = definition.match_identity(players=players, presentations=presentations)
+
+    order = _presented_order(players, presentations, rng_seed)
+    presented, presented_presentations = order
+    verbatim = compose_verbatim(
+        question=definition.question,
+        criteria=definition.criteria,
+        presented_presentations=presented_presentations,
     )
+    verbatim_hash = "sha256:" + hashlib.sha256(verbatim.encode("utf-8")).hexdigest()
 
     if dry_run:
         return MatchResult(
@@ -119,9 +160,7 @@ def run_match(
     except ContractError as error:
         return _failure(match_id, players, presented, verbatim, verbatim_hash, str(error))
 
-    slot = definition.verdict_slot(
-        players=players, presented=presented, rendering=verbatim
-    )
+    slot = definition.verdict_slot(players=players, presentations=presentations)
     verdict = _append(
         store=store,
         tournament=tournament,
@@ -149,23 +188,29 @@ def run_pool(
     store: TournamentStore,
     definition: TournamentDefinition,
     tournament: Tournament,
-    pairs: tuple[tuple[str, str], ...] | list[tuple[str, str]],
     spawn: JudgeSpawn,
+    budget: int = 1,
     concurrency: int = 1,
     dry_run: bool = False,
 ) -> dict[str, object]:
-    """Run many matches and report every outcome as data.
+    """Ask the definition for matches until it declines or the budget runs out.
 
     Failures are rows, not exceptions: one bad match never aborts its siblings,
     and the returned envelope is the orchestration primitive a caller re-invokes
-    with the failed subset. Repeat runs of a match are the feature, so nothing is
+    for the failed subset. Repeat runs of a match are the feature, so nothing is
     skipped on prior success.
     """
     if concurrency < 1:
         raise CliError("tournament run concurrency must be at least 1")
-    pairs = tuple(tuple(pair) for pair in pairs)  # type: ignore[misc]
+    if budget < 0:
+        raise CliError("tournament run budget must not be negative")
 
-    def run_one(pair: tuple[str, str]) -> dict[str, object]:
+    pairs, exhausted = _collect_pairs(
+        store=store, definition=definition, tournament=tournament, budget=budget
+    )
+
+    def run_one(indexed: tuple[int, tuple[str, str]]) -> dict[str, object]:
+        _index, pair = indexed
         try:
             result = run_match(
                 store=store,
@@ -175,15 +220,16 @@ def run_pool(
                 spawn=spawn,
                 dry_run=dry_run,
             )
-        except CliError as error:
+        except (CliError, HookError) as error:
             return {"players": list(pair), "error": str(error)}
         return _run_row(result, spawn=spawn, dry_run=dry_run)
 
-    if concurrency == 1 or len(pairs) <= 1:
-        runs = [run_one(pair) for pair in pairs]
+    indexed_pairs = list(enumerate(pairs))
+    if concurrency == 1 or len(indexed_pairs) <= 1:
+        runs = [run_one(item) for item in indexed_pairs]
     else:
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            runs = list(pool.map(run_one, pairs))
+            runs = list(pool.map(run_one, indexed_pairs))
 
     failures = [
         {"match_id": row.get("match_id"), "players": row["players"], "error": row["error"]}
@@ -196,11 +242,41 @@ def run_pool(
         "tournament_id": tournament.tournament_id,
         "dry_run": dry_run,
         "concurrency": concurrency,
+        "budget": budget,
+        "exhausted": exhausted,
         "run_count": len(runs),
         "failed_count": len(failures),
         "failures": failures,
         "runs": runs,
     }
+
+
+def _collect_pairs(
+    *,
+    store: TournamentStore,
+    definition: TournamentDefinition,
+    tournament: Tournament,
+    budget: int,
+) -> tuple[tuple[tuple[str, str], ...], bool]:
+    """Call the match-players hook up to ``budget`` times.
+
+    The hook sees the durable verdicts but not the matches already collected in
+    this run — in-flight matches have produced no verdict yet. A hook that wants
+    variety uses randomness; a deterministic one repeats a pair, which is extra
+    samples rather than corruption.
+    """
+    verdicts = tuple(
+        verdict.envelope for verdict in store.verdicts(tournament.tournament_id)
+    )
+    pairs: list[tuple[str, str]] = []
+    for index in range(budget):
+        pair = definition.match_players(
+            verdicts=verdicts, match_index=index, budget=budget
+        )
+        if pair is None:
+            return tuple(pairs), True
+        pairs.append(pair)
+    return tuple(pairs), False
 
 
 def _run_row(
@@ -240,10 +316,17 @@ def _dry_command(spawn: JudgeSpawn, verbatim: str) -> tuple[str, ...]:
     return tuple(dry.lines)
 
 
-def _presented_order(players: tuple[str, str], rng_seed: int | None) -> tuple[str, str]:
-    order = list(players)
-    random.Random(rng_seed).shuffle(order)
-    return (order[0], order[1])
+def _presented_order(
+    players: tuple[str, str],
+    presentations: tuple[str, ...],
+    rng_seed: int | None,
+) -> tuple[tuple[str, str], tuple[str, str]]:
+    """Shuffle the pair, carrying each player's presentation with it."""
+    paired = list(zip(players, presentations))
+    random.Random(rng_seed).shuffle(paired)
+    ordered_players = (paired[0][0], paired[1][0])
+    ordered_presentations = (paired[0][1], paired[1][1])
+    return ordered_players, ordered_presentations
 
 
 def _spawn_judge(spawn: JudgeSpawn, verbatim: str) -> AgentRunResult:
@@ -292,6 +375,8 @@ def _append(
             duration_ms=duration_ms,
             slot=slot,
         )
+    # The judge named a position; the engine turns it back into a player through
+    # the order it ran. Nothing the consumer wrote can disagree with this.
     preferred = presented[_POSITIONS.index(outcome)]
     return store.append_verdict(
         tournament_id=tournament.tournament_id,

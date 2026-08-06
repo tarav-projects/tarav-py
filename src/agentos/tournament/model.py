@@ -61,10 +61,15 @@ class VerdictOutcome(str, Enum):
 
 @dataclass(frozen=True)
 class Tournament:
+    """A definition reference and the namespace its records accumulate in.
+
+    It carries no player pool: the engine holds none, and a fold enumerates its
+    players from the verdicts themselves.
+    """
+
     tournament_id: str
     definition_path: str
     definition_digest: str
-    players: tuple[str, ...]
     created_at: str
 
 

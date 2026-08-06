@@ -16,7 +16,6 @@ def _store(tmp_path: Path):
     tournament = store.create_tournament(
         definition_path="/defs/lines.py",
         definition_digest="sha256:" + "0" * 64,
-        players=("a", "b", "c"),
     )
     return store, tournament
 
@@ -73,7 +72,8 @@ def test_report_counts_wins_losses_and_matches_per_player(tmp_path: Path) -> Non
 
 def test_report_emits_no_ranking_or_ordering(tmp_path: Path) -> None:
     store, tournament = _store(tmp_path)
-    _preferred(store, tournament, "m1", ("a", "b"), "a")
+    # The loser is encountered first: if the report ranked, "b" would lead.
+    _preferred(store, tournament, "m1", ("a", "b"), "b")
 
     report = tournament_report(
         tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
@@ -82,7 +82,7 @@ def test_report_emits_no_ranking_or_ordering(tmp_path: Path) -> None:
     assert "standing" not in report
     assert "rank" not in report
     assert "score" not in report
-    assert [row["player"] for row in report["players"]] == ["a", "b", "c"]
+    assert [row["player"] for row in report["players"]] == ["a", "b"]
 
 
 def test_no_contest_distribution_is_reported_pool_wide_and_per_player(
@@ -224,3 +224,31 @@ def test_an_unattributed_no_contest_cannot_be_recorded(tmp_path: Path) -> None:
             presented=("a", "b"),
             verbatim_hash="sha256:" + "9" * 64,
         )
+
+
+def test_a_player_absent_from_every_verdict_is_not_reported(tmp_path: Path) -> None:
+    store, tournament = _store(tmp_path)
+    _preferred(store, tournament, "m1", ("a", "b"), "a")
+
+    report = tournament_report(
+        tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
+    )
+    assert {row["player"] for row in report["players"]} == {"a", "b"}
+
+
+def test_a_player_that_left_the_pool_keeps_its_accumulated_history(tmp_path: Path) -> None:
+    """No declared pool means no list for a departed player to fall off of.
+
+    An index line edited mid-tournament retires its player; folding from a
+    declared pool would silently drop everything that player accumulated.
+    """
+    store, tournament = _store(tmp_path)
+    _preferred(store, tournament, "m1", ("stale-line", "b"), "b")
+    _preferred(store, tournament, "m2", ("edited-line", "b"), "edited-line")
+
+    report = tournament_report(
+        tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
+    )
+    rows = {row["player"]: row for row in report["players"]}
+    assert rows["stale-line"]["losses"] == 1
+    assert rows["edited-line"]["wins"] == 1

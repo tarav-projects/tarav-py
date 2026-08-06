@@ -1,4 +1,4 @@
-# $kw: ^tournament-commands --from Agentos.Tournament --from Tournament.Definition --note [DF] thin argparse handlers over the importable tournament engine; the failure envelope is the orchestration primitive ^<anchor-on-landing>
+# $kw: ^tournament-commands --from Agentos.Tournament --from Tournament.Depot --note [DF] thin argparse handlers over the importable tournament engine; the depot defaults globally and the failure envelope is the orchestration primitive --supp ^c20260806-26u ^<anchor-on-landing>
 """`agentos tournament ...` — a thin JSON CLI over the tournament engine."""
 
 from __future__ import annotations
@@ -12,12 +12,11 @@ from agentos.tournament.hooks import load_definition, open_definition
 from agentos.tournament.model import TournamentError
 from agentos.tournament.report import tournament_report
 from agentos.tournament.runner import JudgeSpawn, run_pool
-from agentos.tournament.sampling import select_pairs
 from agentos.tournament.store import TournamentStore
 
 
 def _store(args: argparse.Namespace) -> TournamentStore:
-    return TournamentStore(Path(args.depot))
+    return TournamentStore(args.depot)
 
 
 def _print_json(payload: object) -> None:
@@ -25,20 +24,19 @@ def _print_json(payload: object) -> None:
 
 
 def _snapshot_dir(store: TournamentStore, tournament_id: str) -> Path:
-    return store.depot.root / "definitions" / tournament_id
+    return store.definition_dir(tournament_id)
 
 
 def _cmd_create(args: argparse.Namespace) -> int:
     store = _store(args)
-    players = _players_arg(args)
     try:
-        definition = load_definition(
-            args.definition, snapshot_dir=store.depot.root / "definitions" / "_staging"
-        )
+        # Loaded before the tournament exists so a definition missing a required
+        # hook fails without leaving an empty tournament behind.
+        staging = store.root / "definitions" / "_staging"
+        definition = load_definition(args.definition, snapshot_dir=staging)
         tournament = store.create_tournament(
             definition_path=str(definition.origin_path),
             definition_digest=definition.digest,
-            players=players,
         )
         final_dir = _snapshot_dir(store, tournament.tournament_id)
         final_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -49,10 +47,10 @@ def _cmd_create(args: argparse.Namespace) -> int:
         {
             "status": "ok",
             "command": "tournament create",
+            "depot": str(store.root),
             "tournament_id": tournament.tournament_id,
             "definition_path": tournament.definition_path,
             "definition_digest": tournament.definition_digest,
-            "players": list(tournament.players),
         }
     )
     return 0
@@ -64,11 +62,11 @@ def _cmd_list(args: argparse.Namespace) -> int:
         {
             "status": "ok",
             "command": "tournament list",
+            "depot": str(store.root),
             "tournaments": [
                 {
                     "tournament_id": item.tournament_id,
                     "definition_path": item.definition_path,
-                    "players": list(item.players),
                     "created_at": item.created_at,
                 }
                 for item in store.tournaments()
@@ -85,12 +83,6 @@ def _cmd_run(args: argparse.Namespace) -> int:
     try:
         tournament = store.tournament(args.tournament)
         definition = _reload_definition(store, tournament)
-        pairs = select_pairs(
-            definition=definition,
-            pool=tournament.players,
-            budget=args.budget,
-            verdicts=tuple(v.envelope for v in store.verdicts(tournament.tournament_id)),
-        )
     except TournamentError as exc:
         raise CliError(str(exc)) from exc
 
@@ -107,15 +99,18 @@ def _cmd_run(args: argparse.Namespace) -> int:
         account=args.account,
         timeout_sec=args.timeout,
     )
-    payload = run_pool(
-        store=store,
-        definition=definition,
-        tournament=tournament,
-        pairs=pairs,
-        spawn=spawn,
-        concurrency=args.concurrency,
-        dry_run=args.dry_run,
-    )
+    try:
+        payload = run_pool(
+            store=store,
+            definition=definition,
+            tournament=tournament,
+            spawn=spawn,
+            budget=args.budget,
+            concurrency=args.concurrency,
+            dry_run=args.dry_run,
+        )
+    except TournamentError as exc:
+        raise CliError(str(exc)) from exc
     _print_json(payload)
     return 0 if payload["status"] == "ok" else 1
 
@@ -140,23 +135,14 @@ def _reload_definition(store: TournamentStore, tournament):  # noqa: ANN001
     return open_definition(snapshot, origin_path=tournament.definition_path)
 
 
-def _players_arg(args: argparse.Namespace) -> tuple[str, ...]:
-    if args.players_file:
-        raw = Path(args.players_file).read_text(encoding="utf-8")
-        try:
-            value = json.loads(raw)
-        except ValueError as exc:
-            raise CliError(f"players file is not valid JSON: {exc}") from exc
-        if not isinstance(value, list):
-            raise CliError("players file must contain a JSON array of player payloads")
-        return tuple(str(item) for item in value)
-    if not args.player:
-        raise CliError("a tournament needs players: pass --player or --players-file")
-    return tuple(args.player)
-
-
 def _add_depot_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--depot", required=True, help="Tournament depot root.")
+    parser.add_argument(
+        "--depot",
+        help=(
+            "Tournament depot root. Defaults to $AGENTOS_TOURNAMENT_DEPOT, "
+            "then ~/.agentos/tournament."
+        ),
+    )
 
 
 def register_tournament_commands(subparsers: argparse._SubParsersAction) -> None:
@@ -173,12 +159,6 @@ def register_tournament_commands(subparsers: argparse._SubParsersAction) -> None
     create_parser.add_argument(
         "--definition", required=True, help="Path to the consumer definition file."
     )
-    create_parser.add_argument(
-        "--player", action="append", help="A player payload; repeatable."
-    )
-    create_parser.add_argument(
-        "--players-file", help="Path to a JSON array of player payloads."
-    )
     create_parser.set_defaults(handler=_cmd_create)
 
     list_parser = commands.add_parser("list", help="List tournaments in a depot.")
@@ -189,7 +169,13 @@ def register_tournament_commands(subparsers: argparse._SubParsersAction) -> None
     _add_depot_argument(run_parser)
     run_parser.add_argument("--tournament", required=True, help="Tournament identity.")
     run_parser.add_argument(
-        "--budget", type=int, default=1, help="How many matches to run."
+        "--budget",
+        type=int,
+        default=1,
+        help=(
+            "Upper bound on matches to run. The definition's match_players hook "
+            "may end the run earlier by returning None."
+        ),
     )
     run_parser.add_argument(
         "--concurrency", type=int, default=1, help="Parallel judge runs."
