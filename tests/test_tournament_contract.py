@@ -13,18 +13,39 @@ from agentos.tournament import (
 
 VERDICT_EXPECTS = {
     "outcome": ["A", "B", "no_contest"],
-    "attribution": ["question", "player", "prompt", "none"],
     "reason": "str",
 }
 
 
 def test_valid_preferred_answer_passes() -> None:
-    validate(VERDICT_EXPECTS, {"outcome": "A", "attribution": "none", "reason": "A states one act"})
+    validate(VERDICT_EXPECTS, {"outcome": "A", "reason": "A states one act"})
+
+
+def test_a_decided_answer_needs_only_its_ranking() -> None:
+    validate_verdict_answer({"outcome": ["B", "A"]}, arity=2)
+
+
+def test_a_refusal_requires_a_stated_reason() -> None:
+    validate_verdict_answer(
+        {"outcome": "no_contest", "refusal_reason": "not comparable"}, arity=4
+    )
+    for bad in ({"outcome": "no_contest"}, {"outcome": "no_contest", "refusal_reason": "  "}):
+        with pytest.raises(ContractError) as excinfo:
+            validate_verdict_answer(bad, arity=4)
+        assert "refusal_reason" in str(excinfo.value)
+
+
+def test_the_contract_asks_the_judge_for_no_attribution() -> None:
+    """Which player or question a refusal indicts is read from the records."""
+    import agentos.tournament.contract as contract
+
+    assert not hasattr(contract, "ATTRIBUTIONS")
+    assert "attribution" not in contract.validate_verdict_answer.__doc__
 
 
 def test_unknown_outcome_is_rejected_with_the_allowed_values() -> None:
     with pytest.raises(ContractError) as excinfo:
-        validate(VERDICT_EXPECTS, {"outcome": "maybe", "attribution": "none", "reason": "unsure"})
+        validate(VERDICT_EXPECTS, {"outcome": "maybe", "reason": "unsure"})
     message = str(excinfo.value)
     assert "outcome" in message
     assert "no_contest" in message
@@ -32,13 +53,13 @@ def test_unknown_outcome_is_rejected_with_the_allowed_values() -> None:
 
 def test_missing_field_is_rejected_by_name() -> None:
     with pytest.raises(ContractError) as excinfo:
-        validate(VERDICT_EXPECTS, {"outcome": "A", "attribution": "none"})
+        validate(VERDICT_EXPECTS, {"outcome": "A"})
     assert "reason" in str(excinfo.value)
 
 
 def test_extra_field_is_rejected() -> None:
     with pytest.raises(ContractError) as excinfo:
-        validate(VERDICT_EXPECTS, {"outcome": "A", "attribution": "none", "reason": "r", "score": 9})
+        validate(VERDICT_EXPECTS, {"outcome": "A", "reason": "r", "score": 9})
     assert "score" in str(excinfo.value)
 
 
@@ -90,25 +111,13 @@ def test_validation_is_mandatory_rather_than_opt_in() -> None:
         validate(None, {"outcome": "A"})
 
 
-def test_no_contest_must_attribute_the_refusal() -> None:
-    with pytest.raises(ContractError) as excinfo:
-        validate_verdict_answer(
-            {"outcome": "no_contest", "attribution": "none", "reason": "unsure"},
-            arity=2,
-        )
-    assert "attribute" in str(excinfo.value)
 
 
-def test_attributed_no_contest_passes() -> None:
-    validate_verdict_answer(
-        {"outcome": "no_contest", "attribution": "question", "reason": "not comparable"},
-        arity=2,
-    )
 
 
 def test_a_decided_answer_may_attribute_nothing() -> None:
     validate_verdict_answer(
-        {"outcome": ["B", "A"], "attribution": "none", "reason": "clearer"}, arity=2
+        {"outcome": ["B", "A"], "reason": "clearer"}, arity=2
     )
 
 
@@ -161,14 +170,6 @@ def test_an_outcome_that_is_neither_no_contest_nor_a_list_is_rejected() -> None:
             validate_verdict_answer(_answer(bad), arity=2)
 
 
-def test_no_contest_still_validates_and_still_requires_attribution() -> None:
-    validate_verdict_answer(
-        _answer("no_contest", attribution="question", reason="incomparable"), arity=4
-    )
-    with pytest.raises(ContractError):
-        validate_verdict_answer(
-            _answer("no_contest", attribution="none", reason="incomparable"), arity=4
-        )
 
 
 def test_the_error_names_the_labels_the_judge_should_have_ordered() -> None:

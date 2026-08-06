@@ -8,8 +8,15 @@ import json
 from pathlib import Path
 
 from agentos._core.errors import CliError
+from agentos.tournament.contract import (
+    OUTCOME_NO_CONTEST,
+    ContractError,
+    position_labels,
+    validate_verdict_answer,
+)
 from agentos.tournament.hooks import load_definition, open_definition
-from agentos.tournament.model import TournamentError
+from agentos.tournament.model import TournamentError, VerdictOutcome
+from agentos.tournament.tickets import TicketStore
 from agentos.tournament.report import tournament_report
 from agentos.tournament.runner import JudgeSpawn, run_pool
 from agentos.tournament.store import TournamentStore
@@ -98,7 +105,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
         model=args.model,
         account=args.account,
         timeout_sec=args.timeout,
+        agent_argv=tuple(args.agent_arg or ()),
     )
+    # Sweep before minting: cleanup is age-based, and no run depends on it
+    # having happened.
+    TicketStore(store.root).sweep()
     try:
         payload = run_pool(
             store=store,
@@ -133,6 +144,126 @@ def _reload_definition(store: TournamentStore, tournament):  # noqa: ANN001
     """Open the tournament's own snapshot, never the live definition file."""
     snapshot = _snapshot_dir(store, tournament.tournament_id) / "_definition-snap.py"
     return open_definition(snapshot, origin_path=tournament.definition_path)
+
+
+def _cmd_submit(args: argparse.Namespace) -> int:
+    """Record one judge's answer, or tell the judge exactly what to fix.
+
+    This is the boundary where a contract violation becomes actionable: the
+    message goes to the agent that made it, in the context that can still
+    correct it. Only contract rejections count against the cap, because those
+    are the ones a retry can fix.
+    """
+    store = _store(args)
+    tickets = TicketStore(store.root)
+    try:
+        ticket = tickets.load(args.ticket)
+    except TournamentError as exc:
+        raise CliError(str(exc)) from exc
+
+    if ticket.redeemed:
+        raise CliError(
+            f"tournament ticket {ticket.ticket_id} was already redeemed by verdict "
+            f"{ticket.verdict_id}; each ticket answers one match once"
+        )
+    if ticket.exhausted:
+        raise CliError(
+            f"tournament ticket {ticket.ticket_id} is out of attempts "
+            f"({ticket.attempts}/{ticket.attempt_cap}); this match will be recorded "
+            "as unanswered"
+        )
+
+    answer = _submitted_answer(args)
+    try:
+        validate_verdict_answer(answer, arity=ticket.arity)
+    except ContractError as exc:
+        remaining = tickets.record_attempt(ticket.ticket_id)
+        raise CliError(
+            f"{exc} — attempt {remaining.attempts} of {remaining.attempt_cap}. "
+            "Fix the ranking and submit again."
+        ) from exc
+
+    try:
+        verdict = _append_submitted(store, ticket, answer)
+        tickets.redeem(ticket.ticket_id, verdict_id=verdict.record_id, exit_code=None)
+    except TournamentError as exc:
+        raise CliError(str(exc)) from exc
+
+    _print_json(
+        {
+            "status": "ok",
+            "command": "tournament submit",
+            "ticket": ticket.ticket_id,
+            "match_id": ticket.match_id,
+            "verdict_id": verdict.record_id,
+            "outcome": verdict.outcome,
+        }
+    )
+    return 0
+
+
+def _submitted_answer(args: argparse.Namespace) -> dict[str, object]:
+    if args.no_contest:
+        if not (args.refusal_reason or "").strip():
+            raise CliError("--no-contest requires --refusal-reason")
+        return {
+            "outcome": OUTCOME_NO_CONTEST,
+            "refusal_reason": args.refusal_reason,
+        }
+    if not args.ranking:
+        raise CliError("supply --ranking, or --no-contest with --refusal-reason")
+    return {"outcome": [item.strip() for item in args.ranking.split(",") if item.strip()]}
+
+
+def _append_submitted(store: TournamentStore, ticket, answer: dict[str, object]):  # noqa: ANN001
+    """Turn a validated submission into a verdict.
+
+    Everything but the outcome comes from the ticket, which is why a judge can
+    never describe a match it was not given.
+    """
+    if answer["outcome"] == OUTCOME_NO_CONTEST:
+        return store.append_verdict(
+            tournament_id=ticket.tournament_id,
+            match_id=ticket.match_id,
+            players=ticket.players,
+            outcome=VerdictOutcome.NO_CONTEST,
+            refusal_reason=str(answer["refusal_reason"]),
+            judge=ticket.judge,
+            presented=ticket.presented,
+            verbatim_hash=ticket.verbatim_hash,
+            ticket=ticket.ticket_id,
+            slot=ticket.slot or {},
+        )
+    labels = position_labels(ticket.arity)
+    ordering = tuple(
+        ticket.presented[labels.index(str(label))] for label in answer["outcome"]
+    )
+    return store.append_verdict(
+        tournament_id=ticket.tournament_id,
+        match_id=ticket.match_id,
+        players=ticket.players,
+        outcome=VerdictOutcome.ORDERED,
+        ordering=ordering,
+        judge=ticket.judge,
+        presented=ticket.presented,
+        verbatim_hash=ticket.verbatim_hash,
+        ticket=ticket.ticket_id,
+        slot=ticket.slot or {},
+    )
+
+
+def _cmd_gc(args: argparse.Namespace) -> int:
+    store = _store(args)
+    removed = TicketStore(store.root).sweep()
+    _print_json(
+        {
+            "status": "ok",
+            "command": "tournament gc",
+            "depot": str(store.root),
+            "removed": removed,
+        }
+    )
+    return 0
 
 
 def _add_depot_argument(parser: argparse.ArgumentParser) -> None:
@@ -189,11 +320,44 @@ def register_tournament_commands(subparsers: argparse._SubParsersAction) -> None
     run_parser.add_argument("--account", help="Judge account.")
     run_parser.add_argument("--timeout", type=int, help="Per-match timeout in seconds.")
     run_parser.add_argument(
+        "--agent-arg",
+        action="append",
+        help=(
+            "Extra argument passed through to the judge's provider; repeatable. "
+            "A judge answers by running a command, so it needs tool permission — "
+            "for claude-code that is --agent-arg --allowedTools --agent-arg Bash."
+        ),
+    )
+    run_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Render prompts and resolve the agent command without spawning.",
     )
     run_parser.set_defaults(handler=_cmd_run)
+
+    submit_parser = commands.add_parser(
+        "submit", help="Submit one judge's answer against its ticket."
+    )
+    _add_depot_argument(submit_parser)
+    submit_parser.add_argument("--ticket", required=True, help="Ticket identity.")
+    submit_parser.add_argument(
+        "--ranking", help="Position labels best first, comma separated (e.g. C,A,D,B)."
+    )
+    submit_parser.add_argument(
+        "--no-contest",
+        action="store_true",
+        help="Decline the match instead of ranking it.",
+    )
+    submit_parser.add_argument(
+        "--refusal-reason", help="Why the comparison cannot honestly be made."
+    )
+    submit_parser.set_defaults(handler=_cmd_submit)
+
+    gc_parser = commands.add_parser(
+        "gc", help="Sweep tournament tickets past the collection horizon."
+    )
+    _add_depot_argument(gc_parser)
+    gc_parser.set_defaults(handler=_cmd_gc)
 
     show_parser = commands.add_parser(
         "show", help="Report raw accumulation for a tournament."

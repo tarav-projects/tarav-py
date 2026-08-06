@@ -36,17 +36,11 @@ from agentos.agent.run_runtime import (
     AgentRunConfig,
     AgentRunResult,
 )
-from agentos.tournament.contract import (
-    ATTRIBUTIONS,
-    OUTCOME_NO_CONTEST,
-    ContractError,
-    parse_judge_answer,
-    position_labels,
-    validate_verdict_answer,
-)
+from agentos.tournament.contract import position_labels
 from agentos.tournament.hooks import HookError, TournamentDefinition
-from agentos.tournament.model import Tournament, Verdict, VerdictOutcome
+from agentos.tournament.model import Tournament, Verdict
 from agentos.tournament.store import TournamentStore
+from agentos.tournament.tickets import TicketStore
 
 
 
@@ -60,6 +54,11 @@ class JudgeSpawn:
     model: str | None = None
     account: str | None = None
     timeout_sec: int | None = None
+    # Extra provider argv. A judge answers by running a command, and providers
+    # gate tool use differently — claude-code needs `--allowedTools Bash`, and
+    # without it the spawn silently declines and exits clean. The engine stays
+    # provider-neutral and the caller supplies whatever its judge needs.
+    agent_argv: tuple[str, ...] = ()
 
     def identity(self) -> dict[str, object]:
         return {
@@ -76,6 +75,7 @@ class MatchResult:
     presented: tuple[str, ...]
     verbatim: str
     verbatim_hash: str
+    ticket_id: str | None = None
     verdict: Verdict | None = None
     error: str | None = None
 
@@ -89,27 +89,40 @@ def compose_verbatim(
     question: str,
     criteria: str | None,
     presented_presentations: tuple[str, ...],
+    ticket_id: str | None = None,
+    depot_root: Path | str | None = None,
 ) -> str:
-    """Frame N presentations as one match prompt. Engine-owned, start to end."""
+    """Frame N presentations as one match prompt. Engine-owned, start to end.
+
+    The submit instruction is engine-owned for the same reason the position
+    labels are: an invocation a consumer could get wrong is one the frame can
+    simply prevent. The command is rendered fully formed, depot included, so the
+    judge copies rather than assembles.
+    """
     labels = position_labels(len(presented_presentations))
     parts = [question.strip()]
     if criteria and criteria.strip():
         parts.append(criteria.strip())
     for label, presentation in zip(labels, presented_presentations):
         parts.append(f"{label}:\n{presentation}")
-    ranked = ", ".join(f'"{label}"' for label in labels)
     parts.append(
-        f"Rank all {len(labels)} candidates from best to worst.\n"
-        'Answer with exactly one JSON object: {"outcome": [' + ranked + "] | "
-        '"no_contest", '
-        f'"attribution": {" | ".join(repr(item) for item in ATTRIBUTIONS)}, '
-        '"reason": "..."}\n'
-        "The outcome array must contain every label exactly once, best first — no "
-        "ties.\n"
-        'Use "no_contest" when the comparison cannot honestly be made, and attribute '
-        'it to the question, to one player, or to this prompt. Use "none" only when '
-        "you decided."
+        f"Rank all {len(labels)} candidates from best to worst, every label exactly "
+        "once — no ties."
     )
+    if ticket_id is not None:
+        ranked = ",".join(labels)
+        depot = f" --depot {depot_root}" if depot_root is not None else ""
+        parts.append(
+            "Submit your answer by running this command. It validates your ranking "
+            "and tells you what to fix if it is wrong:\n\n"
+            f"    agentos tournament submit{depot} --ticket {ticket_id} "
+            f"--ranking {ranked}\n\n"
+            "Replace the ranking with your own order, best first. If the comparison "
+            "cannot honestly be made, submit instead:\n\n"
+            f"    agentos tournament submit{depot} --ticket {ticket_id} "
+            '--no-contest --refusal-reason "why"\n\n'
+            "Nothing you print is read; only the submitted command counts."
+        )
     return "\n\n".join(parts)
 
 
@@ -127,61 +140,76 @@ def run_match(
     # Identity before the shuffle: it must not vary with presentation order.
     match_id = definition.match_identity(players=players, presentations=presentations)
 
-    order = _presented_order(players, presentations, rng_seed)
-    presented, presented_presentations = order
-    verbatim = compose_verbatim(
-        question=definition.question,
-        criteria=definition.criteria,
-        presented_presentations=presented_presentations,
+    presented, presented_presentations = _presented_order(
+        players, presentations, rng_seed
     )
-    verbatim_hash = "sha256:" + hashlib.sha256(verbatim.encode("utf-8")).hexdigest()
 
     if dry_run:
+        verbatim = compose_verbatim(
+            question=definition.question,
+            criteria=definition.criteria,
+            presented_presentations=presented_presentations,
+        )
         return MatchResult(
             match_id=match_id,
             players=players,
             presented=presented,
             verbatim=verbatim,
-            verbatim_hash=verbatim_hash,
+            verbatim_hash="sha256:"
+            + hashlib.sha256(verbatim.encode("utf-8")).hexdigest(),
         )
 
-    started = time.monotonic()
-    try:
-        run_result = _spawn_judge(spawn, verbatim)
-    except (CliError, OSError) as error:
-        return _failure(match_id, players, presented, verbatim, verbatim_hash, str(error))
-    duration_ms = int((time.monotonic() - started) * 1000)
-
-    if run_result.exit_code != 0:
-        return _failure(
-            match_id,
-            players,
-            presented,
-            verbatim,
-            verbatim_hash,
-            f"judge exit {run_result.exit_code}",
-        )
-
-    try:
-        answer = parse_judge_answer(run_result.stdout)
-        validate_verdict_answer(answer, arity=len(players))
-    except ContractError as error:
-        return _failure(match_id, players, presented, verbatim, verbatim_hash, str(error))
-
-    slot = definition.verdict_slot(players=players, presentations=presentations)
-    verdict = _append(
-        store=store,
-        tournament=tournament,
+    tickets = TicketStore(store.root)
+    ticket = tickets.mint(
+        tournament_id=tournament.tournament_id,
         match_id=match_id,
         players=players,
         presented=presented,
-        answer=answer,
+        verbatim_hash="",
         judge=spawn.identity(),
-        verbatim_hash=verbatim_hash,
-        duration_ms=duration_ms,
-        slot=slot,
     )
+    verbatim = compose_verbatim(
+        question=definition.question,
+        criteria=definition.criteria,
+        presented_presentations=presented_presentations,
+        ticket_id=ticket.ticket_id,
+        depot_root=store.root,
+    )
+    verbatim_hash = "sha256:" + hashlib.sha256(verbatim.encode("utf-8")).hexdigest()
+    tickets.set_verbatim_hash(ticket.ticket_id, verbatim_hash)
+
+    # The consumer slot is computed before the spawn so `submit` never has to
+    # reach back into a definition it does not have.
+    tickets.set_slot(
+        ticket.ticket_id,
+        definition.verdict_slot(players=players, presentations=presentations),
+    )
+
+    try:
+        run_result = _spawn_judge(spawn, verbatim)
+        exit_code = run_result.exit_code
+    except (CliError, OSError) as error:
+        return _failure(
+            ticket.ticket_id, match_id, players, presented, verbatim, verbatim_hash,
+            str(error),
+        )
+
+    # A validated verdict outranks a nonzero exit: once the answer travels out of
+    # band the exit code stops being evidence that anything failed.
+    verdict = _verdict_for_ticket(store, tournament, ticket.ticket_id)
+    if verdict is None:
+        redeemed = tickets.load(ticket.ticket_id)
+        detail = (
+            f"judge made {redeemed.attempts} rejected submission(s)"
+            if redeemed.attempts
+            else "judge submitted nothing"
+        )
+        return _failure(
+            ticket.ticket_id, match_id, players, presented, verbatim, verbatim_hash,
+            f"{detail} (judge exit {exit_code})",
+        )
     return MatchResult(
+        ticket_id=ticket.ticket_id,
         match_id=match_id,
         players=players,
         presented=presented,
@@ -189,6 +217,20 @@ def run_match(
         verbatim_hash=verbatim_hash,
         verdict=verdict,
     )
+
+
+def _verdict_for_ticket(
+    store: TournamentStore, tournament: Tournament, ticket_id: str
+) -> Verdict | None:
+    """Find the verdict this spawn produced.
+
+    Keyed on the ticket, not the match id: repeat runs of one match share an id
+    deliberately, so only the ticket says which run answered.
+    """
+    for verdict in store.verdicts(tournament.tournament_id):
+        if verdict.envelope.get("ticket") == ticket_id:
+            return verdict
+    return None
 
 
 def run_pool(
@@ -292,6 +334,7 @@ def _run_row(
 ) -> dict[str, object]:
     row: dict[str, object] = {
         "match_id": result.match_id,
+        "ticket": result.ticket_id,
         "players": list(result.players),
         "presented": list(result.presented),
         "verbatim_hash": result.verbatim_hash,
@@ -317,6 +360,7 @@ def _dry_command(spawn: JudgeSpawn, verbatim: str) -> tuple[str, ...]:
     dry = run_dry(
         AgentCommandConfig(
             prompt=verbatim,
+            argv=tuple(spawn.agent_argv),
             model=spawn.model,
             account=spawn.account,
             interaction_mode="non_interactive",
@@ -340,6 +384,7 @@ def _spawn_judge(spawn: JudgeSpawn, verbatim: str) -> AgentRunResult:
     return spawn.agent.run(
         AgentCommandConfig(
             prompt=verbatim,
+            argv=tuple(spawn.agent_argv),
             model=spawn.model,
             account=spawn.account,
             interaction_mode="non_interactive",
@@ -352,55 +397,8 @@ def _spawn_judge(spawn: JudgeSpawn, verbatim: str) -> AgentRunResult:
     )
 
 
-def _append(
-    *,
-    store: TournamentStore,
-    tournament: Tournament,
-    match_id: str,
-    players: tuple[str, ...],
-    presented: tuple[str, ...],
-    answer: dict[str, object],
-    judge: dict[str, object],
-    verbatim_hash: str,
-    duration_ms: int,
-    slot: dict[str, object],
-) -> Verdict:
-    outcome = answer["outcome"]
-    reason = str(answer["reason"])
-    attribution = str(answer["attribution"])
-    if outcome == OUTCOME_NO_CONTEST:
-        return store.append_verdict(
-            tournament_id=tournament.tournament_id,
-            match_id=match_id,
-            players=players,
-            outcome=VerdictOutcome.NO_CONTEST,
-            no_contest_reason=reason,
-            no_contest_attribution=attribution,
-            judge=judge,
-            presented=presented,
-            verbatim_hash=verbatim_hash,
-            duration_ms=duration_ms,
-            slot=slot,
-        )
-    # The judge ranked positions; the engine turns each back into a player through
-    # the order it ran. Nothing the consumer wrote can disagree with this.
-    labels = position_labels(len(presented))
-    ordering = tuple(presented[labels.index(str(label))] for label in outcome)
-    return store.append_verdict(
-        tournament_id=tournament.tournament_id,
-        match_id=match_id,
-        players=players,
-        outcome=VerdictOutcome.ORDERED,
-        ordering=ordering,
-        judge=judge,
-        presented=presented,
-        verbatim_hash=verbatim_hash,
-        duration_ms=duration_ms,
-        slot=slot,
-    )
-
-
 def _failure(
+    ticket_id: str | None,
     match_id: str,
     players: tuple[str, ...],
     presented: tuple[str, ...],
@@ -414,5 +412,6 @@ def _failure(
         presented=presented,
         verbatim=verbatim,
         verbatim_hash=verbatim_hash,
+        ticket_id=ticket_id,
         error=error,
     )

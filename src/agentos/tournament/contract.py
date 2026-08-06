@@ -29,29 +29,10 @@ POSITION_LABELS = tuple(chr(ord("A") + index) for index in range(26))
 MAX_ARITY = len(POSITION_LABELS)
 MIN_ARITY = 2
 
-# A refusal is attributable three ways, and which one it is decides who to look
-# at: scattered `question` indicts the definition, clustered `player` indicts that
-# player, and `prompt` indicts the rendering the judge was given. Free text alone
-# cannot be counted, so the axis is a required enum beside it.
-ATTRIBUTION_QUESTION = "question"
-ATTRIBUTION_PLAYER = "player"
-ATTRIBUTION_PROMPT = "prompt"
-ATTRIBUTION_NONE = "none"
-
-ATTRIBUTIONS = [
-    ATTRIBUTION_QUESTION,
-    ATTRIBUTION_PLAYER,
-    ATTRIBUTION_PROMPT,
-    ATTRIBUTION_NONE,
-]
-
-# `outcome` is validated by hand against the run's arity rather than declared
-# here: the declarative markers cannot express "a permutation of exactly these
-# labels", and the label set is only known once a match has been composed.
-VERDICT_EXPECTS: dict[str, object] = {
-    "attribution": ATTRIBUTIONS,
-    "reason": "str",
-}
+# A decided answer is its ranking alone. A refusal adds a reason in the judge's
+# own words — no attribution axis: which player or question a refusal indicts is
+# read from the records, which already carry who was in which refused match.
+REFUSAL_REASON_FIELD = "refusal_reason"
 
 
 def position_labels(arity: int) -> tuple[str, ...]:
@@ -85,26 +66,26 @@ def validate(expects: object, answer: object) -> None:
 def validate_verdict_answer(answer: object, *, arity: int) -> None:
     """Validate a judge answer for a match of ``arity`` players.
 
-    Two rules the flat schema cannot express. The outcome must be a strict total
-    ordering of exactly the labels presented, because a dropped or repeated label
-    is a comparison the record would otherwise silently lose. And a refusal must
-    attribute itself, because an unattributed refusal is exactly the signal the
-    report would be unable to count.
+    A decided answer is a strict total ordering of exactly the labels presented:
+    a dropped or repeated label is a comparison the record would otherwise
+    silently lose. A refusal carries a stated reason instead, so declining is an
+    answer rather than an abstention.
     """
     labels = position_labels(arity)
     if not isinstance(answer, dict):
         raise ContractError("answer must be an object")
-    outcome = answer.get("outcome")
-    if outcome is None and "outcome" not in answer:
+    if "outcome" not in answer:
         raise ContractError("answer is missing required field 'outcome'")
-    validate(VERDICT_EXPECTS, {k: v for k, v in answer.items() if k != "outcome"})
-    if outcome != OUTCOME_NO_CONTEST:
-        _validate_ordering(outcome, labels)
-    elif answer["attribution"] == ATTRIBUTION_NONE:
-        raise ContractError(
-            "a no_contest answer must attribute the refusal: set attribution to "
-            f"{ATTRIBUTION_QUESTION!r}, {ATTRIBUTION_PLAYER!r}, or {ATTRIBUTION_PROMPT!r}"
-        )
+    outcome = answer["outcome"]
+    if outcome == OUTCOME_NO_CONTEST:
+        reason = answer.get(REFUSAL_REASON_FIELD)
+        if not isinstance(reason, str) or not reason.strip():
+            raise ContractError(
+                f"a {OUTCOME_NO_CONTEST!r} answer must state why in "
+                f"{REFUSAL_REASON_FIELD!r}"
+            )
+        return
+    _validate_ordering(outcome, labels)
 
 
 def _validate_ordering(outcome: object, labels: tuple[str, ...]) -> None:

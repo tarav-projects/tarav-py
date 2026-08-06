@@ -2,11 +2,12 @@
 """Domain-blind comparative evaluation: pairwise matches judged by an agent."""
 
 from .depot import resolve_depot_root
+from .tickets import Ticket, TicketError, TicketStore
 from .contract import (
     MAX_ARITY,
     OUTCOME_NO_CONTEST,
     POSITION_LABELS,
-    VERDICT_EXPECTS,
+    REFUSAL_REASON_FIELD,
     ContractError,
     parse_judge_answer,
     validate,
@@ -38,7 +39,7 @@ __all__ = [
     "MAX_ARITY",
     "OUTCOME_NO_CONTEST",
     "POSITION_LABELS",
-    "VERDICT_EXPECTS",
+    "REFUSAL_REASON_FIELD",
     "ContractError",
     "EnvelopeShadowedError",
     "HookContext",
@@ -53,6 +54,9 @@ __all__ = [
     "TournamentDefinition",
     "TournamentError",
     "TournamentNotFoundError",
+    "Ticket",
+    "TicketError",
+    "TicketStore",
     "TournamentStore",
     "compose_verbatim",
     "resolve_depot_root",

@@ -97,8 +97,8 @@ class TournamentStore:
         presented: tuple[str, ...],
         verbatim_hash: str,
         ordering: tuple[str, ...] | list[str] | None = None,
-        no_contest_reason: str | None = None,
-        no_contest_attribution: str | None = None,
+        refusal_reason: str | None = None,
+        ticket: str | None = None,
         duration_ms: int | None = None,
         slot: dict[str, object] | None = None,
     ) -> Verdict:
@@ -106,16 +106,10 @@ class TournamentStore:
         slot_value = require_unshadowed_slot(slot)
         if outcome is VerdictOutcome.ORDERED:
             ordering = _require_ordering(ordering, players)
-            no_contest_reason = None
-            no_contest_attribution = None
+            refusal_reason = None
         else:
-            if not no_contest_reason:
+            if not refusal_reason:
                 raise TournamentError("a no-contest verdict requires a stated reason")
-            if not no_contest_attribution:
-                raise TournamentError(
-                    "a no-contest verdict must attribute the refusal to the "
-                    "question, a player, or the prompt"
-                )
             ordering = None
 
         envelope: dict[str, object] = {
@@ -125,8 +119,8 @@ class TournamentStore:
             "presented": list(presented),
             "outcome": outcome.value,
             "ordering": list(ordering) if ordering is not None else None,
-            "no_contest_reason": no_contest_reason,
-            "no_contest_attribution": no_contest_attribution,
+            "refusal_reason": refusal_reason,
+            "ticket": ticket,
             "judge": dict(judge),
             "verbatim_hash": verbatim_hash,
             # Microsecond precision: repeated runs of one match are expected, and

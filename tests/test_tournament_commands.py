@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import threading
 from pathlib import Path
 
@@ -36,10 +37,12 @@ PAIRS = (("alpha", "beta"), ("alpha", "gamma"), ("beta", "gamma"))
 
 
 class StubJudge:
+    """Submits through the real CLI, and stays silent for matched markers."""
+
     provider = "claude-code"
 
-    def __init__(self, *, answers: dict[str, AgentRunResult] | None = None) -> None:
-        self.answers = answers or {}
+    def __init__(self, *, silent_markers: tuple[str, ...] = ()) -> None:
+        self.silent_markers = silent_markers
         self.calls: list[str] = []
         self.dry_calls = 0
         self._lock = threading.Lock()
@@ -48,15 +51,21 @@ class StubJudge:
         prompt = command_config.prompt or ""
         with self._lock:
             self.calls.append(prompt)
-        for marker, result in self.answers.items():
-            if marker in prompt:
-                return result
-        return AgentRunResult(
-            exit_code=0,
-            stdout=json.dumps(
-                {"outcome": ["A", "B"], "attribution": "none", "reason": "default"}
-            ),
+        if any(marker in prompt for marker in self.silent_markers):
+            return AgentRunResult(exit_code=9, stdout="", stderr="boom")
+        ticket = re.search(r"--ticket (\S+)", prompt).group(1)
+        depot = re.search(r"--depot (\S+)", prompt).group(1)
+        parser = argparse.ArgumentParser()
+        register_tournament_commands(parser.add_subparsers(dest="command"))
+        args = parser.parse_args(
+            ["tournament", "submit", "--depot", depot, "--ticket", ticket,
+             "--ranking", "A,B"]
         )
+        try:
+            args.handler(args)
+        except CliError:
+            pass
+        return AgentRunResult(exit_code=0, stdout="")
 
     def run_dry(self, command_config) -> AgentRunDryResult:  # noqa: ANN001
         self.dry_calls += 1
@@ -101,9 +110,7 @@ def test_a_failed_match_lands_in_failures_without_aborting_siblings(
     tmp_path: Path,
 ) -> None:
     store, definition, tournament = _setup(tmp_path)
-    agent = StubJudge(
-        answers={"gamma": AgentRunResult(exit_code=9, stdout="", stderr="boom")}
-    )
+    agent = StubJudge(silent_markers=("gamma",))
 
     payload = run_pool(
         store=store,

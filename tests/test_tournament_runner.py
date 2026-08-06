@@ -1,13 +1,15 @@
 # $kw: ^test-tournament-runner --from Tournament.Match --from Tournament.Judge --note [DF] boundary tests for engine-composed verbatims, position decoding, shuffle-independent identity, and failed runs recording nothing ^<anchor-on-landing>
 from __future__ import annotations
 
-import json
+import argparse
+import re
 from pathlib import Path
 
 import pytest
 
 from agentos._core.errors import CliError
 from agentos.agent.run_runtime import AgentRunResult
+from agentos.tournament.commands import register_tournament_commands
 from agentos.tournament import (
     JudgeSpawn,
     TournamentStore,
@@ -28,34 +30,53 @@ def match_identity(ctx):
 
 
 class StubJudge:
-    """A RunCapable stand-in: the agent boundary, stubbed."""
+    """A RunCapable stand-in that answers the way a real judge now does.
+
+    It reads its ticket out of the prompt and submits through the actual CLI
+    handler, so these tests exercise the real boundary rather than a shortcut.
+    """
 
     provider = "stub"
 
-    def __init__(self, *results: AgentRunResult) -> None:
-        self._results = list(results)
+    def __init__(self, *answers, exit_code: int = 0) -> None:
+        self._answers = list(answers)
         self.prompts: list[str] = []
+        self.exit_code = exit_code
+        self.rejections: list[str] = []
 
     def run(self, command_config, run_config) -> AgentRunResult:  # noqa: ANN001
-        self.prompts.append(command_config.prompt or "")
-        return self._results.pop(0) if self._results else self._results_exhausted()
+        prompt = command_config.prompt or ""
+        self.prompts.append(prompt)
+        if not self._answers:
+            return AgentRunResult(exit_code=self.exit_code, stdout="")
+        for answer in self._answers.pop(0):
+            self._submit(prompt, answer)
+        return AgentRunResult(exit_code=self.exit_code, stdout="")
 
-    @staticmethod
-    def _results_exhausted() -> AgentRunResult:
-        raise AssertionError("the stub judge ran more matches than it was given")
+    def _submit(self, prompt: str, answer) -> None:
+        ticket = re.search(r"--ticket (\S+)", prompt).group(1)
+        depot = re.search(r"--depot (\S+)", prompt).group(1)
+        argv = ["tournament", "submit", "--depot", depot, "--ticket", ticket]
+        if answer == "no_contest":
+            argv += ["--no-contest", "--refusal-reason", "not comparable"]
+        elif isinstance(answer, tuple):
+            argv += ["--no-contest", "--refusal-reason", answer[1]]
+        else:
+            argv += ["--ranking", ",".join(answer)]
+        parser = argparse.ArgumentParser()
+        register_tournament_commands(parser.add_subparsers(dest="command"))
+        args = parser.parse_args(argv)
+        try:
+            args.handler(args)
+        except CliError as error:
+            self.rejections.append(str(error))
 
 
-def _answer(
-    outcome, reason: str = "because", attribution: str = "none"
-) -> AgentRunResult:
-    if outcome == "no_contest" and attribution == "none":
-        attribution = "question"
-    return AgentRunResult(
-        exit_code=0,
-        stdout=json.dumps(
-            {"outcome": outcome, "attribution": attribution, "reason": reason}
-        ),
-    )
+def _answer(outcome, reason: str = "because"):
+    """One spawn's worth of submissions."""
+    if outcome == "no_contest":
+        return [("no_contest", reason)]
+    return [outcome]
 
 
 def _setup(tmp_path: Path, body: str = DEFINITION):
@@ -91,7 +112,6 @@ def test_the_engine_composes_the_verbatim_from_presentations_and_its_own_frame(
     assert "Which line is better?" in verbatim
     assert "A:" in verbatim and "B:" in verbatim
     assert "alpha" in verbatim and "beta" in verbatim
-    assert "no_contest" in verbatim and "attribution" in verbatim
     assert "Rank all 2 candidates" in verbatim
 
 
@@ -170,35 +190,35 @@ def test_the_presented_order_actually_run_is_recorded(tmp_path: Path) -> None:
     assert sorted(result.presented) == ["alpha", "beta"]
 
 
-def test_a_nonzero_judge_exit_appends_no_record(tmp_path: Path) -> None:
+def test_a_judge_that_exits_without_submitting_appends_no_record(tmp_path: Path) -> None:
     store, definition, tournament = _setup(tmp_path)
     result = run_match(
         store=store,
         definition=definition,
         tournament=tournament,
         players=("alpha", "beta"),
-        spawn=_spawn(tmp_path, AgentRunResult(exit_code=1, stdout="")),
+        spawn=JudgeSpawn(agent=StubJudge(exit_code=1), cwd=tmp_path),
     )
 
     assert result.failed
     assert store.verdicts(tournament.tournament_id) == ()
 
 
-def test_an_unparseable_answer_appends_no_record(tmp_path: Path) -> None:
+def test_a_judge_that_prints_instead_of_submitting_appends_no_record(tmp_path: Path) -> None:
     store, definition, tournament = _setup(tmp_path)
     result = run_match(
         store=store,
         definition=definition,
         tournament=tournament,
         players=("alpha", "beta"),
-        spawn=_spawn(tmp_path, AgentRunResult(exit_code=0, stdout="I prefer alpha.")),
+        spawn=JudgeSpawn(agent=StubJudge(), cwd=tmp_path),
     )
 
     assert result.failed
     assert store.verdicts(tournament.tournament_id) == ()
 
 
-def test_a_declining_judge_records_a_no_contest_with_its_attribution(
+def test_a_declining_judge_records_a_no_contest_with_its_reason(
     tmp_path: Path,
 ) -> None:
     store, definition, tournament = _setup(tmp_path)
@@ -207,14 +227,12 @@ def test_a_declining_judge_records_a_no_contest_with_its_attribution(
         definition=definition,
         tournament=tournament,
         players=("alpha", "beta"),
-        spawn=_spawn(
-            tmp_path, _answer("no_contest", "not comparable", attribution="question")
-        ),
+        spawn=_spawn(tmp_path, _answer("no_contest", "not comparable")),
     )
 
     (verdict,) = store.verdicts(tournament.tournament_id)
     assert verdict.outcome == "no_contest"
-    assert verdict.envelope["no_contest_attribution"] == "question"
+    assert verdict.envelope["refusal_reason"] == "not comparable"
     assert verdict.ordering is None
 
 
@@ -294,9 +312,7 @@ def test_a_failed_match_is_a_row_and_never_aborts_its_siblings(
     tmp_path: Path,
 ) -> None:
     store, definition, tournament = _setup(tmp_path)
-    spawn = _spawn(
-        tmp_path, _answer(["A", "B"]), AgentRunResult(exit_code=1, stdout=""), _answer(["B", "A"])
-    )
+    spawn = _spawn(tmp_path, _answer(["A", "B"]), [], _answer(["B", "A"]))
 
     payload = run_pool(
         store=store,
@@ -401,3 +417,32 @@ def test_a_judge_ordering_that_omits_a_label_records_nothing(tmp_path: Path) -> 
 
     assert result.failed
     assert store.verdicts(tournament.tournament_id) == ()
+
+
+def test_provider_argv_passes_through_to_the_spawn(tmp_path: Path) -> None:
+    """A judge answers by running a command, so it needs its provider's tool grant."""
+
+    class RecordingJudge(StubJudge):
+        def __init__(self) -> None:
+            super().__init__()
+            self.argv: tuple[str, ...] = ()
+
+        def run(self, command_config, run_config):  # noqa: ANN001
+            self.argv = tuple(command_config.argv)
+            return super().run(command_config, run_config)
+
+    store, definition, tournament = _setup(tmp_path)
+    agent = RecordingJudge()
+    spawn = JudgeSpawn(
+        agent=agent, cwd=tmp_path, agent_argv=("--allowedTools", "Bash")
+    )
+
+    run_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=("alpha", "beta"),
+        spawn=spawn,
+    )
+
+    assert agent.argv == ("--allowedTools", "Bash")

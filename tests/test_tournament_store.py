@@ -134,8 +134,7 @@ def test_no_contest_verdict_requires_and_keeps_its_reason(tmp_path: Path) -> Non
         match_id="m-nc",
         players=("a", "b"),
         outcome=VerdictOutcome.NO_CONTEST,
-        no_contest_reason="the two lines are not comparable",
-        no_contest_attribution="question",
+        refusal_reason="the two lines are not comparable",
         judge=_judge(),
         presented=("a", "b"),
         verbatim_hash="sha256:" + "6" * 64,
@@ -143,8 +142,7 @@ def test_no_contest_verdict_requires_and_keeps_its_reason(tmp_path: Path) -> Non
 
     (verdict,) = store.verdicts(tournament_id)
     assert verdict.envelope["outcome"] == "no_contest"
-    assert verdict.envelope["no_contest_reason"] == "the two lines are not comparable"
-    assert verdict.envelope["no_contest_attribution"] == "question"
+    assert verdict.envelope["refusal_reason"] == "the two lines are not comparable"
     assert verdict.ordering is None
 
 

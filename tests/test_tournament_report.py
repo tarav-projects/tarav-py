@@ -34,15 +34,14 @@ def _preferred(store, tournament, match_id, players, winner) -> None:
     )
 
 
-def _no_contest(store, tournament, match_id, players, attribution) -> None:
+def _no_contest(store, tournament, match_id, players, attribution="") -> None:
     store.append_verdict(
         tournament_id=tournament.tournament_id,
         match_id=match_id,
         players=players,
         outcome=VerdictOutcome.NO_CONTEST,
-        no_contest_reason=f"declined: {attribution}",
-        no_contest_attribution=attribution,
-        judge={"provider": "claude-code", "model": None, "account": None},
+        refusal_reason=f"declined: {match_id}",
+                judge={"provider": "claude-code", "model": None, "account": None},
         presented=players,
         verbatim_hash="sha256:" + "2" * 64,
     )
@@ -102,7 +101,6 @@ def test_no_contest_distribution_is_reported_pool_wide_and_per_player(
 
     assert no_contest["count"] == 2
     assert no_contest["rate"] == 2 / 3
-    assert no_contest["attributions"] == {"player": 2}
     assert players["c"]["no_contests"] == 2
 
 
@@ -194,37 +192,25 @@ def test_an_under_played_low_scorer_is_not_reported(tmp_path: Path) -> None:
     )
 
 
-def test_no_contest_attributions_are_counted_on_their_axis(tmp_path: Path) -> None:
+def test_the_report_emits_no_attribution_axis(tmp_path: Path) -> None:
+    """Scattered-versus-clustered is read from the records, not from the judge."""
     store, tournament = _store(tmp_path)
-    _no_contest(store, tournament, "m1", ("a", "b"), "question")
-    _no_contest(store, tournament, "m2", ("a", "c"), "question")
-    _no_contest(store, tournament, "m3", ("b", "c"), "player")
+    _no_contest(store, tournament, "m1", ("a", "b"))
+    _no_contest(store, tournament, "m2", ("a", "c"))
 
     report = tournament_report(
         tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
     )
 
-    assert report["no_contest"]["attributions"] == {"question": 2, "player": 1}
-    assert set(report["no_contest"]["reason_samples"]) == {"question", "player"}
+    assert "attributions" not in report["no_contest"]
+    assert report["no_contest"]["count"] == 2
+    rows = {row["player"]: row for row in report["players"]}
+    assert rows["a"]["no_contests"] == 2
+    assert rows["b"]["no_contests"] == 1
+    assert set(report["no_contest"]["reason_samples"]) == {"m1", "m2"}
 
 
-def test_an_unattributed_no_contest_cannot_be_recorded(tmp_path: Path) -> None:
-    import pytest
 
-    from agentos.tournament import TournamentError
-
-    store, tournament = _store(tmp_path)
-    with pytest.raises(TournamentError):
-        store.append_verdict(
-            tournament_id=tournament.tournament_id,
-            match_id="m1",
-            players=("a", "b"),
-            outcome=VerdictOutcome.NO_CONTEST,
-            no_contest_reason="declined",
-            judge={"provider": "claude-code", "model": None, "account": None},
-            presented=("a", "b"),
-            verbatim_hash="sha256:" + "9" * 64,
-        )
 
 
 def test_a_player_absent_from_every_verdict_is_not_reported(tmp_path: Path) -> None:
