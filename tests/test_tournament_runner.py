@@ -446,3 +446,20 @@ def test_provider_argv_passes_through_to_the_spawn(tmp_path: Path) -> None:
     )
 
     assert agent.argv == ("--allowedTools", "Bash")
+
+
+def test_the_example_ranking_is_never_the_presentation_order(tmp_path: Path) -> None:
+    """Copying the template must be distinguishable from choosing that order."""
+    from agentos.tournament.runner import compose_verbatim
+
+    for arity in (2, 3, 4, 7):
+        labels = tuple("ABCDEFG"[:arity])
+        verbatim = compose_verbatim(
+            question="q",
+            criteria=None,
+            presented_presentations=tuple(f"p{i}" for i in range(arity)),
+            ticket_id="t-1",
+            depot_root="/depot",
+        )
+        assert f"--ranking {','.join(labels)}" not in verbatim
+        assert f"--ranking {','.join(labels[1:] + labels[:1])}" in verbatim

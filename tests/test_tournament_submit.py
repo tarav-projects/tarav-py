@@ -159,3 +159,81 @@ def test_gc_reports_what_it_removed(tmp_path: Path, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["command"] == "tournament gc"
     assert payload["removed"] == 0
+
+
+# --- preview ------------------------------------------------------------------
+
+
+def _preview_setup(tmp_path: Path):
+    from agentos.tournament import load_definition
+
+    body = (
+        "question = 'q'\n"
+        "def match_players(ctx):\n"
+        "    return ('alpha', 'beta', 'gamma')\n"
+        "def match_identity(ctx):\n"
+        "    return '|'.join(sorted(ctx.players))\n"
+    )
+    path = tmp_path / "definition.py"
+    path.write_text(body, encoding="utf-8")
+    store = TournamentStore(tmp_path / "depot")
+    definition = load_definition(path, snapshot_dir=store.root / "definitions" / "s")
+    tournament = store.create_tournament(
+        definition_path=str(path), definition_digest=definition.digest
+    )
+    snap = store.definition_dir(tournament.tournament_id)
+    snap.parent.mkdir(parents=True, exist_ok=True)
+    definition.snapshot_path.parent.rename(snap)
+    return store, tournament
+
+
+def _preview(store, tournament, *extra):
+    args = _parser().parse_args(
+        ["tournament", "preview", "--depot", str(store.root),
+         "--tournament", tournament.tournament_id, *extra]
+    )
+    return args.handler(args)
+
+
+def test_preview_prints_a_prompt_a_judge_could_actually_answer(
+    tmp_path: Path, capsys
+) -> None:
+    store, tournament = _preview_setup(tmp_path)
+
+    assert _preview(store, tournament) == 0
+    printed = capsys.readouterr().out
+    assert "alpha" in printed
+    assert "agentos tournament submit" in printed
+    assert "--ticket" in printed
+
+
+def test_preview_mints_a_real_ticket_that_submit_accepts(tmp_path: Path, capsys) -> None:
+    """The difference from --dry-run: this one is answerable."""
+    store, tournament = _preview_setup(tmp_path)
+    _preview(store, tournament, "--json")
+    payload = json.loads(capsys.readouterr().out)
+
+    assert _submit(store, payload["ticket"], "--ranking", "B,C,A") == 0
+    (verdict,) = store.verdicts(tournament.tournament_id)
+    assert verdict.envelope["ticket"] == payload["ticket"]
+
+
+def test_preview_spawns_no_judge_and_records_no_verdict(tmp_path: Path, capsys) -> None:
+    store, tournament = _preview_setup(tmp_path)
+    _preview(store, tournament)
+    capsys.readouterr()
+
+    assert store.verdicts(tournament.tournament_id) == ()
+
+
+def test_preview_is_stable_under_a_seed(tmp_path: Path, capsys) -> None:
+    store, tournament = _preview_setup(tmp_path)
+    _preview(store, tournament, "--seed", "7", "--json")
+    first = json.loads(capsys.readouterr().out)
+    _preview(store, tournament, "--seed", "7", "--json")
+    second = json.loads(capsys.readouterr().out)
+
+    assert first["presented"] == second["presented"]
+    # The ticket differs, so the hash must too: each preview is its own run.
+    assert first["ticket"] != second["ticket"]
+    assert first["verbatim_hash"] != second["verbatim_hash"]

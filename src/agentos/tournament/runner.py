@@ -110,7 +110,12 @@ def compose_verbatim(
         "once — no ties."
     )
     if ticket_id is not None:
-        ranked = ",".join(labels)
+        # Rotated, never the identity order. With `A,B,C,D` as the example, a
+        # judge copying the template and a judge genuinely finding the candidates
+        # already ranked produce the same answer, and the two become
+        # indistinguishable in the records. Rotating separates them: an identity
+        # answer now means someone chose it.
+        ranked = ",".join(_example_ranking(labels))
         depot = f" --depot {depot_root}" if depot_root is not None else ""
         parts.append(
             "Submit your answer by running this command. It validates your ranking "
@@ -124,6 +129,11 @@ def compose_verbatim(
             "Nothing you print is read; only the submitted command counts."
         )
     return "\n\n".join(parts)
+
+
+def _example_ranking(labels: tuple[str, ...]) -> tuple[str, ...]:
+    """A valid permutation that is deliberately not the presentation order."""
+    return labels[1:] + labels[:1]
 
 
 def run_match(
@@ -216,6 +226,59 @@ def run_match(
         verbatim=verbatim,
         verbatim_hash=verbatim_hash,
         verdict=verdict,
+    )
+
+
+def preview_match(
+    *,
+    store: TournamentStore,
+    definition: TournamentDefinition,
+    tournament: Tournament,
+    players: tuple[str, ...],
+    judge: dict[str, object],
+    rng_seed: int | None = None,
+) -> MatchResult:
+    """Compose one real match without spawning anything.
+
+    It mints a genuine ticket, so the rendered text is exactly what a judge would
+    be handed and can be answered by hand. Everything after the frame — the
+    spawn, the wait, the resolution — is what this skips.
+    """
+    presentations = tuple(definition.present_player(player) for player in players)
+    match_id = definition.match_identity(players=players, presentations=presentations)
+    presented, presented_presentations = _presented_order(
+        players, presentations, rng_seed
+    )
+
+    tickets = TicketStore(store.root)
+    ticket = tickets.mint(
+        tournament_id=tournament.tournament_id,
+        match_id=match_id,
+        players=players,
+        presented=presented,
+        verbatim_hash="",
+        judge=judge,
+    )
+    verbatim = compose_verbatim(
+        question=definition.question,
+        criteria=definition.criteria,
+        presented_presentations=presented_presentations,
+        ticket_id=ticket.ticket_id,
+        depot_root=store.root,
+    )
+    verbatim_hash = "sha256:" + hashlib.sha256(verbatim.encode("utf-8")).hexdigest()
+    tickets.set_verbatim_hash(ticket.ticket_id, verbatim_hash)
+    tickets.set_slot(
+        ticket.ticket_id,
+        definition.verdict_slot(players=players, presentations=presentations),
+    )
+    return MatchResult(
+        match_id=match_id,
+        players=players,
+        presented=presented,
+        verbatim=verbatim,
+        verbatim_hash=verbatim_hash,
+        ticket_id=ticket.ticket_id,
     )
 
 

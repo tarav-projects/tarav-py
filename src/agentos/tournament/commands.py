@@ -18,7 +18,7 @@ from agentos.tournament.hooks import load_definition, open_definition
 from agentos.tournament.model import TournamentError, VerdictOutcome
 from agentos.tournament.tickets import TicketStore
 from agentos.tournament.report import tournament_report
-from agentos.tournament.runner import JudgeSpawn, run_pool
+from agentos.tournament.runner import JudgeSpawn, preview_match, run_pool
 from agentos.tournament.store import TournamentStore
 
 
@@ -124,6 +124,64 @@ def _cmd_run(args: argparse.Namespace) -> int:
         raise CliError(str(exc)) from exc
     _print_json(payload)
     return 0 if payload["status"] == "ok" else 1
+
+
+def _cmd_preview(args: argparse.Namespace) -> int:
+    """Render one real match and print it, for looking at.
+
+    Mints a genuine ticket, so what it prints is byte-identical to what a judge
+    would receive and can be answered by hand with `tournament submit`. That is
+    the difference from `run --dry-run`, which mints nothing and therefore shows
+    a prompt missing its submit instruction — a third of what a judge reads.
+    """
+    store = _store(args)
+    try:
+        tournament = store.tournament(args.tournament)
+        definition = _reload_definition(store, tournament)
+        players = definition.match_players(
+            verdicts=tuple(
+                v.envelope for v in store.verdicts(tournament.tournament_id)
+            ),
+            match_index=args.match_index,
+            budget=1,
+        )
+    except TournamentError as exc:
+        raise CliError(str(exc)) from exc
+    if players is None:
+        raise CliError(
+            "the definition declined to supply a match at this index; try another "
+            "--match-index"
+        )
+
+    result = preview_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=players,
+        judge=_preview_judge(args),
+        rng_seed=args.seed,
+    )
+    if args.json:
+        _print_json(
+            {
+                "status": "ok",
+                "command": "tournament preview",
+                "tournament_id": tournament.tournament_id,
+                "ticket": result.ticket_id,
+                "match_id": result.match_id,
+                "players": list(result.players),
+                "presented": list(result.presented),
+                "verbatim_hash": result.verbatim_hash,
+                "verbatim": result.verbatim,
+            }
+        )
+    else:
+        print(result.verbatim)
+    return 0
+
+
+def _preview_judge(args: argparse.Namespace) -> dict[str, object]:
+    return {"provider": args.provider or "preview", "model": args.model, "account": None}
 
 
 def _cmd_show(args: argparse.Namespace) -> int:
@@ -352,6 +410,28 @@ def register_tournament_commands(subparsers: argparse._SubParsersAction) -> None
         "--refusal-reason", help="Why the comparison cannot honestly be made."
     )
     submit_parser.set_defaults(handler=_cmd_submit)
+
+    preview_parser = commands.add_parser(
+        "preview",
+        help="Render one real match and print it, without spawning a judge.",
+    )
+    _add_depot_argument(preview_parser)
+    preview_parser.add_argument("--tournament", required=True, help="Tournament identity.")
+    preview_parser.add_argument(
+        "--match-index",
+        type=int,
+        default=0,
+        help="Which match the definition should supply (default 0).",
+    )
+    preview_parser.add_argument(
+        "--seed", type=int, help="Seed the presentation shuffle for a stable render."
+    )
+    preview_parser.add_argument("--provider", help="Judge provider to record on the ticket.")
+    preview_parser.add_argument("--model", help="Judge model to record on the ticket.")
+    preview_parser.add_argument(
+        "--json", action="store_true", help="Emit the full record instead of the prompt."
+    )
+    preview_parser.set_defaults(handler=_cmd_preview)
 
     gc_parser = commands.add_parser(
         "gc", help="Sweep tournament tickets past the collection horizon."
