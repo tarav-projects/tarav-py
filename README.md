@@ -45,23 +45,6 @@ Command policy depends on the surface:
 - `uuid`: generate one or more UUIDv4 values (`--count`, `--json`)
 - `tmp-folder new`: allocate a unique path under `<project>/.agentos/tmp/` (`--create` optional)
 
-## Doctor CLI
-
-`agentos doctor` inspects environment state plus Agentos.Project resolution.
-
-- `--scope project|global|auto`: choose how effective storage paths are resolved
-- `--project [path]`: inspect an explicit project target; bare `--project` means current `pwd`
-- `doctor` does not require the selected target to already be an existing project
-
-Quick examples:
-
-```sh
-agentos doctor
-agentos doctor --project
-agentos doctor --project /path/to/repo
-agentos doctor --scope global
-```
-
 ## Agent CLI
 
 `agentos agent` runs configured agents backed by provider CLI commands.
