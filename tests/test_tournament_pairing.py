@@ -8,6 +8,7 @@ from agentos.tournament.pairing import (
     least_played,
     played_counts,
     random_pair,
+    random_players,
     round_robin,
 )
 
@@ -75,3 +76,22 @@ def test_the_engine_never_imports_the_pairing_library() -> None:
         if path.name != "pairing.py" and "pairing" in path.read_text(encoding="utf-8")
     ]
     assert importers == []
+
+
+def test_random_players_draws_the_requested_arity() -> None:
+    drawn = random_players(("a", "b", "c", "d", "e"), arity=4, rng=random.Random(3))
+    assert drawn is not None
+    assert len(drawn) == 4
+    assert len(set(drawn)) == 4
+    assert set(drawn) <= {"a", "b", "c", "d", "e"}
+
+
+def test_random_players_is_reproducible_from_a_seed() -> None:
+    first = random_players(("a", "b", "c", "d"), arity=3, rng=random.Random(5))
+    second = random_players(("a", "b", "c", "d"), arity=3, rng=random.Random(5))
+    assert first == second
+
+
+def test_random_players_returns_none_when_the_pool_is_too_small() -> None:
+    assert random_players(("a", "b"), arity=4) is None
+    assert random_players(("a", "b", "c"), arity=1) is None

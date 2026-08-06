@@ -6,7 +6,7 @@ pool and enumerates no pairs; a consumer that wants round-robin or least-played
 coverage calls one of these from its own ``match_players`` hook. Nothing in
 ``agentos.tournament`` imports this module, and a test asserts that.
 
-Every strategy returns one pair — the shape ``match_players`` returns — or
+Every strategy returns one player set — the shape ``match_players`` returns — or
 ``None`` when the pool cannot produce one. Returning ``None`` from the hook ends
 a run before its budget.
 """
@@ -82,3 +82,22 @@ def played_counts(
         key = tuple(sorted(str(player) for player in players))
         counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def random_players(
+    pool: tuple[str, ...] | list[str],
+    *,
+    arity: int,
+    rng: random.Random | None = None,
+) -> tuple[str, ...] | None:
+    """Draw ``arity`` distinct players uniformly.
+
+    The N-ary generalization of ``random_pair``. A larger arity buys more
+    comparisons per judge run; where that stops paying against a judge's
+    discrimination is empirical, so the caller picks the number.
+    """
+    unique = _unique_pool(pool)
+    if arity < 2 or len(unique) < arity:
+        return None
+    chooser = rng or random.Random()
+    return tuple(chooser.sample(list(unique), arity))

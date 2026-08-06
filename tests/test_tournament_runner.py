@@ -46,7 +46,7 @@ class StubJudge:
 
 
 def _answer(
-    outcome: str, reason: str = "because", attribution: str = "none"
+    outcome, reason: str = "because", attribution: str = "none"
 ) -> AgentRunResult:
     if outcome == "no_contest" and attribution == "none":
         attribution = "question"
@@ -77,7 +77,7 @@ def test_the_engine_composes_the_verbatim_from_presentations_and_its_own_frame(
     tmp_path: Path,
 ) -> None:
     store, definition, tournament = _setup(tmp_path)
-    spawn = _spawn(tmp_path, _answer("A"))
+    spawn = _spawn(tmp_path, _answer(["A", "B"]))
 
     result = run_match(
         store=store,
@@ -92,6 +92,7 @@ def test_the_engine_composes_the_verbatim_from_presentations_and_its_own_frame(
     assert "A:" in verbatim and "B:" in verbatim
     assert "alpha" in verbatim and "beta" in verbatim
     assert "no_contest" in verbatim and "attribution" in verbatim
+    assert "Rank all 2 candidates" in verbatim
 
 
 def test_criteria_reach_the_verbatim_when_the_definition_declares_them(
@@ -105,7 +106,7 @@ def test_criteria_reach_the_verbatim_when_the_definition_declares_them(
         definition=definition,
         tournament=tournament,
         players=("alpha", "beta"),
-        spawn=_spawn(tmp_path, _answer("A")),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])),
     )
     assert "Prefer the line that binds action." in result.verbatim
 
@@ -120,12 +121,12 @@ def test_a_judge_answering_b_records_the_player_presented_second(
         definition=definition,
         tournament=tournament,
         players=("alpha", "beta"),
-        spawn=_spawn(tmp_path, _answer("B")),
+        spawn=_spawn(tmp_path, _answer(["B", "A"])),
         rng_seed=7,
     )
 
     assert result.verdict is not None
-    assert result.verdict.preferred == result.presented[1]
+    assert result.verdict.ordering == (result.presented[1], result.presented[0])
 
 
 def test_identity_is_stable_across_runs_with_different_presented_order(
@@ -139,7 +140,7 @@ def test_identity_is_stable_across_runs_with_different_presented_order(
         definition=definition,
         tournament=tournament,
         players=("alpha", "beta"),
-        spawn=_spawn(tmp_path, _answer("A")),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])),
         rng_seed=1,
     )
     second = run_match(
@@ -147,7 +148,7 @@ def test_identity_is_stable_across_runs_with_different_presented_order(
         definition=definition,
         tournament=tournament,
         players=("alpha", "beta"),
-        spawn=_spawn(tmp_path, _answer("A")),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])),
         rng_seed=4,
     )
 
@@ -162,7 +163,7 @@ def test_the_presented_order_actually_run_is_recorded(tmp_path: Path) -> None:
         definition=definition,
         tournament=tournament,
         players=("alpha", "beta"),
-        spawn=_spawn(tmp_path, _answer("A")),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])),
     )
     assert result.verdict is not None
     assert list(result.verdict.envelope["presented"]) == list(result.presented)
@@ -214,12 +215,12 @@ def test_a_declining_judge_records_a_no_contest_with_its_attribution(
     (verdict,) = store.verdicts(tournament.tournament_id)
     assert verdict.outcome == "no_contest"
     assert verdict.envelope["no_contest_attribution"] == "question"
-    assert verdict.envelope["preferred"] is None
+    assert verdict.ordering is None
 
 
 def test_the_verbatim_hash_records_exactly_what_the_judge_saw(tmp_path: Path) -> None:
     store, definition, tournament = _setup(tmp_path)
-    spawn = _spawn(tmp_path, _answer("A"))
+    spawn = _spawn(tmp_path, _answer(["A", "B"]))
     result = run_match(
         store=store,
         definition=definition,
@@ -252,7 +253,7 @@ def test_dry_run_renders_without_spawning(tmp_path: Path) -> None:
 
 def test_run_pool_drives_matches_from_the_hook_until_budget(tmp_path: Path) -> None:
     store, definition, tournament = _setup(tmp_path)
-    spawn = _spawn(tmp_path, _answer("A"), _answer("A"), _answer("A"))
+    spawn = _spawn(tmp_path, _answer(["A", "B"]), _answer(["A", "B"]), _answer(["A", "B"]))
 
     payload = run_pool(
         store=store,
@@ -275,7 +276,7 @@ def test_run_pool_stops_early_when_the_hook_declines_another_match(
         'return ("alpha", "beta") if ctx.match_index < 2 else None',
     )
     store, definition, tournament = _setup(tmp_path, body)
-    spawn = _spawn(tmp_path, _answer("A"), _answer("A"))
+    spawn = _spawn(tmp_path, _answer(["A", "B"]), _answer(["A", "B"]))
 
     payload = run_pool(
         store=store,
@@ -294,7 +295,7 @@ def test_a_failed_match_is_a_row_and_never_aborts_its_siblings(
 ) -> None:
     store, definition, tournament = _setup(tmp_path)
     spawn = _spawn(
-        tmp_path, _answer("A"), AgentRunResult(exit_code=1, stdout=""), _answer("B")
+        tmp_path, _answer(["A", "B"]), AgentRunResult(exit_code=1, stdout=""), _answer(["B", "A"])
     )
 
     payload = run_pool(
@@ -322,3 +323,81 @@ def test_concurrency_below_one_is_rejected(tmp_path: Path) -> None:
             budget=1,
             concurrency=0,
         )
+
+
+def test_a_four_way_match_labels_a_through_d_and_records_its_ordering(
+    tmp_path: Path,
+) -> None:
+    body = DEFINITION.replace(
+        'return ("alpha", "beta")', 'return ("alpha", "beta", "gamma", "delta")'
+    )
+    store, definition, tournament = _setup(tmp_path, body)
+    spawn = _spawn(tmp_path, _answer(["C", "A", "D", "B"]))
+
+    result = run_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=("alpha", "beta", "gamma", "delta"),
+        spawn=spawn,
+        rng_seed=3,
+    )
+
+    verbatim = result.verbatim
+    for label in ("A:", "B:", "C:", "D:"):
+        assert label in verbatim
+    assert "Rank all 4 candidates" in verbatim
+
+    assert result.verdict is not None
+    presented = result.presented
+    # The judge ranked positions C, A, D, B; the engine decodes each through the
+    # order it actually ran.
+    assert result.verdict.ordering == (
+        presented[2],
+        presented[0],
+        presented[3],
+        presented[1],
+    )
+    assert sorted(result.verdict.ordering) == sorted(
+        ["alpha", "beta", "gamma", "delta"]
+    )
+
+
+def test_identity_ignores_presentation_order_at_higher_arity(tmp_path: Path) -> None:
+    body = DEFINITION.replace(
+        'return ("alpha", "beta")', 'return ("alpha", "beta", "gamma", "delta")'
+    )
+    store, definition, tournament = _setup(tmp_path, body)
+    players = ("alpha", "beta", "gamma", "delta")
+
+    first = run_match(
+        store=store, definition=definition, tournament=tournament,
+        players=players, spawn=_spawn(tmp_path, _answer(["A", "B", "C", "D"])),
+        rng_seed=1,
+    )
+    second = run_match(
+        store=store, definition=definition, tournament=tournament,
+        players=players, spawn=_spawn(tmp_path, _answer(["D", "C", "B", "A"])),
+        rng_seed=9,
+    )
+
+    assert first.presented != second.presented
+    assert first.match_id == second.match_id
+
+
+def test_a_judge_ordering_that_omits_a_label_records_nothing(tmp_path: Path) -> None:
+    body = DEFINITION.replace(
+        'return ("alpha", "beta")', 'return ("alpha", "beta", "gamma")'
+    )
+    store, definition, tournament = _setup(tmp_path, body)
+
+    result = run_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=("alpha", "beta", "gamma"),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])),
+    )
+
+    assert result.failed
+    assert store.verdicts(tournament.tournament_id) == ()

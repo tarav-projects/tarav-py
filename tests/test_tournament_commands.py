@@ -54,7 +54,7 @@ class StubJudge:
         return AgentRunResult(
             exit_code=0,
             stdout=json.dumps(
-                {"outcome": "A", "attribution": "none", "reason": "default"}
+                {"outcome": ["A", "B"], "attribution": "none", "reason": "default"}
             ),
         )
 

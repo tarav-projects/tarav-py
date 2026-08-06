@@ -61,12 +61,13 @@ def tournament_report(
             for player in players:
                 rows[player]["no_contests"] += 1
             continue
-        preferred = verdict.preferred
-        for player in players:
-            if player == preferred:
-                rows[player]["wins"] += 1
-            else:
-                rows[player]["losses"] += 1
+        # Pairwise comparisons are extracted here, never stored: for ranks i < j
+        # the earlier player beat the later one. One 4-way match yields six.
+        ordering = verdict.ordering or ()
+        for rank, winner in enumerate(ordering):
+            for loser in ordering[rank + 1 :]:
+                rows[winner]["wins"] += 1
+                rows[loser]["losses"] += 1
 
     return {
         "status": "ok",

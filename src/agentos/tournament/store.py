@@ -91,12 +91,12 @@ class TournamentStore:
         *,
         tournament_id: str,
         match_id: str,
-        players: tuple[str, str],
+        players: tuple[str, ...],
         outcome: VerdictOutcome,
         judge: dict[str, object],
-        presented: tuple[str, str],
+        presented: tuple[str, ...],
         verbatim_hash: str,
-        preferred: str | None = None,
+        ordering: tuple[str, ...] | list[str] | None = None,
         no_contest_reason: str | None = None,
         no_contest_attribution: str | None = None,
         duration_ms: int | None = None,
@@ -104,11 +104,8 @@ class TournamentStore:
     ) -> Verdict:
         match_id = require_match_id(match_id)
         slot_value = require_unshadowed_slot(slot)
-        if outcome is VerdictOutcome.PREFERRED:
-            if preferred not in players:
-                raise TournamentError(
-                    "a preferred outcome must name one of the match's players"
-                )
+        if outcome is VerdictOutcome.ORDERED:
+            ordering = _require_ordering(ordering, players)
             no_contest_reason = None
             no_contest_attribution = None
         else:
@@ -119,7 +116,7 @@ class TournamentStore:
                     "a no-contest verdict must attribute the refusal to the "
                     "question, a player, or the prompt"
                 )
-            preferred = None
+            ordering = None
 
         envelope: dict[str, object] = {
             "tournament_id": tournament_id,
@@ -127,7 +124,7 @@ class TournamentStore:
             "players": list(players),
             "presented": list(presented),
             "outcome": outcome.value,
-            "preferred": preferred,
+            "ordering": list(ordering) if ordering is not None else None,
             "no_contest_reason": no_contest_reason,
             "no_contest_attribution": no_contest_attribution,
             "judge": dict(judge),
@@ -166,6 +163,21 @@ class TournamentStore:
                 key=lambda item: (item.envelope["recorded_at"], item.record_id),
             )
         )
+
+
+def _require_ordering(
+    ordering: object, players: tuple[str, ...]
+) -> tuple[str, ...]:
+    """An ordered outcome must rank exactly the match's players, once each."""
+    if not isinstance(ordering, (list, tuple)):
+        raise TournamentError("an ordered outcome must supply the ranked players")
+    ranked = tuple(str(item) for item in ordering)
+    if sorted(ranked) != sorted(players):
+        raise TournamentError(
+            "an ordered outcome must rank exactly the match's players once each: "
+            f"expected {sorted(players)}, got {sorted(ranked)}"
+        )
+    return ranked
 
 
 def _tournament_from_record(record: BloberiaRecord) -> Tournament:

@@ -1,10 +1,14 @@
 # $kw: ^tournament-runner --from Tournament.Match --from Tournament.Judge --note [DC] the engine composes the Match.Verbatim from the consumer's player presentations and its own frame --supp ^c20260806-7u ^<anchor-on-landing>
 """One match: present, identify, shuffle, compose, spawn, validate, record.
 
-The engine performs every effect here. The definition supplied the two players
-and each one's presentation; this module frames them — question, criteria,
-position labels, answer contract — hands the result to one judge in a fresh
-context, validates the answer at the boundary, and appends the verdict.
+The engine performs every effect here. The definition supplied the match's
+players and each one's presentation; this module frames them — question,
+criteria, position labels, answer contract — hands the result to one judge in a
+fresh context, validates the returned ordering at the boundary, and appends the
+verdict.
+
+Positions, not players: the judge ranks labels and the engine decodes each back
+through the order it ran, so nothing a consumer wrote can invert a verdict.
 
 Two orderings matter and are deliberately separated. Identity is derived from the
 players in *canonical* order, before any shuffle, so repeat runs of one match
@@ -37,15 +41,14 @@ from agentos.tournament.contract import (
     OUTCOME_NO_CONTEST,
     ContractError,
     parse_judge_answer,
+    position_labels,
     validate_verdict_answer,
 )
 from agentos.tournament.hooks import HookError, TournamentDefinition
 from agentos.tournament.model import Tournament, Verdict, VerdictOutcome
 from agentos.tournament.store import TournamentStore
 
-# The judge decides one pair in one fresh context; presentation order is the
-# engine's randomization, so the answer names a position, not a player.
-_POSITIONS = ("A", "B")
+
 
 
 @dataclass(frozen=True)
@@ -69,8 +72,8 @@ class JudgeSpawn:
 @dataclass(frozen=True)
 class MatchResult:
     match_id: str
-    players: tuple[str, str]
-    presented: tuple[str, str]
+    players: tuple[str, ...]
+    presented: tuple[str, ...]
     verbatim: str
     verbatim_hash: str
     verdict: Verdict | None = None
@@ -85,19 +88,24 @@ def compose_verbatim(
     *,
     question: str,
     criteria: str | None,
-    presented_presentations: tuple[str, str],
+    presented_presentations: tuple[str, ...],
 ) -> str:
-    """Frame two presentations as one match prompt. Engine-owned, start to end."""
-    first, second = presented_presentations
+    """Frame N presentations as one match prompt. Engine-owned, start to end."""
+    labels = position_labels(len(presented_presentations))
     parts = [question.strip()]
     if criteria and criteria.strip():
         parts.append(criteria.strip())
-    parts.append(f"{_POSITIONS[0]}:\n{first}")
-    parts.append(f"{_POSITIONS[1]}:\n{second}")
+    for label, presentation in zip(labels, presented_presentations):
+        parts.append(f"{label}:\n{presentation}")
+    ranked = ", ".join(f'"{label}"' for label in labels)
     parts.append(
-        'Answer with exactly one JSON object: {"outcome": "A" | "B" | "no_contest", '
+        f"Rank all {len(labels)} candidates from best to worst.\n"
+        'Answer with exactly one JSON object: {"outcome": [' + ranked + "] | "
+        '"no_contest", '
         f'"attribution": {" | ".join(repr(item) for item in ATTRIBUTIONS)}, '
         '"reason": "..."}\n'
+        "The outcome array must contain every label exactly once, best first — no "
+        "ties.\n"
         'Use "no_contest" when the comparison cannot honestly be made, and attribute '
         'it to the question, to one player, or to this prompt. Use "none" only when '
         "you decided."
@@ -110,7 +118,7 @@ def run_match(
     store: TournamentStore,
     definition: TournamentDefinition,
     tournament: Tournament,
-    players: tuple[str, str],
+    players: tuple[str, ...],
     spawn: JudgeSpawn,
     rng_seed: int | None = None,
     dry_run: bool = False,
@@ -156,7 +164,7 @@ def run_match(
 
     try:
         answer = parse_judge_answer(run_result.stdout)
-        validate_verdict_answer(answer)
+        validate_verdict_answer(answer, arity=len(players))
     except ContractError as error:
         return _failure(match_id, players, presented, verbatim, verbatim_hash, str(error))
 
@@ -209,7 +217,7 @@ def run_pool(
         store=store, definition=definition, tournament=tournament, budget=budget
     )
 
-    def run_one(indexed: tuple[int, tuple[str, str]]) -> dict[str, object]:
+    def run_one(indexed: tuple[int, tuple[str, ...]]) -> dict[str, object]:
         _index, pair = indexed
         try:
             result = run_match(
@@ -257,7 +265,7 @@ def _collect_pairs(
     definition: TournamentDefinition,
     tournament: Tournament,
     budget: int,
-) -> tuple[tuple[tuple[str, str], ...], bool]:
+) -> tuple[tuple[tuple[str, ...], ...], bool]:
     """Call the match-players hook up to ``budget`` times.
 
     The hook sees the durable verdicts but not the matches already collected in
@@ -268,7 +276,7 @@ def _collect_pairs(
     verdicts = tuple(
         verdict.envelope for verdict in store.verdicts(tournament.tournament_id)
     )
-    pairs: list[tuple[str, str]] = []
+    pairs: list[tuple[str, ...]] = []
     for index in range(budget):
         pair = definition.match_players(
             verdicts=verdicts, match_index=index, budget=budget
@@ -296,7 +304,8 @@ def _run_row(
         row["error"] = result.error
         return row
     row["outcome"] = result.verdict.outcome
-    row["preferred"] = result.verdict.preferred
+    ordering = result.verdict.ordering
+    row["ordering"] = list(ordering) if ordering is not None else None
     row["verdict_id"] = result.verdict.record_id
     return row
 
@@ -317,16 +326,14 @@ def _dry_command(spawn: JudgeSpawn, verbatim: str) -> tuple[str, ...]:
 
 
 def _presented_order(
-    players: tuple[str, str],
+    players: tuple[str, ...],
     presentations: tuple[str, ...],
     rng_seed: int | None,
-) -> tuple[tuple[str, str], tuple[str, str]]:
-    """Shuffle the pair, carrying each player's presentation with it."""
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Shuffle the match, carrying each player's presentation with it."""
     paired = list(zip(players, presentations))
     random.Random(rng_seed).shuffle(paired)
-    ordered_players = (paired[0][0], paired[1][0])
-    ordered_presentations = (paired[0][1], paired[1][1])
-    return ordered_players, ordered_presentations
+    return tuple(item[0] for item in paired), tuple(item[1] for item in paired)
 
 
 def _spawn_judge(spawn: JudgeSpawn, verbatim: str) -> AgentRunResult:
@@ -350,15 +357,15 @@ def _append(
     store: TournamentStore,
     tournament: Tournament,
     match_id: str,
-    players: tuple[str, str],
-    presented: tuple[str, str],
+    players: tuple[str, ...],
+    presented: tuple[str, ...],
     answer: dict[str, object],
     judge: dict[str, object],
     verbatim_hash: str,
     duration_ms: int,
     slot: dict[str, object],
 ) -> Verdict:
-    outcome = str(answer["outcome"])
+    outcome = answer["outcome"]
     reason = str(answer["reason"])
     attribution = str(answer["attribution"])
     if outcome == OUTCOME_NO_CONTEST:
@@ -375,15 +382,16 @@ def _append(
             duration_ms=duration_ms,
             slot=slot,
         )
-    # The judge named a position; the engine turns it back into a player through
+    # The judge ranked positions; the engine turns each back into a player through
     # the order it ran. Nothing the consumer wrote can disagree with this.
-    preferred = presented[_POSITIONS.index(outcome)]
+    labels = position_labels(len(presented))
+    ordering = tuple(presented[labels.index(str(label))] for label in outcome)
     return store.append_verdict(
         tournament_id=tournament.tournament_id,
         match_id=match_id,
         players=players,
-        outcome=VerdictOutcome.PREFERRED,
-        preferred=preferred,
+        outcome=VerdictOutcome.ORDERED,
+        ordering=ordering,
         judge=judge,
         presented=presented,
         verbatim_hash=verbatim_hash,
@@ -394,8 +402,8 @@ def _append(
 
 def _failure(
     match_id: str,
-    players: tuple[str, str],
-    presented: tuple[str, str],
+    players: tuple[str, ...],
+    presented: tuple[str, ...],
     verbatim: str,
     verbatim_hash: str,
     error: str,

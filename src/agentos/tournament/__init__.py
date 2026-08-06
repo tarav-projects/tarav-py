@@ -3,9 +3,9 @@
 
 from .depot import resolve_depot_root
 from .contract import (
-    OUTCOME_A,
-    OUTCOME_B,
+    MAX_ARITY,
     OUTCOME_NO_CONTEST,
+    POSITION_LABELS,
     VERDICT_EXPECTS,
     ContractError,
     parse_judge_answer,
@@ -35,9 +35,9 @@ from .runner import JudgeSpawn, MatchResult, compose_verbatim, run_match, run_po
 from .store import TournamentNotFoundError, TournamentStore
 
 __all__ = [
-    "OUTCOME_A",
-    "OUTCOME_B",
+    "MAX_ARITY",
     "OUTCOME_NO_CONTEST",
+    "POSITION_LABELS",
     "VERDICT_EXPECTS",
     "ContractError",
     "EnvelopeShadowedError",

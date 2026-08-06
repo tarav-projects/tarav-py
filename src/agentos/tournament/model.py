@@ -27,7 +27,7 @@ ENVELOPE_FIELDS = frozenset(
         "players",
         "presented",
         "outcome",
-        "preferred",
+        "ordering",
         "no_contest_reason",
         "no_contest_attribution",
         "judge",
@@ -55,7 +55,7 @@ class EnvelopeShadowedError(TournamentError):
 
 
 class VerdictOutcome(str, Enum):
-    PREFERRED = "preferred"
+    ORDERED = "ordered"
     NO_CONTEST = "no_contest"
 
 
@@ -90,9 +90,17 @@ class Verdict:
         return str(self.envelope["outcome"])
 
     @property
-    def preferred(self) -> str | None:
-        value = self.envelope.get("preferred")
-        return None if value is None else str(value)
+    def ordering(self) -> tuple[str, ...] | None:
+        """The match's players best first, or None for a no-contest.
+
+        There is no single-winner accessor: at N>2 "the winner" is the least
+        interesting thing the record knows, and pairwise comparisons are a
+        read-side fold over this ordering.
+        """
+        value = self.envelope.get("ordering")
+        if value is None:
+            return None
+        return tuple(str(item) for item in value)
 
 
 def require_match_id(match_id: str) -> str:

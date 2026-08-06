@@ -72,14 +72,44 @@ def test_match_players_returning_none_signals_exhaustion(tmp_path: Path) -> None
     assert definition.match_players(verdicts=(), match_index=0, budget=1) is None
 
 
-def test_match_players_must_return_two_distinct_non_empty_players(
-    tmp_path: Path,
-) -> None:
-    for bad in ['("a", "a")', '("a", "")', '("a", "b", "c")', '"ab"']:
+def test_match_players_rejects_malformed_player_sets(tmp_path: Path) -> None:
+    bad_returns = [
+        '("a", "a")',            # the same player twice
+        '("a", "")',             # an empty payload
+        '("a",)',                # below the minimum arity
+        '"ab"',                  # a bare string, not a set
+        'tuple(str(i) for i in range(27))',  # past label exhaustion
+    ]
+    for bad in bad_returns:
         body = MINIMAL.replace('return ("a", "b")', f"return {bad}")
-        definition = _load(tmp_path, body, )
+        definition = _load(tmp_path, body)
         with pytest.raises(HookReturnError):
             definition.match_players(verdicts=(), match_index=0, budget=1)
+
+
+def test_match_players_accepts_any_arity_the_definition_chooses(
+    tmp_path: Path,
+) -> None:
+    body = MINIMAL.replace('return ("a", "b")', 'return ("a", "b", "c", "d")')
+    definition = _load(tmp_path, body)
+    assert definition.match_players(verdicts=(), match_index=0, budget=1) == (
+        "a",
+        "b",
+        "c",
+        "d",
+    )
+
+
+def test_arity_may_differ_between_successive_calls(tmp_path: Path) -> None:
+    """Arity is a per-match choice, not a tournament-level setting."""
+    body = MINIMAL.replace(
+        'return ("a", "b")',
+        'return ("a", "b") if ctx.match_index % 2 else ("a", "b", "c", "d", "e", "f")',
+    )
+    definition = _load(tmp_path, body)
+    first = definition.match_players(verdicts=(), match_index=0, budget=2)
+    second = definition.match_players(verdicts=(), match_index=1, budget=2)
+    assert len(first) == 6 and len(second) == 2
 
 
 def test_match_identity_never_sees_the_presented_order(tmp_path: Path) -> None:

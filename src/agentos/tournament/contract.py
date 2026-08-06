@@ -1,4 +1,4 @@
-# $kw: ^tournament-contract --from Tournament.Verdict --from Tournament.Judge --note [CT] judge output is validated at the boundary; verdicts are the entire product, so validation is mandatory rather than opt-in ^<anchor-on-landing>
+# $kw: ^tournament-contract --from Tournament.Verdict --from Tournament.Judge --note [CT] an outcome is either a strict total ordering of the match's players or a no-contest, validated against the actual arity --supp ^c20260806-54u ^<anchor-on-landing>
 """Typed judge-answer contract — validate an answer against a declared schema.
 
 ``expects`` vocabulary (JSON-safe, dependency-free):
@@ -21,9 +21,13 @@ from agentos.tournament.model import TournamentError
 
 _TYPE_MARKERS = ("bool", "str", "int", "float")
 
-OUTCOME_A = "A"
-OUTCOME_B = "B"
 OUTCOME_NO_CONTEST = "no_contest"
+
+# Positions, not players: the judge orders labels and the engine decodes them
+# back through the order it ran, so nothing a consumer wrote can invert a verdict.
+POSITION_LABELS = tuple(chr(ord("A") + index) for index in range(26))
+MAX_ARITY = len(POSITION_LABELS)
+MIN_ARITY = 2
 
 # A refusal is attributable three ways, and which one it is decides who to look
 # at: scattered `question` indicts the definition, clustered `player` indicts that
@@ -41,11 +45,24 @@ ATTRIBUTIONS = [
     ATTRIBUTION_NONE,
 ]
 
+# `outcome` is validated by hand against the run's arity rather than declared
+# here: the declarative markers cannot express "a permutation of exactly these
+# labels", and the label set is only known once a match has been composed.
 VERDICT_EXPECTS: dict[str, object] = {
-    "outcome": [OUTCOME_A, OUTCOME_B, OUTCOME_NO_CONTEST],
     "attribution": ATTRIBUTIONS,
     "reason": "str",
 }
+
+
+def position_labels(arity: int) -> tuple[str, ...]:
+    """The labels a match of this size presents to its judge."""
+    if not isinstance(arity, int) or isinstance(arity, bool):
+        raise ContractError(f"match arity must be an integer (got {arity!r})")
+    if arity < MIN_ARITY or arity > MAX_ARITY:
+        raise ContractError(
+            f"match arity must be between {MIN_ARITY} and {MAX_ARITY} (got {arity})"
+        )
+    return POSITION_LABELS[:arity]
 
 
 class ContractError(TournamentError):
@@ -65,22 +82,65 @@ def validate(expects: object, answer: object) -> None:
     _validate_object(expects, answer)
 
 
-def validate_verdict_answer(answer: object) -> None:
-    """Validate a judge answer against the v0 verdict contract.
+def validate_verdict_answer(answer: object, *, arity: int) -> None:
+    """Validate a judge answer for a match of ``arity`` players.
 
-    Adds the one cross-field rule the flat schema cannot express: a refusal must
-    actually attribute itself, because an unattributed refusal is exactly the
-    signal the report would otherwise be unable to count.
+    Two rules the flat schema cannot express. The outcome must be a strict total
+    ordering of exactly the labels presented, because a dropped or repeated label
+    is a comparison the record would otherwise silently lose. And a refusal must
+    attribute itself, because an unattributed refusal is exactly the signal the
+    report would be unable to count.
     """
-    validate(VERDICT_EXPECTS, answer)
-    assert isinstance(answer, dict)  # validate() guarantees the shape
-    if (
-        answer["outcome"] == OUTCOME_NO_CONTEST
-        and answer["attribution"] == ATTRIBUTION_NONE
-    ):
+    labels = position_labels(arity)
+    if not isinstance(answer, dict):
+        raise ContractError("answer must be an object")
+    outcome = answer.get("outcome")
+    if outcome is None and "outcome" not in answer:
+        raise ContractError("answer is missing required field 'outcome'")
+    validate(VERDICT_EXPECTS, {k: v for k, v in answer.items() if k != "outcome"})
+    if outcome != OUTCOME_NO_CONTEST:
+        _validate_ordering(outcome, labels)
+    elif answer["attribution"] == ATTRIBUTION_NONE:
         raise ContractError(
             "a no_contest answer must attribute the refusal: set attribution to "
             f"{ATTRIBUTION_QUESTION!r}, {ATTRIBUTION_PLAYER!r}, or {ATTRIBUTION_PROMPT!r}"
+        )
+
+
+def _validate_ordering(outcome: object, labels: tuple[str, ...]) -> None:
+    expected = ", ".join(labels)
+    if not isinstance(outcome, list) or isinstance(outcome, str):
+        raise ContractError(
+            f"field 'outcome' must be {OUTCOME_NO_CONTEST!r} or an array ranking "
+            f"all {len(labels)} labels best first: [{expected}]"
+        )
+    if len(outcome) != len(labels):
+        raise ContractError(
+            f"field 'outcome' must rank all {len(labels)} labels ({expected}) "
+            f"best first; got {len(outcome)} entries"
+        )
+    seen: list[str] = []
+    for item in outcome:
+        if not isinstance(item, str):
+            raise ContractError(
+                f"field 'outcome' must contain only labels ({expected}); "
+                f"got {item!r}"
+            )
+        if item not in labels:
+            raise ContractError(
+                f"field 'outcome' names {item!r}, which was not presented; "
+                f"rank exactly these labels: {expected}"
+            )
+        if item in seen:
+            raise ContractError(
+                f"field 'outcome' names {item!r} more than once; each label appears "
+                "exactly once because two players may not share a rank"
+            )
+        seen.append(item)
+    missing = [label for label in labels if label not in seen]
+    if missing:
+        raise ContractError(
+            "field 'outcome' omits " + ", ".join(missing) + f"; rank exactly: {expected}"
         )
 
 

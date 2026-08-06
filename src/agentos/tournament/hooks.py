@@ -2,7 +2,7 @@
 """Consumer-owned tournament definitions, loaded as snapshotted Python.
 
 A definition file exposes named functions. Two are required and have no default:
-``match_players`` names the two competitors of one match, and ``match_identity``
+``match_players`` names the competitors of one match, and ``match_identity``
 supplies that match's opaque identity. The engine computes neither — a generated
 pool would not be the consumer's, and a generated identity would silently stop
 accumulation.
@@ -28,6 +28,7 @@ from pathlib import Path
 from types import ModuleType
 
 from agentos.tournament import locking
+from agentos.tournament.contract import MAX_ARITY, MIN_ARITY
 from agentos.tournament.model import TournamentError
 
 MATCH_PLAYERS = "match_players"
@@ -39,7 +40,7 @@ REQUIRED_HOOKS = (MATCH_PLAYERS, MATCH_IDENTITY)
 DEFAULTED_HOOKS = (PRESENT_PLAYER, VERDICT_SLOT)
 HOOK_NAMES = REQUIRED_HOOKS + DEFAULTED_HOOKS
 
-DEFAULT_QUESTION = "Which of the two candidates below is better?"
+DEFAULT_QUESTION = "Rank the candidates below from best to worst."
 
 
 class HookError(TournamentError):
@@ -102,14 +103,14 @@ class TournamentDefinition:
         verdicts: tuple[dict[str, object], ...],
         match_index: int,
         budget: int,
-    ) -> tuple[str, str] | None:
+    ) -> tuple[str, ...] | None:
         context = self._context(
             verdicts=verdicts, match_index=match_index, budget=budget
         )
         value = self._call(MATCH_PLAYERS, getattr(self.module, MATCH_PLAYERS), context)
         if value is None:
             return None
-        return _validated_pair(value)
+        return _validated_players(value)
 
     def present_player(self, player: str) -> str:
         hook = getattr(self.module, PRESENT_PLAYER, None)
@@ -284,19 +285,26 @@ def _load_module(path: Path) -> ModuleType:
     return module
 
 
-def _validated_pair(value: object) -> tuple[str, str]:
+def _validated_players(value: object) -> tuple[str, ...]:
+    """Arity is the definition's per-match choice; the engine only bounds it.
+
+    The upper bound is label exhaustion, not a design position — twenty-six
+    candidates in one prompt is far past where a judge can discriminate.
+    """
     if isinstance(value, str) or not isinstance(value, (list, tuple)):
         raise HookReturnError(
-            f"{MATCH_PLAYERS} must return a pair of players or None "
+            f"{MATCH_PLAYERS} must return the match's players or None "
             f"(got {type(value).__name__})"
         )
-    if len(value) != 2:
+    if not MIN_ARITY <= len(value) <= MAX_ARITY:
         raise HookReturnError(
-            f"{MATCH_PLAYERS} must return exactly two players (got {len(value)})"
+            f"{MATCH_PLAYERS} must return between {MIN_ARITY} and {MAX_ARITY} "
+            f"players (got {len(value)})"
         )
-    first, second = str(value[0]), str(value[1])
-    if not first.strip() or not second.strip():
-        raise HookReturnError(f"{MATCH_PLAYERS} returned an empty player")
-    if first == second:
-        raise HookReturnError(f"{MATCH_PLAYERS} paired a player with itself")
-    return (first, second)
+    players = tuple(str(item) for item in value)
+    for player in players:
+        if not player.strip():
+            raise HookReturnError(f"{MATCH_PLAYERS} returned an empty player")
+    if len(set(players)) != len(players):
+        raise HookReturnError(f"{MATCH_PLAYERS} returned the same player twice")
+    return players

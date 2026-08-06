@@ -21,12 +21,13 @@ def _store(tmp_path: Path):
 
 
 def _preferred(store, tournament, match_id, players, winner) -> None:
+    ordering = (winner,) + tuple(p for p in players if p != winner)
     store.append_verdict(
         tournament_id=tournament.tournament_id,
         match_id=match_id,
         players=players,
-        outcome=VerdictOutcome.PREFERRED,
-        preferred=winner,
+        outcome=VerdictOutcome.ORDERED,
+        ordering=ordering,
         judge={"provider": "claude-code", "model": None, "account": None},
         presented=players,
         verbatim_hash="sha256:" + "1" * 64,
@@ -252,3 +253,45 @@ def test_a_player_that_left_the_pool_keeps_its_accumulated_history(tmp_path: Pat
     rows = {row["player"]: row for row in report["players"]}
     assert rows["stale-line"]["losses"] == 1
     assert rows["edited-line"]["wins"] == 1
+
+
+def _ordered(store, tournament, match_id, ordering) -> None:
+    store.append_verdict(
+        tournament_id=tournament.tournament_id,
+        match_id=match_id,
+        players=tuple(sorted(ordering)),
+        outcome=VerdictOutcome.ORDERED,
+        ordering=ordering,
+        judge={"provider": "claude-code", "model": None, "account": None},
+        presented=ordering,
+        verbatim_hash="sha256:" + "3" * 64,
+    )
+
+
+def test_a_four_way_ordering_yields_six_comparisons(tmp_path: Path) -> None:
+    store, tournament = _store(tmp_path)
+    _ordered(store, tournament, "m4", ("a", "b", "c", "d"))
+
+    report = tournament_report(
+        tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
+    )
+    rows = {row["player"]: row for row in report["players"]}
+    assert (rows["a"]["wins"], rows["a"]["losses"]) == (3, 0)
+    assert (rows["b"]["wins"], rows["b"]["losses"]) == (2, 1)
+    assert (rows["c"]["wins"], rows["c"]["losses"]) == (1, 2)
+    assert (rows["d"]["wins"], rows["d"]["losses"]) == (0, 3)
+    assert sum(r["wins"] for r in report["players"]) == 6
+
+
+def test_one_match_counts_as_one_match_whatever_its_arity(tmp_path: Path) -> None:
+    """A ten-way match is one independent judgment, not nine observations."""
+    store, tournament = _store(tmp_path)
+    _ordered(store, tournament, "m10", tuple("abcdefghij"))
+
+    report = tournament_report(
+        tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
+    )
+    rows = {row["player"]: row for row in report["players"]}
+    assert all(row["matches"] == 1 for row in rows.values())
+    assert rows["a"]["wins"] == 9
+    assert sum(r["wins"] for r in report["players"]) == 45
