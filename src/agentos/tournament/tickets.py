@@ -31,6 +31,14 @@ from agentos._core.ids import generate_uuid4_string
 from agentos.tournament.model import TournamentError
 
 TICKETS_DIRNAME = "tickets"
+
+# Where a ticket came from. A preview mints one that will never be redeemed, and
+# without this an unredeemed preview is indistinguishable from a match a judge
+# was given and failed to answer — so an afternoon of tuning would erase the one
+# place that records judge failure.
+KIND_MATCH = "match"
+KIND_PREVIEW = "preview"
+TICKET_KINDS = (KIND_MATCH, KIND_PREVIEW)
 DEFAULT_ATTEMPT_CAP = 3
 # A week. The horizon only has to be far longer than any match can run; at this
 # distance no live submission can be racing the sweep, so a ticket needs no
@@ -58,6 +66,11 @@ class Ticket:
     verdict_id: str | None = None
     exit_code: int | None = None
     slot: dict[str, object] | None = None
+    kind: str = KIND_MATCH
+
+    @property
+    def is_preview(self) -> bool:
+        return self.kind == KIND_PREVIEW
 
     @property
     def arity(self) -> int:
@@ -87,6 +100,7 @@ class Ticket:
             "verdict_id": self.verdict_id,
             "exit_code": self.exit_code,
             "slot": dict(self.slot) if self.slot is not None else None,
+            "kind": self.kind,
         }
 
 
@@ -106,7 +120,12 @@ class TicketStore:
         verbatim_hash: str,
         judge: dict[str, object],
         attempt_cap: int = DEFAULT_ATTEMPT_CAP,
+        kind: str = KIND_MATCH,
     ) -> Ticket:
+        if kind not in TICKET_KINDS:
+            raise TicketError(
+                f"unknown ticket kind {kind!r}; expected one of {list(TICKET_KINDS)}"
+            )
         ticket = Ticket(
             ticket_id=generate_uuid4_string(),
             tournament_id=tournament_id,
@@ -117,6 +136,7 @@ class TicketStore:
             judge=dict(judge),
             created_at=iso_z(datetime.now(timezone.utc), drop_micros=False),
             attempt_cap=attempt_cap,
+            kind=kind,
         )
         self._write(ticket)
         return ticket
@@ -175,19 +195,28 @@ class TicketStore:
         self._write(updated)
         return updated
 
-    def sweep(self, *, horizon_seconds: int = SWEEP_HORIZON_SECONDS) -> int:
-        """Remove tickets older than the horizon. Returns how many went."""
+    def sweep(
+        self, *, horizon_seconds: int = SWEEP_HORIZON_SECONDS
+    ) -> dict[str, int]:
+        """Remove tickets older than the horizon, counted by kind.
+
+        Split by kind because the two mean different things once gone: an
+        unredeemed `match` ticket is a judge that failed to answer, while an
+        unredeemed `preview` is somebody tuning a question.
+        """
+        removed: dict[str, int] = {}
         if not self.root.is_dir():
-            return 0
+            return removed
         cutoff = time.time() - horizon_seconds
-        removed = 0
         for path in sorted(self.root.glob("*.json")):
             try:
-                if path.stat().st_mtime < cutoff:
-                    path.unlink()
-                    removed += 1
-            except OSError:
+                if path.stat().st_mtime >= cutoff:
+                    continue
+                kind = self.load(path.stem).kind
+                path.unlink()
+            except (OSError, TicketError):
                 continue
+            removed[kind] = removed.get(kind, 0) + 1
         return removed
 
     def _path(self, ticket_id: str) -> Path:
@@ -221,6 +250,7 @@ def _replace(ticket: Ticket, **changes: object) -> Ticket:
             "verdict_id",
             "exit_code",
             "slot",
+            "kind",
         )
     }
     payload.update(changes)
@@ -246,6 +276,9 @@ def _ticket_from_payload(payload: object, ticket_id: str) -> Ticket:
             verdict_id=payload.get("verdict_id") and str(payload["verdict_id"]),
             exit_code=payload.get("exit_code"),  # type: ignore[arg-type]
             slot=payload.get("slot"),  # type: ignore[arg-type]
+            # Defaulted, not required: a ticket written before this field is a
+            # match ticket, not a broken one.
+            kind=str(payload.get("kind", KIND_MATCH)),
         )
     except (KeyError, TypeError, ValueError) as error:
         raise TicketError(f"corrupt tournament ticket {ticket_id}: {error}") from error

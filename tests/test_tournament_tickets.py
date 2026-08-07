@@ -1,6 +1,7 @@
 # $kw: ^test-tournament-tickets --from Tournament.Ticket --note [DF] boundary tests for the mutable staging that authorizes one submission per match run ^<anchor-on-landing>
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -9,6 +10,8 @@ import pytest
 
 from agentos.tournament.tickets import (
     DEFAULT_ATTEMPT_CAP,
+    KIND_MATCH,
+    KIND_PREVIEW,
     SWEEP_HORIZON_SECONDS,
     Ticket,
     TicketError,
@@ -125,7 +128,7 @@ def test_sweep_removes_stale_tickets_and_keeps_fresh_ones(tmp_path: Path) -> Non
 
     removed = store.sweep()
 
-    assert removed == 1
+    assert removed == {KIND_MATCH: 1}
     assert not stale_path.exists()
     assert (store.root / f"{fresh.ticket_id}.json").is_file()
 
@@ -135,12 +138,12 @@ def test_sweep_keeps_a_redeemed_ticket_until_it_ages_out(tmp_path: Path) -> None
     ticket = _mint(store)
     store.redeem(ticket.ticket_id, verdict_id="v-1", exit_code=0)
 
-    assert store.sweep() == 0
+    assert store.sweep() == {}
     assert (store.root / f"{ticket.ticket_id}.json").is_file()
 
 
 def test_sweep_on_an_absent_directory_is_a_no_op(tmp_path: Path) -> None:
-    assert TicketStore(tmp_path / "nothing").sweep() == 0
+    assert TicketStore(tmp_path / "nothing").sweep() == {}
 
 
 def test_sweep_ignores_files_it_did_not_write(tmp_path: Path) -> None:
@@ -151,5 +154,74 @@ def test_sweep_ignores_files_it_did_not_write(tmp_path: Path) -> None:
     old = time.time() - SWEEP_HORIZON_SECONDS - 60
     os.utime(litter, (old, old))
 
-    assert store.sweep() == 0
+    assert store.sweep() == {}
     assert litter.is_file()
+
+
+# --- kind ---------------------------------------------------------------------
+
+
+def test_a_ticket_defaults_to_the_match_kind(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    ticket = _mint(store)
+
+    assert ticket.kind == KIND_MATCH
+    assert store.load(ticket.ticket_id).kind == KIND_MATCH
+
+
+def test_a_preview_kind_round_trips(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    ticket = _mint(store, kind=KIND_PREVIEW)
+
+    assert store.load(ticket.ticket_id).kind == KIND_PREVIEW
+    assert store.load(ticket.ticket_id).is_preview is True
+
+
+def test_a_ticket_written_before_the_field_still_loads(tmp_path: Path) -> None:
+    """An existing file predates `kind`; it is a match ticket, not a broken one."""
+    store = _store(tmp_path)
+    ticket = _mint(store)
+    path = store.root / f"{ticket.ticket_id}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    del payload["kind"]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert store.load(ticket.ticket_id).kind == KIND_MATCH
+
+
+def test_kind_changes_nothing_about_redemption_or_the_cap(tmp_path: Path) -> None:
+    """A preview ticket is a real ticket: answering it records a real verdict."""
+    store = _store(tmp_path)
+    preview = _mint(store, kind=KIND_PREVIEW)
+
+    store.record_attempt(preview.ticket_id)
+    assert store.load(preview.ticket_id).attempts == 1
+
+    store.redeem(preview.ticket_id, verdict_id="v-1", exit_code=None)
+    assert store.load(preview.ticket_id).redeemed is True
+
+    with pytest.raises(TicketError):
+        store.redeem(preview.ticket_id, verdict_id="v-2", exit_code=None)
+
+
+def test_an_unknown_kind_is_rejected(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with pytest.raises(TicketError):
+        _mint(store, kind="whatever")
+
+
+def test_sweep_reports_what_it_removed_by_kind(tmp_path: Path) -> None:
+    """Unredeemed match tickets are judge failures; unredeemed previews are tuning."""
+    store = _store(tmp_path)
+    old = time.time() - SWEEP_HORIZON_SECONDS - 60
+    for kind, count in ((KIND_MATCH, 1), (KIND_PREVIEW, 2)):
+        for _ in range(count):
+            ticket = _mint(store, kind=kind)
+            path = store.root / f"{ticket.ticket_id}.json"
+            os.utime(path, (old, old))
+    _mint(store)  # fresh, survives
+
+    removed = store.sweep()
+
+    assert removed == {KIND_MATCH: 1, KIND_PREVIEW: 2}
+    assert sum(removed.values()) == 3

@@ -237,3 +237,72 @@ def test_preview_is_stable_under_a_seed(tmp_path: Path, capsys) -> None:
     # The ticket differs, so the hash must too: each preview is its own run.
     assert first["ticket"] != second["ticket"]
     assert first["verbatim_hash"] != second["verbatim_hash"]
+
+
+def test_preview_mints_a_preview_kind_ticket(tmp_path: Path, capsys) -> None:
+    from agentos.tournament.tickets import KIND_PREVIEW, TicketStore
+
+    store, tournament = _preview_setup(tmp_path)
+    _preview(store, tournament, "--json")
+    payload = json.loads(capsys.readouterr().out)
+
+    assert TicketStore(store.root).load(payload["ticket"]).kind == KIND_PREVIEW
+
+
+def test_a_run_mints_match_kind_tickets(tmp_path: Path) -> None:
+    """Only previews are marked; a real match keeps the default."""
+    from agentos.tournament.tickets import KIND_MATCH, TicketStore
+
+    store, _tournament, ticket = _setup(tmp_path)
+    assert TicketStore(store.root).load(ticket.ticket_id).kind == KIND_MATCH
+
+
+def test_a_previewed_match_answered_by_hand_records_an_ordinary_verdict(
+    tmp_path: Path, capsys
+) -> None:
+    """Kind marks provenance, never permission."""
+    store, tournament = _preview_setup(tmp_path)
+    _preview(store, tournament, "--json")
+    payload = json.loads(capsys.readouterr().out)
+
+    assert _submit(store, payload["ticket"], "--ranking", "C,A,B") == 0
+    (verdict,) = store.verdicts(tournament.tournament_id)
+    assert verdict.outcome == "ordered"
+    assert "kind" not in verdict.envelope
+
+
+def test_gc_reports_the_split_between_judge_failure_and_tuning(
+    tmp_path: Path, capsys
+) -> None:
+    import os
+    import time
+
+    from agentos.tournament.tickets import (
+        KIND_MATCH,
+        KIND_PREVIEW,
+        SWEEP_HORIZON_SECONDS,
+        TicketStore,
+    )
+
+    store, tournament = _preview_setup(tmp_path)
+    tickets = TicketStore(store.root)
+    for kind in (KIND_MATCH, KIND_PREVIEW, KIND_PREVIEW):
+        made = tickets.mint(
+            tournament_id=tournament.tournament_id,
+            match_id="m",
+            players=("a", "b"),
+            presented=("a", "b"),
+            verbatim_hash="",
+            judge={},
+            kind=kind,
+        )
+        path = tickets.root / f"{made.ticket_id}.json"
+        old = time.time() - SWEEP_HORIZON_SECONDS - 60
+        os.utime(path, (old, old))
+
+    args = _parser().parse_args(["tournament", "gc", "--depot", str(store.root)])
+    assert args.handler(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["removed"] == 3
+    assert payload["removed_by_kind"] == {KIND_MATCH: 1, KIND_PREVIEW: 2}

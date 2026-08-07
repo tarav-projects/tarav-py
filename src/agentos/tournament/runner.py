@@ -40,7 +40,7 @@ from agentos.tournament.contract import position_labels
 from agentos.tournament.hooks import HookError, TournamentDefinition
 from agentos.tournament.model import Tournament, Verdict
 from agentos.tournament.store import TournamentStore
-from agentos.tournament.tickets import TicketStore
+from agentos.tournament.tickets import KIND_PREVIEW, TicketStore
 
 
 
@@ -258,6 +258,7 @@ def preview_match(
         presented=presented,
         verbatim_hash="",
         judge=judge,
+        kind=KIND_PREVIEW,
     )
     verbatim = compose_verbatim(
         question=definition.question,

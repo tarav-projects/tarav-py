@@ -318,7 +318,10 @@ def _cmd_gc(args: argparse.Namespace) -> int:
             "status": "ok",
             "command": "tournament gc",
             "depot": str(store.root),
-            "removed": removed,
+            "removed": sum(removed.values()),
+            # Split by kind: swept `match` tickets went unanswered by a judge,
+            # swept `preview` tickets are development noise.
+            "removed_by_kind": removed,
         }
     )
     return 0
