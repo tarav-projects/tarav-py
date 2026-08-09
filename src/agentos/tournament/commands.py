@@ -171,6 +171,7 @@ def _cmd_preview(args: argparse.Namespace) -> int:
                 "match_id": result.match_id,
                 "players": list(result.players),
                 "presented": list(result.presented),
+                "controls": dict(result.controls),
                 "verbatim_hash": result.verbatim_hash,
                 "verbatim": result.verbatim,
             }
@@ -291,6 +292,7 @@ def _append_submitted(store: TournamentStore, ticket, answer: dict[str, object])
             verbatim_hash=ticket.verbatim_hash,
             ticket=ticket.ticket_id,
             slot=ticket.slot or {},
+            controls=ticket.controls,
         )
     labels = position_labels(ticket.arity)
     ordering = tuple(
@@ -307,6 +309,7 @@ def _append_submitted(store: TournamentStore, ticket, answer: dict[str, object])
         verbatim_hash=ticket.verbatim_hash,
         ticket=ticket.ticket_id,
         slot=ticket.slot or {},
+        controls=ticket.controls,
     )
 
 

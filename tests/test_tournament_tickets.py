@@ -225,3 +225,38 @@ def test_sweep_reports_what_it_removed_by_kind(tmp_path: Path) -> None:
 
     assert removed == {KIND_MATCH: 1, KIND_PREVIEW: 2}
     assert sum(removed.values()) == 3
+
+
+def test_a_ticket_carries_the_controls_its_match_was_given(tmp_path: Path) -> None:
+    """`submit` never loads a definition, so the band has to travel on the ticket."""
+    store = _store(tmp_path)
+    ticket = _mint(store, controls={"ringer": "high"})
+
+    assert store.load(ticket.ticket_id).controls == {"ringer": "high"}
+
+
+def test_a_ticket_without_controls_carries_an_empty_pool(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    assert _mint(store).controls == {}
+
+
+def test_a_ticket_file_written_before_controls_loads_as_uncontrolled(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    ticket = _mint(store)
+    path = store.root / f"{ticket.ticket_id}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    del payload["controls"]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert store.load(ticket.ticket_id).controls == {}
+
+
+def test_controls_survive_an_attempt_and_a_redemption(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    ticket = _mint(store, controls={"dud": "low"})
+    store.record_attempt(ticket.ticket_id)
+    store.redeem(ticket.ticket_id, verdict_id="v-1", exit_code=0)
+
+    assert store.load(ticket.ticket_id).controls == {"dud": "low"}

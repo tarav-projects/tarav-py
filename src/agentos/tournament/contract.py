@@ -34,6 +34,13 @@ MIN_ARITY = 2
 # read from the records, which already carry who was in which refused match.
 REFUSAL_REASON_FIELD = "refusal_reason"
 
+# A control declares which end of the field it belongs at. There is no middle
+# band: mid-pack is where noise lives, so a middle expectation is not falsifiable
+# at any affordable volume.
+BAND_HIGH = "high"
+BAND_LOW = "low"
+CONTROL_BANDS = (BAND_HIGH, BAND_LOW)
+
 
 def position_labels(arity: int) -> tuple[str, ...]:
     """The labels a match of this size presents to its judge."""

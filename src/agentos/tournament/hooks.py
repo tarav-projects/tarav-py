@@ -13,10 +13,15 @@ The file is snapshotted at load and matches execute the snapshot, so a definitio
 edited mid-tournament cannot silently make later verdicts incomparable with
 earlier ones.
 
+``controls`` declares the calibration pool — players carrying an expected band —
+and the module attribute ``control_rate`` says how often one is substituted in.
+The hook returns the *pool*, never one control per call: which control lands in
+which match is engine work.
+
 A hook may randomize *which* players meet — that is sampling strategy, and
-`random` writes nothing that purity verification would catch. Only presentation
-order is engine business, because the engine decodes the judge's answer through
-the order it ran.
+`random` writes nothing that purity verification would catch. The engine
+randomizes exactly two things: presentation order, because it decodes the judge's
+answer through the order it ran, and control substitution.
 """
 
 from __future__ import annotations
@@ -28,19 +33,26 @@ from pathlib import Path
 from types import ModuleType
 
 from agentos.tournament import locking
-from agentos.tournament.contract import MAX_ARITY, MIN_ARITY
+from agentos.tournament.contract import CONTROL_BANDS, MAX_ARITY, MIN_ARITY
 from agentos.tournament.model import TournamentError
 
 MATCH_PLAYERS = "match_players"
 MATCH_IDENTITY = "match_identity"
 PRESENT_PLAYER = "present_player"
 VERDICT_SLOT = "verdict_slot"
+CONTROLS = "controls"
 
 REQUIRED_HOOKS = (MATCH_PLAYERS, MATCH_IDENTITY)
-DEFAULTED_HOOKS = (PRESENT_PLAYER, VERDICT_SLOT)
+DEFAULTED_HOOKS = (PRESENT_PLAYER, VERDICT_SLOT, CONTROLS)
 HOOK_NAMES = REQUIRED_HOOKS + DEFAULTED_HOOKS
 
 DEFAULT_QUESTION = "Rank the candidates below from best to worst."
+
+CONTROL_RATE_ATTR = "control_rate"
+# Controls declared without a rate substitute nothing. A half-finished
+# declaration is more likely than an intent to calibrate every match, and
+# substituting nothing is the safe reading of it.
+DEFAULT_CONTROL_RATE = 0.0
 
 
 class HookError(TournamentError):
@@ -111,6 +123,45 @@ class TournamentDefinition:
         if value is None:
             return None
         return _validated_players(value)
+
+    @property
+    def control_rate(self) -> float:
+        """How often the engine substitutes a control, as a probability."""
+        value = getattr(self.module, CONTROL_RATE_ATTR, DEFAULT_CONTROL_RATE)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise HookReturnError(
+                f"{CONTROL_RATE_ATTR} must be a number between 0 and 1 "
+                f"(got {type(value).__name__})"
+            )
+        if not 0.0 <= float(value) <= 1.0:
+            raise HookReturnError(
+                f"{CONTROL_RATE_ATTR} must be between 0 and 1 (got {value})"
+            )
+        return float(value)
+
+    def controls(
+        self,
+        *,
+        verdicts: tuple[dict[str, object], ...],
+        match_index: int,
+        budget: int,
+    ) -> dict[str, str]:
+        """The control pool, each player with its declared band.
+
+        The pool and not one control per call: which control appears in a given
+        match is engine work, and a one-per-call hook would hand that choice back
+        to the consumer.
+        """
+        hook = getattr(self.module, CONTROLS, None)
+        if hook is None:
+            return {}
+        context = self._context(
+            verdicts=verdicts, match_index=match_index, budget=budget
+        )
+        value = self._call(CONTROLS, hook, context)
+        if value is None:
+            return {}
+        return _validated_controls(value)
 
     def present_player(self, player: str) -> str:
         hook = getattr(self.module, PRESENT_PLAYER, None)
@@ -283,6 +334,30 @@ def _load_module(path: Path) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _validated_controls(value: object) -> dict[str, str]:
+    """A mapping, because a control *is* a player plus a declared expectation.
+
+    A sequence would let the same player be declared twice with two bands; a
+    mapping cannot express that at all.
+    """
+    if not isinstance(value, dict):
+        raise HookReturnError(
+            f"{CONTROLS} must return a mapping of player to band or None "
+            f"(got {type(value).__name__})"
+        )
+    pool: dict[str, str] = {}
+    for player, band in value.items():
+        if not isinstance(player, str) or not player.strip():
+            raise HookReturnError(f"{CONTROLS} returned an empty control player")
+        if band not in CONTROL_BANDS:
+            raise HookReturnError(
+                f"{CONTROLS} declared band {band!r} for {player!r}; a control is "
+                f"expected {' or '.join(CONTROL_BANDS)}"
+            )
+        pool[player] = str(band)
+    return pool
 
 
 def _validated_players(value: object) -> tuple[str, ...]:

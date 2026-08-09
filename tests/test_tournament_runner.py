@@ -448,6 +448,123 @@ def test_provider_argv_passes_through_to_the_spawn(tmp_path: Path) -> None:
     assert agent.argv == ("--allowedTools", "Bash")
 
 
+CONTROLLED = DEFINITION + (
+    "\ncontrol_rate = 1.0\n"
+    "def controls(ctx):\n"
+    "    return {'ringer': 'high'}\n"
+)
+
+
+def test_a_control_replaces_exactly_one_pool_player(tmp_path: Path) -> None:
+    store, definition, tournament = _setup(tmp_path, CONTROLLED)
+
+    result = run_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=("alpha", "beta"),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])),
+        rng_seed=5,
+    )
+
+    assert result.controls == {"ringer": "high"}
+    assert "ringer" in result.players
+    assert len(result.players) == 2
+    assert len(set(result.players)) == 2
+
+
+def test_a_zero_rate_substitutes_nothing(tmp_path: Path) -> None:
+    body = CONTROLLED.replace("control_rate = 1.0", "control_rate = 0.0")
+    store, definition, tournament = _setup(tmp_path, body)
+
+    result = run_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=("alpha", "beta"),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])),
+        rng_seed=5,
+    )
+
+    assert result.controls == {}
+    assert result.players == ("alpha", "beta")
+
+
+def test_a_control_already_in_the_match_is_not_substituted_in(tmp_path: Path) -> None:
+    """Drawing it would duplicate a player, which the arity check already refuses."""
+    body = CONTROLLED.replace("{'ringer': 'high'}", "{'alpha': 'low'}")
+    store, definition, tournament = _setup(tmp_path, body)
+
+    result = run_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=("alpha", "beta"),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])),
+        rng_seed=5,
+    )
+
+    assert result.controls == {}
+    assert result.players == ("alpha", "beta")
+
+
+def test_substitution_precedes_identity(tmp_path: Path) -> None:
+    """A match carrying a control is a different match from the one without."""
+    store, controlled, tournament = _setup(tmp_path, CONTROLLED)
+    (tmp_path / "plain").mkdir()
+    plain_store, plain, plain_tournament = _setup(tmp_path / "plain")
+
+    with_control = run_match(
+        store=store, definition=controlled, tournament=tournament,
+        players=("alpha", "beta"),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])), rng_seed=5,
+    )
+    without = run_match(
+        store=plain_store, definition=plain, tournament=plain_tournament,
+        players=("alpha", "beta"),
+        spawn=_spawn(tmp_path, _answer(["A", "B"])), rng_seed=5,
+    )
+
+    assert with_control.match_id != without.match_id
+    assert "ringer" in with_control.match_id
+
+
+def test_the_same_seed_reproduces_the_same_substitution(tmp_path: Path) -> None:
+    body = CONTROLLED.replace("control_rate = 1.0", "control_rate = 0.5")
+    store, definition, tournament = _setup(tmp_path, body)
+
+    runs = [
+        run_match(
+            store=store, definition=definition, tournament=tournament,
+            players=("alpha", "beta"),
+            spawn=_spawn(tmp_path, _answer(["A", "B"])), rng_seed=11,
+        )
+        for _ in range(2)
+    ]
+
+    assert runs[0].players == runs[1].players
+    assert runs[0].controls == runs[1].controls
+    assert runs[0].presented == runs[1].presented
+
+
+def test_a_previewed_match_carries_controls_like_a_run_one(tmp_path: Path) -> None:
+    """Preview renders a *valid* match, and a valid match may carry a control."""
+    from agentos.tournament.runner import preview_match
+
+    store, definition, tournament = _setup(tmp_path, CONTROLLED)
+    result = preview_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=("alpha", "beta"),
+        judge={"provider": "preview", "model": None, "account": None},
+        rng_seed=5,
+    )
+
+    assert result.controls == {"ringer": "high"}
+    assert "ringer" in result.verbatim
+
+
 def test_the_example_ranking_is_never_the_presentation_order(tmp_path: Path) -> None:
     """Copying the template must be distinguishable from choosing that order."""
     from agentos.tournament.runner import compose_verbatim

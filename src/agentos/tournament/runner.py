@@ -1,5 +1,5 @@
 # $kw: ^tournament-runner --from Tournament.Match --from Tournament.Judge --note [DC] the engine composes the Match.Verbatim from the consumer's player presentations and its own frame --supp ^c20260806-7u ^<anchor-on-landing>
-"""One match: present, identify, shuffle, compose, spawn, validate, record.
+"""One match: substitute, present, identify, shuffle, compose, spawn, record.
 
 The engine performs every effect here. The definition supplied the match's
 players and each one's presentation; this module frames them — question,
@@ -9,6 +9,10 @@ verdict.
 
 Positions, not players: the judge ranks labels and the engine decodes each back
 through the order it ran, so nothing a consumer wrote can invert a verdict.
+
+Control substitution happens first, before anything else observes the roster:
+a match carrying a control is a different match from the one without, so it must
+reach identity as a different roster rather than be merged under one id.
 
 Two orderings matter and are deliberately separated. Identity is derived from the
 players in *canonical* order, before any shuffle, so repeat runs of one match
@@ -27,7 +31,7 @@ import hashlib
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentos._core.errors import CliError
@@ -75,6 +79,9 @@ class MatchResult:
     presented: tuple[str, ...]
     verbatim: str
     verbatim_hash: str
+    # The controls this match ended up carrying, each with its declared band.
+    # Empty for a match the engine did not substitute into.
+    controls: dict[str, str] = field(default_factory=dict)
     ticket_id: str | None = None
     verdict: Verdict | None = None
     error: str | None = None
@@ -146,13 +153,22 @@ def run_match(
     rng_seed: int | None = None,
     dry_run: bool = False,
 ) -> MatchResult:
+    rng = random.Random(rng_seed)
+    # Substitution before identity: a match carrying a control is a different
+    # match from the one without, and merging the two under one id would corrupt
+    # accumulation rather than enrich it.
+    players, controls = _substituted(
+        definition=definition,
+        tournament=tournament,
+        store=store,
+        players=players,
+        rng=rng,
+    )
     presentations = tuple(definition.present_player(player) for player in players)
     # Identity before the shuffle: it must not vary with presentation order.
     match_id = definition.match_identity(players=players, presentations=presentations)
 
-    presented, presented_presentations = _presented_order(
-        players, presentations, rng_seed
-    )
+    presented, presented_presentations = _presented_order(players, presentations, rng)
 
     if dry_run:
         verbatim = compose_verbatim(
@@ -167,6 +183,7 @@ def run_match(
             verbatim=verbatim,
             verbatim_hash="sha256:"
             + hashlib.sha256(verbatim.encode("utf-8")).hexdigest(),
+            controls=controls,
         )
 
     tickets = TicketStore(store.root)
@@ -177,6 +194,7 @@ def run_match(
         presented=presented,
         verbatim_hash="",
         judge=spawn.identity(),
+        controls=controls,
     )
     verbatim = compose_verbatim(
         question=definition.question,
@@ -201,7 +219,7 @@ def run_match(
     except (CliError, OSError) as error:
         return _failure(
             ticket.ticket_id, match_id, players, presented, verbatim, verbatim_hash,
-            str(error),
+            controls, str(error),
         )
 
     # A validated verdict outranks a nonzero exit: once the answer travels out of
@@ -216,7 +234,7 @@ def run_match(
         )
         return _failure(
             ticket.ticket_id, match_id, players, presented, verbatim, verbatim_hash,
-            f"{detail} (judge exit {exit_code})",
+            controls, f"{detail} (judge exit {exit_code})",
         )
     return MatchResult(
         ticket_id=ticket.ticket_id,
@@ -225,6 +243,7 @@ def run_match(
         presented=presented,
         verbatim=verbatim,
         verbatim_hash=verbatim_hash,
+        controls=controls,
         verdict=verdict,
     )
 
@@ -244,11 +263,19 @@ def preview_match(
     be handed and can be answered by hand. Everything after the frame — the
     spawn, the wait, the resolution — is what this skips.
     """
+    rng = random.Random(rng_seed)
+    # A preview renders a *valid* match, and a valid match may carry a control;
+    # one that never could would show a frame the judge does not always get.
+    players, controls = _substituted(
+        definition=definition,
+        tournament=tournament,
+        store=store,
+        players=players,
+        rng=rng,
+    )
     presentations = tuple(definition.present_player(player) for player in players)
     match_id = definition.match_identity(players=players, presentations=presentations)
-    presented, presented_presentations = _presented_order(
-        players, presentations, rng_seed
-    )
+    presented, presented_presentations = _presented_order(players, presentations, rng)
 
     tickets = TicketStore(store.root)
     ticket = tickets.mint(
@@ -259,6 +286,7 @@ def preview_match(
         verbatim_hash="",
         judge=judge,
         kind=KIND_PREVIEW,
+        controls=controls,
     )
     verbatim = compose_verbatim(
         question=definition.question,
@@ -279,6 +307,7 @@ def preview_match(
         presented=presented,
         verbatim=verbatim,
         verbatim_hash=verbatim_hash,
+        controls=controls,
         ticket_id=ticket.ticket_id,
     )
 
@@ -401,6 +430,7 @@ def _run_row(
         "ticket": result.ticket_id,
         "players": list(result.players),
         "presented": list(result.presented),
+        "controls": dict(result.controls),
         "verbatim_hash": result.verbatim_hash,
     }
     if dry_run:
@@ -436,12 +466,49 @@ def _dry_command(spawn: JudgeSpawn, verbatim: str) -> tuple[str, ...]:
 def _presented_order(
     players: tuple[str, ...],
     presentations: tuple[str, ...],
-    rng_seed: int | None,
+    rng: random.Random,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Shuffle the match, carrying each player's presentation with it."""
     paired = list(zip(players, presentations))
-    random.Random(rng_seed).shuffle(paired)
+    rng.shuffle(paired)
     return tuple(item[0] for item in paired), tuple(item[1] for item in paired)
+
+
+def _substituted(
+    *,
+    definition: TournamentDefinition,
+    tournament: Tournament,
+    store: TournamentStore,
+    players: tuple[str, ...],
+    rng: random.Random,
+) -> tuple[tuple[str, ...], dict[str, str]]:
+    """Swap one control in for one pool player, at the definition's rate.
+
+    One control at most, and never one already in the match — drawing a duplicate
+    is a roster the arity check would refuse, and skipping is the honest outcome.
+    Retrying the draw instead would make the effective rate depend on how much
+    the pool and the control set overlap, which is not what a rate says.
+
+    Both draws are the engine's: the consumer declares who the controls are and
+    how often they appear, never which one lands in which match.
+    """
+    rate = definition.control_rate
+    if rate <= 0.0:
+        return players, {}
+    pool = definition.controls(
+        verdicts=tuple(
+            verdict.envelope for verdict in store.verdicts(tournament.tournament_id)
+        ),
+        match_index=0,
+        budget=1,
+    )
+    available = sorted(name for name in pool if name not in players)
+    if not available or rng.random() >= rate:
+        return players, {}
+    control = rng.choice(available)
+    index = rng.randrange(len(players))
+    roster = players[:index] + (control,) + players[index + 1 :]
+    return roster, {control: pool[control]}
 
 
 def _spawn_judge(spawn: JudgeSpawn, verbatim: str) -> AgentRunResult:
@@ -468,6 +535,7 @@ def _failure(
     presented: tuple[str, ...],
     verbatim: str,
     verbatim_hash: str,
+    controls: dict[str, str],
     error: str,
 ) -> MatchResult:
     return MatchResult(
@@ -476,6 +544,7 @@ def _failure(
         presented=presented,
         verbatim=verbatim,
         verbatim_hash=verbatim_hash,
+        controls=controls,
         ticket_id=ticket_id,
         error=error,
     )

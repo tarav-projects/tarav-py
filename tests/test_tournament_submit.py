@@ -306,3 +306,50 @@ def test_gc_reports_the_split_between_judge_failure_and_tuning(
 
     assert payload["removed"] == 3
     assert payload["removed_by_kind"] == {KIND_MATCH: 1, KIND_PREVIEW: 2}
+
+
+def _setup_controlled(tmp_path: Path, controls):
+    store = TournamentStore(tmp_path / "depot")
+    tournament = store.create_tournament(
+        definition_path="/defs/x.py", definition_digest="sha256:" + "0" * 64
+    )
+    ticket = TicketStore(store.root).mint(
+        tournament_id=tournament.tournament_id,
+        match_id="m-1",
+        players=("alpha", "ringer"),
+        presented=("ringer", "alpha"),
+        verbatim_hash="sha256:" + "1" * 64,
+        judge={"provider": "claude-code", "model": None, "account": None},
+        controls=controls,
+    )
+    return store, tournament, ticket
+
+
+def test_a_submitted_verdict_records_which_players_were_controls(
+    tmp_path: Path,
+) -> None:
+    store, tournament, ticket = _setup_controlled(tmp_path, {"ringer": "high"})
+
+    _submit(store, ticket.ticket_id, "--ranking", "A,B")
+
+    (verdict,) = store.verdicts(tournament.tournament_id)
+    assert verdict.envelope["controls"] == {"ringer": "high"}
+
+
+def test_a_declined_match_still_records_its_controls(tmp_path: Path) -> None:
+    """A control that judges keep refusing is a finding about the control."""
+    store, tournament, ticket = _setup_controlled(tmp_path, {"dud": "low"})
+
+    _submit(store, ticket.ticket_id, "--no-contest", "--refusal-reason", "nope")
+
+    (verdict,) = store.verdicts(tournament.tournament_id)
+    assert verdict.envelope["controls"] == {"dud": "low"}
+
+
+def test_an_uncontrolled_match_records_an_empty_control_map(tmp_path: Path) -> None:
+    store, tournament, ticket = _setup(tmp_path)
+
+    _submit(store, ticket.ticket_id, "--ranking", "A,B")
+
+    (verdict,) = store.verdicts(tournament.tournament_id)
+    assert verdict.envelope["controls"] == {}

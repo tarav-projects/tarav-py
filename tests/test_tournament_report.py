@@ -281,3 +281,95 @@ def test_one_match_counts_as_one_match_whatever_its_arity(tmp_path: Path) -> Non
     assert all(row["matches"] == 1 for row in rows.values())
     assert rows["a"]["wins"] == 9
     assert sum(r["wins"] for r in report["players"]) == 45
+
+
+def _controlled(store, tournament, match_id, ordering, controls) -> None:
+    store.append_verdict(
+        tournament_id=tournament.tournament_id,
+        match_id=match_id,
+        players=tuple(sorted(ordering)),
+        outcome=VerdictOutcome.ORDERED,
+        ordering=ordering,
+        judge={"provider": "claude-code", "model": None, "account": None},
+        presented=ordering,
+        verbatim_hash="sha256:" + "4" * 64,
+        controls=controls,
+    )
+
+
+def test_a_control_is_reported_apart_from_the_pool(tmp_path: Path) -> None:
+    """Folded in, a low control sits in the weak tail looking like a finding."""
+    store, tournament = _store(tmp_path)
+    _controlled(store, tournament, "m1", ("a", "dud"), {"dud": "low"})
+
+    report = tournament_report(
+        tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
+    )
+
+    assert [row["player"] for row in report["players"]] == ["a"]
+    (control,) = report["controls"]
+    assert control["player"] == "dud"
+    assert control["band"] == "low"
+    assert control["losses"] == 1
+    assert control["matches"] == 1
+
+
+def test_a_tournament_without_controls_reports_an_empty_list(tmp_path: Path) -> None:
+    store, tournament = _store(tmp_path)
+    _preferred(store, tournament, "m1", ("a", "b"), "a")
+
+    report = tournament_report(
+        tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
+    )
+    assert report["controls"] == []
+
+
+def test_a_pool_player_keeps_the_wins_it_earned_against_a_control(
+    tmp_path: Path,
+) -> None:
+    """Discarding those comparisons would throw away the calibrating matches."""
+    store, tournament = _store(tmp_path)
+    _controlled(store, tournament, "m1", ("a", "dud"), {"dud": "low"})
+
+    report = tournament_report(
+        tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
+    )
+    (row,) = report["players"]
+    assert row["wins"] == 1
+    assert row["matches"] == 1
+
+
+def test_a_losing_control_raises_no_low_standing_poi(tmp_path: Path) -> None:
+    """A `low` control losing is the instrument working, not a pool finding."""
+    store, tournament = _store(tmp_path)
+    for index in range(8):
+        _controlled(store, tournament, f"m{index}", ("a", "dud"), {"dud": "low"})
+
+    report = tournament_report(
+        tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
+    )
+    instances = tournament_poi_instances(report)
+
+    assert not any(
+        "Player.LowStanding" in str(instance.class_reference) for instance in instances
+    )
+
+
+def test_a_control_declared_in_one_match_is_a_control_in_the_read(
+    tmp_path: Path,
+) -> None:
+    """The declaration is definition-level; one verdict is enough to prove it."""
+    store, tournament = _store(tmp_path)
+    _controlled(store, tournament, "m1", ("a", "ringer"), {"ringer": "high"})
+    _preferred(store, tournament, "m2", ("b", "ringer"), "ringer")
+
+    report = tournament_report(
+        tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
+    )
+
+    assert {row["player"] for row in report["players"]} == {"a", "b"}
+    (control,) = report["controls"]
+    assert control["player"] == "ringer"
+    assert control["matches"] == 2
+    # Beaten by "a" in m1, beat "b" in m2.
+    assert (control["wins"], control["losses"]) == (1, 1)

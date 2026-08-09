@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -67,6 +67,10 @@ class Ticket:
     exit_code: int | None = None
     slot: dict[str, object] | None = None
     kind: str = KIND_MATCH
+    # Which of this match's players are controls, and the band each declared.
+    # Carried on the ticket because `submit` builds the verdict from the ticket
+    # alone and never loads the definition the bands were declared in.
+    controls: dict[str, str] = field(default_factory=dict)
 
     @property
     def is_preview(self) -> bool:
@@ -101,6 +105,7 @@ class Ticket:
             "exit_code": self.exit_code,
             "slot": dict(self.slot) if self.slot is not None else None,
             "kind": self.kind,
+            "controls": dict(self.controls),
         }
 
 
@@ -121,6 +126,7 @@ class TicketStore:
         judge: dict[str, object],
         attempt_cap: int = DEFAULT_ATTEMPT_CAP,
         kind: str = KIND_MATCH,
+        controls: dict[str, str] | None = None,
     ) -> Ticket:
         if kind not in TICKET_KINDS:
             raise TicketError(
@@ -137,6 +143,7 @@ class TicketStore:
             created_at=iso_z(datetime.now(timezone.utc), drop_micros=False),
             attempt_cap=attempt_cap,
             kind=kind,
+            controls=dict(controls or {}),
         )
         self._write(ticket)
         return ticket
@@ -251,6 +258,7 @@ def _replace(ticket: Ticket, **changes: object) -> Ticket:
             "exit_code",
             "slot",
             "kind",
+            "controls",
         )
     }
     payload.update(changes)
@@ -279,6 +287,10 @@ def _ticket_from_payload(payload: object, ticket_id: str) -> Ticket:
             # Defaulted, not required: a ticket written before this field is a
             # match ticket, not a broken one.
             kind=str(payload.get("kind", KIND_MATCH)),
+            controls={
+                str(name): str(band)
+                for name, band in (payload.get("controls") or {}).items()
+            },
         )
     except (KeyError, TypeError, ValueError) as error:
         raise TicketError(f"corrupt tournament ticket {ticket_id}: {error}") from error

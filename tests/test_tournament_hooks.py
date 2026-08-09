@@ -179,6 +179,64 @@ def test_a_hook_may_randomize_which_players_meet(tmp_path: Path) -> None:
     assert len(seen) > 1
 
 
+def test_a_definition_without_controls_declares_none_and_substitutes_nothing(
+    tmp_path: Path,
+) -> None:
+    definition = _load(tmp_path, MINIMAL)
+    assert definition.controls(verdicts=(), match_index=0, budget=1) == {}
+    assert definition.control_rate == 0.0
+
+
+def test_controls_returns_the_pool_with_each_declared_band(tmp_path: Path) -> None:
+    body = MINIMAL + (
+        "\ncontrol_rate = 0.25\n"
+        "def controls(ctx):\n"
+        "    return {'ringer': 'high', 'dud': 'low'}\n"
+    )
+    definition = _load(tmp_path, body)
+    assert definition.controls(verdicts=(), match_index=0, budget=1) == {
+        "ringer": "high",
+        "dud": "low",
+    }
+    assert definition.control_rate == 0.25
+
+
+def test_a_band_outside_high_and_low_is_a_return_error(tmp_path: Path) -> None:
+    """Mid-pack is where noise lives, so a middle expectation is not falsifiable."""
+    body = MINIMAL + "\ndef controls(ctx):\n    return {'x': 'middle'}\n"
+    definition = _load(tmp_path, body)
+    with pytest.raises(HookReturnError) as excinfo:
+        definition.controls(verdicts=(), match_index=0, budget=1)
+    assert "middle" in str(excinfo.value)
+
+
+def test_controls_rejects_malformed_pools(tmp_path: Path) -> None:
+    bad_returns = [
+        "['a', 'b']",       # a sequence, not a declaration of expectation
+        "{'': 'high'}",     # an empty player
+        "{'a': None}",      # a player with no declared band
+        "7",
+    ]
+    for bad in bad_returns:
+        body = MINIMAL + f"\ndef controls(ctx):\n    return {bad}\n"
+        definition = _load(tmp_path, body)
+        with pytest.raises(HookReturnError):
+            definition.controls(verdicts=(), match_index=0, budget=1)
+
+
+def test_controls_returning_none_is_an_empty_pool(tmp_path: Path) -> None:
+    body = MINIMAL + "\ndef controls(ctx):\n    return None\n"
+    definition = _load(tmp_path, body)
+    assert definition.controls(verdicts=(), match_index=0, budget=1) == {}
+
+
+def test_a_control_rate_outside_zero_to_one_is_a_return_error(tmp_path: Path) -> None:
+    for bad in ("1.5", "-0.1", "'often'"):
+        definition = _load(tmp_path, MINIMAL + f"\ncontrol_rate = {bad}\n")
+        with pytest.raises(HookReturnError):
+            definition.control_rate
+
+
 def test_reopening_verifies_the_snapshot_instead_of_re_recording_it(
     tmp_path: Path,
 ) -> None:

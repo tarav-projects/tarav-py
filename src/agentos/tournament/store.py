@@ -101,6 +101,7 @@ class TournamentStore:
         ticket: str | None = None,
         duration_ms: int | None = None,
         slot: dict[str, object] | None = None,
+        controls: dict[str, str] | None = None,
     ) -> Verdict:
         match_id = require_match_id(match_id)
         slot_value = require_unshadowed_slot(slot)
@@ -119,6 +120,10 @@ class TournamentStore:
             "presented": list(presented),
             "outcome": outcome.value,
             "ordering": list(ordering) if ordering is not None else None,
+            # Which players were controls and what each was expected to do. The
+            # read holds them apart: folded into the pool, a low control sits in
+            # the weak tail looking exactly like a finding.
+            "controls": dict(controls or {}),
             "refusal_reason": refusal_reason,
             "ticket": ticket,
             "judge": dict(judge),

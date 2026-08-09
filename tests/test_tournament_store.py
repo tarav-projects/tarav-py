@@ -205,3 +205,23 @@ def test_an_ordering_that_is_not_a_permutation_is_rejected(tmp_path: Path) -> No
                 presented=("a", "b"),
                 verbatim_hash="sha256:" + "9" * 64,
             )
+
+
+def test_a_consumer_slot_may_not_restate_the_control_map(tmp_path: Path) -> None:
+    """Controls are engine-written: the substitution was the engine's own draw."""
+    store = TournamentStore(tmp_path / "depot")
+    tournament = store.create_tournament(
+        definition_path="/defs/x.py", definition_digest="sha256:" + "0" * 64
+    )
+    with pytest.raises(EnvelopeShadowedError):
+        store.append_verdict(
+            tournament_id=tournament.tournament_id,
+            match_id="m-1",
+            players=("a", "b"),
+            outcome=VerdictOutcome.ORDERED,
+            ordering=("a", "b"),
+            judge={"provider": "stub", "model": None, "account": None},
+            presented=("a", "b"),
+            verbatim_hash="sha256:" + "1" * 64,
+            slot={"controls": {"a": "high"}},
+        )

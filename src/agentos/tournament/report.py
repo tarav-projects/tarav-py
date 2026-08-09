@@ -65,6 +65,23 @@ def tournament_report(
                 rows[winner]["wins"] += 1
                 rows[loser]["losses"] += 1
 
+    # Controls are held apart rather than folded in: a low control sits in the
+    # weak tail looking exactly like a finding, and the whole point of declaring
+    # it was that its position there means the opposite. Their comparisons stay
+    # on the pool's rows — those are the matches that calibrate anything.
+    bands: dict[str, str] = {}
+    for verdict in verdicts:
+        declared = verdict.envelope.get("controls") or {}
+        if isinstance(declared, dict):
+            for player, band in declared.items():
+                bands[str(player)] = str(band)
+
+    controls = [
+        {**rows.pop(player), "band": band}
+        for player, band in sorted(bands.items())
+        if player in rows
+    ]
+
     return {
         "status": "ok",
         "command": "tournament show",
@@ -72,6 +89,7 @@ def tournament_report(
         "definition_path": tournament.definition_path,
         "verdict_count": len(verdicts),
         "players": list(rows.values()),
+        "controls": controls,
         "no_contest": {
             "count": no_contest_count,
             "rate": (no_contest_count / len(verdicts)) if verdicts else 0.0,
