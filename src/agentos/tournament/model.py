@@ -29,6 +29,8 @@ ENVELOPE_FIELDS = frozenset(
         "outcome",
         "ordering",
         "controls",
+        "template",
+        "template_bindings",
         "ticket",
         "refusal_reason",
         "judge",

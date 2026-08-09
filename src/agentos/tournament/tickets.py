@@ -71,6 +71,11 @@ class Ticket:
     # Carried on the ticket because `submit` builds the verdict from the ticket
     # alone and never loads the definition the bands were declared in.
     controls: dict[str, str] = field(default_factory=dict)
+    # The registered `Match.Template` this run rendered from, and the per-run
+    # values bound into it. Both ride the ticket for the same reason `controls`
+    # does: `submit` writes the verdict from the ticket alone.
+    template: str | None = None
+    template_bindings: dict[str, object] = field(default_factory=dict)
 
     @property
     def is_preview(self) -> bool:
@@ -106,6 +111,8 @@ class Ticket:
             "slot": dict(self.slot) if self.slot is not None else None,
             "kind": self.kind,
             "controls": dict(self.controls),
+            "template": self.template,
+            "template_bindings": dict(self.template_bindings),
         }
 
 
@@ -165,6 +172,23 @@ class TicketStore:
         hash cannot exist before the ticket does.
         """
         updated = _replace(self.load(ticket_id), verbatim_hash=verbatim_hash)
+        self._write(updated)
+        return updated
+
+    def set_template(
+        self,
+        ticket_id: str,
+        template: str | None,
+        bindings: dict[str, object],
+    ) -> Ticket:
+        """Record which template rendered this run, and what was bound into it.
+
+        Written after minting for the same reason the hash is: the frame embeds
+        the ticket id, so neither can exist before the ticket does.
+        """
+        updated = _replace(
+            self.load(ticket_id), template=template, template_bindings=dict(bindings)
+        )
         self._write(updated)
         return updated
 
@@ -259,6 +283,8 @@ def _replace(ticket: Ticket, **changes: object) -> Ticket:
             "slot",
             "kind",
             "controls",
+            "template",
+            "template_bindings",
         )
     }
     payload.update(changes)
@@ -291,6 +317,8 @@ def _ticket_from_payload(payload: object, ticket_id: str) -> Ticket:
                 str(name): str(band)
                 for name, band in (payload.get("controls") or {}).items()
             },
+            template=payload.get("template") and str(payload["template"]),
+            template_bindings=dict(payload.get("template_bindings") or {}),
         )
     except (KeyError, TypeError, ValueError) as error:
         raise TicketError(f"corrupt tournament ticket {ticket_id}: {error}") from error

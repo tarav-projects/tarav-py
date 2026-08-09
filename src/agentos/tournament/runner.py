@@ -40,10 +40,15 @@ from agentos.agent.run_runtime import (
     AgentRunConfig,
     AgentRunResult,
 )
-from agentos.tournament.contract import position_labels
+from agentos.tournament.components import ComponentRegistry
 from agentos.tournament.hooks import HookError, TournamentDefinition
 from agentos.tournament.model import Tournament, Verdict
 from agentos.tournament.store import TournamentStore
+from agentos.tournament.template import (
+    build_template,
+    register_template,
+    render_template,
+)
 from agentos.tournament.tickets import KIND_PREVIEW, TicketStore
 
 
@@ -82,6 +87,10 @@ class MatchResult:
     # The controls this match ended up carrying, each with its declared band.
     # Empty for a match the engine did not substitute into.
     controls: dict[str, str] = field(default_factory=dict)
+    # The registered `Match.Template` this run rendered from, and the per-run
+    # values bound into it. Together they are enough to rebuild the verbatim.
+    template: str | None = None
+    template_bindings: dict[str, object] = field(default_factory=dict)
     ticket_id: str | None = None
     verdict: Verdict | None = None
     error: str | None = None
@@ -101,46 +110,47 @@ def compose_verbatim(
 ) -> str:
     """Frame N presentations as one match prompt. Engine-owned, start to end.
 
-    The submit instruction is engine-owned for the same reason the position
-    labels are: an invocation a consumer could get wrong is one the frame can
-    simply prevent. The command is rendered fully formed, depot included, so the
-    judge copies rather than assembles.
+    The frame is described as a `Match.Template` and rendered from it rather than
+    concatenated here, so the same bytes are reachable later from the record alone.
+    The submit instruction is engine-owned for the same reason the position labels
+    are: an invocation a consumer could get wrong is one the frame can simply
+    prevent.
     """
-    labels = position_labels(len(presented_presentations))
-    parts = [question.strip()]
-    if criteria and criteria.strip():
-        parts.append(criteria.strip())
-    for label, presentation in zip(labels, presented_presentations):
-        parts.append(f"{label}:\n{presentation}")
-    parts.append(
-        f"Rank all {len(labels)} candidates from best to worst, every label exactly "
-        "once — no ties."
+    return _composed(
+        question=question,
+        criteria=criteria,
+        presented_presentations=presented_presentations,
+        ticket_id=ticket_id,
+        depot_root=depot_root,
+    )[0]
+
+
+def _composed(
+    *,
+    question: str,
+    criteria: str | None,
+    presented_presentations: tuple[str, ...],
+    ticket_id: str | None = None,
+    depot_root: Path | str | None = None,
+    registry: ComponentRegistry | None = None,
+) -> tuple[str, str | None, dict[str, object]]:
+    """Render the frame and, given a registry, leave its parts behind.
+
+    Returns the verbatim, the template's address when one was registered, and the
+    bindings that produced it.
+    """
+    template, components, bindings = build_template(
+        question=question,
+        criteria=criteria,
+        presented_presentations=presented_presentations,
+        ticket_id=ticket_id,
+        depot_root=depot_root,
     )
-    if ticket_id is not None:
-        # Rotated, never the identity order. With `A,B,C,D` as the example, a
-        # judge copying the template and a judge genuinely finding the candidates
-        # already ranked produce the same answer, and the two become
-        # indistinguishable in the records. Rotating separates them: an identity
-        # answer now means someone chose it.
-        ranked = ",".join(_example_ranking(labels))
-        depot = f" --depot {depot_root}" if depot_root is not None else ""
-        parts.append(
-            "Submit your answer by running this command. It validates your ranking "
-            "and tells you what to fix if it is wrong:\n\n"
-            f"    agentos tournament submit{depot} --ticket {ticket_id} "
-            f"--ranking {ranked}\n\n"
-            "Replace the ranking with your own order, best first. If the comparison "
-            "cannot honestly be made, submit instead:\n\n"
-            f"    agentos tournament submit{depot} --ticket {ticket_id} "
-            '--no-contest --refusal-reason "why"\n\n'
-            "Nothing you print is read; only the submitted command counts."
-        )
-    return "\n\n".join(parts)
-
-
-def _example_ranking(labels: tuple[str, ...]) -> tuple[str, ...]:
-    """A valid permutation that is deliberately not the presentation order."""
-    return labels[1:] + labels[:1]
+    verbatim = render_template(template, components, bindings)
+    address = (
+        None if registry is None else register_template(registry, template, components)
+    )
+    return verbatim, address, bindings
 
 
 def run_match(
@@ -171,7 +181,8 @@ def run_match(
     presented, presented_presentations = _presented_order(players, presentations, rng)
 
     if dry_run:
-        verbatim = compose_verbatim(
+        # No registry: a dry run leaves nothing behind, including components.
+        verbatim, _address, _bindings = _composed(
             question=definition.question,
             criteria=definition.criteria,
             presented_presentations=presented_presentations,
@@ -196,15 +207,17 @@ def run_match(
         judge=spawn.identity(),
         controls=controls,
     )
-    verbatim = compose_verbatim(
+    verbatim, template, bindings = _composed(
         question=definition.question,
         criteria=definition.criteria,
         presented_presentations=presented_presentations,
         ticket_id=ticket.ticket_id,
         depot_root=store.root,
+        registry=ComponentRegistry(store.root),
     )
     verbatim_hash = "sha256:" + hashlib.sha256(verbatim.encode("utf-8")).hexdigest()
     tickets.set_verbatim_hash(ticket.ticket_id, verbatim_hash)
+    tickets.set_template(ticket.ticket_id, template, bindings)
 
     # The consumer slot is computed before the spawn so `submit` never has to
     # reach back into a definition it does not have.
@@ -219,7 +232,7 @@ def run_match(
     except (CliError, OSError) as error:
         return _failure(
             ticket.ticket_id, match_id, players, presented, verbatim, verbatim_hash,
-            controls, str(error),
+            controls, template, bindings, str(error),
         )
 
     # A validated verdict outranks a nonzero exit: once the answer travels out of
@@ -234,7 +247,7 @@ def run_match(
         )
         return _failure(
             ticket.ticket_id, match_id, players, presented, verbatim, verbatim_hash,
-            controls, f"{detail} (judge exit {exit_code})",
+            controls, template, bindings, f"{detail} (judge exit {exit_code})",
         )
     return MatchResult(
         ticket_id=ticket.ticket_id,
@@ -244,6 +257,8 @@ def run_match(
         verbatim=verbatim,
         verbatim_hash=verbatim_hash,
         controls=controls,
+        template=template,
+        template_bindings=bindings,
         verdict=verdict,
     )
 
@@ -288,15 +303,17 @@ def preview_match(
         kind=KIND_PREVIEW,
         controls=controls,
     )
-    verbatim = compose_verbatim(
+    verbatim, template, bindings = _composed(
         question=definition.question,
         criteria=definition.criteria,
         presented_presentations=presented_presentations,
         ticket_id=ticket.ticket_id,
         depot_root=store.root,
+        registry=ComponentRegistry(store.root),
     )
     verbatim_hash = "sha256:" + hashlib.sha256(verbatim.encode("utf-8")).hexdigest()
     tickets.set_verbatim_hash(ticket.ticket_id, verbatim_hash)
+    tickets.set_template(ticket.ticket_id, template, bindings)
     tickets.set_slot(
         ticket.ticket_id,
         definition.verdict_slot(players=players, presentations=presentations),
@@ -308,6 +325,8 @@ def preview_match(
         verbatim=verbatim,
         verbatim_hash=verbatim_hash,
         controls=controls,
+        template=template,
+        template_bindings=bindings,
         ticket_id=ticket.ticket_id,
     )
 
@@ -431,6 +450,7 @@ def _run_row(
         "players": list(result.players),
         "presented": list(result.presented),
         "controls": dict(result.controls),
+        "template": result.template,
         "verbatim_hash": result.verbatim_hash,
     }
     if dry_run:
@@ -536,6 +556,8 @@ def _failure(
     verbatim: str,
     verbatim_hash: str,
     controls: dict[str, str],
+    template: str | None,
+    template_bindings: dict[str, object],
     error: str,
 ) -> MatchResult:
     return MatchResult(
@@ -545,6 +567,8 @@ def _failure(
         verbatim=verbatim,
         verbatim_hash=verbatim_hash,
         controls=controls,
+        template=template,
+        template_bindings=template_bindings,
         ticket_id=ticket_id,
         error=error,
     )

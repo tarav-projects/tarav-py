@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from agentos.tournament.tickets import TicketStore
 from agentos.tournament.report import tournament_report
 from agentos.tournament.runner import JudgeSpawn, preview_match, run_pool
 from agentos.tournament.store import TournamentStore
+from agentos.tournament.template import reassemble
 
 
 def _store(args: argparse.Namespace) -> TournamentStore:
@@ -172,6 +174,7 @@ def _cmd_preview(args: argparse.Namespace) -> int:
                 "players": list(result.players),
                 "presented": list(result.presented),
                 "controls": dict(result.controls),
+                "template": result.template,
                 "verbatim_hash": result.verbatim_hash,
                 "verbatim": result.verbatim,
             }
@@ -196,6 +199,57 @@ def _cmd_show(args: argparse.Namespace) -> int:
             tournament=tournament, verdicts=store.verdicts(tournament.tournament_id)
         )
     )
+    return 0
+
+
+def _cmd_verbatim(args: argparse.Namespace) -> int:
+    """Rebuild and print the exact prompt one verdict's judge was handed.
+
+    It reports whether the rebuilt text still hashes to what was recorded, and
+    never repairs a mismatch: the mismatch is the finding.
+    """
+    store = _store(args)
+    try:
+        tournament = store.tournament(args.tournament)
+    except TournamentError as exc:
+        raise CliError(str(exc)) from exc
+    for verdict in store.verdicts(tournament.tournament_id):
+        if verdict.record_id == args.verdict:
+            break
+    else:
+        raise CliError(
+            f"no verdict {args.verdict} in tournament {tournament.tournament_id}"
+        )
+
+    try:
+        rebuilt = reassemble(store, verdict)
+    except TournamentError as exc:
+        raise CliError(str(exc)) from exc
+
+    recorded = str(verdict.envelope.get("verbatim_hash") or "")
+    rebuilt_hash = "sha256:" + hashlib.sha256(rebuilt.encode("utf-8")).hexdigest()
+    if args.json:
+        _print_json(
+            {
+                "status": "ok",
+                "command": "tournament verbatim",
+                "tournament_id": tournament.tournament_id,
+                "verdict_id": verdict.record_id,
+                "match_id": verdict.match_id,
+                "template": verdict.envelope.get("template"),
+                "verbatim": rebuilt,
+                "verbatim_hash": recorded,
+                "rebuilt_hash": rebuilt_hash,
+                "matches": rebuilt_hash == recorded,
+            }
+        )
+    else:
+        print(rebuilt)
+        if rebuilt_hash != recorded:
+            print(
+                f"\n[warning] rebuilt hash {rebuilt_hash} does not match the "
+                f"recorded {recorded}",
+            )
     return 0
 
 
@@ -293,6 +347,8 @@ def _append_submitted(store: TournamentStore, ticket, answer: dict[str, object])
             ticket=ticket.ticket_id,
             slot=ticket.slot or {},
             controls=ticket.controls,
+            template=ticket.template,
+            template_bindings=ticket.template_bindings,
         )
     labels = position_labels(ticket.arity)
     ordering = tuple(
@@ -310,6 +366,8 @@ def _append_submitted(store: TournamentStore, ticket, answer: dict[str, object])
         ticket=ticket.ticket_id,
         slot=ticket.slot or {},
         controls=ticket.controls,
+        template=ticket.template,
+        template_bindings=ticket.template_bindings,
     )
 
 
@@ -451,3 +509,19 @@ def register_tournament_commands(subparsers: argparse._SubParsersAction) -> None
     _add_depot_argument(show_parser)
     show_parser.add_argument("--tournament", required=True, help="Tournament identity.")
     show_parser.set_defaults(handler=_cmd_show)
+
+    verbatim_parser = commands.add_parser(
+        "verbatim",
+        help="Rebuild and print the exact prompt one verdict's judge was handed.",
+    )
+    _add_depot_argument(verbatim_parser)
+    verbatim_parser.add_argument(
+        "--tournament", required=True, help="Tournament identity."
+    )
+    verbatim_parser.add_argument(
+        "--verdict", required=True, help="Verdict record identity."
+    )
+    verbatim_parser.add_argument(
+        "--json", action="store_true", help="Emit the rebuilt prompt as JSON."
+    )
+    verbatim_parser.set_defaults(handler=_cmd_verbatim)

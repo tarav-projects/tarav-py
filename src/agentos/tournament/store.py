@@ -102,6 +102,8 @@ class TournamentStore:
         duration_ms: int | None = None,
         slot: dict[str, object] | None = None,
         controls: dict[str, str] | None = None,
+        template: str | None = None,
+        template_bindings: dict[str, object] | None = None,
     ) -> Verdict:
         match_id = require_match_id(match_id)
         slot_value = require_unshadowed_slot(slot)
@@ -124,6 +126,11 @@ class TournamentStore:
             # read holds them apart: folded into the pool, a low control sits in
             # the weak tail looking exactly like a finding.
             "controls": dict(controls or {}),
+            # The `Match.Template` this run rendered from, and the per-run values
+            # bound into it. The verbatim itself is never stored: it is rebuilt
+            # from these and checked against the hash below.
+            "template": template,
+            "template_bindings": dict(template_bindings or {}),
             "refusal_reason": refusal_reason,
             "ticket": ticket,
             "judge": dict(judge),

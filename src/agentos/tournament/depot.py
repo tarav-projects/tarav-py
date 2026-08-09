@@ -1,10 +1,15 @@
 # $kw: ^tournament-depot --from Tournament.Depot --note [DC] the depot resolves to a canonical global location by default and accepts an explicit root --supp ^c20260806-26u ^<anchor-on-landing>
 """Where a tournament keeps its frozen definitions and its accumulated records.
 
-One rooted directory with two children: ``definitions/<tournament-id>/`` holds
-the snapshot a tournament executes, and ``records/<tournament-id>/`` is the
-Bloberia namespace holding that tournament's record and every verdict. The split
-is the depot's; Bloberia owns only what is under ``records/``.
+One rooted directory. ``definitions/<tournament-id>/`` holds the snapshot a
+tournament executes, ``records/<tournament-id>/`` is the Bloberia namespace
+holding that tournament's record and every verdict, and ``tickets/`` is the
+mutable submission staging. The split is the depot's; Bloberia owns only what is
+under ``records/``.
+
+``components/`` is the fourth and the only one that is not per-tournament: it is
+the depot-wide `Match.Component.Registry` holding each distinct part every run
+was rendered from, once. Dedup across tournaments is free, so it is allowed.
 """
 
 from __future__ import annotations
