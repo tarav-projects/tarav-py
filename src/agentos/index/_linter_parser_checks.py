@@ -8,9 +8,9 @@ from agentos.index.model import (
     BlockHeading,
     IndexDocument,
     KernelLine,
-    canonical_index_line_content,
-    index_line_content_hash,
-    index_line_content_parts,
+    canonical_index_line_anchor_triplet,
+    index_line_anchor_triplet_hash,
+    index_line_statement_parts,
 )
 
 from ._linter_models import (
@@ -174,19 +174,8 @@ def _check_anchor_collision(
     occurrences: dict[str, dict[str, list[dict[str, object]]]] = defaultdict(
         lambda: defaultdict(list)
     )
-    content_details: dict[str, dict[str, str | None]] = {}
+    attachment_details: dict[str, dict[str, str | None]] = {}
     for _document, line in parsed_linter_kernel_lines(state, documents):
-        content_hash = index_line_content_hash(line.src)
-        line_type, body = index_line_content_parts(line.src)
-        content_details.setdefault(
-            content_hash,
-            {
-                "content_hash": content_hash,
-                "line_type": line_type,
-                "body": body,
-                "canonical": canonical_index_line_content(line.src),
-            },
-        )
         location: dict[str, object] = {
             "path": state.rel_path(line.path) if line.path else ".",
             "line": line.start_line,
@@ -194,16 +183,30 @@ def _check_anchor_collision(
         location["path_line"] = f"{location['path']}:{line.start_line}"
         for span in line.spans:
             if span.kind == "anchor":
-                occurrences[str(span.parsed["anchor"])][content_hash].append(location)
+                anchor = str(span.parsed["anchor"])
+                triplet_hash = index_line_anchor_triplet_hash(line.src, anchor)
+                line_type, body = index_line_statement_parts(line.src)
+                attachment_details.setdefault(
+                    triplet_hash,
+                    {
+                        "triplet_hash": triplet_hash,
+                        "line_type": line_type,
+                        "body": body,
+                        "canonical": canonical_index_line_anchor_triplet(
+                            line.src, anchor
+                        ),
+                    },
+                )
+                occurrences[anchor][triplet_hash].append(location)
 
     findings: list[LinterFinding] = []
-    for anchor, by_content in sorted(occurrences.items()):
-        if len(by_content) < 2:
+    for anchor, by_attachment in sorted(occurrences.items()):
+        if len(by_attachment) < 2:
             continue
         locations = [
             location
-            for content_hash in sorted(by_content)
-            for location in by_content[content_hash]
+            for triplet_hash in sorted(by_attachment)
+            for location in by_attachment[triplet_hash]
         ]
         first = locations[0]
         findings.append(
@@ -214,14 +217,14 @@ def _check_anchor_collision(
                 line=int(first["line"]),
                 message=(
                     f"Anchor ^{anchor} is attached to more than one distinct "
-                    "Index line content; retain one relationship and reanchor "
-                    "the other contents with equivalent support sets."
+                    "Index line triplet; retain one relationship and reanchor "
+                    "the unrelated attachment."
                 ),
                 details={
                     "anchor": anchor,
-                    "contents": [
-                        content_details[content_hash]
-                        for content_hash in sorted(by_content)
+                    "attachments": [
+                        attachment_details[triplet_hash]
+                        for triplet_hash in sorted(by_attachment)
                     ],
                     "locations": locations,
                 },

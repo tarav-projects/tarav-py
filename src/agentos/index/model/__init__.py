@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from .identity import (
-    INDEX_LINE_CONTENT_SCHEMA,
-    canonical_index_line_content,
-    index_line_content_hash,
-    index_line_content_parts,
+    INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
+    INDEX_LINE_BODY_SCHEMA,
+    canonical_index_line_anchor_triplet,
+    canonical_index_line_body,
+    index_line_anchor_triplet_hash,
+    index_line_body_hash,
+    index_line_statement_parts,
 )
 from .nodes import (
     BlankLine,
@@ -33,7 +36,8 @@ __all__ = [
     "BlockHeading",
     "CodeFence",
     "Diagnostic",
-    "INDEX_LINE_CONTENT_SCHEMA",
+    "INDEX_LINE_ANCHOR_TRIPLET_SCHEMA",
+    "INDEX_LINE_BODY_SCHEMA",
     "IndexDepotModel",
     "IndexDocument",
     "IndexSurfaceKind",
@@ -45,9 +49,11 @@ __all__ = [
     "RouterEntry",
     "Separator",
     "Text",
-    "canonical_index_line_content",
-    "index_line_content_hash",
-    "index_line_content_parts",
+    "canonical_index_line_anchor_triplet",
+    "canonical_index_line_body",
+    "index_line_anchor_triplet_hash",
+    "index_line_body_hash",
+    "index_line_statement_parts",
     "parse_depot",
     "parse_index_file",
 ]

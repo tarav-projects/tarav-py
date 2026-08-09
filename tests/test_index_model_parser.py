@@ -9,9 +9,11 @@ from agentos.index.model import (
     KernelLine,
     MetaLine,
     RouterEntry,
-    canonical_index_line_content,
-    index_line_content_hash,
-    index_line_content_parts,
+    canonical_index_line_anchor_triplet,
+    canonical_index_line_body,
+    index_line_anchor_triplet_hash,
+    index_line_body_hash,
+    index_line_statement_parts,
     parse_depot,
     parse_index_file,
 )
@@ -193,20 +195,30 @@ def test_anchor_spans_accept_namespace_prefix_and_tag(tmp_path: Path) -> None:
     assert anchors == ["c20260718-4u", "c20260718-5", "20260718-6"]
 
 
-def test_index_line_content_identity_excludes_links_and_attachment() -> None:
+def test_index_line_body_and_anchor_triplet_identity_are_separate() -> None:
     first = "- [CT]  Same `Line.Content` here  ^c20260802-1u ^c20260802-2u"
     second = "- [CT] Same `Line.Content` here ^c20260802-9u"
 
-    assert index_line_content_parts(first) == ("CT", "Same `Line.Content` here")
-    assert canonical_index_line_content(first) == canonical_index_line_content(second)
-    assert index_line_content_hash(first) == index_line_content_hash(second)
-    assert index_line_content_hash(
+    assert index_line_statement_parts(first) == ("CT", "Same `Line.Content` here")
+    assert canonical_index_line_body(first) == canonical_index_line_body(second)
+    assert index_line_body_hash(first) == index_line_body_hash(
         "- [DC] Same `Line.Content` here"
-    ) != index_line_content_hash(first)
-    assert index_line_content_hash(
-        "- [CT] Same line elsewhere"
-    ) != index_line_content_hash(first)
-    assert index_line_content_parts("- legacy grounded line ^c20260802-1u") == (
+    )
+    assert index_line_body_hash("- [CT] Same line elsewhere") != index_line_body_hash(
+        first
+    )
+    assert canonical_index_line_anchor_triplet(
+        first, "c20260802-1u"
+    ) == '["CT","Same `Line.Content` here","c20260802-1u"]'
+    assert index_line_anchor_triplet_hash(
+        first, "c20260802-1u"
+    ) != index_line_anchor_triplet_hash(second, "c20260802-9u")
+    assert index_line_anchor_triplet_hash(
+        first, "c20260802-1u"
+    ) != index_line_anchor_triplet_hash(
+        "- [DC] Same `Line.Content` here", "c20260802-1u"
+    )
+    assert index_line_statement_parts("- legacy grounded line ^c20260802-1u") == (
         None,
         "legacy grounded line",
     )

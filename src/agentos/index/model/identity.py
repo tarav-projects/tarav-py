@@ -1,16 +1,18 @@
-# $kw: --from Index.Line --from Touched.Support.Network --note [IMPL] canonical line identity excludes trailing support links and block attachment --supp ^c20260802-103u
+# $kw: --from Index.Line.Anchor --note [IMPL] canonical attachment identity is the current Line.Type + body + Anchor.Id triplet --supp ^c20260809-170u
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 
 from .parser import ANCHOR_RE, TYPE_BRACKET_RE
 
 
-INDEX_LINE_CONTENT_SCHEMA = "agentos.index-line-content.v1"
+INDEX_LINE_BODY_SCHEMA = "agentos.index-line-body.v1"
+INDEX_LINE_ANCHOR_TRIPLET_SCHEMA = "agentos.index-line-anchor-triplet.v1"
 
 
-def index_line_content_parts(source: str) -> tuple[str | None, str]:
-    """Return the deterministic Line.Type and body, excluding support links."""
+def index_line_statement_parts(source: str) -> tuple[str | None, str]:
+    """Return Line.Type and normalized body, excluding trailing anchors."""
 
     tokens = source.rstrip().split()
     while tokens and ANCHOR_RE.fullmatch(tokens[-1]):
@@ -26,16 +28,36 @@ def index_line_content_parts(source: str) -> tuple[str | None, str]:
     return line_type, " ".join(body.split())
 
 
-def canonical_index_line_content(source: str) -> str:
-    """Version-local canonical tuple used to identify one Index line."""
+def canonical_index_line_body(source: str) -> str:
+    """Canonical Index line wording, excluding Line.Type and anchors."""
 
-    line_type, body = index_line_content_parts(source)
-    return f"{line_type or ''}\0{body}"
+    return index_line_statement_parts(source)[1]
 
 
-def index_line_content_hash(source: str) -> str:
-    canonical = canonical_index_line_content(source)
+def index_line_body_hash(source: str) -> str:
     digest = sha256(
-        f"{INDEX_LINE_CONTENT_SCHEMA}\0{canonical}".encode("utf-8")
+        f"{INDEX_LINE_BODY_SCHEMA}\0{canonical_index_line_body(source)}".encode("utf-8")
+    ).hexdigest()
+    return f"sha256:{digest}"
+
+
+def canonical_index_line_anchor_triplet(source: str, anchor: str) -> str:
+    """Canonical Line.Type + body + Anchor.Id attachment assertion."""
+
+    normalized_anchor = anchor.removeprefix("^")
+    if not normalized_anchor or ANCHOR_RE.fullmatch(f"^{normalized_anchor}") is None:
+        raise ValueError(f"invalid Index.Line.Anchor id: {anchor!r}")
+    line_type, body = index_line_statement_parts(source)
+    return json.dumps(
+        [line_type or "", body, normalized_anchor],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def index_line_anchor_triplet_hash(source: str, anchor: str) -> str:
+    canonical = canonical_index_line_anchor_triplet(source, anchor)
+    digest = sha256(
+        f"{INDEX_LINE_ANCHOR_TRIPLET_SCHEMA}\0{canonical}".encode("utf-8")
     ).hexdigest()
     return f"sha256:{digest}"
