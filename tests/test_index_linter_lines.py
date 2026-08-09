@@ -445,5 +445,5 @@ def test_index_linter_reports_anchor_collision_across_depots(
     assert len(hits) == 1
     assert hits[0].severity == "error"
     assert hits[0].details["anchor"] == "c20260802-1u"
-    assert len(hits[0].details["contents"]) == 2
+    assert len(hits[0].details["attachments"]) == 2
     assert len(hits[0].details["locations"]) == 2

@@ -64,6 +64,22 @@ def test_register_and_resolve_round_trip_in_expected_shard(tmp_path: Path) -> No
     ) == {anchor: record}
 
 
+def test_register_derived_builds_record_from_allocated_anchor_under_lock(
+    tmp_path: Path,
+) -> None:
+    depot = AnchoryDepot(tmp_path / "anchory")
+
+    entry = depot.register_derived(
+        lambda anchor: {"attachment": anchor},
+        alloc_prefix="20260809",
+        tag="u",
+    )
+
+    assert entry.anchor == "20260809-0u"
+    assert entry.record == {"attachment": "20260809-0u"}
+    assert depot.resolve(entry.anchor).record == entry.record
+
+
 def test_same_anchor_is_independent_per_depot(tmp_path: Path) -> None:
     first = AnchoryDepot(tmp_path / "first")
     second = AnchoryDepot(tmp_path / "second")

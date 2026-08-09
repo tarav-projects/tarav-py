@@ -34,6 +34,15 @@ def canonical_index_line_body(source: str) -> str:
     return index_line_statement_parts(source)[1]
 
 
+def canonical_index_line_statement(source: str) -> str:
+    """Length-safe `(Line.Type, body)` key for pre-anchor comparisons."""
+
+    line_type, body = index_line_statement_parts(source)
+    return json.dumps(
+        [line_type or "", body], ensure_ascii=False, separators=(",", ":")
+    )
+
+
 def index_line_body_hash(source: str) -> str:
     digest = sha256(
         f"{INDEX_LINE_BODY_SCHEMA}\0{canonical_index_line_body(source)}".encode("utf-8")

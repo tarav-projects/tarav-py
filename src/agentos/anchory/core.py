@@ -223,6 +223,37 @@ class AnchoryDepot:
         self._touch_registry(refresh=True)
         return AnchoryEntry(anchor=anchor, record=dict(normalized_record))
 
+    def register_derived(
+        self,
+        record_factory: Callable[[str], Mapping[str, object]],
+        *,
+        alloc_prefix: str,
+        tag: str | None = None,
+        namespace: str = GLOBAL_NAMESPACE,
+    ) -> AnchoryEntry:
+        """Allocate an anchor and derive its record atomically from that id."""
+
+        if not callable(record_factory):
+            raise InvalidAnchoryInputError("record_factory must be callable")
+        if tag is not None and (
+            not isinstance(tag, str) or not _TAG_RE.fullmatch(tag)
+        ):
+            raise InvalidAnchoryInputError("tag must be a single lowercase letter")
+        namespace = _validate_namespace(namespace)
+        with self._lock(exclusive=True, create=True):
+            full_prefix = self._composed_prefix(namespace, alloc_prefix)
+            anchor = self._allocate_anchor(namespace, full_prefix, tag)
+            normalized_record = _normalize_record(record_factory(anchor))
+            path = self._shard_path(namespace, anchor)
+            records = _read_shard(path)
+            if anchor in records:
+                raise AnchorExistsError(f"anchor already exists: {anchor}")
+            records[anchor] = normalized_record
+            _write_shard_atomic(path, records)
+        self._invalidate_runtime_cache()
+        self._touch_registry(refresh=True)
+        return AnchoryEntry(anchor=anchor, record=dict(normalized_record))
+
     def _touch_registry(self, *, refresh: bool = False) -> None:
         from .registry import record_depot_touch, registry_path
 
