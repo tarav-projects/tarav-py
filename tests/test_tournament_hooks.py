@@ -30,8 +30,10 @@ def _write(tmp_path: Path, body: str, name: str = "definition.py") -> Path:
     return path
 
 
-def _load(tmp_path: Path, body: str):
-    return load_definition(_write(tmp_path, body), snapshot_dir=tmp_path / "snap")
+def _load(tmp_path: Path, body: str, params: dict[str, str] | None = None):
+    return load_definition(
+        _write(tmp_path, body), snapshot_dir=tmp_path / "snap", params=params
+    )
 
 
 def test_a_definition_missing_match_players_fails_at_load(tmp_path: Path) -> None:
@@ -258,3 +260,101 @@ def test_a_tampered_snapshot_is_caught_on_reopen(tmp_path: Path) -> None:
 def test_a_missing_definition_file_is_a_load_error(tmp_path: Path) -> None:
     with pytest.raises(HookLoadError):
         load_definition(tmp_path / "nope.py", snapshot_dir=tmp_path / "snap")
+
+
+# $kw: ^test-label-hooks --from Tournament.Label --note [DF] boundary tests for the optional player and match grouping tags --supp ^c20260809-171u ^<anchor-on-landing>
+
+
+def test_player_label_defaults_to_unlabeled(tmp_path: Path) -> None:
+    definition = _load(tmp_path, MINIMAL)
+    assert definition.player_label("a") is None
+
+
+def test_player_label_hook_supplies_a_grouping_tag(tmp_path: Path) -> None:
+    body = MINIMAL + "\ndef player_label(ctx):\n    return 'registered'\n"
+    definition = _load(tmp_path, body)
+    assert definition.player_label("a") == "registered"
+
+
+def test_a_player_label_hook_may_decline_to_label_one_player(tmp_path: Path) -> None:
+    body = MINIMAL + "\ndef player_label(ctx):\n    return 'pool' if ctx.player == 'a' else None\n"
+    definition = _load(tmp_path, body)
+    assert definition.player_label("a") == "pool"
+    assert definition.player_label("b") is None
+
+
+@pytest.mark.parametrize("returned", ["''", "'   '", "42"])
+def test_a_player_label_must_be_a_nonempty_string_or_none(
+    tmp_path: Path, returned: str
+) -> None:
+    body = MINIMAL + f"\ndef player_label(ctx):\n    return {returned}\n"
+    definition = _load(tmp_path, body)
+    with pytest.raises(HookReturnError, match="player_label"):
+        definition.player_label("a")
+
+
+def test_match_label_defaults_to_unlabeled(tmp_path: Path) -> None:
+    definition = _load(tmp_path, MINIMAL)
+    assert definition.match_label(players=("a", "b"), presentations=("A", "B")) is None
+
+
+def test_match_label_hook_sees_the_whole_match(tmp_path: Path) -> None:
+    body = MINIMAL + "\ndef match_label(ctx):\n    return 'shape:%d' % len(ctx.players)\n"
+    definition = _load(tmp_path, body)
+    label = definition.match_label(players=("a", "b"), presentations=("A", "B"))
+    assert label == "shape:2"
+
+
+@pytest.mark.parametrize("returned", ["''", "'   '", "{}"])
+def test_a_match_label_must_be_a_nonempty_string_or_none(
+    tmp_path: Path, returned: str
+) -> None:
+    body = MINIMAL + f"\ndef match_label(ctx):\n    return {returned}\n"
+    definition = _load(tmp_path, body)
+    with pytest.raises(HookReturnError, match="match_label"):
+        definition.match_label(players=("a", "b"), presentations=("A", "B"))
+
+
+# $kw: ^test-run-parameters --from Tournament.Hook --note [DC] a run may supply consumer parameters, reaching every hook through its context --supp ^c20260809-180u ^<anchor-on-landing>
+
+
+def test_hooks_see_no_parameters_by_default(tmp_path: Path) -> None:
+    body = MINIMAL + "\ndef match_label(ctx):\n    return 'n=%d' % len(ctx.params)\n"
+    definition = _load(tmp_path, body)
+    assert definition.match_label(players=("a",), presentations=("A",)) == "n=0"
+
+
+def test_a_definition_may_branch_on_run_parameters(tmp_path: Path) -> None:
+    body = '''
+question = "Which is better?"
+
+def match_players(ctx):
+    return ("a", "b") if ctx.params.get("shape") == "pair" else ("a", "b", "c")
+
+def match_identity(ctx):
+    return "|".join(ctx.players)
+'''
+    definition = _load(tmp_path, body, params={"shape": "pair"})
+    players = definition.match_players(verdicts=(), match_index=0, budget=1)
+    assert players == ("a", "b")
+
+
+def test_every_hook_sees_the_same_parameters(tmp_path: Path) -> None:
+    body = MINIMAL + '''
+def present_player(ctx):
+    return "%s@%s" % (ctx.player, ctx.params["run"])
+
+def match_label(ctx):
+    return ctx.params["run"]
+'''
+    definition = _load(tmp_path, body, params={"run": "seven"})
+    assert definition.present_player("a") == "a@seven"
+    assert definition.match_label(players=("a",), presentations=("A",)) == "seven"
+
+
+def test_a_hook_cannot_mutate_the_parameters_it_was_handed(tmp_path: Path) -> None:
+    """Shared across every call of a run, so a mutable view would leak forward."""
+    body = MINIMAL + "\ndef match_label(ctx):\n    ctx.params['injected'] = 'x'\n    return 'unreachable'\n"
+    definition = _load(tmp_path, body, params={"run": "seven"})
+    with pytest.raises(TypeError):
+        definition.match_label(players=("a",), presentations=("A",))

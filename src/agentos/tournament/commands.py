@@ -1,4 +1,4 @@
-# $kw: ^tournament-commands --from Agentos.Tournament --from Tournament.Depot --note [DF] thin argparse handlers over the importable tournament engine; the depot defaults globally and the failure envelope is the orchestration primitive --supp ^c20260806-26u ^<anchor-on-landing>
+# $kw: ^tournament-commands --from Agentos.Tournament --from Tournament.Depot --from Tournament.Hook --note [DF] thin argparse handlers over the importable tournament engine; the depot defaults globally and the failure envelope is the orchestration primitive --supp ^c20260806-26u ^<anchor-on-landing>
 """`agentos tournament ...` — a thin JSON CLI over the tournament engine."""
 
 from __future__ import annotations
@@ -91,7 +91,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     store = _store(args)
     try:
         tournament = store.tournament(args.tournament)
-        definition = _reload_definition(store, tournament)
+        definition = _reload_definition(store, tournament, _run_params(args.param))
     except TournamentError as exc:
         raise CliError(str(exc)) from exc
 
@@ -139,7 +139,7 @@ def _cmd_preview(args: argparse.Namespace) -> int:
     store = _store(args)
     try:
         tournament = store.tournament(args.tournament)
-        definition = _reload_definition(store, tournament)
+        definition = _reload_definition(store, tournament, _run_params(args.param))
         players = definition.match_players(
             verdicts=tuple(
                 v.envelope for v in store.verdicts(tournament.tournament_id)
@@ -174,6 +174,8 @@ def _cmd_preview(args: argparse.Namespace) -> int:
                 "players": list(result.players),
                 "presented": list(result.presented),
                 "controls": dict(result.controls),
+                "player_labels": dict(result.player_labels),
+                "match_label": result.match_label,
                 "template": result.template,
                 "verbatim_hash": result.verbatim_hash,
                 "verbatim": result.verbatim,
@@ -253,10 +255,29 @@ def _cmd_verbatim(args: argparse.Namespace) -> int:
     return 0
 
 
-def _reload_definition(store: TournamentStore, tournament):  # noqa: ANN001
+def _reload_definition(store: TournamentStore, tournament, params=None):  # noqa: ANN001
     """Open the tournament's own snapshot, never the live definition file."""
     snapshot = _snapshot_dir(store, tournament.tournament_id) / "_definition-snap.py"
-    return open_definition(snapshot, origin_path=tournament.definition_path)
+    return open_definition(
+        snapshot, origin_path=tournament.definition_path, params=params
+    )
+
+
+def _run_params(values: list[str] | None) -> dict[str, str]:
+    """Consumer parameters, rejected at the boundary rather than downstream.
+
+    The engine never reads a key, so nothing here validates meaning — only that
+    each entry is a `key=value` pair. A repeated key resolves last-wins.
+    """
+    params: dict[str, str] = {}
+    for entry in values or ():
+        key, separator, value = str(entry).partition("=")
+        if not separator or not key.strip():
+            raise CliError(
+                f"--param must be key=value (got {entry!r})"
+            )
+        params[key.strip()] = value
+    return params
 
 
 def _cmd_submit(args: argparse.Namespace) -> int:
@@ -349,6 +370,8 @@ def _append_submitted(store: TournamentStore, ticket, answer: dict[str, object])
             controls=ticket.controls,
             template=ticket.template,
             template_bindings=ticket.template_bindings,
+            player_labels=ticket.player_labels,
+            match_label=ticket.match_label,
         )
     labels = position_labels(ticket.arity)
     ordering = tuple(
@@ -368,6 +391,8 @@ def _append_submitted(store: TournamentStore, ticket, answer: dict[str, object])
         controls=ticket.controls,
         template=ticket.template,
         template_bindings=ticket.template_bindings,
+        player_labels=ticket.player_labels,
+        match_label=ticket.match_label,
     )
 
 
@@ -451,6 +476,13 @@ def register_tournament_commands(subparsers: argparse._SubParsersAction) -> None
         ),
     )
     run_parser.add_argument(
+        "--param",
+        action="append",
+        help=(
+            "Consumer parameter as key=value; repeatable. Reaches every definition hook through its context. The engine carries these and never branches on them."
+        ),
+    )
+    run_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Render prompts and resolve the agent command without spawning.",
@@ -492,6 +524,13 @@ def register_tournament_commands(subparsers: argparse._SubParsersAction) -> None
     )
     preview_parser.add_argument("--provider", help="Judge provider to record on the ticket.")
     preview_parser.add_argument("--model", help="Judge model to record on the ticket.")
+    preview_parser.add_argument(
+        "--param",
+        action="append",
+        help=(
+            "Consumer parameter as key=value; repeatable. Reaches every definition hook through its context. The engine carries these and never branches on them."
+        ),
+    )
     preview_parser.add_argument(
         "--json", action="store_true", help="Emit the full record instead of the prompt."
     )

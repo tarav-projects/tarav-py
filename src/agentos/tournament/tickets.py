@@ -1,4 +1,4 @@
-# $kw: ^tournament-tickets --from Tournament.Ticket --from Tournament.Depot --note [DC] tickets are mutable staging outside the record store, so the append-only rule over verdicts stays untouched --supp ^c20260806-68u ^<anchor-on-landing>
+# $kw: ^tournament-tickets --from Tournament.Ticket --from Tournament.Depot --from Tournament.Label --note [DC] tickets are mutable staging outside the record store, so the append-only rule over verdicts stays untouched --supp ^c20260806-68u ^<anchor-on-landing>
 """One ticket authorizes one submission for one run of one match.
 
 A ticket is a plain JSON file under ``<depot>/tickets/``. Deliberately **not** a
@@ -76,6 +76,10 @@ class Ticket:
     # does: `submit` writes the verdict from the ticket alone.
     template: str | None = None
     template_bindings: dict[str, object] = field(default_factory=dict)
+    # The `Tournament.Label` grouping tags this run carried. Same reason as
+    # `controls`: `submit` writes the verdict from the ticket alone.
+    player_labels: dict[str, str] = field(default_factory=dict)
+    match_label: str | None = None
 
     @property
     def is_preview(self) -> bool:
@@ -113,6 +117,8 @@ class Ticket:
             "controls": dict(self.controls),
             "template": self.template,
             "template_bindings": dict(self.template_bindings),
+            "player_labels": dict(self.player_labels),
+            "match_label": self.match_label,
         }
 
 
@@ -134,6 +140,8 @@ class TicketStore:
         attempt_cap: int = DEFAULT_ATTEMPT_CAP,
         kind: str = KIND_MATCH,
         controls: dict[str, str] | None = None,
+        player_labels: dict[str, str] | None = None,
+        match_label: str | None = None,
     ) -> Ticket:
         if kind not in TICKET_KINDS:
             raise TicketError(
@@ -151,6 +159,8 @@ class TicketStore:
             attempt_cap=attempt_cap,
             kind=kind,
             controls=dict(controls or {}),
+            player_labels=dict(player_labels or {}),
+            match_label=match_label,
         )
         self._write(ticket)
         return ticket
@@ -285,6 +295,8 @@ def _replace(ticket: Ticket, **changes: object) -> Ticket:
             "controls",
             "template",
             "template_bindings",
+            "player_labels",
+            "match_label",
         )
     }
     payload.update(changes)
@@ -319,6 +331,11 @@ def _ticket_from_payload(payload: object, ticket_id: str) -> Ticket:
             },
             template=payload.get("template") and str(payload["template"]),
             template_bindings=dict(payload.get("template_bindings") or {}),
+            player_labels={
+                str(name): str(label)
+                for name, label in (payload.get("player_labels") or {}).items()
+            },
+            match_label=payload.get("match_label") and str(payload["match_label"]),
         )
     except (KeyError, TypeError, ValueError) as error:
         raise TicketError(f"corrupt tournament ticket {ticket_id}: {error}") from error

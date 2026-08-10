@@ -1,4 +1,4 @@
-# $kw: ^tournament-runner --from Tournament.Match --from Tournament.Judge --note [DC] the engine composes the Match.Verbatim from the consumer's player presentations and its own frame --supp ^c20260806-7u ^<anchor-on-landing>
+# $kw: ^tournament-runner --from Tournament.Match --from Tournament.Judge --from Tournament.Label --from Judge.Blinding --note [DC] the engine composes the Match.Verbatim from the consumer's player presentations and its own frame --supp ^c20260806-7u ^<anchor-on-landing>
 """One match: substitute, present, identify, shuffle, compose, spawn, record.
 
 The engine performs every effect here. The definition supplied the match's
@@ -91,6 +91,10 @@ class MatchResult:
     # values bound into it. Together they are enough to rebuild the verbatim.
     template: str | None = None
     template_bindings: dict[str, object] = field(default_factory=dict)
+    # `Tournament.Label` grouping tags. Unlabeled players are absent from the
+    # mapping; an unlabeled match carries None.
+    player_labels: dict[str, str] = field(default_factory=dict)
+    match_label: str | None = None
     ticket_id: str | None = None
     verdict: Verdict | None = None
     error: str | None = None
@@ -177,6 +181,7 @@ def run_match(
     presentations = tuple(definition.present_player(player) for player in players)
     # Identity before the shuffle: it must not vary with presentation order.
     match_id = definition.match_identity(players=players, presentations=presentations)
+    player_labels, match_label = _labels(definition, players, presentations)
 
     presented, presented_presentations = _presented_order(players, presentations, rng)
 
@@ -195,6 +200,8 @@ def run_match(
             verbatim_hash="sha256:"
             + hashlib.sha256(verbatim.encode("utf-8")).hexdigest(),
             controls=controls,
+            player_labels=player_labels,
+            match_label=match_label,
         )
 
     tickets = TicketStore(store.root)
@@ -206,6 +213,8 @@ def run_match(
         verbatim_hash="",
         judge=spawn.identity(),
         controls=controls,
+        player_labels=player_labels,
+        match_label=match_label,
     )
     verbatim, template, bindings = _composed(
         question=definition.question,
@@ -233,6 +242,7 @@ def run_match(
         return _failure(
             ticket.ticket_id, match_id, players, presented, verbatim, verbatim_hash,
             controls, template, bindings, str(error),
+            player_labels=player_labels, match_label=match_label,
         )
 
     # A validated verdict outranks a nonzero exit: once the answer travels out of
@@ -248,6 +258,7 @@ def run_match(
         return _failure(
             ticket.ticket_id, match_id, players, presented, verbatim, verbatim_hash,
             controls, template, bindings, f"{detail} (judge exit {exit_code})",
+            player_labels=player_labels, match_label=match_label,
         )
     return MatchResult(
         ticket_id=ticket.ticket_id,
@@ -259,6 +270,8 @@ def run_match(
         controls=controls,
         template=template,
         template_bindings=bindings,
+        player_labels=player_labels,
+        match_label=match_label,
         verdict=verdict,
     )
 
@@ -290,6 +303,7 @@ def preview_match(
     )
     presentations = tuple(definition.present_player(player) for player in players)
     match_id = definition.match_identity(players=players, presentations=presentations)
+    player_labels, match_label = _labels(definition, players, presentations)
     presented, presented_presentations = _presented_order(players, presentations, rng)
 
     tickets = TicketStore(store.root)
@@ -302,6 +316,8 @@ def preview_match(
         judge=judge,
         kind=KIND_PREVIEW,
         controls=controls,
+        player_labels=player_labels,
+        match_label=match_label,
     )
     verbatim, template, bindings = _composed(
         question=definition.question,
@@ -327,6 +343,8 @@ def preview_match(
         controls=controls,
         template=template,
         template_bindings=bindings,
+        player_labels=player_labels,
+        match_label=match_label,
         ticket_id=ticket.ticket_id,
     )
 
@@ -548,6 +566,27 @@ def _spawn_judge(spawn: JudgeSpawn, verbatim: str) -> AgentRunResult:
     )
 
 
+def _labels(
+    definition: TournamentDefinition,
+    players: tuple[str, ...],
+    presentations: tuple[str, ...],
+) -> tuple[dict[str, str], str | None]:
+    """The match's grouping tags, resolved once before the shuffle.
+
+    Unlabeled players are omitted rather than stored as null, so the mapping is
+    the labeled set. Labels never reach the judge: they are not passed to the
+    template, and nothing here returns into the render path.
+    """
+    labels = {
+        player: label
+        for player in players
+        if (label := definition.player_label(player)) is not None
+    }
+    return labels, definition.match_label(
+        players=players, presentations=presentations
+    )
+
+
 def _failure(
     ticket_id: str | None,
     match_id: str,
@@ -559,6 +598,9 @@ def _failure(
     template: str | None,
     template_bindings: dict[str, object],
     error: str,
+    *,
+    player_labels: dict[str, str] | None = None,
+    match_label: str | None = None,
 ) -> MatchResult:
     return MatchResult(
         match_id=match_id,
@@ -569,6 +611,8 @@ def _failure(
         controls=controls,
         template=template,
         template_bindings=template_bindings,
+        player_labels=dict(player_labels or {}),
+        match_label=match_label,
         ticket_id=ticket_id,
         error=error,
     )

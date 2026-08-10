@@ -1,4 +1,4 @@
-# $kw: ^tournament-store --from Agentos.Tournament --from Tournament.Verdict --from Tournament.Depot --from Bloberia.Record.Namespace --note [CT] append-only is a Tournament-layer rule; BloberiaDepot.edit exists and this store never calls it --supp ^c20260806-28u ^<anchor-on-landing>
+# $kw: ^tournament-store --from Agentos.Tournament --from Tournament.Verdict --from Tournament.Depot --from Tournament.Label --from Bloberia.Record.Namespace --note [CT] append-only is a Tournament-layer rule; BloberiaDepot.edit exists and this store never calls it --supp ^c20260806-28u ^<anchor-on-landing>
 """Bloberia-backed tournament and verdict storage.
 
 Append-only is enforced here, not by Bloberia: ``BloberiaDepot.edit`` mutates in
@@ -104,6 +104,8 @@ class TournamentStore:
         controls: dict[str, str] | None = None,
         template: str | None = None,
         template_bindings: dict[str, object] | None = None,
+        player_labels: dict[str, str] | None = None,
+        match_label: str | None = None,
     ) -> Verdict:
         match_id = require_match_id(match_id)
         slot_value = require_unshadowed_slot(slot)
@@ -131,6 +133,11 @@ class TournamentStore:
             # from these and checked against the hash below.
             "template": template,
             "template_bindings": dict(template_bindings or {}),
+            # `Tournament.Label` grouping tags: recorded, never interpreted, and
+            # never rendered into the verbatim. Unlabeled players are absent
+            # rather than null, so the mapping reads as the labeled set.
+            "player_labels": dict(player_labels or {}),
+            "match_label": match_label,
             "refusal_reason": refusal_reason,
             "ticket": ticket,
             "judge": dict(judge),

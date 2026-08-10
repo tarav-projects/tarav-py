@@ -225,3 +225,22 @@ def test_a_consumer_slot_may_not_restate_the_control_map(tmp_path: Path) -> None
             verbatim_hash="sha256:" + "1" * 64,
             slot={"controls": {"a": "high"}},
         )
+
+
+def test_the_slot_may_not_shadow_a_label_field(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    tournament_id = _tournament(store)
+
+    for field in ("player_labels", "match_label"):
+        with pytest.raises(EnvelopeShadowedError):
+            store.append_verdict(
+                tournament_id=tournament_id,
+                match_id="m-1",
+                players=("a", "b"),
+                outcome=VerdictOutcome.ORDERED,
+                ordering=("a", "b"),
+                judge=_judge(),
+                presented=("a", "b"),
+                verbatim_hash="sha256:" + "4" * 64,
+                slot={field: "anything"},
+            )

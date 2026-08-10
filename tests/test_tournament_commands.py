@@ -258,3 +258,92 @@ def test_creating_from_a_definition_missing_a_required_hook_fails(
     with pytest.raises(CliError) as excinfo:
         args.handler(args)
     assert "match_players" in str(excinfo.value)
+
+
+# $kw: ^test-run-parameters-cli --from Tournament.Hook --note [PR] a misspelled key reads as a silent default, so the boundary rejects malformed parameters rather than the engine reading them --supp ^c20260809-182u ^<anchor-on-landing>
+
+PARAMETERIZED = '''
+question = "which is better?"
+
+def match_players(ctx):
+    return ("alpha", "beta") if ctx.params.get("shape") == "pair" else ("alpha", "beta", "gamma")
+
+def match_identity(ctx):
+    return "|".join(sorted(ctx.players))
+
+def match_label(ctx):
+    return ctx.params.get("shape", "unset")
+'''
+
+
+def test_run_and_preview_accept_repeatable_parameters() -> None:
+    parser = _parser()
+    for command in ("run", "preview"):
+        args = parser.parse_args(
+            ["tournament", command, "--tournament", "t-1",
+             "--param", "shape=pair", "--param", "phase=calibrate"]
+        )
+        assert args.param == ["shape=pair", "phase=calibrate"]
+
+
+def test_a_run_without_parameters_supplies_none() -> None:
+    args = _parser().parse_args(["tournament", "run", "--tournament", "t-1"])
+    assert args.param is None
+
+
+def test_parameters_reach_the_definition_hooks(tmp_path: Path) -> None:
+    store, tournament = _created(tmp_path, PARAMETERIZED)
+    args = _parser().parse_args(
+        ["tournament", "preview", "--depot", str(store.root),
+         "--tournament", tournament.tournament_id, "--param", "shape=pair", "--json"]
+    )
+    payload = _handled(args)
+
+    assert payload["players"] == ["alpha", "beta"]
+    assert payload["match_label"] == "pair"
+
+
+@pytest.mark.parametrize("bad", ["shape", "=pair", ""])
+def test_a_malformed_parameter_is_rejected_at_the_boundary(
+    tmp_path: Path, bad: str
+) -> None:
+    store, tournament = _created(tmp_path, PARAMETERIZED)
+    args = _parser().parse_args(
+        ["tournament", "preview", "--depot", str(store.root),
+         "--tournament", tournament.tournament_id, "--param", bad, "--json"]
+    )
+    with pytest.raises(CliError, match="--param"):
+        args.handler(args)
+
+
+def test_a_repeated_parameter_key_resolves_last_wins(tmp_path: Path) -> None:
+    store, tournament = _created(tmp_path, PARAMETERIZED)
+    args = _parser().parse_args(
+        ["tournament", "preview", "--depot", str(store.root),
+         "--tournament", tournament.tournament_id,
+         "--param", "shape=trio", "--param", "shape=pair", "--json"]
+    )
+    assert _handled(args)["match_label"] == "pair"
+
+
+def _created(tmp_path: Path, body: str):
+    """Create through the real handler so the snapshot is authorized on record."""
+    path = tmp_path / "definition.py"
+    path.write_text(body, encoding="utf-8")
+    depot = tmp_path / "depot"
+    args = _parser().parse_args(
+        ["tournament", "create", "--depot", str(depot), "--definition", str(path)]
+    )
+    created = _handled(args)
+    store = TournamentStore(depot)
+    return store, store.tournament(created["tournament_id"])
+
+
+def _handled(args, capsys=None):
+    import contextlib
+    import io
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        args.handler(args)
+    return json.loads(buffer.getvalue())

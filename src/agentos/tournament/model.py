@@ -1,4 +1,4 @@
-# $kw: ^tournament-model --from Agentos.Tournament --from Tournament.Verdict --from Tournament.Player --note [DF] the engine-written verdict envelope and the opaque consumer slot, split inside one Bloberia application value ^<anchor-on-landing>
+# $kw: ^tournament-model --from Agentos.Tournament --from Tournament.Verdict --from Tournament.Player --from Tournament.Label --note [DF] the engine-written verdict envelope and the opaque consumer slot, split inside one Bloberia application value ^<anchor-on-landing>
 """Tournament record shapes.
 
 A verdict record carries two zones inside Bloberia's application-owned ``value``:
@@ -29,6 +29,8 @@ ENVELOPE_FIELDS = frozenset(
         "outcome",
         "ordering",
         "controls",
+        "player_labels",
+        "match_label",
         "template",
         "template_bindings",
         "ticket",

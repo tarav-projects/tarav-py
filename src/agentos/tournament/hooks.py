@@ -1,4 +1,4 @@
-# $kw: ^tournament-hooks --from Tournament.Hook --from Tournament.Definition --note [DC] the match-players and match-identity hooks are required and have no default; every other hook defaults --supp ^c20260806-21u ^<anchor-on-landing>
+# $kw: ^tournament-hooks --from Tournament.Hook --from Tournament.Definition --from Tournament.Label --note [DC] the match-players and match-identity hooks are required and have no default; every other hook defaults --supp ^c20260806-21u ^<anchor-on-landing>
 """Consumer-owned tournament definitions, loaded as snapshotted Python.
 
 A definition file exposes named functions. Two are required and have no default:
@@ -18,6 +18,12 @@ and the module attribute ``control_rate`` says how often one is substituted in.
 The hook returns the *pool*, never one control per call: which control lands in
 which match is engine work.
 
+``player_label`` and ``match_label`` attach opaque grouping tags the engine
+records and never interprets. They are reader-side: a label never reaches the
+judge, exactly like a control's declared band. A run may also supply consumer
+``params``, which reach every hook through its context; the engine carries them
+and never branches on them.
+
 A hook may randomize *which* players meet — that is sampling strategy, and
 `random` writes nothing that purity verification would catch. The engine
 randomizes exactly two things: presentation order, because it decodes the judge's
@@ -28,9 +34,10 @@ from __future__ import annotations
 
 import importlib.util
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import ModuleType
+from types import MappingProxyType, ModuleType
 
 from agentos.tournament import locking
 from agentos.tournament.contract import CONTROL_BANDS, MAX_ARITY, MIN_ARITY
@@ -41,9 +48,11 @@ MATCH_IDENTITY = "match_identity"
 PRESENT_PLAYER = "present_player"
 VERDICT_SLOT = "verdict_slot"
 CONTROLS = "controls"
+PLAYER_LABEL = "player_label"
+MATCH_LABEL = "match_label"
 
 REQUIRED_HOOKS = (MATCH_PLAYERS, MATCH_IDENTITY)
-DEFAULTED_HOOKS = (PRESENT_PLAYER, VERDICT_SLOT, CONTROLS)
+DEFAULTED_HOOKS = (PRESENT_PLAYER, VERDICT_SLOT, CONTROLS, PLAYER_LABEL, MATCH_LABEL)
 HOOK_NAMES = REQUIRED_HOOKS + DEFAULTED_HOOKS
 
 DEFAULT_QUESTION = "Rank the candidates below from best to worst."
@@ -88,6 +97,10 @@ class HookContext:
     match_index: int = 0
     budget: int = 0
     snapshot_path: str = ""
+    # Consumer parameters supplied by the run, identical for every hook call.
+    # Read-only: the same mapping is handed to every call, so a mutable view
+    # would let one hook change what the next one sees.
+    params: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
 
 @dataclass
@@ -99,6 +112,9 @@ class TournamentDefinition:
     digest: str
     module: ModuleType
     guarded_paths: tuple[Path, ...] = field(default_factory=tuple)
+    # Opaque to the engine: it carries these to the hooks and never branches on
+    # them itself. Its own knobs stay named parameters with validation points.
+    params: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def question(self) -> str:
@@ -176,6 +192,39 @@ class TournamentDefinition:
             )
         return value
 
+    def player_label(self, player: str) -> str | None:
+        """This player's grouping tag, or None when it carries none.
+
+        Unlabeled is the default and reads as one undifferentiated population.
+        The label is never compared against a previous match's: a label is free
+        to vary across the matches a player appears in, which is what makes a
+        fold group over label occurrences rather than over players.
+        """
+        return self._label(PLAYER_LABEL, self._context(player=str(player)))
+
+    def match_label(
+        self, *, players: tuple[str, ...], presentations: tuple[str, ...]
+    ) -> str | None:
+        """This match's grouping tag, or None when it carries none."""
+        context = self._context(players=players, presentations=presentations)
+        return self._label(MATCH_LABEL, context)
+
+    def _label(self, name: str, context: HookContext) -> str | None:
+        hook = getattr(self.module, name, None)
+        if hook is None:
+            return None
+        value = self._call(name, hook, context)
+        if value is None:
+            return None
+        # An empty label is not "unlabeled" — it is an invisible group in the
+        # fold, so it fails rather than being coerced to None.
+        if not isinstance(value, str) or not value.strip():
+            raise HookReturnError(
+                f"{name} must return a non-empty string or None "
+                f"(got {type(value).__name__})"
+            )
+        return value
+
     def match_identity(
         self, *, players: tuple[str, ...], presentations: tuple[str, ...]
     ) -> str:
@@ -227,6 +276,7 @@ class TournamentDefinition:
             match_index=match_index,
             budget=budget,
             snapshot_path=str(self.snapshot_path),
+            params=self.params,
         )
 
     def _call(self, name: str, hook: object, context: HookContext) -> object:
@@ -252,6 +302,7 @@ def load_definition(
     *,
     snapshot_dir: Path | str,
     guarded_paths: tuple[Path, ...] | list[Path] = (),
+    params: Mapping[str, str] | None = None,
 ) -> TournamentDefinition:
     """Snapshot a definition file and load the snapshot as the executed module."""
     origin = Path(path).expanduser().resolve()
@@ -276,6 +327,7 @@ def load_definition(
         digest="sha256:" + locking.content_hash(snapshot),
         module=module,
         guarded_paths=guarded,
+        params=MappingProxyType(dict(params or {})),
     )
 
 
@@ -284,6 +336,7 @@ def open_definition(
     *,
     origin_path: Path | str,
     guarded_paths: tuple[Path, ...] | list[Path] = (),
+    params: Mapping[str, str] | None = None,
 ) -> TournamentDefinition:
     """Open an existing snapshot for a later run.
 
@@ -309,6 +362,7 @@ def open_definition(
         digest="sha256:" + locking.content_hash(snapshot),
         module=module,
         guarded_paths=tuple(Path(item).resolve() for item in guarded_paths),
+        params=MappingProxyType(dict(params or {})),
     )
 
 
