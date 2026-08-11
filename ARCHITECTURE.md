@@ -50,6 +50,9 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   the composed resolver and catalog into commands and report adapters.
 - POI adapters live under `agentos.poi.adapters` when they bridge a producer
   domain to the common reporting model.
+- Skillware's `_code_model` and `_code_surfaces` modules own language-neutral
+  code selection and policy. Language adapters such as `_code_python` provide
+  only host tokenization and carrier binding.
 - Chatlas command behavior lives in `_command_support.py`; `commands.py` owns the
   public parser composition and registrar.
 

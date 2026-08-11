@@ -98,6 +98,7 @@ _SKW_CONFIG_KEYS = (
     "exclude",
     "projects",
     "unlock_registries",
+    "code_surfaces",
 )
 _PACKAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _UNLOCK_TOKEN_RE = re.compile(r"^skw-unlock:[0-9a-f]{12,64}$")
@@ -113,6 +114,15 @@ class EditionHistoryConfig:
 
 
 @dataclass(frozen=True)
+class CodeSurfaceConfig:
+    """One language-typed, project-relative code-surface selector."""
+
+    language: str
+    include: tuple[str, ...]
+    exclude: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class SkwConfig:
     """A `skw.json` — the same schema at project and package scope.
 
@@ -121,7 +131,8 @@ class SkwConfig:
     `Skw.Pkg.Dependency` registry — `id → package-root`, serving both the
     concept domain, folded into the depot search, and the file domain,
     addressed as `@<id>/…`), `surfaces` (managed set; empty → discover),
-    `exclude` (trim), `projects` (sibling project roots whose project-level
+    `exclude` (trim), `code_surfaces` (language-typed project file selectors),
+    `projects` (sibling project roots whose project-level
     depots extend cross-repo resolution), and `unlock_registries` (explicit
     Poi.Unlock.Token registry files)."""
 
@@ -132,6 +143,7 @@ class SkwConfig:
     exclude: tuple[str, ...] = ()
     projects: tuple[str, ...] = ()
     unlock_registries: tuple[str, ...] = ()
+    code_surfaces: tuple[CodeSurfaceConfig, ...] = ()
     edition_history: EditionHistoryConfig | None = None
     warnings: tuple[str, ...] = ()
 
@@ -227,6 +239,66 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
             depot=depot,
         )
 
+    def _code_surfaces() -> tuple[CodeSurfaceConfig, ...]:
+        value = raw.get("code_surfaces", [])
+        if not isinstance(value, list):
+            raise SkillwareError(
+                f"skw.json `code_surfaces` must be a list: {config_path}"
+            )
+        result = []
+        for index, item in enumerate(value):
+            label = f"code_surfaces[{index}]"
+            if not isinstance(item, dict):
+                raise SkillwareError(
+                    f"skw.json `{label}` must be an object: {config_path}"
+                )
+            unknown = set(item) - {"language", "include", "exclude"}
+            if unknown:
+                raise SkillwareError(
+                    f"unknown skw.json `{label}` key(s) "
+                    f"{', '.join(sorted(unknown))}: {config_path}"
+                )
+            language = item.get("language")
+            if not isinstance(language, str) or not re.fullmatch(
+                r"[a-z][a-z0-9-]*", language
+            ):
+                raise SkillwareError(
+                    f"skw.json `{label}.language` must be a canonical name: "
+                    f"{config_path}"
+                )
+
+            def _patterns(key: str, *, required: bool) -> tuple[str, ...]:
+                patterns = item.get(key)
+                if patterns is None and not required:
+                    return ()
+                if (
+                    not isinstance(patterns, list)
+                    or (required and not patterns)
+                    or not all(isinstance(pattern, str) and pattern for pattern in patterns)
+                ):
+                    qualifier = "non-empty " if required else ""
+                    raise SkillwareError(
+                        f"skw.json `{label}.{key}` must be a {qualifier}list "
+                        f"of strings: {config_path}"
+                    )
+                for pattern in patterns:
+                    path = Path(pattern)
+                    if path.is_absolute() or ".." in path.parts:
+                        raise SkillwareError(
+                            f"skw.json `{label}.{key}` patterns must be "
+                            f"project-relative: {config_path}"
+                        )
+                return tuple(patterns)
+
+            result.append(
+                CodeSurfaceConfig(
+                    language=language,
+                    include=_patterns("include", required=True),
+                    exclude=_patterns("exclude", required=False),
+                )
+            )
+        return tuple(result)
+
     return SkwConfig(
         id=package_id,
         depots=_list("depots"),
@@ -235,6 +307,7 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
         exclude=_list("exclude"),
         projects=_list("projects"),
         unlock_registries=_list("unlock_registries"),
+        code_surfaces=_code_surfaces(),
         edition_history=_edition_history(),
         warnings=warnings,
     )

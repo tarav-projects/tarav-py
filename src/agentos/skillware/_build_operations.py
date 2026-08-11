@@ -14,7 +14,6 @@ from agentos.skw.network import extract_mentions, run_dependency_sync
 from agentos.skillware.model import (
     SkwFinding,
     SkwSource,
-    parse_skw_code,
     parse_skw_source,
     recipe_key,
 )
@@ -36,6 +35,8 @@ from ._build_core import (
     resolve_project_depots,
     unlock_requirements,
 )
+from ._code_model import CodeCheckReport
+from ._code_surfaces import check_code_surfaces
 from .poi import (
     SkillwarePOIInstance,
     network_finding_to_poi,
@@ -466,113 +467,6 @@ def _address_mismatch_pois(
     return pois
 
 
-# A skw-code surface is discovered by the presence of machinery: a code file
-# carrying at least one `# $kw:` comment is opted into skw management, and its
-# other full-line comments become `Non.Skw.Annotation` POIs. Config-free and
-# per-file opt-in; declared globs are a future refinement. `Non.Skw.Annotation`
-# is default-off (opt-in via `--check non-skw-annotation`).
-_CODE_SKIP_DIRS = frozenset(
-    {".skw", ".skillware", ".git", "__pycache__", ".agentos", ".venv", "node_modules"}
-)
-
-
-def _iter_code_files(skill_root: Path):
-    for path in sorted(skill_root.rglob("*.py")):
-        rel = path.relative_to(skill_root)
-        if any(part in _CODE_SKIP_DIRS for part in rel.parts):
-            continue
-        if path.is_file():
-            yield path
-
-
-@dataclass(frozen=True)
-class CodeAttachPolicy:
-    """The `Annotation.Point` policy for a skw-code surface: the configurable
-    allow-set of attach points and their placement/cardinality/presence rules,
-    which the linter enforces. These are the strict starting defaults — the file
-    is the only point, its block at line 1, exactly one, required. `skw.json`
-    relaxing them (finer points, presence exemptions) is a future refinement;
-    for now the struct is the policy."""
-
-    file_line: int = 1
-    file_required: bool = True
-
-
-DEFAULT_CODE_POLICY = CodeAttachPolicy()
-
-
-def _block_open_lines(source: SkwSource) -> list[int]:
-    """The 1-based open line of every `# $kw:` annotation block in the source."""
-    blocks = (*source.recipes, *source.constructs, *source.dependencies)
-    return sorted({block.line for block in blocks})
-
-
-def _code_surface_pois(
-    skill_root: Path, policy: CodeAttachPolicy = DEFAULT_CODE_POLICY
-) -> list[SkillwarePOIInstance]:
-    """Lint each skw-managed code surface (a code file carrying `# $kw:`):
-
-    - `illegal-attachment` — a block attached at a point outside the allow-set;
-      under the strict default only the `file_line` block is legal, so every
-      other block is illegal (finer points open illegal→legal via config).
-    - `missing-header` — a required file point with no `file_line` block.
-    - `non-skw-annotation` — a full-line comment that is not machinery.
-    """
-    pois: list[SkillwarePOIInstance] = []
-    for path in _iter_code_files(skill_root):
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if "$kw" not in text:
-            continue  # cheap prefilter: not a managed code surface
-        source = parse_skw_code(text)
-        if source.findings:
-            continue  # below the Parse.Floor — the machinery is malformed, not the comments
-        block_lines = _block_open_lines(source)
-        if not block_lines:
-            continue  # mentions "$kw" (in a string/docstring) but carries no machinery — not managed
-        rel = path.relative_to(skill_root)
-
-        if policy.file_required and policy.file_line not in block_lines:
-            pois.append(
-                _poi(
-                    "missing-header",
-                    rel,
-                    "file",
-                    "missing-header",
-                    f"skw-managed code file has no line-{policy.file_line} annotation (the required file point)",
-                )
-            )
-        for line_no in block_lines:
-            if line_no == policy.file_line:
-                continue
-            pois.append(
-                _poi(
-                    "illegal-attachment",
-                    rel,
-                    f"line {line_no}",
-                    f"line {line_no}",
-                    f"line {line_no}: skw block attaches off the file point (line {policy.file_line})",
-                )
-            )
-
-        machinery: set[int] = set()
-        for start, end in source.machinery_spans:
-            machinery.update(range(start, end))
-        for i, line in enumerate(source.lines):
-            if i in machinery or not line.lstrip().startswith("#"):
-                continue
-            text_i = line.strip()
-            pois.append(
-                _poi(
-                    "non-skw-annotation",
-                    rel,
-                    f"line {i + 1}",
-                    text_i,
-                    f"line {i + 1}: comment is not a Skw.Annotation — {text_i!r}",
-                )
-            )
-    return pois
-
-
 def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckReport:
     """The `Poi.Linter` pass: lint parse results, emit advisory POIs.
 
@@ -715,8 +609,6 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
                 )
             )
 
-    pois.extend(_code_surface_pois(skillware.skill_root))
-
     visible_pois = tuple(_suppress_blessed(lock, pois))
     return CheckReport(
         entries=tuple(entries),
@@ -729,10 +621,13 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
 class ProjectCheckReport:
     project_root: Path
     packages: tuple[tuple[Path, CheckReport], ...]
+    code: CodeCheckReport
 
     @property
     def poi_count(self) -> int:
-        return sum(len(report.pois) for _, report in self.packages)
+        return len(self.code.pois) + sum(
+            len(report.pois) for _, report in self.packages
+        )
 
 
 def discover_packages(project_root: Path) -> list[Path]:
@@ -767,12 +662,17 @@ def check_project(project_root: Path) -> ProjectCheckReport:
     """Project-scope `Poi.Linter`: check every discovered package with the
     project-scope depots cascaded in, so cross-package name bindings resolve."""
     project_root = Path(project_root).resolve()
+    config = load_project_skw_config(project_root)
     extra = tuple(resolve_project_depots(project_root))
     packages = tuple(
         (pkg, check_skill(pkg, extra_depots=extra))
         for pkg in discover_packages(project_root)
     )
-    return ProjectCheckReport(project_root=project_root, packages=packages)
+    return ProjectCheckReport(
+        project_root=project_root,
+        packages=packages,
+        code=check_code_surfaces(project_root, config.code_surfaces),
+    )
 
 
 def _require_unlock_receipts(

@@ -162,6 +162,130 @@ def test_skw_config_parses_strict_edition_history_policy(tmp_path: Path) -> None
     assert policy.depot == ".state/history"
 
 
+def test_skw_config_parses_typed_code_surfaces(tmp_path: Path) -> None:
+    from agentos.skillware.build import CodeSurfaceConfig, parse_skw_config
+
+    config_path = tmp_path / "skw.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "code_surfaces": [
+                    {
+                        "language": "python",
+                        "include": ["src/**/*.py"],
+                        "exclude": ["src/**/_generated.py"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert parse_skw_config(config_path).code_surfaces == (
+        CodeSurfaceConfig(
+            language="python",
+            include=("src/**/*.py",),
+            exclude=("src/**/_generated.py",),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "surface",
+    [
+        {},
+        {"language": "python"},
+        {"language": "python", "include": []},
+        {"language": "python", "include": "src/*.py"},
+        {"language": "python", "include": ["../outside.py"]},
+        {"language": "python", "include": ["src/*.py"], "exclude": "x.py"},
+        {"language": "python", "include": ["src/*.py"], "unknown": True},
+    ],
+)
+def test_skw_config_rejects_invalid_code_surface(
+    tmp_path: Path,
+    surface: object,
+) -> None:
+    from agentos.skillware.build import parse_skw_config
+
+    config_path = tmp_path / "skw.json"
+    config_path.write_text(
+        json.dumps({"code_surfaces": [surface]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SkillwareError, match="code_surfaces"):
+        parse_skw_config(config_path)
+
+
+def test_expand_code_surfaces_is_deterministic_and_strict(tmp_path: Path) -> None:
+    from agentos.skillware.build import CodeSurfaceConfig, expand_code_surfaces
+
+    (tmp_path / "src" / "nested").mkdir(parents=True)
+    for relative in ("src/a.py", "src/nested/b.py", "src/nested/_generated.py"):
+        (tmp_path / relative).write_text("x = 1\n", encoding="utf-8")
+
+    targets = expand_code_surfaces(
+        tmp_path,
+        (
+            CodeSurfaceConfig(
+                language="python",
+                include=("src/**/*.py",),
+                exclude=("src/**/_generated.py",),
+            ),
+        ),
+    )
+    assert [(target.language, target.path) for target in targets] == [
+        ("python", (tmp_path / "src/a.py").resolve()),
+        ("python", (tmp_path / "src/nested/b.py").resolve()),
+    ]
+
+    with pytest.raises(SkillwareError, match="matched no files"):
+        expand_code_surfaces(
+            tmp_path,
+            (
+                CodeSurfaceConfig(
+                    language="python",
+                    include=("missing/**/*.py",),
+                ),
+            ),
+        )
+
+
+def test_expand_code_surfaces_deduplicates_one_selector_but_rejects_two_owners(
+    tmp_path: Path,
+) -> None:
+    from agentos.skillware.build import CodeSurfaceConfig, expand_code_surfaces
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/a.py").write_text("x = 1\n", encoding="utf-8")
+    one = CodeSurfaceConfig(
+        language="python",
+        include=("src/*.py", "src/a.py"),
+    )
+    assert len(expand_code_surfaces(tmp_path, (one,))) == 1
+
+    with pytest.raises(SkillwareError, match="selected more than once"):
+        expand_code_surfaces(
+            tmp_path,
+            (
+                CodeSurfaceConfig(language="python", include=("src/*.py",)),
+                CodeSurfaceConfig(language="python", include=("src/a.py",)),
+            ),
+        )
+
+    with pytest.raises(SkillwareError, match="unsupported.*language"):
+        expand_code_surfaces(
+            tmp_path,
+            (
+                CodeSurfaceConfig(
+                    language="javascript",
+                    include=("src/*.js",),
+                ),
+            ),
+        )
+
+
 @pytest.mark.parametrize(
     "policy",
     [
@@ -303,6 +427,72 @@ def test_skw_verb_with_skillware_alias() -> None:
         args = parser.parse_args([verb, "check", "--skill", "some/path"])
         assert args.handler is _cmd_skillware_check
         assert args.skill == "some/path"
+
+
+def test_project_bless_accepts_exact_poi_without_skill() -> None:
+    parser = argparse.ArgumentParser(prog="agentos")
+    subparsers = parser.add_subparsers(dest="command")
+    register_skillware_commands(subparsers)
+
+    args = parser.parse_args(["skw", "bless", "--poi", "deadbeef"])
+    assert args.skill is None
+    assert args.poi == "deadbeef"
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["skw", "build"])
+
+
+def test_project_check_reports_configured_code_surface_domain(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".agentos").mkdir()
+    (tmp_path / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".skw").mkdir()
+    (tmp_path / ".skw" / "skw.json").write_text(
+        json.dumps(
+            {
+                "code_surfaces": [
+                    {"language": "python", "include": ["src/**/*.py"]}
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "mod.py").write_text(
+        "# ordinary\nx = 1\n",
+        encoding="utf-8",
+    )
+    parser = argparse.ArgumentParser(prog="agentos")
+    register_skillware_commands(parser.add_subparsers(dest="command"))
+    monkeypatch.chdir(tmp_path)
+
+    args = parser.parse_args(["skw", "check", "--json"])
+    assert args.handler(args) == 1
+    payload = json.loads(capsys.readouterr().out)
+    code = payload["domain"]["code_surfaces"]
+    assert code["targets"] == [{"language": "python", "path": "src/mod.py"}]
+    assert len(code["poi_ids"]) == 2
+    assert payload["summary"]["code_files"] == 1
+
+    comment = next(
+        poi
+        for poi in payload["pois"]
+        if poi["evidence"]["kind"] == "non-skw-annotation"
+    )
+    bless_args = parser.parse_args(
+        ["skw", "bless", "--poi", comment["instance_id"], "--json"]
+    )
+    assert bless_args.handler(bless_args) == 0
+    capsys.readouterr()
+
+    assert args.handler(args) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert [poi["evidence"]["kind"] for poi in payload["pois"]] == [
+        "missing-header"
+    ]
 
 
 def test_check_payload_uses_skw_command_name(

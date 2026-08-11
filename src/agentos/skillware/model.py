@@ -176,7 +176,7 @@ CODE_CARRIER = Carrier(
     name="skw-code",
     open_re=re.compile(r"^#\s*\$kw:\s?(.*)$"),
     close_re=re.compile(r"^#\s*\$kw\.\s*(.*)$"),
-    flag_re=re.compile(r"^#\s*(--\S.*)$"),
+    flag_re=re.compile(r"^#\s*(--[a-z][a-z0-9-]*(?:\s.*)?)$"),
     fence_re=None,
     boundary_re=None,
 )
@@ -384,7 +384,11 @@ def _parse_flag_segments(
 
 
 def _read_block(
-    lines: list[str], start: int, findings: list[SkwFinding], carrier: Carrier
+    lines: list[str],
+    start: int,
+    findings: list[SkwFinding],
+    carrier: Carrier,
+    machinery_lines: frozenset[int] | None = None,
 ) -> tuple[int, str | None, str | None, list[tuple[str, str]]]:
     """Read a ``$kw:`` open line plus contiguous ``--flag`` belonging lines.
     Returns (end_exclusive, address, label, flags). The address is the first
@@ -412,6 +416,8 @@ def _read_block(
 
     index = start + 1
     while index < len(lines):
+        if machinery_lines is not None and index + 1 not in machinery_lines:
+            break
         flag_content = carrier.flag_content(lines[index])
         if flag_content is None:
             break
@@ -475,7 +481,11 @@ class _Frame:
     children: list[str] = field(default_factory=list)
 
 
-def _parse_source(text: str, carrier: Carrier) -> SkwSource:
+def _parse_source(
+    text: str,
+    carrier: Carrier,
+    machinery_lines: frozenset[int] | None = None,
+) -> SkwSource:
     lines = text.splitlines()
     recipes: list[SkwRecipe] = []
     constructs: list[SkwConstruct] = []
@@ -615,6 +625,9 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
     file_point_open = True
     while index < len(lines):
         line = lines[index]
+        machinery_allowed = (
+            machinery_lines is None or index + 1 in machinery_lines
+        )
         if carrier.is_fence(line):
             if line.strip():
                 file_point_open = False
@@ -634,7 +647,7 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             index += 1
             continue
 
-        close_content = carrier.close_content(line)
+        close_content = carrier.close_content(line) if machinery_allowed else None
         if close_content is not None:
             content = close_content.strip()
             if not _is_bare_end(content):
@@ -661,8 +674,9 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             index += 1
             continue
 
-        if carrier.open_content(line) is None:
-            flag_content = carrier.flag_content(line)
+        open_content = carrier.open_content(line) if machinery_allowed else None
+        if open_content is None:
+            flag_content = carrier.flag_content(line) if machinery_allowed else None
             if flag_content is not None:
                 findings.append(
                     SkwFinding(
@@ -677,7 +691,13 @@ def _parse_source(text: str, carrier: Carrier) -> SkwSource:
             continue
 
         declaration_at_file_point = file_point_open
-        decl_end, address, label, flags = _read_block(lines, index, findings, carrier)
+        decl_end, address, label, flags = _read_block(
+            lines,
+            index,
+            findings,
+            carrier,
+            machinery_lines,
+        )
 
         if address is not None:
             if address in seen_addresses:
@@ -1228,10 +1248,14 @@ def parse_skw_source(text: str) -> SkwSource:
     return _parse_source(text, MARKDOWN_CARRIER)
 
 
-def parse_skw_code(text: str) -> SkwSource:
+def parse_skw_code(
+    text: str,
+    *,
+    machinery_lines: frozenset[int] | None = None,
+) -> SkwSource:
     """Parse a code source carrying skw machinery in `# $kw:` comments
     (the skw-code backend carrier, carrier B)."""
-    return _parse_source(text, CODE_CARRIER)
+    return _parse_source(text, CODE_CARRIER, machinery_lines)
 
 
 __all__ = [

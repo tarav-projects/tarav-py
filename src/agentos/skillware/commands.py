@@ -17,6 +17,7 @@ from agentos.poi import (
 )
 from agentos.skillware.build import (
     SkillwareError,
+    bless_code_poi,
     bless_pois_by_kind,
     bless_skill,
     build_skill,
@@ -41,14 +42,15 @@ from agentos.skillware.edition_history import (
 )
 from agentos.skillware.poi import (
     edition_history_findings_to_pois,
+    parser_diagnostics,
 )
 
 # once-per-kind legend: meaning + prescribed response; the full fix protocols
 # live in the agentos-skillware skill (references/check.md)
 POI_LEGEND = {
     "parse-error": (
-        "the src is below the Parse.Floor — malformed machinery or an unclosed construct",
-        "fix the src; parse errors gate the file's other checks and are never blessable",
+        "the surface is below its Parse.Floor — malformed machinery, an unclosed construct, or host scanner failure",
+        "fix the surface; parse errors gate the file's other checks and are never blessable",
     ),
     "unresolvable": (
         "a --from target does not resolve at its address",
@@ -104,16 +106,16 @@ POI_LEGEND = {
         "rewrite it in the $kw grammar",
     ),
     "non-skw-annotation": (
-        "a comment on a skw-managed code surface is not a Skw.Annotation — an annotation leaking outside the language",
-        "wrap it as a skw annotation (# $kw: --note/--from …), delete the comment, or accept a throwaway: agentos skw bless --poi <hash>",
+        "a comment on a configured code surface is not a Skw.Annotation — an annotation leaking outside the language",
+        "wrap it as a skw annotation (# $kw: --note/--from …), delete it, or accept the exact occurrence: agentos skw bless --poi <hash>",
     ),
     "illegal-attachment": (
         "a skw block attaches at a point outside the surface's allow-set (skw-code: only the line-1 file point is open)",
-        "move the block to a sanctioned point (the line-1 file header), or open a finer point in config",
+        "move the block to the sanctioned line-1 file point",
     ),
     "missing-header": (
-        "a skw-managed code file has no line-1 annotation — the required file point is empty",
-        "add the line-1 # $kw: header, or relax the presence policy in config",
+        "a configured code file has no line-1 annotation — the required file point is empty",
+        "add the line-1 # $kw: header",
     ),
     "missing-edition-history": (
         "a configured file has no valid edition/session association",
@@ -233,18 +235,25 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
     package_pois = [
         (pkg, _filter_pois(pr.pois, enabled, known)) for pkg, pr in report.packages
     ]
+    code_pois = _filter_pois(report.code.pois, enabled, known)
     project_pois = _filter_pois(project_pois, enabled, known)
-    poi_count = len(project_pois) + sum(len(pois) for _pkg, pois in package_pois)
+    poi_count = (
+        len(code_pois)
+        + len(project_pois)
+        + sum(len(pois) for _pkg, pois in package_pois)
+    )
     all_pois = [poi for _package, pois in package_pois for poi in pois] + list(
         project_pois
-    )
-    diagnostics = tuple(
+    ) + list(code_pois)
+    package_diagnostics = tuple(
         diagnostic
         for _package, package_report in report.packages
         for diagnostic in package_report.diagnostics
         if diagnostic.evidence.get("compatibility_poi")
         in {poi.instance_id for poi in all_pois}
     )
+    code_diagnostic_candidates = parser_diagnostics(tuple(code_pois))
+    diagnostics = package_diagnostics + code_diagnostic_candidates
     domain = {
         "command": "agentos skw check",
         "project_root": str(report.project_root),
@@ -258,6 +267,16 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
             for pkg, pois in package_pois
         ],
         "project_poi_ids": [poi.instance_id for poi in project_pois],
+        "code_surfaces": {
+            "targets": [
+                {
+                    "language": target.language,
+                    "path": str(target.path.relative_to(report.project_root)),
+                }
+                for target in report.code.targets
+            ],
+            "poi_ids": [poi.instance_id for poi in code_pois],
+        },
     }
     linter_report = POILinterReport(
         poi_report=build_poi_report(
@@ -267,6 +286,7 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
         diagnostics=diagnostics,
         summary={
             "packages": len(report.packages),
+            "code_files": len(report.code.targets),
             "poi_count": poi_count,
             "diagnostic_count": len(diagnostics),
         },
@@ -281,6 +301,14 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
         print(f"- project policy: {len(project_pois)} POI(s)")
         for poi in project_pois:
             print(f"    [{poi.kind}] {poi.target} ({poi.poi_hash})")
+    if report.code.targets:
+        print(
+            f"- code surfaces: {len(report.code.targets)} file(s), "
+            f"{len(code_pois)} POI(s)"
+        )
+        for poi in code_pois:
+            location = f"{poi.target.path} :: {poi.key}" if poi.key else poi.target.path
+            print(f"    [{poi.kind}] {location} ({poi.poi_hash})")
     for pkg, pois in package_pois:
         rel = (
             pkg.relative_to(report.project_root)
@@ -295,19 +323,15 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
     if rendered:
         print(rendered)
     print(
-        f"Summary: {len(report.packages)} package(s), {poi_count} POI(s), "
+        f"Summary: {len(report.packages)} package(s), "
+        f"{len(report.code.targets)} code file(s), {poi_count} POI(s), "
         f"{len(diagnostics)} diagnostic(s)."
     )
     return exit_code
 
 
-# POI kinds are the skw linter's selectable checks. The hard, never-blessable
-# kinds that gate a file's other checks are structural (always shown); the rest
-# are advisory drift a caller may include/exclude (Impl.Req 702, shared core).
 _SKW_STRUCTURAL_KINDS = frozenset({"parse-error", "unresolvable"})
-# opt-in kinds: over-report on real surfaces, so they stay off unless
-# `--check`ed (mirrors the index `dangling-mention` default-off pattern)
-_SKW_DEFAULT_OFF_KINDS = frozenset({"non-skw-annotation", "unsupported-git-edition"})
+_SKW_DEFAULT_OFF_KINDS = frozenset({"unsupported-git-edition"})
 
 
 @dataclass(frozen=True)
@@ -444,8 +468,38 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
 
 
 def _cmd_skillware_bless(args: argparse.Namespace) -> int:
-    _load(args)
     unlocks = tuple(getattr(args, "unlock", ()) or ())
+    if getattr(args, "skill", None) is None:
+        if getattr(args, "all", False) or getattr(args, "kind", None):
+            raise CliError(
+                "project code-surface blessing requires one exact --poi; bulk blessing is not supported"
+            )
+        if not args.poi:
+            raise CliError("bless requires --poi <hash>")
+        project_root = find_project_root(Path.cwd())
+        if project_root is None:
+            raise CliError("no .agentos/project.json found from the current directory")
+        try:
+            record = bless_code_poi(project_root, args.poi, unlocks=unlocks)
+        except SkillwareError as exc:
+            raise CliError(str(exc)) from exc
+        payload = {
+            "command": "agentos skw bless",
+            "project_root": str(project_root),
+            "blessed": {
+                "target": str(record.target),
+                "key": record.key,
+                "hash": record.poi_hash,
+            },
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2))
+            return 0
+        print("Skillware bless")
+        print(f"- blessed: {record.target} :: {record.key}")
+        return 0
+
+    _load(args)
     if getattr(args, "all", False) or getattr(args, "kind", None):
         if not args.all or not args.kind:
             raise CliError("bulk bless requires both --kind <poi-kind> and --all")
@@ -860,11 +914,12 @@ def register_skillware_commands(
     skillware_parser = subparsers.add_parser(
         "skw",
         aliases=["skillware"],
-        help="Compile and check a package's runnable files from .skw/src sources.",
+        help="Build Skw packages and lint configured project surfaces.",
         description=(
             "skw: a package's files can be produced from .skw/src/**/*.skw.md "
-            "sources — markdown plus $kw machinery lines. build compiles and refreshes "
-            "copy bodies; check lints for POIs; bless accepts a derived-stale POI; "
+            "sources — markdown plus $kw machinery lines. Project code surfaces are "
+            "selected by typed code_surfaces entries. build compiles and refreshes "
+            "copy bodies; check lints for POIs; bless accepts supported exact POIs; "
             "status inventories the managed files; context projects declared runtime "
             "loading paths. (skillware is a deprecated alias.)"
         ),
@@ -912,7 +967,7 @@ def register_skillware_commands(
         (
             "bless",
             _cmd_skillware_bless,
-            "Accept a derived-stale POI: rewrite its locked dep hashes.",
+            "Accept one supported package or project POI.",
         ),
         (
             "status",
@@ -924,8 +979,11 @@ def register_skillware_commands(
         # check with no --skill runs project-scope over every discovered package
         sub.add_argument(
             "--skill",
-            required=(name != "check"),
-            help="Package root containing .skw/src (omit on check for project scope).",
+            required=(name not in {"check", "bless"}),
+            help=(
+                "Package root containing .skw/src; omit on check or exact bless "
+                "for project scope."
+            ),
         )
         sub.add_argument("--json", action="store_true", help="Emit the report as JSON.")
         if name == "check":

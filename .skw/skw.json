@@ -1,4 +1,13 @@
 {
+  "code_surfaces": [
+    {
+      "language": "python",
+      "include": [
+        "src/agentos/**/*.py"
+      ],
+      "exclude": []
+    }
+  ],
   "edition_history": {
     "targets": [
       "src/agentos/skillware/commands.py",
