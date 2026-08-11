@@ -22,6 +22,137 @@ from .linter import (
 )
 
 
+def _line_manifest_from_args(args: argparse.Namespace) -> dict[str, object]:
+    from .line_manifest import build_index_line_manifest
+
+    effective_relationships = tuple(
+        args.relationships or ("support", "gates", "provenance")
+    )
+    projector_factory = getattr(
+        args, "_line_manifest_relationship_projector_factory", None
+    )
+    projector = None
+    if projector_factory is not None:
+        projector = projector_factory(
+            relationships=effective_relationships,
+            verification=args.verification,
+            sample_size=args.verification_sample,
+            detail=args.detail,
+            radius=args.chat_radius,
+        )
+    return build_index_line_manifest(
+        depot_root=args.depot,
+        anchors=tuple(args.anchors or ()),
+        scopes=tuple(args.scopes or ()),
+        neighbors=args.neighbors,
+        limit=args.limit,
+        relationship_projector=projector,
+        inputs={
+            "relationships": list(effective_relationships),
+            "verification": args.verification,
+            "verification_sample": args.verification_sample,
+            "detail": args.detail,
+            "chat_radius": args.chat_radius,
+        },
+    )
+
+
+def _cmd_line_manifest_show(args: argparse.Namespace) -> int:
+    from .line_manifest import format_index_line_manifest_text
+
+    payload = _line_manifest_from_args(args)
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(format_index_line_manifest_text(payload))
+    return 0
+
+
+def _cmd_line_manifest_materialize(args: argparse.Namespace) -> int:
+    from agentos._core.errors import CliError
+
+    materializer = getattr(args, "_line_manifest_materializer", None)
+    if materializer is None:
+        raise CliError("agentos index line manifest materialize has no provider")
+    result = materializer(_line_manifest_from_args(args))
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(result["path"])
+    return 0
+
+
+def _add_line_manifest_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--depot",
+        required=True,
+        help="Index depot whose parsed lines are the manifest subjects.",
+    )
+    parser.add_argument(
+        "--anchor",
+        action="append",
+        dest="anchors",
+        default=[],
+        help="Select a line by attached anchor. Repeatable; optional ^ is accepted.",
+    )
+    parser.add_argument(
+        "--scope",
+        action="append",
+        dest="scopes",
+        default=[],
+        help="Select Index lines in this depot-relative file or directory. Repeatable.",
+    )
+    parser.add_argument(
+        "--relationship",
+        action="append",
+        dest="relationships",
+        choices=("support", "gates", "provenance"),
+        default=[],
+        help="Include this relationship namespace. Repeatable; defaults to all.",
+    )
+    parser.add_argument(
+        "--verification",
+        choices=("stored", "sampled", "complete"),
+        default="stored",
+        help="Turn-reference verification breadth (default: stored).",
+    )
+    parser.add_argument(
+        "--verification-sample",
+        type=int,
+        default=2,
+        help="Deterministic turn sample size for --verification sampled (default: 2).",
+    )
+    parser.add_argument(
+        "--detail",
+        choices=("reference", "turn", "context"),
+        default="reference",
+        help="Evidence rendering for verified turns (default: reference).",
+    )
+    parser.add_argument(
+        "--neighbors",
+        type=int,
+        default=2,
+        help="Sibling lines before and after each subject, clipped to its block (default: 2).",
+    )
+    parser.add_argument(
+        "--chat-radius",
+        type=int,
+        default=2,
+        help="Visible chat turns around verified members with --detail context (default: 2).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum selected lines to emit; omission counts remain explicit.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the normalized JSON object.",
+    )
+
+
 def _cmd_linter(args: argparse.Namespace) -> int:
     if getattr(args, "list_checks", False):
         from agentos.poi import render_check_registry
@@ -263,6 +394,10 @@ def register_index_commands(
     extra_linter_checks: Sequence[LinterCheck] = (),
     support_reference_resolver: Callable[[str], bool] | None = None,
     review_reference_resolver: Callable[[str, str], bool] | None = None,
+    line_manifest_relationship_projector_factory: Callable[..., Callable]
+    | None = None,
+    line_manifest_materializer: Callable[[dict[str, object]], dict[str, object]]
+    | None = None,
     poi_catalog: POICatalog | None = None,
 ) -> None:
     index_parser = subparsers.add_parser(
@@ -270,6 +405,40 @@ def register_index_commands(
         help="Index knowledge surface operations.",
     )
     index_subparsers = index_parser.add_subparsers(dest="index_command")
+
+    line_parser = index_subparsers.add_parser(
+        "line",
+        help="Inspect parsed Index lines and their application relationships.",
+    )
+    line_subparsers = line_parser.add_subparsers(
+        dest="index_line_command", required=True
+    )
+    manifest_parser = line_subparsers.add_parser(
+        "manifest",
+        help="Build a normalized volatile line-centered context manifest.",
+    )
+    manifest_subparsers = manifest_parser.add_subparsers(
+        dest="index_line_manifest_command", required=True
+    )
+    manifest_show_parser = manifest_subparsers.add_parser(
+        "show",
+        help="Print a line manifest without writing it.",
+    )
+    _add_line_manifest_arguments(manifest_show_parser)
+    manifest_show_parser.set_defaults(
+        handler=_cmd_line_manifest_show,
+        _line_manifest_relationship_projector_factory=line_manifest_relationship_projector_factory,
+    )
+    manifest_materialize_parser = manifest_subparsers.add_parser(
+        "materialize",
+        help="Write a line manifest through the configured volatile provider.",
+    )
+    _add_line_manifest_arguments(manifest_materialize_parser)
+    manifest_materialize_parser.set_defaults(
+        handler=_cmd_line_manifest_materialize,
+        _line_manifest_relationship_projector_factory=line_manifest_relationship_projector_factory,
+        _line_manifest_materializer=line_manifest_materializer,
+    )
 
     issues_parser = index_subparsers.add_parser(
         "issues",
