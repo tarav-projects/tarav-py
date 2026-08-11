@@ -7,10 +7,15 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
+import agentos.daemon.commands as daemon_commands
+from agentos._core.errors import CliError
 from agentos.daemon import (
     DaemonRuntime,
     daemon_log_path,
     daemon_status,
+    register_daemon_commands,
     request_daemon_stop,
     submit_hook_invocation,
 )
@@ -45,6 +50,138 @@ def _start_runtime(
 
 def _short_socket_path() -> Path:
     return Path("/tmp") / f"agentos-test-{uuid4().hex}.sock"
+
+
+def _daemon_parser(registry: HookRegistry | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    register_daemon_commands(subparsers, registry=registry or HookRegistry())
+    return parser
+
+
+def test_daemon_start_launches_detached_child_and_waits_for_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    launched: list[tuple[list[str], dict[str, object]]] = []
+    statuses = iter([None, None, {"status": "running", "pid": 4321}])
+
+    class Process:
+        pid = 4321
+
+        def poll(self) -> None:
+            return None
+
+    def popen(command: list[str], **kwargs: object) -> Process:
+        launched.append((command, kwargs))
+        return Process()
+
+    monkeypatch.setattr(daemon_commands, "daemon_status", lambda: next(statuses))
+    monkeypatch.setattr(daemon_commands.subprocess, "Popen", popen)
+    monkeypatch.setattr(daemon_commands.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(daemon_commands, "_agentos_executable", lambda: "/bin/agentos")
+
+    args = _daemon_parser().parse_args(["daemon", "start", "--json"])
+
+    assert args.handler(args) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "pid": 4321,
+        "status": "started",
+    }
+    assert launched == [
+        (
+            ["/bin/agentos", "daemon", "run"],
+            {
+                "close_fds": True,
+                "start_new_session": True,
+                "stdin": daemon_commands.subprocess.DEVNULL,
+                "stdout": daemon_commands.subprocess.DEVNULL,
+                "stderr": daemon_commands.subprocess.DEVNULL,
+            },
+        )
+    ]
+
+
+def test_daemon_start_is_idempotent_when_already_running(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        daemon_commands,
+        "daemon_status",
+        lambda: {"status": "running", "pid": 9876},
+    )
+    monkeypatch.setattr(
+        daemon_commands.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("must not launch another daemon"),
+    )
+
+    args = _daemon_parser().parse_args(["daemon", "start", "--json"])
+
+    assert args.handler(args) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "pid": 9876,
+        "status": "running",
+    }
+
+
+def test_daemon_start_fails_when_child_exits_before_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Process:
+        pid = 4321
+
+        def poll(self) -> int:
+            return 1
+
+    monkeypatch.setattr(daemon_commands, "daemon_status", lambda: None)
+    monkeypatch.setattr(
+        daemon_commands.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: Process(),
+    )
+    monkeypatch.setattr(daemon_commands, "_agentos_executable", lambda: "/bin/agentos")
+
+    args = _daemon_parser().parse_args(["daemon", "start"])
+
+    with pytest.raises(CliError, match="exited before becoming ready"):
+        args.handler(args)
+
+
+def test_daemon_start_terminates_child_after_readiness_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+
+    class Process:
+        pid = 4321
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            calls.append("terminate")
+
+        def wait(self, *, timeout: float) -> int:
+            calls.append(("wait", timeout))
+            return 0
+
+    times = iter([0.0, 10.0])
+    monkeypatch.setattr(daemon_commands, "daemon_status", lambda: None)
+    monkeypatch.setattr(
+        daemon_commands.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: Process(),
+    )
+    monkeypatch.setattr(daemon_commands.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(daemon_commands, "_agentos_executable", lambda: "/bin/agentos")
+
+    args = _daemon_parser().parse_args(["daemon", "start"])
+
+    with pytest.raises(CliError, match="start timeout"):
+        args.handler(args)
+    assert calls == ["terminate", ("wait", 1)]
 
 
 def test_daemon_accepts_while_worker_is_busy_and_runs_events_serially(

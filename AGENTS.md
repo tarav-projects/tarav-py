@@ -57,7 +57,7 @@
 ## Daemon System
 
 - `src/agentos/daemon/` owns the local closed Unix-socket protocol, client, foreground runtime, serial worker lane, control-command registrar, and operational log.
-- `agentos daemon run|status|stop` is the initial control namespace. `run` stays in the foreground so an OS service manager can own process lifetime later.
+- `agentos daemon run|start|status|stop` is the initial control namespace. `run` stays in the foreground; `start` launches that same entrypoint detached, waits for socket readiness, and returns. Detached start is a manual convenience, not keep-alive, restart-on-crash, or start-at-login service management.
 - Requests can only ping, stop, or submit a validated hook invocation. Accepted hook work lives in process memory and runs serially; arbitrary command execution, retry, durable spooling, and inline fallback are not part of this POC.
 - Hook delivery waits only for acceptance. An unavailable daemon is logged and does not fail the harness-facing hook command.
 
