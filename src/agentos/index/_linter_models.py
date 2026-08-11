@@ -8,6 +8,7 @@ from agentos.index.model import (
     IndexDocument,
     IndexSurfaceKind,
     KernelLine,
+    kernel_line_anchors,
     parse_index_file,
 )
 
@@ -27,6 +28,7 @@ class LinterConfig:
     issues_paths: tuple[Path, ...]
     coverage: frozenset[str] = frozenset()
     scope_paths: tuple[Path, ...] = ()
+    anchors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -192,6 +194,7 @@ class LinterState:
     line_support_standings: dict[tuple[str, int], LineSupportStanding] = field(
         default_factory=dict
     )
+    anchor_scope_omitted_checks: list[str] = field(default_factory=list)
 
     def rel_path(self, path: Path) -> str:
         try:
@@ -214,12 +217,38 @@ class LinterState:
         documents: tuple[IndexDocument, ...] | None = None,
     ) -> list[tuple[IndexDocument, KernelLine]]:
         selected = tuple(self.parsed_documents) if documents is None else documents
-        return [
+        lines = [
             (document, node)
             for document in selected
             for node in document.nodes
             if isinstance(node, KernelLine)
         ]
+        if not self.config.anchors:
+            return lines
+        wanted = set(self.config.anchors)
+        return [
+            (document, line)
+            for document, line in lines
+            if wanted.intersection(kernel_line_anchors(line))
+        ]
+
+    def validate_anchor_selection(self) -> None:
+        if not self.config.anchors:
+            return
+        _ensure_parsed_documents(self)
+        available = {
+            anchor
+            for document in self.parsed_documents
+            for line in document.kernel_lines()
+            for anchor in kernel_line_anchors(line)
+        }
+        missing = [anchor for anchor in self.config.anchors if anchor not in available]
+        if missing:
+            noun = "anchor is" if len(missing) == 1 else "anchors are"
+            raise SystemExit(
+                f"error: requested {noun} absent from the configured Index floor: "
+                + ", ".join(missing)
+            )
 
     def line_key(self, line: KernelLine) -> tuple[str, int]:
         return (

@@ -14,6 +14,7 @@ from agentos.poi import (
     check_selector as check_selector,
     resolve_enabled_checks,
 )
+from agentos.index.model import kernel_line_anchors, normalize_anchor
 
 from ._linter_models import (
     CheckResult,
@@ -250,6 +251,7 @@ def build_linter_config(
     appendix_paths: tuple[str, ...],
     coverage: tuple[str, ...] = (),
     scope_paths: tuple[str, ...] = (),
+    anchors: tuple[str, ...] = (),
     warn_unlinked: bool = False,
 ) -> tuple[LinterConfig, tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     resolved_root = Path.cwd().resolve()
@@ -316,6 +318,7 @@ def build_linter_config(
             ),
             coverage=resolved_coverage,
             scope_paths=resolved_scope_paths,
+            anchors=tuple(dict.fromkeys(normalize_anchor(anchor) for anchor in anchors)),
         ),
         depot_paths,
         tuple(derived_index_paths),
@@ -342,10 +345,24 @@ def run_linter(
     enabled = resolve_enabled_checks(
         (*CHECKS, *extra_checks), include=include, exclude=exclude
     )
+    if config.anchors:
+        line_enabled: list[LinterCheck] = []
+        explicit = set(include)
+        for check in enabled:
+            if (
+                check.structural
+                or check.binding.surface_kinds is not None
+                or check_selector(check.code) in explicit
+            ):
+                line_enabled.append(check)
+            else:
+                state.anchor_scope_omitted_checks.append(check.code)
+        enabled = line_enabled
     enabled = [
         *(check for check in enabled if check.structural),
         *(check for check in enabled if not check.structural),
     ]
+    state.validate_anchor_selection()
     for check in enabled:
         gate = check.gate(state)
         if not gate.allowed:
@@ -469,6 +486,8 @@ def _state_payload(state: LinterState, poi_report: POIReport) -> dict[str, Any]:
         config["coverage"] = sorted(state.config.coverage)
     if state.config.scope_paths:
         config["scope"] = [state.rel_path(path) for path in state.config.scope_paths]
+    if state.config.anchors:
+        config["anchor"] = list(state.config.anchors)
     poi_payload = poi_report.as_dict()
     payload = {
         "root": str(state.config.root),
@@ -483,6 +502,7 @@ def _state_payload(state: LinterState, poi_report: POIReport) -> dict[str, Any]:
         ],
         "files": {kind: list(paths) for kind, paths in state.files_by_kind.items()},
         "checks": [result.to_payload() for result in view["check_results"]],
+        "subjects": _line_subjects(state, view["findings"]),
         "poi_classes": poi_payload["classes"],
         "pois": poi_payload["instances"],
         "summary": view["summary"],
@@ -490,7 +510,44 @@ def _state_payload(state: LinterState, poi_report: POIReport) -> dict[str, Any]:
     }
     if view["coverage"]:
         payload["coverage"] = view["coverage"]
+    if state.config.anchors:
+        payload["selection"] = {
+            "anchors": list(state.config.anchors),
+            "matched": list(state.config.anchors),
+            "line_count": len(state.parsed_kernel_lines()),
+            "omitted_depot_checks": state.anchor_scope_omitted_checks,
+        }
     return payload
+
+
+def _line_subjects(
+    state: LinterState,
+    findings: list[LinterFinding],
+) -> list[dict[str, Any]]:
+    selected_keys = {
+        (finding.path, finding.line)
+        for finding in findings
+        if finding.line is not None
+    }
+    if state.config.anchors:
+        selected_keys.update(state.line_key(line) for _, line in state.parsed_kernel_lines())
+    subjects: list[dict[str, Any]] = []
+    for document in state.parsed_documents:
+        for line in document.kernel_lines():
+            path = state.rel_path(line.path) if line.path else "."
+            key = (path, line.start_line)
+            if key not in selected_keys:
+                continue
+            subjects.append(
+                {
+                    "kind": "Index.Line",
+                    "path": path,
+                    "line": line.start_line,
+                    "path_line": f"{path}:{line.start_line}",
+                    "anchors": list(kernel_line_anchors(line)),
+                }
+            )
+    return sorted(subjects, key=lambda item: (item["path"], item["line"]))
 
 
 def _resolve_coverage(
@@ -525,9 +582,14 @@ def _scoped_view(state: LinterState) -> dict[str, Any]:
 
 
 def _finding_in_scope(state: LinterState, finding: LinterFinding) -> bool:
-    if not state.config.scope_paths:
+    if state.config.scope_paths and not _rel_path_in_scope(state, finding.path):
+        return False
+    if not state.config.anchors:
         return True
-    return _rel_path_in_scope(state, finding.path)
+    if finding.line is None:
+        return False
+    selected = {state.line_key(line) for _, line in state.parsed_kernel_lines()}
+    return (finding.path, finding.line) in selected
 
 
 def _rel_path_in_scope(state: LinterState, rel_path: str) -> bool:

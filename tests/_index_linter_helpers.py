@@ -54,6 +54,7 @@ def _run(
     appendix_paths: tuple[str, ...] = (),
     coverage: tuple[str, ...] = (),
     scope_paths: tuple[str, ...] = (),
+    anchors: tuple[str, ...] = (),
     warn_unlinked: bool = False,
     include: tuple[str, ...] = (),
     exclude: tuple[str, ...] = (),
@@ -64,6 +65,7 @@ def _run(
         appendix_paths=appendix_paths,
         coverage=coverage,
         scope_paths=scope_paths,
+        anchors=anchors,
         warn_unlinked=warn_unlinked,
     )
     return run_linter(

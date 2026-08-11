@@ -36,6 +36,7 @@ def _cmd_linter(args: argparse.Namespace) -> int:
         appendix_paths=tuple(args.appendix),
         coverage=tuple(getattr(args, "coverage", ()) or ()),
         scope_paths=tuple(getattr(args, "scope", ()) or ()),
+        anchors=tuple(getattr(args, "anchor", ()) or ()),
         warn_unlinked=bool(getattr(args, "warn_unlinked", False)),
     )
     state = run_linter(
@@ -393,6 +394,15 @@ def register_index_commands(
         action="append",
         default=[],
         help="Report findings and coverage only for this file or directory scope. Repeatable.",
+    )
+    linter_parser.add_argument(
+        "--anchor",
+        action="append",
+        default=[],
+        help=(
+            "Lint only Index lines carrying this anchor. Repeatable; optional ^ is "
+            "accepted and every requested anchor must exist."
+        ),
     )
     linter_parser.add_argument(
         "--warn-unlinked",

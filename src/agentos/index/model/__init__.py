@@ -26,6 +26,8 @@ from .nodes import (
     RouterEntry,
     Separator,
     Text,
+    kernel_line_anchors,
+    normalize_anchor,
 )
 from .parser import parse_depot, parse_index_file
 from .stats import BlockGroundingStats, block_grounding_stats
@@ -44,9 +46,11 @@ __all__ = [
     "IndexSurfaceKind",
     "InlineSpan",
     "KernelLine",
+    "kernel_line_anchors",
     "MetaHeading",
     "MetaLine",
     "Node",
+    "normalize_anchor",
     "RouterEntry",
     "Separator",
     "Text",

@@ -390,6 +390,82 @@ def test_index_linter_runs_extra_checks(monkeypatch, tmp_path: Path) -> None:
     )
 
 
+def test_index_linter_anchor_scope_selects_lines_and_publishes_subjects(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    _write(
+        depot_dir / "design" / "100-design.md",
+        "****\n## Example.Concept\n\n"
+        "- [CT] selected line ^c20260809-171u ^c20260809-172u\n"
+        "- [CT] unrelated line ^c20260809-173u\n"
+        "****\n",
+    )
+    observed: list[list[str]] = []
+
+    def _run_selected(state) -> list:
+        observed.append([line.src for _, line in parsed_linter_kernel_lines(state)])
+        return []
+
+    check = LinterCheck(
+        code="External.Selected",
+        title="Selected lines",
+        gate=lambda _state: GateResult(allowed=True),
+        run=_run_selected,
+    )
+    config, raw_d, raw_i, raw_a = build_linter_config(
+        depot_paths=(str(depot_dir),),
+        index_paths=(),
+        appendix_paths=(),
+        anchors=("^c20260809-172u",),
+    )
+    state = run_linter(
+        config,
+        raw_d,
+        raw_i,
+        raw_a,
+        extra_checks=(check,),
+        include=("external-selected",),
+    )
+    payload = json.loads(render_linter_json(state))
+
+    assert observed == [["- [CT] selected line ^c20260809-171u ^c20260809-172u"]]
+    assert payload["selection"]["anchors"] == ["c20260809-172u"]
+    assert payload["selection"]["matched"] == ["c20260809-172u"]
+    assert payload["selection"]["line_count"] == 1
+    assert "Index.Linter/Check.BlockSections" in payload["selection"][
+        "omitted_depot_checks"
+    ]
+    assert payload["subjects"] == [
+        {
+            "kind": "Index.Line",
+            "path": "depot/design/100-design.md",
+            "line": 4,
+            "path_line": "depot/design/100-design.md:4",
+            "anchors": ["c20260809-171u", "c20260809-172u"],
+        }
+    ]
+
+
+def test_index_linter_anchor_scope_fails_closed_for_missing_anchor(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import pytest
+
+    monkeypatch.chdir(tmp_path)
+    depot_dir = _clean_depot(tmp_path)
+    config, raw_d, raw_i, raw_a = build_linter_config(
+        depot_paths=(str(depot_dir),),
+        index_paths=(),
+        appendix_paths=(),
+        anchors=("c20260809-999u",),
+    )
+
+    with pytest.raises(SystemExit, match="requested anchor is absent"):
+        run_linter(config, raw_d, raw_i, raw_a)
+
+
 def test_index_linter_flags_unprefixed_anchor_citations(
     monkeypatch, tmp_path: Path
 ) -> None:

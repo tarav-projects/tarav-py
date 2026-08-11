@@ -107,11 +107,11 @@ class IndexDepotModel:
         return [line for document in self.documents for line in document.kernel_lines()]
 
     def blocks_by_anchor(self, anchor: str) -> list[KernelLine]:
-        token = anchor[1:] if anchor.startswith(("^", "@")) else anchor
+        token = normalize_anchor(anchor)
         return [
             line
             for line in self.kernel_lines()
-            if any(span.kind == "anchor" and span.parsed.get("anchor") == token for span in line.spans)
+            if token in kernel_line_anchors(line)
         ]
 
     def anchors_by_block(self, block_path: str) -> list[str]:
@@ -123,3 +123,18 @@ class IndexDepotModel:
                 if span.kind == "anchor":
                     anchors.append(str(span.parsed["anchor"]))
         return anchors
+
+
+def normalize_anchor(anchor: str) -> str:
+    """Return the provider-neutral anchor key without a citation sigil."""
+    token = anchor.strip()
+    return token[1:] if token.startswith(("^", "@")) else token
+
+
+def kernel_line_anchors(line: KernelLine) -> tuple[str, ...]:
+    """Return every anchor attached to one parsed Index line, in source order."""
+    return tuple(
+        str(span.parsed["anchor"])
+        for span in line.spans
+        if span.kind == "anchor" and span.parsed.get("anchor")
+    )
