@@ -212,7 +212,10 @@ def _flat_range_deltas(
             baseline = _nearest_record(target_records, target=window_start)
             if baseline is None:
                 continue
-            if abs(baseline["recorded_at"] - window_start) > _FLAT_RANGE_START_TOLERANCE:
+            if (
+                abs(baseline["recorded_at"] - window_start)
+                > _FLAT_RANGE_START_TOLERANCE
+            ):
                 continue
             if baseline["reset_at"] != flat_start["reset_at"]:
                 continue
@@ -261,7 +264,9 @@ def _nearest_record(
         candidates.append(records[index])
     if index > 0:
         candidates.append(records[index - 1])
-    return min(candidates, key=lambda item: abs(item["recorded_at"] - target), default=None)
+    return min(
+        candidates, key=lambda item: abs(item["recorded_at"] - target), default=None
+    )
 
 
 def _bisect_datetimes(

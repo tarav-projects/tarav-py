@@ -176,7 +176,11 @@ def test_agent_usage_classifies_codex_primary_weekly_by_duration(
         "window_duration_mins": 10080,
     }
     records = read_jsonl_file(
-        next((environment.agentos_home / "agent" / "usage-registry").glob("*-usage.jsonl"))
+        next(
+            (environment.agentos_home / "agent" / "usage-registry").glob(
+                "*-usage.jsonl"
+            )
+        )
     )
     assert records[0]["home"] == str(codex_home.resolve())
 

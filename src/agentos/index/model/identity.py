@@ -8,6 +8,7 @@ from .parser import ANCHOR_RE, TYPE_BRACKET_RE
 
 
 INDEX_LINE_BODY_SCHEMA = "agentos.index-line-body.v1"
+INDEX_LINE_STATEMENT_SCHEMA = "agentos.index-line-statement.v1"
 INDEX_LINE_ANCHOR_TRIPLET_SCHEMA = "agentos.index-line-anchor-triplet.v1"
 
 
@@ -46,6 +47,17 @@ def canonical_index_line_statement(source: str) -> str:
 def index_line_body_hash(source: str) -> str:
     digest = sha256(
         f"{INDEX_LINE_BODY_SCHEMA}\0{canonical_index_line_body(source)}".encode("utf-8")
+    ).hexdigest()
+    return f"sha256:{digest}"
+
+
+def index_line_statement_hash(source: str) -> str:
+    """Hash the canonical ``Line.Type + body`` projection."""
+
+    digest = sha256(
+        f"{INDEX_LINE_STATEMENT_SCHEMA}\0{canonical_index_line_statement(source)}".encode(
+            "utf-8"
+        )
     ).hexdigest()
     return f"sha256:{digest}"
 

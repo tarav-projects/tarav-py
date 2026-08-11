@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
+from agentos._core.errors import CliError
 from agentos.poi import POICatalog
 from agentos.poi import add_check_selection_args
 
@@ -65,7 +67,7 @@ def _cmd_line_manifest_show(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         print(format_index_line_manifest_text(payload))
-    return 0
+    return 1 if payload.get("status") == "ambiguous" else 0
 
 
 def _cmd_line_manifest_materialize(args: argparse.Namespace) -> int:
@@ -74,12 +76,13 @@ def _cmd_line_manifest_materialize(args: argparse.Namespace) -> int:
     materializer = getattr(args, "_line_manifest_materializer", None)
     if materializer is None:
         raise CliError("agentos index line manifest materialize has no provider")
-    result = materializer(_line_manifest_from_args(args))
+    manifest = _line_manifest_from_args(args)
+    result = materializer(manifest)
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         print(result["path"])
-    return 0
+    return 1 if manifest.get("status") == "ambiguous" else 0
 
 
 def _add_line_manifest_arguments(parser: argparse.ArgumentParser) -> None:
@@ -179,6 +182,30 @@ def _cmd_linter(args: argparse.Namespace) -> int:
         include=tuple(getattr(args, "check", ()) or ()),
         exclude=tuple(getattr(args, "skip", ()) or ()),
     )
+    from .anchor_locator import materialize_index_anchor_locator
+
+    for depot in config.depot_paths:
+        lines = [
+            line
+            for document in state.parsed_documents
+            if document.path is not None and _path_is_within(document.path, depot)
+            for line in document.kernel_lines()
+        ]
+        try:
+            locator = materialize_index_anchor_locator(
+                depot_root=depot,
+                lines=lines,
+                workspace_root=config.root,
+            )
+            state.anchor_locators.append({"standing": "written", **locator})
+        except (CliError, OSError) as exc:
+            state.anchor_locators.append(
+                {
+                    "standing": "unavailable",
+                    "depot": str(depot),
+                    "reason": str(exc),
+                }
+            )
     poi_catalog = getattr(args, "_poi_catalog", None)
     poi_report = build_linter_poi_report(state, catalog=poi_catalog)
     json_output = render_linter_json(
@@ -199,6 +226,14 @@ def _cmd_linter(args: argparse.Namespace) -> int:
         )
     payload = json.loads(json_output)
     return int(payload["exit_code"])
+
+
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 _BLOCKS_SORT_KEYS = ("gr-density",)

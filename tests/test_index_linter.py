@@ -794,3 +794,5 @@ def test_index_linter_command_accepts_depot_paths(
     assert payload["config"]["depot"] == ["depot"]
     assert payload["config"]["index"] == ["depot/design"]
     assert payload["config"]["appendix"] == ["depot/appendix"]
+    assert payload["anchor_locators"][0]["standing"] == "written"
+    assert Path(payload["anchor_locators"][0]["path"]).is_file()

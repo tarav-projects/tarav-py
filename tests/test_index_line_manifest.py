@@ -30,7 +30,8 @@ def test_manifest_projects_block_bounded_line_context(tmp_path: Path) -> None:
         generated_at="2026-08-11T01:00:00Z",
     )
 
-    assert manifest["schema"] == "agentos.index-line-manifest.v2"
+    assert manifest["schema"] == "agentos.index-line-manifest.v3"
+    assert manifest["status"] == "ok"
     line = manifest["lines"][0]
     assert line["statement"]["type"] == "CT"
     assert line["statement"]["body"] == "selected body"
@@ -80,6 +81,7 @@ def test_manifest_reports_context_omissions_and_supports_unanchored_scope(
         "turn_count": 0,
         "referenced_session_count": 0,
         "verified_session_count": 0,
+        "ambiguous_anchor_count": 0,
     }
     selected = manifest["lines"][2]
     assert selected["statement"]["body"] == "two"
@@ -144,3 +146,96 @@ def test_manifest_merges_injected_relationship_projection(tmp_path: Path) -> Non
     assert "gate semantic_approval:" in rendered
     assert "approval_turn [stored]: session:turn-1" in rendered
     assert 'provenance predecessor_anchors: ["c20260810-1u"]' in rendered
+
+
+def test_manifest_uses_verified_locator_without_full_depot_parse(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from agentos.index.anchor_locator import materialize_index_anchor_locator
+    from agentos.index.line_manifest import build_index_line_manifest
+    from agentos.index.model import parse_depot
+
+    depot = tmp_path / "depot"
+    workspace = tmp_path / "workspace"
+    _write(
+        depot / "design" / "100-design.md",
+        "****\n## Example.Block\n\n- [CT] selected ^c20260811-2u\n****\n",
+    )
+    materialize_index_anchor_locator(
+        depot_root=depot,
+        lines=parse_depot(depot).kernel_lines(),
+        workspace_root=workspace,
+    )
+
+    def forbidden(_root: Path):
+        raise AssertionError("verified locator should avoid a full depot parse")
+
+    monkeypatch.setattr("agentos.index.line_manifest.parse_depot", forbidden)
+    manifest = build_index_line_manifest(
+        depot_root=depot,
+        anchors=("c20260811-2u",),
+        locator_workspace_root=workspace,
+    )
+
+    assert manifest["inputs"]["anchor_locator"]["standing"] == "hit"
+    assert manifest["lines"][0]["statement"]["body"] == "selected"
+
+
+def test_manifest_marks_conflicting_anchor_occurrences_ambiguous(
+    tmp_path: Path,
+) -> None:
+    from agentos.index.line_manifest import (
+        build_index_line_manifest,
+        format_index_line_manifest_text,
+    )
+
+    depot = tmp_path / "depot"
+    _write(
+        depot / "design" / "100-design.md",
+        "****\n## Example.Block\n\n"
+        "- [CT] first ^c20260811-2u\n"
+        "- [CT] second ^c20260811-2u\n"
+        "****\n",
+    )
+
+    manifest = build_index_line_manifest(
+        depot_root=depot,
+        anchors=("c20260811-2u",),
+    )
+
+    assert manifest["status"] == "ambiguous"
+    assert manifest["summary"]["ambiguous_anchor_count"] == 1
+    assert manifest["anchor_resolution"][0]["standing"] == "ambiguous"
+    assert "inspect normal Index lint" in format_index_line_manifest_text(manifest)
+
+
+def test_manifest_falls_back_when_locator_source_changed(tmp_path: Path) -> None:
+    from agentos.index.anchor_locator import materialize_index_anchor_locator
+    from agentos.index.line_manifest import build_index_line_manifest
+    from agentos.index.model import parse_depot
+
+    depot = tmp_path / "depot"
+    workspace = tmp_path / "workspace"
+    source = depot / "design" / "100-design.md"
+    _write(
+        source,
+        "****\n## Example.Block\n\n- [CT] before ^c20260811-2u\n****\n",
+    )
+    materialize_index_anchor_locator(
+        depot_root=depot,
+        lines=parse_depot(depot).kernel_lines(),
+        workspace_root=workspace,
+    )
+    _write(
+        source,
+        "****\n## Example.Block\n\n- [CT] after ^c20260811-2u\n****\n",
+    )
+
+    manifest = build_index_line_manifest(
+        depot_root=depot,
+        anchors=("c20260811-2u",),
+        locator_workspace_root=workspace,
+    )
+
+    assert manifest["inputs"]["anchor_locator"]["standing"] == "stale"
+    assert manifest["lines"][0]["statement"]["body"] == "after"

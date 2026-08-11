@@ -32,7 +32,9 @@ def _consume_codex_turn_stop(invocation: HookInvocation) -> None:
 
 def report_codex_quota_from_hook(invocation: HookInvocation) -> Path:
     if invocation.name != "agent.turn.stop" or invocation.ctx_type != "codex":
-        raise HookError("Codex quota reporting requires a codex agent.turn.stop invocation")
+        raise HookError(
+            "Codex quota reporting requires a codex agent.turn.stop invocation"
+        )
 
     session_id = _required_string(invocation.ctx.get("session_id"), field="session_id")
     transcript_hint = _optional_path(invocation.ctx.get("transcript_path"))
@@ -81,7 +83,9 @@ def _resolve_transcript(
         transcript = transcript_hint.expanduser().resolve()
         allowed_roots = {home, (Path.home() / ".codex").resolve()}
         if not any(transcript.is_relative_to(root) for root in allowed_roots):
-            raise HookError("Codex hook transcript is outside a recognized provider home")
+            raise HookError(
+                "Codex hook transcript is outside a recognized provider home"
+            )
         if not transcript.is_file():
             raise HookError("Codex hook transcript does not exist")
         return transcript

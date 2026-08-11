@@ -508,6 +508,8 @@ def _state_payload(state: LinterState, poi_report: POIReport) -> dict[str, Any]:
     }
     if view["coverage"]:
         payload["coverage"] = view["coverage"]
+    if state.anchor_locators:
+        payload["anchor_locators"] = state.anchor_locators
     if state.config.anchors:
         payload["selection"] = {
             "anchors": list(state.config.anchors),

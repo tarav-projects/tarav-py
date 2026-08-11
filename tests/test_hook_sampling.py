@@ -66,6 +66,8 @@ def test_hook_context_sampling_retention_is_bounded_across_time(
 
     records = [
         json.loads(line)
-        for line in hook_context_sample_log_path().read_text(encoding="utf-8").splitlines()
+        for line in hook_context_sample_log_path()
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert [record["ctx"]["number"] for record in records] == [2, 3, 4]

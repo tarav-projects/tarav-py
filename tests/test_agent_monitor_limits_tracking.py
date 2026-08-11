@@ -43,7 +43,11 @@ def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
         def summary(self) -> dict[str, object]:
             return {
                 "limits": [],
-                "raw": {"claude_policy_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
+                "raw": {
+                    "claude_policy_env": {
+                        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+                    }
+                },
             }
 
     class FakeAgent:
@@ -131,7 +135,9 @@ def test_limits_tracking_refresh_uses_fresh_account_hook_observation_without_pro
         source=CODEX_SESSION_HOOK_USAGE_SOURCE,
         payload=_codex_hook_quota_payload(
             resets_at=int(
-                (datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(days=1)).timestamp()
+                (
+                    datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(days=1)
+                ).timestamp()
             )
         ),
     )
@@ -157,8 +163,14 @@ def test_limits_tracking_refresh_uses_fresh_account_hook_observation_without_pro
 
     assert target_state.status == "ok"
     assert target_state.account_status is not None
-    assert target_state.account_status["limits"][0]["usage_over_time"]["used_percent"] == 17  # type: ignore[index]
-    assert target_state.account_status["raw"]["usage_record"]["source"] == CODEX_SESSION_HOOK_USAGE_SOURCE  # type: ignore[index]
+    assert (
+        target_state.account_status["limits"][0]["usage_over_time"]["used_percent"]
+        == 17
+    )  # type: ignore[index]
+    assert (
+        target_state.account_status["raw"]["usage_record"]["source"]
+        == CODEX_SESSION_HOOK_USAGE_SOURCE
+    )  # type: ignore[index]
 
 
 @pytest.mark.parametrize("stale_reason", ["age", "reset"])
@@ -174,7 +186,9 @@ def test_limits_tracking_refresh_probes_provider_when_hook_observation_is_stale(
         1
         if stale_reason == "reset"
         else int(
-            (datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(days=1)).timestamp()
+            (
+                datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(days=1)
+            ).timestamp()
         )
     )
     append_usage_record(
@@ -220,6 +234,7 @@ def test_limits_tracking_refresh_probes_provider_when_hook_observation_is_stale(
 
     assert calls == ["account_status"]
 
+
 def _account_status(
     *,
     usage_record_status: str = "fresh",
@@ -240,6 +255,7 @@ def _account_status(
         },
     }
 
+
 def _freeze_monitor_now(
     monkeypatch: pytest.MonkeyPatch, now: datetime.datetime
 ) -> None:
@@ -253,6 +269,7 @@ def _freeze_monitor_now(
             return now.astimezone(tz)
 
     monkeypatch.setattr(auto_prime.datetime, "datetime", FixedDateTime)
+
 
 def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
     target = MonitorTarget(
@@ -309,6 +326,7 @@ def test_limits_tracking_account_lane_includes_fetch_and_prime_status() -> None:
     assert "usage/time" in rendered
     assert isinstance(account_row, dict)
     assert account_row["status"] == "fresh · burst non-primed/pinged"
+
 
 def test_limits_tracking_weekly_usage_time_animates_burst_units(
     monkeypatch: pytest.MonkeyPatch,
@@ -372,8 +390,12 @@ def test_limits_tracking_weekly_usage_time_animates_burst_units(
         },
     ]
     assert usage_row["burst_unit"]["weekly_burst_percent"] == 15.7  # type: ignore[index]
-    assert usage_row["burst_unit"]["usage_burst_units_left"] == pytest.approx(2.4, abs=0.05)  # type: ignore[index]
-    assert usage_row["burst_unit"]["time_burst_units_left"] == pytest.approx(20.2, abs=0.05)  # type: ignore[index]
+    assert usage_row["burst_unit"]["usage_burst_units_left"] == pytest.approx(
+        2.4, abs=0.05
+    )  # type: ignore[index]
+    assert usage_row["burst_unit"]["time_burst_units_left"] == pytest.approx(
+        20.2, abs=0.05
+    )  # type: ignore[index]
     assert usage_row["burst_unit"]["left_ratio"] == pytest.approx(8.6, abs=0.05)  # type: ignore[index]
     assert usage_row["used_percent"] == 63
     assert usage_row["elapsed_percent"] == 40
@@ -391,6 +413,7 @@ def test_limits_tracking_weekly_usage_time_animates_burst_units(
     assert "time/usage [left]" in rendered
     assert "20.2 / 2.4 = 8.6 [Burst]" in rendered
 
+
 def test_limits_tracking_burst_limit_does_not_get_weekly_burst_unit_variant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -406,6 +429,7 @@ def test_limits_tracking_burst_limit_does_not_get_weekly_burst_unit_variant(
     assert isinstance(usage_row, MonitorUsageTimeRow)
     assert usage_row.variants == ()
     assert usage_row.burst_unit is None
+
 
 def test_limits_tracking_unknown_provider_does_not_get_burst_unit_variant(
     monkeypatch: pytest.MonkeyPatch,
@@ -428,6 +452,7 @@ def test_limits_tracking_unknown_provider_does_not_get_burst_unit_variant(
     assert isinstance(usage_row, MonitorUsageTimeRow)
     assert usage_row.variants == ()
     assert usage_row.burst_unit is None
+
 
 def _codex_workflow_and_state(
     account_status: dict[str, object],
@@ -458,6 +483,7 @@ def _codex_workflow_and_state(
         },
     )
     return workflow, workflow_state, target_key
+
 
 def test_limits_tracking_synthesizes_estimated_burst_limit_for_codex(
     monkeypatch: pytest.MonkeyPatch,
@@ -519,6 +545,7 @@ def test_limits_tracking_synthesizes_estimated_burst_limit_for_codex(
     assert isinstance(usage_row, MonitorUsageTimeRow)
     assert usage_row.suffix == "~Burst"
 
+
 def test_limits_tracking_estimated_burst_zero_without_baseline_before_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -544,7 +571,9 @@ def test_limits_tracking_estimated_burst_zero_without_baseline_before_window(
         "reset_at": period_key,
         "used_percent": 60,
     }
-    monkeypatch.setattr(limits_tracking, "codex_registry_records", lambda: [late_record])
+    monkeypatch.setattr(
+        limits_tracking, "codex_registry_records", lambda: [late_record]
+    )
     monkeypatch.setattr(
         limits_tracking, "estimated_burst_weekly_percent", lambda records: 16.0
     )
@@ -559,6 +588,7 @@ def test_limits_tracking_estimated_burst_zero_without_baseline_before_window(
     synthesized = account_status["limits"][0]  # type: ignore[index]
     assert synthesized["estimated"] is True
     assert synthesized["usage_over_time"]["used_percent"] == 0
+
 
 def test_limits_tracking_estimated_burst_baseline_survives_rolling_reset(
     monkeypatch: pytest.MonkeyPatch,
@@ -605,6 +635,7 @@ def test_limits_tracking_estimated_burst_baseline_survives_rolling_reset(
     assert synthesized["estimated"] is True
     # (63 - 55) weekly delta over 16.0%/window -> 50%, despite the drifted reset_at.
     assert synthesized["usage_over_time"]["used_percent"] == 50
+
 
 def test_limits_tracking_no_synthesis_when_provider_reports_burst(
     monkeypatch: pytest.MonkeyPatch,

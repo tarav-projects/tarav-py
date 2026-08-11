@@ -3,12 +3,20 @@ from __future__ import annotations
 from .identity import (
     INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
     INDEX_LINE_BODY_SCHEMA,
+    INDEX_LINE_STATEMENT_SCHEMA,
     canonical_index_line_anchor_triplet,
     canonical_index_line_body,
     canonical_index_line_statement,
     index_line_anchor_triplet_hash,
     index_line_body_hash,
+    index_line_statement_hash,
     index_line_statement_parts,
+)
+from .anchors import (
+    AnchorOccurrenceStanding,
+    IndexLineAnchorOccurrence,
+    IndexLineAnchorOccurrenceGroup,
+    group_index_line_anchor_occurrences,
 )
 from .nodes import (
     BlankLine,
@@ -34,6 +42,7 @@ from .stats import BlockGroundingStats, block_grounding_stats
 
 __all__ = [
     "BlankLine",
+    "AnchorOccurrenceStanding",
     "BlockGroundingStats",
     "block_grounding_stats",
     "BlockHeading",
@@ -41,7 +50,10 @@ __all__ = [
     "Diagnostic",
     "INDEX_LINE_ANCHOR_TRIPLET_SCHEMA",
     "INDEX_LINE_BODY_SCHEMA",
+    "INDEX_LINE_STATEMENT_SCHEMA",
     "IndexDepotModel",
+    "IndexLineAnchorOccurrence",
+    "IndexLineAnchorOccurrenceGroup",
     "IndexDocument",
     "IndexSurfaceKind",
     "InlineSpan",
@@ -59,7 +71,9 @@ __all__ = [
     "canonical_index_line_statement",
     "index_line_anchor_triplet_hash",
     "index_line_body_hash",
+    "index_line_statement_hash",
     "index_line_statement_parts",
+    "group_index_line_anchor_occurrences",
     "parse_depot",
     "parse_index_file",
 ]

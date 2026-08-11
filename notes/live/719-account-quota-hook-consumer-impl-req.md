@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Scope:** make `agent.turn.stop` publish Codex quota observations into the normal Agentos usage registry, keep hook-context sampling independent, and let account monitoring use fresh registry observations before launching a provider usage probe.
-- **Status:** ready for execution.
+- **Status:** implemented and verified.
 - **Source:** autonomous `$agentos-hugentics --impl --dev --AUTO` execution gate. ^c20260811-47u
 - **Out of scope:** account-wide token accounting, non-Codex provider adapters, usage-registry retention redesign, daemon delivery, and new hook wildcard or priority mechanics.
 
@@ -44,7 +44,7 @@
 
 ### Vertical.Slice 1 — Independent bounded hook sampler
 
-- **Status:** pending.
+- **Status:** complete.
 - **Targets:** `src/agentos/hooks/sampling.py`, sampler tests, CLI composition documentation, and removal of the obsolete sampling/report command.
 - **RED:** assert prompt sampling needs only the invocation and retains a bounded private sample set without provider-home environment state.
 - **GREEN:** move sampling persistence fully under `agentos.hooks` and remove its dependency on `agentos.agent.usage_report`.
@@ -52,7 +52,7 @@
 
 ### Vertical.Slice 2 — Codex Stop quota consumer
 
-- **Status:** pending.
+- **Status:** complete.
 - **Targets:** provider-owned Codex hook adapter, usage registry account-level lookup support, CLI registrar composition, and provider tests.
 - **RED:** dispatch a Codex `agent.turn.stop` fixture and assert one normalized `session_hook` usage record is written for the credential-resolved account.
 - **GREEN:** locate and validate the rollout, extract the latest quota snapshot, resolve account identity, normalize it, and append it.
@@ -60,7 +60,7 @@
 
 ### Vertical.Slice 3 — Registry-first account monitor
 
-- **Status:** pending.
+- **Status:** complete.
 - **Targets:** usage registry reader and `limits-tracking` workflow.
 - **RED:** assert fresh hook quota skips `resolve_account_runtime_agent`, while stale or reset observations retain the live fetch.
 - **GREEN:** select the newest compatible account observation, parse it through the existing Codex limit normalizer, and apply the monitor freshness policy.
@@ -68,7 +68,7 @@
 
 ### Vertical.Slice 4 — Codex native wiring and verification
 
-- **Status:** pending.
+- **Status:** complete.
 - **Targets:** Codex live account-status request sequence, installed CLI, and `~/.codex/hooks.json` Stop mapping.
 - **Change:** remove the unused `account/usage/read` request, install the `agent.turn.stop` Agentos handler beside existing Stop hooks, and exercise a native Codex hook path.
 - **Check:** full `agentos-py` and `agentos-cli` tests, Ruff, diff check, editable CLI reinstall, and a monitor/registry smoke test that does not disclose raw hook context.
@@ -78,3 +78,11 @@
 - **Decision:** keep quota acquisition in a provider-owned callback and monitoring in the account subsystem; the hook dispatcher remains provider-neutral.
 - **Decision:** registry freshness is the monitor refresh interval; a carried quota window whose reset has passed is not reusable even when the registry write is recent.
 - **Decision:** quota observations are resolved to an Agentos account by credential identity; provider home is retained only as observation provenance.
+- **RED:** the independent sampler initially failed because it still imported `agentos.agent.usage_report`; the Codex consumer and registry-first monitor tests then failed before their callback and freshness paths existed.
+- **GREEN:** `agent.prompt.submit` now writes only a private bounded opaque-context log; `agent.turn.stop` writes normalized Codex `session_hook` quota observations; the monitor reuses fresh compatible registry data and falls through to the existing provider probe when data is absent, invalid, stale, or reset.
+- **Provider-home refinement:** `CODEX_HOME` identifies the credential/account provenance, but a harness-owned transcript may live under the default `~/.codex` tree. Transcript resolution therefore validates candidates from both the hinted and default Codex session roots instead of treating the environment hint as proof of transcript ownership.
+- **Native timing observation:** Codex may persist a first turn's first `rate_limits` event after its `Stop` hook. Such a first-turn callback produces no observation; later stops see the prior/latest persisted snapshot, and the monitor's absent-data fallback remains authoritative.
+- **Verification:** `agentos-py` full suite: 949 passed; `agentos-cli` full suite: 75 passed; focused changed-file Ruff and format checks passed; both diffs pass `git diff --check`; `~/.codex/hooks.json` parses; installed `agentos hook` and account-monitor help surfaces match the design.
+- **Live verification:** a native Codex Stop hook wrote a `session_hook` record for the credential-resolved `tk` account, and `agentos agent accounts monitor --once --json` consumed that record with `refresh_count=0` instead of launching another provider quota request.
+- **Codex configuration:** both Agentos hook commands use a 5000 timeout value, aligned with the installed Codex hook configuration's millisecond-scale values. Current official OpenAI documentation does not expose this field, so the local Codex convention is the operational authority.
+- **Repository lint note:** repository-wide `agentos-py` Ruff is currently blocked by four unrelated errors in concurrent tournament/workspace files; no unrelated files were changed to conceal them.

@@ -46,7 +46,9 @@ def _rollout(path: Path, *, session_id: str = "session-123") -> Path:
     return path
 
 
-def _registry(monkeypatch, tmp_path: Path) -> tuple[AgentosTestEnvironment, Path, HookRegistry]:
+def _registry(
+    monkeypatch, tmp_path: Path
+) -> tuple[AgentosTestEnvironment, Path, HookRegistry]:
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"

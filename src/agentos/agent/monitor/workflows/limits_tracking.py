@@ -240,7 +240,10 @@ class LimitsTrackingWorkflow:
         now = self._error_clock()
         if last is not None and last.get("signature") == signature:
             last_at = last.get("at")
-            if isinstance(last_at, int | float) and (now - last_at) < _ERROR_HEARTBEAT_SEC:
+            if (
+                isinstance(last_at, int | float)
+                and (now - last_at) < _ERROR_HEARTBEAT_SEC
+            ):
                 return
         append_monitor_log_event(
             event=event,
@@ -293,7 +296,11 @@ class LimitsTrackingWorkflow:
             return (
                 ("refresh_error", "usage_error"),
                 "target_refresh_error",
-                {"source": "account_status", "error_type": "usage_error", "message": None},
+                {
+                    "source": "account_status",
+                    "error_type": "usage_error",
+                    "message": None,
+                },
             )
         return (None, "", {})
 
@@ -838,11 +845,7 @@ def _usage_refresh_status_part(
         age_sec = int(
             (datetime.datetime.now(tz=datetime.UTC) - recorded_at).total_seconds()
         )
-    label = (
-        "fallback"
-        if status == USAGE_RECORD_STATUS_REGISTRY_FALLBACK
-        else "latest"
-    )
+    label = "fallback" if status == USAGE_RECORD_STATUS_REGISTRY_FALLBACK else "latest"
     return f"{label} {_format_age_duration(age_sec)} ago"
 
 
@@ -956,9 +959,7 @@ def _weekly_burst_percent(
     return _WEEKLY_BURST_PERCENT_BY_PROVIDER.get(provider)
 
 
-def _is_weekly_limit(
-    limit: dict[str, Any], usage_over_time: dict[str, object]
-) -> bool:
+def _is_weekly_limit(limit: dict[str, Any], usage_over_time: dict[str, object]) -> bool:
     limit_id = _string_value(limit.get("limit_id"))
     if limit_id == "weekly":
         return True
@@ -1147,9 +1148,13 @@ def _usage_time_burst_unit_value(
 def _remaining_burst_windows(
     usage_over_time: dict[str, object], *, recorded_at: datetime.datetime
 ) -> float | None:
-    period_ends_at = _parse_datetime(_string_value(usage_over_time.get("period_ends_at")))
+    period_ends_at = _parse_datetime(
+        _string_value(usage_over_time.get("period_ends_at"))
+    )
     if period_ends_at is None:
-        period_ends_at = _parse_datetime(_string_value(usage_over_time.get("resets_at")))
+        period_ends_at = _parse_datetime(
+            _string_value(usage_over_time.get("resets_at"))
+        )
     if period_ends_at is None:
         return None
     remaining_seconds = max(0.0, (period_ends_at - recorded_at).total_seconds())

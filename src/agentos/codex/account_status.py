@@ -60,8 +60,13 @@ def _codex_account_status_impl(
     method = CodexAuthMethod()
     auth_data = method.read_auth_data(agent.home)
     auth_state = "logged-in" if auth_data is not None else "missing"
-    fetched_identity = method.extract_identity(auth_data) if auth_data is not None else None
-    home_status: dict[str, object] = {"classification": auth_state, "home": str(agent.home)}
+    fetched_identity = (
+        method.extract_identity(auth_data) if auth_data is not None else None
+    )
+    home_status: dict[str, object] = {
+        "classification": auth_state,
+        "home": str(agent.home),
+    }
     errors = list(_setup_errors(auth_state=auth_state, home_status=home_status))
     identity_match = _identity_match(expected_identity, fetched_identity)
     if identity_match == "mismatched":
@@ -75,7 +80,9 @@ def _codex_account_status_impl(
                 detail={
                     "expected_identity": expected_identity.summary(),
                     "fetched_identity": (
-                        fetched_identity.summary() if fetched_identity is not None else None
+                        fetched_identity.summary()
+                        if fetched_identity is not None
+                        else None
                     ),
                 },
             )
@@ -122,7 +129,12 @@ def _codex_account_status_impl(
             usage_record_metadata,
             usage_status=usage_status,
         )
-        if record_usage and usage_status == "ok" and limits and usage_record_payload is not None:
+        if (
+            record_usage
+            and usage_status == "ok"
+            and limits
+            and usage_record_payload is not None
+        ):
             append_usage_record(
                 provider=agent.provider,
                 account=agent.account.account,
@@ -164,7 +176,10 @@ def _identity_match(
 ) -> AccountIdentityMatch:
     if fetched_identity is None:
         return "unavailable"
-    if expected_identity.provider_account_id is None or fetched_identity.provider_account_id is None:
+    if (
+        expected_identity.provider_account_id is None
+        or fetched_identity.provider_account_id is None
+    ):
         return "unknown"
     if expected_identity.provider_account_id == fetched_identity.provider_account_id:
         return "verified"
@@ -230,7 +245,9 @@ def _fetch_account_usage_app_server_payload(agent: AgentConfig) -> dict[str, Any
             env=_process_environment(command.env_overrides),
         )
     except FileNotFoundError as exc:
-        raise AccountStatusError(error_type="command_not_found", message=str(exc)) from exc
+        raise AccountStatusError(
+            error_type="command_not_found", message=str(exc)
+        ) from exc
     except OSError as exc:
         raise AccountStatusError(error_type="command_failed", message=str(exc)) from exc
 
@@ -316,7 +333,9 @@ def _parse_codex_rate_limits(payload: Mapping[str, Any]) -> tuple[AccountLimit, 
         raw_rate_limits = payload.get("rateLimits")
         if not isinstance(raw_rate_limits, dict):
             raise CliError("codex rate limit response is missing rateLimits")
-        snapshots.append((string_or_none(raw_rate_limits.get("limitId")), raw_rate_limits))
+        snapshots.append(
+            (string_or_none(raw_rate_limits.get("limitId")), raw_rate_limits)
+        )
 
     limits: list[AccountLimit] = []
     for limit_id, snapshot in snapshots:
@@ -423,7 +442,9 @@ def _usage_auth_summary(
     return "Codex app-server usage read"
 
 
-def _write_json_line(process: subprocess.Popen[str], payload: Mapping[str, Any]) -> None:
+def _write_json_line(
+    process: subprocess.Popen[str], payload: Mapping[str, Any]
+) -> None:
     if process.stdin is None:
         raise CliError("provider process stdin is not available")
     process.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
@@ -443,7 +464,9 @@ def _read_process_json_response(
             return payload
         if "method" in payload and "id" not in payload:
             continue
-        raise CliError(f"codex app-server {request_name} returned an unexpected response id")
+        raise CliError(
+            f"codex app-server {request_name} returned an unexpected response id"
+        )
 
 
 def _read_process_json_line(
@@ -501,7 +524,11 @@ def _codex_response_error_message(error_payload: object) -> str:
         message = error_payload.get("message")
         code = error_payload.get("code")
         suffix = f" (code {code})" if code is not None else ""
-        return str(message) if message is not None else f"codex app-server returned an error{suffix}"
+        return (
+            str(message)
+            if message is not None
+            else f"codex app-server returned an error{suffix}"
+        )
     return "codex app-server returned an invalid error payload"
 
 

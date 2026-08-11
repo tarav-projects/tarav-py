@@ -195,6 +195,7 @@ class LinterState:
         default_factory=dict
     )
     anchor_scope_omitted_checks: list[str] = field(default_factory=list)
+    anchor_locators: list[dict[str, object]] = field(default_factory=list)
 
     def rel_path(self, path: Path) -> str:
         try:

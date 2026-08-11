@@ -12,19 +12,21 @@ from typing import Any
 
 from agentos._core.errors import CliError
 
+from .anchor_locator import load_index_anchor_locator_selection
 from .model import (
     BlockHeading,
     IndexDepotModel,
     KernelLine,
     index_line_body_hash,
     index_line_statement_parts,
+    group_index_line_anchor_occurrences,
     kernel_line_anchors,
     normalize_anchor,
     parse_depot,
 )
 
 
-LINE_MANIFEST_SCHEMA = "agentos.index-line-manifest.v2"
+LINE_MANIFEST_SCHEMA = "agentos.index-line-manifest.v3"
 LineRelationshipProjector = Callable[[str, str], Mapping[str, object]]
 
 
@@ -38,6 +40,7 @@ def build_index_line_manifest(
     relationship_projector: LineRelationshipProjector | None = None,
     inputs: Mapping[str, object] | None = None,
     generated_at: str | None = None,
+    locator_workspace_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Assemble selected lines, their bounded Index context, and relationships."""
 
@@ -53,8 +56,31 @@ def build_index_line_manifest(
 
     wanted = tuple(dict.fromkeys(normalize_anchor(anchor) for anchor in anchors))
     scope_paths = _resolve_scopes(root, scopes)
-    depot = parse_depot(root)
+    locator = None
+    if wanted and not scope_paths:
+        locator = load_index_anchor_locator_selection(
+            depot_root=root,
+            anchors=wanted,
+            workspace_root=locator_workspace_root,
+        )
+    depot = (
+        locator.model
+        if locator is not None and locator.model is not None
+        else parse_depot(root)
+    )
     selected = _select_lines(depot, wanted=wanted, scope_paths=scope_paths)
+    occurrence_groups = group_index_line_anchor_occurrences(
+        selected,
+        anchors=wanted,
+    )
+    anchor_resolution = [
+        occurrence_groups[anchor].to_payload(root)
+        for anchor in wanted
+        if anchor in occurrence_groups
+    ]
+    ambiguous_anchor_count = sum(
+        item["standing"] == "ambiguous" for item in anchor_resolution
+    )
     requested_line_count = len(selected)
     emitted = selected[:limit] if limit is not None else selected
     block_index = _block_index(depot)
@@ -120,11 +146,17 @@ def build_index_line_manifest(
         "neighbors": neighbors,
         "limit": limit,
         "source_fingerprints": source_fingerprints,
+        "anchor_locator": (
+            locator.to_payload()
+            if locator is not None
+            else {"standing": "not-applicable"}
+        ),
     }
     if inputs:
         base_inputs.update(dict(inputs))
     return {
         "schema": LINE_MANIFEST_SCHEMA,
+        "status": "ambiguous" if ambiguous_anchor_count else "ok",
         "surface": {"kind": "Volatile.Surface", "authoritative": False},
         "generated_at": generated_at or _utc_now(),
         "inputs": base_inputs,
@@ -143,7 +175,9 @@ def build_index_line_manifest(
                 }
             ),
             "verified_session_count": len(verified_sessions),
+            "ambiguous_anchor_count": ambiguous_anchor_count,
         },
+        "anchor_resolution": anchor_resolution,
         "lines": lines,
         "turns": dict(sorted(turns.items())),
     }
@@ -161,6 +195,8 @@ def format_index_line_manifest_text(manifest: Mapping[str, Any]) -> str:
             f"{summary.get('turn_count', 0)} projected turn(s)"
         ),
     ]
+    if manifest.get("status") == "ambiguous":
+        lines.append("anchor resolution: ambiguous; inspect normal Index lint")
     turn_registry = manifest.get("turns", {})
     for line in manifest.get("lines", []):
         source = line["source"]

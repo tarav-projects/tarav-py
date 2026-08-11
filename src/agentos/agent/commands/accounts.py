@@ -60,9 +60,16 @@ def _cmd_agent_accounts_capture(args: argparse.Namespace) -> int:
     result = capture_home(provider, home, dry_run=dry_run)
     if result is None:
         raise CliError(f"no Auth.Data could be read from home: {home}")
-    payload = {"command": "agent accounts capture", "provider": provider,
-               "home": str(home), "account": result.account, "method": result.method,
-               "ref_id": result.ref_id, "artifact_id": result.artifact_id, "dry_run": dry_run}
+    payload = {
+        "command": "agent accounts capture",
+        "provider": provider,
+        "home": str(home),
+        "account": result.account,
+        "method": result.method,
+        "ref_id": result.ref_id,
+        "artifact_id": result.artifact_id,
+        "dry_run": dry_run,
+    }
     if args.json:
         print(format_json_output(payload))
     else:
@@ -78,10 +85,16 @@ def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
     from agentos.agent.capture import capture_all_homes
 
     if args.home is not None:
-        raise CliError("agent accounts capture: --global and --home are mutually exclusive")
+        raise CliError(
+            "agent accounts capture: --global and --home are mutually exclusive"
+        )
     dry_run = getattr(args, "dry_run", False)
     providers = _resolve_providers(args.provider)
-    results = [r for provider in providers for r in capture_all_homes(provider, dry_run=dry_run)]
+    results = [
+        r
+        for provider in providers
+        for r in capture_all_homes(provider, dry_run=dry_run)
+    ]
     new_count = sum(1 for r in results if r.is_new)
     if args.json:
         payload = {
@@ -89,9 +102,15 @@ def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
             "providers": list(providers),
             "dry_run": dry_run,
             "captured": [
-                {"provider": r.provider, "home": str(r.home), "account": r.account,
-                 "method": r.method, "ref_id": r.ref_id, "artifact_id": r.artifact_id,
-                 "new": r.is_new}
+                {
+                    "provider": r.provider,
+                    "home": str(r.home),
+                    "account": r.account,
+                    "method": r.method,
+                    "ref_id": r.ref_id,
+                    "artifact_id": r.artifact_id,
+                    "new": r.is_new,
+                }
                 for r in results
             ],
             "new": new_count,
@@ -106,7 +125,9 @@ def _cmd_agent_accounts_capture_global(args: argparse.Namespace) -> int:
                 f"(ref {_short(r.ref_id)}, {state})"
             )
         verb = "Would sweep" if dry_run else "Swept"
-        print(f"{verb} {len(results)} home(s) across {len(providers)} provider(s); {new_count} new.")
+        print(
+            f"{verb} {len(results)} home(s) across {len(providers)} provider(s); {new_count} new."
+        )
     return 0
 
 
@@ -125,12 +146,22 @@ def _cmd_agent_accounts_list(args: argparse.Namespace) -> int:
             head_result = rotate(provider, account_id, method, dry_run=True)
             head = head_result.new_active if not head_result.skipped else None
             entries = [
-                {"index": i, "ref_id": e["ref_id"], "ts": e["ts"],
-                 "active": e["ref_id"] == active, "head": e["ref_id"] == head}
+                {
+                    "index": i,
+                    "ref_id": e["ref_id"],
+                    "ts": e["ts"],
+                    "active": e["ref_id"] == active,
+                    "head": e["ref_id"] == head,
+                }
                 for i, e in enumerate(R.pool_for(provider, account_id, method))
             ]
-            pools.append({"provider": provider, "account": f"{account_id}/{method}",
-                          "entries": entries})
+            pools.append(
+                {
+                    "provider": provider,
+                    "account": f"{account_id}/{method}",
+                    "entries": entries,
+                }
+            )
 
     if args.json:
         print(format_json_output({"command": "agent accounts list", "pools": pools}))
@@ -140,7 +171,9 @@ def _cmd_agent_accounts_list(args: argparse.Namespace) -> int:
             if not pool["entries"]:
                 print("  (no captures)")
             for e in pool["entries"]:
-                marks = " ".join(m for m, on in (("active", e["active"]), ("head", e["head"])) if on)
+                marks = " ".join(
+                    m for m, on in (("active", e["active"]), ("head", e["head"])) if on
+                )
                 suffix = f"  ({marks})" if marks else ""
                 print(f"  {e['index']}  {_short(e['ref_id'])}  {e['ts']}{suffix}")
     return 0
@@ -168,8 +201,12 @@ def _cmd_agent_accounts_orphans(args: argparse.Namespace) -> int:
 
     # base groups carry no secret material — the text view reads only these
     groups = [
-        {"provider": provider, "identity": g["identity"],
-         "auth_class": g["auth_class"], "refs": g["refs"]}
+        {
+            "provider": provider,
+            "identity": g["identity"],
+            "auth_class": g["auth_class"],
+            "refs": g["refs"],
+        }
         for provider in providers
         for g in R.orphan_groups(provider)
     ]
@@ -181,11 +218,24 @@ def _cmd_agent_accounts_orphans(args: argparse.Namespace) -> int:
             refs = []
             for r in g["refs"]:
                 artifact_id = r.get("artifact_id")
-                auth = R.read_artifact(g["provider"], artifact_id) if isinstance(artifact_id, str) else None
-                refs.append({**r, "auth_data": dict(auth.payload) if auth is not None else None})
+                auth = (
+                    R.read_artifact(g["provider"], artifact_id)
+                    if isinstance(artifact_id, str)
+                    else None
+                )
+                refs.append(
+                    {**r, "auth_data": dict(auth.payload) if auth is not None else None}
+                )
             orphans.append({**g, "refs": refs})
-        print(format_json_output({"command": "agent accounts orphans",
-                                  "providers": list(providers), "orphans": orphans}))
+        print(
+            format_json_output(
+                {
+                    "command": "agent accounts orphans",
+                    "providers": list(providers),
+                    "orphans": orphans,
+                }
+            )
+        )
     else:
         for provider in providers:
             print(provider)
@@ -196,7 +246,9 @@ def _cmd_agent_accounts_orphans(args: argparse.Namespace) -> int:
             for g in provider_groups:
                 ident = g["identity"] if isinstance(g["identity"], dict) else {}
                 who = ident.get("provider_account_id") or "(no identity)"
-                extra = "  ".join(str(x) for x in (ident.get("email"), ident.get("label")) if x)
+                extra = "  ".join(
+                    str(x) for x in (ident.get("email"), ident.get("label")) if x
+                )
                 header = f"  {who}  [{g['auth_class']}]"
                 print(f"{header}  {extra}".rstrip())
                 for r in g["refs"]:
@@ -224,7 +276,9 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
         if not no_capture:
             capture_all_homes(provider, dry_run=dry_run)
         if args.account is not None:
-            account_id, method = _split_account_method(args.account, "agent accounts rotate")
+            account_id, method = _split_account_method(
+                args.account, "agent accounts rotate"
+            )
             results.append(rotate(provider, account_id, method, dry_run=dry_run))
         else:
             results.extend(rotate_all(provider, dry_run=dry_run))
@@ -242,15 +296,27 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
             "providers": list(providers),
             "dry_run": dry_run,
             "rotated": [
-                {"provider": r.provider, "account": r.account, "method": r.method,
-                 "previous_active": r.previous_active, "new_active": r.new_active,
-                 "changed": r.changed, "skipped": r.skipped}
+                {
+                    "provider": r.provider,
+                    "account": r.account,
+                    "method": r.method,
+                    "previous_active": r.previous_active,
+                    "new_active": r.new_active,
+                    "changed": r.changed,
+                    "skipped": r.skipped,
+                }
                 for r in results
             ],
             "changed": changed,
             "materialized": [
-                {"provider": m.provider, "account": m.account, "method": m.method,
-                 "home": str(m.home), "active_ref": m.active_ref, "status": m.status}
+                {
+                    "provider": m.provider,
+                    "account": m.account,
+                    "method": m.method,
+                    "home": str(m.home),
+                    "active_ref": m.active_ref,
+                    "status": m.status,
+                }
                 for m in materialized
             ],
         }
@@ -261,12 +327,16 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
                 state = "skipped"
             elif r.changed:
                 prefix = "[dry-run] would rotate" if dry_run else "rotated"
-                state = f"{prefix} {_short(r.previous_active)} -> {_short(r.new_active)}"
+                state = (
+                    f"{prefix} {_short(r.previous_active)} -> {_short(r.new_active)}"
+                )
             else:
                 state = "unchanged"
             print(f"{r.provider} {r.account}/{r.method}: {state}")
         verb = "Would change" if dry_run else "Changed"
-        print(f"{verb} {changed} active pointer(s) across {len(results)} account/method(s).")
+        print(
+            f"{verb} {changed} active pointer(s) across {len(results)} account/method(s)."
+        )
         if do_materialize:
             for m in materialized:
                 if m.status == "materialized":
@@ -288,8 +358,12 @@ def _cmd_agent_accounts_activate(args: argparse.Namespace) -> int:
     provider = args.provider
     account_id, method = _split_account_method(args.account, f"{provider} activate")
     result = activate(provider, account_id, method, args.ref)
-    payload = {"command": "agent accounts activate", "provider": provider,
-               "account": args.account, "ref_id": result.ref_id}
+    payload = {
+        "command": "agent accounts activate",
+        "provider": provider,
+        "account": args.account,
+        "ref_id": result.ref_id,
+    }
     if args.json:
         print(format_json_output(payload))
     else:
@@ -318,8 +392,11 @@ def _materialize_account(args: argparse.Namespace, provider: str) -> int:
     if args.json:
         print(format_json_output(payload))
     else:
-        verb = {"materialized": "Materialized", "check": "Would materialize",
-                "aligned": "Already aligned"}[result.status]
+        verb = {
+            "materialized": "Materialized",
+            "check": "Would materialize",
+            "aligned": "Already aligned",
+        }[result.status]
         line = f"{verb} {provider} {args.account} -> {result.home} (ref {_short(result.active_ref)})"
         if result.captured_ref is not None:
             line += f"; captured-first {_short(result.captured_ref)}"
@@ -334,7 +411,9 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
     )
 
     providers = (
-        (args.provider,) if args.provider is not None else _AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES
+        (args.provider,)
+        if args.provider is not None
+        else _AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES
     )
     home_filter = (
         str(Path(args.home).expanduser().resolve()) if args.home is not None else None
@@ -349,7 +428,11 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
         reports.append(payload)
 
     if args.json:
-        print(format_json_output(reports[0] if args.provider is not None else {"reports": reports}))
+        print(
+            format_json_output(
+                reports[0] if args.provider is not None else {"reports": reports}
+            )
+        )
     else:
         print("\n".join(format_status_report(p) for p in reports))
     return 0
@@ -370,13 +453,17 @@ def _register_accounts_commands(agent_subparsers) -> None:
         help="List the captured Auth.Refs (ref_ids) for an account/method, newest first.",
     )
     accounts_list_parser.add_argument(
-        "--provider", choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        "--provider",
+        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
         help="Provider family. Without it, list every provider with an auth-method.",
     )
     accounts_list_parser.add_argument(
-        "--account", help="Scope to one account as <account-id>/<method> (requires --provider).",
+        "--account",
+        help="Scope to one account as <account-id>/<method> (requires --provider).",
     )
-    accounts_list_parser.add_argument("--json", action="store_true", help="Output as JSON.")
+    accounts_list_parser.add_argument(
+        "--json", action="store_true", help="Output as JSON."
+    )
     accounts_list_parser.set_defaults(handler=_cmd_agent_accounts_list)
 
     accounts_orphans_parser = accounts_subparsers.add_parser(
@@ -384,11 +471,13 @@ def _register_accounts_commands(agent_subparsers) -> None:
         help="List captured orphans (the _unknown bucket) grouped by identity, for manual adoption.",
     )
     accounts_orphans_parser.add_argument(
-        "--provider", choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        "--provider",
+        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
         help="Provider family. Without it, list orphans for every provider with an auth-method.",
     )
     accounts_orphans_parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Output as JSON, including the full Auth.Data payload per ref (secrets).",
     )
     accounts_orphans_parser.set_defaults(handler=_cmd_agent_accounts_orphans)
@@ -398,19 +487,28 @@ def _register_accounts_commands(agent_subparsers) -> None:
         help="Capture (archive) the Auth.Data present in a provider home. Read-only on the home.",
     )
     accounts_capture_parser.add_argument(
-        "--provider", choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        "--provider",
+        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
         help="Provider family. Required unless --global (which scopes the sweep if given).",
     )
-    accounts_capture_parser.add_argument("--home", help="Provider home to capture from.")
     accounts_capture_parser.add_argument(
-        "--global", dest="global_sweep", action="store_true",
+        "--home", help="Provider home to capture from."
+    )
+    accounts_capture_parser.add_argument(
+        "--global",
+        dest="global_sweep",
+        action="store_true",
         help="Sweep every profile home (all providers with an auth-method) instead of one --home.",
     )
     accounts_capture_parser.add_argument(
-        "--dry-run", dest="dry_run", action="store_true",
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
         help="Report what would be captured without writing to the registry (read-only).",
     )
-    accounts_capture_parser.add_argument("--json", action="store_true", help="Output as JSON.")
+    accounts_capture_parser.add_argument(
+        "--json", action="store_true", help="Output as JSON."
+    )
     accounts_capture_parser.set_defaults(handler=_cmd_agent_accounts_capture)
 
     accounts_activate_parser = accounts_subparsers.add_parser(
@@ -418,16 +516,24 @@ def _register_accounts_commands(agent_subparsers) -> None:
         help="Set a captured artifact as the active Auth.Data for an account/method.",
     )
     accounts_activate_parser.add_argument(
-        "--provider", required=True, choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        "--provider",
+        required=True,
+        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
         help="Provider family.",
     )
     accounts_activate_parser.add_argument(
-        "--account", required=True, help="Target account as <account-id>/<method>.",
+        "--account",
+        required=True,
+        help="Target account as <account-id>/<method>.",
     )
     accounts_activate_parser.add_argument(
-        "--ref", required=True, help="Auth.Ref id (ref_id) to activate.",
+        "--ref",
+        required=True,
+        help="Auth.Ref id (ref_id) to activate.",
     )
-    accounts_activate_parser.add_argument("--json", action="store_true", help="Output as JSON.")
+    accounts_activate_parser.add_argument(
+        "--json", action="store_true", help="Output as JSON."
+    )
     accounts_activate_parser.set_defaults(handler=_cmd_agent_accounts_activate)
 
     accounts_rotate_parser = accounts_subparsers.add_parser(
@@ -435,25 +541,34 @@ def _register_accounts_commands(agent_subparsers) -> None:
         help="Activate the head-of-line captured artifact per account/method. Captures first; homes read-only.",
     )
     accounts_rotate_parser.add_argument(
-        "--provider", choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
+        "--provider",
+        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
         help="Provider family. Without it, rotate every provider with an auth-method.",
     )
     accounts_rotate_parser.add_argument(
-        "--account", help="Scope to one account as <account-id>/<method> (requires --provider).",
+        "--account",
+        help="Scope to one account as <account-id>/<method> (requires --provider).",
     )
     accounts_rotate_parser.add_argument(
-        "--no-capture", dest="no_capture", action="store_true",
+        "--no-capture",
+        dest="no_capture",
+        action="store_true",
         help="Rotate the existing capture pool only; do not capture homes first.",
     )
     accounts_rotate_parser.add_argument(
-        "--dry-run", dest="dry_run", action="store_true",
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
         help="Report the intended active flips without writing (read-only).",
     )
     accounts_rotate_parser.add_argument(
-        "--materialize", action="store_true",
+        "--materialize",
+        action="store_true",
         help="After rotating, reconcile homes — push each home's active Auth.Ref into stale homes.",
     )
-    accounts_rotate_parser.add_argument("--json", action="store_true", help="Output as JSON.")
+    accounts_rotate_parser.add_argument(
+        "--json", action="store_true", help="Output as JSON."
+    )
     accounts_rotate_parser.set_defaults(handler=_cmd_agent_accounts_rotate)
 
     accounts_materialize_parser = accounts_subparsers.add_parser(
