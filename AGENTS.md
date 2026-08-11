@@ -49,9 +49,17 @@
 - `src/agentos/hooks/` owns the provider-neutral `Agentos.Hook` model, exact-name callback registry, sequential dispatcher, and thin CLI registrar.
 - `HookInvocation` carries `name`, optional open-string `ctx_type`, and an opaque JSON-object `ctx`; dispatch never interprets provider fields or selects callbacks from `ctx_type`.
 - `HookRegistry.register(...)` preserves registration order. Dispatch gives each callback an isolated copy of the original context, ignores callback return values, and continues after ordinary callback exceptions.
+- Registrations default to the sequential `inline` execution lane; `execution="daemon"` marks deferred callbacks. The hook CLI submits one validated invocation to the daemon only when that exact hook name has deferred consumers.
 - Callback failures log only hook name, callback identity, and exception type through the `agentos.hooks` logger. Raw context and exception text are excluded because provider context may contain prompts or secrets.
 - The public ingress is `agentos hook --name <hook-name> [--ctx-type <ctx-type>]` with exactly one context source: canonical harness input `--ctx-from-stdin` or manual inline input `--ctx <json>`.
 - Provider-specific lifecycle mappings and subsystem callback registrations belong at the `agentos-cli` composition root or in feature-package registrars; the foundation has no provider mappings.
+
+## Daemon System
+
+- `src/agentos/daemon/` owns the local closed Unix-socket protocol, client, foreground runtime, serial worker lane, control-command registrar, and operational log.
+- `agentos daemon run|status|stop` is the initial control namespace. `run` stays in the foreground so an OS service manager can own process lifetime later.
+- Requests can only ping, stop, or submit a validated hook invocation. Accepted hook work lives in process memory and runs serially; arbitrary command execution, retry, durable spooling, and inline fallback are not part of this POC.
+- Hook delivery waits only for acceptance. An unavailable daemon is logged and does not fail the harness-facing hook command.
 
 ## Compatibility Policy
 
@@ -192,7 +200,7 @@
 
 ## Logging System
 
-Six separate JSONL/account record mechanisms exist; they are not yet unified.
+Seven separate JSONL/account record mechanisms exist; they are not yet unified.
 
 1. **Activity log (command logger)** — `src/agentos/_core/project_command_log.py`.
    - File: `~/.agentos/activity/YYYYMM.jsonl` (monthly roll), schema v2:
@@ -250,8 +258,15 @@ Six separate JSONL/account record mechanisms exist; they are not yet unified.
    - Reader: `accounts_log.read_recent_events(*, event, limit)` — a programmatic,
      newest-first tail (used by the monitor). No user-facing CLI yet.
    - Monitor: the TUI `account-rotation` block (last-5 rotations) reads `event="rotate"`
-     from this log via `read_recent_events`. The monitor sweep is drive-only and keeps
-     no in-state ring; rotation logging lives in the `rotate` primitive.
+   from this log via `read_recent_events`. The monitor sweep is drive-only and keeps
+   no in-state ring; rotation logging lives in the `rotate` primitive.
+
+7. **Daemon operational log** — `src/agentos/daemon/log.py`.
+   - File: `~/.agentos/daemon/log/YYYYMMDD.jsonl` (daily roll), schema v1.
+   - Writers: hook delivery and daemon lifecycle/acceptance/dispatch/failure paths.
+   - Privacy: directories are `0700`, files are `0600`, and records exclude opaque
+     context plus exception text; only hook/context type, callback id, event id, stage,
+     process id, and exception type are eligible.
 
 ### Known gaps (integration targets)
 - The accounts log has no **user-facing reader CLI** yet — `agentos accounts log`

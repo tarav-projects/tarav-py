@@ -4,11 +4,21 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 
 from agentos._core.errors import CliError
 
 from .model import HookError, HookInvocation
 from .registry import HookRegistry
+
+
+DaemonHookSubmitter = Callable[[HookInvocation], object]
+
+
+def _default_daemon_submitter(invocation: HookInvocation) -> object:
+    from agentos.daemon.client import submit_hook_invocation
+
+    return submit_hook_invocation(invocation)
 
 
 def _load_context(args: argparse.Namespace) -> dict[str, object]:
@@ -22,7 +32,12 @@ def _load_context(args: argparse.Namespace) -> dict[str, object]:
     return payload
 
 
-def _cmd_hook(args: argparse.Namespace, registry: HookRegistry) -> int:
+def _cmd_hook(
+    args: argparse.Namespace,
+    registry: HookRegistry,
+    *,
+    daemon_submitter: DaemonHookSubmitter,
+) -> int:
     try:
         invocation = HookInvocation(
             name=args.name,
@@ -32,6 +47,18 @@ def _cmd_hook(args: argparse.Namespace, registry: HookRegistry) -> int:
     except HookError as exc:
         raise CliError(str(exc)) from exc
     registry.dispatch(invocation)
+    if registry.has_callbacks(invocation.name, execution="daemon"):
+        try:
+            daemon_submitter(invocation.isolated_copy())
+        except Exception as exc:
+            from agentos.daemon.log import append_daemon_log
+
+            append_daemon_log(
+                "hook_delivery_failed",
+                event_id=getattr(exc, "event_id", None),
+                invocation=invocation,
+                error=exc,
+            )
     return 0
 
 
@@ -39,6 +66,7 @@ def register_hook_commands(
     subparsers: argparse._SubParsersAction,
     *,
     registry: HookRegistry,
+    daemon_submitter: DaemonHookSubmitter = _default_daemon_submitter,
 ) -> None:
     parser = subparsers.add_parser(
         "hook",
@@ -60,7 +88,13 @@ def register_hook_commands(
         "--ctx",
         help="Inline hook context JSON object for small manual invocations.",
     )
-    parser.set_defaults(handler=lambda args: _cmd_hook(args, registry))
+    parser.set_defaults(
+        handler=lambda args: _cmd_hook(
+            args,
+            registry,
+            daemon_submitter=daemon_submitter,
+        )
+    )
 
 
 __all__ = ["register_hook_commands"]

@@ -4,6 +4,7 @@ Core library for agentic workflow primitives, with a companion CLI.
 
 Current baseline includes:
 - provider-neutral lifecycle ingress: `hook`
+- local deferred hook execution: `daemon run|status|stop`
 - bounded private sampling of `agent.prompt.submit` provider contexts
 - Codex `agent.turn.stop` account-quota reporting into the usage registry
 - registry-first account monitoring that probes providers only when observations are stale

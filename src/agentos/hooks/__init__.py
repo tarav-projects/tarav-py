@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from .commands import register_hook_commands
 from .model import HookError, HookInvocation, validate_hook_name
-from .registry import HookCallback, HookRegistry
+from .registry import (
+    HookCallback,
+    HookExecution,
+    HookFailureReporter,
+    HookRegistry,
+)
 from .sampling import (
     append_hook_context_sample,
     hook_context_sample_log_path,
@@ -11,6 +16,8 @@ from .sampling import (
 
 __all__ = [
     "HookCallback",
+    "HookExecution",
+    "HookFailureReporter",
     "HookError",
     "HookInvocation",
     "HookRegistry",

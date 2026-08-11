@@ -2,8 +2,8 @@
 
 ## Impl.Abstract
 
-- **Scope:** add a provider-neutral Agentos daemon POC with a Unix-socket acceptance boundary, explicit inline/daemon hook callback lanes, a small `agentos daemon` control namespace, persistent secret-free operational logging, and a Chatlas-owned deferred `agent.turn.stop` session refresh consumer.
-- **Status:** ready for execution.
+- **Scope:** add a provider-neutral Agentos daemon POC with a Unix-socket acceptance boundary, explicit inline/daemon hook callback lanes, a small `agentos daemon` control namespace including foreground and manually detached launch, persistent secret-free operational logging, and a Chatlas-owned deferred `agent.turn.stop` session refresh consumer.
+- **Status:** detached-start extension ready for execution.
 - **Source:** autonomous `$agentos-hugentics --impl --dev --AUTO` execution gate. ^c20260811-50u
 - **Out of scope:** scheduler frequencies, durable inbox/retry delivery, exactly-once guarantees, launchd installation, arbitrary remote commands, wildcard hook subscriptions, cross-lane completion ordering, and automatic semantic `Chat.Index.Delta` capture.
 
@@ -20,7 +20,8 @@
 - The daemon is one local process reached through a permission-restricted Unix socket under the Agentos home. Socket requests are a closed protocol for ping, stop, and validated hook submission; they cannot name arbitrary shell commands.
 - Socket handlers accept and acknowledge quickly. One in-memory worker queue dispatches daemon callbacks serially through the shared registry.
 - Accepted work is best-effort process memory. If delivery fails, the hook records a persistent operational event and returns successfully; there is no inline fallback, retry, or durable spool in this POC.
-- `agentos daemon run|status|stop` is the initial control namespace. `run` is the foreground process entrypoint intended for later OS-service-manager ownership.
+- `agentos daemon run|start|status|stop` is the initial control namespace. `run` is the foreground process entrypoint intended for later OS-service-manager ownership; `start` launches that same entrypoint as a detached child and returns only after observing daemon readiness.
+- `start` is idempotent while the daemon is already running. It is a manual convenience launcher, not keep-alive, restart-on-crash, or start-at-login lifecycle management.
 
 ### Daemon.Operational.Log
 
@@ -31,6 +32,7 @@
 
 - `agentos-chatlas-py` owns a daemon callback on `agent.turn.stop`; `agentos-cli` composes it into the shared registry.
 - For supported Chatlas providers, the callback validates `ctx.session_id`, uses `ctx_type` as the provider family, uses a valid `ctx.cwd` only as discovery start-path context, and calls the existing targeted `Chatlas.Update.Pipeline` with one-session `Scan.Scope`.
+- After refresh, the callback materializes the selected normalized session model so transcript consumers receive a warm cache.
 - Repeated unchanged events remain cheap through existing Chatlas signatures and caches. Chatlas semantic Index capture is not part of refresh.
 
 ## Impl.Agendix
@@ -40,35 +42,43 @@
 - **Touched:** `Chatlas.Update.Pipeline`, `Scan.Scope`, and `Delta.Normalization::Chatlas` in `agentos-chatlas-pkg/design/100-design.md`: targeted refresh is the ordinary pipeline at one-session scope and remains incremental.
 - **Current design deviation:** the existing daemon block says serialization needs no queue; non-blocking hook acceptance requires one bounded implementation separation between socket acceptance and the serial worker. This POC uses only an in-memory queue and records the design mismatch for later Index reconciliation.
 - **Execution gate:** implement the daemon and deferred Chatlas turn-stop POC. ^c20260811-50u
+- **Extension gate:** add a non-terminal-occupying `agentos daemon start` command. ^c20260811-51u
 
 ## Execution.Plan
 
 ### Vertical.Slice 1 — Explicit hook execution lanes
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** prove daemon callbacks do not run in inline dispatch and that one validated hook command submits only when the selected hook has daemon consumers.
 - **GREEN:** add explicit callback execution metadata, lane-filtered dispatch, daemon-callback discovery, and injectable hook submission while preserving existing default-inline behavior.
 - **Check:** hook model/registry/command tests and existing hook consumer tests.
 
 ### Vertical.Slice 2 — Daemon acceptance and serial worker
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** prove a hook submission receives acceptance while its daemon callback remains blocked, and prove multiple deferred callbacks execute serially in registration order.
 - **GREEN:** add the private Unix-socket protocol, quick acknowledgement, one in-memory worker lane, run/status/stop commands, secure paths, lifecycle cleanup, and secret-free operational JSONL logging.
 - **Check:** daemon client/runtime/command tests, including unavailable-daemon logging and consumer failure isolation.
 
 ### Vertical.Slice 3 — Deferred Chatlas session refresh
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** dispatch a daemon-lane Codex `agent.turn.stop` invocation and assert the existing targeted Chatlas update receives provider, session id, and discovery start path; irrelevant providers remain no-ops.
 - **GREEN:** add the Chatlas hook registrar and compose it in `agentos-cli` after provider callbacks.
 - **Check:** Chatlas callback tests plus CLI composition tests.
 
 ### Vertical.Slice 4 — Installed CLI and live POC
 
-- **Status:** pending.
+- **Status:** complete.
 - **Change:** update repository guidance, refresh the editable umbrella CLI, verify daemon help/status/control, and exercise hook acceptance plus Chatlas processing against a bounded session fixture or current session without exposing raw context.
 - **Check:** full relevant suites, Ruff, format, `git diff --check`, and one end-to-end daemon/hook smoke.
+
+### Vertical.Slice 5 — Detached manual start
+
+- **Status:** pending.
+- **RED:** prove `daemon start` returns after readiness, reports the child PID, is idempotent when already running, and fails clearly when the detached child never becomes available.
+- **GREEN:** launch the installed `agentos daemon run` entrypoint with a new session and redirected standard streams, poll the existing status protocol for bounded readiness, and terminate a failed child without introducing another runtime implementation.
+- **Check:** daemon command tests, installed `start/status/stop` smoke, guidance refresh, Ruff, format, and `git diff --check`.
 
 ## Impl.Log
 
@@ -76,3 +86,9 @@
 - **Decision:** the protocol carries registered hook events, never arbitrary commands.
 - **Decision:** foreground `daemon run` establishes the runtime boundary now; launchd installation and scheduled `Background.Job`s remain follow-ups.
 - **Execution authorization:** autonomous implementation is authorized by ^c20260811-50u.
+- **Implemented:** the shared registry now has explicit `inline` and `daemon` lanes; hook ingress submits exactly once only when its exact name has a deferred consumer.
+- **Implemented:** the closed local protocol, permission-restricted Unix socket, acceptance-only client, one serial in-memory worker, `daemon run|status|stop`, lifecycle cleanup, and secret-free daily operational log.
+- **Implemented:** Chatlas owns a deferred `agent.turn.stop` callback that performs a targeted provider/session refresh and warms the normalized session-model cache; the umbrella CLI composes it into the same registry used by daemon dispatch.
+- **Verification:** Agentos foundation `963 passed`, Chatlas `483 passed`, and umbrella CLI `76 passed`; touched-file Ruff and format checks plus all three `git diff --check` checks passed. Repository-wide Ruff/format checks still encounter unrelated pre-existing deprecated/dev lint and baseline-format findings outside the touched surfaces.
+- **Live POC:** the installed editable CLI started PID `68580`, acknowledged the current Codex turn-stop hook in `0.37s`, recorded acceptance and completed dispatch for event `66a6bf2c784341ad8a4e07a5f6380aee`, refreshed Chatlas identity `b5708598628d83645af832f4e8628ab85211d15acd0d10d1419a0b118a1bfd4a`, warmed its model, and stopped cleanly.
+- **Extension decision:** `start` is a bounded manual detached launcher only. It intentionally does not implement the launchd-owned keep-alive/restart/start-at-login lifecycle assigned by the current `Agentos.Daemon` design. ^c20260811-51u

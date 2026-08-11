@@ -55,6 +55,30 @@ def test_exact_name_callbacks_run_sequentially_with_isolated_context() -> None:
     assert invocation.ctx == {"nested": {"value": 1}}
 
 
+def test_hook_registry_dispatches_only_the_selected_execution_lane() -> None:
+    registry = HookRegistry()
+    seen: list[str] = []
+    registry.register(
+        "agent.turn.stop",
+        lambda invocation: seen.append("inline"),
+        callback_id="tests.inline",
+    )
+    registry.register(
+        "agent.turn.stop",
+        lambda invocation: seen.append("daemon"),
+        callback_id="tests.daemon",
+        execution="daemon",
+    )
+    invocation = HookInvocation(name="agent.turn.stop", ctx={})
+
+    registry.dispatch(invocation)
+    assert seen == ["inline"]
+    assert registry.has_callbacks("agent.turn.stop", execution="daemon") is True
+
+    registry.dispatch(invocation, execution="daemon")
+    assert seen == ["inline", "daemon"]
+
+
 def test_callback_failure_is_logged_without_context_and_dispatch_continues(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -89,6 +113,31 @@ def test_callback_failure_is_logged_without_context_and_dispatch_continues(
     assert "RuntimeError" in caplog.text
     assert "provider-prompt" not in caplog.text
     assert "must-not-log" not in caplog.text
+
+
+def test_failure_reporter_failure_does_not_stop_later_callbacks() -> None:
+    registry = HookRegistry()
+    seen: list[str] = []
+
+    def broken(invocation: HookInvocation) -> None:
+        raise RuntimeError("consumer failed")
+
+    def reporter(*_args: object) -> None:
+        raise OSError("log unavailable")
+
+    registry.register("agent.turn.stop", broken, callback_id="tests.broken")
+    registry.register(
+        "agent.turn.stop",
+        lambda invocation: seen.append(invocation.name),
+        callback_id="tests.after",
+    )
+
+    registry.dispatch(
+        HookInvocation(name="agent.turn.stop", ctx={}),
+        failure_reporter=reporter,
+    )
+
+    assert seen == ["agent.turn.stop"]
 
 
 @pytest.mark.parametrize(
@@ -154,6 +203,52 @@ def test_stdin_cli_context_reaches_callbacks(monkeypatch: pytest.MonkeyPatch) ->
     )
     assert seen[0].ctx == {"prompt": "hello"}
     assert seen[0].ctx_type is None
+
+
+def test_hook_cli_submits_once_only_when_daemon_callbacks_exist() -> None:
+    registry = HookRegistry()
+    inline: list[HookInvocation] = []
+    submitted: list[HookInvocation] = []
+    registry.register("agent.turn.stop", inline.append)
+    registry.register(
+        "agent.turn.stop",
+        lambda invocation: None,
+        execution="daemon",
+    )
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    register_hook_commands(
+        subparsers,
+        registry=registry,
+        daemon_submitter=submitted.append,
+    )
+
+    assert (
+        _run(
+            parser,
+            [
+                "hook",
+                "--name",
+                "agent.turn.stop",
+                "--ctx-type",
+                "codex",
+                "--ctx",
+                '{"session_id":"s1"}',
+            ],
+        )
+        == 0
+    )
+    assert inline == [
+        HookInvocation(
+            name="agent.turn.stop",
+            ctx={"session_id": "s1"},
+            ctx_type="codex",
+        )
+    ]
+    assert submitted == inline
+
+    assert _run(parser, ["hook", "--name", "agent.session.start", "--ctx", "{}"]) == 0
+    assert submitted == inline
 
 
 @pytest.mark.parametrize("value", ["not-json", "[]", "null"])
