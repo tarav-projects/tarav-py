@@ -14,6 +14,7 @@ from agentos.hooks import HookRegistry
 
 from .client import daemon_status, request_daemon_stop
 from .launchd import (
+    LAUNCH_AGENT_THROTTLE_SECONDS,
     install_launch_agent,
     kickstart_launch_agent,
     launch_agent_status,
@@ -23,7 +24,10 @@ from .model import daemon_socket_path
 from .runtime import DaemonRuntime, DaemonRuntimeError
 
 
-DAEMON_START_TIMEOUT_SECONDS = 5.0
+# launchd may honor the plist throttle after a clean stop before a requested
+# kickstart. The controller must wait beyond that boundary before declaring the
+# service failed.
+DAEMON_START_TIMEOUT_SECONDS = LAUNCH_AGENT_THROTTLE_SECONDS + 2.0
 DAEMON_START_POLL_SECONDS = 0.05
 
 
@@ -100,7 +104,7 @@ def _cmd_install(args: argparse.Namespace) -> int:
         _wait_for_daemon_stop()
     result = install_launch_agent(_daemon_executable())
     if result["bootstrapped"] is not True:
-        kickstart_launch_agent()
+        kickstart_launch_agent(force=True)
     status = _wait_for_daemon_readiness()
     payload = {**result, "pid": int(status["pid"]), "status": "installed"}
     _print_payload(args, payload)

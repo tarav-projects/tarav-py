@@ -83,7 +83,7 @@ def test_edition_history_cli_round_trip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "agentos.cli.cli.resolve_event_support_set_record",
+        "agentos.chatlas.anchory.resolve_event_support_set_record",
         lambda _support: (),
     )
     root, source, commit = _project(tmp_path)
@@ -152,7 +152,7 @@ def test_project_check_enforces_edition_history_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "agentos.cli.cli.resolve_event_support_set_record",
+        "agentos.chatlas.anchory.resolve_event_support_set_record",
         lambda _support: (),
     )
     root, source, commit = _project(tmp_path)

@@ -18,6 +18,7 @@
 - `agentos.runtime.create_runtime()` is the composition root. CLI and daemon adapters import it; neither spawns the umbrella CLI to perform subsystem work.
 - Public subsystem namespaces are `agentos.chatlas`, `agentos.canvas`, `agentos.iterante`, and `agentos.iterante2`. Internal code uses these namespaces directly; do not recreate the retired top-level packages.
 - The distribution owns four scripts: `agentos`, `agentos-daemon`, `iterante`, and `iterante2`.
+- The maintained distribution must resolve from ordinary package sources without sibling-repository path dependencies.
 
 ## Run agentos cli
 - check `agentos --version` to confirm that it is installed on the system.

@@ -10,7 +10,6 @@ from agentos.index import _linter_parser_checks, _linter_structure
 from agentos.mdblocks.poi import MDBLOCKS_POI_CLASSES
 from agentos.poi import POICatalog
 from agentos.skillware.poi import SKILLWARE_POI_CLASSES
-from agentos.tara_tapes.poi import TARA_TAPE_POI_CODES
 from agentos.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
 from agentos.wayfinder.poi import WAYFINDER_REGISTRY_POI_CLASSES
 from agentos.canvas.poi import CANVAS_RENDER_POI_CLASSES
@@ -53,7 +52,6 @@ def _runtime_classes() -> tuple[str, ...]:
         *WAYFINDER_REGISTRY_POI_CLASSES.values(),
         "Wayfinder.Resolution.POI",
         *SKILLWARE_POI_CLASSES.values(),
-        *(f"Tara.Tape.Linter/{code}" for code in TARA_TAPE_POI_CODES),
         *(f"Chatlas.Commit.Linter/{code}" for code in CHATLAS_COMMIT_POI_CODES),
         *CANVAS_RENDER_POI_CLASSES.values(),
     )

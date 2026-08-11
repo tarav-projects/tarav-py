@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Callable
 
@@ -13,6 +14,7 @@ from .registry import HookRegistry
 
 
 DaemonHookSubmitter = Callable[[HookInvocation], object]
+AGENTOS_HOOKS_DISABLED_ENV = "AGENTOS_HOOKS_DISABLED"
 
 
 def _default_daemon_submitter(invocation: HookInvocation) -> object:
@@ -38,6 +40,8 @@ def _cmd_hook(
     *,
     daemon_submitter: DaemonHookSubmitter,
 ) -> int:
+    if os.getenv(AGENTOS_HOOKS_DISABLED_ENV) == "1":
+        return 0
     try:
         invocation = HookInvocation(
             name=args.name,
@@ -97,4 +101,4 @@ def register_hook_commands(
     )
 
 
-__all__ = ["register_hook_commands"]
+__all__ = ["AGENTOS_HOOKS_DISABLED_ENV", "register_hook_commands"]

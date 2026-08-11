@@ -13,7 +13,6 @@ dependencies = [
     "filelock==3.20.3",
     "jsonschema>=4.25.1",
     "jmespath>=1.0.1",
-    "tara-stdlib-py",
     "rich>=13.7,<16",
 ]
 
@@ -22,9 +21,6 @@ agentos = "agentos.cli:main"
 agentos-daemon = "agentos.daemon.entrypoint:main"
 iterante = "agentos.iterante.cli:main"
 iterante2 = "agentos.iterante2.cli:main"
-
-[tool.uv.sources]
-tara-stdlib-py = { path = "../../tara-project/tara-project-py/packages/tara-stdlib-py", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentos"]

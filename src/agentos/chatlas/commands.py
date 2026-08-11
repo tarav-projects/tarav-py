@@ -73,7 +73,7 @@ from agentos.chatlas.recents import format_chatlas_recents_text
 from agentos.chatlas.recents import since_window_seconds
 from agentos.chatlas.time_interface import normalize_cli_event_pattern_timestamps
 from agentos.chatlas.time_interface import normalize_cli_timestamp
-from agentos.chatlas.paths import default_chatlas_root
+from agentos.chatlas.production_config import load_chatlas_run_produce_config
 from agentos.chatlas.output import (
     add_chatlas_output_arguments_to_leaves,
     print_chatlas_output,
@@ -1035,7 +1035,7 @@ def _cmd_chatlas_products_produce(args: argparse.Namespace) -> int:
 
 
 def _cmd_chatlas_products_run_produce(args: argparse.Namespace) -> int:
-    config = _chatlas_products_run_config()
+    config = load_chatlas_run_produce_config()
     use_config = args.run_produce_provider is None
     provider = args.run_produce_provider or config.get("agent_provider")
     if not provider:
@@ -1083,27 +1083,6 @@ def _cmd_chatlas_products_run_produce(args: argparse.Namespace) -> int:
     )
     print_chatlas_output(payload, output=args.output)
     return 1 if payload.get("failed_count", 0) else 0
-
-
-def _chatlas_products_run_config() -> dict[str, object]:
-    import json
-
-    config_path = default_chatlas_root() / "config.json"
-    if not config_path.is_file():
-        return {}
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    chatlas_block = payload.get("chatlas", payload)
-    if not isinstance(chatlas_block, dict):
-        return {}
-    run_produce = chatlas_block.get("run_produce", {})
-    if not isinstance(run_produce, dict):
-        return {}
-    return run_produce
 
 
 def _add_chatlas_provider_argument(

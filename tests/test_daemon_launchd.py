@@ -9,7 +9,9 @@ import pytest
 from agentos._core.errors import CliError
 from agentos.daemon.launchd import (
     LAUNCH_AGENT_LABEL,
+    LAUNCH_AGENT_THROTTLE_SECONDS,
     install_launch_agent,
+    kickstart_launch_agent,
     launch_agent_payload,
     uninstall_launch_agent,
 )
@@ -36,6 +38,9 @@ class LaunchctlHarness:
         if action == "bootout":
             self.loaded = False
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        if action == "kickstart":
+            self.loaded = True
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
         raise AssertionError(f"unexpected launchctl command: {command}")
 
 
@@ -50,7 +55,7 @@ def test_launch_agent_payload_starts_at_login_and_restarts_only_failures() -> No
             "/opt/agentos/bin/agentos-daemon",
         ],
         "RunAtLoad": True,
-        "ThrottleInterval": 10,
+        "ThrottleInterval": LAUNCH_AGENT_THROTTLE_SECONDS,
     }
 
 
@@ -144,3 +149,13 @@ def test_launch_agent_uninstall_is_idempotent(tmp_path: Path) -> None:
     assert second == {**first, "changed": False}
     assert not plist_path.exists()
     assert [command[1] for command in launchctl.commands].count("bootout") == 1
+
+
+def test_launch_agent_kickstart_can_force_a_restart() -> None:
+    launchctl = LaunchctlHarness()
+
+    kickstart_launch_agent(force=True, run_command=launchctl, uid=501)
+
+    assert launchctl.commands == [
+        ["launchctl", "kickstart", "-k", f"gui/501/{LAUNCH_AGENT_LABEL}"]
+    ]

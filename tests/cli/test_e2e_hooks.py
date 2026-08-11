@@ -3,11 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import cast
 
 import agentos.daemon.commands as daemon_commands
 from agentos.hooks import HookInvocation, HookRegistry
 from agentos.testing import AgentosTestEnvironment
 from agentos.cli.cli import build_parser, main
+from agentos.runtime import AgentosRuntime
 
 
 def test_top_level_hook_command_accepts_inline_json(capsys) -> None:
@@ -65,6 +67,24 @@ def test_cli_composition_can_register_subsystem_callbacks() -> None:
             ctx_type="codex",
         )
     ]
+
+
+def test_cli_adapter_delegates_command_composition_to_runtime() -> None:
+    registered: list[str] = []
+
+    class StubRuntime:
+        def register_commands(
+            self,
+            subparsers: argparse._SubParsersAction,
+        ) -> None:
+            parser = subparsers.add_parser("runtime-owned")
+            parser.set_defaults(handler=lambda _args: registered.append("called") or 0)
+
+    parser = build_parser(runtime=cast(AgentosRuntime, StubRuntime()))
+    args = parser.parse_args(["runtime-owned"])
+
+    assert args.handler(args) == 0
+    assert registered == ["called"]
 
 
 def test_top_level_cli_samples_codex_prompt_submission(

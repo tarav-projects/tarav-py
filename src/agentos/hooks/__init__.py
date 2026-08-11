@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .commands import register_hook_commands
+from .commands import AGENTOS_HOOKS_DISABLED_ENV, register_hook_commands
 from .model import HookError, HookInvocation, validate_hook_name
 from .registry import (
     HookCallback,
@@ -21,6 +21,7 @@ __all__ = [
     "HookError",
     "HookInvocation",
     "HookRegistry",
+    "AGENTOS_HOOKS_DISABLED_ENV",
     "append_hook_context_sample",
     "hook_context_sample_log_path",
     "register_hook_commands",

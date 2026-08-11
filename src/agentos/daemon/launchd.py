@@ -13,6 +13,7 @@ from agentos._core.errors import CliError
 
 
 LAUNCH_AGENT_LABEL = "org.agentos.daemon"
+LAUNCH_AGENT_THROTTLE_SECONDS = 10
 LaunchctlRunner: TypeAlias = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
 
@@ -30,7 +31,7 @@ def launch_agent_payload(daemon_executable: str) -> dict[str, object]:
         "RunAtLoad": True,
         "KeepAlive": {"SuccessfulExit": False},
         "ProcessType": "Background",
-        "ThrottleInterval": 10,
+        "ThrottleInterval": LAUNCH_AGENT_THROTTLE_SECONDS,
     }
 
 
@@ -126,11 +127,16 @@ def uninstall_launch_agent(
 
 def kickstart_launch_agent(
     *,
+    force: bool = False,
     run_command: LaunchctlRunner | None = None,
     uid: int | None = None,
 ) -> None:
+    arguments = ["kickstart"]
+    if force:
+        arguments.append("-k")
+    arguments.append(_service_target(uid))
     _launchctl(
-        ["kickstart", _service_target(uid)],
+        arguments,
         run_command=run_command,
     )
 
@@ -211,6 +217,7 @@ def _atomic_write(path: Path, content: bytes) -> None:
 
 __all__ = [
     "LAUNCH_AGENT_LABEL",
+    "LAUNCH_AGENT_THROTTLE_SECONDS",
     "install_launch_agent",
     "kickstart_launch_agent",
     "launch_agent_path",

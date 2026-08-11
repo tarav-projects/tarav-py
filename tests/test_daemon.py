@@ -185,7 +185,12 @@ def test_daemon_install_and_uninstall_commands_are_exposed(
             "path": "/tmp/org.agentos.daemon.plist",
         },
     )
-    monkeypatch.setattr(daemon_commands, "kickstart_launch_agent", lambda: None)
+    kickstarts: list[bool] = []
+    monkeypatch.setattr(
+        daemon_commands,
+        "kickstart_launch_agent",
+        lambda *, force=False: kickstarts.append(force),
+    )
     monkeypatch.setattr(
         daemon_commands,
         "uninstall_launch_agent",
@@ -203,6 +208,7 @@ def test_daemon_install_and_uninstall_commands_are_exposed(
     assert install_args.handler(install_args) == 0
     install_payload = json.loads(capsys.readouterr().out)
     assert install_payload["status"] == "installed"
+    assert kickstarts == [True]
 
     uninstall_args = _daemon_parser().parse_args(["daemon", "uninstall", "--json"])
     assert uninstall_args.handler(uninstall_args) == 0
@@ -256,7 +262,7 @@ def test_daemon_start_terminates_child_after_readiness_timeout(
             calls.append(("wait", timeout))
             return 0
 
-    times = iter([0.0, 10.0])
+    times = iter([0.0, daemon_commands.DAEMON_START_TIMEOUT_SECONDS + 1.0])
     monkeypatch.setattr(daemon_commands, "daemon_status", lambda: None)
     monkeypatch.setattr(
         daemon_commands,
