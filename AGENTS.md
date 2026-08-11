@@ -43,6 +43,15 @@
 - agent configuration ownership is split by concern: `agent/config.py` is the stable orchestration/API surface, `agent/_config_models.py` owns shared provider/config models and canonical chat-provider specs, and `agent/_config_entry.py` owns config-entry decoding and validation.
 - agent run model selection is explicit-only: `agentos agent run` passes `--model` only when provided via CLI `--model` or profile `default_model`; a missing profile model does not fall back to a provider hardcoded run model.
 
+## Hook System
+
+- `src/agentos/hooks/` owns the provider-neutral `Agentos.Hook` model, exact-name callback registry, sequential dispatcher, and thin CLI registrar.
+- `HookInvocation` carries `name`, optional open-string `ctx_type`, and an opaque JSON-object `ctx`; dispatch never interprets provider fields or selects callbacks from `ctx_type`.
+- `HookRegistry.register(...)` preserves registration order. Dispatch gives each callback an isolated copy of the original context, ignores callback return values, and continues after ordinary callback exceptions.
+- Callback failures log only hook name, callback identity, and exception type through the `agentos.hooks` logger. Raw context and exception text are excluded because provider context may contain prompts or secrets.
+- The public ingress is `agentos hook --name <hook-name> [--ctx-type <ctx-type>]` with exactly one context source: canonical harness input `--ctx-from-stdin` or manual inline input `--ctx <json>`.
+- Provider-specific lifecycle mappings and subsystem callback registrations belong at the `agentos-cli` composition root or in feature-package registrars; the foundation has no provider mappings.
+
 ## Compatibility Policy
 
 - Do not add backward-compatibility aliases or compatibility layers unless explicitly requested.
