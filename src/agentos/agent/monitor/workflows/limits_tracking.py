@@ -1,3 +1,4 @@
+# $kw: ^account-monitor-registry-first --from Normalization.Pipeline::Account.Usage.Model --note [DC] limits tracking consumes fresh compatible registry observations before performing provider acquisition --supp ^c20260811-47u
 """Limits-tracking workflow: usage refresh, transition logging, and limit row rendering."""
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from agentos.agent.account_status import (
     USAGE_RECORD_STATUS_REGISTRY_FALLBACK,
     USAGE_RECORD_STATUS_REGISTRY_LATEST,
     registry_latest_usage_record_metadata,
+    usage_record_age_sec,
 )
 from agentos.agent.monitor.burst_estimation import (
     ESTIMATED_BURST_FALLBACK_WEEKLY_PERCENT,
@@ -67,7 +69,10 @@ from agentos.agent.monitor.workflows.state import (
 )
 from agentos.agent.monitor_log import append_monitor_log_event
 from agentos.agent.providers import resolve_account_runtime_agent
-from agentos.agent.usage_registry import latest_usage_record
+from agentos.agent.usage_registry import (
+    latest_account_usage_record,
+    latest_usage_record,
+)
 from agentos.claude.account_status import (
     CLAUDE_STATUSLINE_USAGE_SOURCE,
     claude_statusline_usage_record_limits,
@@ -76,6 +81,7 @@ from agentos.codex.account_status import (
     CODEX_APP_SERVER_USAGE_SOURCE,
     codex_usage_record_limits,
 )
+from agentos.codex.usage_hooks import CODEX_SESSION_HOOK_USAGE_SOURCE
 from agentos.copilot.account_status import (
     COPILOT_INTERNAL_USER_USAGE_SOURCE,
     copilot_usage_record_limits,
@@ -297,23 +303,14 @@ class LimitsTrackingWorkflow:
         *,
         target: MonitorTarget,
     ) -> None:
-        source = _usage_record_source_for_target(target)
-        record = (
-            latest_usage_record(
-                provider=target.provider,
-                account=target.account,
-                home=target.home,
-                source=source,
-            )
-            if source is not None
-            else None
-        )
-        if record is None:
+        latest = _latest_usage_record_for_target(target)
+        if latest is None:
             target_state.status = "pending"
             target_state.setup_message = "waiting for first fetch"
             target_state.account_status = None
             target_state.error = None
             return
+        source, record = latest
         try:
             account_status = _account_status_summary_from_usage_record(
                 target=target,
@@ -365,6 +362,12 @@ class LimitsTrackingWorkflow:
     ) -> None:
         target_state.last_refresh_tick = tick
         target_state.refresh_count += 1
+        registry_status = self._fresh_registry_status(target)
+        if registry_status is not None:
+            target_state.status = "ok"
+            target_state.account_status = registry_status
+            target_state.error = None
+            return
         try:
             agent = resolve_account_runtime_agent(
                 provider=target.provider,
@@ -385,6 +388,29 @@ class LimitsTrackingWorkflow:
         target_state.status = "ok"
         target_state.account_status = account_status.summary()
         target_state.error = None
+
+    def _fresh_registry_status(
+        self,
+        target: MonitorTarget,
+    ) -> dict[str, object] | None:
+        latest = _latest_usage_record_for_target(target)
+        if latest is None:
+            return None
+        source, record = latest
+        age_sec = usage_record_age_sec(_string_value(record.get("recorded_at")))
+        if age_sec is None or age_sec > self.config.refresh_interval_sec:
+            return None
+        try:
+            account_status = _account_status_summary_from_usage_record(
+                target=target,
+                source=source,
+                record=record,
+            )
+        except (CliError, json.JSONDecodeError, TypeError, ValueError):
+            return None
+        if _account_status_has_reset_limit(account_status):
+            return None
+        return account_status
 
     def _refresh_codex_estimated_burst_state(
         self,
@@ -427,7 +453,7 @@ class LimitsTrackingWorkflow:
                 continue
             _synthesize_estimated_burst_limit(
                 account_status=target_state.account_status,
-                target_records=grouped.get(target_key, []),
+                target_records=grouped.get(f"codex/{target.account}", []),
                 burst_weekly_percent=estimate,
                 window_start=window_start,
                 reset_at=reset_at,
@@ -497,12 +523,41 @@ def _runtime_start_path(start_path: Path | None) -> Path:
     return Path.cwd().resolve()
 
 
-def _usage_record_source_for_target(target: MonitorTarget) -> str | None:
+def _latest_usage_record_for_target(
+    target: MonitorTarget,
+) -> tuple[str, Mapping[str, Any]] | None:
+    candidates: list[tuple[str, Mapping[str, Any]]] = []
+    exact_source = _exact_home_usage_source(target.provider)
+    if exact_source is not None:
+        exact_record = latest_usage_record(
+            provider=target.provider,
+            account=target.account,
+            home=target.home,
+            source=exact_source,
+        )
+        if exact_record is not None:
+            candidates.append((exact_source, exact_record))
     if target.provider == "codex":
+        hook_record = latest_account_usage_record(
+            provider=target.provider,
+            account=target.account,
+            source=CODEX_SESSION_HOOK_USAGE_SOURCE,
+        )
+        if hook_record is not None:
+            candidates.append((CODEX_SESSION_HOOK_USAGE_SOURCE, hook_record))
+    return max(
+        candidates,
+        key=lambda item: _string_value(item[1].get("recorded_at")) or "",
+        default=None,
+    )
+
+
+def _exact_home_usage_source(provider: str) -> str | None:
+    if provider == "codex":
         return CODEX_APP_SERVER_USAGE_SOURCE
-    if target.provider == "claude-code":
+    if provider == "claude-code":
         return CLAUDE_STATUSLINE_USAGE_SOURCE
-    if target.provider == "copilot-cli":
+    if provider == "copilot-cli":
         return COPILOT_INTERNAL_USER_USAGE_SOURCE
     return None
 
@@ -511,6 +566,8 @@ def _usage_record_limit_parser(
     source: str,
 ) -> Callable[[Mapping[str, Any]], tuple[AccountLimit, ...]]:
     if source == CODEX_APP_SERVER_USAGE_SOURCE:
+        return codex_usage_record_limits
+    if source == CODEX_SESSION_HOOK_USAGE_SOURCE:
         return codex_usage_record_limits
     if source == CLAUDE_STATUSLINE_USAGE_SOURCE:
         return claude_statusline_usage_record_limits
@@ -552,6 +609,23 @@ def _account_status_summary_from_usage_record(
         },
     )
     return status.summary()
+
+
+def _account_status_has_reset_limit(account_status: Mapping[str, Any]) -> bool:
+    limits = account_status.get("limits")
+    if not isinstance(limits, list):
+        return False
+    now = datetime.datetime.now(tz=datetime.UTC)
+    for limit in limits:
+        if not isinstance(limit, Mapping):
+            continue
+        usage = limit.get("usage_over_time")
+        if not isinstance(usage, Mapping):
+            continue
+        resets_at = _parse_datetime(_string_value(usage.get("resets_at")))
+        if resets_at is not None and resets_at <= now:
+            return True
+    return False
 
 
 def _target_rows(

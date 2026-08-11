@@ -1,3 +1,4 @@
+# $kw: ^codex-account-quota-live-read --from Normalization.Pipeline::Account.Usage.Model --note [DC] live account status requests provider quota windows only; account token-history accounting is outside monitor scope --supp ^c20260811-47u
 from __future__ import annotations
 
 import json
@@ -37,7 +38,6 @@ DEFAULT_ACCOUNT_STATUS_TIMEOUT_SEC = 15
 CODEX_APP_SERVER_ARGV = ("app-server",)
 CODEX_APP_SERVER_USAGE_SOURCE = "app_server"
 CODEX_APP_SERVER_RATE_LIMITS_METHOD = "account/rateLimits/read"
-CODEX_APP_SERVER_TOKEN_USAGE_METHOD = "account/usage/read"
 
 
 def _codex_account_status_impl(
@@ -251,12 +251,7 @@ def _fetch_account_usage_app_server_payload(agent: AgentConfig) -> dict[str, Any
             },
         },
     }
-    token_usage_request_id = request_id + 1
-    rate_limits_request_id = request_id + 2
-    token_usage_request = {
-        "id": token_usage_request_id,
-        "method": CODEX_APP_SERVER_TOKEN_USAGE_METHOD,
-    }
+    rate_limits_request_id = request_id + 1
     rate_limits_request = {
         "id": rate_limits_request_id,
         "method": CODEX_APP_SERVER_RATE_LIMITS_METHOD,
@@ -270,13 +265,6 @@ def _fetch_account_usage_app_server_payload(agent: AgentConfig) -> dict[str, Any
             request_name="initialize",
             timeout_sec=timeout_sec,
         )
-        _write_json_line(process, token_usage_request)
-        token_usage_response = _read_process_json_response(
-            process,
-            request_id=token_usage_request_id,
-            request_name="token usage request",
-            timeout_sec=timeout_sec,
-        )
         _write_json_line(process, rate_limits_request)
         rate_limits_response = _read_process_json_response(
             process,
@@ -284,14 +272,6 @@ def _fetch_account_usage_app_server_payload(agent: AgentConfig) -> dict[str, Any
             request_name="rate-limit request",
             timeout_sec=timeout_sec,
         )
-        token_usage_payload: dict[str, Any] | None = None
-        token_usage_error = token_usage_response.get("error")
-        if token_usage_error is None:
-            raw_token_usage_payload = token_usage_response.get("result")
-            if not isinstance(raw_token_usage_payload, dict):
-                raise CliError("codex app-server token usage response must be a JSON object")
-            token_usage_payload = raw_token_usage_payload
-
         error_payload = rate_limits_response.get("error")
         if error_payload is not None:
             raise AccountStatusError(
@@ -302,13 +282,7 @@ def _fetch_account_usage_app_server_payload(agent: AgentConfig) -> dict[str, Any
         rate_limits_payload = rate_limits_response.get("result")
         if not isinstance(rate_limits_payload, dict):
             raise CliError("codex app-server rate-limit response must be a JSON object")
-        payload: dict[str, Any] = dict(rate_limits_payload)
-        payload["tokenUsage"] = token_usage_payload
-        if token_usage_error is not None:
-            payload["tokenUsageError"] = {
-                "message": _codex_response_error_message(token_usage_error),
-            }
-        return payload
+        return dict(rate_limits_payload)
     except subprocess.TimeoutExpired as exc:
         raise AccountStatusError(
             error_type="timeout",

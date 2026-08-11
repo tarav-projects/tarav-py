@@ -8,19 +8,18 @@ from pathlib import Path
 from agentos.hooks import (
     HookInvocation,
     HookRegistry,
+    append_hook_context_sample,
+    hook_context_sample_log_path,
     register_hook_sampling_callbacks,
 )
 from agentos.testing import AgentosTestEnvironment
 
 
-def test_prompt_submission_sampling_preserves_codex_context(
-    monkeypatch,
-    tmp_path: Path,
+def test_prompt_submission_sampling_preserves_opaque_context(
+    monkeypatch, tmp_path: Path
 ) -> None:
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
-    codex_home = tmp_path / "codex-home"
-    monkeypatch.setenv("CODEX_HOME", str(codex_home))
     registry = HookRegistry()
     register_hook_sampling_callbacks(registry)
     context = {
@@ -38,14 +37,35 @@ def test_prompt_submission_sampling_preserves_codex_context(
         )
     )
 
-    sample_paths = list(
-        (environment.agentos_home / "agent" / "usage-report-hook-samples").glob(
-            "*.jsonl"
+    sample_path = hook_context_sample_log_path()
+    assert sample_path == environment.agentos_home / "hooks" / "context-samples.jsonl"
+    assert stat.S_IMODE(sample_path.stat().st_mode) == 0o600
+    record = json.loads(sample_path.read_text(encoding="utf-8"))
+    assert record["hook_name"] == "agent.prompt.submit"
+    assert record["ctx_type"] == "codex"
+    assert record["ctx"] == context
+    assert "provider" not in record
+    assert "home" not in record
+
+
+def test_hook_context_sampling_retention_is_bounded_across_time(
+    monkeypatch, tmp_path: Path
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+
+    for number in range(5):
+        append_hook_context_sample(
+            HookInvocation(
+                name="agent.prompt.submit",
+                ctx={"number": number},
+                ctx_type="codex",
+            ),
+            max_records=3,
         )
-    )
-    assert len(sample_paths) == 1
-    assert stat.S_IMODE(sample_paths[0].stat().st_mode) == 0o600
-    record = json.loads(sample_paths[0].read_text(encoding="utf-8"))
-    assert record["provider"] == "codex"
-    assert record["home"] == str(codex_home.resolve())
-    assert record["raw_context"] == context
+
+    records = [
+        json.loads(line)
+        for line in hook_context_sample_log_path().read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["ctx"]["number"] for record in records] == [2, 3, 4]

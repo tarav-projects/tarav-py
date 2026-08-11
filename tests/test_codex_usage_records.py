@@ -33,7 +33,6 @@ def _codex_usage_payload(
                 "resetsAt": 1_776_600_000,
             },
         },
-        "tokenUsage": _codex_token_usage_payload(),
     }
 
 
@@ -48,23 +47,6 @@ def _codex_weekly_primary_usage_payload(*, weekly_percent: int = 5) -> dict[str,
             },
             "secondary": None,
         },
-        "tokenUsage": _codex_token_usage_payload(),
-    }
-
-
-def _codex_token_usage_payload() -> dict[str, Any]:
-    return {
-        "summary": {
-            "lifetimeTokens": 2_294_432_485,
-            "peakDailyTokens": 177_787_332,
-            "longestRunningTurnSec": 56_756,
-            "currentStreakDays": 16,
-            "longestStreakDays": 47,
-        },
-        "dailyUsageBuckets": [
-            {"startDate": "2026-07-11", "tokens": 7_863_899},
-            {"startDate": "2026-07-12", "tokens": 14_369_200},
-        ],
     }
 
 
@@ -112,7 +94,6 @@ def test_agent_usage_records_fresh_codex_app_server_limits(
     assert status.usage_status == "ok"
     assert status.auth_summary == "Codex app-server usage read"
     assert status.usage_summary == "Burst 11%, Weekly 22%"
-    assert status.raw["usage"]["tokenUsage"]["summary"]["lifetimeTokens"] == 2_294_432_485
     assert status.raw["usage_record"]["status"] == "fresh"
     records = read_jsonl_file(
         next((agentos_home / "agent" / "usage-registry").glob("*-usage.jsonl"))
@@ -123,10 +104,7 @@ def test_agent_usage_records_fresh_codex_app_server_limits(
     assert records[0]["home"] == str(codex_home.resolve())
     assert records[0]["source"] == "app_server"
     assert records[0]["payload"]["rateLimits"]["primary"]["usedPercent"] == 11
-    assert records[0]["payload"]["tokenUsage"]["dailyUsageBuckets"][-1] == {
-        "startDate": "2026-07-12",
-        "tokens": 14_369_200,
-    }
+    assert "tokenUsage" not in records[0]["payload"]
 
 
 def test_agent_usage_falls_back_to_cached_codex_limits(

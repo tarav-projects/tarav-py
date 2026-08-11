@@ -43,13 +43,13 @@ APPENDIX = """****
 
 ## Worked.Block/Grounding.Head
 
-- [GR] evidence spot for the worked block ^20260101-9
+- [DC] evidence spot for the worked block ^20260101-9
 
 ****
 
 ## Bare.Block/Notes
 
-- [GR] anchored grounding line under the WRONG section name ^20260101-8
+- [DC] anchored grounding line under the WRONG section name ^20260101-8
 """
 
 

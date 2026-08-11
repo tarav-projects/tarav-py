@@ -134,7 +134,7 @@ def test_index_linter_line_unlinked_scope(monkeypatch, tmp_path: Path) -> None:
         depot_dir / "design" / "100-design.md",
         "****\n## Example.Concept\n\n"
         "- [DF] unlinked chapter line\n"
-        "- [GR] linked chapter line ^20260101-0\n"
+        "- [DC] linked chapter line ^20260101-0\n"
         "****\n",
     )
     _write(
@@ -178,7 +178,7 @@ def test_index_linter_coverage_line_replaces_warn_unlinked(
         depot_dir / "design" / "100-design.md",
         "****\n## Example.Concept\n\n"
         "- [DF] unlinked chapter line\n"
-        "- [GR] linked chapter line ^20260101-0\n"
+        "- [DC] linked chapter line ^20260101-0\n"
         "****\n",
     )
 
@@ -221,7 +221,7 @@ def test_index_linter_block_ungrounded_meter(monkeypatch, tmp_path: Path) -> Non
     _write(
         depot_dir / "appendix" / "Example.HeadOnly-appendix.md",
         "****\n## Example.HeadOnly/Grounding.Head\n\n"
-        "- [GR] retired board evidence ^20260101-3\n"
+        "- [DC] retired board evidence ^20260101-3\n"
         "****\n",
     )
 

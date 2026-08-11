@@ -26,6 +26,9 @@ from agentos.agent.monitor.workflows.state import (
 from agentos.agent.monitor.workflows import (
     LimitsTrackingWorkflow,
 )
+from agentos.agent.usage_registry import append_usage_record
+from agentos.codex.usage_hooks import CODEX_SESSION_HOOK_USAGE_SOURCE
+from agentos.testing import AgentosTestEnvironment
 
 from _monitor_helpers import _limit
 
@@ -93,6 +96,129 @@ def test_limits_tracking_refresh_uses_profile_resolved_runtime_agent(
         "limits": [],
         "raw": {"claude_policy_env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}},
     }
+
+
+def _codex_hook_quota_payload(*, resets_at: int) -> dict[str, object]:
+    return {
+        "rateLimits": {
+            "limitId": "codex",
+            "primary": {
+                "usedPercent": 17,
+                "windowDurationMins": 10080,
+                "resetsAt": resets_at,
+            },
+            "secondary": None,
+        },
+        "observation": {
+            "sessionId": "session-123",
+            "observedAt": "2026-08-11T12:01:00Z",
+        },
+    }
+
+
+def test_limits_tracking_refresh_uses_fresh_account_hook_observation_without_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    observed_home = tmp_path / "active-codex-home"
+    target_home = tmp_path / "monitor-codex-home"
+    append_usage_record(
+        provider="codex",
+        account="jp",
+        home=observed_home,
+        source=CODEX_SESSION_HOOK_USAGE_SOURCE,
+        payload=_codex_hook_quota_payload(
+            resets_at=int(
+                (datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(days=1)).timestamp()
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        limits_tracking,
+        "resolve_account_runtime_agent",
+        lambda **kwargs: pytest.fail(f"provider should not be resolved: {kwargs}"),
+    )
+    target = MonitorTarget(provider="codex", account="jp", home=target_home)
+    workflow = LimitsTrackingWorkflow(
+        MonitorWorkflowConfig(
+            name=LIMITS_TRACKING_WORKFLOW,
+            targets=(target,),
+            refresh_interval_sec=60,
+            raw_config={},
+        )
+    )
+    target_state = workflow._target_state(
+        LimitsWorkflowState(), target=target, target_key="target"
+    )
+
+    workflow._refresh_target(target_state, target=target, tick=1)
+
+    assert target_state.status == "ok"
+    assert target_state.account_status is not None
+    assert target_state.account_status["limits"][0]["usage_over_time"]["used_percent"] == 17  # type: ignore[index]
+    assert target_state.account_status["raw"]["usage_record"]["source"] == CODEX_SESSION_HOOK_USAGE_SOURCE  # type: ignore[index]
+
+
+@pytest.mark.parametrize("stale_reason", ["age", "reset"])
+def test_limits_tracking_refresh_probes_provider_when_hook_observation_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    stale_reason: str,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    target_home = tmp_path / "monitor-codex-home"
+    reset_at = (
+        1
+        if stale_reason == "reset"
+        else int(
+            (datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(days=1)).timestamp()
+        )
+    )
+    append_usage_record(
+        provider="codex",
+        account="jp",
+        home=tmp_path / "active-codex-home",
+        source=CODEX_SESSION_HOOK_USAGE_SOURCE,
+        payload=_codex_hook_quota_payload(resets_at=reset_at),
+    )
+    if stale_reason == "age":
+        monkeypatch.setattr(limits_tracking, "usage_record_age_sec", lambda value: 61)
+
+    calls: list[object] = []
+
+    class FakeStatus:
+        def summary(self) -> dict[str, object]:
+            return {"limits": [], "raw": {}}
+
+    class FakeAgent:
+        def account_status(self) -> FakeStatus:
+            calls.append("account_status")
+            return FakeStatus()
+
+    monkeypatch.setattr(
+        limits_tracking,
+        "resolve_account_runtime_agent",
+        lambda **kwargs: FakeAgent(),
+    )
+    target = MonitorTarget(provider="codex", account="jp", home=target_home)
+    workflow = LimitsTrackingWorkflow(
+        MonitorWorkflowConfig(
+            name=LIMITS_TRACKING_WORKFLOW,
+            targets=(target,),
+            refresh_interval_sec=60,
+            raw_config={},
+        )
+    )
+    target_state = workflow._target_state(
+        LimitsWorkflowState(), target=target, target_key="target"
+    )
+
+    workflow._refresh_target(target_state, target=target, tick=1)
+
+    assert calls == ["account_status"]
 
 def _account_status(
     *,
@@ -352,7 +478,7 @@ def test_limits_tracking_synthesizes_estimated_burst_limit_for_codex(
         str(weekly["usage_over_time"]["period_ends_at"])  # type: ignore[index]
     ).isoformat()
     baseline = {
-        "key": "codex/jp@/tmp/codex-jp",
+        "key": "codex/jp",
         # Rebuild through the (frozen) datetime class so registry-record
         # validation sees the patched type.
         "recorded_at": datetime.datetime.fromisoformat(
@@ -413,7 +539,7 @@ def test_limits_tracking_estimated_burst_zero_without_baseline_before_window(
     ).isoformat()
     # Only record is after the window start: it cannot serve as baseline.
     late_record = {
-        "key": "codex/jp@/tmp/codex-jp",
+        "key": "codex/jp",
         "recorded_at": window_start + datetime.timedelta(minutes=10),
         "reset_at": period_key,
         "used_percent": 60,
@@ -454,7 +580,7 @@ def test_limits_tracking_estimated_burst_baseline_survives_rolling_reset(
         duration_mins=10080,
     )
     baseline = {
-        "key": "codex/jp@/tmp/codex-jp",
+        "key": "codex/jp",
         "recorded_at": datetime.datetime.fromisoformat(
             (window_start - datetime.timedelta(hours=3)).isoformat()
         ),

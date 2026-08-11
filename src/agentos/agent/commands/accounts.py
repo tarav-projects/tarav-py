@@ -1,11 +1,10 @@
+# $kw: ^agent-account-command-boundary --from Agentos.Hook --note [DC] provider lifecycle hook reporting enters through the general hook command rather than a parallel account command --supp ^c20260811-47u
 """`agent accounts` lifecycle commands (capture, activate, rotate, materialize, status)."""
 
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
-import sys
 
 from agentos._core.errors import CliError
 from agentos.agent._cli_common import format_json_output
@@ -356,53 +355,6 @@ def _cmd_agent_accounts_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_agent_accounts_usage_report(args: argparse.Namespace) -> int:
-    from agentos.agent import auth_registry
-    from agentos.agent.usage_report import report_usage_from_hook_context
-
-    provider = args.provider
-    account = args.account
-    if account is not None and not auth_registry.account_exists(provider, account):
-        raise CliError(
-            "agent accounts usage-report --account references unknown account: "
-            f"{provider}/{account}"
-        )
-    if not args.payload_stdin:
-        raise CliError("agent accounts usage-report requires --payload-stdin")
-    raw_context = _read_usage_report_stdin_json()
-
-    result = report_usage_from_hook_context(
-        provider=provider,
-        home=Path(args.home),
-        account=account,
-        source=args.source,
-        raw_context=raw_context,
-        sample_raw_context=args.sample_raw_context,
-        sample_max_records=args.sample_max_records,
-    )
-    payload = {
-        "command": "agent accounts usage-report",
-        **result.summary(),
-    }
-    if args.json:
-        print(format_json_output(payload))
-    elif not args.quiet:
-        sample = payload.get("sample")
-        suffix = f" sample={sample['path']}" if isinstance(sample, dict) else ""
-        print(f"{provider} {result.status}{suffix}")
-    return 0
-
-
-def _read_usage_report_stdin_json() -> dict[str, object]:
-    try:
-        payload = json.loads(sys.stdin.read())
-    except json.JSONDecodeError as exc:
-        raise CliError("usage-report stdin must be a JSON object") from exc
-    if not isinstance(payload, dict):
-        raise CliError("usage-report stdin must be a JSON object")
-    return payload
-
-
 def _register_accounts_commands(agent_subparsers) -> None:
     accounts_parser = agent_subparsers.add_parser(
         "accounts",
@@ -557,60 +509,5 @@ def _register_accounts_commands(agent_subparsers) -> None:
         help="Print raw status payload as JSON.",
     )
     accounts_status_parser.set_defaults(handler=_cmd_agent_accounts_status)
-
-    accounts_usage_report_parser = accounts_subparsers.add_parser(
-        "usage-report",
-        help="Report provider hook usage context into Agentos account usage surfaces.",
-    )
-    accounts_usage_report_parser.add_argument(
-        "--provider",
-        required=True,
-        choices=_AGENT_ACCOUNT_MANAGEMENT_PROVIDER_CHOICES,
-        help="Provider family that produced the hook context.",
-    )
-    accounts_usage_report_parser.add_argument(
-        "--home",
-        required=True,
-        help="Provider home associated with the hook context.",
-    )
-    accounts_usage_report_parser.add_argument(
-        "--account",
-        default=None,
-        help="Local AgentOS account alias, if already known.",
-    )
-    accounts_usage_report_parser.add_argument(
-        "--source",
-        default=None,
-        help="Usage source label. Defaults to <provider>_hook_context.",
-    )
-    accounts_usage_report_parser.add_argument(
-        "--payload-stdin",
-        action="store_true",
-        help="Read one provider hook JSON object from stdin.",
-    )
-    accounts_usage_report_parser.add_argument(
-        "--min-interval-sec",
-        type=float,
-        default=None,
-        help="Minimum seconds between persisted usage reports for this target.",
-    )
-    accounts_usage_report_parser.add_argument(
-        "--sample-raw-context",
-        action="store_true",
-        help="Write the raw hook context to the private bounded sample log.",
-    )
-    accounts_usage_report_parser.add_argument(
-        "--sample-max-records",
-        type=int,
-        default=50,
-        help="Maximum raw samples to retain for this provider/account/home.",
-    )
-    accounts_usage_report_parser.add_argument("--json", action="store_true", help="Output as JSON.")
-    accounts_usage_report_parser.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Suppress normal text output; errors still report on stderr.",
-    )
-    accounts_usage_report_parser.set_defaults(handler=_cmd_agent_accounts_usage_report)
 
     _register_monitor_command(accounts_subparsers)

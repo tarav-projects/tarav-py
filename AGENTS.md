@@ -213,20 +213,24 @@ Six separate JSONL/account record mechanisms exist; they are not yet unified.
    - File: `~/.agentos/agent/usage-registry/YYYYMM-usage.jsonl` (monthly roll),
      schema v1:
      `{schema_version, class, recorded_at, provider, account, home, source, payload}`.
-   - Writers: provider account-status usage fetches and future normalized hook reports.
+   - Writers: provider account-status usage fetches and the Codex `agent.turn.stop`
+     quota consumer (`source=session_hook`).
    - Readers: account-status registry fallback and the monitor limits-tracking workflow.
-   - Purpose: normalized provider usage facts only. Do not persist raw provider hook
-     contexts here.
+   - Codex hook observations are resolved to a registered account by credential
+     identity and may be read account-wide even when the observing home differs from
+     the monitor home. Purpose: normalized provider usage facts only. Do not persist
+     raw provider hook contexts here.
 
-4. **Usage-report hook sample log** — `src/agentos/agent/usage_report.py`.
-   - File: `~/.agentos/agent/usage-report-hook-samples/YYYYMMDD.jsonl` (daily roll),
+4. **Hook context sample log** — `src/agentos/hooks/sampling.py`.
+   - File: `~/.agentos/hooks/context-samples.jsonl`,
      schema v1:
-     `{schema_version, class, recorded_at, provider, account, home, status, raw_context}`.
-   - Writers: `append_hook_context_sample` and the built-in `agent.prompt.submit`
-     callback for explicit development sampling of provider hook context objects.
-   - Retention: bounded per provider/account/home sample set; default last 50 samples.
+     `{schema_version, class, recorded_at, hook_name, ctx_type, ctx}`.
+   - Writer: the built-in `agent.prompt.submit` callback for explicit development
+     sampling of opaque provider hook contexts.
+   - Retention: bounded per hook-name/context-type sample set; default last 50 samples
+     across time.
    - Privacy: file mode `0600`; samples may contain sensitive prompt/path/tool context.
-     This is an auxiliary development log, not the monitor-consumed usage registry.
+   This is an auxiliary development log, not the monitor-consumed usage registry.
 
 5. **Accounts registry** — `src/agentos/agent/auth_registry.py` (state, not an event log).
    - `active.json` (pointer map), `captures.jsonl` (append-only, joins `ref_id`→

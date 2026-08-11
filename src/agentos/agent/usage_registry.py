@@ -1,3 +1,4 @@
+# $kw: ^account-usage-registry --from Normalization.Pipeline::Account.Usage.Model --note [DC] normalized quota observations retain acquisition provenance and support explicit account-scoped reads for account-wide facts --supp ^c20260811-47u
 from __future__ import annotations
 
 import datetime
@@ -66,6 +67,43 @@ def latest_usage_record(
     if not registry_dir.is_dir():
         return None
     resolved_home = str(home.expanduser().resolve())
+    return _latest_matching_record(
+        provider=provider,
+        account=account,
+        source=source,
+        home=resolved_home,
+    )
+
+
+def latest_account_usage_record(
+    *,
+    provider: str,
+    account: str,
+    source: str,
+) -> Mapping[str, Any] | None:
+    """Return the latest account-scoped observation regardless of observing home."""
+
+    _validate_required_text(provider, field_name="provider")
+    _validate_required_text(account, field_name="account")
+    _validate_required_text(source, field_name="source")
+    return _latest_matching_record(
+        provider=provider,
+        account=account,
+        source=source,
+        home=None,
+    )
+
+
+def _latest_matching_record(
+    *,
+    provider: str,
+    account: str,
+    source: str,
+    home: str | None,
+) -> Mapping[str, Any] | None:
+    registry_dir = agentos_home_dir() / "agent" / "usage-registry"
+    if not registry_dir.is_dir():
+        return None
     for record_path in sorted(registry_dir.glob("*-usage.jsonl"), reverse=True):
         if not record_path.is_file():
             continue
@@ -80,7 +118,7 @@ def latest_usage_record(
                 record,
                 provider=provider,
                 account=account,
-                home=resolved_home,
+                home=home,
                 source=source,
             ):
                 continue
@@ -115,7 +153,7 @@ def _record_matches(
     *,
     provider: str,
     account: str,
-    home: str,
+    home: str | None,
     source: str,
 ) -> bool:
     return (
@@ -123,7 +161,7 @@ def _record_matches(
         and record.get("class") == USAGE_RECORD_CLASS
         and record.get("provider") == provider
         and record.get("account") == account
-        and record.get("home") == home
+        and (home is None or record.get("home") == home)
         and record.get("source") == source
         and isinstance(record.get("recorded_at"), str)
     )
@@ -134,4 +172,8 @@ def _validate_required_text(value: str, *, field_name: str) -> None:
         raise CliError(f"usage record {field_name} is required")
 
 
-__all__ = ["append_usage_record", "latest_usage_record"]
+__all__ = [
+    "append_usage_record",
+    "latest_account_usage_record",
+    "latest_usage_record",
+]

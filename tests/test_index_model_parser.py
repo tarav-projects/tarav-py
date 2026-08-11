@@ -124,7 +124,7 @@ def test_index_model_parses_router_dialects_depot_and_anchor_queries(
     )
     _write(
         depot / "design" / "100-design.md",
-        "****\n## Example.Concept\n\n- [GR] linked ^20260705-0\n****\n",
+        "****\n## Example.Concept\n\n- [DC] linked ^20260705-0\n****\n",
     )
     _write(
         depot / "design" / "101-design.md", "****\n## Third.Concept\n\n- text\n****\n"

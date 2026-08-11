@@ -1,3 +1,4 @@
+# $kw: ^codex-account-quota-history --from Normalization.Pipeline::Account.Usage.Model --note [DC] quota history groups by provider account because quota facts are account-wide across observing homes --supp ^c20260811-47u
 """Estimated burst limits from weekly usage history.
 
 OpenAI stopped publishing the codex 5h burst window, so the monitor estimates
@@ -63,11 +64,10 @@ def codex_registry_records() -> list[dict[str, object]]:
                     continue
                 reset_at, used_percent = weekly
                 account = _string_value(record.get("account"))
-                home = _string_value(record.get("home"))
-                if account is None or home is None:
+                if account is None:
                     continue
                 registry_record: dict[str, object] = {
-                    "key": f"codex/{account}@{home}",
+                    "key": f"codex/{account}",
                     "recorded_at": recorded_at,
                     "reset_at": reset_at,
                     "used_percent": used_percent,
