@@ -11,7 +11,7 @@ from agentos._core.errors import CliError
 from agentos._core.sequences import _unique_paths
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
 from agentos.agent.primitives import AgentConfig, SessionDiscoveryCapable, SessionSource
-from agentos.agent.providers import agent_from_config, load_configured_agents
+from agentos.agent.providers.registry import agent_from_config, load_configured_agents
 from agentos.agent.config import (
     canonical_chat_provider_specs,
     default_agent_configs,
@@ -906,7 +906,7 @@ def _backing_artifact_is_extractable(
         return False
 
     try:
-        from agentos.agent.extractors import _PROVIDER_SESSION_EXTRACTORS
+        from agentos.agent.providers.extraction import _PROVIDER_SESSION_EXTRACTORS
 
         spec = _PROVIDER_SESSION_EXTRACTORS.get(session.provider)
         if spec is None:

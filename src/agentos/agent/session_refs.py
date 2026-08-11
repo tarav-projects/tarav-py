@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from agentos.agent.primitives import SessionSource
-from agentos.claude.session import ClaudeSessionRef
-from agentos.codex.session import CodexSessionRef
-from agentos.copilot.session import CopilotSessionRef
-from agentos.gemini.session import GeminiSessionRef
-from agentos.openclaw.session import OpenclawSessionRef
-from agentos.opencode.session import OpencodeSessionRef
-from agentos.pi.session import PiSessionRef
+from agentos.agent.providers.claude_code.session import ClaudeSessionRef
+from agentos.agent.providers.codex.session import CodexSessionRef
+from agentos.agent.providers.copilot_cli.session import CopilotSessionRef
+from agentos.agent.providers.gemini_cli.session import GeminiSessionRef
+from agentos.agent.providers.openclaw.session import OpenclawSessionRef
+from agentos.agent.providers.opencode.session import OpencodeSessionRef
+from agentos.agent.providers.pi.session import PiSessionRef
 
 
 ProviderSessionRef = (

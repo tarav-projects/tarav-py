@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from collections.abc import Callable
@@ -13,14 +14,25 @@ from .model import HookError, HookInvocation
 from .registry import HookRegistry
 
 
-DaemonHookSubmitter = Callable[[HookInvocation], object]
+HookInvocationSubmitter = Callable[[HookInvocation], object]
+HookDeliveryFailureReporter = Callable[[HookInvocation, BaseException], object]
 AGENTOS_HOOKS_DISABLED_ENV = "AGENTOS_HOOKS_DISABLED"
+LOGGER = logging.getLogger("agentos.hooks")
 
 
-def _default_daemon_submitter(invocation: HookInvocation) -> object:
-    from agentos.daemon.client import submit_hook_invocation
+def _unavailable_submitter(_invocation: HookInvocation) -> object:
+    raise RuntimeError("no deferred hook submitter is configured")
 
-    return submit_hook_invocation(invocation)
+
+def _log_delivery_failure(
+    invocation: HookInvocation,
+    error: BaseException,
+) -> None:
+    LOGGER.error(
+        "deferred hook delivery failed: hook=%s error_type=%s",
+        invocation.name,
+        type(error).__name__,
+    )
 
 
 def _load_context(args: argparse.Namespace) -> dict[str, object]:
@@ -38,7 +50,8 @@ def _cmd_hook(
     args: argparse.Namespace,
     registry: HookRegistry,
     *,
-    daemon_submitter: DaemonHookSubmitter,
+    deferred_submitter: HookInvocationSubmitter,
+    delivery_failure_reporter: HookDeliveryFailureReporter,
 ) -> int:
     if os.getenv(AGENTOS_HOOKS_DISABLED_ENV) == "1":
         return 0
@@ -53,16 +66,9 @@ def _cmd_hook(
     registry.dispatch(invocation)
     if registry.has_callbacks(invocation.name, execution="daemon"):
         try:
-            daemon_submitter(invocation.isolated_copy())
+            deferred_submitter(invocation.isolated_copy())
         except Exception as exc:
-            from agentos.daemon.log import append_daemon_log
-
-            append_daemon_log(
-                "hook_delivery_failed",
-                event_id=getattr(exc, "event_id", None),
-                invocation=invocation,
-                error=exc,
-            )
+            delivery_failure_reporter(invocation.isolated_copy(), exc)
     return 0
 
 
@@ -70,7 +76,8 @@ def register_hook_commands(
     subparsers: argparse._SubParsersAction,
     *,
     registry: HookRegistry,
-    daemon_submitter: DaemonHookSubmitter = _default_daemon_submitter,
+    deferred_submitter: HookInvocationSubmitter = _unavailable_submitter,
+    delivery_failure_reporter: HookDeliveryFailureReporter = _log_delivery_failure,
 ) -> None:
     parser = subparsers.add_parser(
         "hook",
@@ -96,9 +103,15 @@ def register_hook_commands(
         handler=lambda args: _cmd_hook(
             args,
             registry,
-            daemon_submitter=daemon_submitter,
+            deferred_submitter=deferred_submitter,
+            delivery_failure_reporter=delivery_failure_reporter,
         )
     )
 
 
-__all__ = ["AGENTOS_HOOKS_DISABLED_ENV", "register_hook_commands"]
+__all__ = [
+    "AGENTOS_HOOKS_DISABLED_ENV",
+    "HookDeliveryFailureReporter",
+    "HookInvocationSubmitter",
+    "register_hook_commands",
+]

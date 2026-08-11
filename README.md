@@ -4,6 +4,9 @@ Agentos is one modular Python distribution. Its runtime, CLI, daemon, Chatlas,
 Canvas, and Iterante implementations live under the `agentos` package while
 remaining independently importable subsystem namespaces.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the namespace map, dependency
+direction, provider ownership, and integration boundaries.
+
 Install the maintained source as one editable tool:
 
 ```sh

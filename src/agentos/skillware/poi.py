@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentos.poi import POIDiagnostic, POIInstance, POILocation
-from agentos.skw import NetworkFinding
+from agentos.skw.network import NetworkFinding
 from agentos.wayfinder import poi_class_reference
 
 

@@ -7,7 +7,7 @@ import pytest
 
 from agentos.agent.account_status import AccountStatusError, AgentAccountContext
 from agentos.agent.usage_registry import append_usage_record
-from agentos.codex.agent import CodexAgent
+from agentos.agent.providers.codex.agent import CodexAgent
 from agentos.testing import AgentosTestEnvironment
 from agentos.testing import codex_auth_json, seed_codex_account
 from _helpers import (
@@ -85,7 +85,7 @@ def test_agent_usage_records_fresh_codex_app_server_limits(
     codex_home, agent = _seeded_codex_agent(tmp_path)
 
     monkeypatch.setattr(
-        "agentos.codex.account_status._fetch_account_usage_app_server_payload",
+        "agentos.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
         lambda agent: _codex_usage_payload(burst_percent=11, weekly_percent=22),
     )
 
@@ -123,7 +123,7 @@ def test_agent_usage_falls_back_to_cached_codex_limits(
         payload=_codex_usage_payload(burst_percent=12, weekly_percent=34),
     )
     monkeypatch.setattr(
-        "agentos.codex.account_status._account_usage_app_server",
+        "agentos.agent.providers.codex.account_status._account_usage_app_server",
         _failed_app_server_result,
     )
 
@@ -159,7 +159,7 @@ def test_agent_usage_classifies_codex_primary_weekly_by_duration(
     codex_home, agent = _seeded_codex_agent(tmp_path)
 
     monkeypatch.setattr(
-        "agentos.codex.account_status._fetch_account_usage_app_server_payload",
+        "agentos.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
         lambda agent: _codex_weekly_primary_usage_payload(weekly_percent=5),
     )
 
@@ -193,7 +193,7 @@ def test_agent_usage_without_cached_codex_limits_stays_error(
     environment.apply_environment(monkeypatch.setenv)
     _codex_home, agent = _seeded_codex_agent(tmp_path)
     monkeypatch.setattr(
-        "agentos.codex.account_status._account_usage_app_server",
+        "agentos.agent.providers.codex.account_status._account_usage_app_server",
         _failed_app_server_result,
     )
 

@@ -105,7 +105,7 @@ def test_failed_atomic_create_cleans_temp_and_leaves_no_record(
     def fail_replace(_source: object, _target: object) -> None:
         raise OSError("replace failed")
 
-    monkeypatch.setattr("agentos.bloberia.core.os.replace", fail_replace)
+    monkeypatch.setattr("agentos._core.persistence.os.replace", fail_replace)
 
     with pytest.raises(OSError, match="replace failed"):
         depot.create({"value": 1})
@@ -138,7 +138,7 @@ def test_failed_atomic_edit_preserves_previous_record(
     def fail_replace(_source: object, _target: object) -> None:
         raise OSError("replace failed")
 
-    monkeypatch.setattr("agentos.bloberia.core.os.replace", fail_replace)
+    monkeypatch.setattr("agentos._core.persistence.os.replace", fail_replace)
 
     with pytest.raises(OSError, match="replace failed"):
         depot.edit(created.id, {"version": 2})

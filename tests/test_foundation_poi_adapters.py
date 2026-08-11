@@ -5,8 +5,15 @@ from pathlib import Path
 from agentos.anchory import AnchoryDepot
 from agentos.anchory.poi import ANCHORY_POI_CODES, build_anchory_linter_report
 from agentos.bloberia import BloberiaDepot
-from agentos.bloberia.poi import BLOBERIA_POI_CODES, build_bloberia_linter_report
-from agentos.mdblocks.poi import MDBLOCKS_POI_CODES, build_mdblocks_linter_report
+from agentos.index.wayfinder import create_index_wayfinder
+from agentos.poi.adapters.bloberia import (
+    BLOBERIA_POI_CODES,
+    build_bloberia_linter_report,
+)
+from agentos.poi.adapters.mdblocks import (
+    MDBLOCKS_POI_CODES,
+    build_mdblocks_linter_report,
+)
 
 
 def test_anchory_check_adapts_existing_findings_to_common_pois(
@@ -40,7 +47,11 @@ def test_bloberia_check_adapts_existing_findings_to_common_pois(
     record.write_text("{", encoding="utf-8")
 
     result = depot.check()
-    report = build_bloberia_linter_report(result, depot=depot.root)
+    report = build_bloberia_linter_report(
+        result,
+        depot=depot.root,
+        wayfinder=create_index_wayfinder(),
+    )
     payload = report.as_dict()
 
     assert set(BLOBERIA_POI_CODES) >= {finding.code for finding in result.findings}
@@ -81,7 +92,10 @@ def test_mdblocks_report_preserves_counts_without_duplicate_issue_records(
         ],
     }
 
-    report = build_mdblocks_linter_report(payload)
+    report = build_mdblocks_linter_report(
+        payload,
+        wayfinder=create_index_wayfinder(),
+    )
     result = report.as_dict()
 
     assert set(MDBLOCKS_POI_CODES) >= {"unclosed_code_fence"}

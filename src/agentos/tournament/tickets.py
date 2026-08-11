@@ -20,7 +20,6 @@ the sweep takes it.
 from __future__ import annotations
 
 import json
-import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -28,6 +27,7 @@ from pathlib import Path
 
 from agentos._core.clock import iso_z
 from agentos._core.ids import generate_uuid4_string
+from agentos._core.persistence import atomic_write_json
 from agentos.tournament.model import TournamentError
 
 TICKETS_DIRNAME = "tickets"
@@ -266,11 +266,7 @@ class TicketStore:
     def _write(self, ticket: Ticket) -> None:
         # One file per ticket means one writer per file, so the pending side needs
         # no depot-wide lock; Bloberia still takes one at submit.
-        self.root.mkdir(parents=True, exist_ok=True)
-        path = self._path(ticket.ticket_id)
-        temp = path.with_suffix(".json.tmp")
-        temp.write_text(json.dumps(ticket.as_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(temp, path)
+        atomic_write_json(self._path(ticket.ticket_id), ticket.as_dict())
 
 
 def _replace(ticket: Ticket, **changes: object) -> Ticket:

@@ -28,8 +28,8 @@ from agentos.agent.run_prepare import (
     AgentRunPrepareResult,
     empty_agent_run_prepare_result,
 )
-from agentos.providers import ProviderHomeAnchor
-from agentos.providers import require_canonical_provider_spec
+from agentos.agent.providers import ProviderHomeAnchor
+from agentos.agent.providers import require_canonical_provider_spec
 
 AgentConfigSelf = TypeVar("AgentConfigSelf", bound="AgentConfig")
 

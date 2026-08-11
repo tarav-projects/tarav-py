@@ -6,6 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from agentos.index.poi_catalog import discover_poi_catalog
+from agentos.index.wayfinder import (
+    create_index_wayfinder,
+    resolve_index_block_reference,
+)
 from agentos.poi import (
     DuplicatePOIClass,
     POICatalog,
@@ -105,7 +110,7 @@ def test_catalog_discovers_classes_from_registered_poi_chapters(
         depot,
     )
 
-    catalog = POICatalog.discover(registry=registry)
+    catalog = discover_poi_catalog(registry=registry)
 
     assert catalog.require("Example.Linter/Problem") == _registration().reference
 
@@ -130,7 +135,7 @@ def test_catalog_ignores_blocks_outside_poi_chapters(
         depot,
     )
 
-    catalog = POICatalog.discover(registry=registry)
+    catalog = discover_poi_catalog(registry=registry)
 
     with pytest.raises(UnknownPOIClass, match="Example.Linter/NotAClass"):
         catalog.require("Example.Linter/NotAClass")
@@ -175,7 +180,10 @@ def test_linter_report_keeps_diagnostics_separate_from_pois() -> None:
         evidence={"origin": "Closure.Parser"},
     )
     report = POILinterReport(
-        poi_report=build_poi_report((_instance(),)),
+        poi_report=build_poi_report(
+            (_instance(),),
+            wayfinder=create_index_wayfinder(),
+        ),
         diagnostics=(diagnostic,),
         summary={"poi_count": 1, "diagnostic_count": 1},
         domain={"entries": [{"target": "SKILL.md", "status": "parse-error"}]},
@@ -219,6 +227,12 @@ def test_renderer_groups_instances_and_resolves_class_once(
     class CountingWayfinder(Wayfinder):
         calls = 0
 
+        def __init__(self, registry: WayfinderRegistry) -> None:
+            super().__init__(
+                registry,
+                resolvers=(resolve_index_block_reference,),
+            )
+
         def resolve(self, reference):
             self.calls += 1
             return super().resolve(reference)
@@ -253,7 +267,10 @@ def test_renderer_retains_instances_when_class_resolution_fails(
         str(tmp_path / "state" / "registry.json"),
     )
 
-    report = build_poi_report((_instance(),))
+    report = build_poi_report(
+        (_instance(),),
+        wayfinder=create_index_wayfinder(),
+    )
 
     assert len(report.groups) == 1
     assert len(report.groups[0].instances) == 1
@@ -282,6 +299,7 @@ def test_poi_explain_resolves_registered_code_and_reference_sugar(
     register_poi_commands(
         parser.add_subparsers(dest="command"),
         catalog=POICatalog((_registration(),)),
+        wayfinder=create_index_wayfinder(),
     )
 
     args = parser.parse_args(["poi", "explain", "Example.Linter/Problem"])
@@ -317,6 +335,7 @@ def test_poi_explain_surfaces_resolution_poi(
     register_poi_commands(
         parser.add_subparsers(dest="command"),
         catalog=POICatalog((_registration(),)),
+        wayfinder=create_index_wayfinder(),
     )
 
     args = parser.parse_args(["poi", "explain", "Example.Linter/Problem", "--json"])

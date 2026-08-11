@@ -8,7 +8,7 @@ from agentos.agent.sessions import (
     _discover_direct_provider_sessions,
     _provider_agent_context_from_agent,
 )
-from agentos.claude.agent import ClaudeAgent
+from agentos.agent.providers.claude_code.agent import ClaudeAgent
 
 
 def test_linked_claude_projects_target_is_skipped(tmp_path: Path) -> None:

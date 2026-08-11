@@ -19,6 +19,7 @@ from agentos.daemon import (
     request_daemon_stop,
     submit_hook_invocation,
 )
+from agentos.daemon.log import report_hook_delivery_failure
 from agentos.hooks import HookInvocation, HookRegistry, register_hook_commands
 from agentos.testing import AgentosTestEnvironment
 
@@ -395,7 +396,12 @@ def test_hook_delivery_failure_is_logged_and_does_not_fail_command(
     )
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
-    register_hook_commands(subparsers, registry=registry)
+    register_hook_commands(
+        subparsers,
+        registry=registry,
+        deferred_submitter=submit_hook_invocation,
+        delivery_failure_reporter=report_hook_delivery_failure,
+    )
     args = parser.parse_args(
         [
             "hook",

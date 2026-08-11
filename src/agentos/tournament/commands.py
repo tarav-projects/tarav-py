@@ -86,7 +86,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
-    from agentos.agent.providers import resolve_agent
+    from agentos.agent.providers.registry import resolve_agent
 
     store = _store(args)
     try:

@@ -10,7 +10,7 @@ from agentos._core.errors import CliError
 from agentos._core.project import agentos_home_dir
 from agentos.agent.config import load_chat_config_documents
 from agentos.agent.primitives import AgentConfig
-from agentos.agent.providers import agent_from_config
+from agentos.agent.providers.registry import agent_from_config
 from agentos.chatlas.provider_home_adapter import ChatlasProviderInstance
 from agentos.chatlas.path_hygiene import is_relative_to, path_has_symlink_component
 from agentos.chatlas.providers import supported_chatlas_provider_families

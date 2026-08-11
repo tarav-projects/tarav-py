@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-import agentos.copilot.account_status as copilot_account_status
+import agentos.agent.providers.copilot_cli.account_status as copilot_account_status
 from agentos.agent.account_status import AgentAccountContext, fresh_usage_record_metadata
 from agentos.testing import seed_copilot_account
-from agentos.copilot.agent import CopilotAgent
+from agentos.agent.providers.copilot_cli.agent import CopilotAgent
 from agentos.testing import AgentosTestEnvironment
 
 from _helpers import read_json_file

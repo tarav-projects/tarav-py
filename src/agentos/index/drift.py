@@ -24,7 +24,7 @@ from pathlib import Path
 from agentos.index.depot_deps import resolve_dependency_depots
 from agentos.index.model import parse_depot
 from agentos.index.model.nodes import BlockHeading, KernelLine, MetaLine, Node
-from agentos.skw import (
+from agentos.skw.network import (
     NetworkFinding,
     dangling_mention_findings,
     extract_mentions,

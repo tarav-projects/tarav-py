@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING
 
 from agentos.chatlas.hook_consumers import register_chatlas_hook_callbacks
-from agentos.codex.usage_hooks import register_codex_usage_hook_callbacks
+from agentos.agent.providers.codex.usage_hooks import register_codex_usage_hook_callbacks
 from agentos.hooks import HookRegistry, register_hook_sampling_callbacks
 
 if TYPE_CHECKING:
@@ -56,31 +57,55 @@ class AgentosRuntime:
             project_index_coverage_check,
         )
         from agentos.daemon import register_daemon_commands
+        from agentos.daemon.client import submit_hook_invocation
+        from agentos.daemon.log import report_hook_delivery_failure
         from agentos.forum import register_forum_commands
         from agentos.hooks import register_hook_commands
         from agentos.index.commands import register_index_commands
-        from agentos.mdblocks.commands import register_mdblocks_commands
+        from agentos.index.poi_catalog import discover_poi_catalog
+        from agentos.index.wayfinder import create_index_wayfinder
+        from agentos.stdlib.mdblocks.commands import register_mdblocks_commands
         from agentos.mission import register_mission_commands
         from agentos.poi.commands import register_poi_commands
-        from agentos.prefix.commands import register_prefix_commands
+        from agentos.poi.adapters.bloberia import build_bloberia_linter_report
+        from agentos.poi.adapters.mdblocks import build_mdblocks_linter_report
+        from agentos.poi.adapters.wayfinder import (
+            build_wayfinder_registry_linter_report,
+        )
+        from agentos.stdlib.prefix.commands import register_prefix_commands
         from agentos.project import register_project_commands
-        from agentos.refs import register_refs_commands
+        from agentos.stdlib.refs import register_refs_commands
         from agentos.skills import register_skills_commands
         from agentos.skillware.commands import register_skillware_commands
         from agentos.system import register_system_commands
         from agentos.tournament.commands import register_tournament_commands
-        from agentos.utils import register_utils_commands
+        from agentos.stdlib.utils import register_utils_commands
         from agentos.wayfinder.commands import register_wayfinder_commands
         from agentos.workspaces.commands import register_workspace_commands
 
+        wayfinder = create_index_wayfinder()
+        poi_catalog = discover_poi_catalog()
+
         register_agent_commands(subparsers)
-        register_hook_commands(subparsers, registry=self.hooks)
+        register_hook_commands(
+            subparsers,
+            registry=self.hooks,
+            deferred_submitter=submit_hook_invocation,
+            delivery_failure_reporter=report_hook_delivery_failure,
+        )
         register_daemon_commands(subparsers, registry=self.hooks)
         register_anchory_commands(
             subparsers,
             amend_validator=validate_chatlas_anchory_amendment,
         )
-        register_bloberia_commands(subparsers)
+        register_bloberia_commands(
+            subparsers,
+            check_report_builder=lambda result, depot: build_bloberia_linter_report(
+                result,
+                depot=depot,
+                wayfinder=wayfinder,
+            ),
+        )
         register_canvas_commands(subparsers)
         register_project_commands(subparsers)
         register_system_commands(subparsers)
@@ -90,17 +115,37 @@ class AgentosRuntime:
         _register_stdlib_commands(
             subparsers,
             registrars=(
-                register_mdblocks_commands,
+                partial(
+                    register_mdblocks_commands,
+                    lint_report_builder=lambda payload: build_mdblocks_linter_report(
+                        payload,
+                        wayfinder=wayfinder,
+                    ),
+                ),
                 register_prefix_commands,
                 register_refs_commands,
                 register_utils_commands,
             ),
         )
         register_skills_commands(subparsers)
-        register_wayfinder_commands(subparsers)
+        register_wayfinder_commands(
+            subparsers,
+            wayfinder=wayfinder,
+            check_report_builder=lambda result, registry_path: (
+                build_wayfinder_registry_linter_report(
+                    result,
+                    registry_path=registry_path,
+                    wayfinder=wayfinder,
+                )
+            ),
+        )
         register_tournament_commands(subparsers)
         register_workspace_commands(subparsers)
-        register_poi_commands(subparsers)
+        register_poi_commands(
+            subparsers,
+            catalog=poi_catalog,
+            wayfinder=wayfinder,
+        )
         register_skillware_commands(
             subparsers,
             edition_history_support_resolver=resolve_event_support_set_record,
@@ -120,6 +165,7 @@ class AgentosRuntime:
                 create_chatlas_line_relationship_projector
             ),
             line_manifest_materializer=materialize_index_line_manifest,
+            poi_catalog=poi_catalog,
         )
         register_mission_commands(subparsers)
 

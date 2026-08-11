@@ -7,12 +7,11 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
-import os
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Any, Literal
 
 from agentos._core.errors import CliError
+from agentos._core.persistence import atomic_write_text
 from agentos.index.line_manifest import LINE_MANIFEST_SCHEMA
 from agentos.index.model import index_line_anchor_triplet_hash
 
@@ -273,12 +272,7 @@ def materialize_index_line_manifest(
     stamp = str(manifest.get("generated_at") or _utc_now()).replace(":", "").replace("-", "")
     stamp = stamp.replace(".", "").replace("+", "").replace("Z", "Z")
     destination = output_root / f"{stamp}-{fingerprint.removeprefix('sha256:')[:12]}.json"
-    with NamedTemporaryFile(
-        "w", encoding="utf-8", dir=output_root, prefix=".manifest-", delete=False
-    ) as handle:
-        handle.write(encoded)
-        temporary = Path(handle.name)
-    os.replace(temporary, destination)
+    atomic_write_text(destination, encoded)
     return {
         "schema": "agentos.index-line-manifest-materialization.v3",
         "path": str(destination),

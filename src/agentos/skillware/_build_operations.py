@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentos.poi import POIDiagnostic
-from agentos.skw import extract_mentions, run_dependency_sync
+from agentos.skw.network import extract_mentions, run_dependency_sync
 from agentos.skillware.model import (
     SkwFinding,
     SkwSource,

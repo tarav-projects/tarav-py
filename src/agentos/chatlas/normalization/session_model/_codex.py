@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agentos.codex.session import CodexSession
-from agentos.agent.extractors.codex import is_codex_rollout_path
+from agentos.agent.providers.codex.session import CodexSession
+from agentos.agent.providers.codex.extractor import is_codex_rollout_path
 
 from agentos.chatlas._payload_helpers import (
     copy_present_fields,

@@ -168,7 +168,7 @@ def test_drift_against_active_directions(
     _env(monkeypatch, tmp_path)
     from agentos.agent import auth_registry as R
     from agentos.agent.rotation import drift_against_active
-    from agentos.codex.auth_method import CodexAuthMethod
+    from agentos.agent.providers.codex.auth_method import CodexAuthMethod
 
     active = _seed_artifact("br", "file", _codex_payload(exp=1_500_000_000))
     R.set_active("codex", "br", "file", active)
@@ -188,7 +188,7 @@ def test_drift_against_active_none_when_no_active(
 ) -> None:
     _env(monkeypatch, tmp_path)
     from agentos.agent.rotation import drift_against_active
-    from agentos.codex.auth_method import CodexAuthMethod
+    from agentos.agent.providers.codex.auth_method import CodexAuthMethod
 
     home = AuthData(payload=_codex_payload(exp=2_000_000_000))
     # nothing activated for br/file → no basis to compare against

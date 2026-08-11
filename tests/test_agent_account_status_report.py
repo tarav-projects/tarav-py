@@ -72,7 +72,7 @@ def test_status_reports_aligned_drift_undeterminable_and_unlisted(
 
     # make the aligned home's live Auth.Data the active artifact
     from agentos.agent import auth_registry as R
-    from agentos.claude.auth_method import ClaudeAuthMethod
+    from agentos.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     auth = ClaudeAuthMethod().read_auth_data(aligned)
     artifact_id = R.store_artifact("claude-code", auth)

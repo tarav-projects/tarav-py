@@ -27,7 +27,7 @@ from agentos.agent.monitor.workflows import (
     LimitsTrackingWorkflow,
 )
 from agentos.agent.usage_registry import append_usage_record
-from agentos.codex.usage_hooks import CODEX_SESSION_HOOK_USAGE_SOURCE
+from agentos.agent.providers.codex.usage_hooks import CODEX_SESSION_HOOK_USAGE_SOURCE
 from agentos.testing import AgentosTestEnvironment
 
 from _monitor_helpers import _limit

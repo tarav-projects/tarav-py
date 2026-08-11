@@ -68,21 +68,21 @@ from agentos.agent.monitor.workflows.state import (
     LimitsWorkflowState,
 )
 from agentos.agent.monitor_log import append_monitor_log_event
-from agentos.agent.providers import resolve_account_runtime_agent
+from agentos.agent.providers.registry import resolve_account_runtime_agent
 from agentos.agent.usage_registry import (
     latest_account_usage_record,
     latest_usage_record,
 )
-from agentos.claude.account_status import (
+from agentos.agent.providers.claude_code.account_status import (
     CLAUDE_STATUSLINE_USAGE_SOURCE,
     claude_statusline_usage_record_limits,
 )
-from agentos.codex.account_status import (
+from agentos.agent.providers.codex.account_status import (
     CODEX_APP_SERVER_USAGE_SOURCE,
     codex_usage_record_limits,
 )
-from agentos.codex.usage_hooks import CODEX_SESSION_HOOK_USAGE_SOURCE
-from agentos.copilot.account_status import (
+from agentos.agent.providers.codex.usage_hooks import CODEX_SESSION_HOOK_USAGE_SOURCE
+from agentos.agent.providers.copilot_cli.account_status import (
     COPILOT_INTERNAL_USER_USAGE_SOURCE,
     copilot_usage_record_limits,
 )

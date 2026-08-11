@@ -1,4 +1,5 @@
 # $kw: ^skw-network-findings --from POI.System --from POI.Linter --note [DF] backend-neutral dependency drift algorithms emit domain findings for later POI adaptation ^c20260729-49u
+# $kw: ^skw-network --from Dependency.Profile.Split --note [DF] backend-neutral dependency-network mechanics are shared by Index and Skillware without either core importing the other --supp ^c20260811-62u
 from __future__ import annotations
 
 import hashlib

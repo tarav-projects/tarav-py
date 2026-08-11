@@ -6,7 +6,7 @@ from typing import Any
 
 from agentos._core.errors import CliError
 from agentos.agent.primitives import RunCapable
-from agentos.agent.providers import resolve_agent
+from agentos.agent.providers.registry import resolve_agent
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 from agentos.hooks import AGENTOS_HOOKS_DISABLED_ENV
 

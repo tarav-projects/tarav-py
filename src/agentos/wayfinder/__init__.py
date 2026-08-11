@@ -21,7 +21,7 @@ from .registry import (
     WayfinderRegistryCheck,
     WayfinderRegistryFinding,
 )
-from .resolver import Wayfinder
+from .resolver import Wayfinder, WayfinderReferenceResolver
 
 __all__ = [
     "CorruptWayfinderRegistry",
@@ -31,6 +31,7 @@ __all__ = [
     "REFERENCE_SCHEMA",
     "UnsupportedWayfinderReference",
     "Wayfinder",
+    "WayfinderReferenceResolver",
     "WayfinderError",
     "WayfinderReference",
     "WayfinderReferenceRoot",

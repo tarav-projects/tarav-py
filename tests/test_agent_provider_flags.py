@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.providers import resolve_agent_config
+from agentos.agent.providers.registry import resolve_agent_config
 from agentos.agent.run_runtime import (
     AgentCommandConfig,
     build_agent_command_argv,

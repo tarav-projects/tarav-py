@@ -55,7 +55,7 @@ def test_codex_materialize_writes_auth_json_and_aligns(monkeypatch: pytest.Monke
     _settings()
     from agentos.agent import auth_registry as R
     from agentos.agent.auth_method import AuthData
-    from agentos.codex.auth_method import CodexAuthMethod
+    from agentos.agent.providers.codex.auth_method import CodexAuthMethod
 
     active = AuthData(payload=_auth_json(UUID, token="ACTIVE"))
     active_id = R.store_artifact("codex", active)
@@ -74,7 +74,7 @@ def test_codex_materialize_captures_first(monkeypatch: pytest.MonkeyPatch, tmp_p
     _settings()
     from agentos.agent import auth_registry as R
     from agentos.agent.auth_method import AuthData
-    from agentos.codex.auth_method import CodexAuthMethod
+    from agentos.agent.providers.codex.auth_method import CodexAuthMethod
 
     active_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, token="ACTIVE")))
     R.set_active("codex", "jp", "file", active_id)

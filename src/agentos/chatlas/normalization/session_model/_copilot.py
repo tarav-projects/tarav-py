@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.copilot.session import CopilotSession
-from agentos.agent.extractors.copilot_cli import is_copilot_cli_session_path
+from agentos.agent.providers.copilot_cli.session import CopilotSession
+from agentos.agent.providers.copilot_cli.extractor import is_copilot_cli_session_path
 
 from agentos.chatlas._payload_helpers import (
     copy_present_fields,

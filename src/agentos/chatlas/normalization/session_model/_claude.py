@@ -7,8 +7,8 @@ from pathlib import Path
 import re
 from typing import Any, Callable
 
-from agentos.claude.session import ClaudeSession
-from agentos.agent.extractors.claude_code import is_claude_code_session_path
+from agentos.agent.providers.claude_code.session import ClaudeSession
+from agentos.agent.providers.claude_code.extractor import is_claude_code_session_path
 
 from agentos.chatlas._payload_helpers import (
     copy_present_fields,

@@ -20,11 +20,11 @@ from agentos.agent.run_runtime import (
     AgentCommandConfig,
     AgentRunConfig,
 )
-from agentos.agent.providers import resolve_account_runtime_agent, resolve_agent_config
-from agentos.claude.agent import ClaudeAgent
-from agentos.codex.agent import CodexAgent
-from agentos.copilot.agent import CopilotAgent
-from agentos.pi.agent import PiAgent
+from agentos.agent.providers.registry import resolve_account_runtime_agent, resolve_agent_config
+from agentos.agent.providers.claude_code.agent import ClaudeAgent
+from agentos.agent.providers.codex.agent import CodexAgent
+from agentos.agent.providers.copilot_cli.agent import CopilotAgent
+from agentos.agent.providers.pi.agent import PiAgent
 from agentos.testing import AgentosTestEnvironment
 
 from agentos.testing import codex_auth_json, seed_claude_account, seed_codex_account
@@ -602,7 +602,7 @@ def test_provider_validate_profile_is_invoked(
     tmp_path: Path,
 ) -> None:
     from agentos.agent.config import validate_provider_profile
-    import agentos.claude.agent as claude_agent_module
+    import agentos.agent.providers.claude_code.agent as claude_agent_module
 
     calls: list[dict[str, object]] = []
 
@@ -633,7 +633,7 @@ def test_provider_validate_profile_is_invoked(
 
 
 def test_profile_account_scope_enforced_on_direct_agent_run_call() -> None:
-    from agentos.claude.agent import ClaudeAgent
+    from agentos.agent.providers.claude_code.agent import ClaudeAgent
     from agentos.agent.account_status import AgentAccountContext
 
     agent = ClaudeAgent.from_config(
@@ -653,7 +653,7 @@ def test_profile_account_scope_enforced_on_direct_agent_run_call() -> None:
 
 
 def test_session_only_provider_has_no_run_or_account_status_capability() -> None:
-    from agentos.gemini.agent import GeminiAgent
+    from agentos.agent.providers.gemini_cli.agent import GeminiAgent
 
     agent = GeminiAgent.from_config(
         AgentConfig(
@@ -670,13 +670,13 @@ def test_session_only_provider_has_no_run_or_account_status_capability() -> None
 @pytest.mark.parametrize(
     ("provider", "agent_import", "expect_run", "expect_account_status"),
     [
-        ("claude-code", "agentos.claude.agent:ClaudeAgent", True, True),
-        ("codex", "agentos.codex.agent:CodexAgent", True, True),
-        ("copilot-cli", "agentos.copilot.agent:CopilotAgent", True, True),
-        ("pi", "agentos.pi.agent:PiAgent", True, False),
-        ("gemini-cli", "agentos.gemini.agent:GeminiAgent", False, False),
-        ("opencode", "agentos.opencode.agent:OpencodeAgent", False, False),
-        ("openclaw", "agentos.openclaw.agent:OpenclawAgent", False, False),
+        ("claude-code", "agentos.agent.providers.claude_code.agent:ClaudeAgent", True, True),
+        ("codex", "agentos.agent.providers.codex.agent:CodexAgent", True, True),
+        ("copilot-cli", "agentos.agent.providers.copilot_cli.agent:CopilotAgent", True, True),
+        ("pi", "agentos.agent.providers.pi.agent:PiAgent", True, False),
+        ("gemini-cli", "agentos.agent.providers.gemini_cli.agent:GeminiAgent", False, False),
+        ("opencode", "agentos.agent.providers.opencode.agent:OpencodeAgent", False, False),
+        ("openclaw", "agentos.agent.providers.openclaw.agent:OpenclawAgent", False, False),
     ],
 )
 def test_capability_protocols_match_provider_capability_matrix(

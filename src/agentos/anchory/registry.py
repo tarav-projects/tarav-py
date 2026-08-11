@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from agentos._core.persistence import atomic_write_json
 
 if TYPE_CHECKING:
     from .core import AnchoryDepot, AnchoryResolution
@@ -206,19 +207,7 @@ def _entry_was_touched_recently(entry: dict[str, object]) -> bool:
 
 
 def _write_registry_atomic(payload: dict[str, object]) -> None:
-    path = registry_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        temp_path = Path(handle.name)
-        handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    os.replace(temp_path, path)
+    atomic_write_json(registry_path(), payload)
 
 
 __all__ = [

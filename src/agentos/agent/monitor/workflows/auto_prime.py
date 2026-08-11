@@ -57,7 +57,7 @@ from agentos.agent.monitor.workflows._common import (
 )
 from agentos.agent.monitor_log import append_monitor_log_event
 from agentos.agent.ping import AgentPingResult
-from agentos.agent.providers import resolve_account_runtime_agent
+from agentos.agent.providers.registry import resolve_account_runtime_agent
 
 
 _AUTO_PRIME_VERIFICATION_TIMEOUT_SEC = 900.0

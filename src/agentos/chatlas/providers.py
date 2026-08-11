@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from agentos.agent.config import canonical_chat_provider_specs
-from agentos.providers import ProviderFamily
+from agentos.agent.providers import ProviderFamily
 
 
 def supported_chatlas_provider_families() -> tuple[ProviderFamily, ...]:

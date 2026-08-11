@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from agentos._core.errors import CliError
-from agentos.agent.extractors import extract_chat_session
+from agentos.agent.providers.extraction import extract_chat_session
 
 from agentos.chatlas._payload_helpers import string_or_none
 from .normalization import NormalizationResult, normalization_metadata

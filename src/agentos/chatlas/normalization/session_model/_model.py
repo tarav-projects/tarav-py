@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agentos._core.errors import CliError
-from agentos.agent.extractors.codex import is_codex_rollout_path
+from agentos.agent.providers.codex.extractor import is_codex_rollout_path
 from agentos.agent.session_utils import primary_transcript_artifact
-from agentos.claude.session import ClaudeSession
-from agentos.codex.session import CodexSession
-from agentos.copilot.session import CopilotSession
+from agentos.agent.providers.claude_code.session import ClaudeSession
+from agentos.agent.providers.codex.session import CodexSession
+from agentos.agent.providers.copilot_cli.session import CopilotSession
 
 from ._claude import _normalize_claude_session
 from ._codex import _normalize_codex_session

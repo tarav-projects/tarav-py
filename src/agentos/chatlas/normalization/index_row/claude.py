@@ -65,7 +65,7 @@ def claude_activity(ctx: NormalizerContext) -> ModelFragment:
 
 
 def claude_created_at(ctx: NormalizerContext) -> ModelFragment:
-    # Mirrors `agentos.claude.session.ClaudeSession.created_timestamp`: the first
+    # Mirrors `agentos.agent.providers.claude_code.session.ClaudeSession.created_timestamp`: the first
     # dialog turn's timestamp (jsonl) or createdAt/lastActivityAt (json). This is a
     # different route from the visible-message summary path, reproduced faithfully.
     transcript = ctx.primary_transcript()
@@ -118,7 +118,7 @@ def _claude_record_timestamps(obj: dict[str, object]) -> list[float]:
 def _claude_created_timestamp(path: Path) -> float | None:
     try:
         if path.suffix == ".jsonl":
-            from agentos.agent.extractors.claude_code import (
+            from agentos.agent.providers.claude_code.extractor import (
                 extract_dialog_from_claude_code_session,
             )
             from agentos.agent.session_utils import created_timestamp_from_turns

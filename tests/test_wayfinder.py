@@ -6,10 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from agentos.index.wayfinder import create_index_wayfinder
+from agentos.poi.adapters.wayfinder import build_wayfinder_registry_linter_report
 from agentos.wayfinder import (
     InvalidWayfinderReference,
     UnsupportedWayfinderReference,
-    Wayfinder,
     WayfinderReference,
     WayfinderReferenceRoot,
     WayfinderRegistry,
@@ -19,7 +20,6 @@ from agentos.wayfinder import (
     parse_reference,
     poi_class_reference,
 )
-from agentos.wayfinder.poi import build_wayfinder_registry_linter_report
 
 
 def _write_depot(root: Path, *, block: str = "POI.Example") -> Path:
@@ -67,7 +67,7 @@ def test_index_block_resolution_requires_package_skill_root() -> None:
     )
 
     with pytest.raises(UnsupportedWayfinderReference, match="package.skill root"):
-        Wayfinder().resolve(reference)
+        create_index_wayfinder().resolve(reference)
 
 
 @pytest.mark.parametrize(
@@ -131,7 +131,9 @@ def test_index_resolution_returns_authoritative_block_content(
         relocation_hints=({"repository": "demo"},),
     )
 
-    result = Wayfinder(registry).resolve(poi_class_reference("demo-pkg", "POI.Example"))
+    result = create_index_wayfinder(registry).resolve(
+        poi_class_reference("demo-pkg", "POI.Example")
+    )
 
     assert isinstance(result, WayfinderResolutionResult)
     assert result.target["block_path"] == "POI.Example"
@@ -153,7 +155,7 @@ def test_resolution_pois_preserve_reference_trace_and_hints(
     registry = WayfinderRegistry()
     reference = index_block_reference("demo-pkg", "POI.Missing")
 
-    missing_registration = Wayfinder(registry).resolve(reference)
+    missing_registration = create_index_wayfinder(registry).resolve(reference)
     assert isinstance(missing_registration, WayfinderResolutionPOI)
     assert missing_registration.kind == "missing"
     assert missing_registration.reference == reference
@@ -167,13 +169,14 @@ def test_resolution_pois_preserve_reference_trace_and_hints(
     depot = _write_depot(tmp_path / "demo")
     root = WayfinderReferenceRoot(type="package.skill", id="demo-pkg")
     registry.register(root, depot, relocation_hints=("search demo",))
-    missing_block = Wayfinder(registry).resolve(reference)
+    missing_block = create_index_wayfinder(registry).resolve(reference)
     assert isinstance(missing_block, WayfinderResolutionPOI)
     assert missing_block.kind == "missing"
     assert missing_block.remembered_location == str(depot.resolve())
     assert missing_block.relocation_hints == ("search demo",)
     assert (
-        missing_block.instance_id == Wayfinder(registry).resolve(reference).instance_id
+        missing_block.instance_id
+        == create_index_wayfinder(registry).resolve(reference).instance_id
     )
 
     for path in sorted(depot.rglob("*"), reverse=True):
@@ -182,7 +185,7 @@ def test_resolution_pois_preserve_reference_trace_and_hints(
         elif path.is_dir():
             path.rmdir()
     depot.rmdir()
-    stale = Wayfinder(registry).resolve(reference)
+    stale = create_index_wayfinder(registry).resolve(reference)
     assert isinstance(stale, WayfinderResolutionPOI)
     assert stale.kind == "stale"
 
@@ -203,7 +206,7 @@ def test_duplicate_index_blocks_produce_ambiguous_poi(
         WayfinderReferenceRoot(type="package.skill", id="demo-pkg"), depot
     )
 
-    result = Wayfinder(registry).resolve(
+    result = create_index_wayfinder(registry).resolve(
         index_block_reference("demo-pkg", "POI.Example")
     )
 
@@ -237,6 +240,7 @@ def test_registry_check_reports_stale_location(
     report = build_wayfinder_registry_linter_report(
         check,
         registry_path=str(registry.path),
+        wayfinder=create_index_wayfinder(registry),
     ).as_dict()
     assert report["pois"][0]["class"]["address"] == (
         "Wayfinder.Registry.Linter/Location.Stale"

@@ -12,7 +12,7 @@ from agentos.agent.commands._shared import (
     _config_start_path,
 )
 from agentos.agent.primitives import AgentConfig
-from agentos.agent.providers import load_configured_agents
+from agentos.agent.providers.registry import load_configured_agents
 
 
 def _list_configured_agents(

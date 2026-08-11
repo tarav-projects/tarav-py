@@ -301,7 +301,7 @@ def test_failed_atomic_replace_preserves_shard_and_cleans_temporary_file(
     def fail_replace(_source: object, _target: object) -> None:
         raise OSError("replace failed")
 
-    monkeypatch.setattr("agentos.anchory.core.os.replace", fail_replace)
+    monkeypatch.setattr("agentos._core.persistence.os.replace", fail_replace)
     with pytest.raises(OSError, match="replace failed"):
         depot.amend("stable", {"value": 2})
 

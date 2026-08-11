@@ -4,12 +4,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
-import os
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Any, Literal
 
 from agentos._core.errors import CliError
+from agentos._core.persistence import atomic_write_text
 
 from .model import (
     IndexDepotModel,
@@ -118,19 +117,8 @@ def materialize_index_anchor_locator(
         generated_at=generated_at,
     )
     path = index_anchor_locator_path(depot_root, workspace_root=workspace_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
     serialized = json.dumps(payload, indent=2, sort_keys=True) + "\n"
-    with NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        handle.write(serialized)
-        temporary = Path(handle.name)
-    os.replace(temporary, path)
+    atomic_write_text(path, serialized)
     return {
         "path": str(path),
         "depot": payload["depot"],

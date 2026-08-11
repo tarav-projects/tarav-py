@@ -11,7 +11,7 @@ import time
 from typing import Any, Callable
 
 from agentos.agent.primitives import AgentConfig, SessionSource
-from agentos.agent.providers import agent_from_config
+from agentos.agent.providers.registry import agent_from_config
 from agentos.agent.sessions import _format_stats_timestamp
 from agentos.chatlas._cache_io import write_text_if_changed
 from agentos.chatlas.config import cold_session_cutoff_seconds_for_provider

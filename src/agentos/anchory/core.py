@@ -6,13 +6,13 @@ from collections import OrderedDict
 import hashlib
 import fcntl
 import json
-import os
 import re
-import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterator, Mapping, Pattern
+
+from agentos._core.persistence import atomic_write_json
 
 
 GLOBAL_NAMESPACE = "global"
@@ -801,23 +801,4 @@ def _read_shard(path: Path) -> dict[str, dict[str, object]]:
 def _write_shard_atomic(
     path: Path, records: Mapping[str, Mapping[str, object]]
 ) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            temp_path = Path(handle.name)
-            handle.write(json.dumps(records, indent=2, sort_keys=True) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp_path, path)
-        temp_path = None
-    finally:
-        if temp_path is not None and temp_path.exists():
-            temp_path.unlink()
+    atomic_write_json(path, records)

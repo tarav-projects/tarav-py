@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agentos.index.wayfinder import create_index_wayfinder
 from agentos.poi import (
     POIInstance,
     POILinterReport,
@@ -50,7 +51,8 @@ def build_anchory_linter_report(
 ) -> POILinterReport:
     return POILinterReport(
         poi_report=build_poi_report(
-            anchory_finding_to_poi(finding) for finding in result.findings
+            (anchory_finding_to_poi(finding) for finding in result.findings),
+            wayfinder=create_index_wayfinder(),
         ),
         summary={
             "poi_count": len(result.findings),

@@ -500,7 +500,7 @@ def _run_product_for_row(
     force: bool,
     root: Path,
 ) -> dict[str, object]:
-    from agentos.agent.providers import resolve_agent
+    from agentos.agent.providers.registry import resolve_agent
     from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 
     context = _context_from_row(product=product, chatlas_root=root, session=dict(row))

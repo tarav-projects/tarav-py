@@ -18,16 +18,15 @@ from .catalog import POICatalog, POICatalogError
 from .model import reference_sugar
 
 
-def _cmd_explain(args: argparse.Namespace) -> int:
-    configured_catalog: POICatalog | None = args._poi_catalog
+def _cmd_explain(
+    args: argparse.Namespace,
+    *,
+    catalog: POICatalog,
+    wayfinder: Wayfinder,
+) -> int:
     try:
-        catalog = (
-            configured_catalog
-            if configured_catalog is not None
-            else POICatalog.discover()
-        )
         reference = _class_reference(args.class_name, catalog)
-        result = Wayfinder().resolve(reference)
+        result = wayfinder.resolve(reference)
     except (POICatalogError, WayfinderError) as exc:
         raise CliError(str(exc)) from exc
 
@@ -55,7 +54,8 @@ def _class_reference(value: str, catalog: POICatalog) -> WayfinderReference:
 def register_poi_commands(
     subparsers: argparse._SubParsersAction,
     *,
-    catalog: POICatalog | None = None,
+    catalog: POICatalog,
+    wayfinder: Wayfinder,
 ) -> None:
     parser = subparsers.add_parser(
         "poi",
@@ -75,7 +75,13 @@ def register_poi_commands(
         action="store_true",
         help="Emit the complete structured Wayfinder resolution.",
     )
-    explain.set_defaults(handler=_cmd_explain, _poi_catalog=catalog)
+    explain.set_defaults(
+        handler=lambda args: _cmd_explain(
+            args,
+            catalog=catalog,
+            wayfinder=wayfinder,
+        )
+    )
 
 
 __all__ = ["register_poi_commands"]

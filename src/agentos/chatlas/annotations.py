@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from agentos._core.persistence import atomic_write_text
 from agentos.chatlas.paths import default_chatlas_root
 
 ANNOTATIONS_ROOT = Path("annotations")
@@ -159,9 +159,7 @@ def _write_shard_atomic(shard_path: Path, sessions: dict[str, dict[str, Any]]) -
         for ih in sorted(sessions)
     ]
     text = "\n".join(lines) + ("\n" if lines else "")
-    tmp_path = shard_path.with_suffix(shard_path.suffix + ".tmp")
-    tmp_path.write_text(text, encoding="utf-8")
-    os.replace(tmp_path, shard_path)
+    atomic_write_text(shard_path, text)
 
 
 def _coerce_tag_list(value: Any) -> list[str]:

@@ -13,7 +13,7 @@ from agentos.index.linter import (
     render_linter_text,
     run_linter,
 )
-from agentos.poi import POICatalog
+from agentos.index.poi_catalog import discover_poi_catalog
 from agentos.testing import AgentosTestEnvironment
 from agentos.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
 from agentos.cli.cli import main
@@ -555,7 +555,7 @@ def test_chatlas_tag_poi_renders_its_index_backed_class(approval_setup) -> None:
         ctx["index_depot"],
         chatlas_grounding_provenance_check,
     )
-    catalog = POICatalog.discover()
+    catalog = discover_poi_catalog()
     payload = json.loads(render_linter_json(state, catalog=catalog))
     text = render_linter_text(state, catalog=catalog)
 

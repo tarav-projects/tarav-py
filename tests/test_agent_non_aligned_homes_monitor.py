@@ -67,7 +67,7 @@ def _scenario(home_root: Path, homes_dir: Path) -> tuple[Path, Path, Path]:
 
     # active artifact == the aligned home's live secret → aligned aligns, drifted drifts
     from agentos.agent import auth_registry as R
-    from agentos.claude.auth_method import ClaudeAuthMethod
+    from agentos.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     auth = ClaudeAuthMethod().read_auth_data(aligned)
     artifact_id = R.store_artifact("claude-code", auth)
@@ -148,7 +148,7 @@ def test_workflow_omits_non_aligned_block_when_all_aligned(
     _settings(home_root, account="om", uuid=UUID)
     _profile(home_root, "claude-om", [aligned], ["om/browser"])
     from agentos.agent import auth_registry as R
-    from agentos.claude.auth_method import ClaudeAuthMethod
+    from agentos.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     artifact_id = R.store_artifact("claude-code", ClaudeAuthMethod().read_auth_data(aligned))
     R.set_active("claude-code", "om", "browser", artifact_id)

@@ -5,7 +5,9 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -163,10 +165,6 @@ def test_show_on_an_unknown_slug_errors(tmp_path: Path) -> None:
 
 
 # $kw: ^test-workspaces-sweep --from Run.Workspace --from Volatile.Surface --note [PR] the one-way arrow is what makes deletion routine rather than a decision requiring an audit --supp ^c20260809-83u ^<anchor-on-landing>
-
-import os
-import time
-
 
 def _age(path: Path, days: int) -> None:
     old = time.time() - days * 86400

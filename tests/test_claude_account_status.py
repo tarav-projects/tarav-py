@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-import agentos.claude.keychain as claude_keychain
-import agentos.claude.account_status as claude_account_status
+import agentos.agent.providers.claude_code.keychain as claude_keychain
+import agentos.agent.providers.claude_code.account_status as claude_account_status
 from agentos.agent.account_status import (
     AccountLimit,
     AgentAccountContext,
     fresh_usage_record_metadata,
 )
-from agentos.claude.agent import ClaudeAgent
+from agentos.agent.providers.claude_code.agent import ClaudeAgent
 from agentos.testing import AgentosTestEnvironment
 
 from agentos.testing import seed_claude_account, write_claude_home

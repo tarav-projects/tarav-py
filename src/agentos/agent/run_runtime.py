@@ -7,7 +7,7 @@ from typing import Literal
 
 from agentos._core.errors import CliError
 from agentos._core.process import ProcessError, ProcessMode, run_process
-from agentos.providers import canonical_provider_family_for_name
+from agentos.agent.providers import canonical_provider_family_for_name
 
 # Provider CLI invocation constants: how each provider's command line accepts a
 # model and a prompt. These are fixed properties of each provider's CLI contract

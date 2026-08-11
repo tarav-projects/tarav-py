@@ -152,7 +152,7 @@ def test_query_selector_normalizes_explicit_offset_at_cli_boundary() -> None:
 def test_event_pattern_timestamp_is_normalized_at_cli_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from agentos.chatlas import commands
+    from agentos.chatlas import _command_support
 
     captured: dict[str, object] = {}
 
@@ -161,7 +161,7 @@ def test_event_pattern_timestamp_is_normalized_at_cli_boundary(
         captured["kwargs"] = kwargs
         return {"status": "ok"}
 
-    monkeypatch.setattr(commands, "chatlas_events_query", fake_query)
+    monkeypatch.setattr(_command_support, "chatlas_events_query", fake_query)
     args = argparse.Namespace(
         pattern_json=json.dumps(
             {"event": {"timestamp_after": "2026-08-07T12:00:00+02:00"}}
@@ -183,7 +183,7 @@ def test_event_pattern_timestamp_is_normalized_at_cli_boundary(
         output="json",
     )
 
-    assert commands._cmd_chatlas_events_query(args) == 0
+    assert _command_support._cmd_chatlas_events_query(args) == 0
     assert captured["pattern"] == {
         "event": {"timestamp_after": "2026-08-07T10:00:00Z"}
     }

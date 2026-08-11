@@ -12,7 +12,7 @@ from agentos.agent.commands._shared import (
 )
 from agentos.agent.ping import AgentPingError
 from agentos.agent.primitives import AgentConfig, RunCapable
-from agentos.agent.providers import resolve_agent
+from agentos.agent.providers.registry import resolve_agent
 from agentos.agent.run_runtime import AgentCommandConfig, AgentRunConfig
 
 

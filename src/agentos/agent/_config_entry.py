@@ -17,7 +17,7 @@ from agentos.agent.primitives import (
     default_agent_ping_config,
 )
 from agentos.agent.run_runtime import HARNESS_INJECTED_ENV_ALLOWLIST
-from agentos.providers import (
+from agentos.agent.providers import (
     ProviderHomeAnchor,
     canonical_provider_families,
     canonical_provider_family_for_name,
@@ -243,13 +243,13 @@ def agent_config_from_config_entry(
 
 
 def validate_provider_profile(provider: str, profile_json: dict[str, object]) -> None:
-    from agentos.claude.agent import validate_profile as _claude
-    from agentos.codex.agent import validate_profile as _codex
-    from agentos.copilot.agent import validate_profile as _copilot
-    from agentos.pi.agent import validate_profile as _pi
-    from agentos.gemini.agent import validate_profile as _gemini
-    from agentos.openclaw.agent import validate_profile as _openclaw
-    from agentos.opencode.agent import validate_profile as _opencode
+    from agentos.agent.providers.claude_code.agent import validate_profile as _claude
+    from agentos.agent.providers.codex.agent import validate_profile as _codex
+    from agentos.agent.providers.copilot_cli.agent import validate_profile as _copilot
+    from agentos.agent.providers.pi.agent import validate_profile as _pi
+    from agentos.agent.providers.gemini_cli.agent import validate_profile as _gemini
+    from agentos.agent.providers.openclaw.agent import validate_profile as _openclaw
+    from agentos.agent.providers.opencode.agent import validate_profile as _opencode
 
     _dispatch: dict[str, object] = {
         "claude-code": _claude,

@@ -134,7 +134,7 @@ def test_capture_home_dry_run_writes_nothing(
     assert not R.captures_path("codex").exists()
     assert R.read_artifact("codex", result.artifact_id) is None
     # the reported artifact_id still equals the real content id
-    from agentos.codex.auth_method import CodexAuthMethod
+    from agentos.agent.providers.codex.auth_method import CodexAuthMethod
     assert result.artifact_id == CodexAuthMethod().read_auth_data(home).content_id()
 
 

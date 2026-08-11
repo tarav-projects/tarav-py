@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from agentos.home.providers import home_provider_for_name
-from agentos.providers import ProviderFamily, ProviderHomeSpec
+from agentos.agent.providers.homes import home_provider_for_name
+from agentos.agent.providers import ProviderFamily, ProviderHomeSpec
 
 
 AGENT_ACCOUNT_POLICY_PROFILE_DEFAULT = "profile-default"

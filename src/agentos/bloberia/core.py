@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import fcntl
 import json
-import os
-import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -14,6 +12,7 @@ from uuid import UUID
 
 from agentos._core.clock import iso_z
 from agentos._core.ids import generate_uuid4_string
+from agentos._core.persistence import atomic_write_json
 
 
 ENVELOPE_KEY = "_bloberia"
@@ -414,23 +413,4 @@ def _record_from_payload(
 
 
 def _write_json_atomic(path: Path, payload: Mapping[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            temp_path = Path(handle.name)
-            handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp_path, path)
-        temp_path = None
-    finally:
-        if temp_path is not None and temp_path.exists():
-            temp_path.unlink()
+    atomic_write_json(path, payload)

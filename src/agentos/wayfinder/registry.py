@@ -4,13 +4,13 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
 from agentos._core.clock import utc_now_iso
+from agentos._core.persistence import atomic_write_json
 from agentos._core.project import agentos_home_dir
 
 from .model import WayfinderError, WayfinderReferenceRoot
@@ -278,18 +278,7 @@ def _normalize_json(value: object) -> object:
 
 
 def _write_json_atomic(path: Path, payload: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        temp_path = Path(handle.name)
-        handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    os.replace(temp_path, path)
+    atomic_write_json(path, payload)
 
 
 __all__ = [

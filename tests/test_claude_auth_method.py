@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from agentos.agent.auth_method import AuthData
-from agentos.claude.auth_method import ClaudeAuthMethod
+from agentos.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
 
 @pytest.fixture(autouse=True)

@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 
 from agentos.anchory.poi import ANCHORY_POI_CLASSES
-from agentos.bloberia.poi import BLOBERIA_POI_CLASSES
+from agentos.poi.adapters.bloberia import BLOBERIA_POI_CLASSES
 from agentos.index import _linter_parser_checks, _linter_structure
-from agentos.mdblocks.poi import MDBLOCKS_POI_CLASSES
-from agentos.poi import POICatalog
+from agentos.index.poi_catalog import discover_poi_catalog
+from agentos.poi.adapters.mdblocks import MDBLOCKS_POI_CLASSES
 from agentos.skillware.poi import SKILLWARE_POI_CLASSES
 from agentos.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
-from agentos.wayfinder.poi import WAYFINDER_REGISTRY_POI_CLASSES
+from agentos.poi.adapters.wayfinder import WAYFINDER_REGISTRY_POI_CLASSES
 from agentos.canvas.poi import CANVAS_RENDER_POI_CLASSES
 from agentos.chatlas import index_checks
 from agentos.chatlas.poi import CHATLAS_COMMIT_POI_CODES
@@ -75,7 +75,7 @@ def poi_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> WayfinderRe
 def test_included_runtime_classes_have_discoverable_catalog_blocks(
     poi_registry: WayfinderRegistry,
 ) -> None:
-    catalog = POICatalog.discover(registry=poi_registry)
+    catalog = discover_poi_catalog(registry=poi_registry)
 
     catalog.require_complete(_runtime_classes())
 

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
-import os
 from pathlib import Path
 import re
-import tempfile
 from typing import Any
 
 from agentos._core.errors import CliError
+from agentos._core.persistence import atomic_write_json
 from agentos._core.project import find_agentos_project_root
 from agentos.index.linter import LinterCheck, LinterFinding, allowed
 from agentos.index.model import canonical_index_line_statement, parse_depot
@@ -523,19 +522,7 @@ def _reset_cursors(root: Path, depot: Path) -> None:
 
 
 def _write_json_atomic(path: Path, payload: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        json.dump(payload, handle, indent=2)
-        handle.write("\n")
-        temporary = Path(handle.name)
-    os.replace(temporary, path)
+    atomic_write_json(path, payload, sort_keys=False)
 
 
 __all__ = [

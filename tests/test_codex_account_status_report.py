@@ -65,7 +65,7 @@ def test_codex_status_aligned_and_unlisted(monkeypatch: pytest.MonkeyPatch, tmp_
 
     # capture + activate the aligned home's auth.json
     from agentos.agent import auth_registry as R
-    from agentos.codex.auth_method import CodexAuthMethod
+    from agentos.agent.providers.codex.auth_method import CodexAuthMethod
 
     auth = CodexAuthMethod().read_auth_data(aligned)
     artifact_id = R.store_artifact("codex", auth)

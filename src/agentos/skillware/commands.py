@@ -9,6 +9,7 @@ from pathlib import Path
 from agentos._core.errors import CliError
 from agentos._core.json_input import load_json_object_arg
 from agentos.bloberia import BloberiaDepot
+from agentos.index.wayfinder import create_index_wayfinder
 from agentos.poi import (
     POILinterReport,
     add_check_selection_args,
@@ -259,7 +260,10 @@ def _cmd_skillware_project_check(args: argparse.Namespace) -> int:
         "project_poi_ids": [poi.instance_id for poi in project_pois],
     }
     linter_report = POILinterReport(
-        poi_report=build_poi_report(all_pois),
+        poi_report=build_poi_report(
+            all_pois,
+            wayfinder=create_index_wayfinder(),
+        ),
         diagnostics=diagnostics,
         summary={
             "packages": len(report.packages),
@@ -380,7 +384,10 @@ def _cmd_skillware_check(args: argparse.Namespace) -> int:
         if diagnostic.evidence.get("compatibility_poi") in visible_ids
     )
     linter_report = POILinterReport(
-        poi_report=build_poi_report(pois),
+        poi_report=build_poi_report(
+            pois,
+            wayfinder=create_index_wayfinder(),
+        ),
         diagnostics=diagnostics,
         summary={
             "files": len(report.entries),
@@ -687,7 +694,10 @@ def _cmd_edition_history_check(args: argparse.Namespace) -> int:
         raise CliError(str(exc)) from exc
     pois = edition_history_findings_to_pois(result.findings)
     linter_report = POILinterReport(
-        poi_report=build_poi_report(pois),
+        poi_report=build_poi_report(
+            pois,
+            wayfinder=create_index_wayfinder(),
+        ),
         summary={
             "target_count": len(targets),
             "poi_count": len(pois),

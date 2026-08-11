@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from agentos.skw import extract_mentions
+from agentos.skw.network import extract_mentions
 
 from ._build_core import (
     BUILD_DIR,

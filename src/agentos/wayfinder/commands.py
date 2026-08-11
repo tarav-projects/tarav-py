@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
 from agentos._core.errors import CliError
 
@@ -16,9 +18,17 @@ from .model import (
     WayfinderResolutionPOI,
     parse_reference,
 )
-from .registry import WayfinderRegistry
+from .registry import WayfinderRegistry, WayfinderRegistryCheck
 from .resolver import Wayfinder
-from .poi import build_wayfinder_registry_linter_report
+
+
+class WayfinderCheckReport(Protocol):
+    def as_dict(self) -> dict[str, object]: ...
+
+
+WayfinderCheckReportBuilder = Callable[
+    [WayfinderRegistryCheck, str], WayfinderCheckReport
+]
 
 
 def _cmd_register(args: argparse.Namespace) -> int:
@@ -55,7 +65,7 @@ def _cmd_register(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_resolve(args: argparse.Namespace) -> int:
+def _cmd_resolve(args: argparse.Namespace, *, wayfinder: Wayfinder) -> int:
     if bool(args.reference) == bool(args.reference_json):
         raise CliError("provide exactly one reference or --reference-json")
     try:
@@ -64,20 +74,24 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
             if args.reference_json
             else parse_reference(args.reference)
         )
-        result = Wayfinder().resolve(reference)
+        result = wayfinder.resolve(reference)
     except WayfinderError as exc:
         raise CliError(str(exc)) from exc
     _print_json(result.as_dict())
     return 1 if isinstance(result, WayfinderResolutionPOI) else 0
 
 
-def _cmd_check(args: argparse.Namespace) -> int:
+def _cmd_check(
+    args: argparse.Namespace,
+    *,
+    report_builder: WayfinderCheckReportBuilder,
+) -> int:
     registry = WayfinderRegistry()
     result = registry.check()
     _print_json(
-        build_wayfinder_registry_linter_report(
+        report_builder(
             result,
-            registry_path=str(registry.path),
+            str(registry.path),
         ).as_dict()
     )
     return 0 if result.ok else 1
@@ -85,6 +99,9 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 def register_wayfinder_commands(
     subparsers: argparse._SubParsersAction,
+    *,
+    wayfinder: Wayfinder,
+    check_report_builder: WayfinderCheckReportBuilder,
 ) -> None:
     parser = subparsers.add_parser(
         "wayfinder",
@@ -137,13 +154,20 @@ def register_wayfinder_commands(
         "--reference-json",
         help="Canonical Wayfinder.Reference JSON object.",
     )
-    resolve.set_defaults(handler=_cmd_resolve)
+    resolve.set_defaults(
+        handler=lambda args: _cmd_resolve(args, wayfinder=wayfinder)
+    )
 
     check = commands.add_parser(
         "check",
         help="Check remembered root locations without repairing them.",
     )
-    check.set_defaults(handler=_cmd_check)
+    check.set_defaults(
+        handler=lambda args: _cmd_check(
+            args,
+            report_builder=check_report_builder,
+        )
+    )
 
 
 def _load_json(value: str, label: str) -> object:

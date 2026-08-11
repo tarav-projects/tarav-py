@@ -376,14 +376,26 @@ def build_linter_poi_report(
     catalog: POICatalog | None = None,
 ) -> POIReport:
     view = _scoped_view(state)
-    selected_catalog = catalog if catalog is not None else POICatalog.discover()
+    if catalog is None:
+        from .poi_catalog import discover_poi_catalog
+
+        selected_catalog = discover_poi_catalog()
+    else:
+        selected_catalog = catalog
+    from .wayfinder import create_index_wayfinder
+
     return build_poi_report(
-        finding_to_poi(
-            finding,
-            selected_catalog,
-            package_id=state.finding_poi_package_ids.get(id(finding), "agentos-pkg"),
-        )
-        for finding in view["findings"]
+        (
+            finding_to_poi(
+                finding,
+                selected_catalog,
+                package_id=state.finding_poi_package_ids.get(
+                    id(finding), "agentos-pkg"
+                ),
+            )
+            for finding in view["findings"]
+        ),
+        wayfinder=create_index_wayfinder(),
     )
 
 

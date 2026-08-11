@@ -219,7 +219,7 @@ def test_hook_cli_can_be_suppressed_for_internal_agent_processes(
     register_hook_commands(
         subparsers,
         registry=registry,
-        daemon_submitter=submitted.append,
+        deferred_submitter=submitted.append,
     )
     monkeypatch.setenv(AGENTOS_HOOKS_DISABLED_ENV, "1")
 
@@ -243,7 +243,7 @@ def test_hook_cli_submits_once_only_when_daemon_callbacks_exist() -> None:
     register_hook_commands(
         subparsers,
         registry=registry,
-        daemon_submitter=submitted.append,
+        deferred_submitter=submitted.append,
     )
 
     assert (

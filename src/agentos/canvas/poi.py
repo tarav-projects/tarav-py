@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agentos.index.wayfinder import create_index_wayfinder
 from agentos.poi import POIInstance, POILinterReport, POILocation, build_poi_report
 from agentos.wayfinder import poi_class_reference
 
@@ -41,7 +42,10 @@ def build_canvas_linter_report(
         for ordinal, error in enumerate(errors)
     )
     return POILinterReport(
-        poi_report=build_poi_report(instances),
+        poi_report=build_poi_report(
+            instances,
+            wayfinder=create_index_wayfinder(),
+        ),
         summary={
             "poi_count": len(instances),
             "action_count": len(actions),

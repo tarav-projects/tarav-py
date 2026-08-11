@@ -55,4 +55,20 @@ def append_daemon_log(
     return path
 
 
-__all__ = ["append_daemon_log", "daemon_log_path"]
+def report_hook_delivery_failure(
+    invocation: HookInvocation,
+    error: BaseException,
+) -> None:
+    append_daemon_log(
+        "hook_delivery_failed",
+        event_id=getattr(error, "event_id", None),
+        invocation=invocation,
+        error=error,
+    )
+
+
+__all__ = [
+    "append_daemon_log",
+    "daemon_log_path",
+    "report_hook_delivery_failure",
+]

@@ -12,8 +12,8 @@ from pathlib import Path
 
 from agentos.agent.account_status import AccountIdentity
 from agentos.agent.auth_method import AuthData, AuthMethod
-from agentos.claude.auth_method import ClaudeAuthMethod
-from agentos.codex.auth_method import CodexAuthMethod
+from agentos.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+from agentos.agent.providers.codex.auth_method import CodexAuthMethod
 
 _METHODS: dict[tuple[str, str], AuthMethod] = {
     (m.provider, m.name): m for m in (CodexAuthMethod(), ClaudeAuthMethod())

@@ -34,7 +34,7 @@ from agentos.agent.account_status import AgentAccountContext
 from agentos.agent.ping import AgentPingResult
 from agentos.agent.primitives import AgentPingConfig, RunnableMixin
 from agentos.agent.run_runtime import AgentRunResult
-import agentos.claude.keychain as claude_keychain
+import agentos.agent.providers.claude_code.keychain as claude_keychain
 from agentos.testing import AgentosTestEnvironment
 
 from agentos.testing import codex_auth_json, seed_claude_account, seed_codex_account, write_claude_home

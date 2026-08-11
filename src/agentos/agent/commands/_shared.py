@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from agentos._core.project import normalize_project_target
-from agentos.providers import canonical_provider_families
+from agentos.agent.providers import canonical_provider_families
 
 _AGENT_PROVIDER_CHOICES = tuple(
     provider.family for provider in canonical_provider_families()

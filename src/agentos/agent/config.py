@@ -15,7 +15,7 @@ from agentos._core.project import (
 )
 from agentos._core.sequences import _unique_paths
 from agentos.agent.primitives import AgentConfig, default_agent_ping_config
-from agentos.providers import (
+from agentos.agent.providers import (
     ProviderHomeAnchor,
     canonical_provider_families,
     canonical_provider_family_for_name,

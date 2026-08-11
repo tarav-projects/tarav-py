@@ -121,14 +121,14 @@ def _find_index_entry(path: Path, target_id: str) -> dict[str, object] | None:
 
 
 def codex_created_at(ctx: NormalizerContext) -> ModelFragment:
-    # Mirrors `agentos.codex.session.CodexSession.created_timestamp`: first dialog
+    # Mirrors `agentos.agent.providers.codex.session.CodexSession.created_timestamp`: first dialog
     # turn timestamp from the rollout dialog route.
     transcript = ctx.primary_transcript()
     if transcript is None or not transcript.path.exists():
         return {}
     timestamp = None
     try:
-        from agentos.agent.extractors.codex import extract_dialog_from_codex_rollout
+        from agentos.agent.providers.codex.extractor import extract_dialog_from_codex_rollout
         from agentos.agent.session_utils import created_timestamp_from_turns
 
         timestamp = created_timestamp_from_turns(

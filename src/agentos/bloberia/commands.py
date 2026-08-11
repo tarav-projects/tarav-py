@@ -3,13 +3,23 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
 from agentos._core.errors import CliError
 from agentos._core.json_input import load_json_arg, load_json_object_arg
 
-from .core import BloberiaDepot, BloberiaError, BloberiaRecord
-from .poi import build_bloberia_linter_report
+from .core import BloberiaCheckResult, BloberiaDepot, BloberiaError, BloberiaRecord
+
+
+class BloberiaCheckReport(Protocol):
+    def as_dict(self) -> dict[str, object]: ...
+
+
+BloberiaCheckReportBuilder = Callable[
+    [BloberiaCheckResult, Path], BloberiaCheckReport
+]
 
 
 def _depot(args: argparse.Namespace) -> BloberiaDepot:
@@ -79,10 +89,14 @@ def _cmd_query(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_check(args: argparse.Namespace) -> int:
+def _cmd_check(
+    args: argparse.Namespace,
+    *,
+    report_builder: BloberiaCheckReportBuilder,
+) -> int:
     depot = _depot(args)
     result = depot.check()
-    _print_json(build_bloberia_linter_report(result, depot=depot.root).as_dict())
+    _print_json(report_builder(result, depot.root).as_dict())
     return 0 if result.ok else 1
 
 
@@ -112,6 +126,8 @@ def _add_value_arguments(parser: argparse.ArgumentParser) -> None:
 
 def register_bloberia_commands(
     subparsers: argparse._SubParsersAction,
+    *,
+    check_report_builder: BloberiaCheckReportBuilder,
 ) -> None:
     parser = subparsers.add_parser(
         "bloberia",
@@ -154,7 +170,12 @@ def register_bloberia_commands(
 
     check_parser = commands.add_parser("check", help="Check depot structure.")
     _add_depot_argument(check_parser)
-    check_parser.set_defaults(handler=_cmd_check)
+    check_parser.set_defaults(
+        handler=lambda args: _cmd_check(
+            args,
+            report_builder=check_report_builder,
+        )
+    )
 
 
-__all__ = ["register_bloberia_commands"]
+__all__ = ["BloberiaCheckReportBuilder", "register_bloberia_commands"]

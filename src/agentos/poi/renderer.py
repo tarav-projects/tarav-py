@@ -84,7 +84,7 @@ class POIReport:
 def build_poi_report(
     instances: Iterable[POIInstance],
     *,
-    wayfinder: Wayfinder | None = None,
+    wayfinder: Wayfinder,
 ) -> POIReport:
     grouped: dict[str, list[POIInstance]] = {}
     references: dict[str, WayfinderReference] = {}
@@ -93,11 +93,10 @@ def build_poi_report(
         grouped.setdefault(key, []).append(instance)
         references.setdefault(key, instance.class_reference)
 
-    resolver = wayfinder or Wayfinder()
     groups: list[POIClassGroup] = []
     for key, class_instances in grouped.items():
         reference = references[key]
-        documentation = resolver.resolve(reference)
+        documentation = wayfinder.resolve(reference)
         description = (
             _description_from(documentation)
             if isinstance(documentation, WayfinderResolutionResult)

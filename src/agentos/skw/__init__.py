@@ -1,4 +1,4 @@
-# $kw: ^skw-network-api --from POI.System --from POI.Linter --note [DF] Skw.Network domain findings remain independent of POI presentation ^c20260729-49u
+# $kw: ^skw-network-api --from Dependency.Profile.Split --note [DF] Skw.Network is a shared domain module consumed independently by Index and Skillware --supp ^c20260811-62u
 from .network import (
     NetworkFinding,
     SurfaceProvider,

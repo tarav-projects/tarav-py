@@ -16,7 +16,9 @@
 
 - `agentos-py` is the single maintained Python distribution. It contains the runtime, umbrella CLI, daemon, Chatlas, Canvas, Iterante, and Iterante v2 beneath `src/agentos/`.
 - `agentos.runtime.create_runtime()` is the composition root. CLI and daemon adapters import it; neither spawns the umbrella CLI to perform subsystem work.
-- Public subsystem namespaces are `agentos.chatlas`, `agentos.canvas`, `agentos.iterante`, and `agentos.iterante2`. Internal code uses these namespaces directly; do not recreate the retired top-level packages.
+- Cohesive systems remain importable namespaces. Provider-neutral orchestration lives in `agentos.agent`; every concrete provider adapter lives under `agentos.agent.providers.<provider>`. Reusable CLI primitives live under `agentos.stdlib`. Do not recreate retired top-level provider or stdlib packages.
+- `ARCHITECTURE.md` is the maintained namespace and dependency-direction map. Architecture changes must update it and `tests/test_architecture.py` together.
+- `agentos._core.persistence` owns the shared fsynced atomic text/JSON replacement contract. Callers retain schema validation, domain locking, and error translation.
 - The distribution owns four scripts: `agentos`, `agentos-daemon`, `iterante`, and `iterante2`.
 - The maintained distribution must resolve from ordinary package sources without sibling-repository path dependencies.
 
@@ -80,7 +82,7 @@
 - `src/agentos/wayfinder/` owns portable `Wayfinder.Reference` models, global root-location memory, composable resolution, traces, and structured resolution POIs.
 - Canonical references are strict versioned JSON. `index://<package-id>/<block-path>` is sugar for the first `index.block` reference type and must parse back to that canonical object.
 - The global registry lives at `~/.agentos/wayfinder/registry.json` (`AGENTOS_WAYFINDER_REGISTRY` override). It stores a root's last verified absolute location plus open relocation hints; the location is operational evidence, never resource identity or authority.
-- `Wayfinder` resolves roots through the registry and delegates the remaining address to the existing domain model. The `index.block` resolver uses `agentos.index.model.parse_depot`; it does not implement a second Index parser.
+- `Wayfinder` resolves references through injected domain resolver functions. Index owns the `index.block` resolver in `agentos.index.wayfinder`; it uses `agentos.index.model.parse_depot` and does not implement a second parser. Runtime composes it with the generic Wayfinder dispatcher.
 - `agentos wayfinder register|resolve|check` is a thin structured-JSON CLI. Index depot dependencies now resolve package identities from Wayfinder, while `index.default_depends` remains policy in the global Agentos config.
 - Agents may inspect and discover resources directly. Wayfinder is deterministic code infrastructure, not a constraint on agent exploration.
 
@@ -88,7 +90,7 @@
 
 - `src/agentos/poi/` owns the shared `POI.Instance`, `POI.Catalog`, `POI.Linter.Report`, diagnostics channel, check-selection utilities, grouped renderer, and `POI.Explain` command machinery.
 - A POI class identity is its canonical Wayfinder `index.block` reference. Producer finding codes are catalog lookup keys, not a second class identity.
-- `POI.Catalog.discover()` derives class registrations from the dedicated `poi/` Index chapters of Package.Skill roots registered in Wayfinder; blocks in other chapters are not POI classes.
+- `agentos.index.poi_catalog.discover_poi_catalog()` derives class registrations from the dedicated `poi/` Index chapters of Package.Skill roots registered in Wayfinder; the lower-level `POI.Catalog` model does not import Index.
 - `POI.Instance.create` derives a stable occurrence ID from class identity, target, and concrete evidence; presentation wording and severity do not churn identity.
 - Included validators retain domain findings only behind one reporting adapter; public linter JSON uses `poi_classes`, `pois`, `diagnostics`, `summary`, and `domain`.
 - Skillware uses producer-established 10-character instance IDs so existing blessings and lock records remain valid. Parser failures additionally occupy the separate diagnostics channel.
@@ -96,6 +98,7 @@
 - Renderers resolve each class once, present its authoritative description once, then list compact instances. A class-resolution POI remains visible beside the original instances.
 - The Index linter keeps `LinterFinding` inside check execution and converts scoped findings at the reporting boundary. Each `LinterCheck` declares its POI-owning package; an undocumented finding still produces the expected class reference so documentation failure remains visible. Public JSON uses `poi_classes` and `pois`, not a duplicate `findings` representation.
 - `agentos poi explain <class> [--json]` accepts a discovered finding code or a canonical/sugar Wayfinder reference. `agentos.cli` discovers one index-backed catalog and injects it into both explanation and Index rendering.
+- Chatlas command ownership is split at the CLI boundary: `chatlas/commands.py` composes the public parser tree while `chatlas/_command_support.py` owns command actions and shared argument translation.
 
 ## Anchory System
 

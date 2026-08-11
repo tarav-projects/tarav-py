@@ -9,7 +9,7 @@ from agentos.index.model import (
     Diagnostic,
     RouterEntry as ModelRouterEntry,
 )
-from agentos.mdblocks.core import (
+from agentos.stdlib.mdblocks.core import (
     MarkdownScanConfig,
     lint_markdown_blocks,
     scan_markdown_blocks,

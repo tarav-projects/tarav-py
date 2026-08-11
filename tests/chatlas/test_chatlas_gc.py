@@ -8,7 +8,7 @@ import time
 import pytest
 
 from agentos.agent.primitives import AgentConfig, SessionSource
-from agentos.agent.providers import agent_from_config
+from agentos.agent.providers.registry import agent_from_config
 from agentos.testing import AgentosTestEnvironment
 from agentos.cli.cli import main
 from agentos.chatlas.provider_home_adapter import ChatlasProviderInstance

@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 from agentos._core.errors import CliError
-from agentos.claude.session import read_claude_project_session
+from agentos.agent.providers.claude_code.session import read_claude_project_session
 
 
 SUPPORTED_SESSION_COPY_PROVIDERS = ("claude-code",)
