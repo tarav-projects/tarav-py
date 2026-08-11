@@ -84,7 +84,7 @@ def test_daemon_start_launches_detached_child_and_waits_for_readiness(
     )
     monkeypatch.setattr(daemon_commands.subprocess, "Popen", popen)
     monkeypatch.setattr(daemon_commands.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(daemon_commands, "_agentos_executable", lambda: "/bin/agentos")
+    monkeypatch.setattr(daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon")
 
     args = _daemon_parser().parse_args(["daemon", "start", "--json"])
 
@@ -95,7 +95,7 @@ def test_daemon_start_launches_detached_child_and_waits_for_readiness(
     }
     assert launched == [
         (
-            ["/bin/agentos", "daemon", "run"],
+            ["/bin/agentos-daemon"],
             {
                 "close_fds": True,
                 "start_new_session": True,
@@ -172,7 +172,7 @@ def test_daemon_install_and_uninstall_commands_are_exposed(
     monkeypatch.setattr(daemon_commands.sys, "platform", "darwin")
     statuses = iter([None, {"status": "running", "pid": 1357}, None])
     monkeypatch.setattr(daemon_commands, "daemon_status", lambda: next(statuses))
-    monkeypatch.setattr(daemon_commands, "_agentos_executable", lambda: "/bin/agentos")
+    monkeypatch.setattr(daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon")
     monkeypatch.setattr(
         daemon_commands,
         "install_launch_agent",
@@ -230,7 +230,7 @@ def test_daemon_start_fails_when_child_exits_before_readiness(
         "Popen",
         lambda *_args, **_kwargs: Process(),
     )
-    monkeypatch.setattr(daemon_commands, "_agentos_executable", lambda: "/bin/agentos")
+    monkeypatch.setattr(daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon")
 
     args = _daemon_parser().parse_args(["daemon", "start"])
 
@@ -269,7 +269,7 @@ def test_daemon_start_terminates_child_after_readiness_timeout(
         lambda *_args, **_kwargs: Process(),
     )
     monkeypatch.setattr(daemon_commands.time, "monotonic", lambda: next(times))
-    monkeypatch.setattr(daemon_commands, "_agentos_executable", lambda: "/bin/agentos")
+    monkeypatch.setattr(daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon")
 
     args = _daemon_parser().parse_args(["daemon", "start"])
 

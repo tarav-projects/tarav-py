@@ -40,16 +40,14 @@ class LaunchctlHarness:
 
 
 def test_launch_agent_payload_starts_at_login_and_restarts_only_failures() -> None:
-    payload = launch_agent_payload("/opt/agentos/bin/agentos")
+    payload = launch_agent_payload("/opt/agentos/bin/agentos-daemon")
 
     assert payload == {
         "KeepAlive": {"SuccessfulExit": False},
         "Label": LAUNCH_AGENT_LABEL,
         "ProcessType": "Background",
         "ProgramArguments": [
-            "/opt/agentos/bin/agentos",
-            "daemon",
-            "run",
+            "/opt/agentos/bin/agentos-daemon",
         ],
         "RunAtLoad": True,
         "ThrottleInterval": 10,
@@ -61,14 +59,14 @@ def test_launch_agent_install_is_atomic_and_idempotent(tmp_path: Path) -> None:
     launchctl = LaunchctlHarness()
 
     first = install_launch_agent(
-        "/opt/agentos/bin/agentos",
+        "/opt/agentos/bin/agentos-daemon",
         plist_path=plist_path,
         run_command=launchctl,
         uid=501,
     )
     first_stat = plist_path.stat()
     second = install_launch_agent(
-        "/opt/agentos/bin/agentos",
+        "/opt/agentos/bin/agentos-daemon",
         plist_path=plist_path,
         run_command=launchctl,
         uid=501,
@@ -85,7 +83,7 @@ def test_launch_agent_install_is_atomic_and_idempotent(tmp_path: Path) -> None:
     assert second == {**first, "bootstrapped": False, "changed": False}
     assert plist_path.stat().st_mtime_ns == first_stat.st_mtime_ns
     assert plistlib.loads(plist_path.read_bytes()) == launch_agent_payload(
-        "/opt/agentos/bin/agentos"
+        "/opt/agentos/bin/agentos-daemon"
     )
     assert launchctl.commands == [
         ["launchctl", "print", f"gui/501/{LAUNCH_AGENT_LABEL}"],
@@ -107,7 +105,7 @@ def test_launch_agent_install_refuses_unowned_existing_file(tmp_path: Path) -> N
 
     with pytest.raises(CliError, match="not owned by Agentos"):
         install_launch_agent(
-            "/opt/agentos/bin/agentos",
+            "/opt/agentos/bin/agentos-daemon",
             plist_path=plist_path,
             run_command=LaunchctlHarness(),
             uid=501,
@@ -118,7 +116,7 @@ def test_launch_agent_uninstall_is_idempotent(tmp_path: Path) -> None:
     plist_path = tmp_path / f"{LAUNCH_AGENT_LABEL}.plist"
     launchctl = LaunchctlHarness()
     install_launch_agent(
-        "/opt/agentos/bin/agentos",
+        "/opt/agentos/bin/agentos-daemon",
         plist_path=plist_path,
         run_command=launchctl,
         uid=501,

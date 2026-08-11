@@ -705,7 +705,7 @@ def _check_issue_structure(state: LinterState) -> list[LinterFinding]:
                         path=rel,
                         line=node.start_line,
                         message=(
-                            "Every Issue.Block line must carry a Support.Reference."
+                            "Every Issue.Block line must carry an Index.Line.Anchor."
                         ),
                     )
                 )

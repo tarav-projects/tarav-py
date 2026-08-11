@@ -20,13 +20,13 @@ def launch_agent_path() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
 
 
-def launch_agent_payload(agentos_executable: str) -> dict[str, object]:
-    executable = Path(agentos_executable).expanduser()
+def launch_agent_payload(daemon_executable: str) -> dict[str, object]:
+    executable = Path(daemon_executable).expanduser()
     if not executable.is_absolute():
-        raise CliError("LaunchAgent requires an absolute agentos executable path")
+        raise CliError("LaunchAgent requires an absolute daemon executable path")
     return {
         "Label": LAUNCH_AGENT_LABEL,
-        "ProgramArguments": [str(executable), "daemon", "run"],
+        "ProgramArguments": [str(executable)],
         "RunAtLoad": True,
         "KeepAlive": {"SuccessfulExit": False},
         "ProcessType": "Background",
@@ -53,7 +53,7 @@ def launch_agent_status(
 
 
 def install_launch_agent(
-    agentos_executable: str,
+    daemon_executable: str,
     *,
     plist_path: Path | None = None,
     run_command: LaunchctlRunner | None = None,
@@ -61,7 +61,7 @@ def install_launch_agent(
 ) -> dict[str, object]:
     path = plist_path or launch_agent_path()
     desired = plistlib.dumps(
-        launch_agent_payload(agentos_executable),
+        launch_agent_payload(daemon_executable),
         fmt=plistlib.FMT_XML,
         sort_keys=True,
     )

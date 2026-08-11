@@ -1,6 +1,16 @@
 # agentos
 
-Core library for agentic workflow primitives, with a companion CLI.
+Agentos is one modular Python distribution. Its runtime, CLI, daemon, Chatlas,
+Canvas, and Iterante implementations live under the `agentos` package while
+remaining independently importable subsystem namespaces.
+
+Install the maintained source as one editable tool:
+
+```sh
+uv tool install --reinstall --editable .
+```
+
+This provides `agentos`, `agentos-daemon`, `iterante`, and `iterante2`.
 
 Current baseline includes:
 - provider-neutral lifecycle ingress: `hook`
@@ -16,8 +26,9 @@ Current baseline includes:
 - standard-library primitives: `stdlib mdblocks`, `stdlib prefix`, `stdlib git-refs`, `stdlib utils`
 - smoke and support commands: `test`
 
-`agentos` is the core Python package/library.
-`agentos` is the CLI entrypoint/layer.
+`agentos.runtime` is the in-process composition root. `agentos.cli` and the
+dedicated daemon process import that runtime; neither shells out to the Agentos
+CLI to execute subsystem work.
 
 ## Agentos.Project
 
@@ -209,13 +220,9 @@ Global config shape:
         "agentos": {
           "path": "/Users/pereiro/projects/agentos/skills"
         },
-        "iterante": {
-          "project": "/Users/pereiro/projects/agentos-project/agentos-iterante-py"
-        },
         "core": {
           "package": [
-            { "name": "agentos" },
-            { "name": "iterante:runtime" }
+            { "name": "agentos" }
           ]
         }
       },
@@ -253,7 +260,6 @@ Output notes:
 - `{ "name": "agentos" }` resolves through `sources`
 - `{ "name": "scratch", "path": "skills" }` is an inline direct source definition
 - `{ "name": "core" }` can resolve to a package source which expands into direct sources
-- `{ "name": "iterante:runtime" }` resolves a package exported by the project-backed `iterante` source
 - `{ "name": "agentos", "include": ["agentos-session-status"] }` imports only matching skills from that source or expanded package
 - `{ "name": "agentos", "exclude": ["agentos-team"] }` imports the source or expanded package except matching skills
 

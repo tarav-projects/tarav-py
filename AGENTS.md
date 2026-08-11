@@ -12,12 +12,18 @@
 - Use `uv` as the default Python environment and package management system.
 - Prefer `uv sync`, `uv run`, and `uv tool install` over direct `pip`/`venv` workflows.
 
+## Modular Monolith
+
+- `agentos-py` is the single maintained Python distribution. It contains the runtime, umbrella CLI, daemon, Chatlas, Canvas, Iterante, and Iterante v2 beneath `src/agentos/`.
+- `agentos.runtime.create_runtime()` is the composition root. CLI and daemon adapters import it; neither spawns the umbrella CLI to perform subsystem work.
+- Public subsystem namespaces are `agentos.chatlas`, `agentos.canvas`, `agentos.iterante`, and `agentos.iterante2`. Internal code uses these namespaces directly; do not recreate the retired top-level packages.
+- The distribution owns four scripts: `agentos`, `agentos-daemon`, `iterante`, and `iterante2`.
+
 ## Run agentos cli
 - check `agentos --version` to confirm that it is installed on the system.
 - run `agentos` to see the available commands and options.
 - Prefer direct `agentos ...` shell commands over `uv run agentos ...` when `agentos` is already installed.
-- The `agentos` executable is owned by `agentos-cli`, not this package. After changing CLI entrypoint or command-registration code, refresh the installed executable from `agentos-cli/` with `uv tool install --reinstall --editable .` so `~/.local/bin/agentos` stays in sync.
-- Changes limited to library/runtime code in `agentos-py` do not require reinstalling `agentos-cli` unless they affect the installed CLI behavior you are actively testing.
+- All Python entrypoints are owned here. After changing an entrypoint or installed command behavior, refresh them with `uv tool install --reinstall --editable .` from `agentos-py`.
 - `agentos index linter` supports explicit reviewed surfaces (`--index`, `--appendix`) and complete depot-root discovery via `--depot`; depot discovery includes `000-INDEX.md`, chapter folders, `appendix/`, `agendix/`, and first-class `issues/`. Agendix and issues are depot surfaces, not separate CLI input flags.
 - `src/agentos/index/model/` is the parser-backed model layer for index surfaces. It exposes `parse_index_file`, `parse_depot`, typed nodes such as `BlockHeading`/`KernelLine`/`RouterEntry`, and the shared `IndexLineAnchorOccurrenceGroup` used by anchor-aware parser consumers.
 - `src/agentos/index/policy.py` centralizes built-in surface policy. `issues/NNN-issues.md` contains grounded temporary `Issue.I####[.Dotted.Name]` blocks; `agentos index issues --depot ...` computes open/resolved standing from reviewed `[DC]` lines without importing Chatlas.
@@ -25,7 +31,7 @@
 - `src/agentos/index/line_manifest.py` builds the parser-owned `agentos.index-line-manifest.v3`: selected line identity, `Line.Type`, `Index.Line.Body`, source fingerprints, enclosing block, block-bounded sibling context, and explicit `agreed|ambiguous` anchor-occurrence standing. `agentos index line manifest show|materialize` is the canonical command; application relationship projection and volatile materialization are injected at the composition root.
 - A normal `agentos index linter --depot ...` run writes a fingerprinted, non-authoritative anchor locator beneath the current workspace's ignored `.agentos/state/`. Anchor-selected manifests verify and parse only the locator's named source files when it is current, then fall back to full depot parsing when it is missing or stale. Comprehensive occurrence agreement remains a normal-lint responsibility.
 - index concept refs in block headings, router entries, and appendix/agendix filenames now accept both legacy `:` and canonical `::` type-statement sigils during the migration window; `agentos index linter` warns on legacy single-colon usage via `Index.Linter/TypeStatement.LegacySigil`, including router surfaces.
-- the linter exposes an external-check socket: `run_linter(..., extra_checks=...)` and `register_index_commands(..., extra_linter_checks=...)`; bridges (e.g. the chatlas grounding-provenance check) register at the composition root (`agentos-cli`), the core never imports them (`Dependency.Profile.Split`).
+- the linter exposes an external-check socket: `run_linter(..., extra_checks=...)` and `register_index_commands(..., extra_linter_checks=...)`; bridges (e.g. the Chatlas grounding-provenance check) register in `agentos.cli`, while the lower-level Index modules never import them (`Dependency.Profile.Split`).
 - index-linter ownership is split by concern: `index/linter.py` is the stable public orchestration/reporting facade, `index/poi.py` maps internal findings to registered POI classes and deterministic instances, `_linter_models.py` owns shared state, parsed-document loading, and `LinterCheckBinding`, `_linter_structure.py` owns surface/router/depot checks, and `_linter_parser_checks.py` owns line/anchor/grounding semantic checks. Parser-backed checks declare their applicable `IndexSurfaceKind`s in bindings and execute over that projection of the complete parsed `Floor.Model`; bindings own applicability and activation, not POI class semantics.
 - core parser-backed line checks: typed-line bracket syntax, known act codes, `[GR]` trailing anchor (warnings), `AS:` outside `agendix/` as `Index.Linter/Source.Axis.Placement` (error), and issue filename/identity/typed-grounded-line structure; depot-discovered agendix and issues files participate through explicit check bindings and appear in ordinary surface/file inventory and `--scope` resolution.
 - `agentos index linter --coverage line` enables `Index.Linter/Line.Unlinked` warnings for chapter and appendix kernel lines; `--warn-unlinked` is a compatibility alias for this meter. Agendix kernel lines are checked for anchors by default.
@@ -52,14 +58,14 @@
 - Registrations default to the sequential `inline` execution lane; `execution="daemon"` marks deferred callbacks. The hook CLI submits one validated invocation to the daemon only when that exact hook name has deferred consumers.
 - Callback failures log only hook name, callback identity, and exception type through the `agentos.hooks` logger. Raw context and exception text are excluded because provider context may contain prompts or secrets.
 - The public ingress is `agentos hook --name <hook-name> [--ctx-type <ctx-type>]` with exactly one context source: canonical harness input `--ctx-from-stdin` or manual inline input `--ctx <json>`.
-- Provider-specific lifecycle mappings and subsystem callback registrations belong at the `agentos-cli` composition root or in feature-package registrars; the foundation has no provider mappings.
+- Provider-specific lifecycle mappings and subsystem callback registrations belong in subsystem registrars composed by `agentos.runtime`; the hook foundation has no provider mappings.
 
 ## Daemon System
 
 - `src/agentos/daemon/` owns the local closed Unix-socket protocol, client, foreground runtime, serial worker lane, control-command registrar, and operational log.
-- `agentos daemon run|start|status|stop|install|uninstall` controls the runtime and its user service. `run` stays in the foreground; without an installed service, `start` launches that entrypoint detached. With the service installed, `start` delegates to launchd.
+- `agentos daemon run|start|status|stop|install|uninstall` controls the runtime and its user service. `run` stays in the foreground; without an installed service, `start` launches the dedicated `agentos-daemon` entrypoint detached. With the service installed, `start` delegates to launchd.
 - `src/agentos/daemon/launchd.py` owns the macOS user LaunchAgent at `~/Library/LaunchAgents/org.agentos.daemon.plist`. `install` atomically writes an Agentos-owned plist and bootstraps it; `uninstall` boots it out and removes only an ownership-validated plist.
-- The LaunchAgent uses `RunAtLoad=true` for login startup and `KeepAlive.SuccessfulExit=false` for abnormal-exit recovery. A clean socket-driven `daemon stop` exits successfully and therefore remains stopped until login or explicit `start`.
+- The LaunchAgent invokes the absolute `agentos-daemon` executable, uses `RunAtLoad=true` for login startup, and uses `KeepAlive.SuccessfulExit=false` for abnormal-exit recovery. A clean socket-driven `daemon stop` exits successfully and therefore remains stopped until login or explicit `start`.
 - Requests can only ping, stop, or submit a validated hook invocation. Accepted hook work lives in process memory and runs serially; arbitrary command execution, retry, durable spooling, and inline fallback are not part of this POC.
 - Hook delivery waits only for acceptance. An unavailable daemon is logged and does not fail the harness-facing hook command.
 
@@ -88,7 +94,7 @@
 - `src/agentos/skw/` owns the backend-neutral `Skw.Network` finding algorithms. The former general-looking `agentos.skwlint` module and parallel `Poi` model are retired.
 - Renderers resolve each class once, present its authoritative description once, then list compact instances. A class-resolution POI remains visible beside the original instances.
 - The Index linter keeps `LinterFinding` inside check execution and converts scoped findings at the reporting boundary. Each `LinterCheck` declares its POI-owning package; an undocumented finding still produces the expected class reference so documentation failure remains visible. Public JSON uses `poi_classes` and `pois`, not a duplicate `findings` representation.
-- `agentos poi explain <class> [--json]` accepts a discovered finding code or a canonical/sugar Wayfinder reference. `agentos-cli` discovers one index-backed catalog and injects it into both explanation and Index rendering.
+- `agentos poi explain <class> [--json]` accepts a discovered finding code or a canonical/sugar Wayfinder reference. `agentos.cli` discovers one index-backed catalog and injects it into both explanation and Index rendering.
 
 ## Anchory System
 
@@ -104,7 +110,7 @@
 - `check` findings carry `severity`; tag-less keys in a prefixed namespace are warnings (amendable backlog), `ok` means no errors.
 - Applications own record meaning, alloc-prefix conventions, tag alphabets, and any Git lifecycle around their depot. Chatlas registers into namespace `chatlas` (prefix `c`), computes the turn tag from the landing turn's producer, and `agentos chatlas anchory migrate` re-keyed the legacy bare-key depot.
 - The index toolchain enforces the grammar on surfaces: `parser.py` `ANCHOR_RE` accepts composed keys and `Index.Linter/Anchor.Unprefixed` (warning) flags bare citations.
-- `agentos anchory ...` is registered by `agentos-cli` as a thin wrapper over the library.
+- `agentos anchory ...` is registered by `agentos.cli` as a thin wrapper over the library.
 - `agentos anchory scan --depot ... --src-file ... --regex ... [--json]` is a read-only source-file query feed: it extracts anchor candidates from text, resolves them against the depot, and never mutates records.
 
 ## Bloberia System
@@ -121,7 +127,7 @@
 - `check` walks recursively. A check that only globbed `records/*.json` would report **ok** on a namespaced depot by finding nothing, which is worse than no check.
 - unsafe namespaces (absolute, `..`, empty segments) are rejected rather than silently rerooted.
 - locking stays depot-wide; namespaces partition reads, not writes.
-- `agentos bloberia ...` is registered by `agentos-cli` as a thin JSON CLI over the library and requires `--depot` for every operation.
+- `agentos bloberia ...` is registered by `agentos.cli` as a thin JSON CLI over the library and requires `--depot` for every operation.
 
 ## Workspaces
 
@@ -179,7 +185,7 @@
 - `report.py` no longer folds an attribution axis; `reason_samples` is keyed by refused match.
 - **Pairwise comparisons are extracted at read time, never stored.** For ranks `i < j` the earlier player beat the later one, so one 4-way ordering yields six comparisons and one 10-way yields forty-five. Keeping the match whole is deliberate: a later fold can still see which comparisons shared one judgment. `wins`/`losses` therefore grow with arity while `matches` counts one per match — do not conflate them. No weighting, discounting, or rank-distance treatment is applied here; reading is the consumer's concern.
 - `poi.py` owns three engine-scoped POI classes (`Tournament.Linter/Player.LowStanding`, `Player.Unjudgeable`, `Definition.Incoherent`). Two floors, not one: `MIN_MATCHES_FOR_STANDING = 6` and a lower `MIN_MATCHES_FOR_UNJUDGEABLE = 3`, because clustered refusals are a sharper finding than a low score.
-- `agentos tournament create|list|run|show|submit|gc|preview|verbatim` is registered by `agentos-cli`.
+- `agentos tournament create|list|run|show|submit|gc|preview|verbatim` is registered by `agentos.cli`.
 - `tournament preview --tournament X [--match-index N] [--seed N] [--json]` renders one real match and prints it. It mints a genuine ticket, so the output is byte-identical to what a judge receives and can be answered by hand with `tournament submit` — that is the difference from `run --dry-run`, which mints nothing and therefore shows a prompt missing its submit instruction. Use it to iterate on a definition's `question` and `criteria` without spending spawns.
 - Tickets carry a `kind` — `match` or `preview` — defaulted so files written before the field still load. It marks **provenance, never permission**: a preview ticket is a real ticket, answerable by hand, and answering it records an ordinary verdict. The field exists because an unredeemed preview would otherwise be indistinguishable from a match a judge failed to answer, and an afternoon of tuning would erase the one place judge failure is recorded. `sweep()` and `tournament gc` report removals split by kind for the same reason. `create` takes only a definition. `run` carries `--budget --concurrency --provider --profile --home --model --account --timeout --dry-run`, and `--budget` is an upper bound the definition may end early.
 - Known debt: no adaptive sampling, no cross-tournament aggregation, and no match cache — the last left open pending the chivo registry question.
@@ -191,7 +197,7 @@
 - one `skw.edition-session` application record associates one file edition with one neutral Chatlas session identity; repeated equivalent record calls are idempotent.
 - every association embeds a required `chatlas.support-set.v1` object with nonempty exact event members, including at least one member from the associated session; `agentos-py` validates intrinsic structure and requires an injected `EditionSupportResolver` for live resolution without importing Chatlas.
 - `list` validates associations and merges them onto the file's complete `git log --follow` edition sequence; unsupported Git commits remain visible with empty sessions and supported/unsupported metrics. The default `check` only requires one valid association per target; opt-in completeness reports `unsupported-git-edition` through `edition-history check --complete` or project `skw check --check unsupported-git-edition`.
-- `agentos skw edition-history record|amend|list|check` is the thin JSON CLI; `record` requires support and `amend` replaces a named association's complete support set after file-identity and live-resolution validation. The umbrella `agentos-cli` injects Chatlas exact-event resolution; discovery and semantic association judgment remain outside `agentos-py`.
+- `agentos skw edition-history record|amend|list|check` is the thin JSON CLI; `record` requires support and `amend` replaces a named association's complete support set after file-identity and live-resolution validation. `agentos.cli` injects `agentos.chatlas` exact-event resolution; the foundation service retains no Chatlas dependency.
 
 ## Markdown Block Scanning Preference
 

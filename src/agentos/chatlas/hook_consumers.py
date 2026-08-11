@@ -1,0 +1,66 @@
+# $kw: --from Agentos.Hook --from Chatlas.Update --note [IMPL] agent.turn.stop defers one targeted session refresh and session-model warmup to the Agentos daemon --supp ^c20260811-50u
+from __future__ import annotations
+
+from pathlib import Path
+
+from agentos.hooks import HookError, HookInvocation, HookRegistry
+
+from agentos.chatlas.core import chatlas_update
+from agentos.chatlas.index_query import select_one_chatlas_index_row
+from agentos.chatlas.providers import supported_chatlas_provider_families
+from agentos.chatlas.session_cache import load_chatlas_session_model
+
+
+TURN_STOP_HOOK = "agent.turn.stop"
+CHATLAS_REFRESH_CALLBACK_ID = "agentos_chatlas.session-refresh"
+
+
+def register_chatlas_hook_callbacks(registry: HookRegistry) -> None:
+    registry.register(
+        TURN_STOP_HOOK,
+        refresh_chatlas_session_from_hook,
+        callback_id=CHATLAS_REFRESH_CALLBACK_ID,
+        execution="daemon",
+    )
+
+
+def refresh_chatlas_session_from_hook(invocation: HookInvocation) -> None:
+    provider = invocation.ctx_type
+    if provider not in {
+        family.family for family in supported_chatlas_provider_families()
+    }:
+        return
+
+    session_id = invocation.ctx.get("session_id")
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise HookError("Chatlas turn-stop refresh requires ctx.session_id")
+
+    start_path = _existing_start_path(invocation.ctx.get("cwd"))
+    chatlas_update(
+        providers=(provider,),
+        session_ids=(session_id,),
+        start_path=start_path,
+        progress=None,
+    )
+    session = select_one_chatlas_index_row(
+        command="agent.turn.stop Chatlas refresh",
+        providers=(provider,),
+        session_id=session_id,
+    )
+    load_chatlas_session_model(session)
+
+
+def _existing_start_path(value: object) -> Path:
+    if isinstance(value, str) and value:
+        path = Path(value)
+        if path.is_dir():
+            return path
+    return Path.cwd()
+
+
+__all__ = [
+    "CHATLAS_REFRESH_CALLBACK_ID",
+    "TURN_STOP_HOOK",
+    "refresh_chatlas_session_from_hook",
+    "register_chatlas_hook_callbacks",
+]

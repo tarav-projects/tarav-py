@@ -67,14 +67,14 @@ def _cmd_start(args: argparse.Namespace) -> int:
         if service["loaded"]:
             kickstart_launch_agent()
         else:
-            install_launch_agent(_agentos_executable())
+            install_launch_agent(_daemon_executable())
         status = _wait_for_daemon_readiness()
         _print_start_result(args, status="started", pid=int(status["pid"]))
         return 0
 
     try:
         process = subprocess.Popen(
-            [_agentos_executable(), "daemon", "run"],
+            [_daemon_executable()],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -98,7 +98,7 @@ def _cmd_install(args: argparse.Namespace) -> int:
     if daemon_status() is not None:
         request_daemon_stop()
         _wait_for_daemon_stop()
-    result = install_launch_agent(_agentos_executable())
+    result = install_launch_agent(_daemon_executable())
     if result["bootstrapped"] is not True:
         kickstart_launch_agent()
     status = _wait_for_daemon_readiness()
@@ -147,17 +147,20 @@ def _wait_for_daemon_stop() -> None:
     raise CliError("Agentos daemon did not stop before the lifecycle timeout")
 
 
-def _agentos_executable() -> str:
+def _daemon_executable() -> str:
     invoked = Path(sys.argv[0])
     if invoked.name == "agentos":
-        if invoked.is_file():
-            return str(invoked.resolve())
-        resolved = shutil.which(str(invoked))
-        if resolved is not None:
-            return resolved
-    resolved = shutil.which("agentos")
+        agentos_path = invoked if invoked.is_file() else None
+        if agentos_path is None:
+            resolved_agentos = shutil.which(str(invoked))
+            agentos_path = Path(resolved_agentos) if resolved_agentos else None
+        if agentos_path is not None:
+            sibling = agentos_path.resolve().with_name("agentos-daemon")
+            if sibling.is_file():
+                return str(sibling)
+    resolved = shutil.which("agentos-daemon")
     if resolved is None:
-        raise CliError("cannot locate the agentos executable for detached daemon start")
+        raise CliError("cannot locate the agentos-daemon executable")
     return resolved
 
 
