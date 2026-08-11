@@ -222,8 +222,8 @@ Six separate JSONL/account record mechanisms exist; they are not yet unified.
    - File: `~/.agentos/agent/usage-report-hook-samples/YYYYMMDD.jsonl` (daily roll),
      schema v1:
      `{schema_version, class, recorded_at, provider, account, home, status, raw_context}`.
-   - Writer: `append_hook_context_sample` for explicit development sampling of provider
-     hook context objects.
+   - Writers: `append_hook_context_sample` and the built-in `agent.prompt.submit`
+     callback for explicit development sampling of provider hook context objects.
    - Retention: bounded per provider/account/home sample set; default last 50 samples.
    - Privacy: file mode `0600`; samples may contain sensitive prompt/path/tool context.
      This is an auxiliary development log, not the monitor-consumed usage registry.

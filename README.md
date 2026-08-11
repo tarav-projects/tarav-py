@@ -4,6 +4,7 @@ Core library for agentic workflow primitives, with a companion CLI.
 
 Current baseline includes:
 - provider-neutral lifecycle ingress: `hook`
+- bounded private sampling of `agent.prompt.submit` provider contexts
 - project targeting and diagnostics: `init`, `rev-parse`, `doctor`
 - config-driven provider utilities: `agent`, `chat`, `chatlas`
 - project-scoped tools: `skills`, `mission`
