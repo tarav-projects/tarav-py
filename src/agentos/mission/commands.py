@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Mission --from Mission.Driver
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,7 @@ def _record_mission_project_command(args: argparse.Namespace, project: AgentosPr
     )
 
 
-# ── mission new ──────────────────────────────────────────────────────
+
 
 def _cmd_new(args: argparse.Namespace) -> int:
     project = _project(args)
@@ -63,7 +64,7 @@ def _cmd_new(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission activate ─────────────────────────────────────────────────
+
 
 def _cmd_activate(args: argparse.Namespace) -> int:
     project = _project(args)
@@ -81,7 +82,7 @@ def _cmd_activate(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission status ───────────────────────────────────────────────────
+
 
 def _format_status(mission: dict) -> str:
     lines = []
@@ -121,7 +122,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission done ─────────────────────────────────────────────────────
+
 
 def _cmd_done(args: argparse.Namespace) -> int:
     project = _project(args)
@@ -140,7 +141,7 @@ def _cmd_done(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission park ─────────────────────────────────────────────────────
+
 
 def _cmd_park(args: argparse.Namespace) -> int:
     project = _project(args)
@@ -159,7 +160,7 @@ def _cmd_park(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission list ─────────────────────────────────────────────────────
+
 
 def _format_list(missions: list[dict], default_name: str | None) -> str:
     if not missions:
@@ -210,7 +211,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission todo add ─────────────────────────────────────────────────
+
 
 def _cmd_todo_add(args: argparse.Namespace) -> int:
     project = _project(args)
@@ -229,7 +230,7 @@ def _cmd_todo_add(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission todo done ────────────────────────────────────────────────
+
 
 def _cmd_todo_done(args: argparse.Namespace) -> int:
     project = _project(args)
@@ -251,7 +252,7 @@ def _cmd_todo_done(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission note ─────────────────────────────────────────────────────
+
 
 def _cmd_note(args: argparse.Namespace) -> int:
     project = _project(args)
@@ -269,7 +270,7 @@ def _cmd_note(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission fork ─────────────────────────────────────────────────────
+
 
 def _cmd_fork(args: argparse.Namespace) -> int:
     project = _project(args)
@@ -306,7 +307,7 @@ def _cmd_fork(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission help ─────────────────────────────────────────────────────
+
 
 def _format_help_overview(mission: dict) -> str:
     help_obj = get_help(mission)
@@ -379,7 +380,7 @@ def _cmd_help_set(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mission templates ────────────────────────────────────────────────
+
 
 def _cmd_templates(args: argparse.Namespace) -> int:
     root = _project_root(args)
@@ -414,7 +415,7 @@ def _cmd_templates(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── registration ─────────────────────────────────────────────────────
+
 
 def _add_json_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Output as JSON.")
@@ -445,7 +446,7 @@ def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     mission_subs = mission_parser.add_subparsers(dest="mission_command")
 
-    # new
+
     p = mission_subs.add_parser("new", help="Create a new mission.")
     p.add_argument("name", help="Mission name (kebab-case).")
     p.add_argument("--goal", required=True, help="What this mission achieves.")
@@ -454,41 +455,41 @@ def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_new)
 
-    # activate
+
     p = mission_subs.add_parser("activate", help="Mark a mission as recently active and resume it.")
     p.add_argument("name", help="Mission name to activate.")
     _add_project_argument(p)
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_activate)
 
-    # status
+
     p = mission_subs.add_parser("status", help="Show mission status.")
     p.add_argument("name", nargs="?", default=None, help="Mission name (default: most recently active).")
     _add_project_argument(p)
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_status)
 
-    # done
+
     p = mission_subs.add_parser("done", help="Mark a mission as done.")
     p.add_argument("name", nargs="?", default=None, help="Mission name (default: most recently active).")
     _add_project_argument(p)
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_done)
 
-    # park
+
     p = mission_subs.add_parser("park", help="Park a mission for later.")
     p.add_argument("name", nargs="?", default=None, help="Mission name (default: most recently active).")
     _add_project_argument(p)
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_park)
 
-    # list
+
     p = mission_subs.add_parser("list", help="List all missions.")
     _add_project_argument(p)
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_list)
 
-    # help show
+
     p = mission_subs.add_parser("help", help="Show help entries for a mission.")
     p.add_argument("name", nargs="?", default=None, help="Mission name (default: most recently active).")
     p.add_argument("field", nargs="?", default=None, help="Drill into a specific field.")
@@ -496,7 +497,7 @@ def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_help)
 
-    # help set (as separate top-level subcommand)
+
     p = mission_subs.add_parser("help-set", help="Set a help entry for a mission field.")
     p.add_argument("field", help="Field name to document.")
     p.add_argument("text", help="Help text for the field.")
@@ -505,14 +506,14 @@ def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_help_set)
 
-    # templates
+
     p = mission_subs.add_parser("templates", help="List mission template skills.")
     p.add_argument("--list", action="store_true", dest="list_templates", help="List available mission templates.")
     _add_project_argument(p)
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_templates)
 
-    # todo (nested subcommands)
+
     todo_parser = mission_subs.add_parser("todo", help="Manage mission todos.")
     todo_subs = todo_parser.add_subparsers(dest="todo_command")
 
@@ -530,7 +531,7 @@ def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_todo_done)
 
-    # note
+
     p = mission_subs.add_parser("note", help="Add a note to a mission.")
     p.add_argument("text", help="Note text.")
     _add_project_argument(p)
@@ -538,7 +539,7 @@ def register_mission_commands(subparsers: argparse._SubParsersAction) -> None:
     _add_json_flag(p)
     p.set_defaults(handler=_cmd_note)
 
-    # fork
+
     p = mission_subs.add_parser("fork", help="Log a fork idea on a mission.")
     p.add_argument("text", help="Fork description.")
     p.add_argument("--as-mission", default=None, help="Also create as a new mission.")

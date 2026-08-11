@@ -1,3 +1,4 @@
+# $kw: --from Chat.Semantic.From.File.Content
 """File-touch extraction over `chat.tool_invocations`.
 
 A *touch* is a tool invocation whose explicit path argument matches the query
@@ -15,7 +16,7 @@ from typing import Any
 from agentos.chatlas._payload_helpers import dict_list, string_or_none
 
 
-# tool name -> (touch class, path argument key)
+
 _FILE_TOOLS: dict[str, tuple[str, str]] = {
     "Read": ("read", "file_path"),
     "Write": ("write", "file_path"),

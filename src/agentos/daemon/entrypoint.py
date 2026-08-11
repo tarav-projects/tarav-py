@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Daemon
 from __future__ import annotations
 
 import sys

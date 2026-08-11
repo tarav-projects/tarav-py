@@ -23,20 +23,20 @@ _TYPE_MARKERS = ("bool", "str", "int", "float")
 
 OUTCOME_NO_CONTEST = "no_contest"
 
-# Positions, not players: the judge orders labels and the engine decodes them
-# back through the order it ran, so nothing a consumer wrote can invert a verdict.
+
+
 POSITION_LABELS = tuple(chr(ord("A") + index) for index in range(26))
 MAX_ARITY = len(POSITION_LABELS)
 MIN_ARITY = 2
 
-# A decided answer is its ranking alone. A refusal adds a reason in the judge's
-# own words — no attribution axis: which player or question a refusal indicts is
-# read from the records, which already carry who was in which refused match.
+
+
+
 REFUSAL_REASON_FIELD = "refusal_reason"
 
-# A control declares which end of the field it belongs at. There is no middle
-# band: mid-pack is where noise lives, so a middle expectation is not falsifiable
-# at any affordable volume.
+
+
+
 BAND_HIGH = "high"
 BAND_LOW = "low"
 CONTROL_BANDS = (BAND_HIGH, BAND_LOW)

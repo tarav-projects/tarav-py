@@ -1,5 +1,4 @@
-# $kw: ^mdblocks-poi-adapter --from Dependency.Profile.Split --note [DF] the POI bridge imports Markdown.Block and POI while the stdlib core imports neither upward --supp ^c20260811-62u
-# $kw: ^agentos-stdlib-mdblocks-poi --from Agent.Navigable.Codebase --note [DF] reusable mdblocks behavior lives beneath the Python stdlib namespace matching its CLI --supp ^c20260811-62u
+# $kw: ^mdblocks-poi-adapter --from Dependency.Profile.Split --from Agent.Navigable.Codebase --note [DF] the POI bridge imports Markdown.Block and POI while the stdlib core imports neither upward --note [DF] reusable mdblocks behavior lives beneath the Python stdlib namespace matching its CLI --supp ^c20260811-62u
 from __future__ import annotations
 
 from typing import Any

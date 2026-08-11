@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model
 from __future__ import annotations
 
 from dataclasses import dataclass

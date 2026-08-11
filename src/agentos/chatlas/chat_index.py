@@ -1,5 +1,4 @@
-# $kw: --from Chat.Index --from Chat.Index.Delta --from Chat.Index.HEAD --note [IMPL] incremental maintenance isolates append-only chat evidence without automatic semantic writes --supp ^c20260804-50u
-# $kw: --from Chat.Touched.Index --note [IMPL] pending evidence projects at chat, refs, or turn detail so capture reads the transcript without reasoning or tool noise --supp ^c20260804-60u
+# $kw: --from Chat.Index --from Chat.Index.Delta --from Chat.Index.HEAD --from Chat.Touched.Index --note [IMPL] incremental maintenance isolates append-only chat evidence without automatic semantic writes --note [IMPL] pending evidence projects at chat, refs, or turn detail so capture reads the transcript without reasoning or tool noise --supp ^c20260804-50u --supp ^c20260804-60u
 from __future__ import annotations
 
 import hashlib
@@ -163,8 +162,8 @@ def chatlas_chat_index_deltas(
             include_capture=False,
         ) | {"deltas": []}
     assert capture is not None
-    # Delta order is the chat's order, resolved live; the surface only lists
-    # which horizons it holds, never where they sit on the tape.
+
+
     _canonical, source = chat_index_source_model(session, chatlas_root=root)
     deltas = [
         {
@@ -271,8 +270,8 @@ def chatlas_chat_index_home(
                     "tape_position": delta["tape_position"],
                 }
             )
-    # Line.Home is the oldest evidenced materialization; the Deltas were
-    # already resolved into chat order, so the first occurrence is it.
+
+
     home = occurrences[0] if occurrences else None
     finding = None
     if home is None:
@@ -340,8 +339,8 @@ def chatlas_chat_index_tail(
         ) | {"tail": None, "turns": []}
     assert capture is not None
     canonical, current_source = chat_index_source_model(session, chatlas_root=root)
-    # What the capture read is the prefix its declared horizon bounds, not a
-    # stored snapshot of the chat.
+
+
     tail = _compare_v2_source_tail(
         source_prefix_at_horizon(current_source, capture["head"]["horizon"]),
         current_source,
@@ -748,7 +747,7 @@ def _chat_index_result(
         )
     assert capture is not None
 
-    # Freshness is the chat's own growth past the horizon HEAD declares.
+
     freshness = _surface_freshness(session, capture, root)
     state = "materialized"
     warning = None

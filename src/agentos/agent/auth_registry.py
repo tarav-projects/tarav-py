@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """Readers (and minimal writers) for the redesigned `Auth.Registry`.
 
 Settings/state are physically split under ``~/.agentos/accounts/<provider>/``:
@@ -28,14 +29,14 @@ from agentos.agent.account_status import AccountIdentity
 from agentos.agent.auth_method import AuthData
 
 
-# The reserved per-provider `Provider.Account` where capture files an
-# identifiable orphan it cannot bind to a declared account. Leading ``_`` cannot
-# collide with a user account-id. It is a registry-state bucket only: never
-# declared in settings, never runnable, never activated.
+
+
+
+
 UNKNOWN_ACCOUNT = "_unknown"
 
 
-# --- paths ---
+
 
 def settings_path(provider: str) -> Path:
     return account_provider_root(provider) / "accounts.json"
@@ -57,7 +58,7 @@ def artifact_path(provider: str, artifact_id: str) -> Path:
     return registry_root(provider) / "artifacts" / artifact_id
 
 
-# --- settings (read) ---
+
 
 def load_settings(provider: str) -> dict[str, object]:
     path = settings_path(provider)
@@ -86,7 +87,7 @@ def resolve_account_by_identity(provider: str, identity: AccountIdentity) -> str
         ident = record.get("identity")
         if not isinstance(ident, dict):
             continue
-        # provider-shaped id field: codex `provider_account_id`, claude `account_uuid`
+
         known = ident.get("provider_account_id") or ident.get("account_uuid")
         if known == target:
             return account_id
@@ -153,7 +154,7 @@ def expected_identity(provider: str, account_id: str) -> AccountIdentity | None:
     )
 
 
-# --- state (read) ---
+
 
 def load_active(provider: str) -> dict[str, str]:
     path = active_path(provider)
@@ -179,7 +180,7 @@ def read_artifact(provider: str, artifact_id: str) -> AuthData | None:
     return AuthData(payload=payload) if isinstance(payload, dict) else None
 
 
-# --- state (write) — minimal, for capture/activation ---
+
 
 def store_artifact(provider: str, auth_data: AuthData) -> str:
     """Content-address and persist a payload blob (mode 600); return its id."""
@@ -206,9 +207,9 @@ def append_capture(
     ref_id: str,
     artifact_id: str | None,
 ) -> dict[str, object]:
-    # ``ref_id`` is the activation pointer (the method-defined Auth.Ref id);
-    # ``artifact_id`` is the content-addressed storage key joined to it (the blob
-    # holding the secret, when stored). ``auth_ref`` is the identity, not the id.
+
+
+
     record: dict[str, object] = {
         "ts": utc_now_iso(),
         "account": account,
@@ -272,10 +273,10 @@ def auth_data_for_ref(provider: str, account: str, method: str, ref_id: str) -> 
             continue
         artifact_id = record.get("artifact_id")
         return read_artifact(provider, artifact_id) if isinstance(artifact_id, str) else None
-    # No capture record joins this ref (e.g. a directly-activated artifact). For an
-    # artifact-backed method the ref_id is the content-addressed storage key, so
-    # fall back to a direct read; a method whose ref_id is not a content id needs
-    # the join and resolves to None here.
+
+
+
+
     return read_artifact(provider, ref_id)
 
 

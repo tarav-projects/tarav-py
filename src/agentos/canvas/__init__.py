@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Canvas
 from __future__ import annotations
 
 from .core import (

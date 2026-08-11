@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Dataset
 from .anchory import chatlas_anchory_depot
 from .commands import register_chatlas_commands
 from .file_edition_pois import (

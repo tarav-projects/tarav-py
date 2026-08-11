@@ -12,12 +12,15 @@ from ._build_core import (
     CodeSurfaceConfig,
     SkillwareError,
     load_project_skw_config,
+    resolve_project_depots,
     unlock_requirements,
 )
+from ._code_index import index_code_dependency_resolver
 from ._code_model import (
     CodeBackendRegistry,
     CodeBlessRecord,
     CodeCheckReport,
+    CodeDependencyResolver,
     CodeSurfaceTarget,
 )
 from ._code_python import PythonCodeBackend
@@ -102,6 +105,16 @@ def _block_open_lines(source: SkwSource) -> list[int]:
     return sorted({block.line for block in blocks})
 
 
+def _file_dependencies(source: SkwSource) -> tuple[str, ...]:
+    blocks = (*source.recipes, *source.constructs, *source.dependencies)
+    return tuple(
+        locator
+        for block in blocks
+        if block.line == 1
+        for locator in block.froms
+    )
+
+
 def _project_lock(project_root: Path) -> dict:
     path = project_root / ".skw" / "lock.json"
     if not path.is_file():
@@ -120,6 +133,7 @@ def check_code_surfaces(
     configs: tuple[CodeSurfaceConfig, ...],
     *,
     backends: CodeBackendRegistry = DEFAULT_CODE_BACKENDS,
+    dependency_resolver: CodeDependencyResolver | None = None,
 ) -> CodeCheckReport:
     project_root = Path(project_root).resolve()
     targets = (
@@ -128,6 +142,7 @@ def check_code_surfaces(
         else ()
     )
     pois = []
+    resolver = dependency_resolver or index_code_dependency_resolver(())
     for target in targets:
         relative = target.path.relative_to(project_root)
         text = target.path.read_text(encoding="utf-8", errors="replace")
@@ -172,6 +187,47 @@ def check_code_surfaces(
                     "configured code file has no line-1 Skw annotation",
                 )
             )
+        else:
+            dependencies = _file_dependencies(model.annotations)
+            if not dependencies:
+                pois.append(
+                    skillware_poi(
+                        "undeclared-dependency",
+                        relative,
+                        "file",
+                        "missing-design-dependency",
+                        "file annotation declares no Index design dependency",
+                    )
+                )
+            else:
+                names = set(dependencies)
+                collisions = resolver.collisions(names)
+                resolutions = resolver.resolve(names)
+                for locator in dependencies:
+                    collision = collisions.get(locator, [])
+                    if collision:
+                        joined = ", ".join(str(path) for path in collision)
+                        pois.append(
+                            skillware_poi(
+                                "dangling-dependency",
+                                relative,
+                                locator,
+                                f"collision:{locator}:{joined}",
+                                f"design dependency `{locator}` resolves in multiple depots: {joined}",
+                            )
+                        )
+                        continue
+                    resolution = resolutions.get(locator, "unresolved:not found")
+                    if resolution.startswith("unresolved:"):
+                        pois.append(
+                            skillware_poi(
+                                "dangling-dependency",
+                                relative,
+                                locator,
+                                f"unresolved:{locator}",
+                                f"design dependency `{locator}` does not resolve in the engaged Index depots",
+                            )
+                        )
         pois.extend(
             skillware_poi(
                 "illegal-attachment",
@@ -215,7 +271,13 @@ def bless_code_poi(
 ) -> CodeBlessRecord:
     project_root = Path(project_root).resolve()
     config = load_project_skw_config(project_root)
-    report = check_code_surfaces(project_root, config.code_surfaces)
+    report = check_code_surfaces(
+        project_root,
+        config.code_surfaces,
+        dependency_resolver=index_code_dependency_resolver(
+            tuple(resolve_project_depots(project_root))
+        ),
+    )
     match = next((poi for poi in report.pois if poi.poi_hash == poi_hash), None)
     if match is None:
         raise SkillwareError(

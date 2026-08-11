@@ -1,3 +1,4 @@
+# $kw: --from Git.Dating
 from __future__ import annotations
 
 import subprocess

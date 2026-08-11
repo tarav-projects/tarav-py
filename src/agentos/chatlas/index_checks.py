@@ -1,3 +1,4 @@
+# $kw: --from Chat.Touched.Index --from Line.Home --from Index.Linter/Anchor.LineDrift --note [IMPL] Chatlas compares each dossier attachment assertion with the current canonical line triplet --supp ^c20260802-103u
 """Chatlas-powered index-linter checks — the grounding-provenance bridge.
 
 Bridge-shaped per `Dependency.Profile.Split`: this module's dependency profile
@@ -5,8 +6,6 @@ Bridge-shaped per `Dependency.Profile.Split`: this module's dependency profile
 so it lives here and registers into the linter's check socket at the
 composition root (`agentos-cli`).
 """
-
-# $kw: --from Index.Linter/Anchor.LineDrift --note [IMPL] Chatlas compares each dossier attachment assertion with the current canonical line triplet --supp ^c20260802-103u
 
 from __future__ import annotations
 
@@ -56,11 +55,11 @@ ANCHOR_LINE_DRIFT = "Index.Linter/Anchor.LineDrift"
 SEMANTIC_APPROVAL_GATE = "semantic_approval"
 TOKENIZED_APPROVAL_GATE = "tokenized_verbatim_approval"
 
-# Check A — approval existence (`Line.Approval`).
+
 CHECK_LINE_APPROVAL = "Index.Linter/Line.Approval"
 LINE_APPROVAL_MISSING = "Index.Linter/Line.Approval.Missing"
 
-# Check B — tokenized-preference verbatim gate (`Line.Verbatim.Gate`).
+
 CHECK_LINE_VERBATIM_GATE = "Index.Linter/Line.Verbatim.Gate"
 LINE_VERBATIM_GATE_UNREVIEWED = "Index.Linter/Line.Verbatim.Gate.Unreviewed"
 LINE_VERBATIM_GATE_TOKEN_MISMATCH = "Index.Linter/Line.Verbatim.Gate.TokenMismatch"
@@ -593,7 +592,7 @@ def chatlas_line_verbatim_gate_check(chatlas_root: Path | None = None) -> Linter
                 for _anchor, cargo in tokenized
             ):
                 continue
-            # No tokenized member verified: report the most specific failure.
+
             findings.append(
                 _tokenized_failure(rel, line, tokenized, line_text, load_model)
             )

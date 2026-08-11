@@ -168,10 +168,10 @@ def prepare_codex_run(
     dry_run: bool,
     source: str,
 ) -> tuple[str, ...]:
-    # The run surface is disconnected from the account/auth credential system
-    # (Impl.Req 658): the run launches against the home as-is. Account-scope is
-    # still checked by `_check_account_scope` (profile config). Re-integrating a
-    # home-current credential check on the new model is a later redesign.
+
+
+
+
     return ()
 
 

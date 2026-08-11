@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Skills
 from .commands import (
     _cmd_skills_import,
     _cmd_skills_list,

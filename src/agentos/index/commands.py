@@ -305,7 +305,7 @@ def _cmd_blocks(args: argparse.Namespace) -> int:
         rows.sort(key=lambda row: (row.gr_density, -row.kernel_lines, row.block_path))
 
     summary_lines = sum(row.kernel_lines for row in rows)
-    # aggregate density is unique-within-scope: a stamp shared across blocks counts once
+
     summary_anchors = len({anchor for row in rows for anchor in row.anchors})
     listed = rows if getattr(args, "limit", None) is None else rows[: args.limit]
     payload = {

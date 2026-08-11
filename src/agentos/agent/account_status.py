@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 from __future__ import annotations
 
 import datetime
@@ -153,9 +154,9 @@ class AccountLimit:
     limit_label: str | None
     usage_over_time: UsageOverTimeLimitData | None = None
     provider_limit: Mapping[str, object] = field(default_factory=dict)
-    # Estimated limits are monitor-synthesized guidance (e.g. codex burst after
-    # OpenAI stopped publishing it). They must never be conflated with provider
-    # data and never reach the usage registry.
+
+
+
     estimated: bool = False
 
     def summary(self) -> dict[str, object]:
@@ -220,8 +221,8 @@ class AccountStatus:
         return payload
 
 
-# Shared payload-shaping helpers — one definition for the provider account-status
-# implementations (claude / codex / copilot).
+
+
 
 
 def limits_summary(limits: tuple[AccountLimit, ...]) -> str | None:

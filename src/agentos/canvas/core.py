@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Canvas --from Canvas.Model
 """Agentos.Canvas core — two-layer model, canvas I/O, layout, sync, lint."""
 
 from __future__ import annotations
@@ -10,9 +11,9 @@ from pathlib import Path
 from typing import Any
 
 
-# ---------------------------------------------------------------------------
-# Model layer
-# ---------------------------------------------------------------------------
+
+
+
 
 MODEL_KEY = "_model"
 
@@ -27,7 +28,7 @@ class ModelCard:
 class ModelRelationship:
     from_card: str
     to_card: str
-    rel_type: str  # edge, adjacent, contains
+    rel_type: str
     id: str
 
 
@@ -81,9 +82,9 @@ def write_model(canvas: dict[str, Any], model: CanvasModel) -> None:
 
 
 
-# ---------------------------------------------------------------------------
-# Canvas I/O
-# ---------------------------------------------------------------------------
+
+
+
 
 MIN_NODE_WIDTH = 240
 MAX_NODE_WIDTH = 320
@@ -160,9 +161,9 @@ def write_canvas(path: Path, canvas: dict[str, Any]) -> None:
     path.write_text(json.dumps(canvas, indent=2) + "\n", encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# Layout
-# ---------------------------------------------------------------------------
+
+
+
 
 
 def layout_grid(card_ids: list[str]) -> dict[str, tuple[float, float]]:
@@ -226,9 +227,9 @@ def _avoid_overlap(
     return (x, y)
 
 
-# ---------------------------------------------------------------------------
-# Canvas construction from model
-# ---------------------------------------------------------------------------
+
+
+
 
 
 def model_to_canvas(model: CanvasModel) -> dict[str, Any]:
@@ -252,9 +253,9 @@ def model_to_canvas(model: CanvasModel) -> dict[str, Any]:
     return canvas
 
 
-# ---------------------------------------------------------------------------
-# Render — model + old canvas → new canvas (the compiler)
-# ---------------------------------------------------------------------------
+
+
+
 
 
 @dataclass
@@ -297,28 +298,28 @@ def render_canvas(canvas: dict[str, Any]) -> RenderResult:
         ))
         return RenderResult(errors=errors, actions=actions, canvas=canvas)
 
-    # Index old canvas state
+
     old_nodes_by_id: dict[str, dict[str, Any]] = {
         n["id"]: n for n in canvas.get("nodes", [])
     }
-    # Index old edges by (fromNode, toNode) for reuse of canvas edge properties
+
     old_edges_by_pair: dict[tuple[str, str], dict[str, Any]] = {}
     for e in canvas.get("edges", []):
         key = (e.get("fromNode", ""), e.get("toNode", ""))
         old_edges_by_pair[key] = e
 
-    # --- Build new nodes from model ---
+
     new_nodes: list[dict[str, Any]] = []
-    # Track positions for placement of new cards
+
     placed_positions: dict[str, tuple[float, float]] = {}
 
     for card in model.cards:
         old_node = old_nodes_by_id.get(card.id)
         if old_node is not None:
-            # Carry over from old canvas: position, size, text, color, all properties
+
             node = dict(old_node)
 
-            # Migrate text from model if present
+
             model_text = _get_model_card_text(canvas, card.id)
             if model_text is not None:
                 node["text"] = model_text
@@ -327,13 +328,13 @@ def render_canvas(canvas: dict[str, Any]) -> RenderResult:
             new_nodes.append(node)
             placed_positions[card.id] = (node["x"], node["y"])
         else:
-            # New card — needs placement
+
             connected_to = [
                 r.to_card if r.from_card == card.id else r.from_card
                 for r in model.relationships
                 if r.rel_type == "edge" and (r.from_card == card.id or r.to_card == card.id)
             ]
-            # Build a temporary canvas for place_one using already-placed nodes
+
             temp_canvas: dict[str, Any] = {"nodes": new_nodes}
             x, y = place_one(card.id, temp_canvas, connected_to)
             node = make_canvas_node(card, x, y)
@@ -341,7 +342,7 @@ def render_canvas(canvas: dict[str, Any]) -> RenderResult:
             placed_positions[card.id] = (x, y)
             actions.append(RenderAction("created_node", card.id))
 
-    # --- Build new edges from model ---
+
     new_edges: list[dict[str, Any]] = []
     for rel in model.relationships:
         if rel.rel_type != "edge":
@@ -350,21 +351,21 @@ def render_canvas(canvas: dict[str, Any]) -> RenderResult:
         pair = (rel.from_card, rel.to_card)
         old_edge = old_edges_by_pair.get(pair)
         if old_edge is not None:
-            # Carry over canvas edge properties (direction, color, etc.)
+
             edge = dict(old_edge)
-            # Update label to match model
+
             if edge.get("label", "") != rel.id:
                 actions.append(RenderAction("updated_label",
                     f"{rel.from_card} -> {rel.to_card}: '{edge.get('label', '')}' -> '{rel.id}'"))
                 edge["label"] = rel.id
             new_edges.append(edge)
         else:
-            # New edge
+
             new_edges.append(make_canvas_edge(rel.from_card, rel.to_card, rel.id))
             actions.append(RenderAction("created_edge",
                 f"{rel.from_card} --{rel.id}--> {rel.to_card}"))
 
-    # --- Report dropped canvas elements ---
+
     model_card_ids = {c.id for c in model.cards}
     for nid in old_nodes_by_id:
         if nid not in model_card_ids:
@@ -378,14 +379,14 @@ def render_canvas(canvas: dict[str, Any]) -> RenderResult:
             actions.append(RenderAction("dropped_edge",
                 f"{pair[0]} -> {pair[1]} (label: '{old_edge.get('label', '')}')"))
 
-    # --- Clear migrated model text ---
+
     _clear_model_card_texts(canvas)
 
-    # --- Build new canvas ---
+
     new_canvas: dict[str, Any] = {"nodes": new_nodes, "edges": new_edges}
     write_model(new_canvas, model)
 
-    # --- Lint the result ---
+
     errors = _lint_rendered(new_canvas, model)
 
     return RenderResult(errors=errors, actions=actions, canvas=new_canvas)
@@ -412,7 +413,7 @@ def _lint_rendered(canvas: dict[str, Any], model: CanvasModel) -> list[RenderErr
         n["id"]: n for n in canvas.get("nodes", [])
     }
 
-    # Rule: model card type matches canvas TID.Pair
+
     for card in model.cards:
         node = canvas_nodes_by_id.get(card.id)
         if node is None:
@@ -425,7 +426,7 @@ def _lint_rendered(canvas: dict[str, Any], model: CanvasModel) -> list[RenderErr
                 message=f"Card '{card.id}' model type '{card.type}' not found in canvas text",
             ))
 
-    # Rule: adjacent — cards touch borders
+
     for rel in model.relationships:
         if rel.rel_type != "adjacent":
             continue
@@ -439,7 +440,7 @@ def _lint_rendered(canvas: dict[str, Any], model: CanvasModel) -> list[RenderErr
                 message=f"Adjacent relationship '{rel.id}': cards '{rel.from_card}' and '{rel.to_card}' do not touch",
             ))
 
-    # Rule: contains — child inside parent
+
     for rel in model.relationships:
         if rel.rel_type != "contains":
             continue
@@ -453,7 +454,7 @@ def _lint_rendered(canvas: dict[str, Any], model: CanvasModel) -> list[RenderErr
                 message=f"Contains relationship '{rel.id}': '{rel.to_card}' is not inside '{rel.from_card}'",
             ))
 
-    # Rule: every canvas edge label must be a valid TID.Pair
+
     for edge in canvas.get("edges", []):
         label = edge.get("label", "")
         if label and not _is_tid_pair(label):
@@ -476,14 +477,14 @@ def _nodes_adjacent(a: dict[str, Any], b: dict[str, Any], tolerance: int = 10) -
     ax, ay, aw, ah = a["x"], a["y"], a["width"], a["height"]
     bx, by, bw, bh = b["x"], b["y"], b["width"], b["height"]
 
-    # Check horizontal adjacency (right edge of a touches left edge of b, or vice versa)
+
     h_touch = (
         abs((ax + aw) - bx) <= tolerance or
         abs((bx + bw) - ax) <= tolerance
     )
     v_overlap = not (ay + ah < by or by + bh < ay)
 
-    # Check vertical adjacency (bottom of a touches top of b, or vice versa)
+
     v_touch = (
         abs((ay + ah) - by) <= tolerance or
         abs((by + bh) - ay) <= tolerance

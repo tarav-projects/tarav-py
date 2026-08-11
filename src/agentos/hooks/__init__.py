@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Hook
 from __future__ import annotations
 
 from .commands import AGENTOS_HOOKS_DISABLED_ENV, register_hook_commands

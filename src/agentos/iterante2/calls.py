@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Ctx
 """Call builders — pure factories for the call objects a turn sets on `ctx.call`.
 
 Reached as `iterante2.calls.<type>(...)` after `import iterante2`. These are the

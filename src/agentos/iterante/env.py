@@ -1,3 +1,4 @@
+# $kw: --from Mission.Env
 """Mission.Env resolution — turn the optional mission.json env field into a launch prefix.
 
 The launch prefix is the argv head used to start the in-env turn runner

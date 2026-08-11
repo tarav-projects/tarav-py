@@ -1,3 +1,4 @@
+# $kw: --from Anchory.System --from Index.Line.Anchor
 from __future__ import annotations
 
 from dataclasses import dataclass

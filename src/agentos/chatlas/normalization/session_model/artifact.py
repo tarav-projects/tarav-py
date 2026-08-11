@@ -1,3 +1,4 @@
+# $kw: ^session-model-artifact-jsonl --from Session.Model.Artifact --from Chatlas.Session.Model --from Session.Event.Tape --note [CT] artifact loading splits only on the JSONL LF delimiter so Unicode line separators inside canonical event strings remain data ^c20260728-16u
 """`Session.Model.Artifact` — the on-disk multi-file form of one `Chatlas.Session.Model`.
 
 The artifact splits the assembled model into a small head (`session.json`), the
@@ -5,8 +6,6 @@ complete current `Session.Event.Tape` (`events.jsonl`), and sibling projections.
 Materialization rewrites this derived snapshot when raw evidence or normalizer
 semantics change; JSONL is a storage encoding, not an immutability claim.
 """
-
-# $kw: ^session-model-artifact-jsonl --from Chatlas.Session.Model --from Session.Event.Tape --note [CT] artifact loading splits only on the JSONL LF delimiter so Unicode line separators inside canonical event strings remain data ^c20260728-16u
 
 from __future__ import annotations
 

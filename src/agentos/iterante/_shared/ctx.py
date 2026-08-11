@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Ctx
 """Ctx — the data-only I/O object between Harness and mission hooks.
 
 It carries data, nothing callable: a mission reaches capabilities through its

@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Agent.Adapter
 """Shared constants and argparse helpers for agent commands."""
 
 from __future__ import annotations

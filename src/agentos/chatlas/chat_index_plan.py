@@ -1,4 +1,4 @@
-# $kw: --from Chat.Index --from Chat.Index.Delta --from Chat.Index.HEAD --from Capture.Plan --from Index.Line --note [IMPL] the plan carries semantics only; descriptors, headings, anchors, and ordering stay CPU-derived --supp ^c20260804-60u
+# $kw: --from Chat.Index --from Chat.Index.Delta --from Chat.Index.HEAD --from Index.Line --note [IMPL] the plan carries semantics only; descriptors, headings, anchors, and ordering stay CPU-derived --supp ^c20260804-60u
 from __future__ import annotations
 
 import hashlib
@@ -393,9 +393,9 @@ def parse_capture_plan(payload: object) -> CapturePlan:
     if preserve_head and envelope.get("mode") != "maintain-v2":
         raise CliError("Chat.Index HEAD preservation requires maintain-v2 mode")
 
-    # The plan is a stage file, and its status governs only whether it may be
-    # applied. What the resulting Chat.Index covers is read from the Deltas and
-    # the chat, never asserted by the agent that wrote them.
+
+
+
     status = payload.get("status")
     if status not in {"draft", "ready"}:
         raise CliError("Chat.Index capture plan status must be 'draft' or 'ready'")
@@ -502,8 +502,8 @@ def _parse_line(raw_line: object, *, location: str, require_support: bool) -> Pl
             content,
         )
     if any(ANCHOR_RE.fullmatch(token) for token in content.split()):
-        # The renderer owns Support.References; an authored one would silently
-        # contradict the plan's own support choice.
+
+
         raise _content_error(
             f"Chat.Index capture plan {location} content must not carry an anchor; "
             "the renderer owns Delta Support.References",

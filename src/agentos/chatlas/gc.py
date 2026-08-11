@@ -1,3 +1,4 @@
+# $kw: --from Provider.GC
 from __future__ import annotations
 
 from collections.abc import Callable

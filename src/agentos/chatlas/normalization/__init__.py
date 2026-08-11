@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model
 """`Normalization.Pipeline::Chatlas.Session.Model` — provider sessions normalized into
 the `Chatlas.Session.Model`.
 

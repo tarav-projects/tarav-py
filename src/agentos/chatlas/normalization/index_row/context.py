@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model
 """`Normalizer.Context` — a coordination surface for reusing loaded `Raw.Source` data.
 
 It is an offered convenience, not a contract: a `Raw.Normalizer` may pull sources

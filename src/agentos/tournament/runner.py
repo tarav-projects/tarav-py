@@ -62,10 +62,10 @@ class JudgeSpawn:
     model: str | None = None
     account: str | None = None
     timeout_sec: int | None = None
-    # Extra provider argv. A judge answers by running a command, and providers
-    # gate tool use differently — claude-code needs `--allowedTools Bash`, and
-    # without it the spawn silently declines and exits clean. The engine stays
-    # provider-neutral and the caller supplies whatever its judge needs.
+
+
+
+
     agent_argv: tuple[str, ...] = ()
 
     def identity(self) -> dict[str, object]:
@@ -83,15 +83,15 @@ class MatchResult:
     presented: tuple[str, ...]
     verbatim: str
     verbatim_hash: str
-    # The controls this match ended up carrying, each with its declared band.
-    # Empty for a match the engine did not substitute into.
+
+
     controls: dict[str, str] = field(default_factory=dict)
-    # The registered `Match.Template` this run rendered from, and the per-run
-    # values bound into it. Together they are enough to rebuild the verbatim.
+
+
     template: str | None = None
     template_bindings: dict[str, object] = field(default_factory=dict)
-    # `Tournament.Label` grouping tags. Unlabeled players are absent from the
-    # mapping; an unlabeled match carries None.
+
+
     player_labels: dict[str, str] = field(default_factory=dict)
     match_label: str | None = None
     ticket_id: str | None = None
@@ -167,9 +167,9 @@ def run_match(
     dry_run: bool = False,
 ) -> MatchResult:
     rng = random.Random(rng_seed)
-    # Substitution before identity: a match carrying a control is a different
-    # match from the one without, and merging the two under one id would corrupt
-    # accumulation rather than enrich it.
+
+
+
     players, controls = _substituted(
         definition=definition,
         tournament=tournament,
@@ -178,14 +178,14 @@ def run_match(
         rng=rng,
     )
     presentations = tuple(definition.present_player(player) for player in players)
-    # Identity before the shuffle: it must not vary with presentation order.
+
     match_id = definition.match_identity(players=players, presentations=presentations)
     player_labels, match_label = _labels(definition, players, presentations)
 
     presented, presented_presentations = _presented_order(players, presentations, rng)
 
     if dry_run:
-        # No registry: a dry run leaves nothing behind, including components.
+
         verbatim, _address, _bindings = _composed(
             question=definition.question,
             criteria=definition.criteria,
@@ -227,8 +227,8 @@ def run_match(
     tickets.set_verbatim_hash(ticket.ticket_id, verbatim_hash)
     tickets.set_template(ticket.ticket_id, template, bindings)
 
-    # The consumer slot is computed before the spawn so `submit` never has to
-    # reach back into a definition it does not have.
+
+
     tickets.set_slot(
         ticket.ticket_id,
         definition.verdict_slot(players=players, presentations=presentations),
@@ -244,8 +244,8 @@ def run_match(
             player_labels=player_labels, match_label=match_label,
         )
 
-    # A validated verdict outranks a nonzero exit: once the answer travels out of
-    # band the exit code stops being evidence that anything failed.
+
+
     verdict = _verdict_for_ticket(store, tournament, ticket.ticket_id)
     if verdict is None:
         redeemed = tickets.load(ticket.ticket_id)
@@ -291,8 +291,8 @@ def preview_match(
     spawn, the wait, the resolution — is what this skips.
     """
     rng = random.Random(rng_seed)
-    # A preview renders a *valid* match, and a valid match may carry a control;
-    # one that never could would show a frame the judge does not always get.
+
+
     players, controls = _substituted(
         definition=definition,
         tournament=tournament,
@@ -557,8 +557,8 @@ def _spawn_judge(spawn: JudgeSpawn, verbatim: str) -> AgentRunResult:
             account=spawn.account,
             interaction_mode="non_interactive",
         ),
-        # "capture" and not "terminal": _run_terminal discards stdout, and the
-        # judge's answer is the whole product of the run.
+
+
         AgentRunConfig(
             cwd=spawn.cwd, process_mode="capture", timeout_sec=spawn.timeout_sec
         ),

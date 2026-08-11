@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Time.Interface
 from __future__ import annotations
 
 from agentos._core.errors import CliError

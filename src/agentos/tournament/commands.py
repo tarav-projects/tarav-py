@@ -39,8 +39,8 @@ def _snapshot_dir(store: TournamentStore, tournament_id: str) -> Path:
 def _cmd_create(args: argparse.Namespace) -> int:
     store = _store(args)
     try:
-        # Loaded before the tournament exists so a definition missing a required
-        # hook fails without leaving an empty tournament behind.
+
+
         staging = store.root / "definitions" / "_staging"
         definition = load_definition(args.definition, snapshot_dir=staging)
         tournament = store.create_tournament(
@@ -109,8 +109,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         timeout_sec=args.timeout,
         agent_argv=tuple(args.agent_arg or ()),
     )
-    # Sweep before minting: cleanup is age-based, and no run depends on it
-    # having happened.
+
+
     TicketStore(store.root).sweep()
     try:
         payload = run_pool(
@@ -405,8 +405,8 @@ def _cmd_gc(args: argparse.Namespace) -> int:
             "command": "tournament gc",
             "depot": str(store.root),
             "removed": sum(removed.values()),
-            # Split by kind: swept `match` tickets went unanswered by a judge,
-            # swept `preview` tickets are development noise.
+
+
             "removed_by_kind": removed,
         }
     )

@@ -1,3 +1,4 @@
+# $kw: --from Run.Snapshot
 """Run state persistence — run.json load/save and mission.py snapshot."""
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ SNAPSHOT_FILE = "_mission-snap.py"
 
 RUNTIME_ID_BYTES = 8
 PREFIX_LEN = 4
-SUFFIX_BYTES = 3  # 3 bytes -> 6 hex chars
+SUFFIX_BYTES = 3
 
 
 def generate_runtime_id() -> str:
@@ -77,7 +78,7 @@ def create_run(mission_dir: Path, mission_args: dict | None = None) -> tuple[str
         raise FileNotFoundError(f"No mission.py found in {mission_dir}")
     snapshot = rd / SNAPSHOT_FILE
     shutil.copy2(mission_py, snapshot)
-    locking.record(snapshot)  # authorize the frozen mission code
+    locking.record(snapshot)
 
     token = make_token(runtime_id)
     initial_state = {
@@ -88,8 +89,8 @@ def create_run(mission_dir: Path, mission_args: dict | None = None) -> tuple[str
         "call": None,
         "phase": "init",
         "token": token,
-        # Provenance — the run is self-describing wherever it lives, so discovery
-        # recovers the mission location without relying on the dir structure.
+
+
         "provenance": {
             "mission_dir": str(mission_dir.resolve()),
             "mission_id": mission_dir.name,
@@ -110,4 +111,4 @@ def load_run(rd: Path) -> dict:
 def save_run(rd: Path, data: dict) -> None:
     run_file = rd / RUN_FILE
     run_file.write_text(json.dumps(data, indent=2) + "\n")
-    locking.record(run_file)  # legal write: re-authorize the new run state
+    locking.record(run_file)

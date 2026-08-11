@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """Dev-only render candidates for the account monitor.
 
 A sandbox for eyeballing monitor row rendering — overflow bars, markers, and any

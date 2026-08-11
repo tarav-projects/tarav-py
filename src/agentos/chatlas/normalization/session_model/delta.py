@@ -1,3 +1,4 @@
+# $kw: ^chatlas-delta-normalization --from Delta.Normalization::Chatlas --note [CT] delta normalization reads archived raw data and falls back to full derivation on validation failure ^c20260712-9u --supp static cleanup authorized ^c20260730-34u
 """`Delta.Normalization::Chatlas` — incremental claude-code session derivation.
 
 A delta pass resumes from a `Normalization.Delta.Checkpoint::Chatlas` (a small
@@ -9,7 +10,6 @@ derivation. Any validation failure returns None and the caller falls back to
 full derivation — delta is an optimization, never a source of truth.
 """
 
-# $kw: ^chatlas-delta-normalization --from Delta.Normalization::Chatlas --note [CT] delta normalization reads archived raw data and falls back to full derivation on validation failure ^c20260712-9u --supp static cleanup authorized ^c20260730-34u
 from __future__ import annotations
 
 import json
@@ -172,9 +172,9 @@ def _read_frozen_artifact_pieces(
     *,
     state: dict[str, Any],
 ) -> dict[str, list[dict[str, object]]] | None:
-    # No head-state comparison: the tape itself proves checkpoint↔artifact
-    # agreement — the reusable prefix's last line must carry the checkpoint's
-    # chain seed. This is a verified cache policy, not event-level finality.
+
+
+
     tape_path = artifact_dir / SESSION_MODEL_TAPE_ARTIFACT
     if not tape_path.is_file():
         return None
@@ -326,7 +326,7 @@ def _delta_state_after_splice(
     frozen_run_count = 0
     span_end_base = 0
     for model_run in model_runs:
-        # same payload-stable predicate as the full-path state builder
+
         indices = list(source_ref_record_indices(model_run.get("source_refs")))
         if not indices or max(indices) > new_frozen_count:
             continue
@@ -341,8 +341,8 @@ def _delta_state_after_splice(
     new_message_index_base = int(old_state["message_index_base"]) + messages_tail_final_count
     new_usage_index_base = int(old_state["usage_index_base"]) + usage_tail_final_count
 
-    # locate the new frozen/volatile warning split by re-deriving the new
-    # volatile slice alone (same suffix property as the full-path builder)
+
+
     volatile_session = _reslice_raw_session(
         tail_session,
         [
@@ -468,13 +468,13 @@ def claude_delta_normalization_result(
         last_active_uuid=string_or_none(state.get("last_active_uuid")),
     ):
         return None
-    # A fork rooted in the tail (or at the frozen tip) passes the linearity check —
-    # every parent is still "known" — yet the resumed pass skips lineage marking, so
-    # full derivation is the only way to get the abandoned-branch marks and rollback.
+
+
+
     if _claude_tail_has_conversation_fork(tail_session.records):
         return None
-    # A compaction joins retained UUIDs back to events that may live in the frozen
-    # prefix. Tail-only normalization cannot construct those Event.Refs honestly.
+
+
     if _claude_tail_has_compaction(tail_session.records):
         return None
 
@@ -493,9 +493,9 @@ def claude_delta_normalization_result(
     )
     tail_passes = _claude_normalization_passes(tail_session, resume)
     if frozen_events and tail_passes.events and "lineage" not in tail_passes.events[0]:
-        # The resumed slice cannot resolve its first parent UUID because that raw
-        # record lives in the verified prefix. The linearity guard above establishes
-        # that the continuation starts from the prefix head represented here.
+
+
+
         tail_passes.events[0]["lineage"] = {
             "origin_ref": event_ref(frozen_events[-1]),
         }
@@ -522,8 +522,8 @@ def claude_delta_normalization_result(
     usage = pieces["usage"] + tail_passes.usage
 
     raw_counts = _sum_raw_counts(state["frozen_raw_counts"], tail_passes.raw_counts)
-    # the checkpoint carries the frozen prefix's per-pass warnings; the tail
-    # pass emits the volatile suffix — concatenated they equal the full lists
+
+
     frozen_pass_warnings = state.get("frozen_pass_warnings")
     if not isinstance(frozen_pass_warnings, dict):
         frozen_pass_warnings = {}
@@ -541,8 +541,8 @@ def claude_delta_normalization_result(
         usage=usage,
     )
 
-    # newly-frozen tail projections are counted at projection granularity,
-    # exactly the way the full-path state builder counts them
+
+
     from agentos.chatlas.normalization.session_model._claude import (
         _claude_messages_from_events,
         _claude_usage_from_events,
@@ -598,8 +598,8 @@ def claude_delta_normalization_result(
                 usage=usage,
                 deferred_concepts=[],
             ),
-            # provenance for consumers; the resume state below is transport-only
-            # (the assembler strips it; the artifact publisher checkpoints it)
+
+
             "derivation": "delta",
             "delta_state": delta_state,
         },

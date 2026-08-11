@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model --from Provider.Instance
 """claude-code `Raw.Normalizer`s for the index-row target.
 
 Identity is read from the first JSONL record; `project_path` scans for the first record
@@ -32,13 +33,13 @@ def claude_cwd(ctx: NormalizerContext) -> ModelFragment:
     transcript = ctx.primary_transcript()
     if transcript is None:
         return {"project_path": None}
-    # project_path: the first record carrying a cwd (524 fix). The original bug read
-    # record 0 only, so a leading non-message record with no cwd gave project_path null.
+
+
     fragment: ModelFragment = {
         "project_path": _raw.read_first_jsonl_value(transcript.path, "cwd")
     }
-    # native mirrors the raw first record (the session_ref's native metadata) — only
-    # project_path moves with the fix.
+
+
     first = ctx.first_jsonl_object(transcript.path)
     first_cwd = _raw.string_or_none(first.get("cwd")) if first is not None else None
     if first_cwd is not None:
@@ -47,7 +48,7 @@ def claude_cwd(ctx: NormalizerContext) -> ModelFragment:
 
 
 def claude_display_name(ctx: NormalizerContext) -> ModelFragment:
-    # claude project sessions carry no title at discovery time.
+
     return {"display_name": None, "display_name_field": None}
 
 
@@ -65,9 +66,9 @@ def claude_activity(ctx: NormalizerContext) -> ModelFragment:
 
 
 def claude_created_at(ctx: NormalizerContext) -> ModelFragment:
-    # Mirrors `agentos.agent.providers.claude_code.session.ClaudeSession.created_timestamp`: the first
-    # dialog turn's timestamp (jsonl) or createdAt/lastActivityAt (json). This is a
-    # different route from the visible-message summary path, reproduced faithfully.
+
+
+
     transcript = ctx.primary_transcript()
     if transcript is None or not transcript.path.exists():
         return {}

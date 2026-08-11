@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model --from Provider.Instance
 """codex `Raw.Normalizer`s for the index-row target.
 
 Codex index-row metadata is a *multi-source* product: identity and cwd come from
@@ -121,8 +122,8 @@ def _find_index_entry(path: Path, target_id: str) -> dict[str, object] | None:
 
 
 def codex_created_at(ctx: NormalizerContext) -> ModelFragment:
-    # Mirrors `agentos.agent.providers.codex.session.CodexSession.created_timestamp`: first dialog
-    # turn timestamp from the rollout dialog route.
+
+
     transcript = ctx.primary_transcript()
     if transcript is None or not transcript.path.exists():
         return {}

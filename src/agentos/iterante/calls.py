@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Ctx
 """Call builders — pure factories for the call objects a turn sets on `ctx.call`.
 
 Reached as `iterante.calls.<type>(...)` after `import iterante`. These are the
@@ -8,8 +9,8 @@ from __future__ import annotations
 
 import copy
 
-# Sentinel so an omitted `expects` leaves the key off the call (lenient,
-# back-compat) while an explicit `expects=None` records a no-payload contract.
+
+
 _UNSET = object()
 
 
@@ -26,7 +27,7 @@ def branch(*, id: str, title: str, answers: list[str], body: str | None = None) 
     call = {"type": "branch", "id": id, "title": title, "answers": list(answers)}
     if body is not None:
         call["body"] = body
-    # branch is sugar over the general contract: its answer is an enum.
+
     call["expects"] = {"answer": list(answers)}
     return call
 

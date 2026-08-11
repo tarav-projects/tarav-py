@@ -1,3 +1,4 @@
+# $kw: --from Event.Hash
 from __future__ import annotations
 
 import hashlib

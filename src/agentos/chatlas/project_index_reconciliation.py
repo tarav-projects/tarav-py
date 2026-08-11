@@ -1,3 +1,4 @@
+# $kw: --from Line.Home --from Chat.Index.HEAD
 from __future__ import annotations
 
 from hashlib import sha256
@@ -111,8 +112,8 @@ def project_index_audit(
             continue
 
         surface = chat_index_surface_path(identity, chatlas_root=root)
-        # The chat is the evidence the audit checks the surface against; there
-        # is no stored source to fall back on.
+
+
         audited = audit_chat_index_surface(
             surface,
             identity_hash=identity,
@@ -168,9 +169,9 @@ def project_index_audit(
         )
 
     depot_anchors = chatlas_anchory_depot(root)
-    # Without a registry there is no comparison floor. The registry POI is the
-    # actionable finding; emitting one synthetic missing-home/HEAD warning per
-    # line would only multiply the same unavailable prerequisite.
+
+
+
     for line in project_lines if identities else ():
         statement_key = str(line["statement_key"])
         delta_homes = delta_by_statement.get(statement_key, [])

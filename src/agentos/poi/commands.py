@@ -1,3 +1,4 @@
+# $kw: --from POI.System
 """CLI adapter for shared POI discovery acts."""
 
 from __future__ import annotations

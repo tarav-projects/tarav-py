@@ -199,7 +199,7 @@ def _cmd_agent_accounts_orphans(args: argparse.Namespace) -> int:
 
     providers = _resolve_providers(args.provider)
 
-    # base groups carry no secret material — the text view reads only these
+
     groups = [
         {
             "provider": provider,
@@ -212,7 +212,7 @@ def _cmd_agent_accounts_orphans(args: argparse.Namespace) -> int:
     ]
 
     if args.json:
-        # --json is the adoption worksheet: attach the full Auth.Data per ref
+
         orphans = []
         for g in groups:
             refs = []
@@ -271,8 +271,8 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
     results: list[RotateResult] = []
     materialized: list[MaterializeResult] = []
     for provider in providers:
-        # Capture-first (homes read-only) so a just-refreshed home enters the pool
-        # before we pick the head; --no-capture rotates the existing pool only.
+
+
         if not no_capture:
             capture_all_homes(provider, dry_run=dry_run)
         if args.account is not None:
@@ -282,9 +282,9 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
             results.append(rotate(provider, account_id, method, dry_run=dry_run))
         else:
             results.extend(rotate_all(provider, dry_run=dry_run))
-        # Reconcile: push each home's now-current active into stale homes (dry-run
-        # maps to check — no home writes). Syncs drifted homes even if the head
-        # did not move.
+
+
+
         if do_materialize:
             materialized.extend(materialize_all(provider, check=dry_run))
 
@@ -345,7 +345,7 @@ def _cmd_agent_accounts_rotate(args: argparse.Namespace) -> int:
                 elif m.status == "check":
                     detail = f"[dry-run] would materialize (ref {_short(m.active_ref)})"
                 else:
-                    detail = m.status  # aligned | skipped
+                    detail = m.status
                 print(f"  {m.provider} {m.home}: {detail}")
             mverb = "Would materialize" if dry_run else "Materialized"
             print(f"{mverb} {written} home(s).")

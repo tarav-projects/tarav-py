@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model
 """Rich `Normal.Assembler` for `Normalization.Pipeline::Chatlas.Session.Model`.
 
 Produces the full `Chatlas.Session.Model` (`session`, `agent_instance`, `sources`,
@@ -13,8 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
-# The provider normalization lives under this package (`normalization.session_model`,
-# relocated by 522); these imports reach into its assembly leaf helpers.
+
+
 from agentos.chatlas._payload_helpers import string_or_none
 from agentos.chatlas.normalization.session_model._model import (
     _CHATLAS_SESSION_MODEL_SCHEMA_VERSION,
@@ -61,9 +62,9 @@ def assemble_session_model(
         "warnings": result.warnings,
         "unsupported_concepts": result.unsupported_concepts,
     }
-    # `normalization` is provenance — it describes how the model was generated,
-    # never state the machinery needs. `delta_state` is producer-private resume
-    # state that only transports through the result to the checkpoint writer.
+
+
+
     normalization.update(
         {key: value for key, value in result.metadata.items() if key != "delta_state"}
     )

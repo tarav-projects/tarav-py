@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 from __future__ import annotations
 
 import datetime
@@ -47,8 +48,8 @@ def append_monitor_log_event(
             "home": home_path_str(home),
             "payload": dict(payload) if payload is not None else {},
         }
-        # Serialize before opening the file so an unserializable payload leaves
-        # no partial line behind.
+
+
         line = json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
         log_dir.mkdir(parents=True, exist_ok=True)
         with record_path.open("a", encoding="utf-8") as handle:

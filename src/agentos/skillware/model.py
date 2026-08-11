@@ -1,4 +1,4 @@
-# $kw: ^skw-model --note [DF] the skw parser — a surface-agnostic $kw frame core plus per-surface Carrier adapters ^c20260722-24u
+# $kw: ^skw-model --from Skw.Language --from Closure.Parser --note [DF] the skw parser — a surface-agnostic $kw frame core plus per-surface Carrier adapters ^c20260722-24u
 # --supp context assemblies are whole-file modules declared at the file point; dependency roles remain distinct ^c20260725-27u
 """Skillware src surface model: `.skw.md` parsing.
 
@@ -157,8 +157,8 @@ class Carrier:
         return match.group("name").strip() if match is not None else None
 
 
-# The markdown carrier: machinery rides `>` blockquote lines; ``` / ~~~ fence
-# code inert; ATX headings are the structural boundary. The original grammar.
+
+
 MARKDOWN_CARRIER = Carrier(
     name="skw-skills",
     open_re=re.compile(r"^>\s*\$kw:\s?(.*)$"),
@@ -169,9 +169,9 @@ MARKDOWN_CARRIER = Carrier(
     boundary_label="heading",
 )
 
-# The code carrier (carrier B): the comment *is* the carrier — `# $kw: …`. No
-# blockquote, no markdown fence; boundaries (def/class Annotation.Points) are a
-# per-language concern layered in Slice 3.
+
+
+
 CODE_CARRIER = Carrier(
     name="skw-code",
     open_re=re.compile(r"^#\s*\$kw:\s?(.*)$"),
@@ -193,8 +193,8 @@ class SkwNote:
     """A `--note` (documentation) or `--supp` (own touched line) — a typed,
     anchored `Index.Line` carried by an annotation block."""
 
-    flag: str  # "note" | "supp"
-    type: str | None  # the two-letter act code for --note; None for --supp
+    flag: str
+    type: str | None
     text: str
     anchor: str | None
     line: int
@@ -357,8 +357,8 @@ def _parse_flag_segments(
     head = content[: matches[0].start()].strip() if matches else content.strip()
     if head:
         if head.startswith("--"):
-            # an unrecognized `--token` at a flag position is an unknown flag,
-            # never a silent value continuation (known flags match _FLAG_RE)
+
+
             findings.append(SkwFinding(line_no, f"unknown flag: {head.split()[0]}"))
         elif flags:
             name, value = flags[-1]
@@ -539,7 +539,7 @@ def _parse_source(
             and (frame.froms or frame.dev_froms or frame.cites or frame.loading_deps)
             and not _has_content(body)
         ):
-            # A declaration-only dependency block owns no native body.
+
             dependencies.append(
                 SkwDependency(
                     froms=frame.froms,
@@ -784,7 +784,7 @@ def _parse_source(
             value for name, value in flags if name == "context-assembly"
         ]
         context_assembly = bool(context_assembly_values)
-        # a binding flag's own trailing text is derivation context, as is --intent
+
         intent_parts = [
             value
             for name, value in flags
@@ -848,8 +848,8 @@ def _parse_source(
             command = "context-loading-path"
         elif role is not None:
             if not stack or stack[-1].command in ("when", "then"):
-                # rows peer-close, so a sibling row is legal; only a top-level
-                # row (no parent block) is orphaned
+
+
                 if not stack:
                     findings.append(SkwFinding(index + 1, f"'{role}' outside a router"))
                 else:
@@ -858,9 +858,9 @@ def _parse_source(
         elif verb in RECIPE_BINDINGS:
             command = verb
         else:
-            # `--pointer` binds by reference (non-materializing); with no
-            # binding at all the block is either a content span or an
-            # annotation — resolved below by whether it carries annotation flags
+
+
+
             command = "text"
 
         if command in RECIPE_BINDINGS and not froms:
@@ -1131,10 +1131,10 @@ def _parse_source(
                     )
                 )
 
-        # closure by role: a recipe or a content span (a flag-less block, incl.
-        # a router parent) owns its `end`; a row peer-closes; an annotation
-        # block — one carrying only `--from`/`--note`/`--supp` — self-closes at
-        # its declaration, and following text stays surface.
+
+
+
+
         annotation_only = declaration_kinds > 0 or (
             command == "text"
             and (
@@ -1153,8 +1153,8 @@ def _parse_source(
             command == "text" and not annotation_only
         )
 
-        # nesting guard: a construct may only nest as a when/then row inside a
-        # router-capable parent; a plain block may not nest inside a recipe body
+
+
         if stack and stack[-1].verb in RECIPE_BINDINGS and role is None:
             findings.append(
                 SkwFinding(
@@ -1185,8 +1185,8 @@ def _parse_source(
 
         machinery_spans.append((index, decl_end))
         if annotation_only:
-            # self-close at the declaration: emit now with an empty body so
-            # following native text stays surface (void dependency / note attach)
+
+
             emit_frame(frame, decl_end)
         else:
             stack.append(frame)

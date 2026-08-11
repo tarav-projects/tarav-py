@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """`agent accounts monitor` command and its interactive input thread."""
 
 from __future__ import annotations
@@ -144,7 +145,7 @@ def _register_monitor_command(accounts_subparsers) -> None:
     )
     accounts_monitor_parser.set_defaults(handler=_cmd_agent_accounts_monitor)
 
-    # Optional subcommands; a bare `monitor` still runs the loop above.
+
     monitor_subparsers = accounts_monitor_parser.add_subparsers(
         dest="monitor_command",
         required=False,

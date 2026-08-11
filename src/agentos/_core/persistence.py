@@ -1,3 +1,4 @@
+# $kw: --from Stable.Surface
 """Small, dependency-free persistence primitives shared across Agentos domains."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Harness
 """Harness — the 8-phase turn lifecycle."""
 
 from __future__ import annotations
@@ -103,10 +104,10 @@ def execute_turn(
 
     Phases: load state -> build ctx -> hooks (setup/step) -> validate -> persist -> return result.
     """
-    # Phase 2: load state
+
     run_data = load_run(rd)
 
-    # Validate token (skip for first turn — init handles it)
+
     if run_data["tick"] > 0:
         expected = run_data.get("token")
         if expected is not None:
@@ -115,8 +116,8 @@ def execute_turn(
             if token != expected:
                 raise AgentError(f"Wrong token. Expected: {expected}, got: {token}")
 
-    # Validate the submission against the answered call's declared contract.
-    # Opt-in: a call without an `expects` key skips validation (back-compat).
+
+
     is_first_turn = run_data["tick"] == 0
     prev_call = run_data.get("call")
     if not is_first_turn and isinstance(prev_call, dict) and "expects" in prev_call:
@@ -125,13 +126,13 @@ def execute_turn(
         except contract.ContractError as e:
             raise AgentError(str(e)) from e
 
-    # Load snapshot
+
     snapshot_path = rd / SNAPSHOT_FILE
     if not snapshot_path.is_file():
         raise HarnessError(f"No {SNAPSHOT_FILE} in {rd}")
     module = load_mission_module(snapshot_path)
 
-    # Phase 3: build ctx
+
     runtime_id = run_data["runtime_id"]
     env = {
         "mission_dir": str(mission_dir),
@@ -148,7 +149,7 @@ def execute_turn(
 
     ctx = Ctx(env=env, state=run_data.get("state", {}), input=input_data)
 
-    # Phase 4: hooks
+
     if is_first_turn and hasattr(module, "setup"):
         module.setup(ctx)
 
@@ -156,14 +157,14 @@ def execute_turn(
         raise HarnessError("mission module has no step() function")
     module.step(ctx)
 
-    # File.Locking: the step must not have touched the run's state files directly
+
     for locked in (rd / RUN_FILE, rd / SNAPSHOT_FILE):
         try:
             locking.verify(locked)
         except locking.LockViolation as e:
             raise HarnessError(f"File.Locking violation: {e}") from e
 
-    # Phase 5: validate
+
     if ctx.call is None:
         raise HarnessError("step(ctx) must set ctx.call")
     if not isinstance(ctx.call, dict):
@@ -171,7 +172,7 @@ def execute_turn(
     if "type" not in ctx.call:
         raise HarnessError("ctx.call must have a 'type' field")
 
-    # Phase 6: persist
+
     next_tick = run_data["tick"] + 1
     next_phase = "completed" if ctx.call.get("type") == "completed" else "work"
     new_token = make_token(runtime_id)
@@ -183,14 +184,14 @@ def execute_turn(
         "call": copy.deepcopy(ctx.call),
         "phase": next_phase,
         "token": new_token,
-        # provenance is immutable run metadata — carry it across turns so a
-        # relocated run stays self-describing for discovery (state.create_run)
+
+
         "provenance": copy.deepcopy(run_data.get("provenance")),
     }
     if persist:
         save_run(rd, next_run_data)
 
-    # Phase 7+8: render + emit handled by caller
+
     return {
         "call": ctx.call,
         "state": ctx.state,

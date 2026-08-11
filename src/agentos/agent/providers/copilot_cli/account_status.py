@@ -216,8 +216,8 @@ def _setup_errors(
     return tuple(errors)
 
 
-# Copilot usage data may grow additional sources. Keep each implementation
-# isolated while we evaluate which one should become the long-term capability.
+
+
 def _account_usage_internal_user(
     agent: AgentConfig,
 ) -> AccountUsageReadResult:

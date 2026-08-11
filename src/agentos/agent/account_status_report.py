@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """Home-centric, read-only account status — the all-homes drift report.
 
 For every home declared by a profile, read its `Home.State`, project to an
@@ -25,7 +26,7 @@ from agentos.agent.rotation import drift_against_active
 class HomeTarget:
     home: Path
     provider: str
-    candidates: frozenset[str]  # "<account-id>/<method>" addresses
+    candidates: frozenset[str]
 
 
 def collect_home_targets(provider: str) -> list[HomeTarget]:
@@ -61,7 +62,7 @@ def status_for_home(target: HomeTarget) -> dict[str, object]:
     )
     if account is None or account not in candidate_accounts:
         return _entry(target, status="error:unlisted-account", account=account, reason="identity not among candidates")
-    # report the method by the class actually read, not by candidate string order
+
     method_name = R.method_for_class(provider, account, found.method.name) or found.method.name
     active = R.active_ref(provider, account, method_name)
     if active is None:
@@ -69,7 +70,7 @@ def status_for_home(target: HomeTarget) -> dict[str, object]:
                       reason="no active ref registered for this account/method — rotate")
     if active == found.method.ref_id(found.auth):
         return _entry(target, status="aligned", account=account, method=method_name)
-    # qualify the drift by which credential is fresher (rotation's head-of-line rank)
+
     direction = drift_against_active(provider, account, method_name, found.method, found.auth)
     if direction == "newer":
         return _entry(target, status="drift:home-newer", account=account, method=method_name,

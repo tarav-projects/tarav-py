@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """The `Auth.Data.Capture` primitive and its global sweep.
 
 `capture_home` is the singular primitive: read the `Auth.Data` present in one
@@ -24,9 +25,9 @@ class CaptureResult:
     home: Path
     account: str
     method: str
-    ref_id: str  # the activation pointer (the Auth.Ref id)
-    artifact_id: str  # the content-addressed storage key for the secret blob
-    is_new: bool  # a fresh capture-log append vs an already-present ref
+    ref_id: str
+    artifact_id: str
+    is_new: bool
 
 
 def capture_home(provider: str, home: Path, *, dry_run: bool = False) -> CaptureResult | None:

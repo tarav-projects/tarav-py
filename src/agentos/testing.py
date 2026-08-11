@@ -1,3 +1,4 @@
+# $kw: --from RED.GREEN.Test.Suite
 """Construct valid isolated Agentos state for tests in any Python package.
 
 Use ``AgentosTestEnvironment`` for normal state. Use ``write_raw_json`` only

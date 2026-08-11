@@ -58,9 +58,9 @@ HOOK_NAMES = REQUIRED_HOOKS + DEFAULTED_HOOKS
 DEFAULT_QUESTION = "Rank the candidates below from best to worst."
 
 CONTROL_RATE_ATTR = "control_rate"
-# Controls declared without a rate substitute nothing. A half-finished
-# declaration is more likely than an intent to calibrate every match, and
-# substituting nothing is the safe reading of it.
+
+
+
 DEFAULT_CONTROL_RATE = 0.0
 
 
@@ -97,9 +97,9 @@ class HookContext:
     match_index: int = 0
     budget: int = 0
     snapshot_path: str = ""
-    # Consumer parameters supplied by the run, identical for every hook call.
-    # Read-only: the same mapping is handed to every call, so a mutable view
-    # would let one hook change what the next one sees.
+
+
+
     params: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
 
@@ -112,8 +112,8 @@ class TournamentDefinition:
     digest: str
     module: ModuleType
     guarded_paths: tuple[Path, ...] = field(default_factory=tuple)
-    # Opaque to the engine: it carries these to the hooks and never branches on
-    # them itself. Its own knobs stay named parameters with validation points.
+
+
     params: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
@@ -216,8 +216,8 @@ class TournamentDefinition:
         value = self._call(name, hook, context)
         if value is None:
             return None
-        # An empty label is not "unlabeled" — it is an invisible group in the
-        # fold, so it fails rather than being coerced to None.
+
+
         if not isinstance(value, str) or not value.strip():
             raise HookReturnError(
                 f"{name} must return a non-empty string or None "

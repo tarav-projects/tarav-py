@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Runtime
 """Output sensors — Mechanism 2 of agent-facing leak hardening.
 
 A reusable runtime primitive that scrubs harness/mission machinery paths from the
@@ -30,8 +31,8 @@ class Sensor:
         return self.pattern.sub(self.replacement, line)
 
 
-# Ordered most-specific first; each sensor runs on the previous one's output, so
-# a run path is consumed before the broader mission/abs sensors can see it.
+
+
 SENSORS: tuple[Sensor, ...] = (
     Sensor(
         name="run-path",
@@ -49,8 +50,8 @@ SENSORS: tuple[Sensor, ...] = (
         replacement="‹iterante-internal›",
     ),
     Sensor(
-        # Only a true absolute path (token boundary), so relative paths the
-        # agent needs — e.g. `library/foo/foo.md` — are left intact.
+
+
         name="abs-path",
         pattern=re.compile(r"(?<!\S)/[^\s/]+(?:/[^\s]*)+"),
         replacement="‹path›",
@@ -72,6 +73,6 @@ def redact(text: str) -> str:
             try:
                 line = sensor.apply(line)
             except Exception:
-                continue  # fail-open: this sensor sits out this line
+                continue
         out.append(line)
     return "".join(out)

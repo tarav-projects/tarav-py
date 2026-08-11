@@ -1,4 +1,4 @@
-# $kw: --from Agentos.Hook --from Chatlas.Update --from Chat.Index.Delta --note [IMPL] agent.turn.stop defers targeted refresh and semantic Chat.Index maintenance to the Agentos daemon --supp ^c20260811-50u ^c20260811-54u
+# $kw: --from Agentos.Hook --from Chatlas.Update.Pipeline --from Chat.Index.Delta --note [IMPL] agent.turn.stop defers targeted refresh and semantic Chat.Index maintenance to the Agentos daemon --supp ^c20260811-50u ^c20260811-54u
 from __future__ import annotations
 
 from pathlib import Path

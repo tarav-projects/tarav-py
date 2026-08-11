@@ -1,3 +1,4 @@
+# $kw: --from Agent.Normal.Model --from Provider.Instance
 """codex transcript extraction."""
 
 from __future__ import annotations
@@ -16,8 +17,8 @@ _CODEX_SESSION_META_ORIGINATORS = {
     "codex-tui",
 }
 
-# Content prefixes injected by the Codex platform into user-role messages.
-# These are never human-authored text.
+
+
 _CODEX_NOISE_PREFIXES = (
     "<INSTRUCTIONS>",
     "<environment_context>",
@@ -139,7 +140,7 @@ def _is_codex_session_meta(obj: object) -> bool:
     if originator in _CODEX_SESSION_META_ORIGINATORS:
         return True
 
-    # originators vary in casing across surfaces ("codex_cli_rs", "Codex Desktop")
+
     return originator.lower().startswith("codex")
 
 

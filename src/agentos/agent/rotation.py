@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """`Auth.Data.Rotation` — activate the head-of-line captured artifact.
 
 Pure-pool `Auth.Registry`-only `Auth.Data.Activation`: the rotation ranks the
@@ -24,8 +25,8 @@ class RotateResult:
     provider: str
     account: str
     method: str
-    previous_active: str | None  # the previously active ref_id
-    new_active: str | None  # the head-of-line ref_id
+    previous_active: str | None
+    new_active: str | None
     changed: bool
     skipped: bool
 
@@ -49,9 +50,9 @@ def rotate(provider: str, account: str, method: str, *, dry_run: bool = False) -
     auth_class = R.method_class(provider, account, method)
     auth_method = auth_method_for_class(provider, auth_class) if auth_class else None
 
-    # Collapse the capture pool to one entry per ref_id (the activation pointer),
-    # keeping its most recent capture time, capture-sequence index (file order) as
-    # a deterministic tie-break, and the artifact key to resolve its payload.
+
+
+
     seen: dict[str, tuple[float, int, str | None]] = {}
     for seq, record in enumerate(R.captures_for(provider, account, method)):
         ref_id = R.record_ref_id(record)

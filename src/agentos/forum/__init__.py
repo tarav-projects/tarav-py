@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Project
 from .commands import register_forum_commands
 from .core import (
     DEFAULT_FORUM_ROOT,

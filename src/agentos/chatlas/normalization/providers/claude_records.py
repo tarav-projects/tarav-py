@@ -1,3 +1,4 @@
+# $kw: --from Session.Event.Tape --from Provider.Instance
 """claude `tool_invocations` + `model_runs` `Raw.Normalizer`s.
 
 By the raw boundary these are normalizers: they read raw session records to produce the

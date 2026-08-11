@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Agent.Adapter
 """`agent run`, `agent ping`, and `agent profile-check` commands."""
 
 from __future__ import annotations

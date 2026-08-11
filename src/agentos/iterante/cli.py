@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Driver
 """iterante CLI — a pure connector over `iterante.runtime`.
 
 The CLI holds no capability the library lacks. It only forwards argv to the

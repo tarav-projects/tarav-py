@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.View
 from __future__ import annotations
 
 from agentos.chatlas.inline import chatlas_views_get, chatlas_views_list

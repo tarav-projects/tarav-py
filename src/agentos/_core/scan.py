@@ -1,3 +1,4 @@
+# $kw: --from Project.Discovery.System
 from __future__ import annotations
 
 import os
@@ -32,7 +33,7 @@ def should_exclude(rel_path: PurePosixPath, patterns: tuple[str, ...]) -> bool:
         if rel_value == pattern or rel_value.startswith(f"{pattern}/"):
             return True
 
-        # A bare directory name excludes that folder anywhere in the tree.
+
         if "/" not in pattern and pattern in rel_parts:
             return True
 

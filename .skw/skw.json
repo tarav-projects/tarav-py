@@ -1,4 +1,10 @@
 {
+  "depots": [
+    "../agentos-md/skills/agentos-pkg",
+    "../agentos-chatlas-md/skills/agentos-chatlas-pkg",
+    "../agentos-canvas-md/skills/agentos-canvas-pkg",
+    "../agentos-iterante-md/skills/agentos-iterante-pkg"
+  ],
   "code_surfaces": [
     {
       "language": "python",

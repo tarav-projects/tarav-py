@@ -1,5 +1,4 @@
-# $kw: ^codex-account-quota-hook --from Agentos.Hook --from Normalization.Pipeline::Account.Usage.Model --note [DC] Codex turn-stop callbacks normalize the active session quota snapshot into the account usage registry --supp ^c20260811-5u ^c20260811-13u ^c20260811-32u ^c20260811-47u
-# $kw: ^agentos-provider-codex-usage-hooks --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
+# $kw: ^codex-account-quota-hook --from Agentos.Hook --from Normalization.Pipeline::Account.Usage.Model --from Agent.Navigable.Codebase --note [DC] Codex turn-stop callbacks normalize the active session quota snapshot into the account usage registry --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-5u ^c20260811-13u ^c20260811-32u ^c20260811-47u --supp ^c20260811-62u
 from __future__ import annotations
 
 import json

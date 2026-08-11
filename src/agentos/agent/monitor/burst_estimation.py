@@ -29,9 +29,9 @@ from agentos.agent.monitor.workflows._common import (
 
 ESTIMATED_BURST_FALLBACK_WEEKLY_PERCENT = 15.8
 ESTIMATED_BURST_WINDOW = datetime.timedelta(hours=5)
-# Estimator-internal: flat-range delta sampling tolerates baseline records this
-# far from the ideal window start. The current-window baseline lookup used for
-# rendering has NO tolerance — see nearest_record_at_or_before.
+
+
+
 _FLAT_RANGE_START_TOLERANCE = datetime.timedelta(minutes=30)
 _FLAT_RANGE_THRESHOLDS = (
     datetime.timedelta(minutes=10),

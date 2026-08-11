@@ -191,8 +191,8 @@ def _claude_account_status_impl(
                 or CLAUDE_STATUSLINE_USAGE_SOURCE,
                 payload=usage_record_payload,
             )
-        # account_status is read-only: no active-promote. Capture is handled by
-        # the run path, not by status. auth_artifact_record stays None.
+
+
 
     return AccountStatus(
         provider=agent.provider,
@@ -287,8 +287,8 @@ def _setup_errors(
     return tuple(errors)
 
 
-# Claude usage data has multiple possible sources. Keep each implementation
-# isolated while we evaluate which one should become the long-term capability.
+
+
 def _account_usage_GET(
     agent: AgentConfig,
 ) -> AccountUsageReadResult:

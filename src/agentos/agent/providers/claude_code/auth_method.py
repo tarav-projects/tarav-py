@@ -1,3 +1,4 @@
+# $kw: ^agentos-provider-claude-code-auth-method --from Account.Management --from Provider.Instance --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 """Claude-code `Auth.Method` subclass — the `ambient-browser-login` credential class.
 
 `Auth.Data` for claude spans two home locations: the secret lives in secure
@@ -12,7 +13,6 @@ under ``oauthAccount``. This class composes both into one self-contained
 ``content_id``. The class is ``materializable``.
 """
 
-# $kw: ^agentos-provider-claude-code-auth-method --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 from __future__ import annotations
 
 import json
@@ -74,7 +74,7 @@ def _read_home_secret(home: Path) -> dict[str, object] | None:
 
     normalized = home.expanduser().resolve()
     if sys.platform == "darwin":
-        service_name = claude_keychain_service_names(normalized)[0]  # hash-specific only
+        service_name = claude_keychain_service_names(normalized)[0]
         result = run_process(
             (
                 "security",
@@ -137,10 +137,10 @@ class ClaudeAuthMethod(AuthMethod):
         )
 
     def materialize(self, auth_data: AuthData, home: Path) -> None:
-        # Claude's Auth.Data spans two home locations, so write both: the whole
-        # secret (every payload key except the identity) to secure storage, and
-        # oauthAccount to .claude.json. Writing only claudeAiOauth would leave the
-        # home reading back a different content_id (extra secret keys do occur).
+
+
+
+
         home = home.expanduser()
         home.mkdir(parents=True, exist_ok=True)
         oauth_account = auth_data.payload.get("oauthAccount")
@@ -153,7 +153,7 @@ class ClaudeAuthMethod(AuthMethod):
         return auth_data.content_id()
 
     def rotation_rank(self, auth_data: AuthData, captured_at: float) -> float | None:
-        # Head-of-line by the OAuth token expiry (claudeAiOauth.expiresAt, ms).
+
         oauth = auth_data.payload.get("claudeAiOauth")
         expires_at = oauth.get("expiresAt") if isinstance(oauth, dict) else None
         return float(expires_at) if isinstance(expires_at, int | float) else None

@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Agent.Adapter
 from __future__ import annotations
 
 import shlex
@@ -9,10 +10,10 @@ from agentos._core.errors import CliError
 from agentos._core.process import ProcessError, ProcessMode, run_process
 from agentos.agent.providers import canonical_provider_family_for_name
 
-# Provider CLI invocation constants: how each provider's command line accepts a
-# model and a prompt. These are fixed properties of each provider's CLI contract
-# (a provider implementation detail), not user configuration — so they live here
-# in the command builder, never in a profile.
+
+
+
+
 _PROVIDER_MODEL_FLAG: dict[str, str] = {
     "claude-code": "--model",
     "codex": "--model",

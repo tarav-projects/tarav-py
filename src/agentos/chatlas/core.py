@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Update.Pipeline
 from __future__ import annotations
 
 import base64
@@ -60,8 +61,8 @@ def chatlas_index_update(
     command_name: str = "chatlas index update",
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, object]:
-    # Scan.Scope: every selection — bulk, provider, instance, session, window —
-    # runs the one pipeline; scope narrows candidates, never mechanics.
+
+
     return chatlas_delta_scan(
         scope=ScanScope(
             providers=providers,

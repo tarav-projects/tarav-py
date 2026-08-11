@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Update.Pipeline
 from __future__ import annotations
 
 import json

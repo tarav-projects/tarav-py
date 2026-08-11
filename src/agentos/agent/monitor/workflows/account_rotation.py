@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """Account-rotation workflow: periodic capture+rotate sweeps and drift reporting."""
 
 from __future__ import annotations
@@ -91,7 +92,7 @@ class AccountRotationWorkflow:
                 "refresh_interval_sec": self.refresh_interval_sec,
             },
         )
-        # Current drifted homes — a second, read-only block shown only when drift exists.
+
         drifted = collect_non_aligned_homes()
         if drifted:
             frame.add_block(

@@ -32,17 +32,17 @@ from agentos.tournament.model import TournamentError
 
 TICKETS_DIRNAME = "tickets"
 
-# Where a ticket came from. A preview mints one that will never be redeemed, and
-# without this an unredeemed preview is indistinguishable from a match a judge
-# was given and failed to answer — so an afternoon of tuning would erase the one
-# place that records judge failure.
+
+
+
+
 KIND_MATCH = "match"
 KIND_PREVIEW = "preview"
 TICKET_KINDS = (KIND_MATCH, KIND_PREVIEW)
 DEFAULT_ATTEMPT_CAP = 3
-# A week. The horizon only has to be far longer than any match can run; at this
-# distance no live submission can be racing the sweep, so a ticket needs no
-# deadline of its own.
+
+
+
 SWEEP_HORIZON_SECONDS = 7 * 24 * 60 * 60
 
 
@@ -67,17 +67,17 @@ class Ticket:
     exit_code: int | None = None
     slot: dict[str, object] | None = None
     kind: str = KIND_MATCH
-    # Which of this match's players are controls, and the band each declared.
-    # Carried on the ticket because `submit` builds the verdict from the ticket
-    # alone and never loads the definition the bands were declared in.
+
+
+
     controls: dict[str, str] = field(default_factory=dict)
-    # The registered `Match.Template` this run rendered from, and the per-run
-    # values bound into it. Both ride the ticket for the same reason `controls`
-    # does: `submit` writes the verdict from the ticket alone.
+
+
+
     template: str | None = None
     template_bindings: dict[str, object] = field(default_factory=dict)
-    # The `Tournament.Label` grouping tags this run carried. Same reason as
-    # `controls`: `submit` writes the verdict from the ticket alone.
+
+
     player_labels: dict[str, str] = field(default_factory=dict)
     match_label: str | None = None
 
@@ -264,8 +264,8 @@ class TicketStore:
         return self.root / f"{ticket_id}.json"
 
     def _write(self, ticket: Ticket) -> None:
-        # One file per ticket means one writer per file, so the pending side needs
-        # no depot-wide lock; Bloberia still takes one at submit.
+
+
         atomic_write_json(self._path(ticket.ticket_id), ticket.as_dict())
 
 
@@ -318,8 +318,8 @@ def _ticket_from_payload(payload: object, ticket_id: str) -> Ticket:
             verdict_id=payload.get("verdict_id") and str(payload["verdict_id"]),
             exit_code=payload.get("exit_code"),  # type: ignore[arg-type]
             slot=payload.get("slot"),  # type: ignore[arg-type]
-            # Defaulted, not required: a ticket written before this field is a
-            # match ticket, not a broken one.
+
+
             kind=str(payload.get("kind", KIND_MATCH)),
             controls={
                 str(name): str(band)

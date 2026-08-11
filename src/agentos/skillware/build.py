@@ -105,7 +105,7 @@ __all__ = [
     "unlock_requirements",
 ]
 
-# Direct imports outside the historical wildcard surface remain facade exports.
+
 _DIRECT_EXPORTS = (
     AGENTS_MD_TEXT,
     AGENTS_NAME,

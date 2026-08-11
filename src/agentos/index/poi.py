@@ -1,3 +1,4 @@
+# $kw: --from POI.System --from Index.Linter
 from __future__ import annotations
 
 from agentos.poi import POICatalog, POICatalogError, POIInstance, POILocation

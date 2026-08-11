@@ -1,5 +1,4 @@
-# $kw: ^mdblocks-poi-command --from POI.System --from POI.Linter --note [CT] Markdown block lint output uses the common POI report boundary ^c20260729-49u
-# $kw: ^agentos-stdlib-mdblocks-commands --from Agent.Navigable.Codebase --note [DF] reusable mdblocks behavior lives beneath the Python stdlib namespace matching its CLI --supp ^c20260811-62u
+# $kw: ^mdblocks-poi-command --from POI.System --from POI.Linter --from Agent.Navigable.Codebase --note [CT] Markdown block lint output uses the common POI report boundary ^c20260729-49u --note [DF] reusable mdblocks behavior lives beneath the Python stdlib namespace matching its CLI --supp ^c20260811-62u
 from __future__ import annotations
 
 import argparse

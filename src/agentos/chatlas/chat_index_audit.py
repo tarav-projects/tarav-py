@@ -154,7 +154,7 @@ def audit_chat_index_surface(
 
     tail = _audit_source_tail(session, capture, source, chatlas_root, findings)
 
-    # Delta order is the chat's, so the audit reads them the way the chat runs.
+
     deltas = resolve_delta_tape_positions(capture["deltas"], source)
     counts["delta_count"] = len(deltas)
 
@@ -233,8 +233,8 @@ def _empty_counts() -> dict[str, int]:
         "resolved_anchor_count": 0,
         "home_count": 0,
         "head_only_line_count": 0,
-        # Audit never writes, so these stay zero; the apply path reports the
-        # real numbers using the same result shape.
+
+
         "minted_anchor_count": 0,
         "reused_anchor_count": 0,
     }
@@ -287,7 +287,7 @@ def _audit_source_tail(
         return None
     state = tail["state"]
     if state == "append-only":
-        # Later chat is authorized growth, not a defect in what was captured.
+
         _add(
             findings,
             "source-append-only",
@@ -429,8 +429,8 @@ def _audit_horizon_timestamp(
             relative_path=relative_path,
         )
     elif declared is None and evidenced:
-        # The chat exposes a timestamp the heading dropped: reviewable
-        # maintenance state, not a reason to refuse the surface.
+
+
         _add(
             findings,
             f"{kind}-horizon-timestamp-omitted",
@@ -609,8 +609,8 @@ def _audit_delta_support_horizons(
 ) -> None:
     for delta, line in delta_lines:
         if len(line.anchors) != 1 or delta["tape_position"] is None:
-            # A horizon the chat does not hold has no bound to compare against;
-            # `delta-horizon-absent-from-source` already reports it.
+
+
             continue
         record = anchors.get(line.anchors[0])
         if record is None:

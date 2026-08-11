@@ -73,13 +73,13 @@ def _cmd_canvas_show(args: argparse.Namespace) -> int:
 def _cmd_canvas_card(args: argparse.Namespace) -> int:
     _, canvas, model = _load_canvas(args)
 
-    # No card-id: list all card IDs
+
     if not args.card_id:
         for card in model.cards:
             print(f"{card.type}: {card.id}")
         return 0
 
-    # Find the card in model
+
     card = None
     for c in model.cards:
         if c.id == args.card_id:
@@ -88,21 +88,21 @@ def _cmd_canvas_card(args: argparse.Namespace) -> int:
     if card is None:
         raise CliError(f"card '{args.card_id}' not found in model")
 
-    # Find the canvas node
+
     canvas_node = None
     for n in canvas.get("nodes", []):
         if n["id"] == args.card_id:
             canvas_node = n
             break
 
-    # --text: just print the text content
+
     if args.text:
         if canvas_node is None:
             raise CliError(f"card '{args.card_id}' has no canvas node")
         print(canvas_node.get("text", ""))
         return 0
 
-    # Full card view: model + canvas merged
+
     result: dict[str, Any] = {
         "id": card.id,
         "type": card.type,
@@ -117,7 +117,7 @@ def _cmd_canvas_card(args: argparse.Namespace) -> int:
         if "color" in canvas_node:
             result["color"] = canvas_node["color"]
 
-    # Collect relationships involving this card
+
     rels = []
     for r in model.relationships:
         if r.from_card == args.card_id or r.to_card == args.card_id:
@@ -149,7 +149,7 @@ def _cmd_canvas_add_card(args: argparse.Namespace) -> int:
     new_card = ModelCard(id=card_id, type=card_type)
     model.cards.append(new_card)
 
-    # Place the canvas node (new card only)
+
     connected_to = []
     if args.connect_to:
         connected_to.append(args.connect_to)
@@ -158,7 +158,7 @@ def _cmd_canvas_add_card(args: argparse.Namespace) -> int:
     new_node = make_canvas_node(new_card, x, y)
     canvas.setdefault("nodes", []).append(new_node)
 
-    # Add edge relationship if --connect-to and --edge-id provided
+
     if args.connect_to and args.edge_id:
         model.relationships.append(
             ModelRelationship(
@@ -222,13 +222,13 @@ def _cmd_canvas_render(args: argparse.Namespace) -> int:
     if rendered_pois:
         print(rendered_pois, file=sys.stderr)
 
-    # Always report actions
+
     if result.actions:
         for action in result.actions:
             print(f"[{action.action}] {action.detail}")
 
     if not args.apply:
-        # Dry run — just report
+
         if result.errors:
             print(f"\n{len(result.errors)} error(s)", file=sys.stderr)
             return 1
@@ -240,7 +240,7 @@ def _cmd_canvas_render(args: argparse.Namespace) -> int:
         print("OK")
         return 0
 
-    # Apply — write the rendered canvas
+
     write_canvas(canvas_path, result.canvas)
 
     if result.actions:
@@ -262,7 +262,7 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     canvas_subparsers = canvas_parser.add_subparsers(dest="canvas_command")
 
-    # init
+
     init_parser = canvas_subparsers.add_parser(
         "init", help="Create a canvas from a model JSON file."
     )
@@ -280,12 +280,12 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     init_parser.set_defaults(handler=_cmd_canvas_init)
 
-    # show
+
     show_parser = canvas_subparsers.add_parser("show", help="Print model as JSON.")
     show_parser.add_argument("--file", required=True, help="Path to .canvas file.")
     show_parser.set_defaults(handler=_cmd_canvas_show)
 
-    # card (query)
+
     card_parser = canvas_subparsers.add_parser(
         "card", help="Query card info. Lists all cards if no --card-id given."
     )
@@ -296,7 +296,7 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     card_parser.set_defaults(handler=_cmd_canvas_card)
 
-    # add-card
+
     add_card_parser = canvas_subparsers.add_parser(
         "add-card", help="Add a card to an existing canvas."
     )
@@ -311,7 +311,7 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
     add_card_parser.add_argument("--edge-id", help="Edge ID for the connection.")
     add_card_parser.set_defaults(handler=_cmd_canvas_add_card)
 
-    # add-edge
+
     add_edge_parser = canvas_subparsers.add_parser(
         "add-edge", help="Add a relationship between existing cards."
     )
@@ -330,7 +330,7 @@ def register_canvas_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     add_edge_parser.set_defaults(handler=_cmd_canvas_add_edge)
 
-    # render
+
     render_parser = canvas_subparsers.add_parser(
         "render", help="Compile model into canvas. Dry run by default."
     )

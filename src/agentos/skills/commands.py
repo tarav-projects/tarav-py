@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Skills --from Package.Skill
 from __future__ import annotations
 
 import argparse
@@ -265,9 +266,9 @@ def _cmd_skills_import_recursive(args: argparse.Namespace) -> int:
             f"expected {args.project_base!r}, resolved {scan_root.name!r} at {scan_root}"
         )
 
-    # A non-project scan root is not an error in recursive mode: it simply
-    # contributes no project, and discovery continues into its descendants
-    # up to --depth.
+
+
+
     project_roots = find_agentos_project_roots_within(scan_root, max_depth=args.depth)
 
     failures: list[Path] = []

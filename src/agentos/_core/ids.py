@@ -1,3 +1,4 @@
+# $kw: --from CPU.Program
 from __future__ import annotations
 
 from uuid import UUID, uuid4

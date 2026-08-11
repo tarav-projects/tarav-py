@@ -1,5 +1,4 @@
-# $kw: ^chatlas-anchory-amend-validation --from Chatlas.Anchory --from Index.Line --note [CT] Chatlas validates resolvability and immutable line-bound support meaning inside generic Anchory amendment --supp ^c20260730-33u --supp progressive detail refactor ^c20260731-37u --supp line-bound support authorized ^c20260802-103u
-# $kw: --from Anchory.System --from Touched.Support.Network --note [CT] Chatlas resolves source-extracted anchors into unique support sessions for Project.Support.Chats --supp implementation authorized ^c20260803-2u
+# $kw: ^chatlas-anchory-amend-validation --from Chatlas.Anchory --from Index.Line --from Anchory.System --from Touched.Support.Network --note [CT] Chatlas validates resolvability and immutable line-bound support meaning inside generic Anchory amendment --note [CT] Chatlas resolves source-extracted anchors into unique support sessions for Project.Support.Chats --supp ^c20260730-33u --supp progressive detail refactor ^c20260731-37u --supp line-bound support authorized ^c20260802-103u --supp implementation authorized ^c20260803-2u
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -1371,8 +1370,8 @@ def chatlas_anchory_preview(
             "canonical_schema": INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
             "status": "allocated-anchor-required",
         }
-    # `equivalent_anchors` keeps its original support-equivalence meaning for
-    # existing callers; line-bound consumers must read the explicit fields.
+
+
     payload["equivalent_anchors"] = support_equivalent
     payload["support_equivalent_anchors"] = support_equivalent
     payload["exact_line_equivalent_anchors"] = exact_line_equivalent

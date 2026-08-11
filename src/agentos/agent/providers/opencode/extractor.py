@@ -1,3 +1,4 @@
+# $kw: --from Agent.Normal.Model --from Provider.Instance
 """opencode transcript extraction."""
 
 from __future__ import annotations

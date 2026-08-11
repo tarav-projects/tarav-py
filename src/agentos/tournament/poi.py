@@ -24,11 +24,11 @@ TOURNAMENT_POI_CLASSES = (
     DEFINITION_INCOHERENT,
 )
 
-# A finding needs enough matches behind it to be a finding at all: convergence is
-# the whole robustness argument, so an under-played player is noise, not a tail.
+
+
 MIN_MATCHES_FOR_STANDING = 6
-# Clustered refusals are a sharper finding than a low score — "no judge could
-# evaluate this" needs no convergence — so they clear a lower floor.
+
+
 MIN_MATCHES_FOR_UNJUDGEABLE = 3
 LOW_STANDING_WIN_RATE = 0.25
 UNJUDGEABLE_NO_CONTEST_RATE = 0.5

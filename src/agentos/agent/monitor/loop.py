@@ -1,3 +1,4 @@
+# $kw: --from Account.Management --from Normalization.Pipeline::Account.Usage.Model
 from __future__ import annotations
 
 import math
@@ -56,11 +57,11 @@ class MonitorWorkflow(Protocol):
 
 
 class MonitorLoop:
-    # Frame ownership is transferred, not shared. The workflow thread owns
-    # working_frame after taking a trigger and until it sets
-    # working_frame_ready. The main thread owns visible_frame, and swaps only
-    # after working_frame_ready signals that workflow ownership was released.
-    # That trigger/ready handshake is why frame access does not need a lock.
+
+
+
+
+
     def __init__(
         self,
         *,

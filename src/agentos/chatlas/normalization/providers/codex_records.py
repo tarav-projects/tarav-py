@@ -1,3 +1,4 @@
+# $kw: --from Session.Event.Tape --from Provider.Instance
 """codex `tool_invocations` + `model_runs` `Raw.Normalizer`s.
 
 Raw-touching (they read raw rollout records) -> `Raw.Normalizer`s, surfaced here so the

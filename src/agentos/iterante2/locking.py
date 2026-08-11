@@ -1,3 +1,4 @@
+# $kw: --from File.Locking
 """Iterante v2 public file-locking surface."""
 
 from agentos.iterante._shared.locking import (

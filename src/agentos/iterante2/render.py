@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Ctx
 """Call frame rendering — Markdown output the agent sees."""
 
 from __future__ import annotations
@@ -9,12 +10,12 @@ def render_frame(*, call: dict, token: str, tick: int, mission_id: str | None = 
     """Render a call into a full Markdown frame: header + content + footer."""
     parts = []
 
-    # Header
+
     label = f"[{mission_id}]" if mission_id else "[run]"
     parts.append(f"## {label} Turn {tick}")
     parts.append("")
 
-    # Content
+
     call_type = call.get("type", "freeform")
     title = call.get("title", "")
     parts.append(f"### {title}")
@@ -40,7 +41,7 @@ def render_frame(*, call: dict, token: str, tick: int, mission_id: str | None = 
             parts.append(f"**Question:** {q_text}")
             parts.append("")
 
-    # Footer
+
     parts.append("---")
     if call_type == "handoff":
         parts.append(f"Submit your report: `iterante2 submit --token {token}`")
@@ -48,7 +49,7 @@ def render_frame(*, call: dict, token: str, tick: int, mission_id: str | None = 
         parts.append(f"When done: `iterante2 submit --token {token}`")
     parts.append("")
 
-    # Defense-in-depth: the frame dict is path-free by construction, but a leak
-    # into a call body (e.g. a mission-built title) is scrubbed here, and every
-    # launcher that renders inherits it.
+
+
+
     return redact("\n".join(parts))

@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Runtime
 """iterante runtime — the reusable workflow surface.
 
 This is the library facade any caller drives: `init`, `request`, `submit`,
@@ -24,7 +25,7 @@ from agentos.iterante.harness import find_run_by_runtime_id, find_run_by_token
 from agentos.iterante.render import render_frame
 from agentos.iterante.state import create_run, load_run
 
-# ── resolution (run/mission discovery) ──────────────────────────
+
 
 def _missions_roots(cwd: Path | None = None) -> list[Path]:
     """Roots under which mission directories live, relative to a working dir."""
@@ -36,8 +37,8 @@ def _find_mission_dir(mission_id: str, cwd: Path | None = None) -> Path:
     for root in _missions_roots(cwd):
         if (root / mission_id / "mission.py").is_file():
             return root / mission_id
-    # Actionable, leak-free workflow signal — searched filesystem paths are
-    # machinery and must not reach the agent.
+
+
     raise SystemExit(f"Mission not found: {mission_id}")
 
 
@@ -59,7 +60,7 @@ def _resolve_runtime_id(runtime_id: str, cwd: Path | None = None) -> tuple[Path,
     raise SystemExit(f"Runtime not found: {runtime_id}")
 
 
-# ── the env-cross: launch the in-env executor in the Mission.Env ──
+
 
 def _run_turn(*, rd: Path, mission_dir: Path, submit_result: dict | None = None,
               persist: bool = True, token: str | None = None) -> dict:
@@ -91,7 +92,7 @@ def _run_turn(*, rd: Path, mission_dir: Path, submit_result: dict | None = None,
         if line.startswith(FRAME_SENTINEL):
             frame = json.loads(line[len(FRAME_SENTINEL):])
         elif line:
-            print(line)  # forward mission output to the operator
+            print(line)
     if frame is None:
         raise SystemExit("runner produced no frame")
     return frame
@@ -110,7 +111,7 @@ def parse_args(value: str | None) -> dict:
     return data
 
 
-# ── workflow facade (the reusable surface) ──────────────────────
+
 
 def init(mission: str, args: dict | None = None, *, cwd: Path | None = None) -> dict:
     """Create a run and execute its first turn. Returns the frame."""
@@ -156,8 +157,8 @@ def submit(token: str, *, answer: str | None = None, data: dict | None = None,
     """Submit a result and advance one turn. Returns the next frame."""
     mission_dir, rd = _resolve_token(token, cwd)
     run_data = load_run(rd)
-    # Re-engagement guard: a completed run is terminal. Any further submit
-    # re-renders the same completion message without advancing (idempotent).
+
+
     if run_data.get("phase") == "completed":
         return _terminal_frame(mission_dir, run_data)
     submit_result: dict = {}
@@ -185,7 +186,7 @@ def dev_step(mission: str | None = None, token: str | None = None, *,
     return {**frame, "mission_id": mission_id}
 
 
-# ── CLI mapping (argv → facade → render) — the one caller the CLI shims ──
+
 
 def _render(frame: dict) -> None:
     print(render_frame(
@@ -228,7 +229,7 @@ def _dispatch(parser: argparse.ArgumentParser, args) -> None:
     if args.command == "init":
         if args.resume:
             r = resume(args.resume)
-            # runtime_id is never surfaced; the operator needs only the token back
+
             print(f"Token: {r['token']}")
             return
         if not args.mission:
@@ -262,14 +263,14 @@ def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    # The bypass is an env var so it reaches the `_runner` subprocess; set it
-    # before any dispatch/spawn.
+
+
     if args.raw:
         os.environ[BYPASS_ENV] = "1"
 
-    # Top-level error boundary: an unexpected crash must not dump a traceback
-    # (with machinery paths) to the agent. SystemExit (argparse usage errors,
-    # leak-free discovery messages) is BaseException, so it passes through.
+
+
+
     try:
         _dispatch(parser, args)
     except Exception as e:

@@ -1,3 +1,4 @@
+# $kw: --from POI.Renderer
 from __future__ import annotations
 
 import re

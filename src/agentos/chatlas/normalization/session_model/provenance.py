@@ -1,3 +1,4 @@
+# $kw: --from Session.Event.Tape
 """Tape line provenance for `Session.Event.Tape`.
 
 Each tape event carries derivation hashes. A provider may additionally publish
@@ -19,7 +20,7 @@ from agentos.chatlas.normalization.session_model.source_refs import (
     source_ref_record_indices,
 )
 
-# provenance is derivation bookkeeping, not chat semantics: it rides in `extras`
+
 _PROVENANCE_FIELDS = ("source_hash", "final", "chain_hash")
 
 

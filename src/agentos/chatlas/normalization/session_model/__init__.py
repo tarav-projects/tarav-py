@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Session.Model
 from __future__ import annotations
 
 from ._model import (

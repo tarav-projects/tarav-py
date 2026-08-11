@@ -315,8 +315,8 @@ def _process_provider_instance(
     discovery_started_at = time.perf_counter()
     adapter = ProviderHomeAdapter(instance)
     if session_ids:
-        # Scan.Scope narrows the candidates, never the mechanics: a scoped
-        # discovery feeds the same signature/copy/derive stages below
+
+
         native_sessions = [
             session
             for session_id in session_ids
@@ -330,8 +330,8 @@ def _process_provider_instance(
 
     cache_compare_started_at = time.perf_counter()
     old_cache = _load_derivation_cache_partition(cache_root, instance=instance) if cache_enabled else {}
-    # a narrowed scope only saw its own candidates — entries outside the scope
-    # carry over untouched instead of being dropped from the partition
+
+
     next_cache: dict[str, dict[str, object]] = dict(old_cache) if session_ids else {}
     delta_sessions: list[ChatlasDeltaSession] = []
 
@@ -528,8 +528,8 @@ def _derive_delta_index_rows_from_chatlas_raw(
         return []
     delta_session_ids = {delta_session.session_id for delta_session in delta_sessions}
     archived_instance = ChatlasProviderInstance(agent=archived_agent, fingerprint=instance.fingerprint)
-    # the raw partition mirrors the provider-home layout, so the adapter reads
-    # the archived copy with the same machinery as the live home
+
+
     archived_sessions = [
         session
         for session in ProviderHomeAdapter(archived_instance).discover()

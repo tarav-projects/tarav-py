@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Wayfinder
 from .model import (
     INDEX_BLOCK_TYPE,
     PACKAGE_SKILL_ROOT_TYPE,

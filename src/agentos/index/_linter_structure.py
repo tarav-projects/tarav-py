@@ -1,3 +1,4 @@
+# $kw: --from Index.Linter --from POI.Linter
 from __future__ import annotations
 
 import re
@@ -290,11 +291,11 @@ def _check_config_surfaces(state: LinterState) -> list[LinterFinding]:
         or state.config.issues_paths
     ):
         if state.raw_depot_paths:
-            # A valid index depot that simply has no chapter surfaces yet — a
-            # `000-INDEX.md` router with no `NNN-<chapter>.md` files — is
-            # empty-but-valid (an unpopulated `Agentos.Index.Notes` scaffold),
-            # not a misconfiguration. Nothing to lint, so raise nothing; a
-            # genuinely wrong depot path has no router and still errors.
+
+
+
+
+
             depots = state.config.depot_paths
             if depots and all((depot / "000-INDEX.md").is_file() for depot in depots):
                 return findings

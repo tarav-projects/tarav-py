@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Filter
 """Chatlas.Filter: shape-preserving named operations on normal model objects.
 
 A filter is `(model_object) -> model_object`: same class/shape out, content
@@ -123,7 +124,7 @@ def around_filter(
         timestamped.sort(key=lambda item: (item[0], item[1]))
         if radius is not None:
             timestamped = timestamped[: 2 * radius + 1]
-        # selection is nearest-by-distance; presentation is chronological
+
         timestamped.sort(key=lambda item: item[1])
         return [event for _, _, event in timestamped]
 

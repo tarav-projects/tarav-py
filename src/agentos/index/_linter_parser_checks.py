@@ -41,7 +41,7 @@ CHECK_BLOCK_UNGROUNDED = "Index.Linter/Block.Ungrounded"
 REVIEWED_CITE_CLOSURE = "Index.Linter/Reviewed.Cite.Closure"
 CHECK_REVIEWED_CITE_CLOSURE = "Index.Linter/Reviewed.Cite.Closure"
 
-# act codes: keep aligned with `Line.Type.Vocabulary` in the agentos-pkg index
+
 _LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX")
 
 _TYPED_LINE_CANDIDATE_RE = re.compile(r"^- \[")
@@ -359,7 +359,7 @@ def _check_reviewed_cite_closure(
                 continue
             value = str(span.parsed.get("value", ""))
             if value not in agendix_blocks:
-                continue  # not a real agendix block cite (naming / placeholder)
+                continue
             findings.append(
                 LinterFinding(
                     severity="error",

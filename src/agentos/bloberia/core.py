@@ -175,8 +175,8 @@ class BloberiaDepot:
     def check(self) -> BloberiaCheckResult:
         findings: list[BloberiaCheckFinding] = []
         with self._lock(exclusive=False, create=False):
-            # Walks namespaces recursively: a check that reported ok because it
-            # only globbed the records root would pass by looking in the wrong place.
+
+
             for path in self._record_paths(None):
                 relative_path = str(path.relative_to(self.root))
                 try:

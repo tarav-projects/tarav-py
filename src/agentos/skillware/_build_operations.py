@@ -36,6 +36,7 @@ from ._build_core import (
     unlock_requirements,
 )
 from ._code_model import CodeCheckReport
+from ._code_index import index_code_dependency_resolver
 from ._code_surfaces import check_code_surfaces
 from .poi import (
     SkillwarePOIInstance,
@@ -52,7 +53,7 @@ LOCK_NAME = "lock.json"
 @dataclass(frozen=True)
 class BuildEntry:
     target: Path
-    action: str  # built | unchanged
+    action: str
     src_refreshed: bool
 
 
@@ -66,7 +67,7 @@ class BuildReport:
 class CheckEntry:
     target: Path
     status: (
-        str  # ok | never-built | stale-build | hand-edited | parse-error | unresolvable
+        str
     )
     copy_drift: tuple[str, ...]
     derived_stale: tuple[str, ...]
@@ -76,7 +77,7 @@ class CheckEntry:
 class BlessRecord:
     target: Path
     key: str
-    deps: dict[str, dict[str, str | None]]  # locator -> {"old": sha, "new": sha}
+    deps: dict[str, dict[str, str | None]]
 
 
 @dataclass(frozen=True)
@@ -224,8 +225,8 @@ def build_skill(skill_root: Path) -> BuildReport:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(output_text, encoding="utf-8")
 
-        # derived dep hashes persist until the derived body itself changes:
-        # build never blesses a stale derived body — only a re-derive does.
+
+
         recipes = _recipe_states(skillware, src_rel, expansion)
         old_entries = (
             old_lock.get("files", {})
@@ -541,7 +542,7 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
                 body_sha = content_hash(_trim(list(recipe.body)))
                 old = _match_locked_derived(locked_entries, key, body_sha)
                 if old is None:
-                    continue  # new or re-derived body: stale-build covers the rebuild
+                    continue
                 current = expansion.dep_hashes.get(key, {})
                 if any(
                     current.get(locator) != sha
@@ -597,8 +598,8 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
                 )
             )
         for key in entry.derived_stale:
-            # the hash binds to the CURRENT dependency state: blessing accepts
-            # exactly this situation; a further dep change mints a new POI
+
+
             pois.append(
                 _poi(
                     "derived-stale",
@@ -671,7 +672,11 @@ def check_project(project_root: Path) -> ProjectCheckReport:
     return ProjectCheckReport(
         project_root=project_root,
         packages=packages,
-        code=check_code_surfaces(project_root, config.code_surfaces),
+        code=check_code_surfaces(
+            project_root,
+            config.code_surfaces,
+            dependency_resolver=index_code_dependency_resolver(extra),
+        ),
     )
 
 

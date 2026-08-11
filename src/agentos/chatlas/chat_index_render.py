@@ -1,4 +1,4 @@
-# $kw: --from Capture.Plan --from Chat.Index.Delta --from Chat.Index.HEAD --from Line.Home --from Prefix.Stability --note [IMPL] one render model decides every mechanical detail so validate and apply can never disagree --supp ^c20260804-60u
+# $kw: --from Chat.Index.Delta --from Chat.Index.HEAD --from Line.Home --from File.Numbering.Protocol --note [IMPL] one render model decides every mechanical detail so validate and apply can never disagree --supp ^c20260804-60u
 from __future__ import annotations
 
 import json
@@ -288,8 +288,8 @@ def _plan_deltas(
     deltas = list(edited.values())
     for turn_id, delta in prior_deltas.items():
         if turn_id in edited:
-            # An edited Delta is a complete replacement bounded by its original
-            # horizon, so the preserved descriptor entry is simply dropped.
+
+
             continue
         prior_entry = source_turns.get(turn_id)
         if prior_entry is None:

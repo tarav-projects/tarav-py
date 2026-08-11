@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model
 """`Model.Fragment` — a partial, sub-shape slice of a `Normal.Model`.
 
 A fragment is a plain dict whose keys are paths in the target object's namespace
@@ -13,8 +14,8 @@ from typing import Any
 
 ModelFragment = dict[str, Any]
 
-# Private fragment keys: numeric timestamp candidates contributed by normalizers.
-# The assembler strips them from output and owns min/max timestamp policy.
+
+
 CREATED_AT_CANDIDATES_KEY = "_created_at_candidates"
 LAST_ACTIVITY_AT_CANDIDATES_KEY = "_last_activity_at_candidates"
 TIMESTAMP_CANDIDATE_KEYS = frozenset(

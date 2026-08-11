@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model --from Chatlas.Session.Index
 """Index-row metadata via `Raw.Normalizer`s — the raw→index-metadata path.
 
 claude-code + codex produce the index row's raw-derived fields (`native`,

@@ -135,8 +135,8 @@ def _claude_envelope_recognized(path: Path) -> bool:
                 and isinstance(record.get("type"), str)
             ):
                 return True
-            # metadata-only side files claude writes under the session id: title
-            # records and file-history snapshots carry no session envelope
+
+
             if record.get("type") == "ai-title" and isinstance(
                 record.get("aiTitle"), str
             ):
@@ -156,9 +156,9 @@ def _normalize_claude_session(
         return None
 
     try:
-        # the extractor's recognizer demands at least one user/assistant message
-        # record; stub sessions (e.g. a lone local command) are still claude sessions
-        # — the envelope check accepts them so they normalize to message-less models
+
+
+
         if not is_claude_code_session_path(
             primary_path
         ) and not _claude_envelope_recognized(primary_path):
@@ -270,8 +270,8 @@ def _claude_normalization_passes(
 ) -> _ClaudeNormalizationPasses:
     """Run the claude normalization passes over `raw_session` — the whole file,
     or a volatile-tail slice when `resume` carries the boundary state."""
-    # 523: tool_invocations / model_runs are raw-touching -> Raw.Normalizers, called
-    # through their named pipeline entries (lazy import avoids a load-time cycle).
+
+
     from agentos.chatlas.normalization.providers.claude_events import (
         ClaudeEventAssemblyResume,
     )
@@ -436,8 +436,8 @@ def _claude_events_from_raw_session(
     tool_invocation_refs_by_call_id: dict[str, str] | None = None,
     resume: object | None = None,
 ) -> dict[str, object]:
-    # 523 decomposition: the record-iteration loop is now the assembler's (lazy import
-    # avoids a load-time cycle — the assembler imports the per-record emitters from here).
+
+
     from agentos.chatlas.normalization.providers.claude_events import (
         assemble_claude_events,
     )
@@ -611,8 +611,8 @@ def _claude_append_reasoning_event(
             "content": text,
         }
     else:
-        # Claude session artifacts may persist thinking as a signed marker with no
-        # text; the tape records the occurrence with explicitly absent content.
+
+
         payload = {
             "visibility": "redacted",
             "content": None,
@@ -1045,8 +1045,8 @@ def _claude_message_producer(
     )
     if marker is None:
         return semantic_event_producer("human")
-    # a slash command carrying arguments is the user's own words inside harness
-    # formatting; without arguments the record is an invocation, not a statement
+
+
     if marker == "command" and _claude_command_args_text(content):
         return semantic_event_producer("human")
     return semantic_event_producer("system", name=marker)
@@ -1816,8 +1816,8 @@ def _claude_closed_estimate_boundary(
             boundary = min(boundary, first)
     for position, model_run in enumerate(model_runs):
         is_last_run = position == len(model_runs) - 1
-        # the last run is always open-ended: its span_end extends to the canonical
-        # end of file and grows with appends, even when its stop_reason arrived
+
+
         if model_run.get("status") == "completed" and not is_last_run:
             continue
         native = model_run.get("native")
@@ -1902,8 +1902,8 @@ def _claude_delta_checkpoint_state(
     frozen_run_count = 0
     span_end_base = 0
     for model_run in passes.model_runs:
-        # source_refs cover the request records plus the span-end record and,
-        # unlike native fields, survive the standard-records payload cleanup
+
+
         indices = list(source_ref_record_indices(model_run.get("source_refs")))
         if not indices or max(indices) > frozen_record_count:
             continue
@@ -1917,9 +1917,9 @@ def _claude_delta_checkpoint_state(
         dict_list(_claude_usage_from_events(frozen_events)["usage"])
     )
 
-    # re-derive the volatile slice alone: it reproduces exactly the volatile
-    # suffix of each pass's warning list, which locates the frozen/volatile
-    # warning split (see _frozen_pass_warnings)
+
+
+
     volatile_session = _reslice_raw_session(
         raw_session, raw_session.records[frozen_record_count:]
     )
@@ -1981,7 +1981,7 @@ def _claude_record_at_index(
 ) -> _ClaudeRawRecord | None:
     if record_index <= 0 or not raw_session.records:
         return None
-    # records are contiguous but may start above 1 (delta tail slices)
+
     index = record_index - raw_session.records[0].record_index
     if index < 0 or index >= len(raw_session.records):
         return None

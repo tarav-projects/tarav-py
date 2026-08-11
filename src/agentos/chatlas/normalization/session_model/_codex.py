@@ -105,8 +105,8 @@ def _normalize_codex_session(
         primary_path,
         source_ref_id=session.source_ref_id,
     )
-    # 523: tool_invocations / model_runs are raw-touching -> Raw.Normalizers, called
-    # through their named pipeline entries (lazy import avoids a load-time cycle).
+
+
     from agentos.chatlas.normalization.providers.codex_records import (
         codex_model_runs_normalizer,
         codex_tool_invocations_normalizer,
@@ -254,7 +254,7 @@ def _codex_message_from_event(
     if role is None:
         return None, []
     if role == "developer":
-        # neutral role vocabulary is {user, assistant, system}; the raw role rides in native
+
         role = "system"
     content = dict_list(payload.get("content"))
     if not content:
@@ -558,9 +558,9 @@ def _codex_count_oriented_warnings(
 
     tool_detail = coverage.get("tool_invocations")
     if isinstance(tool_detail, dict):
-        # call-bearing raw records: function_call + custom_tool_call. normalized may
-        # legitimately exceed this (orphan results form invocations and warn per
-        # call_id) — the anomaly here is dropped calls, so the check is directional.
+
+
+
         raw_call_count = int_or_zero(
             tool_detail.get("raw_function_call_count")
         ) + int_or_zero(tool_detail.get("raw_custom_tool_call_count"))
@@ -708,8 +708,8 @@ def _codex_events_from_raw_rollout(
     *,
     tool_invocation_refs_by_call_id: dict[str, str],
 ) -> dict[str, object]:
-    # 523 decomposition: the record-iteration loop is now the assembler's (lazy import
-    # avoids a load-time cycle — the assembler imports the per-record emitters from here).
+
+
     from agentos.chatlas.normalization.providers.codex_events import (
         assemble_codex_events,
     )
@@ -1068,8 +1068,8 @@ def _codex_append_lineage_rollback_event(
     turn_id: str,
     native_turn_id: str | None,
 ) -> None:
-    # shared neutral core with the claude-derived rollback: `derived_from` names the
-    # native encoding, `abandoned_turn_count` counts abandoned user turns
+
+
     payload = _codex_event_data(record.payload)
     payload["derived_from"] = "thread_rolled_back"
     num_turns = payload.get("num_turns")
@@ -1872,8 +1872,8 @@ def _codex_tool_invocation_from_group(
             ("function_call_output", outputs),
             ("exec_command_end", exec_ends),
         ],
-        # the exec stream exists only for shell/exec tools — absence is the normal
-        # state for every other tool call, not an anomaly
+
+
         supplementary=frozenset({"exec_command_end"}),
     )
 

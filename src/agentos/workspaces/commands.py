@@ -22,7 +22,7 @@ from .root import AGENTS_FILENAME, resolve_workspaces_root
 
 UNREADABLE = "unreadable"
 
-# Horizons, not policy buried in code: both are flags with these defaults.
+
 DEFAULT_HARVESTED_DAYS = 14
 DEFAULT_OPEN_DAYS = 90
 
@@ -217,8 +217,8 @@ def _git_init(path: Path, slug: str) -> None:
     ):
         result = subprocess.run(argv, cwd=path, capture_output=True, text=True)
         if result.returncode != 0:
-            # No half-built workspace: one without its repository is not the
-            # object the design describes.
+
+
             _remove(path)
             raise CliError(
                 f"could not initialize the workspace repository: "

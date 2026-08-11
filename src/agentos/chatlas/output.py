@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Query.Envelope
 """Chatlas.Output: one output contract for every Chatlas leaf command.
 
 Commands compute a JSON-like payload internally, render it as human-readable
@@ -107,7 +108,7 @@ def _render_sequence(value: list[Any], *, depth: int) -> list[str]:
     lines: list[str] = []
     for item in value:
         block = _render(item, depth=depth + 1)
-        # hoist the first line onto the bullet so items read as one unit
+
         lines.append(_indent(depth) + "- " + block[0].lstrip())
         lines.extend(block[1:])
     return lines

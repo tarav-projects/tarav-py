@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """The `Auth.Data.Materialization` primitive — push `Active.Auth.Data` into homes.
 
 `materialize_account` is the singular primitive: archive whatever a home currently
@@ -27,9 +28,9 @@ class MaterializeResult:
     account: str
     method: str
     home: Path
-    active_ref: str | None  # the active Auth.Ref id targeted (None when skipped)
-    captured_ref: str | None  # the captured-first artifact id of the prior home state
-    status: str  # "materialized" | "aligned" | "check" | "skipped"
+    active_ref: str | None
+    captured_ref: str | None
+    status: str
 
 
 def materialize_account(
@@ -55,7 +56,7 @@ def materialize_account(
     if artifact is None:
         raise CliError(f"active Auth.Data payload not found for ref: {active_id}")
 
-    # Capture.Over.Materialization: archive whatever is live in the home first.
+
     captured_id = None
     aligned = False
     live = auth_method.read_auth_data(home)
@@ -70,7 +71,7 @@ def materialize_account(
             )
         aligned = live_ref == active_id
 
-    # Stale gate: an aligned home needs no write, regardless of check.
+
     if aligned:
         status = "aligned"
     elif check:

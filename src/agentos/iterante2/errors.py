@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Runtime
 """Iterante v2 public controlled-error surface."""
 
 from agentos.iterante._shared.errors import (

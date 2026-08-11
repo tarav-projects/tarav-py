@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """The `Auth.Data.Activation` primitive — point `Active.Auth.Data` at a chosen ref.
 
 `activate` resolves a (possibly abbreviated) `Auth.Ref` against the
@@ -20,7 +21,7 @@ class ActivateResult:
     provider: str
     account: str
     method: str
-    ref_id: str  # the resolved, now-active Auth.Ref id
+    ref_id: str
 
 
 def activate(provider: str, account: str, method: str, ref_prefix: str) -> ActivateResult:

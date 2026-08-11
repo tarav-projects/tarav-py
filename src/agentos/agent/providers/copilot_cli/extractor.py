@@ -1,3 +1,4 @@
+# $kw: --from Agent.Normal.Model --from Provider.Instance
 """copilot-cli transcript extraction."""
 
 from __future__ import annotations
@@ -273,4 +274,3 @@ def _extract_event_text(value: object) -> str | None:
     if not parts:
         return None
     return "\n\n".join(parts)
-

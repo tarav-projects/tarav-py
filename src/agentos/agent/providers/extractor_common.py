@@ -1,3 +1,4 @@
+# $kw: --from Agent.Normal.Model
 """shared provider transcript extraction."""
 
 from __future__ import annotations

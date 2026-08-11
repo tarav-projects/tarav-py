@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model --from Chatlas.Session.Index
 """Index-row metadata `Raw.Normalizer`s for `Normalization.Pipeline::Chatlas.Session.Model`.
 
 The raw→index-metadata path: per-provider normalizers read the discovered session's raw

@@ -1,5 +1,4 @@
-# $kw: ^codex-account-quota-live-read --from Normalization.Pipeline::Account.Usage.Model --note [DC] live account status requests provider quota windows only; account token-history accounting is outside monitor scope --supp ^c20260811-47u
-# $kw: ^agentos-provider-codex-account-status --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
+# $kw: ^codex-account-quota-live-read --from Normalization.Pipeline::Account.Usage.Model --from Agent.Navigable.Codebase --note [DC] live account status requests provider quota windows only; account token-history accounting is outside monitor scope --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-47u --supp ^c20260811-62u
 from __future__ import annotations
 
 import json
@@ -143,8 +142,8 @@ def _codex_account_status_impl(
                 source=CODEX_APP_SERVER_USAGE_SOURCE,
                 payload=usage_record_payload,
             )
-        # account_status is read-only: no active-promote. Capture (Keep.Up.With.Rotation)
-        # is handled by the run path, not by status.
+
+
 
     return AccountStatus(
         provider=agent.provider,
@@ -207,8 +206,8 @@ def _setup_errors(
     return tuple(errors)
 
 
-# Codex usage data may grow additional sources. Keep each implementation
-# isolated while we evaluate which one should become the long-term capability.
+
+
 def _account_usage_app_server(
     agent: AgentConfig,
 ) -> AccountUsageReadResult:

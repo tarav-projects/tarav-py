@@ -1,3 +1,4 @@
+# $kw: --from File.Locking
 """File.Locking — a persisted per-file version registry.
 
 A permission system that tracks the authorized version of each file in a declared

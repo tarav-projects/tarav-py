@@ -1,3 +1,4 @@
+# $kw: --from Agent.Normal.Model
 from __future__ import annotations
 
 from datetime import datetime
@@ -129,4 +130,3 @@ def string_or_none(value: object) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
-

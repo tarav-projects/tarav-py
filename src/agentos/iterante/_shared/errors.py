@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Runtime
 """Controlled error surface — Mechanism 1 of agent-facing leak hardening.
 
 Agents must not know about mission mechanics. Any fatal error is captured here:
@@ -18,9 +19,9 @@ from pathlib import Path
 ERROR_LOG_NAME = "errors.log"
 FATAL_MESSAGE = "fatal error — the run could not continue"
 
-# Single developer switch governing both mechanisms: disables output sensors and
-# makes the error boundary verbose (full traceback inline). Propagates to the
-# `_runner` subprocess as an env var.
+
+
+
 BYPASS_ENV = "ITERANTE_NO_REDACT"
 
 
@@ -51,6 +52,6 @@ def record_fatal(
             with (d / ERROR_LOG_NAME).open("a", encoding="utf-8") as fh:
                 fh.write(f"\n===== {ts} =====\n{detail}")
         except Exception:
-            pass  # best-effort; the agent-safe message must still return
+            pass
 
     return detail if verbose else FATAL_MESSAGE

@@ -1,3 +1,4 @@
+# $kw: --from Agent.Profile
 """The agent profile-check primitive — the read-only pre-run fitness gate.
 
 It answers one question: "is this fully-specified agent fit to run *right now*?" —
@@ -22,7 +23,7 @@ from pathlib import Path
 from agentos.agent import auth_registry as R
 from agentos.agent.account_status_report import HomeTarget, status_for_home
 
-# Canonical checkpoint ids — the single source for each `CheckpointResult.id`.
+
 CHECKPOINT_ACCOUNT_REGISTERED = "account_registered"
 CHECKPOINT_HOME_EXISTS = "home_exists"
 CHECKPOINT_HOME_ALIGNED = "home_aligned"
@@ -32,13 +33,13 @@ CHECKPOINT_HOME_ALIGNED = "home_aligned"
 class CheckpointResult:
     id: str
     passed: bool
-    reason: str | None  # None iff passed
+    reason: str | None
 
 
 @dataclass(frozen=True)
 class ProfileCheck:
     checkpoints: tuple[CheckpointResult, ...]
-    ok: bool  # True iff every checkpoint passed
+    ok: bool
 
 
 def _account_registered(provider: str, account: str | None) -> CheckpointResult:

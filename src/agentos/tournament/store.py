@@ -50,9 +50,9 @@ class TournamentStore:
         definition_path: str,
         definition_digest: str,
     ) -> Tournament:
-        # The store mints the identity rather than adopting Bloberia's record id:
-        # the namespace has to exist before the record is written, and a tournament
-        # is a namespace rather than a record.
+
+
+
         tournament_id = generate_uuid4_string()
         self.depot.create(
             {
@@ -124,26 +124,26 @@ class TournamentStore:
             "presented": list(presented),
             "outcome": outcome.value,
             "ordering": list(ordering) if ordering is not None else None,
-            # Which players were controls and what each was expected to do. The
-            # read holds them apart: folded into the pool, a low control sits in
-            # the weak tail looking exactly like a finding.
+
+
+
             "controls": dict(controls or {}),
-            # The `Match.Template` this run rendered from, and the per-run values
-            # bound into it. The verbatim itself is never stored: it is rebuilt
-            # from these and checked against the hash below.
+
+
+
             "template": template,
             "template_bindings": dict(template_bindings or {}),
-            # `Tournament.Label` grouping tags: recorded, never interpreted, and
-            # never rendered into the verbatim. Unlabeled players are absent
-            # rather than null, so the mapping reads as the labeled set.
+
+
+
             "player_labels": dict(player_labels or {}),
             "match_label": match_label,
             "refusal_reason": refusal_reason,
             "ticket": ticket,
             "judge": dict(judge),
             "verbatim_hash": verbatim_hash,
-            # Microsecond precision: repeated runs of one match are expected, and
-            # second-resolution timestamps would make their recorded order arbitrary.
+
+
             "recorded_at": iso_z(datetime.now(timezone.utc), drop_micros=False),
             "duration_ms": duration_ms,
         }

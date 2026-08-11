@@ -152,6 +152,20 @@ def test_block_heading_is_not_shadowed_by_inline_pass(tmp_path: Path) -> None:
     assert all(not v.startswith("unresolved:") for v in res.values())
 
 
+def test_poi_definition_body_does_not_define_mentioned_subject(
+    tmp_path: Path,
+) -> None:
+    depot = _write_depot(tmp_path / "d", CLEAN)
+    (depot / "poi").mkdir()
+    (depot / "poi" / "100-poi.md").write_text(
+        "## Linter/Missing\n\n"
+        "- [DF] a `Foreign.Concept` is missing from this surface\n",
+        encoding="utf-8",
+    )
+    resolution = IndexSurfaceProvider(depot).resolve({"Foreign.Concept"})
+    assert resolution["Foreign.Concept"].startswith("unresolved:")
+
+
 ALIASED = """# design
 
 ****

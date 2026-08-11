@@ -45,8 +45,8 @@ from agentos.skillware.poi import (
     parser_diagnostics,
 )
 
-# once-per-kind legend: meaning + prescribed response; the full fix protocols
-# live in the agentos-skillware skill (references/check.md)
+
+
 POI_LEGEND = {
     "parse-error": (
         "the surface is below its Parse.Floor — malformed machinery, an unclosed construct, or host scanner failure",
@@ -976,7 +976,7 @@ def register_skillware_commands(
         ),
     ):
         sub = skillware_subparsers.add_parser(name, help=help_text)
-        # check with no --skill runs project-scope over every discovered package
+
         sub.add_argument(
             "--skill",
             required=(name not in {"check", "bless"}),

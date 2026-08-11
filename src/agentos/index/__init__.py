@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Index.System
 """Agentos Index — deterministic tooling for the index knowledge surface."""
 
 from .issues import IssueLine, IssueRecord, issue_inventory

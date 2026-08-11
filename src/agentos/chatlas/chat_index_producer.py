@@ -1,3 +1,4 @@
+# $kw: --from Chat.Index
 from __future__ import annotations
 
 from dataclasses import replace
@@ -73,8 +74,8 @@ def maintain_chat_index_with_agent(
         raise CliError(
             f"Chat.Index production provider {agent.provider} does not support run"
         )
-    # Internal retained-production agents must not recursively submit their own
-    # lifecycle events to the daemon. This is process control, not hook context.
+
+
     agent = replace(
         agent,
         env=(*agent.env, (AGENTOS_HOOKS_DISABLED_ENV, "1")),

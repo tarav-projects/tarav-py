@@ -1,3 +1,4 @@
+# $kw: --from Provider.Home.Adapter --from Provider.Instance
 from __future__ import annotations
 
 from agentos.agent.config import canonical_chat_provider_specs

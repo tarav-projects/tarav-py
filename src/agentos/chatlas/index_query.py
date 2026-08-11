@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Query.Surface --from Chatlas.Session.Index
 from __future__ import annotations
 
 import json

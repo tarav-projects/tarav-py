@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """Account-lifecycle sweep for the monitor — rotate (+ optionally materialize).
 
 The framework-free heart of the account monitor workflow. `sweep_rotations` drives
@@ -90,7 +91,7 @@ def sweep_rotations(*, materialize: bool) -> list[MonitorMaterializeResult]:
                         message=str(exc),
                     )
                 )
-            continue  # per-provider isolation — never crash the tick/keystroke
+            continue
     return results
 
 
@@ -253,7 +254,7 @@ def collect_non_aligned_homes() -> list[dict[str, object]]:
         try:
             report = build_status_report(provider)
         except Exception:
-            continue  # per-provider isolation — never crash the render
+            continue
         homes = report.get("homes")
         if not isinstance(homes, list):
             continue

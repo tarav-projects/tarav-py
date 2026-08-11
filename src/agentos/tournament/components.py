@@ -27,8 +27,8 @@ from agentos.tournament.model import TournamentError
 COMPONENTS_DIRNAME = "components"
 
 ADDRESS_PREFIX = "sha256:"
-# Two hex characters of shard prefix: 256 directories, which keeps a large depot
-# off any one filesystem's per-directory limits without a deep tree.
+
+
 SHARD_WIDTH = 2
 
 
@@ -53,10 +53,10 @@ class ComponentRegistry:
         if path.exists():
             return address
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Same directory, so the replace is atomic on every supported platform.
-        # The temp name must be unique per writer rather than per content: threads
-        # registering the same component race to the same final path deliberately,
-        # and sharing a temp name would have one consume the other's file.
+
+
+
+
         temp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
         temp.write_bytes(data)
         os.replace(temp, path)

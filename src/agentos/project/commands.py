@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Project
 from __future__ import annotations
 
 import argparse

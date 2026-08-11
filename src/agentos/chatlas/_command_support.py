@@ -1,5 +1,4 @@
-# $kw: ^event-pattern-commands --from Chatlas.Query.Surface --note [CT] public Event.Pattern commands expose structured patterns and backend choice, never raw SQL ^c20260725-38u --supp ^c20260726-3u --supp ergonomic turn query ^c20260731-12u --supp implementation authorized ^c20260731-14u
-# $kw: ^chat-index-tail-command --from Chat.Index --note [IMPL] expose pending source evidence without giving the CLI semantic Delta or HEAD authorship --supp ^c20260804-50u
+# $kw: ^event-pattern-commands --from Chatlas.Query.Surface --from Chat.Index --note [CT] public Event.Pattern commands expose structured patterns and backend choice, never raw SQL ^c20260725-38u --note [IMPL] expose pending source evidence without giving the CLI semantic Delta or HEAD authorship --supp ^c20260726-3u --supp ergonomic turn query ^c20260731-12u --supp implementation authorized ^c20260731-14u --supp ^c20260804-50u
 from __future__ import annotations
 
 import argparse
@@ -901,8 +900,8 @@ def _cmd_chatlas_chat_index_audit(args: argparse.Namespace) -> int:
         ),
     )
     print_chatlas_output(payload, output=args.output)
-    # Blocking findings are a refusal, not a crash: the complete result is
-    # always printed so a caller can act on it.
+
+
     return 1 if payload["blocking_finding_count"] else 0
 
 

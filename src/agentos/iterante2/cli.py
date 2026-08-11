@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Driver
 """iterante2 CLI — init, request, submit, dev step."""
 
 from __future__ import annotations
@@ -46,7 +47,7 @@ def _run_turn(*, rd: Path, mission_dir: Path, submit_result: dict | None = None,
         if line.startswith(FRAME_SENTINEL):
             frame = json.loads(line[len(FRAME_SENTINEL):])
         elif line:
-            print(line)  # forward mission output to the operator
+            print(line)
     if frame is None:
         raise SystemExit("runner produced no frame")
     return frame
@@ -75,8 +76,8 @@ def _find_mission_dir(mission_id: str) -> Path:
     for root in _missions_roots():
         if (root / mission_id / "mission.py").is_file():
             return root / mission_id
-    # Actionable, leak-free workflow signal — the searched filesystem paths are
-    # machinery and must not reach the agent.
+
+
     raise SystemExit(f"Mission not found: {mission_id}")
 
 
@@ -113,7 +114,7 @@ def cmd_init(args):
     ensure_iterante_importable(mission_dir)
     runtime_id, token, rd = create_run(mission_dir, mission_args=_load_args(args.args))
 
-    # Run first turn
+
     result = _run_turn(rd=rd, mission_dir=mission_dir)
 
     print(f"Run created: {runtime_id}")
@@ -174,7 +175,7 @@ def cmd_dev_step(args):
     print()
     print(render_frame(call=result["call"], token=result["token"], tick=result["tick"], mission_id=mission_id))
 
-    # Show state for inspection
+
     print("---")
     print("State after step:")
     print(json.dumps(result["state"], indent=2))
@@ -189,23 +190,23 @@ def main():
     )
     sub = parser.add_subparsers(dest="command")
 
-    # init
+
     p_init = sub.add_parser("init", help="Start a new run or resume an existing one")
     p_init.add_argument("--mission", help="Mission ID to start")
     p_init.add_argument("--resume", help="Runtime ID to resume")
     p_init.add_argument("--args", help="Mission args as a JSON object")
 
-    # request
+
     p_req = sub.add_parser("request", help="Show current call for a runtime")
     p_req.add_argument("--token", required=True, help="Unified token")
 
-    # submit
+
     p_sub = sub.add_parser("submit", help="Submit result and advance")
     p_sub.add_argument("--token", required=True, help="Unified token")
     p_sub.add_argument("--answer", help="Answer value")
     p_sub.add_argument("--data", help="JSON data payload")
 
-    # dev step
+
     p_dev = sub.add_parser("dev", help="Developer commands")
     dev_sub = p_dev.add_subparsers(dest="dev_command")
     p_dev_step = dev_sub.add_parser("step", help="Dry-run one step")
@@ -214,15 +215,15 @@ def main():
 
     args = parser.parse_args()
 
-    # The bypass is an env var so it reaches the `_runner` subprocess (spawned
-    # with the inherited environment); set it before any dispatch/spawn.
+
+
     if args.raw:
         os.environ[BYPASS_ENV] = "1"
 
-    # Top-level error boundary: an unexpected launcher crash must not dump a
-    # traceback (with machinery paths) to the agent. SystemExit (argparse usage
-    # errors, leak-free discovery messages) is BaseException, so it passes
-    # through untouched.
+
+
+
+
     try:
         if args.command == "init":
             cmd_init(args)

@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """Auto-prime-zero-limits workflow: trigger detection, eligibility, and prime pings."""
 
 from __future__ import annotations
@@ -342,7 +343,7 @@ class AutoPrimeZeroLimitsWorkflow:
         try:
             result = _run_account_prime_ping(source_target_state)
         except Exception as exc:
-            # could not attempt: resolution / ping precondition error
+
             self._record_prime_failure(
                 target_state,
                 source_target_state=source_target_state,
@@ -354,7 +355,7 @@ class AutoPrimeZeroLimitsWorkflow:
             )
             return False
         if not result.ok:
-            # the ping ran but reported failure — read its structured verdict
+
             self._record_prime_failure(
                 target_state,
                 source_target_state=source_target_state,
@@ -1154,11 +1155,11 @@ def _run_account_prime_ping(source_target_state: LimitsTargetState) -> AgentPing
         profile=profile,
         start_path=start_path,
     )
-    # Ping via the normal agent capability. Resolution errors and AgentPingError
-    # (ping disabled / not runnable) propagate as "could not attempt"; a ping that
-    # ran is returned as an AgentPingResult (ok or not-ok) for the caller to record.
-    # 658 seam: a successful prime (result.ok) is where new-model credential capture
-    # will hook in on the caller side — a deferred re-integration (Impl.Req 658).
+
+
+
+
+
     return agent.ping(cwd=Path.cwd().resolve())
 
 

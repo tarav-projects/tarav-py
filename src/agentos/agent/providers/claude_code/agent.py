@@ -128,10 +128,10 @@ class ClaudeAgent(RunnableMixin, AgentConfig):
         self,
         request: AgentRunPrepareRequest,
     ) -> AgentRunPrepareResult:
-        # The run surface is disconnected from the account/auth credential system
-        # (Impl.Req 658): claude runs against the home (keychain) as-is. The
-        # oauth-token-env method's env-injection is removed (unused; needs
-        # redesign). Account-scope is still checked by `_check_account_scope`.
+
+
+
+
         return AgentRunPrepareResult()
 
     def account_status(

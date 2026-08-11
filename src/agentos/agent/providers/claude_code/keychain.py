@@ -1,3 +1,4 @@
+# $kw: ^agentos-provider-claude-code-keychain --from Account.Management --from Provider.Instance --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 """Claude secure-storage (Keychain / `.credentials.json`) read+write primitives.
 
 Provider-specific *home secret access*, shared by the new model (`ClaudeAuthMethod`)
@@ -5,7 +6,6 @@ and the kept usage/status system (`claude/account_status.py`). Carries no
 credential-registry logic, so it is independent of the old account machinery.
 """
 
-# $kw: ^agentos-provider-claude-code-keychain --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 from __future__ import annotations
 
 import hashlib

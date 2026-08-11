@@ -1,3 +1,4 @@
+# $kw: --from Index.Depot.Dependency
 """`Index.Depot.Dependency`: direct dependency declaration and resolution.
 
 A depot resolves cross-depot mentions only against depots it *declares* as
@@ -111,6 +112,6 @@ def resolve_dependency_depots(
         target = registry.get(name)
         if target is None:
             unresolved.append(name)
-        elif target.resolve() != self_resolved:  # never depend on self
+        elif target.resolve() != self_resolved:
             resolved.append(target)
     return resolved, unresolved

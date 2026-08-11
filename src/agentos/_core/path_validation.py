@@ -1,3 +1,4 @@
+# $kw: --from Project.Discovery.System
 from __future__ import annotations
 
 from agentos._core.errors import CliError

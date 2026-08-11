@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model --from Provider.Instance
 """Per-provider `Raw.Normalizer`s for `Normalization.Pipeline::Chatlas.Session.Model`.
 
 `{claude,codex}_events` — the per-record-type event normalizers (pure + in-place) and the

@@ -1,3 +1,4 @@
+# $kw: --from Agent.Normal.Model
 from __future__ import annotations
 
 import hashlib
@@ -325,14 +326,14 @@ class RunnableMixin:
         model: str | None = None,
         account: str | None = None,
     ) -> AgentPingResult:
-        # Local import avoids a cycle: `ping` imports this module for `RunCapable`.
+
         from agentos.agent.ping import _run_ping
 
         resolved_cwd = cwd if cwd is not None else Path.cwd().resolve()
         return _run_ping(self, cwd=resolved_cwd, model=model, account=account)
 
     def profile_check(self) -> ProfileCheck:
-        # Local import avoids a cycle through account_status_report -> config.
+
         from agentos.agent.profile_check import _profile_check
 
         return _profile_check(self)

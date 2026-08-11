@@ -1,4 +1,4 @@
-# $kw: ^context-loading-model --supp Context.Loading.Model local projection implementation authorized ^c20260802-1u
+# $kw: ^context-loading-model --from Context.Loading.Path --supp Context.Loading.Model local projection implementation authorized ^c20260802-1u
 """Path-specific runtime context projection for Skillware-managed skills."""
 
 from __future__ import annotations

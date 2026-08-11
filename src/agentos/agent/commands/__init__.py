@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Agent.Adapter
 """Agent command registration, split by command domain."""
 
 from __future__ import annotations

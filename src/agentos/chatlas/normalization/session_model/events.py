@@ -57,11 +57,11 @@ def set_event_native(event: dict[str, object], key: str, value: object) -> None:
     native[key] = value
 
 
-# The fields `event_hash` covers: the event's chat content and nothing else.
-# Excluded deliberately — `sequence` (positional: including it would make the
-# digest move exactly as the ordinal does), `source_refs` (raw indices
-# shift), `extras` (derivation bookkeeping), `annotations` (would couple event
-# identity to grouping), and `native` (measured to remove no ambiguity).
+
+
+
+
+
 EVENT_HASH_FIELDS = ("kind", "producer", "payload", "timestamp")
 
 
@@ -400,8 +400,8 @@ def semantic_event_outcome_from_status(status: str | None) -> str | None:
     return None
 
 
-# The closed neutral event envelope. Provider-native identifiers converge under the
-# ``native`` anchor area; a top-level key outside this set is envelope leakage.
+
+
 SEMANTIC_EVENT_ENVELOPE_KEYS = frozenset(
     {
         "sequence",
@@ -444,7 +444,7 @@ def enforce_event_envelope(
 @dataclass
 class SemanticEventBuilder:
     events: list[dict[str, object]] = field(default_factory=list)
-    # delta resume: absolute sequence numbering continues after an existing tape prefix
+
     sequence_base: int = 0
 
     def append(

@@ -90,7 +90,7 @@ AnchoryAmendValidator = Callable[
     None,
 ]
 
-# Decides one record's replacement, or None to leave it alone.
+
 AnchoryBulkAmendment = Callable[[str, dict[str, object]], Mapping[str, object] | None]
 
 

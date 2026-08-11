@@ -1,3 +1,4 @@
+# $kw: ^agentos-provider-codex-auth-method --from Account.Management --from Provider.Instance --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 """Codex `Auth.Method` subclass — the `auth-json` credential class.
 
 Identity is extracted from the **access_token** `chatgpt_account_id` claim, which
@@ -6,7 +7,6 @@ it has been observed to carry a stale id (see the session that drove the
 `Account.Management` rebuild). `auth-json` is materializable.
 """
 
-# $kw: ^agentos-provider-codex-auth-method --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
 from __future__ import annotations
 
 import base64
@@ -60,7 +60,7 @@ class CodexAuthMethod(AuthMethod):
         return auth_data.content_id()
 
     def rotation_rank(self, auth_data: AuthData, captured_at: float) -> float | None:
-        # Head-of-line by the access-token expiry — monotonic across refreshes.
+
         tokens = auth_data.payload.get("tokens")
         if not isinstance(tokens, dict):
             return None

@@ -31,9 +31,9 @@ from agentos.chatlas.normalization.session_model.events import compute_event_has
 
 EVENT_REF_SCHEMA = "chatlas.event-ref.v2"
 
-# Floor for the stored digest prefix. Below this the check still looks like
-# verification while providing almost none, which is worse than no check.
-EVENT_HASH_MIN_CHARS = 16  # 8 bytes
+
+
+EVENT_HASH_MIN_CHARS = 16
 
 
 class EventRefOutcome(Enum):

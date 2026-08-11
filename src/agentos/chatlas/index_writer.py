@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Session.Index
 from __future__ import annotations
 
 import json
@@ -47,8 +48,8 @@ def _session_index_row(
         from agentos.chatlas.provider_home_adapter import provider_instance_home
         provider_home = provider_instance_home(session.provider_instance)
     home_value = provider_home if isinstance(provider_home, str) else None
-    # Raw-derived index metadata via the index-row Raw.Normalizers (claude-code / codex);
-    # other providers fall back to the agentos-py session_ref extraction.
+
+
     from agentos.chatlas.normalization.index_row import index_metadata
 
     meta = index_metadata(session.provider_instance.provider, backing_artifacts)

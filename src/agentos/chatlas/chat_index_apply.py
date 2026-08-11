@@ -1,4 +1,4 @@
-# $kw: --from Capture.Plan --from Chat.Index --from Prefix.Stability --note [IMPL] anchors are ensured before a recoverable directory swap and the surface is audited staged and landed --supp ^c20260804-60u
+# $kw: --from Chat.Index --from File.Numbering.Protocol --note [IMPL] anchors are ensured before a recoverable directory swap and the surface is audited staged and landed --supp ^c20260804-60u
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -70,8 +70,8 @@ def chatlas_chat_index_apply(
             "Chat.Index capture plan status is 'draft'; set 'ready' "
             "when the semantic region is authored"
         )
-    # The pre-lock model resolves the chatlas root; everything that decides the
-    # result is derived again under the lock.
+
+
     preview = build_render_model(loaded, chatlas_root=chatlas_root)
     root = preview.root
     identity_hash = preview.identity_hash

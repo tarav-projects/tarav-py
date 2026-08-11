@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Project
 from .commands import (
     _cmd_init,
     _cmd_rev_parse,

@@ -1,3 +1,4 @@
+# $kw: --from Anchory.System
 """Depot-scoped anchor dictionaries."""
 
 from .core import (

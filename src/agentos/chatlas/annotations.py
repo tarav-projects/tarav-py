@@ -1,4 +1,4 @@
-# $kw: ^chatlas-annotations --supp static cleanup authorized ^c20260730-34u
+# $kw: ^chatlas-annotations --from Session.Identity --supp static cleanup authorized ^c20260730-34u
 from __future__ import annotations
 
 import json

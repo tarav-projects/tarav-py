@@ -35,6 +35,12 @@ class CodeLanguageBackend(Protocol):
     def model(self, text: str) -> CodeSurfaceModel: ...
 
 
+class CodeDependencyResolver(Protocol):
+    def resolve(self, names: set[str]) -> dict[str, str]: ...
+
+    def collisions(self, names: set[str]) -> dict[str, list[Path]]: ...
+
+
 class CodeBackendRegistry:
     def __init__(self, backends: tuple[CodeLanguageBackend, ...]) -> None:
         entries = {backend.name: backend for backend in backends}

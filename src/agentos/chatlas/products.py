@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.View.Model
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -33,34 +34,34 @@ STAGING_ROOT = "_staging"
 LOCKS_ROOT = "locks"
 MANIFEST_FILENAME = "manifest.json"
 
-# Compression floor. Small sessions are often already minimal, so the floor only
-# applies once there is enough assistant text for compression to be meaningful.
+
+
 COMPRESSION_FLOOR_MIN_SOURCE_BYTES = 50_000
 COMPRESSION_FLOOR_MAX_RETAINED_RATIO = 0.70
 
-# Window guard. This detects a region left untouched; it is deliberately not a
-# uniform compression target, because some regions are legitimately dense and
-# demanding a fixed ratio everywhere would reward deletion.
+
+
+
 COMPRESSION_WINDOW_SOURCE_BYTES = 10_000
 COMPRESSION_WINDOW_MAX_RETAINED_RATIO = 0.90
-# A single dense window is normal — a short factual answer or output that must
-# survive verbatim. Only refuse once the untouched windows are a material share
-# of the transcript, which is what "a region was skipped" actually looks like.
+
+
+
 COMPRESSION_WINDOW_MIN_UNTOUCHED_SHARE = 0.15
 
-# Collapse guard, the floor's mirror image. Over-retention leaves a fat but
-# faithful artifact; under-retention leaves a confidently wrong one, and no
-# consumer can tell. Checked per turn rather than as a ratio because retention
-# is density-bound — any single minimum ratio is too permissive for terse
-# sources and refuses legitimate work on verbose ones — while "several hundred
-# bytes became four characters" is loss at every density.
+
+
+
+
+
+
 COMPRESSION_COLLAPSE_MIN_SOURCE_BYTES = 800
 COMPRESSION_COLLAPSE_MAX_SUMMARY_BYTES = 40
 
-# Crushed-region guard. Secondary to the per-turn check and deliberately loose:
-# whole stretches of tool output, build logs, and file dumps do legitimately
-# compress to almost nothing, so this carries a materiality condition from the
-# start rather than earning one after false positives.
+
+
+
+
 COMPRESSION_WINDOW_MIN_RETAINED_RATIO = 0.10
 COMPRESSION_WINDOW_MIN_CRUSHED_SHARE = 0.15
 INPUT_FILENAME = "input.json"
@@ -381,8 +382,8 @@ def chatlas_products_commit(
         "definition_fingerprint": context.definition_fingerprint,
         "producer": context.definition.producer,
         "created_at": _utc_now(),
-        # Retained so a waived commit stays auditable after the fact: both
-        # escape hatches are legitimate, but they must leave a trace.
+
+
         "compression": _compression_record(
             context.input_payload,
             payload,
@@ -450,9 +451,9 @@ def chatlas_products_run_produce(
                 "error": str(exc),
             }
 
-    # Sessions are independent: each owns its own stage directory and a depot
-    # lock keyed by (product, identity_hash), so parallel rows never contend.
-    # Results stay in input order regardless of completion order.
+
+
+
     if concurrency == 1 or len(rows) <= 1:
         results = [run_one(row) for row in rows]
     else:

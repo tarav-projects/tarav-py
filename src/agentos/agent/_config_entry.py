@@ -1,3 +1,4 @@
+# $kw: --from Agent.Profile --from Provider.Instance
 """Agent configuration entry decoding and validation."""
 
 from __future__ import annotations
@@ -399,8 +400,8 @@ def _load_agent_account_context(
         account = value.strip()
         if not account:
             raise CliError(f"{field_name} must be a non-empty string")
-        # accounts are addressed <account-id>/<method>; the agent context keys on
-        # the account-id (the method is a credential concern, not a run concern).
+
+
         account = account.split("/", 1)[0]
         return AgentAccountContext(
             provider=provider,

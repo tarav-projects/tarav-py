@@ -1,3 +1,4 @@
+# $kw: --from Skill.Package.Builder --from Skw.Network
 """Skillware configuration, source loading, and deterministic expansion."""
 
 from __future__ import annotations
@@ -597,9 +598,9 @@ def load_skillware(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> Ski
                     f"configured depot is not a directory: {raw_depot}"
                 )
             depots.append(depot)
-        # the named `deps` registry serves both domains: each package root is a
-        # concept depot (folded into the search below) and the target of an
-        # `@<id>/…` file locator (Skw.Pkg.Dependency).
+
+
+
         for dep_id, raw_root in config.deps.items():
             dep_root = (skill_root / raw_root).resolve()
             if not dep_root.is_dir():
@@ -697,9 +698,9 @@ def expand_file(skillware: Skillware, src_rel: Path) -> Expansion:
                 resolved_copies[recipe.body_span] = lines
         dep_hashes[recipe_key(recipe)] = recipe_deps
 
-    # Declaration and native-content blocks do not materialize dependencies,
-    # but builder-context and citation roles must still resolve. A context
-    # assembly's claimed `--from` set is also a checked contract.
+
+
+
     for block in (*source.dependencies, *source.constructs):
         edges = list(("dev-from", locator) for locator in block.dev_froms)
         edges.extend(("cite", locator) for locator in block.cites)
@@ -796,9 +797,9 @@ def _resolve_locator(
 ) -> tuple[list[str] | None, str | None]:
     locator = locator.strip()
 
-    # cross-package: a registered dependency id resolves through skw.json `deps`
-    # to a package root, then the tail resolves inside that package's own src —
-    # the only legal way for a --from to leave the package (Skw.Pkg.Dependency).
+
+
+
     pkg_match = _PKG_DEP_RE.match(locator)
     if pkg_match:
         dep_id, tail = pkg_match.group(1), pkg_match.group(2)
@@ -859,7 +860,7 @@ def _resolve_locator(
             return None, f"region not found: #{region}"
         return body, None
 
-    # bare Dotted.Name: an index block body resolved in the configured depots
+
     if not skillware.depots:
         return None, "Dotted.Name target needs a depot in skillware.json"
     for depot in skillware.depots:
@@ -992,7 +993,7 @@ def _labeled_span(
             return _routing_view_dependency_lines(view), None
     for recipe in source.recipes:
         if recipe.label == label and recipe.verb == "copy" and recipe.froms:
-            # a labeled copy resolves to its target, fresh — same semantics as regions
+
             return _resolve_locator(skillware, recipe.froms[0], stack=stack)
     spans = [(r.label, r.body) for r in source.recipes] + [
         (c.label, c.body) for c in source.constructs
@@ -1007,8 +1008,8 @@ def _labeled_span(
                 continue
             lines, _detail = _resolve_locator(skillware, rec.froms[0], stack=stack)
             if lines is None:
-                # unresolvable here (e.g. a same-file cycle): keep the current
-                # body — the owning file's own build keeps it refreshed
+
+
                 continue
             resolved[rec.body_span] = lines
         return _emit(inner, resolved, keep_machinery=False), None
@@ -1270,7 +1271,7 @@ def _emit(
     for span, lines in resolved_copies.items():
         replacements[span[0]] = ["", *lines, ""]
         skip_ranges.append((span[0], span[1]))
-        # re-add the replacement at the span start
+
     for start, end in skip_ranges:
         masked.update(range(start, end))
 

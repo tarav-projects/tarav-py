@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Account.Usage.Model
 from __future__ import annotations
 
 import json
@@ -33,9 +34,9 @@ _MONITOR_RESET_BAR_PALETTE = (
     "#0891b2",
     "#2563eb",
 )
-# A distinct, off-heat-scale style for the 100% boundary cell when a bar
-# overflows (>100%). Separate from the elapsed-time tip: it only ever appears
-# on an over-budget bar, so it reads as "past full", not as time elapsed.
+
+
+
 _MONITOR_OVERFLOW_MARKER_STYLE = "bold bright_white on #d946ef"
 _MONITOR_REFRESH_PER_SECOND = 4
 _MONITOR_BLOCK_RENDER_ORDER = {
@@ -401,8 +402,8 @@ def _stylize_overflow_marker(
     """
     if percent <= 100 or width <= 0:
         return
-    # 100% as a fraction of the rescaled 0..percent axis = 100 / percent, fed
-    # through the shared cell math (which reads its arg as a fraction of 100).
+
+
     line_end = _percent_cell_range(10000 / percent, width)[1]
     marker_cell = line_end - 1
     if marker_cell < 0:

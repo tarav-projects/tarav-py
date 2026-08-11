@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Ctx
 """Call frame rendering — Markdown output the agent sees."""
 
 from __future__ import annotations
@@ -37,14 +38,14 @@ def render_frame(*, call: dict, token: str, tick: int, mission_id: str | None = 
     """Render a call into a full Markdown frame: header + content + footer."""
     parts = []
 
-    # Header
+
     label = f"[{mission_id}]" if mission_id else "[run]"
     parts.append(f"## {label} Turn {tick}")
     parts.append("")
 
     call_type = call.get("type", "freeform")
 
-    # Terminal: the mission is finished. Runtime-owned message, no submit footer.
+
     if call_type == "completed":
         parts.append("### Mission complete")
         parts.append("")
@@ -56,7 +57,7 @@ def render_frame(*, call: dict, token: str, tick: int, mission_id: str | None = 
         parts.append("")
         return redact("\n".join(parts))
 
-    # Content
+
     title = call.get("title", "")
     parts.append(f"### {title}")
     parts.append("")
@@ -81,8 +82,8 @@ def render_frame(*, call: dict, token: str, tick: int, mission_id: str | None = 
             parts.append(f"**Question:** {q_text}")
             parts.append("")
 
-    # Submit contract: when a call declares `expects`, render the exact command
-    # (and, for a data payload, the field shape) so the agent knows what to send.
+
+
     has_contract = "expects" in call
     expects = call.get("expects")
     if has_contract and isinstance(expects, dict) and not _is_answer_contract(expects):
@@ -92,13 +93,13 @@ def render_frame(*, call: dict, token: str, tick: int, mission_id: str | None = 
         parts.append("```")
         parts.append("")
 
-    # Footer
+
     parts.append("---")
     cmd = _submit_command(expects, token) if has_contract else f"iterante submit --token {token}"
     parts.append(f"When done: `{cmd}`")
     parts.append("")
 
-    # Defense-in-depth: the frame dict is path-free by construction, but a leak
-    # into a call body (e.g. a mission-built title) is scrubbed here, and every
-    # launcher that renders inherits it.
+
+
+
     return redact("\n".join(parts))

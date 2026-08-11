@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Session.Model
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,8 +25,8 @@ def build_chatlas_session_model_from_index_row(
     chatlas_root: Path | None = None,
     trust: str | None = None,
 ) -> dict[str, object]:
-    # The rich Normal.Assembler owns model assembly. Lazy import avoids an import cycle
-    # (the assembler reuses this module's leaf helpers).
+
+
     from agentos.chatlas.normalization.session_assembler import assemble_session_model
 
     return assemble_session_model(
@@ -93,9 +94,9 @@ def _rooted_normalization_result(
     chatlas_root: Path | None,
     trust: str | None,
 ) -> NormalizationResult | None:
-    # Delta.Normalization::Chatlas runs only for explicitly rooted callers: the
-    # checkpoint and artifact locations are depot-relative, and a rootless call
-    # must stay side-effect free. None means the assembler runs full derivation.
+
+
+
     if chatlas_root is None:
         return None
 
@@ -154,8 +155,8 @@ def project_chatlas_session_model_view(
     )
 
 
-# 4: Event.Annotation owns optional grouping metadata; Normal.Turn no longer
-# conflates one human input with the following assistant response.
+
+
 _CHATLAS_SESSION_MODEL_SCHEMA_VERSION = 5
 
 

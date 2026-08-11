@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Agent.Adapter
 """The agent-ping primitive — run an account's configured liveness ping and
 report the outcome.
 
@@ -38,7 +39,7 @@ class AgentPingResult:
     elapsed_ms: int
     exit_code: int
     output: str
-    failure: str | None  # None iff ok; the operation-level reason otherwise
+    failure: str | None
 
 
 def _run_ping(

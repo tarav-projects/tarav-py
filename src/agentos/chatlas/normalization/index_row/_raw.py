@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Chatlas.Session.Model
 """Minimal raw-artifact parsing helpers for the experimental extractor pipeline.
 
 These are intentionally local to ``normalization`` so the extractor layer owns its

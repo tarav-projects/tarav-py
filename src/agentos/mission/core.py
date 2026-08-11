@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Mission
 from __future__ import annotations
 
 import json
@@ -166,7 +167,7 @@ def todo_progress(mission: dict) -> tuple[int, int]:
     return done, len(todos)
 
 
-# ── help ────────────────────────────────────────────────────────────
+
 
 
 def get_help(mission: dict) -> dict:

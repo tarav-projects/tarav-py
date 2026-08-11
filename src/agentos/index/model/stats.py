@@ -1,3 +1,4 @@
+# $kw: --from Index.Grounding --from Agentos.Index.System
 """Grounding statistics over the parsed index model.
 
 Computation lives here so any consumer (CLI report, future linter meters,

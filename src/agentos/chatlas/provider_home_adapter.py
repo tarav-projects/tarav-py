@@ -1,3 +1,4 @@
+# $kw: --from Provider.Home.Adapter
 """`Provider.Home.Adapter` — the one Chatlas component with provider-native
 data-home contact.
 

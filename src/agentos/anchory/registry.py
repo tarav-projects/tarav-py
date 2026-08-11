@@ -1,3 +1,4 @@
+# $kw: --from Anchory.System
 """Anchory depot registry and discovery.
 
 The registry records every depot an anchory command touches, keyed by root

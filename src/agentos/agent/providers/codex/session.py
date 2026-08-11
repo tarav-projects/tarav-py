@@ -293,9 +293,9 @@ def discover_codex_sessions(*, targets: tuple[Path, ...]) -> tuple[CodexSession,
 
 
 def find_codex_session_ref_by_id(*, targets: tuple[Path, ...], session_id: str) -> CodexSessionRef | None:
-    # discovery-equivalent point lookup: walk the targets in discovery order and
-    # merge every ref carrying the id (rollout matches + session_index entries),
-    # so the returned ref equals what discover_codex_session_refs would produce
+
+
+
     pattern = f"*{session_id}*.jsonl"
     session_refs_by_id: dict[str, CodexSessionRef] = {}
     for target in targets:

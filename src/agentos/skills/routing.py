@@ -1,3 +1,4 @@
+# $kw: --from Selected.Skills --from Skill.Depot
 from __future__ import annotations
 
 import hashlib

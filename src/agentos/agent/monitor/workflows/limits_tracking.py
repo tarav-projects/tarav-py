@@ -88,11 +88,11 @@ from agentos.agent.providers.copilot_cli.account_status import (
 )
 
 
-# Fallback staleness threshold when no refresh interval is available. A usage
-# record older than this counts as "stale" for target_transition logging.
+
+
 _DEFAULT_STALE_THRESHOLD_SEC = 600.0
-# While an error/fallback condition persists, re-log it at most once per this
-# interval (a heartbeat), so a stuck account does not spam one line per tick.
+
+
 _ERROR_HEARTBEAT_SEC = 3600.0
 _WEEKLY_BURST_PERCENT_BY_PROVIDER = {
     "claude-code": 9.0,
@@ -106,7 +106,7 @@ class LimitsTrackingWorkflow:
     def __init__(self, config: MonitorWorkflowConfig) -> None:
         self.config = config
         self.refresh_interval_sec = config.refresh_interval_sec
-        # Wall clock for the error heartbeat; injectable so tests do not sleep.
+
         self._error_clock = time.time
 
     def setup(
@@ -181,10 +181,10 @@ class LimitsTrackingWorkflow:
         }
 
     def _staleness_class(self, account_status: object) -> str | None:
-        # Classify from the usage record's status, not age alone: a successful
-        # live fetch ("fresh") carries no age_sec, so age-only classification
-        # would mislabel it None and flap on every refresh. Age is only
-        # meaningful for the registry-backed records that carry it.
+
+
+
+
         if not isinstance(account_status, dict):
             return None
         raw = account_status.get("raw")
@@ -230,7 +230,7 @@ class LimitsTrackingWorkflow:
         *,
         tick: int,
     ) -> None:
-        # Log error/fallback conditions on change + heartbeat, not every tick.
+
         signature, event, payload = self._error_signal(target_state)
         last = target_state.last_error_emit
         if signature is None:
@@ -258,7 +258,7 @@ class LimitsTrackingWorkflow:
     def _error_signal(
         self, target_state: LimitsTargetState
     ) -> tuple[tuple[str, str | None] | None, str, dict[str, object]]:
-        # A hard refresh exception captured on the target.
+
         error = target_state.error
         if isinstance(error, dict):
             error_type = _string_value(error.get("type"))
@@ -423,11 +423,11 @@ class LimitsTrackingWorkflow:
         self,
         workflow_state: LimitsWorkflowState,
     ) -> None:
-        # OpenAI no longer publishes the codex burst window, so refresh keeps
-        # the service alive by substituting an estimated burst limit into each
-        # codex target's in-memory limits. The synthesized limit is flagged
-        # `estimated` and rendered by the normal limit pipeline; nothing here
-        # is persisted — the usage registry carries provider data only.
+
+
+
+
+
         codex_targets = [
             target for target in self.config.targets if target.provider == "codex"
         ]
@@ -1088,9 +1088,9 @@ def _synthesize_estimated_burst_limit(
         used_percent = 0
     else:
         weekly_delta = max(0, weekly_now - baseline["used_percent"])
-        # Floored at 0 but intentionally uncapped: an estimated burst can exceed
-        # 100% (more than one estimated window's budget spent). The renderer
-        # saturates the bar and flags the overflow — the number stays truthful.
+
+
+
         used_percent = max(0, round((weekly_delta / burst_weekly_percent) * 100))
     synthesized = AccountLimit(
         limit_class="usage_over_time",
@@ -1213,8 +1213,8 @@ def _usage_error_message(account_status: dict[str, Any]) -> str | None:
 
 
 def _limit_label(limit: dict[str, Any], usage_over_time: dict[str, object]) -> str:
-    # Estimated limits render with a `~` prefix so guidance is never read as
-    # provider-reported data.
+
+
     prefix = "~" if limit.get("estimated") is True else ""
     duration_mins = _int_value(usage_over_time.get("period_duration_mins"))
     if duration_mins == 300:
@@ -1276,8 +1276,8 @@ def _elapsed_percent(
 
 
 def _format_usage_percent_plain(value: int) -> str:
-    # Floored at 0, uncapped: overflow (>100%) prints its true value so an
-    # estimated limit that blew past one window's budget stays legible.
+
+
     return f"{max(0, value)}%".rjust(3)
 
 

@@ -1,3 +1,4 @@
+# $kw: --from Mission.Manifest.Boundary
 """Typed submit contract — validate a submission against a call's `expects`.
 
 A call may declare `expects` (its return type). The Runtime renders it to the

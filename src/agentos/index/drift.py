@@ -71,7 +71,12 @@ def _defined_concepts(depot_root: Path) -> dict[str, str]:
                 name = str(node.parsed.get("path", "")).strip()
                 if name:
                     concepts.setdefault(name, node.src)
-            elif isinstance(node, KernelLine) and _line_act(node) == "DF":
+            elif (
+                isinstance(node, KernelLine)
+                and _line_act(node) == "DF"
+                and document.path is not None
+                and document.path.parent.name in {"design", "index"}
+            ):
                 subject = _first_cited_concept(node)
                 if subject:
                     concepts.setdefault(subject, node.src)
@@ -125,19 +130,19 @@ class IndexSurfaceProvider:
     ) -> None:
         self._depot_root = Path(depot_root)
         if engaged_depots is None:
-            # directed visibility: own + directly declared dependency depots
+
             deps, self.unresolved_dependencies = resolve_dependency_depots(
                 self._depot_root, home
             )
         else:
-            # explicit override (tests / callers supplying the visible set)
+
             deps, self.unresolved_dependencies = [Path(d) for d in engaged_depots], []
         depots = (self._depot_root, *deps)
         self._concepts = _engaged_concepts(depots)
         self._defining = _defining_depots(depots)
 
     def declared_edges(self) -> tuple[set[str], set[str]]:
-        # the index declares no block->block dependencies
+
         return set(), set()
 
     def mentions(self) -> set[str]:

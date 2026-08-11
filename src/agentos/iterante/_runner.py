@@ -1,3 +1,4 @@
+# $kw: --from Iterante.Driver
 """In-env turn runner — `python -m iterante._runner`.
 
 Launched by the runtime inside the resolved Mission.Env. Runs one turn through the
@@ -23,7 +24,7 @@ FRAME_SENTINEL = "__ITERANTE_FRAME__ "
 _ERROR_KEY = "error"
 
 
-# ── runner ↔ runtime wire protocol (owned here; the runtime consumes these) ──
+
 
 def frame_line(result: dict) -> str:
     """Encode a turn result as the sentinel-framed stdout line."""
@@ -60,8 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-persist", action="store_true")
     args = parser.parse_args(argv)
 
-    # Capture the mission's own stdout so it can be scrubbed before it leaves
-    # the process; the sentinel frame line below is written raw (path-free JSON).
+
+
     captured = io.StringIO()
     try:
         submit_result = json.loads(args.submit) if args.submit else None
@@ -74,15 +75,15 @@ def main(argv: list[str] | None = None) -> int:
                 token=args.token,
             )
     except AgentError as e:
-        # Agent-workflow error: the agent must correct its own execution. The
-        # message is about protocol, not files — surface it (redact is a no-op
-        # belt-and-suspenders).
+
+
+
         _emit_mission_output(captured)
         sys.stderr.write(error_line(redact(str(e))))
         return 1
     except Exception as e:
-        # Machinery fault — developer's responsibility. The agent sees only a
-        # generic fatal message; full detail goes to the mission-folder log.
+
+
         _emit_mission_output(captured)
         sys.stderr.write(error_line(record_fatal(e, log_dir=Path(args.run_dir), verbose=dev_bypass())))
         return 1

@@ -126,9 +126,9 @@ def chatlas_views_get(
             if event.get("event_address") in touching_addresses
         ]
         session_model["chat"] = chat
-    # Event-window selection composes with named filters: filters prune the
-    # model first so --radius counts filter-surviving events, not raw events.
-    # File/tool selectors above still saw the unfiltered tables.
+
+
+
     event_window_selection = any(
         value is not None for value in (contains, role, around)
     )

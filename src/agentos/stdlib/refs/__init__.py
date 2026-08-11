@@ -1,3 +1,4 @@
+# $kw: --from Wayfinder.Reference
 """refs standard-library command and library surface."""
 
 from .commands import (

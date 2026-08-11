@@ -1,3 +1,4 @@
+# $kw: --from Normalization.Pipeline::Account.Usage.Model
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -418,8 +419,8 @@ class MonitorBlock:
 
     @property
     def heading_rows(self) -> list[MonitorRow]:
-        # Derived from the title: heading text has no animation state, so
-        # recomputing the row per access keeps title the single source.
+
+
         if self.title is None:
             return []
         return [MonitorTextRow(self.title, indent=False)]
@@ -472,7 +473,7 @@ class MonitorFrame:
             row.step_animation()
 
     def inherit_animation_state_from(self, previous: MonitorFrame) -> None:
-        # Frames may differ in row count; pair what overlaps.
+
         for row, previous_row in zip(_frame_rows(self), _frame_rows(previous), strict=False):
             _inherit_row_animation_state(row, previous_row)
 

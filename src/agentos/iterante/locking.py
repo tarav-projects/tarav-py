@@ -1,3 +1,4 @@
+# $kw: --from File.Locking
 """Iterante v1 public file-locking surface."""
 
 from ._shared.locking import LOG_SUFFIX, WRITER, LockViolation, record, verify

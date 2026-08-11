@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 """Assembly of configured monitor workflows, including multi-config merging."""
 
 from __future__ import annotations
@@ -48,8 +49,8 @@ def build_monitor_workflows(
                 )
             continue
         raise CliError(f"unknown monitor workflow {config.name!r}")
-    # The account-rotation workflow is config-free (it sweeps all providers via the
-    # lifecycle primitives), so it is built unconditionally rather than from config.
+
+
     workflows.append(AccountRotationWorkflow())
     return tuple(workflows)
 

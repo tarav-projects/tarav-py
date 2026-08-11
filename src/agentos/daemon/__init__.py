@@ -1,3 +1,4 @@
+# $kw: --from Agentos.Daemon
 from .client import (
     DaemonUnavailableError,
     daemon_status,

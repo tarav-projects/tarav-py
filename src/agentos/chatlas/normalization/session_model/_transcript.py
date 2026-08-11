@@ -1,3 +1,4 @@
+# $kw: --from Chatlas.Session.Model --from Normal.Turn
 from __future__ import annotations
 
 import json

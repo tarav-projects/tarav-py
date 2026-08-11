@@ -1,3 +1,4 @@
+# $kw: --from Index.Linter
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,4 +31,3 @@ def surface_policy(kind: IndexSurfaceKind) -> IndexSurfacePolicy:
 
 def reserved_surface_folders() -> frozenset[str]:
     return frozenset({"appendix", "agendix", "issues"})
-

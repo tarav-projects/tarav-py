@@ -1,3 +1,4 @@
+# $kw: --from Account.Management
 from __future__ import annotations
 
 import datetime
@@ -144,8 +145,8 @@ def build_monitor_loop(
     max_ticks: int | None,
 ) -> MonitorLoop:
     configs = load_monitor_workflow_configs(start_path=start_path)
-    # `build_monitor_workflows` always includes the config-free account-rotation
-    # workflow, so the monitor is runnable even with no limits-tracking config.
+
+
     return MonitorLoop(
         workflows=build_monitor_workflows(configs),
         interval_sec=interval_sec,
@@ -180,8 +181,8 @@ def _load_targets(
         raw_account = raw_target.get("account")
         if not isinstance(raw_account, str) or not raw_account.strip():
             raise CliError(f"{target_field}.account must be a non-empty string")
-        # targets are addressed <account-id>/<method>; the monitor tracks usage
-        # per account, so it keys on the (path-safe) account-id.
+
+
         account = validate_string_for_path(
             raw_account.split("/", 1)[0], field_name=f"{target_field}.account"
         )

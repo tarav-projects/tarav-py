@@ -40,9 +40,9 @@ def tournament_report(
             row_for(str(player))
 
     no_contest_count = 0
-    # Reasons are kept as samples keyed by the refused match, not folded onto an
-    # axis the judge supplied: scattered-versus-clustered is read from which
-    # players were in which refused match, which the records already carry.
+
+
+
     reason_samples: dict[str, str] = {}
 
     for verdict in verdicts:
@@ -57,18 +57,18 @@ def tournament_report(
             for player in players:
                 rows[player]["no_contests"] += 1
             continue
-        # Pairwise comparisons are extracted here, never stored: for ranks i < j
-        # the earlier player beat the later one. One 4-way match yields six.
+
+
         ordering = verdict.ordering or ()
         for rank, winner in enumerate(ordering):
             for loser in ordering[rank + 1 :]:
                 rows[winner]["wins"] += 1
                 rows[loser]["losses"] += 1
 
-    # Controls are held apart rather than folded in: a low control sits in the
-    # weak tail looking exactly like a finding, and the whole point of declaring
-    # it was that its position there means the opposite. Their comparisons stay
-    # on the pool's rows — those are the matches that calibrate anything.
+
+
+
+
     bands: dict[str, str] = {}
     for verdict in verdicts:
         declared = verdict.envelope.get("controls") or {}

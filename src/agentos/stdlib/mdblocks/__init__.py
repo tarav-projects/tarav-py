@@ -1,3 +1,4 @@
+# $kw: --from Kernel.Block
 """mdblocks standard-library command and library surface."""
 
 from .core import *  # noqa: F403

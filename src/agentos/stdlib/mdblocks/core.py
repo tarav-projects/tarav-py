@@ -66,7 +66,7 @@ def _validate_scan_config(config: MarkdownScanConfig) -> None:
 
 def _sanitize_heading_title(raw_title: str) -> str:
     title = raw_title.strip()
-    # Allow markdown's optional trailing heading marker hashes.
+
     title = re.sub(r"[ \t]+#+[ \t]*$", "", title)
     return title.strip()
 

@@ -44,9 +44,9 @@ KIND_FOOTNOTE = "footnote"
 ORIGIN_DEFINITION = "definition"
 ORIGIN_ENGINE = "engine"
 
-# The footnote before its per-run values are bound. Kept as one literal rather
-# than assembled from pieces: it is registered by content, so the text itself is
-# the version.
+
+
+
 FOOTNOTE_TEMPLATE = (
     "Rank all {arity} candidates from best to worst, every label exactly "
     "once — no ties.\n"
@@ -66,7 +66,7 @@ FOOTNOTE_TEMPLATE = (
     "Nothing you print is read; only the submitted command counts."
 )
 
-# The ranking instruction alone, for a frame that has no ticket to submit against.
+
 RANKING_TEMPLATE = (
     "Rank all {arity} candidates from best to worst, every label exactly "
     "once — no ties."
@@ -126,9 +126,9 @@ def build_template(
     }
     bindings: dict[str, object] = {
         "ticket_id": ticket_id,
-        # Recorded because it is rendered into the judge's prompt and lives
-        # nowhere else: a depot that moved would otherwise fail every reassembly
-        # for a reason no record explains.
+
+
+
         "depot_root": None if depot_root is None else str(depot_root),
     }
     return template, components, bindings
@@ -242,9 +242,9 @@ def _rendered_footnote(
         arity=arity,
         ticket_id=ticket_id,
         depot="" if depot_root is None else f" --depot {depot_root}",
-        # Rotated, never the identity order: a judge copying the example and a
-        # judge genuinely finding the candidates already ranked would otherwise be
-        # indistinguishable in the records.
+
+
+
         ranking=",".join(labels[1:] + labels[:1]),
     )
 

@@ -24,9 +24,9 @@ from .model import daemon_socket_path
 from .runtime import DaemonRuntime, DaemonRuntimeError
 
 
-# launchd may honor the plist throttle after a clean stop before a requested
-# kickstart. The controller must wait beyond that boundary before declaring the
-# service failed.
+
+
+
 DAEMON_START_TIMEOUT_SECONDS = LAUNCH_AGENT_THROTTLE_SECONDS + 2.0
 DAEMON_START_POLL_SECONDS = 0.05
 
