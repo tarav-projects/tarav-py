@@ -27,7 +27,6 @@ from ._linter_structure import _needs_valid_surface
 
 LINE_TYPE_SYNTAX = "Index.Linter/Line.Type.Syntax"
 LINE_TYPE_UNKNOWN = "Index.Linter/Line.Type.UnknownCode"
-LINE_TYPE_GR_MISSING_ANCHOR = "Index.Linter/Line.Type.GR.MissingAnchor"
 SOURCE_AXIS_PLACEMENT = "Index.Linter/Source.Axis.Placement"
 CHECK_LINE_TYPES = "Index.Linter/Line.Types"
 ANCHOR_LEGACY_SIGIL = "Index.Linter/Anchor.LegacySigil"
@@ -46,7 +45,7 @@ REVIEWED_CITE_CLOSURE = "Index.Linter/Reviewed.Cite.Closure"
 CHECK_REVIEWED_CITE_CLOSURE = "Index.Linter/Reviewed.Cite.Closure"
 
 # act codes: keep aligned with `Line.Type.Vocabulary` in the agentos-pkg index
-_LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX", "GR")
+_LINE_TYPE_ACT_CODES = ("DF", "DC", "CT", "RJ", "PR", "FR", "EX")
 
 _TYPED_LINE_CANDIDATE_RE = re.compile(r"^- \[")
 _LEGACY_ANCHOR_SIGIL_RE = re.compile(r"@(?P<anchor>[a-z]?\d{8}-\d+[a-z]?)\b")
@@ -99,16 +98,6 @@ def _check_line_types(
                     path=rel,
                     line=line.start_line,
                     message="AS: source-axis marker outside agendix/ — the index proper is user-turn-grounded.",
-                )
-            )
-        if code == "GR" and not any(span.kind == "anchor" for span in line.spans):
-            findings.append(
-                LinterFinding(
-                    severity="warning",
-                    code=LINE_TYPE_GR_MISSING_ANCHOR,
-                    path=rel,
-                    line=line.start_line,
-                    message="[GR] grounding line has no trailing anchor token.",
                 )
             )
     return findings

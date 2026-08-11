@@ -37,7 +37,11 @@ def test_index_linter_line_type_syntax_checks(monkeypatch, tmp_path: Path) -> No
     codes = _finding_codes(state)
     assert "Index.Linter/Line.Type.Syntax" in codes
     assert "Index.Linter/Line.Type.UnknownCode" in codes
-    assert "Index.Linter/Line.Type.GR.MissingAnchor" in codes
+    # `GR` is retired: it is no longer a known act code, so a `[GR]` line reads
+    # as an unknown code rather than as a grounding line missing its anchor.
+    assert "Index.Linter/Line.Type.GR.MissingAnchor" not in codes
+    unknown = [f for f in state.findings if f.code == "Index.Linter/Line.Type.UnknownCode"]
+    assert {f.details["code"] for f in unknown} == {"ZZ", "GR"}
     typed_findings = [
         f for f in state.findings if f.code.startswith("Index.Linter/Line.Type")
     ]
