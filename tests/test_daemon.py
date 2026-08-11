@@ -77,6 +77,11 @@ def test_daemon_start_launches_detached_child_and_waits_for_readiness(
         return Process()
 
     monkeypatch.setattr(daemon_commands, "daemon_status", lambda: next(statuses))
+    monkeypatch.setattr(
+        daemon_commands,
+        "_service_status",
+        lambda: {"installed": False, "loaded": False},
+    )
     monkeypatch.setattr(daemon_commands.subprocess, "Popen", popen)
     monkeypatch.setattr(daemon_commands.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(daemon_commands, "_agentos_executable", lambda: "/bin/agentos")
@@ -126,6 +131,85 @@ def test_daemon_start_is_idempotent_when_already_running(
     }
 
 
+def test_daemon_start_uses_installed_launch_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    statuses = iter([None, None, {"status": "running", "pid": 2468}])
+    kickstarts: list[str] = []
+    monkeypatch.setattr(daemon_commands, "daemon_status", lambda: next(statuses))
+    monkeypatch.setattr(
+        daemon_commands,
+        "launch_agent_status",
+        lambda: {"installed": True, "loaded": True},
+    )
+    monkeypatch.setattr(
+        daemon_commands,
+        "kickstart_launch_agent",
+        lambda: kickstarts.append("kickstart"),
+    )
+    monkeypatch.setattr(daemon_commands.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        daemon_commands.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("launchd must own the process"),
+    )
+
+    args = _daemon_parser().parse_args(["daemon", "start", "--json"])
+
+    assert args.handler(args) == 0
+    assert kickstarts == ["kickstart"]
+    assert json.loads(capsys.readouterr().out) == {
+        "pid": 2468,
+        "status": "started",
+    }
+
+
+def test_daemon_install_and_uninstall_commands_are_exposed(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(daemon_commands.sys, "platform", "darwin")
+    statuses = iter([None, {"status": "running", "pid": 1357}, None])
+    monkeypatch.setattr(daemon_commands, "daemon_status", lambda: next(statuses))
+    monkeypatch.setattr(daemon_commands, "_agentos_executable", lambda: "/bin/agentos")
+    monkeypatch.setattr(
+        daemon_commands,
+        "install_launch_agent",
+        lambda executable: {
+            "bootstrapped": False,
+            "changed": True,
+            "installed": True,
+            "label": "org.agentos.daemon",
+            "loaded": True,
+            "path": "/tmp/org.agentos.daemon.plist",
+        },
+    )
+    monkeypatch.setattr(daemon_commands, "kickstart_launch_agent", lambda: None)
+    monkeypatch.setattr(
+        daemon_commands,
+        "uninstall_launch_agent",
+        lambda: {
+            "bootstrapped": False,
+            "changed": True,
+            "installed": False,
+            "label": "org.agentos.daemon",
+            "loaded": False,
+            "path": "/tmp/org.agentos.daemon.plist",
+        },
+    )
+
+    install_args = _daemon_parser().parse_args(["daemon", "install", "--json"])
+    assert install_args.handler(install_args) == 0
+    install_payload = json.loads(capsys.readouterr().out)
+    assert install_payload["status"] == "installed"
+
+    uninstall_args = _daemon_parser().parse_args(["daemon", "uninstall", "--json"])
+    assert uninstall_args.handler(uninstall_args) == 0
+    uninstall_payload = json.loads(capsys.readouterr().out)
+    assert uninstall_payload["status"] == "uninstalled"
+
+
 def test_daemon_start_fails_when_child_exits_before_readiness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -136,6 +220,11 @@ def test_daemon_start_fails_when_child_exits_before_readiness(
             return 1
 
     monkeypatch.setattr(daemon_commands, "daemon_status", lambda: None)
+    monkeypatch.setattr(
+        daemon_commands,
+        "_service_status",
+        lambda: {"installed": False, "loaded": False},
+    )
     monkeypatch.setattr(
         daemon_commands.subprocess,
         "Popen",
@@ -169,6 +258,11 @@ def test_daemon_start_terminates_child_after_readiness_timeout(
 
     times = iter([0.0, 10.0])
     monkeypatch.setattr(daemon_commands, "daemon_status", lambda: None)
+    monkeypatch.setattr(
+        daemon_commands,
+        "_service_status",
+        lambda: {"installed": False, "loaded": False},
+    )
     monkeypatch.setattr(
         daemon_commands.subprocess,
         "Popen",

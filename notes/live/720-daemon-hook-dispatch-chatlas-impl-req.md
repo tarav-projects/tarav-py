@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Scope:** add a provider-neutral Agentos daemon POC with a Unix-socket acceptance boundary, explicit inline/daemon hook callback lanes, a control namespace spanning foreground, manual detached, and macOS login-managed launch, persistent secret-free operational logging, and a Chatlas-owned deferred `agent.turn.stop` session refresh consumer.
-- **Status:** login-start extension ready for execution.
+- **Status:** login-start extension implemented and verified.
 - **Source:** autonomous `$agentos-hugentics --impl --dev --AUTO` execution gate. ^c20260811-50u
 - **Out of scope:** scheduler frequencies, durable inbox/retry delivery, exactly-once guarantees, non-macOS service managers, system-wide service installation, arbitrary remote commands, wildcard hook subscriptions, cross-lane completion ordering, and automatic semantic `Chat.Index.Delta` capture.
 
@@ -90,14 +90,14 @@
 
 ### Vertical.Slice 6 — LaunchAgent ownership
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** prove the generated plist names the absolute Agentos entrypoint, starts at login, restarts only abnormal exits, and that install/uninstall are idempotent over an isolated LaunchAgents root.
 - **GREEN:** add the macOS LaunchAgent model, atomic owned-plist persistence, GUI-domain bootstrap/bootout/kickstart operations, and structured service status without duplicating daemon runtime logic.
 - **Check:** isolated launchd model/command tests, focused Ruff/format, and existing daemon tests.
 
 ### Vertical.Slice 7 — Installed login lifecycle
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** prove command composition exposes install/uninstall and that installed-service `start` uses launchd rather than direct child daemonization.
 - **GREEN:** integrate install/start/status/stop/uninstall behavior, update guidance, install the real user LaunchAgent, and verify loaded/running state plus clean stop/start behavior.
 - **Check:** full foundation and CLI suites, `git diff --check`, `launchctl print`, plist inspection, and live lifecycle smoke.
@@ -113,7 +113,9 @@
 - **Implemented:** Chatlas owns a deferred `agent.turn.stop` callback that performs a targeted provider/session refresh and warms the normalized session-model cache; the umbrella CLI composes it into the same registry used by daemon dispatch.
 - **Verification:** Agentos foundation `963 passed`, Chatlas `483 passed`, and umbrella CLI `76 passed`; touched-file Ruff and format checks plus all three `git diff --check` checks passed. Repository-wide Ruff/format checks still encounter unrelated pre-existing deprecated/dev lint and baseline-format findings outside the touched surfaces.
 - **Live POC:** the installed editable CLI started PID `68580`, acknowledged the current Codex turn-stop hook in `0.37s`, recorded acceptance and completed dispatch for event `66a6bf2c784341ad8a4e07a5f6380aee`, refreshed Chatlas identity `b5708598628d83645af832f4e8628ab85211d15acd0d10d1419a0b118a1bfd4a`, warmed its model, and stopped cleanly.
-- **Extension decision:** `start` is a bounded manual detached launcher only. It intentionally does not implement the launchd-owned keep-alive/restart/start-at-login lifecycle assigned by the current `Agentos.Daemon` design. ^c20260811-51u
+- **Extension decision:** without an installed service, `start` remains a bounded manual detached launcher; installed services supersede that path with launchd ownership. ^c20260811-51u
 - **Extension implemented:** `daemon start` reuses the installed `agentos daemon run` entrypoint, detaches standard streams and the process session, waits for bounded socket readiness, returns the observed PID, and reports an already-running daemon without spawning another process.
 - **Extension verification:** Agentos foundation `967 passed` and umbrella CLI `76 passed`; focused Ruff, format, and diff checks passed. The installed CLI started detached PID `1977`, reported the same PID through status and an idempotent second start, then stopped cleanly.
 - **Login-start decision:** use a per-user LaunchAgent with `RunAtLoad=true` and restart only after unsuccessful exit so launchd owns login/crash lifecycle while `daemon stop` remains a durable clean stop. ^c20260811-52u
+- **Login-start implemented:** `daemon install|uninstall` manage one ownership-validated user LaunchAgent; status exposes installed/loaded state, and `start` delegates to launchd whenever the plist is installed.
+- **Login-start verification:** Agentos foundation `973 passed` and umbrella CLI `76 passed`; the real `org.agentos.daemon` LaunchAgent loaded from the expected plist, clean stop remained stopped, explicit start returned through launchd, and forced abnormal exit of PID `39852` recovered as PID `40531`.

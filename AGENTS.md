@@ -57,7 +57,9 @@
 ## Daemon System
 
 - `src/agentos/daemon/` owns the local closed Unix-socket protocol, client, foreground runtime, serial worker lane, control-command registrar, and operational log.
-- `agentos daemon run|start|status|stop` is the initial control namespace. `run` stays in the foreground; `start` launches that same entrypoint detached, waits for socket readiness, and returns. Detached start is a manual convenience, not keep-alive, restart-on-crash, or start-at-login service management.
+- `agentos daemon run|start|status|stop|install|uninstall` controls the runtime and its user service. `run` stays in the foreground; without an installed service, `start` launches that entrypoint detached. With the service installed, `start` delegates to launchd.
+- `src/agentos/daemon/launchd.py` owns the macOS user LaunchAgent at `~/Library/LaunchAgents/org.agentos.daemon.plist`. `install` atomically writes an Agentos-owned plist and bootstraps it; `uninstall` boots it out and removes only an ownership-validated plist.
+- The LaunchAgent uses `RunAtLoad=true` for login startup and `KeepAlive.SuccessfulExit=false` for abnormal-exit recovery. A clean socket-driven `daemon stop` exits successfully and therefore remains stopped until login or explicit `start`.
 - Requests can only ping, stop, or submit a validated hook invocation. Accepted hook work lives in process memory and runs serially; arbitrary command execution, retry, durable spooling, and inline fallback are not part of this POC.
 - Hook delivery waits only for acceptance. An unavailable daemon is logged and does not fail the harness-facing hook command.
 
