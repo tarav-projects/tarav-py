@@ -19,6 +19,15 @@ ORDINARY = "- [DC] Current model line. ^c20260805-1u"
 ISSUE = "- [PR] Temporary bootstrap topic. ^c20260805-2u"
 
 
+def test_index_line_inventory_uses_complete_native_fence_boundaries() -> None:
+    lines = index_lines_of(
+        "HEAD.md",
+        ["````md", "```", ORDINARY, "`````", ISSUE],
+    )
+
+    assert [(line.line_number, line.source) for line in lines] == [(5, ISSUE)]
+
+
 class _Depot:
     def resolve(self, anchor: str):
         records = {
@@ -40,12 +49,14 @@ def _record(anchor: str, *, issue_context: list[str]) -> dict[str, object]:
         },
         "relationships": {
             "support": {
-                "members": [{
-                    "session": IDENTITY,
-                    "turn_id": "turn-1",
-                    "turn_hash": "c" * 64,
-                    "at": "2026-08-05T00:00:00Z",
-                }]
+                "members": [
+                    {
+                        "session": IDENTITY,
+                        "turn_id": "turn-1",
+                        "turn_hash": "c" * 64,
+                        "at": "2026-08-05T00:00:00Z",
+                    }
+                ]
             },
             "gates": {
                 "semantic_approval": [],
@@ -197,7 +208,9 @@ def test_blocking_chat_index_audit_is_reported_without_reading_the_surface(
     surface = _write_surface(root, IDENTITY, [ORDINARY, ISSUE])
     # A Delta with no horizon heading: unreadable, so nothing past the audit
     # verdict may be derived from it.
-    (surface / "deltas" / "turn-3.md").write_text("- [DC] no heading\n", encoding="utf-8")
+    (surface / "deltas" / "turn-3.md").write_text(
+        "- [DC] no heading\n", encoding="utf-8"
+    )
     monkeypatch.setattr(
         reconciliation,
         "audit_chat_index_surface",
@@ -220,9 +233,7 @@ def test_blocking_chat_index_audit_is_reported_without_reading_the_surface(
     }
 
 
-def test_multiple_candidate_homes_are_advisory(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_multiple_candidate_homes_are_advisory(tmp_path: Path, monkeypatch) -> None:
     depot = _write_project(tmp_path, identities=(IDENTITY, SECOND_IDENTITY))
     root = tmp_path / "chatlas"
     _write_surface(root, IDENTITY, [ORDINARY, ISSUE])

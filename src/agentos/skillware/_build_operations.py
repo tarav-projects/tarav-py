@@ -11,6 +11,7 @@ from pathlib import Path
 
 from agentos.poi import POIDiagnostic
 from agentos.skw.network import extract_mentions, run_dependency_sync
+from agentos.surfaces.markdown import normalize_markdown
 from agentos.skillware.model import (
     SkwFinding,
     SkwSource,
@@ -66,9 +67,7 @@ class BuildReport:
 @dataclass(frozen=True)
 class CheckEntry:
     target: Path
-    status: (
-        str
-    )
+    status: str
     copy_drift: tuple[str, ...]
     derived_stale: tuple[str, ...]
 
@@ -225,8 +224,6 @@ def build_skill(skill_root: Path) -> BuildReport:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(output_text, encoding="utf-8")
 
-
-
         recipes = _recipe_states(skillware, src_rel, expansion)
         old_entries = (
             old_lock.get("files", {})
@@ -264,12 +261,12 @@ def _legacy_callout_pois(
     src_text: str,
 ) -> list[SkillwarePOIInstance]:
     pois: list[SkillwarePOIInstance] = []
-    in_fence = False
-    for number, line in enumerate(src_text.splitlines(), start=1):
-        if line.lstrip().startswith(("```", "~~~")):
-            in_fence = not in_fence
-            continue
-        if not in_fence and _LEGACY_CALLOUT_RE.match(line):
+    model = normalize_markdown(src_text)
+    fenced_lines = model.fenced_line_numbers()
+    for source_line in model.lines:
+        number = source_line.span.start_line
+        line = source_line.text
+        if number not in fenced_lines and _LEGACY_CALLOUT_RE.match(line):
             pois.append(
                 _poi(
                     "legacy-callout",
@@ -598,8 +595,6 @@ def check_skill(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> CheckR
                 )
             )
         for key in entry.derived_stale:
-
-
             pois.append(
                 _poi(
                     "derived-stale",

@@ -109,6 +109,23 @@ def test_index_model_parses_kernel_lines_spans_meta_and_fences() -> None:
     ]
 
 
+def test_index_model_uses_complete_native_fence_boundaries() -> None:
+    document = parse_index_file(
+        "****\n"
+        "## Example.Concept\n"
+        "````md\n"
+        "```\n"
+        "- [DC] fenced line\n"
+        "```` trailing\n"
+        "`````\n"
+        "- [DC] visible line\n"
+    )
+
+    fences = [node for node in document.nodes if isinstance(node, CodeFence)]
+    assert [(node.start_line, node.end_line) for node in fences] == [(3, 7)]
+    assert [line.src for line in document.kernel_lines()] == ["- [DC] visible line"]
+
+
 def test_index_model_parses_router_dialects_depot_and_anchor_queries(
     tmp_path: Path,
 ) -> None:
@@ -207,9 +224,10 @@ def test_index_line_body_and_anchor_triplet_identity_are_separate() -> None:
     assert index_line_body_hash("- [CT] Same line elsewhere") != index_line_body_hash(
         first
     )
-    assert canonical_index_line_anchor_triplet(
-        first, "c20260802-1u"
-    ) == '["CT","Same `Line.Content` here","c20260802-1u"]'
+    assert (
+        canonical_index_line_anchor_triplet(first, "c20260802-1u")
+        == '["CT","Same `Line.Content` here","c20260802-1u"]'
+    )
     assert index_line_anchor_triplet_hash(
         first, "c20260802-1u"
     ) != index_line_anchor_triplet_hash(second, "c20260802-9u")

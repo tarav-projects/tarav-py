@@ -802,7 +802,7 @@ def test_region_body_is_fence_aware(tmp_path: Path) -> None:
     src = skill / ".skillware" / "src" / "references"
     (src / "lib.skw.md").write_text(
         "# lib\n\n## Spec\n\nintro line.\n\n"
-        "```md\n## Fenced Heading\nfenced content\n```\n\n"
+        "````md\n```\n## Fenced Heading\nfenced content\n````\n\n"
         "bullet after the example.\n\n## Next\n\nother.\n",
         encoding="utf-8",
     )

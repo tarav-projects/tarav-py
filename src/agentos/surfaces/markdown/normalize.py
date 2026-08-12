@@ -12,6 +12,7 @@ from .model import MarkdownFence, MarkdownHeading, MarkdownLine, MarkdownNormalM
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
+_CLOSING_HASHES_RE = re.compile(r"[ \t]+#+[ \t]*$")
 
 
 def _line_span(line_number: int, text: str) -> SourceSpan:
@@ -29,34 +30,59 @@ def normalize_markdown(text: str) -> MarkdownNormalModel:
     headings: list[MarkdownHeading] = []
     fences: list[MarkdownFence] = []
     open_marker: str | None = None
+    open_length = 0
     open_span: SourceSpan | None = None
     for line in lines:
         fence_match = _FENCE_RE.match(line.text)
-        if fence_match is not None:
-            marker = fence_match.group(1)[0]
-            if open_marker is None:
-                open_marker = marker
-                open_span = line.span
-            elif marker == open_marker:
-                assert open_span is not None
-                fences.append(MarkdownFence(marker, open_span, line.span))
-                open_marker = None
-                open_span = None
-            continue
         if open_marker is not None:
+            if fence_match is not None:
+                run = fence_match.group(1)
+                remainder = line.text[fence_match.end() :]
+                if (
+                    run[0] == open_marker
+                    and len(run) >= open_length
+                    and not remainder.strip()
+                ):
+                    assert open_span is not None
+                    fences.append(
+                        MarkdownFence(
+                            marker=open_marker,
+                            length=open_length,
+                            start=open_span,
+                            end=line.span,
+                            closing_length=len(run),
+                        )
+                    )
+                    open_marker = None
+                    open_length = 0
+                    open_span = None
+            continue
+        if fence_match is not None:
+            run = fence_match.group(1)
+            open_marker = run[0]
+            open_length = len(run)
+            open_span = line.span
             continue
         heading_match = _HEADING_RE.match(line.text)
         if heading_match is not None:
+            heading_text = _CLOSING_HASHES_RE.sub("", heading_match.group(2)).strip()
             headings.append(
                 MarkdownHeading(
                     level=len(heading_match.group(1)),
-                    text=heading_match.group(2).strip(),
+                    text=heading_text,
                     span=line.span,
                 )
             )
     if open_marker is not None:
         assert open_span is not None
-        fences.append(MarkdownFence(open_marker, open_span, None))
+        fences.append(
+            MarkdownFence(
+                marker=open_marker,
+                length=open_length,
+                start=open_span,
+                end=None,
+            )
+        )
     return MarkdownNormalModel(
         text=text,
         lines=lines,

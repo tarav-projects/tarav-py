@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
+from agentos.surfaces.markdown import MarkdownNormalModel, normalize_markdown
 
 from .nodes import (
     BlankLine,
@@ -33,10 +34,14 @@ _TYPE_SIGIL = r"::?"
 _CONCEPT_REF = rf"{_DOTTED_CONCEPT}(?:{_TYPE_SIGIL}{_CONCEPT_PARAM})*"
 _BLOCK_PATH_SEGMENT = rf"(?:{_CONCEPT_REF}|{_CONCEPT_SEGMENT})"
 BLOCK_PATH_RE = re.compile(rf"^{_CONCEPT_REF}(?:/{_BLOCK_PATH_SEGMENT})*$")
-APPENDIX_FILENAME_RE = re.compile(rf"^(?P<concept>{_CONCEPT_REF})-appendix(?:-(?P<page>[2-9][0-9]*))?\.md$")
+APPENDIX_FILENAME_RE = re.compile(
+    rf"^(?P<concept>{_CONCEPT_REF})-appendix(?:-(?P<page>[2-9][0-9]*))?\.md$"
+)
 AGENDIX_FILENAME_RE = re.compile(rf"^(?:{_CONCEPT_REF}|Unassigned)-agendix\.md$")
 ISSUE_FILENAME_RE = re.compile(r"^[1-9][0-9]{2}-issues\.md$")
-INDEX_FILENAME_RE = re.compile(r"^(?P<number>[1-9][0-9]{2})-(?P<chapter>[a-z0-9][a-z0-9-]*)\.md$")
+INDEX_FILENAME_RE = re.compile(
+    r"^(?P<number>[1-9][0-9]{2})-(?P<chapter>[a-z0-9][a-z0-9-]*)\.md$"
+)
 ROUTER_ENTRY_RE = re.compile(r"^-\s+`(?P<file>[^`]+\.md)`\s+[—-]\s+(?P<concepts>.+)$")
 APPENDIX_ROUTE_ANNOTATION_RE = re.compile(r"\[\+(?P<count>[1-9][0-9]*)\]$")
 TYPE_BRACKET_RE = re.compile(r"^- \[(?P<source>AS:)?(?P<act>[A-Z]{2})\] ")
@@ -63,10 +68,13 @@ def parse_index_file(
         text = source
     document_path = path or source_path
     document = IndexDocument(path=document_path, surface_kind=surface_kind)
-    if surface_kind == "router" or (document_path is not None and document_path.name == "000-INDEX.md"):
-        document.nodes.extend(_parse_router(text, document_path))
+    model = normalize_markdown(text)
+    if surface_kind == "router" or (
+        document_path is not None and document_path.name == "000-INDEX.md"
+    ):
+        document.nodes.extend(_parse_router(model, document_path))
         return document
-    document.nodes.extend(_parse_index_surface(text, document_path))
+    document.nodes.extend(_parse_index_surface(model, document_path))
     return document
 
 
@@ -77,13 +85,21 @@ def parse_depot(root: str | Path) -> IndexDepotModel:
     if router.is_file():
         documents.append(parse_index_file(router, surface_kind="router"))
     for path in _surface_files(depot_root):
-        documents.append(parse_index_file(path, surface_kind=_classify_surface(depot_root, path)))
+        documents.append(
+            parse_index_file(path, surface_kind=_classify_surface(depot_root, path))
+        )
     return IndexDepotModel(root=depot_root, documents=tuple(documents))
 
 
-def _parse_router(text: str, path: Path | None) -> list[Node]:
+def _parse_router(model: MarkdownNormalModel, path: Path | None) -> list[Node]:
     nodes: list[Node] = []
-    for line_no, line in enumerate(text.splitlines(), start=1):
+    fenced_lines = model.fenced_line_numbers()
+    for source_line in model.lines:
+        line_no = source_line.span.start_line
+        line = source_line.text
+        if line_no in fenced_lines:
+            nodes.append(_plain_node(line, line_no, path))
+            continue
         match = ROUTER_ENTRY_RE.match(line.strip())
         if match is None:
             nodes.append(_plain_node(line, line_no, path))
@@ -95,7 +111,10 @@ def _parse_router(text: str, path: Path | None) -> list[Node]:
                 end_line=line_no,
                 parsed={
                     "file": match.group("file"),
-                    "concepts": [_parse_router_concept(raw) for raw in match.group("concepts").split(",")],
+                    "concepts": [
+                        _parse_router_concept(raw)
+                        for raw in match.group("concepts").split(",")
+                    ],
                 },
                 spans=_inline_spans(line, line_no),
                 path=path,
@@ -104,66 +123,77 @@ def _parse_router(text: str, path: Path | None) -> list[Node]:
     return nodes
 
 
-def _parse_index_surface(text: str, path: Path | None) -> list[Node]:
+def _parse_index_surface(model: MarkdownNormalModel, path: Path | None) -> list[Node]:
     nodes: list[Node] = []
     block_open = False
     expect_heading = False
     current_block: str | None = None
     in_meta = False
-    in_fence = False
-    fence_char = ""
-    fence_len = 0
-    fence_start = 0
-    fence_lines: list[str] = []
+    fence_by_start = {fence.start.start_line: fence for fence in model.fences}
+    heading_by_line = {heading.span.start_line: heading for heading in model.headings}
+    skip_through = 0
 
-    for line_no, line in enumerate(text.splitlines(), start=1):
-        stripped = line.strip()
-        run_char, run_len = _fence_run(line.lstrip())
-        if in_fence:
-            fence_lines.append(line)
-            if run_char == fence_char and run_len >= fence_len and line.lstrip()[run_len:].strip() == "":
+    for source_line in model.lines:
+        line_no = source_line.span.start_line
+        line = source_line.text
+        if line_no <= skip_through:
+            continue
+        fence = fence_by_start.get(line_no)
+        if fence is not None:
+            end_line = (
+                fence.end.start_line if fence.end is not None else len(model.lines)
+            )
+            fence_source = "\n".join(
+                item.text for item in model.lines[line_no - 1 : end_line]
+            )
+            if fence.end is None:
+                nodes.append(
+                    Diagnostic(
+                        src=fence_source,
+                        start_line=line_no,
+                        end_line=max(line_no, end_line),
+                        reason="unclosed_code_fence",
+                        path=path,
+                    )
+                )
+            else:
                 nodes.append(
                     CodeFence(
-                        src="\n".join(fence_lines),
-                        start_line=fence_start,
-                        end_line=line_no,
+                        src=fence_source,
+                        start_line=line_no,
+                        end_line=end_line,
                         parsed={"closed": True},
                         path=path,
                     )
                 )
-                in_fence = False
-                fence_char = ""
-                fence_len = 0
-                fence_start = 0
-                fence_lines = []
+            skip_through = end_line
             continue
-        if run_len >= 3:
-            in_fence = True
-            fence_char = run_char
-            fence_len = run_len
-            fence_start = line_no
-            fence_lines = [line]
-            continue
+        stripped = line.strip()
         if re.fullmatch(r"\*{4,}", stripped):
             block_open = True
             expect_heading = True
             current_block = None
             in_meta = False
-            nodes.append(Separator(src=line, start_line=line_no, end_line=line_no, path=path))
+            nodes.append(
+                Separator(src=line, start_line=line_no, end_line=line_no, path=path)
+            )
             continue
         if stripped == "":
-            nodes.append(BlankLine(src=line, start_line=line_no, end_line=line_no, path=path))
+            nodes.append(
+                BlankLine(src=line, start_line=line_no, end_line=line_no, path=path)
+            )
             continue
-        if line.startswith("## "):
-            heading = line[3:].strip()
-            parsed = _parse_block_path(heading)
+        heading = heading_by_line.get(line_no)
+        if heading is not None and heading.level == 2:
+            heading_text = heading.text
+            parsed = _parse_block_path(heading_text)
             if not block_open or not expect_heading:
                 nodes.append(
                     Diagnostic(
                         src=line,
                         start_line=line_no,
                         end_line=line_no,
-                        parsed={"heading": heading},
+                        parsed={"heading": heading_text},
                         reason="heading_without_separator",
                         path=path,
                     )
@@ -178,13 +208,15 @@ def _parse_index_surface(text: str, path: Path | None) -> list[Node]:
                     path=path,
                 )
             )
-            current_block = heading
+            current_block = heading_text
             expect_heading = False
             in_meta = False
             continue
         if META_HEADING_RE.match(line):
             in_meta = True
-            nodes.append(MetaHeading(src=line, start_line=line_no, end_line=line_no, path=path))
+            nodes.append(
+                MetaHeading(src=line, start_line=line_no, end_line=line_no, path=path)
+            )
             continue
         if line.startswith("- ") and block_open and current_block:
             node_cls = MetaLine if in_meta else KernelLine
@@ -202,14 +234,12 @@ def _parse_index_surface(text: str, path: Path | None) -> list[Node]:
                 )
             )
             continue
-        nodes.append(Text(src=line, start_line=line_no, end_line=line_no, spans=_inline_spans(line, line_no), path=path))
-    if in_fence:
         nodes.append(
-            Diagnostic(
-                src="\n".join(fence_lines),
-                start_line=fence_start,
-                end_line=max(fence_start, len(text.splitlines())),
-                reason="unclosed_code_fence",
+            Text(
+                src=line,
+                start_line=line_no,
+                end_line=line_no,
+                spans=_inline_spans(line, line_no),
                 path=path,
             )
         )
@@ -219,7 +249,13 @@ def _parse_index_surface(text: str, path: Path | None) -> list[Node]:
 def _plain_node(line: str, line_no: int, path: Path | None) -> Node:
     if line.strip() == "":
         return BlankLine(src=line, start_line=line_no, end_line=line_no, path=path)
-    return Text(src=line, start_line=line_no, end_line=line_no, spans=_inline_spans(line, line_no), path=path)
+    return Text(
+        src=line,
+        start_line=line_no,
+        end_line=line_no,
+        spans=_inline_spans(line, line_no),
+        path=path,
+    )
 
 
 def _parse_kernel_line(line: str) -> dict[str, Any]:
@@ -262,15 +298,44 @@ def _inline_spans(src: str, base_line: int) -> list[InlineSpan]:
         parsed: dict[str, Any] = {}
         typed = TYPE_BRACKET_RE.match(src)
         if typed is not None:
-            parsed = {"act": typed.group("act"), "source": "AS" if typed.group("source") else None}
-        spans.append(_span("type_bracket", src, base_line, type_match.start() + 2, type_match.end(), parsed))
+            parsed = {
+                "act": typed.group("act"),
+                "source": "AS" if typed.group("source") else None,
+            }
+        spans.append(
+            _span(
+                "type_bracket",
+                src,
+                base_line,
+                type_match.start() + 2,
+                type_match.end(),
+                parsed,
+            )
+        )
     for match in BACKTICK_RE.finditer(src):
         body = match.group(1)
-        kind = "file_mention" if _is_file_mention(body) else "concept_cite" if _is_concept_like(body) else ""
+        kind = (
+            "file_mention"
+            if _is_file_mention(body)
+            else "concept_cite"
+            if _is_concept_like(body)
+            else ""
+        )
         if kind:
-            spans.append(_span(kind, src, base_line, match.start(), match.end(), {"value": body}))
+            spans.append(
+                _span(kind, src, base_line, match.start(), match.end(), {"value": body})
+            )
     for match in ANCHOR_RE.finditer(src):
-        spans.append(_span("anchor", src, base_line, match.start(), match.end(), {"anchor": match.group("anchor")}))
+        spans.append(
+            _span(
+                "anchor",
+                src,
+                base_line,
+                match.start(),
+                match.end(),
+                {"anchor": match.group("anchor")},
+            )
+        )
     return sorted(spans, key=lambda span: (span.start, span.end))
 
 
@@ -294,26 +359,13 @@ def _span(
 
 
 def _is_file_mention(value: str) -> bool:
-    return "/" in value or value.endswith((".md", ".py", ".json", ".jsonl", ".toml", ".txt"))
+    return "/" in value or value.endswith(
+        (".md", ".py", ".json", ".jsonl", ".toml", ".txt")
+    )
 
 
 def _is_concept_like(value: str) -> bool:
     return bool(re.search(rf"\b{_CONCEPT_SEGMENT}\.{_CONCEPT_SEGMENT}", value))
-
-
-def _fence_run(stripped_line: str) -> tuple[str, int]:
-    if not stripped_line:
-        return ("", 0)
-    char = stripped_line[0]
-    if char not in ("`", "~"):
-        return ("", 0)
-    count = 0
-    for candidate in stripped_line:
-        if candidate == char:
-            count += 1
-        else:
-            break
-    return (char, count)
 
 
 def _surface_files(root: Path) -> list[Path]:
@@ -344,8 +396,16 @@ def _classify_surface(root: Path, path: Path) -> IndexSurfaceKind:
         match = INDEX_FILENAME_RE.fullmatch(path.name)
         if match and match.group("chapter") == rel.parts[0]:
             return "chapter"
-    if len(rel.parts) == 2 and rel.parts[0] == "appendix" and APPENDIX_FILENAME_RE.fullmatch(path.name):
+    if (
+        len(rel.parts) == 2
+        and rel.parts[0] == "appendix"
+        and APPENDIX_FILENAME_RE.fullmatch(path.name)
+    ):
         return "appendix"
-    if len(rel.parts) == 2 and rel.parts[0] == "agendix" and AGENDIX_FILENAME_RE.fullmatch(path.name):
+    if (
+        len(rel.parts) == 2
+        and rel.parts[0] == "agendix"
+        and AGENDIX_FILENAME_RE.fullmatch(path.name)
+    ):
         return "agendix"
     return "unknown"

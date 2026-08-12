@@ -11,6 +11,7 @@ from agentos.index.model import (
     index_line_anchor_triplet_hash,
 )
 from agentos.index.model.identity import ANCHOR_RE
+from agentos.surfaces.markdown import normalize_markdown
 
 from agentos.chatlas.anchory import (
     LINE_BOUND_SCHEMAS,
@@ -43,8 +44,6 @@ _HEAD_HEADING = "# Chat.Index.HEAD"
 _HEAD_HORIZON_RE = re.compile(
     r"^Evidence\.Horizon: `(?P<turn_id>[^`]+)`(?: @ (?P<at>\S+))?$"
 )
-_FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
-
 _BLOCKING = "blocking"
 _ADVISORY = "advisory"
 
@@ -83,7 +82,9 @@ def chatlas_chat_index_audit(
         surface_path = Path(surface).expanduser().resolve()
         surface_source = "staged"
         if not surface_path.is_dir():
-            raise CliError(f"chatlas chat-index audit surface is not a directory: {surface_path}")
+            raise CliError(
+                f"chatlas chat-index audit surface is not a directory: {surface_path}"
+            )
 
     result = audit_chat_index_surface(
         surface_path,
@@ -153,7 +154,6 @@ def audit_chat_index_surface(
     }
 
     tail = _audit_source_tail(session, capture, source, chatlas_root, findings)
-
 
     deltas = resolve_delta_tape_positions(capture["deltas"], source)
     counts["delta_count"] = len(deltas)
@@ -233,8 +233,6 @@ def _empty_counts() -> dict[str, int]:
         "resolved_anchor_count": 0,
         "home_count": 0,
         "head_only_line_count": 0,
-
-
         "minted_anchor_count": 0,
         "reused_anchor_count": 0,
     }
@@ -265,9 +263,7 @@ def _add(
     message: str,
     **context: object,
 ) -> None:
-    findings.append(
-        {"code": code, "severity": severity, "message": message, **context}
-    )
+    findings.append({"code": code, "severity": severity, "message": message, **context})
 
 
 def _audit_source_tail(
@@ -287,7 +283,6 @@ def _audit_source_tail(
         return None
     state = tail["state"]
     if state == "append-only":
-
         _add(
             findings,
             "source-append-only",
@@ -429,8 +424,6 @@ def _audit_horizon_timestamp(
             relative_path=relative_path,
         )
     elif declared is None and evidenced:
-
-
         _add(
             findings,
             f"{kind}-horizon-timestamp-omitted",
@@ -444,12 +437,12 @@ def _audit_horizon_timestamp(
 def index_lines_of(relative_path: str, body: list[str]) -> list[_Line]:
     """Index.Line occurrences of one surface file, ignoring fenced content."""
     lines: list[_Line] = []
-    in_fence = False
-    for line_number, source in enumerate(body, start=1):
-        if _FENCE_RE.match(source):
-            in_fence = not in_fence
-            continue
-        if in_fence or not source.lstrip().startswith("- "):
+    model = normalize_markdown("\n".join(body))
+    fenced_lines = model.fenced_line_numbers()
+    for source_line in model.lines:
+        line_number = source_line.span.start_line
+        source = source_line.text
+        if line_number in fenced_lines or not source.lstrip().startswith("- "):
             continue
         lines.append(
             _Line(
@@ -584,7 +577,9 @@ def _audit_anchor_attachments(
                 "triplet carrying it",
                 anchor=anchor,
                 current_triplet_hash=current_hash,
-                stored_triplet_hash=None if attachment is None else attachment["triplet_hash"],
+                stored_triplet_hash=None
+                if attachment is None
+                else attachment["triplet_hash"],
                 **_locator(line),
             )
     for anchor, triplet_hashes in sorted(attached.items()):
@@ -609,8 +604,6 @@ def _audit_delta_support_horizons(
 ) -> None:
     for delta, line in delta_lines:
         if len(line.anchors) != 1 or delta["tape_position"] is None:
-
-
             continue
         record = anchors.get(line.anchors[0])
         if record is None:

@@ -214,6 +214,34 @@ def test_mdblocks_blocks_find_and_lint_use_line_regions(
     ]
 
 
+def test_mdblocks_uses_complete_native_fence_boundaries(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    md_path = tmp_path / "doc.md"
+    write_text_file(
+        md_path,
+        "****\n````md\n```\n## inert\n****\n`````\n## visible\npayload\n",
+    )
+
+    assert (
+        main(
+            [
+                "stdlib",
+                "mdblocks",
+                "blocks",
+                str(md_path),
+                "--root",
+                str(tmp_path),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = captured_json(capsys)
+    assert [block["title"] for block in payload["files"][0]["blocks"]] == ["visible"]
+
+
 def test_utils_uuid_outputs_text_and_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["stdlib", "utils", "uuid", "--count", "2"]) == 0
     lines = capsys.readouterr().out.strip().splitlines()

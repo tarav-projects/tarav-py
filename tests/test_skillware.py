@@ -691,7 +691,7 @@ def test_legacy_callout_raises_a_poi(tmp_path: Path) -> None:
     src.write_text(
         src.read_text(encoding="utf-8").replace(
             "\n> [!skw]- derived\n> from: X.Y\n",
-            "\n```md\n> [!skw]- derived\n> from: X.Y\n```\n",
+            "\n````md\n```\n> [!skw]- derived\n> from: X.Y\n````\n",
         ),
         encoding="utf-8",
     )

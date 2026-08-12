@@ -60,6 +60,11 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   produce host facts without Skillware knowledge; `agentos.skillware.adapters`
   maps those models into the common `SkwSurfaceModel`, and the shared parser
   consumes that model rather than raw host text.
+- Markdown normalization is also consumed at parser boundaries by
+  `agentos.stdlib.mdblocks`, `agentos.index.model`, and Chatlas Index-audit
+  extraction. Separators, Index nodes, anchors, and lint policy remain in those
+  domain models; their linters and downstream clients do not consume native
+  surface models directly.
 - Chatlas command behavior lives in `_command_support.py`; `commands.py` owns the
   public parser composition and registrar.
 

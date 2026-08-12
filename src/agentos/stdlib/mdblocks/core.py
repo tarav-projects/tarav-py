@@ -7,14 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from agentos._core.scan import iter_target_files
+from agentos.surfaces.markdown import MarkdownNormalModel, normalize_markdown
 
 
 BLOCK_SEPARATOR = "****"
 DEFAULT_MIN_HEADING_LEVEL = 2
 DEFAULT_MAX_HEADING_LEVEL = 6
 HARD_MAX_BLOCK_LINES = 25
-
-_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.+?)\s*$")
 
 
 @dataclass(frozen=True)
@@ -64,13 +63,6 @@ def _validate_scan_config(config: MarkdownScanConfig) -> None:
     validate_markdown_scan_window(config.start_line, config.end_line)
 
 
-def _sanitize_heading_title(raw_title: str) -> str:
-    title = raw_title.strip()
-
-    title = re.sub(r"[ \t]+#+[ \t]*$", "", title)
-    return title.strip()
-
-
 def _discover_markdown_files(config: MarkdownScanConfig) -> list[Path]:
     discovered: set[Path] = set()
 
@@ -88,66 +80,40 @@ def _discover_markdown_files(config: MarkdownScanConfig) -> list[Path]:
 
 
 def _extract_headings_and_separators(
-    lines: list[str],
+    model: MarkdownNormalModel,
     *,
-    base_line: int = 1,
-) -> tuple[list[_Heading], list[int], bool]:
-    headings: list[_Heading] = []
-    separators: list[int] = []
-    in_fence = False
-    fence_char = ""
-    fence_len = 0
-
-    def _fence_run(stripped_line: str) -> tuple[str, int]:
-        if not stripped_line:
-            return ("", 0)
-        char = stripped_line[0]
-        if char not in ("`", "~"):
-            return ("", 0)
-        count = 0
-        for candidate in stripped_line:
-            if candidate == char:
-                count += 1
-            else:
-                break
-        return (char, count)
-
-    for line_no, line in enumerate(lines, start=base_line):
-        stripped_left = line.lstrip()
-        run_char, run_len = _fence_run(stripped_left)
-
-        if not in_fence and run_len >= 3:
-            in_fence = True
-            fence_char = run_char
-            fence_len = run_len
-            continue
-
-        if in_fence:
-            if (
-                run_char == fence_char
-                and run_len >= fence_len
-                and stripped_left[run_len:].strip() == ""
-            ):
-                in_fence = False
-                fence_char = ""
-                fence_len = 0
-            continue
-
-        if line.strip() == BLOCK_SEPARATOR:
-            separators.append(line_no)
-            continue
-
-        match = _HEADING_RE.match(line)
-        if not match:
-            continue
-        level = len(match.group(1))
-        title = _sanitize_heading_title(match.group(2))
-        headings.append(_Heading(start_line=line_no, level=level, title=title))
-
-    return headings, separators, in_fence
+    start_line: int,
+    end_line: int,
+) -> tuple[list[_Heading], list[int], bool, frozenset[int]]:
+    fenced_lines = model.fenced_line_numbers()
+    headings = [
+        _Heading(
+            start_line=heading.span.start_line,
+            level=heading.level,
+            title=heading.text,
+        )
+        for heading in model.headings
+        if start_line <= heading.span.start_line <= end_line
+    ]
+    separators = [
+        line.span.start_line
+        for line in model.lines
+        if start_line <= line.span.start_line <= end_line
+        and line.span.start_line not in fenced_lines
+        and line.text.strip() == BLOCK_SEPARATOR
+    ]
+    has_unclosed_fence = any(
+        fence.end is None
+        and fence.start.start_line <= end_line
+        and len(model.lines) >= start_line
+        for fence in model.fences
+    )
+    return headings, separators, has_unclosed_fence, fenced_lines
 
 
-def _count_preamble_nonempty_lines(lines: list[str], first_anchor_local_line: int | None) -> int:
+def _count_preamble_nonempty_lines(
+    lines: list[str], first_anchor_local_line: int | None
+) -> int:
     if first_anchor_local_line is None or first_anchor_local_line <= 1:
         return 0
 
@@ -208,7 +174,9 @@ def _build_block_payload(
     }
 
     if include_content:
-        block_data["content"] = "\n".join(source_lines[start_line - 1 : block_end]).rstrip("\n")
+        block_data["content"] = "\n".join(
+            source_lines[start_line - 1 : block_end]
+        ).rstrip("\n")
 
     return block_data
 
@@ -223,25 +191,35 @@ def _parse_file_blocks(
     include_content: bool,
 ) -> dict[str, Any]:
     text = file_path.read_text(encoding="utf-8")
-    source_lines = text.splitlines()
+    model = normalize_markdown(text)
+    source_lines = [line.text for line in model.lines]
     rel_path = file_path.relative_to(root).as_posix()
     source_line_count = len(source_lines)
 
     requested_start = config_start_line if config_start_line is not None else 1
-    requested_end = config_end_line if config_end_line is not None else source_line_count
+    requested_end = (
+        config_end_line if config_end_line is not None else source_line_count
+    )
     effective_start = max(1, requested_start)
     effective_end = min(requested_end, source_line_count)
 
-    if source_line_count == 0 or effective_start > source_line_count or effective_start > effective_end:
+    if (
+        source_line_count == 0
+        or effective_start > source_line_count
+        or effective_start > effective_end
+    ):
         scan_lines: list[str] = []
         effective_start = min(effective_start, source_line_count + 1)
         effective_end = max(effective_start - 1, 0)
     else:
         scan_lines = source_lines[effective_start - 1 : effective_end]
 
-    headings, separator_lines, has_unclosed_fence = _extract_headings_and_separators(
-        scan_lines,
-        base_line=effective_start,
+    headings, separator_lines, has_unclosed_fence, fenced_lines = (
+        _extract_headings_and_separators(
+            model,
+            start_line=effective_start,
+            end_line=effective_end,
+        )
     )
     heading_by_line = {heading.start_line: heading for heading in headings}
     separator_set = set(separator_lines)
@@ -256,6 +234,8 @@ def _parse_file_blocks(
     active_open_separator_line: int | None = None
 
     for line_no in range(effective_start, effective_end + 1):
+        if line_no in fenced_lines:
+            continue
         if line_no in separator_set:
             if active_heading is not None and active_open_separator_line is not None:
                 block = _build_block_payload(
@@ -340,7 +320,9 @@ def _parse_file_blocks(
 
     first_anchor_line = int(blocks[0]["start_line"]) if blocks else None
     first_anchor_local_line = (
-        (first_anchor_line - effective_start + 1) if first_anchor_line is not None else None
+        (first_anchor_line - effective_start + 1)
+        if first_anchor_line is not None
+        else None
     )
 
     return {
@@ -657,7 +639,11 @@ def lint_markdown_blocks(
             )
 
         if file_data.get("has_unclosed_fence", False):
-            fence_line = int(file_data["line_count"]) if int(file_data["line_count"]) > 0 else None
+            fence_line = (
+                int(file_data["line_count"])
+                if int(file_data["line_count"]) > 0
+                else None
+            )
             file_issues.append(
                 _make_lint_issue(
                     severity="error",
@@ -755,7 +741,9 @@ def lint_markdown_blocks(
                     )
 
         error_count = sum(1 for issue in file_issues if issue["severity"] == "error")
-        warning_count = sum(1 for issue in file_issues if issue["severity"] == "warning")
+        warning_count = sum(
+            1 for issue in file_issues if issue["severity"] == "warning"
+        )
         file_reports.append(
             {
                 "path": file_path,

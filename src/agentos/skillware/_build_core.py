@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentos.index.model import BlockHeading, KernelLine, MetaLine, parse_depot
+from agentos.surfaces.markdown import normalize_markdown
 from agentos.skillware.model import (
     SkwFinding,
     SkwRouterRow,
@@ -275,7 +276,9 @@ def parse_skw_config(config_path: Path) -> SkwConfig:
                 if (
                     not isinstance(patterns, list)
                     or (required and not patterns)
-                    or not all(isinstance(pattern, str) and pattern for pattern in patterns)
+                    or not all(
+                        isinstance(pattern, str) and pattern for pattern in patterns
+                    )
                 ):
                     qualifier = "non-empty " if required else ""
                     raise SkillwareError(
@@ -599,8 +602,6 @@ def load_skillware(skill_root: Path, extra_depots: tuple[Path, ...] = ()) -> Ski
                 )
             depots.append(depot)
 
-
-
         for dep_id, raw_root in config.deps.items():
             dep_root = (skill_root / raw_root).resolve()
             if not dep_root.is_dir():
@@ -698,9 +699,6 @@ def expand_file(skillware: Skillware, src_rel: Path) -> Expansion:
                 resolved_copies[recipe.body_span] = lines
         dep_hashes[recipe_key(recipe)] = recipe_deps
 
-
-
-
     for block in (*source.dependencies, *source.constructs):
         edges = list(("dev-from", locator) for locator in block.dev_froms)
         edges.extend(("cite", locator) for locator in block.cites)
@@ -797,9 +795,6 @@ def _resolve_locator(
 ) -> tuple[list[str] | None, str | None]:
     locator = locator.strip()
 
-
-
-
     pkg_match = _PKG_DEP_RE.match(locator)
     if pkg_match:
         dep_id, tail = pkg_match.group(1), pkg_match.group(2)
@@ -859,7 +854,6 @@ def _resolve_locator(
         if body is None:
             return None, f"region not found: #{region}"
         return body, None
-
 
     if not skillware.depots:
         return None, "Dotted.Name target needs a depot in skillware.json"
@@ -993,7 +987,6 @@ def _labeled_span(
             return _routing_view_dependency_lines(view), None
     for recipe in source.recipes:
         if recipe.label == label and recipe.verb == "copy" and recipe.froms:
-
             return _resolve_locator(skillware, recipe.froms[0], stack=stack)
     spans = [(r.label, r.body) for r in source.recipes] + [
         (c.label, c.body) for c in source.constructs
@@ -1008,8 +1001,6 @@ def _labeled_span(
                 continue
             lines, _detail = _resolve_locator(skillware, rec.froms[0], stack=stack)
             if lines is None:
-
-
                 continue
             resolved[rec.body_span] = lines
         return _emit(inner, resolved, keep_machinery=False), None
@@ -1019,21 +1010,15 @@ def _labeled_span(
 def _region_body(lines: list[str], region: str) -> list[str] | None:
     start: int | None = None
     level = 0
-    in_fence = False
-    for index, line in enumerate(lines):
-        if line.lstrip().startswith(("```", "~~~")):
-            in_fence = not in_fence
-            continue
-        if in_fence or not line.startswith("#"):
-            continue
-        heading_level = len(line) - len(line.lstrip("#"))
-        title = line.lstrip("#").strip()
+    model = normalize_markdown("\n".join(lines))
+    for heading in model.headings:
+        line_index = heading.span.start_line - 1
         if start is None:
-            if title == region:
-                start = index + 1
-                level = heading_level
-        elif heading_level <= level:
-            return _trim(lines[start:index])
+            if heading.text == region:
+                start = line_index + 1
+                level = heading.level
+        elif heading.level <= level:
+            return _trim(lines[start:line_index])
     if start is None:
         return None
     return _trim(lines[start:])
@@ -1073,7 +1058,9 @@ def _row_effect(row: SkwRouterRow) -> str:
         return row.then
     parts: list[str] = []
     if row.destinations:
-        parts.append("route to " + ", ".join(_code(value) for value in row.destinations))
+        parts.append(
+            "route to " + ", ".join(_code(value) for value in row.destinations)
+        )
     if row.loads:
         parts.append("load " + ", ".join(_code(value) for value in row.loads))
     return "; ".join(parts)
@@ -1237,7 +1224,11 @@ def _render_full(table_selection: str, rows: list[SkwRouterRow]) -> list[str]:
 
 def _render_routing_view(source: SkwSource, view: SkwRoutingView) -> list[str]:
     table = next(
-        (candidate for candidate in source.routing_tables if candidate.address == view.table),
+        (
+            candidate
+            for candidate in source.routing_tables
+            if candidate.address == view.table
+        ),
         None,
     )
     if table is None:

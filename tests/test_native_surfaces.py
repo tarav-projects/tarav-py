@@ -48,3 +48,27 @@ def test_markdown_normalizer_retains_unclosed_fence() -> None:
     model = normalize_markdown("~~~\ncontent\n")
     assert len(model.fences) == 1
     assert model.fences[0].end is None
+
+
+def test_markdown_normalizer_requires_a_matching_complete_fence_closer() -> None:
+    model = normalize_markdown(
+        "## Before ###\n"
+        "````python\n"
+        "```\n"
+        "```` trailing\n"
+        "~~~\n"
+        "## Inert\n"
+        "`````\n"
+        "### After ###\n"
+    )
+
+    assert [(heading.level, heading.text) for heading in model.headings] == [
+        (2, "Before"),
+        (3, "After"),
+    ]
+    assert len(model.fences) == 1
+    fence = model.fences[0]
+    assert (fence.marker, fence.length, fence.closing_length) == ("`", 4, 5)
+    assert fence.start.start_line == 2
+    assert fence.end is not None and fence.end.start_line == 7
+    assert model.fenced_line_numbers() == frozenset(range(2, 8))

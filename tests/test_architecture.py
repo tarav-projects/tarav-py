@@ -111,7 +111,12 @@ def test_skw_network_is_shared_without_duplicate_ownership() -> None:
 def test_native_surfaces_do_not_import_skillware() -> None:
     imports = _top_level_import_graph()
     assert "skillware" not in imports["surfaces"]
-    assert "surfaces" in imports["skillware"]
+    assert {
+        "chatlas",
+        "index",
+        "skillware",
+        "stdlib",
+    } <= {name for name, targets in imports.items() if "surfaces" in targets}
 
 
 def test_subsystem_import_graph_is_acyclic() -> None:
