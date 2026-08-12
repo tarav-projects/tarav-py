@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-import io
-import tokenize
+from agentos.surfaces.python import normalize_python
 
-from ._code_model import CodeSurfaceModel, SourceComment
-from .model import parse_skw_code
+from ._code_model import CodeSurfaceModel
+from .adapters.python import adapt_python_skw
+from .model import parse_skw_model
 
 
 class PythonCodeBackend:
@@ -15,33 +15,6 @@ class PythonCodeBackend:
     suffixes = (".py", ".pyi")
 
     def model(self, text: str) -> CodeSurfaceModel:
-        comments = []
-        scanner_error = None
-        try:
-            tokens = tokenize.generate_tokens(io.StringIO(text).readline)
-            for token in tokens:
-                if token.type != tokenize.COMMENT:
-                    continue
-                comments.append(
-                    SourceComment(
-                        text=token.string,
-                        start_line=token.start[0],
-                        start_column=token.start[1],
-                        end_line=token.end[0],
-                        end_column=token.end[1],
-                    )
-                )
-        except (IndentationError, SyntaxError, tokenize.TokenError) as exc:
-            scanner_error = str(exc)
-        return CodeSurfaceModel(
-            annotations=parse_skw_code(
-                text,
-                machinery_lines=frozenset(
-                    comment.start_line
-                    for comment in comments
-                    if comment.start_column == 0
-                ),
-            ),
-            comments=tuple(comments),
-            scanner_error=scanner_error,
-        )
+        native = normalize_python(text)
+        surface = adapt_python_skw(native)
+        return CodeSurfaceModel(surface=surface, annotations=parse_skw_model(surface))

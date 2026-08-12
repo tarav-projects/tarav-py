@@ -7,7 +7,9 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from agentos.chatlas.hook_consumers import register_chatlas_hook_callbacks
-from agentos.agent.providers.codex.usage_hooks import register_codex_usage_hook_callbacks
+from agentos.agent.providers.codex.usage_hooks import (
+    register_codex_usage_hook_callbacks,
+)
 from agentos.hooks import HookRegistry, register_hook_sampling_callbacks
 
 if TYPE_CHECKING:
@@ -76,6 +78,7 @@ class AgentosRuntime:
         from agentos.stdlib.prefix.commands import register_prefix_commands
         from agentos.project import register_project_commands
         from agentos.stdlib.refs import register_refs_commands
+        from agentos.surfaces.commands import register_surface_commands
         from agentos.skills import register_skills_commands
         from agentos.skillware.commands import register_skillware_commands
         from agentos.system import register_system_commands
@@ -112,6 +115,7 @@ class AgentosRuntime:
         register_system_commands(subparsers)
         register_forum_commands(subparsers)
         register_chatlas_commands(subparsers)
+        register_surface_commands(subparsers)
         _register_future_commands(subparsers)
         _register_stdlib_commands(
             subparsers,

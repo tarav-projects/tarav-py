@@ -45,6 +45,7 @@ def expand_code_surfaces(
             raise SkillwareError(
                 f"unsupported skw code-surface language `{config.language}`"
             )
+
         def _matches(pattern: str) -> tuple[Path, ...]:
             resolved = tuple(
                 sorted(
@@ -63,9 +64,7 @@ def expand_code_surfaces(
                 )
             return resolved
 
-        excluded = {
-            path for pattern in config.exclude for path in _matches(pattern)
-        }
+        excluded = {path for pattern in config.exclude for path in _matches(pattern)}
         selected_for_config = 0
         local_targets: set[Path] = set()
         for pattern in config.include:
@@ -108,10 +107,7 @@ def _block_open_lines(source: SkwSource) -> list[int]:
 def _file_dependencies(source: SkwSource) -> tuple[str, ...]:
     blocks = (*source.recipes, *source.constructs, *source.dependencies)
     return tuple(
-        locator
-        for block in blocks
-        if block.line == 1
-        for locator in block.froms
+        locator for block in blocks if block.line == 1 for locator in block.froms
     )
 
 
@@ -152,14 +148,15 @@ def check_code_surfaces(
                 f"unsupported skw code-surface language `{target.language}`"
             )
         model = backend.model(text)
-        if model.scanner_error is not None:
+        if model.surface.diagnostics:
+            scanner_error = model.surface.diagnostics[0].message
             pois.append(
                 skillware_poi(
                     "parse-error",
                     relative,
                     None,
-                    model.scanner_error,
-                    f"{target.language} scanner failed: {model.scanner_error}",
+                    scanner_error,
+                    f"{target.language} scanner failed: {scanner_error}",
                 )
             )
             continue
@@ -245,17 +242,21 @@ def check_code_surfaces(
             for start, end in model.annotations.machinery_spans
             for line in range(start + 1, end + 1)
         }
-        for comment in model.comments:
-            if comment.start_line in machinery_lines:
+        for annotation in model.surface.annotations:
+            if annotation.classification != "unclassified":
                 continue
-            key = f"line {comment.start_line}:{comment.start_column + 1}"
+            if annotation.span.start_line in machinery_lines:
+                continue
+            key = (
+                f"line {annotation.span.start_line}:{annotation.span.start_column + 1}"
+            )
             pois.append(
                 skillware_poi(
                     "non-skw-annotation",
                     relative,
                     key,
-                    comment.text,
-                    f"{key}: comment is not a Skw.Annotation — {comment.text!r}",
+                    annotation.text,
+                    f"{key}: comment is not a Skw.Annotation — {annotation.text!r}",
                 )
             )
 

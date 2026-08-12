@@ -1,4 +1,4 @@
-# $kw: ^skw-model --from Skw.Language --from Closure.Parser --note [DF] the skw parser — a surface-agnostic $kw frame core plus per-surface Carrier adapters ^c20260722-24u
+# $kw: ^skw-model --from Skw.Language --from Closure.Parser --from Floor.Model --note [DF] the shared skw parser consumes a host-independent carrier model ^c20260722-24u
 # --supp context assemblies are whole-file modules declared at the file point; dependency roles remain distinct ^c20260725-27u
 """Skillware src surface model: `.skw.md` parsing.
 
@@ -50,6 +50,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
+
+from .surface_model import SkwSurfaceLine, SkwSurfaceModel
 
 RECIPE_BINDINGS = ("derived", "copy")
 BINDING_FLAGS = ("derived", "copy", "pointer")
@@ -114,72 +116,6 @@ def _valid_runtime_file_locator(locator: str) -> bool:
         or ".." in path.parts
         or path.parts[0] in {".skw", ".skillware"}
     )
-
-
-@dataclass(frozen=True)
-class Carrier:
-    """Surface-specific recognition of skw machinery (`Skw.Backend` carrier).
-
-    The `$kw` frame core is surface-agnostic; only *how a raw line carries
-    machinery* is per-surface. A carrier answers five questions about one line —
-    is it an open, a close, a belonging flag, a fence toggle, or a structural
-    boundary that force-closes open blocks — returning the carrier-stripped
-    machinery content so the shared core never sees the carrier syntax.
-    """
-
-    name: str
-    open_re: re.Pattern
-    close_re: re.Pattern
-    flag_re: re.Pattern
-    fence_re: re.Pattern | None
-    boundary_re: re.Pattern | None
-    boundary_label: str = "boundary"
-
-    def open_content(self, line: str) -> str | None:
-        match = self.open_re.match(line)
-        return match.group(1) if match is not None else None
-
-    def close_content(self, line: str) -> str | None:
-        match = self.close_re.match(line)
-        return match.group(1) if match is not None else None
-
-    def flag_content(self, line: str) -> str | None:
-        match = self.flag_re.match(line)
-        return match.group(1) if match is not None else None
-
-    def is_fence(self, line: str) -> bool:
-        return self.fence_re is not None and self.fence_re.match(line) is not None
-
-    def boundary_name(self, line: str) -> str | None:
-        if self.boundary_re is None:
-            return None
-        match = self.boundary_re.match(line)
-        return match.group("name").strip() if match is not None else None
-
-
-
-
-MARKDOWN_CARRIER = Carrier(
-    name="skw-skills",
-    open_re=re.compile(r"^>\s*\$kw:\s?(.*)$"),
-    close_re=re.compile(r"^>\s*\$kw\.\s*(.*)$"),
-    flag_re=re.compile(r"^>\s*(--\S.*)$"),
-    fence_re=re.compile(r"^\s*(?:```|~~~)"),
-    boundary_re=re.compile(r"^#{1,6}\s+(?P<name>.*)$"),
-    boundary_label="heading",
-)
-
-
-
-
-CODE_CARRIER = Carrier(
-    name="skw-code",
-    open_re=re.compile(r"^#\s*\$kw:\s?(.*)$"),
-    close_re=re.compile(r"^#\s*\$kw\.\s*(.*)$"),
-    flag_re=re.compile(r"^#\s*(--[a-z][a-z0-9-]*(?:\s.*)?)$"),
-    fence_re=None,
-    boundary_re=None,
-)
 
 
 @dataclass(frozen=True)
@@ -357,8 +293,6 @@ def _parse_flag_segments(
     head = content[: matches[0].start()].strip() if matches else content.strip()
     if head:
         if head.startswith("--"):
-
-
             findings.append(SkwFinding(line_no, f"unknown flag: {head.split()[0]}"))
         elif flags:
             name, value = flags[-1]
@@ -384,18 +318,16 @@ def _parse_flag_segments(
 
 
 def _read_block(
-    lines: list[str],
+    lines: tuple[SkwSurfaceLine, ...],
     start: int,
     findings: list[SkwFinding],
-    carrier: Carrier,
-    machinery_lines: frozenset[int] | None = None,
 ) -> tuple[int, str | None, str | None, list[tuple[str, str]]]:
     """Read a ``$kw:`` open line plus contiguous ``--flag`` belonging lines.
     Returns (end_exclusive, address, label, flags). The address is the first
     non-flag token on the open line; ``^label`` addresses also yield a bare
     label for lock-key continuity. Carrier-agnostic: the carrier strips its own
     syntax before this sees machinery content."""
-    open_content = carrier.open_content(lines[start])
+    open_content = lines[start].open_content
     assert open_content is not None
     content = open_content.strip()
 
@@ -416,9 +348,7 @@ def _read_block(
 
     index = start + 1
     while index < len(lines):
-        if machinery_lines is not None and index + 1 not in machinery_lines:
-            break
-        flag_content = carrier.flag_content(lines[index])
+        flag_content = lines[index].flag_content
         if flag_content is None:
             break
         _parse_flag_segments(flag_content.strip(), flags, findings, index + 1)
@@ -482,11 +412,9 @@ class _Frame:
 
 
 def _parse_source(
-    text: str,
-    carrier: Carrier,
-    machinery_lines: frozenset[int] | None = None,
+    surface: SkwSurfaceModel,
 ) -> SkwSource:
-    lines = text.splitlines()
+    lines = [line.text for line in surface.lines]
     recipes: list[SkwRecipe] = []
     constructs: list[SkwConstruct] = []
     dependencies: list[SkwDependency] = []
@@ -539,7 +467,6 @@ def _parse_source(
             and (frame.froms or frame.dev_froms or frame.cites or frame.loading_deps)
             and not _has_content(body)
         ):
-
             dependencies.append(
                 SkwDependency(
                     froms=frame.froms,
@@ -625,10 +552,8 @@ def _parse_source(
     file_point_open = True
     while index < len(lines):
         line = lines[index]
-        machinery_allowed = (
-            machinery_lines is None or index + 1 in machinery_lines
-        )
-        if carrier.is_fence(line):
+        surface_line = surface.lines[index]
+        if surface_line.fence:
             if line.strip():
                 file_point_open = False
             in_fence = not in_fence
@@ -639,15 +564,15 @@ def _parse_source(
             index += 1
             continue
 
-        boundary = carrier.boundary_name(line)
+        boundary = surface_line.boundary_name
         if boundary is not None:
             file_point_open = False
-            force_close(index, f"{carrier.boundary_label} {boundary!r}")
+            force_close(index, f"{surface.boundary_label} {boundary!r}")
             heading = boundary
             index += 1
             continue
 
-        close_content = carrier.close_content(line) if machinery_allowed else None
+        close_content = surface_line.close_content
         if close_content is not None:
             content = close_content.strip()
             if not _is_bare_end(content):
@@ -674,9 +599,9 @@ def _parse_source(
             index += 1
             continue
 
-        open_content = carrier.open_content(line) if machinery_allowed else None
+        open_content = surface_line.open_content
         if open_content is None:
-            flag_content = carrier.flag_content(line) if machinery_allowed else None
+            flag_content = surface_line.flag_content
             if flag_content is not None:
                 findings.append(
                     SkwFinding(
@@ -692,11 +617,9 @@ def _parse_source(
 
         declaration_at_file_point = file_point_open
         decl_end, address, label, flags = _read_block(
-            lines,
+            surface.lines,
             index,
             findings,
-            carrier,
-            machinery_lines,
         )
 
         if address is not None:
@@ -739,9 +662,7 @@ def _parse_source(
             )
             for value in loading_deps
         )
-        has_reachable_from_flag = any(
-            name == "reachable-from" for name, _ in flags
-        )
+        has_reachable_from_flag = any(name == "reachable-from" for name, _ in flags)
         reachable_froms = tuple(
             value for name, value in flags if name == "reachable-from" and value
         )
@@ -848,8 +769,6 @@ def _parse_source(
             command = "context-loading-path"
         elif role is not None:
             if not stack or stack[-1].command in ("when", "then"):
-
-
                 if not stack:
                     findings.append(SkwFinding(index + 1, f"'{role}' outside a router"))
                 else:
@@ -858,9 +777,6 @@ def _parse_source(
         elif verb in RECIPE_BINDINGS:
             command = verb
         else:
-
-
-
             command = "text"
 
         if command in RECIPE_BINDINGS and not froms:
@@ -1131,10 +1047,6 @@ def _parse_source(
                     )
                 )
 
-
-
-
-
         annotation_only = declaration_kinds > 0 or (
             command == "text"
             and (
@@ -1152,8 +1064,6 @@ def _parse_source(
         needs_end = command in RECIPE_BINDINGS or (
             command == "text" and not annotation_only
         )
-
-
 
         if stack and stack[-1].verb in RECIPE_BINDINGS and role is None:
             findings.append(
@@ -1185,8 +1095,6 @@ def _parse_source(
 
         machinery_spans.append((index, decl_end))
         if annotation_only:
-
-
             emit_frame(frame, decl_end)
         else:
             stack.append(frame)
@@ -1245,7 +1153,11 @@ def _parse_source(
 
 def parse_skw_source(text: str) -> SkwSource:
     """Parse a markdown `.skw.md` source (the skw-skills backend carrier)."""
-    return _parse_source(text, MARKDOWN_CARRIER)
+    from agentos.surfaces.markdown import normalize_markdown
+
+    from .adapters.markdown import adapt_markdown_skw
+
+    return parse_skw_model(adapt_markdown_skw(normalize_markdown(text)))
 
 
 def parse_skw_code(
@@ -1255,15 +1167,28 @@ def parse_skw_code(
 ) -> SkwSource:
     """Parse a code source carrying skw machinery in `# $kw:` comments
     (the skw-code backend carrier, carrier B)."""
-    return _parse_source(text, CODE_CARRIER, machinery_lines)
+    from agentos.surfaces.python import normalize_python
+
+    from .adapters.python import adapt_python_skw
+
+    return parse_skw_model(
+        adapt_python_skw(
+            normalize_python(text),
+            machinery_lines=machinery_lines,
+        )
+    )
+
+
+def parse_skw_model(surface: SkwSurfaceModel) -> SkwSource:
+    """Parse a host-independent Skillware carrier model."""
+
+    return _parse_source(surface)
 
 
 __all__ = [
     "BINDING_FLAGS",
     "BOOLEAN_FLAGS",
-    "CODE_CARRIER",
     "KNOWN_FLAGS",
-    "MARKDOWN_CARRIER",
     "RECIPE_BINDINGS",
     "ROLE_FLAGS",
     "ROUTING_BOOLEAN_FLAGS",
@@ -1271,7 +1196,6 @@ __all__ = [
     "CONTEXT_LOADING_BOOLEAN_FLAGS",
     "CONTEXT_LOADING_VALUE_FLAGS",
     "VALUE_FLAGS",
-    "Carrier",
     "SkwConstruct",
     "SkwContextLoadingDependency",
     "SkwContextLoadingPath",
@@ -1285,6 +1209,7 @@ __all__ = [
     "SkwRoutingView",
     "SkwSource",
     "parse_skw_code",
+    "parse_skw_model",
     "parse_skw_source",
     "recipe_key",
 ]

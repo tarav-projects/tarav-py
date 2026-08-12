@@ -12,7 +12,7 @@ entrypoints (agentos.cli, agentos.daemon)
                     |
       domain systems and integration adapters
                     |
-       agentos.stdlib and domain foundations
+     agentos.surfaces, stdlib, and domain foundations
                     |
                agentos._core
 ```
@@ -21,6 +21,8 @@ entrypoints (agentos.cli, agentos.daemon)
 - Domain foundations do not import runtime or CLI composition to obtain defaults.
 - `_core` contains dependency-free infrastructure with proven multiple consumers;
   it does not contain product policy.
+- `agentos.surfaces` contains deliberately small native source models and
+  normalizers. It knows host syntax but never imports downstream consumers.
 - `stdlib` contains reusable user-facing primitives matching the existing
   `agentos stdlib ...` CLI namespace.
 
@@ -36,6 +38,9 @@ entrypoints (agentos.cli, agentos.daemon)
   mechanics whose behavior is identical under `agentos.iterante._shared`.
 - `agentos.skw`: backend-neutral network algorithms consumed by Index and
   Skillware; it is intentionally independent from either consumer.
+- `agentos.surfaces`: native Python and Markdown normal models plus only the
+  tiny source-span and diagnostic primitives they share. Its `commands` adapter
+  exposes `agentos surfaces normalize` without introducing Skillware coupling.
 
 Provider-specific code belongs at
 `agentos.agent.providers.<provider>`. For example, Codex quota hooks and session
@@ -51,8 +56,10 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
 - POI adapters live under `agentos.poi.adapters` when they bridge a producer
   domain to the common reporting model.
 - Skillware's `_code_model` and `_code_surfaces` modules own language-neutral
-  code selection and policy. Language adapters such as `_code_python` provide
-  only host tokenization and carrier binding.
+  code selection and policy. Native normalizers under `agentos.surfaces`
+  produce host facts without Skillware knowledge; `agentos.skillware.adapters`
+  maps those models into the common `SkwSurfaceModel`, and the shared parser
+  consumes that model rather than raw host text.
 - Chatlas command behavior lives in `_command_support.py`; `commands.py` owns the
   public parser composition and registrar.
 

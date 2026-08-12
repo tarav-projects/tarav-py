@@ -14,11 +14,7 @@ def _project(root: Path, code: str) -> Path:
     (root / ".skw").mkdir()
     (root / ".skw" / "skw.json").write_text(
         json.dumps(
-            {
-                "code_surfaces": [
-                    {"language": "python", "include": ["src/**/*.py"]}
-                ]
-            }
+            {"code_surfaces": [{"language": "python", "include": ["src/**/*.py"]}]}
         ),
         encoding="utf-8",
     )
@@ -53,7 +49,9 @@ def test_python_tokenizer_flags_full_line_and_inline_comments(tmp_path: Path) ->
     ]
 
 
-def test_strict_policy_flags_shebang_directive_and_separator(tmp_path: Path) -> None:
+def test_strict_policy_flags_unclassified_comments_not_directives(
+    tmp_path: Path,
+) -> None:
     code = (
         "# $kw: ^module --note [DF] module ^c20260722-21u\n"
         "#!/usr/bin/env python3\n"
@@ -63,8 +61,18 @@ def test_strict_policy_flags_shebang_directive_and_separator(tmp_path: Path) -> 
     flagged = _non_skw(_project(tmp_path, code))
     assert [poi.evidence["identity_payload"] for poi in flagged] == [
         "#!/usr/bin/env python3",
-        "# noqa",
         "# --------",
+    ]
+
+
+def test_malformed_external_directive_remains_a_poi(tmp_path: Path) -> None:
+    code = (
+        "# $kw: ^module --note [DF] module ^c20260722-21u\n"
+        "x = 1  # noqa because generated\n"
+    )
+    flagged = _non_skw(_project(tmp_path, code))
+    assert [poi.evidence["identity_payload"] for poi in flagged] == [
+        "# noqa because generated"
     ]
 
 
@@ -85,7 +93,9 @@ def test_non_skw_annotation_is_default_on(tmp_path: Path) -> None:
         _skw_check_kinds,
     )
 
-    kind = next(kind for kind in _skw_check_kinds() if kind.code == "non-skw-annotation")
+    kind = next(
+        kind for kind in _skw_check_kinds() if kind.code == "non-skw-annotation"
+    )
     assert kind.default_on is True
 
     project = _project(tmp_path, CODE)

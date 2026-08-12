@@ -40,7 +40,6 @@ from ._code_model import (
     CodeLanguageBackend,
     CodeSurfaceModel,
     CodeSurfaceTarget,
-    SourceComment,
 )
 from ._code_surfaces import bless_code_poi, check_code_surfaces, expand_code_surfaces
 from ._build_operations import (
@@ -90,7 +89,6 @@ __all__ = [
     "CodeSurfaceTarget",
     "SkillwarePOIInstance",
     "SUPPRESSIBLE_KINDS",
-    "SourceComment",
     "UnlockRequirement",
     "bless_pois_by_kind",
     "bless_code_poi",

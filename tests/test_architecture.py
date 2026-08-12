@@ -108,6 +108,12 @@ def test_skw_network_is_shared_without_duplicate_ownership() -> None:
     assert not (PACKAGE_ROOT / "skillware" / "network.py").exists()
 
 
+def test_native_surfaces_do_not_import_skillware() -> None:
+    imports = _top_level_import_graph()
+    assert "skillware" not in imports["surfaces"]
+    assert "surfaces" in imports["skillware"]
+
+
 def test_subsystem_import_graph_is_acyclic() -> None:
     graph = _top_level_import_graph()
     graph.pop("<root>", None)

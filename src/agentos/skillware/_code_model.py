@@ -10,22 +10,13 @@ from typing import Protocol
 
 from .model import SkwSource
 from .poi import SkillwarePOIInstance
-
-
-@dataclass(frozen=True)
-class SourceComment:
-    text: str
-    start_line: int
-    start_column: int
-    end_line: int
-    end_column: int
+from .surface_model import SkwSurfaceModel
 
 
 @dataclass(frozen=True)
 class CodeSurfaceModel:
+    surface: SkwSurfaceModel
     annotations: SkwSource
-    comments: tuple[SourceComment, ...]
-    scanner_error: str | None = None
 
 
 class CodeLanguageBackend(Protocol):
