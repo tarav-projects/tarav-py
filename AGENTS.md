@@ -11,6 +11,7 @@
 
 - Use `uv` as the default Python environment and package management system.
 - Prefer `uv sync`, `uv run`, and `uv tool install` over direct `pip`/`venv` workflows.
+- `_DEPRECATED/` contains tracked historical snapshots and is excluded from Ruff's maintained-tree checks; repository-wide Ruff commands still cover the active distribution, tests, and tooling.
 
 ## Modular Monolith
 

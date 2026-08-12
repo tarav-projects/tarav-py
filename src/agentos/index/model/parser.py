@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from agentos._core.scan import DEFAULT_SCAN_EXCLUDES
-from agentos.surfaces.markdown import MarkdownNormalModel, normalize_markdown
+from agentos.surfaces.markdown import (
+    MarkdownFence,
+    MarkdownHeading,
+    MarkdownNormalModel,
+    normalize_markdown,
+)
 
 from .nodes import (
     BlankLine,
@@ -124,126 +130,159 @@ def _parse_router(model: MarkdownNormalModel, path: Path | None) -> list[Node]:
 
 
 def _parse_index_surface(model: MarkdownNormalModel, path: Path | None) -> list[Node]:
-    nodes: list[Node] = []
-    block_open = False
-    expect_heading = False
-    current_block: str | None = None
-    in_meta = False
+    state = _IndexSurfaceState(path=path)
     fence_by_start = {fence.start.start_line: fence for fence in model.fences}
     heading_by_line = {heading.span.start_line: heading for heading in model.headings}
     skip_through = 0
 
     for source_line in model.lines:
         line_no = source_line.span.start_line
-        line = source_line.text
         if line_no <= skip_through:
             continue
         fence = fence_by_start.get(line_no)
         if fence is not None:
-            end_line = (
-                fence.end.start_line if fence.end is not None else len(model.lines)
-            )
-            fence_source = "\n".join(
-                item.text for item in model.lines[line_no - 1 : end_line]
-            )
-            if fence.end is None:
-                nodes.append(
-                    Diagnostic(
-                        src=fence_source,
-                        start_line=line_no,
-                        end_line=max(line_no, end_line),
-                        reason="unclosed_code_fence",
-                        path=path,
-                    )
-                )
-            else:
-                nodes.append(
-                    CodeFence(
-                        src=fence_source,
-                        start_line=line_no,
-                        end_line=end_line,
-                        parsed={"closed": True},
-                        path=path,
-                    )
-                )
-            skip_through = end_line
+            node, skip_through = _fence_node(model, fence, path)
+            state.nodes.append(node)
             continue
+        state.consume(
+            line_no=line_no,
+            line=source_line.text,
+            heading=heading_by_line.get(line_no),
+        )
+    return state.nodes
+
+
+def _fence_node(
+    model: MarkdownNormalModel,
+    fence: MarkdownFence,
+    path: Path | None,
+) -> tuple[Node, int]:
+    start_line = fence.start.start_line
+    end_line = fence.end.start_line if fence.end is not None else len(model.lines)
+    source = "\n".join(item.text for item in model.lines[start_line - 1 : end_line])
+    if fence.end is None:
+        return (
+            Diagnostic(
+                src=source,
+                start_line=start_line,
+                end_line=max(start_line, end_line),
+                reason="unclosed_code_fence",
+                path=path,
+            ),
+            end_line,
+        )
+    return (
+        CodeFence(
+            src=source,
+            start_line=start_line,
+            end_line=end_line,
+            parsed={"closed": True},
+            path=path,
+        ),
+        end_line,
+    )
+
+
+@dataclass
+class _IndexSurfaceState:
+    path: Path | None
+    nodes: list[Node] = field(default_factory=list)
+    block_open: bool = False
+    expect_heading: bool = False
+    current_block: str | None = None
+    in_meta: bool = False
+
+    def consume(
+        self,
+        *,
+        line_no: int,
+        line: str,
+        heading: MarkdownHeading | None,
+    ) -> None:
         stripped = line.strip()
         if re.fullmatch(r"\*{4,}", stripped):
-            block_open = True
-            expect_heading = True
-            current_block = None
-            in_meta = False
-            nodes.append(
-                Separator(src=line, start_line=line_no, end_line=line_no, path=path)
-            )
-            continue
-        if stripped == "":
-            nodes.append(
-                BlankLine(src=line, start_line=line_no, end_line=line_no, path=path)
-            )
-            continue
-        heading = heading_by_line.get(line_no)
-        if heading is not None and heading.level == 2:
-            heading_text = heading.text
-            parsed = _parse_block_path(heading_text)
-            if not block_open or not expect_heading:
-                nodes.append(
-                    Diagnostic(
-                        src=line,
-                        start_line=line_no,
-                        end_line=line_no,
-                        parsed={"heading": heading_text},
-                        reason="heading_without_separator",
-                        path=path,
-                    )
-                )
-            nodes.append(
-                BlockHeading(
+            self._separator(line_no, line)
+        elif not stripped:
+            self.nodes.append(
+                BlankLine(
                     src=line,
                     start_line=line_no,
                     end_line=line_no,
-                    parsed=parsed,
-                    spans=_inline_spans(line, line_no),
-                    path=path,
+                    path=self.path,
                 )
             )
-            current_block = heading_text
-            expect_heading = False
-            in_meta = False
-            continue
-        if META_HEADING_RE.match(line):
-            in_meta = True
-            nodes.append(
-                MetaHeading(src=line, start_line=line_no, end_line=line_no, path=path)
-            )
-            continue
-        if line.startswith("- ") and block_open and current_block:
-            node_cls = MetaLine if in_meta else KernelLine
-            parsed = {"block_path": current_block}
-            if node_cls is KernelLine:
-                parsed.update(_parse_kernel_line(line))
-            nodes.append(
-                node_cls(
+        elif heading is not None and heading.level == 2:
+            self._block_heading(line_no, line, heading.text)
+        elif META_HEADING_RE.match(line):
+            self.in_meta = True
+            self.nodes.append(
+                MetaHeading(
                     src=line,
                     start_line=line_no,
                     end_line=line_no,
-                    parsed=parsed,
-                    spans=_inline_spans(line, line_no),
-                    path=path,
+                    path=self.path,
                 )
             )
-            continue
-        nodes.append(
-            Text(
+        elif line.startswith("- ") and self.block_open and self.current_block:
+            self._block_line(line_no, line)
+        else:
+            self.nodes.append(_plain_node(line, line_no, self.path))
+
+    def _separator(self, line_no: int, line: str) -> None:
+        self.block_open = True
+        self.expect_heading = True
+        self.current_block = None
+        self.in_meta = False
+        self.nodes.append(
+            Separator(
                 src=line,
                 start_line=line_no,
                 end_line=line_no,
-                spans=_inline_spans(line, line_no),
-                path=path,
+                path=self.path,
             )
         )
-    return nodes
+
+    def _block_heading(self, line_no: int, line: str, heading: str) -> None:
+        if not self.block_open or not self.expect_heading:
+            self.nodes.append(
+                Diagnostic(
+                    src=line,
+                    start_line=line_no,
+                    end_line=line_no,
+                    parsed={"heading": heading},
+                    reason="heading_without_separator",
+                    path=self.path,
+                )
+            )
+        self.nodes.append(
+            BlockHeading(
+                src=line,
+                start_line=line_no,
+                end_line=line_no,
+                parsed=_parse_block_path(heading),
+                spans=_inline_spans(line, line_no),
+                path=self.path,
+            )
+        )
+        self.current_block = heading
+        self.expect_heading = False
+        self.in_meta = False
+
+    def _block_line(self, line_no: int, line: str) -> None:
+        node_cls = MetaLine if self.in_meta else KernelLine
+        parsed = {"block_path": self.current_block}
+        if node_cls is KernelLine:
+            parsed.update(_parse_kernel_line(line))
+        self.nodes.append(
+            node_cls(
+                src=line,
+                start_line=line_no,
+                end_line=line_no,
+                parsed=parsed,
+                spans=_inline_spans(line, line_no),
+                path=self.path,
+            )
+        )
 
 
 def _plain_node(line: str, line_no: int, path: Path | None) -> Node:

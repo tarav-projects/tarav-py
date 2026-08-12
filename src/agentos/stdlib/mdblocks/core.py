@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,106 @@ class _Heading:
     start_line: int
     level: int
     title: str
+
+
+@dataclass(frozen=True)
+class _ScanWindow:
+    start_line: int
+    end_line: int
+    lines: list[str]
+
+
+@dataclass
+class _BlockScanState:
+    rel_path: str
+    source_lines: list[str]
+    include_content: bool
+    min_level: int
+    max_level: int
+    heading_by_line: dict[int, _Heading]
+    separator_lines: frozenset[int]
+    fenced_lines: frozenset[int]
+    blocks: list[dict[str, Any]] = field(default_factory=list)
+    semantic_separator_lines: set[int] = field(default_factory=set)
+    orphan_separator_lines: list[int] = field(default_factory=list)
+    waiting_separator_line: int | None = None
+    waiting_separator_is_semantic: bool = False
+    active_heading: _Heading | None = None
+    active_open_separator_line: int | None = None
+
+    def consume(self, line_no: int) -> None:
+        if line_no in self.fenced_lines:
+            return
+        if line_no in self.separator_lines:
+            self._consume_separator(line_no)
+            return
+        if self.active_heading is not None or self.waiting_separator_line is None:
+            return
+        heading = self.heading_by_line.get(line_no)
+        if heading is not None and self.min_level <= heading.level <= self.max_level:
+            self._open_block(heading)
+        elif self.source_lines[line_no - 1].strip():
+            self._drop_waiting_separator()
+
+    def finish(self, end_line: int) -> None:
+        if self.active_heading is not None:
+            self._close_active_block(end_line=end_line, close_separator_line=None)
+        if self.waiting_separator_line is not None:
+            self._drop_waiting_separator()
+
+    def _consume_separator(self, line_no: int) -> None:
+        if self.active_heading is not None:
+            self._close_active_block(
+                end_line=line_no - 1,
+                close_separator_line=line_no,
+            )
+            self.waiting_separator_line = line_no
+            self.waiting_separator_is_semantic = True
+            return
+        self._drop_waiting_separator()
+        self.waiting_separator_line = line_no
+
+    def _open_block(self, heading: _Heading) -> None:
+        assert self.waiting_separator_line is not None
+        self.semantic_separator_lines.add(self.waiting_separator_line)
+        self.active_heading = heading
+        self.active_open_separator_line = self.waiting_separator_line
+        self.waiting_separator_line = None
+        self.waiting_separator_is_semantic = False
+
+    def _close_active_block(
+        self,
+        *,
+        end_line: int,
+        close_separator_line: int | None,
+    ) -> None:
+        assert self.active_heading is not None
+        assert self.active_open_separator_line is not None
+        self.blocks.append(
+            _build_block_payload(
+                rel_path=self.rel_path,
+                source_lines=self.source_lines,
+                heading=self.active_heading,
+                open_separator_line=self.active_open_separator_line,
+                close_separator_line=close_separator_line,
+                end_line=end_line,
+                include_content=self.include_content,
+                index=len(self.blocks) + 1,
+            )
+        )
+        if close_separator_line is not None:
+            self.semantic_separator_lines.add(close_separator_line)
+        self.active_heading = None
+        self.active_open_separator_line = None
+
+    def _drop_waiting_separator(self) -> None:
+        if (
+            self.waiting_separator_line is not None
+            and not self.waiting_separator_is_semantic
+        ):
+            self.orphan_separator_lines.append(self.waiting_separator_line)
+        self.waiting_separator_line = None
+        self.waiting_separator_is_semantic = False
 
 
 def validate_markdown_level_range(min_level: int, max_level: int) -> None:
@@ -181,6 +281,47 @@ def _build_block_payload(
     return block_data
 
 
+def _resolve_scan_window(
+    source_lines: list[str],
+    start_line: int | None,
+    end_line: int | None,
+) -> _ScanWindow:
+    line_count = len(source_lines)
+    effective_start = max(1, start_line if start_line is not None else 1)
+    effective_end = min(end_line if end_line is not None else line_count, line_count)
+    if (
+        line_count
+        and effective_start <= line_count
+        and effective_start <= effective_end
+    ):
+        lines = source_lines[effective_start - 1 : effective_end]
+    else:
+        lines = []
+        effective_start = min(effective_start, line_count + 1)
+        effective_end = max(effective_start - 1, 0)
+    return _ScanWindow(effective_start, effective_end, lines)
+
+
+def _assign_block_parents(blocks: list[dict[str, Any]]) -> None:
+    for index, block in enumerate(blocks):
+        parent = next(
+            (
+                candidate
+                for candidate in reversed(blocks[:index])
+                if int(candidate["level"]) < int(block["level"])
+            ),
+            None,
+        )
+        if parent is not None:
+            block["parent"] = {
+                "title": parent["title"],
+                "level": parent["level"],
+                "start_line": parent["start_line"],
+                "path_line": parent["path_line"],
+                "link": parent["link"],
+            }
+
+
 def _parse_file_blocks(
     root: Path,
     file_path: Path,
@@ -195,132 +336,33 @@ def _parse_file_blocks(
     source_lines = [line.text for line in model.lines]
     rel_path = file_path.relative_to(root).as_posix()
     source_line_count = len(source_lines)
-
-    requested_start = config_start_line if config_start_line is not None else 1
-    requested_end = (
-        config_end_line if config_end_line is not None else source_line_count
-    )
-    effective_start = max(1, requested_start)
-    effective_end = min(requested_end, source_line_count)
-
-    if (
-        source_line_count == 0
-        or effective_start > source_line_count
-        or effective_start > effective_end
-    ):
-        scan_lines: list[str] = []
-        effective_start = min(effective_start, source_line_count + 1)
-        effective_end = max(effective_start - 1, 0)
-    else:
-        scan_lines = source_lines[effective_start - 1 : effective_end]
+    window = _resolve_scan_window(source_lines, config_start_line, config_end_line)
 
     headings, separator_lines, has_unclosed_fence, fenced_lines = (
         _extract_headings_and_separators(
             model,
-            start_line=effective_start,
-            end_line=effective_end,
+            start_line=window.start_line,
+            end_line=window.end_line,
         )
     )
-    heading_by_line = {heading.start_line: heading for heading in headings}
-    separator_set = set(separator_lines)
+    state = _BlockScanState(
+        rel_path=rel_path,
+        source_lines=source_lines,
+        include_content=include_content,
+        min_level=min_level,
+        max_level=max_level,
+        heading_by_line={heading.start_line: heading for heading in headings},
+        separator_lines=frozenset(separator_lines),
+        fenced_lines=fenced_lines,
+    )
+    for line_no in range(window.start_line, window.end_line + 1):
+        state.consume(line_no)
+    state.finish(window.end_line)
+    _assign_block_parents(state.blocks)
 
-    blocks: list[dict[str, Any]] = []
-    semantic_separator_lines: set[int] = set()
-    orphan_separator_lines: list[int] = []
-
-    waiting_separator_line: int | None = None
-    waiting_separator_is_semantic = False
-    active_heading: _Heading | None = None
-    active_open_separator_line: int | None = None
-
-    for line_no in range(effective_start, effective_end + 1):
-        if line_no in fenced_lines:
-            continue
-        if line_no in separator_set:
-            if active_heading is not None and active_open_separator_line is not None:
-                block = _build_block_payload(
-                    rel_path=rel_path,
-                    source_lines=source_lines,
-                    heading=active_heading,
-                    open_separator_line=active_open_separator_line,
-                    close_separator_line=line_no,
-                    end_line=line_no - 1,
-                    include_content=include_content,
-                    index=len(blocks) + 1,
-                )
-                blocks.append(block)
-                semantic_separator_lines.add(line_no)
-
-                active_heading = None
-                active_open_separator_line = None
-                waiting_separator_line = line_no
-                waiting_separator_is_semantic = True
-                continue
-
-            if waiting_separator_line is not None and not waiting_separator_is_semantic:
-                orphan_separator_lines.append(waiting_separator_line)
-            waiting_separator_line = line_no
-            waiting_separator_is_semantic = False
-            continue
-
-        if active_heading is not None:
-            continue
-
-        if waiting_separator_line is None:
-            continue
-
-        heading = heading_by_line.get(line_no)
-        if heading is not None and min_level <= heading.level <= max_level:
-            open_separator_line = waiting_separator_line
-            semantic_separator_lines.add(open_separator_line)
-
-            waiting_separator_line = None
-            waiting_separator_is_semantic = False
-            active_heading = heading
-            active_open_separator_line = open_separator_line
-            continue
-
-        if source_lines[line_no - 1].strip() == "":
-            continue
-
-        if not waiting_separator_is_semantic:
-            orphan_separator_lines.append(waiting_separator_line)
-        waiting_separator_line = None
-        waiting_separator_is_semantic = False
-
-    if active_heading is not None and active_open_separator_line is not None:
-        block = _build_block_payload(
-            rel_path=rel_path,
-            source_lines=source_lines,
-            heading=active_heading,
-            open_separator_line=active_open_separator_line,
-            close_separator_line=None,
-            end_line=effective_end,
-            include_content=include_content,
-            index=len(blocks) + 1,
-        )
-        blocks.append(block)
-
-    if waiting_separator_line is not None and not waiting_separator_is_semantic:
-        orphan_separator_lines.append(waiting_separator_line)
-
-    for index, block in enumerate(blocks):
-        parent: dict[str, Any] | None = None
-        for candidate in reversed(blocks[:index]):
-            if int(candidate["level"]) < int(block["level"]):
-                parent = {
-                    "title": candidate["title"],
-                    "level": candidate["level"],
-                    "start_line": candidate["start_line"],
-                    "path_line": candidate["path_line"],
-                    "link": candidate["link"],
-                }
-                break
-        block["parent"] = parent
-
-    first_anchor_line = int(blocks[0]["start_line"]) if blocks else None
+    first_anchor_line = int(state.blocks[0]["start_line"]) if state.blocks else None
     first_anchor_local_line = (
-        (first_anchor_line - effective_start + 1)
+        (first_anchor_line - window.start_line + 1)
         if first_anchor_line is not None
         else None
     )
@@ -329,26 +371,26 @@ def _parse_file_blocks(
         "path": rel_path,
         "absolute_path": str(file_path),
         "line_count": source_line_count,
-        "scanned_line_count": len(scan_lines),
+        "scanned_line_count": len(window.lines),
         "heading_count": len(headings),
-        "block_count": len(blocks),
-        "scan_start_line": effective_start,
-        "scan_end_line": effective_end,
+        "block_count": len(state.blocks),
+        "scan_start_line": window.start_line,
+        "scan_end_line": window.end_line,
         "first_heading_line": headings[0].start_line if headings else None,
         "first_block_line": first_anchor_line,
         "preamble_nonempty_line_count": _count_preamble_nonempty_lines(
-            scan_lines,
+            window.lines,
             first_anchor_local_line,
         ),
         "separator": BLOCK_SEPARATOR,
         "separator_count": len(separator_lines),
         "separator_lines": separator_lines,
-        "semantic_separator_count": len(semantic_separator_lines),
-        "semantic_separator_lines": sorted(semantic_separator_lines),
-        "orphan_separator_count": len(orphan_separator_lines),
-        "orphan_separator_lines": sorted(set(orphan_separator_lines)),
+        "semantic_separator_count": len(state.semantic_separator_lines),
+        "semantic_separator_lines": sorted(state.semantic_separator_lines),
+        "orphan_separator_count": len(state.orphan_separator_lines),
+        "orphan_separator_lines": sorted(set(state.orphan_separator_lines)),
         "has_unclosed_fence": has_unclosed_fence,
-        "blocks": blocks,
+        "blocks": state.blocks,
     }
 
 
