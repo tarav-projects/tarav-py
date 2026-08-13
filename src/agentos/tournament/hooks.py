@@ -18,6 +18,13 @@ and the module attribute ``control_rate`` says how often one is substituted in.
 The hook returns the *pool*, never one control per call: which control lands in
 which match is engine work.
 
+``match_frame`` returns a ``Match.Frame`` — the definition's typed, composable
+description of the whole prompt, with a ``Players()`` placeholder where the
+candidates go. A definition that omits it renders exactly the bytes it rendered
+before frames existed. With one, ``present_player`` may return a frame node
+instead of a string, and a card may cite shared material the frame carries once
+rather than copying it into every candidate.
+
 ``player_label`` and ``match_label`` attach opaque grouping tags the engine
 records and never interprets. They are reader-side: a label never reaches the
 judge, exactly like a control's declared band. A run may also supply consumer
@@ -41,6 +48,7 @@ from types import MappingProxyType, ModuleType
 
 from agentos.tournament import locking
 from agentos.tournament.contract import CONTROL_BANDS, MAX_ARITY, MIN_ARITY
+from agentos.tournament.frame import Frame, Node, render_node
 from agentos.tournament.model import TournamentError
 
 MATCH_PLAYERS = "match_players"
@@ -50,9 +58,17 @@ VERDICT_SLOT = "verdict_slot"
 CONTROLS = "controls"
 PLAYER_LABEL = "player_label"
 MATCH_LABEL = "match_label"
+MATCH_FRAME = "match_frame"
 
 REQUIRED_HOOKS = (MATCH_PLAYERS, MATCH_IDENTITY)
-DEFAULTED_HOOKS = (PRESENT_PLAYER, VERDICT_SLOT, CONTROLS, PLAYER_LABEL, MATCH_LABEL)
+DEFAULTED_HOOKS = (
+    PRESENT_PLAYER,
+    VERDICT_SLOT,
+    CONTROLS,
+    PLAYER_LABEL,
+    MATCH_LABEL,
+    MATCH_FRAME,
+)
 HOOK_NAMES = REQUIRED_HOOKS + DEFAULTED_HOOKS
 
 DEFAULT_QUESTION = "Rank the candidates below from best to worst."
@@ -179,18 +195,61 @@ class TournamentDefinition:
             return {}
         return _validated_controls(value)
 
-    def present_player(self, player: str) -> str:
-        hook = getattr(self.module, PRESENT_PLAYER, None)
+    def match_frame(
+        self, *, players: tuple[str, ...], presentations: tuple[str, ...]
+    ) -> Frame | None:
+        """This match's composed prompt, or None to keep the legacy frame.
+
+        A definition that supplies no frame renders exactly the bytes it rendered
+        before frames existed. That equivalence is load-bearing, not courteous: a
+        verbatim that cannot be rebuilt exactly cannot be checked against its
+        recorded hash.
+        """
+        hook = getattr(self.module, MATCH_FRAME, None)
         if hook is None:
-            return str(player)
-        context = self._context(player=str(player))
-        value = self._call(PRESENT_PLAYER, hook, context)
-        if not isinstance(value, str) or not value.strip():
+            return None
+        context = self._context(players=players, presentations=presentations)
+        value = self._call(MATCH_FRAME, hook, context)
+        if value is None:
+            return None
+        if not isinstance(value, Frame):
             raise HookReturnError(
-                f"{PRESENT_PLAYER} must return a non-empty string "
+                f"{MATCH_FRAME} must return a Frame or None "
                 f"(got {type(value).__name__})"
             )
         return value
+
+    def present_player(self, player: str) -> str:
+        return self.present_card(player)[0]
+
+    def present_card(self, player: str) -> tuple[str, Node | None]:
+        """The player's card, rendered, and the node it came from when it had one.
+
+        A card may be a string or a frame node. The string path is the old one and
+        stays; the node path is what lets a card cite shared material instead of
+        carrying its own copy of it. The node travels back beside the text because
+        the composition point — not this hook — is where a cite can be checked
+        against the frame's tables, and an unresolvable one must not reach a spawn.
+        """
+        hook = getattr(self.module, PRESENT_PLAYER, None)
+        if hook is None:
+            return str(player), None
+        context = self._context(player=str(player))
+        value = self._call(PRESENT_PLAYER, hook, context)
+        if isinstance(value, Node):
+            rendered = render_node(value)
+            if not rendered.strip():
+                raise HookReturnError(
+                    f"{PRESENT_PLAYER} returned a node that renders to nothing "
+                    f"for player {player!r}"
+                )
+            return rendered, value
+        if not isinstance(value, str) or not value.strip():
+            raise HookReturnError(
+                f"{PRESENT_PLAYER} must return a non-empty string or a frame node "
+                f"(got {type(value).__name__})"
+            )
+        return value, None
 
     def player_label(self, player: str) -> str | None:
         """This player's grouping tag, or None when it carries none.

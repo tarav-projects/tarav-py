@@ -165,3 +165,100 @@ def _component_addresses(registry: ComponentRegistry, verdict) -> tuple[str, ...
             found.append(section["component"])
         found.extend(section.get("presentations") or ())
     return tuple(found)
+
+
+FRAMED_DEFINITION = '''
+from agentos.tournament import Cite, Frame, Players, Section, Shuffle, Table, Text
+
+VOCABULARY = {
+    "DF": "names a thing",
+    "DC": "pins a choice",
+    "CT": "bounds one",
+    "RJ": "rejects one",
+}
+
+def match_players(ctx):
+    return ("alpha@DC", "beta@CT")
+
+def present_player(ctx):
+    anchor, _, code = ctx.player.rpartition("@")
+    return Section(
+        "candidate",
+        [Text(f"line: the line called {anchor}"), Cite("Line types", code)],
+    )
+
+def match_identity(ctx):
+    return "|".join(ctx.players)
+
+def match_frame(ctx):
+    return Frame(
+        question="Which line is most accurately typed?",
+        nodes=(
+            Text("Rank by how well each line does what its own type says."),
+            Shuffle(Table("Line types", VOCABULARY)),
+            Players(),
+        ),
+    )
+'''
+
+
+def _run_framed(tmp_path: Path):
+    path = tmp_path / "definition.py"
+    path.write_text(FRAMED_DEFINITION, encoding="utf-8")
+    store = TournamentStore(tmp_path / "tournament")
+    definition = load_definition(path, snapshot_dir=tmp_path / "snap")
+    tournament = store.create_tournament(
+        definition_path=str(path), definition_digest=definition.digest
+    )
+    result = run_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=("alpha@DC", "beta@CT"),
+        spawn=JudgeSpawn(agent=StubJudge(["A", "B"]), cwd=tmp_path),
+        rng_seed=11,
+    )
+    return store, tournament, result
+
+
+def test_a_framed_verdict_reassembles_including_its_shuffled_order(
+    tmp_path: Path,
+) -> None:
+    """The permutation lives in the bindings, so the rebuild must recover it."""
+    store, tournament, result = _run_framed(tmp_path)
+    verdict = store.verdicts(tournament.tournament_id)[0]
+
+    rebuilt = reassemble(store, verdict)
+
+    assert rebuilt == result.verbatim
+    digest = "sha256:" + hashlib.sha256(rebuilt.encode("utf-8")).hexdigest()
+    assert digest == verdict.envelope["verbatim_hash"]
+
+
+def test_a_framed_match_renders_its_shared_material_once(tmp_path: Path) -> None:
+    _store, _tournament, result = _run_framed(tmp_path)
+    assert result.verbatim.count("pins a choice") == 1
+    assert result.verbatim.count("bounds one") == 1
+
+
+def test_a_framed_verdict_records_its_permutation(tmp_path: Path) -> None:
+    store, tournament, _result = _run_framed(tmp_path)
+    verdict = store.verdicts(tournament.tournament_id)[0]
+    operations = verdict.envelope["template_bindings"]["frame_operations"]
+    assert sorted(operations["0"]) == [0, 1, 2, 3]
+
+
+def test_the_shared_table_dedups_across_matches(tmp_path: Path) -> None:
+    """The whole point of addressing the frame: one copy in the depot, not one per match."""
+    store, tournament, first = _run_framed(tmp_path)
+    path = tmp_path / "definition.py"
+    definition = load_definition(path, snapshot_dir=tmp_path / "snap2")
+    second = run_match(
+        store=store,
+        definition=definition,
+        tournament=tournament,
+        players=("alpha@DC", "beta@CT"),
+        spawn=JudgeSpawn(agent=StubJudge(["B", "A"]), cwd=tmp_path),
+        rng_seed=99,
+    )
+    assert first.template == second.template

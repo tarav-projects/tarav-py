@@ -9,7 +9,6 @@ import pytest
 
 from agentos._core.errors import CliError
 from agentos.hooks import (
-    AGENTOS_HOOKS_DISABLED_ENV,
     HookError,
     HookInvocation,
     HookRegistry,
@@ -204,28 +203,6 @@ def test_stdin_cli_context_reaches_callbacks(monkeypatch: pytest.MonkeyPatch) ->
     )
     assert seen[0].ctx == {"prompt": "hello"}
     assert seen[0].ctx_type is None
-
-
-def test_hook_cli_can_be_suppressed_for_internal_agent_processes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    registry = HookRegistry()
-    seen: list[HookInvocation] = []
-    submitted: list[HookInvocation] = []
-    registry.register("agent.turn.stop", seen.append)
-    registry.register("agent.turn.stop", lambda _invocation: None, execution="daemon")
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    register_hook_commands(
-        subparsers,
-        registry=registry,
-        deferred_submitter=submitted.append,
-    )
-    monkeypatch.setenv(AGENTOS_HOOKS_DISABLED_ENV, "1")
-
-    assert _run(parser, ["hook", "--name", "agent.turn.stop", "--ctx", "{}"]) == 0
-    assert seen == []
-    assert submitted == []
 
 
 def test_hook_cli_submits_once_only_when_daemon_callbacks_exist() -> None:

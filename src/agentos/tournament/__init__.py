@@ -3,6 +3,20 @@
 
 from .components import ComponentMissingError, ComponentRegistry
 from .depot import resolve_depot_root
+from .frame import (
+    Cite,
+    Frame,
+    FrameError,
+    Players,
+    Raw,
+    Section,
+    Sequence,
+    Shuffle,
+    Table,
+    Text,
+    render_frame,
+    render_node,
+)
 from .tickets import Ticket, TicketError, TicketStore
 from .contract import (
     MAX_ARITY,
@@ -44,6 +58,18 @@ from .template import (
 
 __all__ = [
     "MAX_ARITY",
+    "Cite",
+    "Frame",
+    "FrameError",
+    "Players",
+    "Raw",
+    "Section",
+    "Sequence",
+    "Shuffle",
+    "Table",
+    "Text",
+    "render_frame",
+    "render_node",
     "OUTCOME_NO_CONTEST",
     "POSITION_LABELS",
     "REFUSAL_REASON_FIELD",

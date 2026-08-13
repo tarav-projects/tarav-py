@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import pytest
 
+from agentos.tournament.frame import Frame, Players, Shuffle, Table, Text
+from agentos.tournament.model import TournamentError
 from agentos.tournament.runner import compose_verbatim
 from agentos.tournament.template import build_template, render_template
 
@@ -190,3 +192,109 @@ def _legacy_verbatim(
             "Nothing you print is read; only the submitted command counts."
         )
     return "\n\n".join(parts)
+
+
+# --------------------------------------------------------------------------
+# Version 2: a definition-composed Match.Frame
+# --------------------------------------------------------------------------
+
+
+def _typed_frame() -> Frame:
+    """The shape the index Line.Type tournament needs: shared material, cited."""
+    return Frame(
+        question="Which line is most accurately typed?",
+        nodes=(
+            Text("Rank by fit between the line and its own type."),
+            Shuffle(Table("Line types", {"DC": "pins a choice", "CT": "bounds one"})),
+            Players(),
+        ),
+    )
+
+
+def _v2(frame: Frame, *, operations=None, ticket_id=None, depot=None):
+    template, components, bindings = build_template(
+        question="ignored when a frame is supplied",
+        criteria=None,
+        presented_presentations=("first card", "second card"),
+        ticket_id=ticket_id,
+        depot_root=depot,
+        frame=frame,
+        frame_operations=operations,
+    )
+    return template, components, bindings
+
+
+def test_a_frame_selects_the_version_2_template() -> None:
+    template, _components, _bindings = _v2(_typed_frame())
+    assert template["template_version"] == 2
+    assert [section["kind"] for section in template["sections"]] == [
+        "frame",
+        "candidates",
+        "footnote",
+    ]
+
+
+def test_no_frame_still_selects_version_1() -> None:
+    """Every definition written before frames must render the bytes it always did."""
+    template, _components, _bindings = build_template(
+        question="q", criteria=None, presented_presentations=("a", "b")
+    )
+    assert template["template_version"] == 1
+
+
+def test_the_frame_decides_where_the_candidates_land() -> None:
+    template, components, bindings = _v2(_typed_frame(), operations={"0": [0, 1]})
+    rendered = render_template(template, components, bindings)
+    assert rendered.index("Line types") < rendered.index("A:\nfirst card")
+    assert rendered.startswith("Which line is most accurately typed?")
+
+
+def test_the_frame_question_wins_over_the_module_attribute() -> None:
+    template, components, bindings = _v2(_typed_frame(), operations={"0": [0, 1]})
+    rendered = render_template(template, components, bindings)
+    assert "ignored when a frame is supplied" not in rendered
+
+
+def test_shared_material_is_rendered_once() -> None:
+    """The point of a frame: five cards, one copy of what they all cite."""
+    template, components, bindings = _v2(_typed_frame(), operations={"0": [0, 1]})
+    rendered = render_template(template, components, bindings)
+    assert rendered.count("pins a choice") == 1
+
+
+def test_the_permutation_is_a_binding_not_template_content() -> None:
+    """A template restating its run's shuffle would be unique per match."""
+    import json
+
+    forward, _components, forward_bindings = _v2(_typed_frame(), operations={"0": [0, 1]})
+    reverse, _components2, reverse_bindings = _v2(_typed_frame(), operations={"0": [1, 0]})
+    assert json.dumps(forward) == json.dumps(reverse)
+    assert forward_bindings["frame_operations"] == {"0": [0, 1]}
+    assert reverse_bindings["frame_operations"] == {"0": [1, 0]}
+
+
+def test_the_recorded_permutation_alone_rebuilds_the_order() -> None:
+    template, components, _bindings = _v2(_typed_frame())
+    forward = render_template(
+        template, components, {"ticket_id": None, "frame_operations": {"0": [0, 1]}}
+    )
+    reverse = render_template(
+        template, components, {"ticket_id": None, "frame_operations": {"0": [1, 0]}}
+    )
+    assert forward.index("DC:") < forward.index("CT:")
+    assert reverse.index("CT:") < reverse.index("DC:")
+
+
+def test_a_version_2_template_still_carries_the_submit_instruction() -> None:
+    template, components, bindings = _v2(
+        _typed_frame(), operations={"0": [0, 1]}, ticket_id="tk-9", depot="/d"
+    )
+    rendered = render_template(template, components, bindings)
+    assert "agentos tournament submit --depot /d --ticket tk-9" in rendered
+
+
+def test_an_unknown_template_version_names_both_renderable_ones() -> None:
+    template, components, bindings = _v2(_typed_frame(), operations={"0": [0, 1]})
+    template["template_version"] = 99
+    with pytest.raises(TournamentError, match="renders versions 1 and 2"):
+        render_template(template, components, bindings)

@@ -1,9 +1,9 @@
-# 722 — Runtime composition and Chat.Index turn-stop maintenance
+# 722 — Runtime composition and Chatlas turn-stop maintenance
 
 ## Impl.Abstract
 
-- **Scope:** finish the Python monolith composition root and upgrade the daemon-owned `agent.turn.stop` Chatlas consumer from dataset refresh to semantic `Chat.Index` maintenance.
-- **Status:** implemented and verified.
+- **Scope:** finish the Python monolith composition root and run the canonical targeted Chatlas update from the daemon-owned `agent.turn.stop` consumer.
+- **Status:** corrected and verified; the semantic `Chat.Index` producer described by the original edition was rejected and retired on 2026-08-12.
 - **Source:** persistent `$agentos-hugentics --impl --dev --AUTO` execution gate. ^c20260811-54u
 - **Baseline:** the migrated monolith passes the complete 1,786-test parity suite, but its migration changes are not checkpointed; `agentos.cli` still owns subsystem wiring; the Chatlas hook only refreshes and warms the normalized session model.
 - **Out of scope:** redesigning Chat.Index semantics, making semantic capture synchronous with the harness, adding durable daemon retry, or retiring the preserved `_DEPRECATED` repositories.
@@ -23,14 +23,11 @@
 - The daemon continues to create the same runtime in-process and never invokes the Agentos CLI.
 - Command composition remains lazy enough that daemon-only startup does not eagerly import the full CLI surface.
 
-### Chat.Index.TurnStop
+### Chatlas.TurnStop
 
-- `agent.turn.stop` first refreshes exactly the provider/session named by the hook and resolves its authoritative Chatlas identity.
-- The daemon then maintains the real per-session `Chat.Index` through the existing semantic capture contract: scaffolded bounded evidence, agent-authored Delta/HEAD meaning, validation, and atomic apply.
-- The consumer reuses Chatlas's configured production agent selection rather than inventing a second provider/profile/model configuration surface.
-- Current surfaces are idempotent no-ops; append-only surfaces inspect only pending evidence; revised, diverged, or blocked surfaces fail closed through the existing capture invariants.
-- The semantic producer runs as an Agentos library consumer. It may spawn the configured provider harness, but never shells out to `agentos` or hand-writes Delta files.
-- Maintenance-agent subprocesses suppress Agentos hook delivery through an explicit process-control environment variable, preventing recursive turn-stop production. This variable controls dispatch only; it is never treated as provider context data.
+- `agent.turn.stop` refreshes exactly the provider/session named by the hook through `chatlas_update(...)`.
+- The targeted daemon callback uses the same incremental append trust selected by `agentos chatlas update --session-id`.
+- The callback does not resolve or produce a semantic `Chat.Index`, warm a second model, or spawn an agent.
 - Failures remain daemon callback failures: they are logged and serial dispatch continues according to the existing hook/daemon semantics.
 
 ## Impl.Agendix
@@ -56,12 +53,12 @@
 - **GREEN:** move deterministic registrar order and subsystem injections into a lazy runtime method; keep CLI behavior and extension hooks compatible.
 - **Check:** runtime, CLI, daemon, and command-surface tests.
 
-### Vertical.Slice 3 — Semantic turn-stop capture
+### Vertical.Slice 3 — Targeted turn-stop update
 
-- **Status:** complete.
-- **RED:** prove turn-stop invokes a semantic capture producer after targeted refresh, uses the resolved identity, suppresses recursive hooks, and logs failures through ordinary daemon dispatch.
-- **GREEN:** add an importable Chat.Index capture runner over the configured Agentos provider, call it from the Chatlas hook consumer, and add generic hook-dispatch suppression for that child process.
-- **Check:** focused Chatlas capture/hook, agent runtime, hook, and daemon tests with all external processes replaced by fakes.
+- **Status:** corrected after live verification exposed the original semantic producer as an invalid extension of the update hook.
+- **RED:** prove the daemon callback narrows the canonical update to the hook provider/session and selects append trust.
+- **GREEN:** remove semantic capture, child-agent spawning, model warming, and the now-unused internal hook-suppression control.
+- **Check:** focused Chatlas hook, hook ingress, and daemon tests.
 
 ### Vertical.Slice 4 — Verification and closure
 
@@ -84,3 +81,4 @@
 - **Verification:** the complete monolith suite passes 1,792 tests; all touched Python files pass Ruff; `git diff --check` passes; source and wheel builds pass.
 - **Installed verification:** the editable monolith owns all four executables, imports resolve to `agentos-py/src/agentos`, the LaunchAgent targets the dedicated `agentos-daemon`, and `agentos daemon install` returned a live PID after the forced-restart repair.
 - **Daemon verification:** an installed `agent.turn.stop` smoke event was accepted and dispatched serially by the live daemon; an unsupported `ctx_type` intentionally exercised transport without triggering provider-specific retained production.
+- **Correction:** live stop events showed that the semantic producer blocked the serial daemon for minutes and failed without materializing a surface. The hook now runs only the canonical targeted `chatlas_update(...)`; the dedicated child-agent producer and its hook-suppression environment control were removed.

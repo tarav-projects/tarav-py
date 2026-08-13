@@ -6,7 +6,12 @@ A ``Match.Verbatim`` is derived, never stored. What is stored is a
 the per-run values those parts need bound into them. Rendering is pure data work
 here, so a verdict written by one engine version rebuilds under another.
 
-Three component kinds, all addressed the same way:
+Two template versions render here, and version 1 is not debt to retire: every
+verdict recorded before frames existed names one, and a prompt that cannot be
+rebuilt is a `verbatim_hash` that cannot be checked.
+
+Version 1 — the fixed frame a definition got before it could compose one. Three
+component kinds, all addressed the same way:
 
 - ``Match.Brief`` — the definition's question and optional criteria, one component
   because they change together and only when the definition does.
@@ -14,6 +19,15 @@ Three component kinds, all addressed the same way:
   Identical presentations collapse to one address, which is where dedup pays.
 - ``Match.Footnote.Template`` — the engine's trailing frame with its holes still
   open: the ranking instruction and the two submit commands.
+
+Version 2 — the definition composed a ``Match.Frame``, so the brief is replaced
+by that whole frame as a *single* component. One component and not one per node
+because the frame is identical across every match of a run; the per-match
+variation is the presentations, and that is already where dedup pays. The frame
+carries a ``Players()`` placeholder, so it renders *around* the candidates rather
+than before them, and any permutation it declared rides ``template_bindings``
+under ``frame_operations`` — a template restating its own run's shuffle would be
+unique per match and dedup nothing.
 
 Position labels are generated here from arity. They are engine frame, but they
 interleave the presentations rather than trailing them, so they belong to neither
@@ -29,15 +43,19 @@ from typing import TYPE_CHECKING
 
 from agentos.tournament.components import ComponentRegistry
 from agentos.tournament.contract import position_labels
+from agentos.tournament.frame import Frame, render_frame
+from agentos.tournament.frame import canonical as frame_canonical
 from agentos.tournament.model import TournamentError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agentos.tournament.model import Verdict
     from agentos.tournament.store import TournamentStore
 
-TEMPLATE_VERSION = 1
+TEMPLATE_VERSION = 2
+LEGACY_TEMPLATE_VERSION = 1
 
 KIND_BRIEF = "brief"
+KIND_FRAME = "frame"
 KIND_CANDIDATES = "candidates"
 KIND_FOOTNOTE = "footnote"
 
@@ -84,6 +102,8 @@ def build_template(
     presented_presentations: tuple[str, ...],
     ticket_id: str | None = None,
     depot_root: Path | str | None = None,
+    frame: Frame | None = None,
+    frame_operations: dict[str, object] | None = None,
 ) -> tuple[dict[str, object], dict[str, bytes], dict[str, object]]:
     """Describe one match prompt as data.
 
@@ -91,46 +111,58 @@ def build_template(
     bindings the renderer needs. The bindings stay out of the template: a template
     that restated its run's ticket would be unique per run and dedup nothing, and
     the values are already recorded beside it.
+
+    Without a ``frame`` this emits a version 1 template — the fixed brief,
+    candidates, and footnote a definition got before frames existed. With one it
+    emits version 2, where the definition's whole composed frame is a single
+    component. One component and not one per node because the frame is identical
+    across every match of a run: the per-match variation is the presentations,
+    and that is already where dedup pays.
     """
     components: dict[str, bytes] = {}
-
-    brief = _brief_text(question, criteria)
-    brief_address = _put(components, brief)
 
     presentation_addresses = tuple(
         _put(components, presentation) for presentation in presented_presentations
     )
-
     footnote = FOOTNOTE_TEMPLATE if ticket_id is not None else RANKING_TEMPLATE
     footnote_address = _put(components, footnote)
 
+    candidates_section = {
+        "kind": KIND_CANDIDATES,
+        "origin": ORIGIN_ENGINE,
+        "presentations": list(presentation_addresses),
+    }
+    footnote_section = {
+        "kind": KIND_FOOTNOTE,
+        "origin": ORIGIN_ENGINE,
+        "component": footnote_address,
+    }
+
+    if frame is None:
+        head: dict[str, object] = {
+            "kind": KIND_BRIEF,
+            "origin": ORIGIN_DEFINITION,
+            "component": _put(components, _brief_text(question, criteria)),
+        }
+        version = LEGACY_TEMPLATE_VERSION
+    else:
+        head = {
+            "kind": KIND_FRAME,
+            "origin": ORIGIN_DEFINITION,
+            "component": _put_bytes(components, frame_canonical(frame.to_dict())),
+        }
+        version = TEMPLATE_VERSION
+
     template: dict[str, object] = {
-        "template_version": TEMPLATE_VERSION,
-        "sections": [
-            {
-                "kind": KIND_BRIEF,
-                "origin": ORIGIN_DEFINITION,
-                "component": brief_address,
-            },
-            {
-                "kind": KIND_CANDIDATES,
-                "origin": ORIGIN_ENGINE,
-                "presentations": list(presentation_addresses),
-            },
-            {
-                "kind": KIND_FOOTNOTE,
-                "origin": ORIGIN_ENGINE,
-                "component": footnote_address,
-            },
-        ],
+        "template_version": version,
+        "sections": [head, candidates_section, footnote_section],
     }
     bindings: dict[str, object] = {
         "ticket_id": ticket_id,
-
-
-
         "depot_root": None if depot_root is None else str(depot_root),
     }
+    if frame is not None:
+        bindings["frame_operations"] = dict(frame_operations or {})
     return template, components, bindings
 
 
@@ -139,14 +171,29 @@ def render_template(
     components: dict[str, bytes],
     bindings: dict[str, object],
 ) -> str:
-    """Rebuild the exact text a judge was handed."""
-    version = template.get("template_version")
-    if version != TEMPLATE_VERSION:
-        raise TournamentError(
-            f"unknown match template version: {version!r} "
-            f"(this engine renders version {TEMPLATE_VERSION})"
-        )
+    """Rebuild the exact text a judge was handed.
 
+    Both template versions render here. Version 1 is not legacy debt to retire —
+    every verdict recorded before frames existed names one, and a verdict whose
+    prompt cannot be rebuilt is a verdict whose hash cannot be checked.
+    """
+    version = template.get("template_version")
+    if version == LEGACY_TEMPLATE_VERSION:
+        return _render_v1(template, components, bindings)
+    if version == TEMPLATE_VERSION:
+        return _render_v2(template, components, bindings)
+    raise TournamentError(
+        f"unknown match template version: {version!r} "
+        f"(this engine renders versions {LEGACY_TEMPLATE_VERSION} "
+        f"and {TEMPLATE_VERSION})"
+    )
+
+
+def _render_v1(
+    template: dict[str, object],
+    components: dict[str, bytes],
+    bindings: dict[str, object],
+) -> str:
     parts: list[str] = []
     for section in _sections(template):
         kind = section.get("kind")
@@ -154,21 +201,62 @@ def render_template(
             brief = _text(components, section["component"])
             parts.extend(part for part in brief.split("\n\n") if part)
         elif kind == KIND_CANDIDATES:
-            addresses = tuple(section.get("presentations") or ())
-            labels = position_labels(len(addresses))
-            for label, address in zip(labels, addresses):
-                parts.append(f"{label}:\n{_text(components, address)}")
+            parts.append(_candidates_block(section, components))
         elif kind == KIND_FOOTNOTE:
-            parts.append(
-                _rendered_footnote(
-                    _text(components, section["component"]),
-                    arity=_arity(template),
-                    bindings=bindings,
-                )
-            )
+            parts.append(_footnote_part(section, template, components, bindings))
         else:
             raise TournamentError(f"unknown match template section: {kind!r}")
     return "\n\n".join(parts)
+
+
+def _render_v2(
+    template: dict[str, object],
+    components: dict[str, bytes],
+    bindings: dict[str, object],
+) -> str:
+    """The frame decides where the candidates land, so it renders around them."""
+    sections = {str(section.get("kind")): section for section in _sections(template)}
+    for kind in (KIND_FRAME, KIND_CANDIDATES, KIND_FOOTNOTE):
+        if kind not in sections:
+            raise TournamentError(f"a version 2 match template needs a {kind!r} section")
+
+    candidates = _candidates_block(sections[KIND_CANDIDATES], components)
+    frame_data = json.loads(
+        _text(components, sections[KIND_FRAME]["component"])
+    )
+    body = render_frame(
+        frame_data,
+        players_block=candidates,
+        operations=bindings.get("frame_operations") or {},
+    )
+    footnote = _footnote_part(
+        sections[KIND_FOOTNOTE], template, components, bindings
+    )
+    return "\n\n".join([body, footnote])
+
+
+def _candidates_block(
+    section: dict[str, object], components: dict[str, bytes]
+) -> str:
+    addresses = tuple(section.get("presentations") or ())
+    labels = position_labels(len(addresses))
+    return "\n\n".join(
+        f"{label}:\n{_text(components, address)}"
+        for label, address in zip(labels, addresses)
+    )
+
+
+def _footnote_part(
+    section: dict[str, object],
+    template: dict[str, object],
+    components: dict[str, bytes],
+    bindings: dict[str, object],
+) -> str:
+    return _rendered_footnote(
+        _text(components, section["component"]),
+        arity=_arity(template),
+        bindings=bindings,
+    )
 
 
 def register_template(
@@ -257,7 +345,10 @@ def _brief_text(question: str, criteria: str | None) -> str:
 
 
 def _put(components: dict[str, bytes], text: str) -> str:
-    data = text.encode("utf-8")
+    return _put_bytes(components, text.encode("utf-8"))
+
+
+def _put_bytes(components: dict[str, bytes], data: bytes) -> str:
     address = "sha256:" + hashlib.sha256(data).hexdigest()
     components[address] = data
     return address

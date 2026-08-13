@@ -358,3 +358,88 @@ def test_a_hook_cannot_mutate_the_parameters_it_was_handed(tmp_path: Path) -> No
     definition = _load(tmp_path, body, params={"run": "seven"})
     with pytest.raises(TypeError):
         definition.match_label(players=("a",), presentations=("A",))
+
+
+# --------------------------------------------------------------------------
+# match_frame
+# --------------------------------------------------------------------------
+
+
+FRAMED = '''
+from agentos.tournament import Cite, Frame, Players, Section, Shuffle, Table, Text
+
+VOCABULARY = {"DC": "pins a choice", "CT": "bounds one"}
+
+def match_players(ctx):
+    return ("a@DC", "b@CT")
+
+def match_identity(ctx):
+    return "|".join(ctx.players)
+
+def present_player(ctx):
+    anchor, _, code = ctx.player.rpartition("@")
+    return Section("candidate", [Text(f"line: {anchor}"), Cite("Line types", code)])
+
+def match_frame(ctx):
+    return Frame(
+        question="Which line is most accurately typed?",
+        nodes=(Shuffle(Table("Line types", VOCABULARY)), Players()),
+    )
+'''
+
+
+def test_a_definition_without_match_frame_supplies_none(tmp_path: Path) -> None:
+    definition = _load(tmp_path, MINIMAL)
+    assert definition.match_frame(players=("a", "b"), presentations=("a", "b")) is None
+
+
+def test_match_frame_returns_a_frame(tmp_path: Path) -> None:
+    from agentos.tournament import Frame
+
+    definition = _load(tmp_path, FRAMED)
+    frame = definition.match_frame(players=("a@DC",), presentations=("x",))
+    assert isinstance(frame, Frame)
+
+
+def test_match_frame_must_return_a_frame(tmp_path: Path) -> None:
+    body = MINIMAL + '\ndef match_frame(ctx):\n    return "just a string"\n'
+    definition = _load(tmp_path, body)
+    with pytest.raises(HookReturnError, match="must return a Frame or None"):
+        definition.match_frame(players=("a",), presentations=("x",))
+
+
+def test_present_player_accepts_a_node(tmp_path: Path) -> None:
+    definition = _load(tmp_path, FRAMED)
+    text, node = definition.present_card("a@DC")
+    assert node is not None
+    assert "line: a" in text
+    assert text.rstrip().endswith("DC")
+
+
+def test_present_player_still_accepts_a_string(tmp_path: Path) -> None:
+    body = MINIMAL + '\ndef present_player(ctx):\n    return f"<{ctx.player}>"\n'
+    definition = _load(tmp_path, body)
+    assert definition.present_card("a") == ("<a>", None)
+
+
+def test_a_card_citing_a_missing_key_is_refused_before_any_spawn(
+    tmp_path: Path,
+) -> None:
+    """The check must fail at composition, not at render — a spawn costs money."""
+    from agentos.tournament import FrameError
+    from agentos.tournament.runner import _prepared
+
+    body = FRAMED.replace('VOCABULARY = {"DC": "pins a choice", "CT": "bounds one"}',
+                          'VOCABULARY = {"DC": "pins a choice"}')
+    definition = _load(tmp_path, body)
+    with pytest.raises(FrameError, match="does not define"):
+        _prepared(definition, ("a@DC", "b@CT"))
+
+
+def test_a_valid_framed_definition_composes(tmp_path: Path) -> None:
+    from agentos.tournament.runner import _prepared
+
+    definition = _load(tmp_path, FRAMED)
+    presentations, frame = _prepared(definition, ("a@DC", "b@CT"))
+    assert len(presentations) == 2
+    assert frame is not None

@@ -40,6 +40,7 @@ from agentos.agent.run_runtime import (
     AgentRunResult,
 )
 from agentos.tournament.components import ComponentRegistry
+from agentos.tournament.frame import Frame, plan_operations, validate_cards
 from agentos.tournament.hooks import HookError, TournamentDefinition
 from agentos.tournament.model import Tournament, Verdict
 from agentos.tournament.store import TournamentStore
@@ -136,24 +137,55 @@ def _composed(
     ticket_id: str | None = None,
     depot_root: Path | str | None = None,
     registry: ComponentRegistry | None = None,
+    frame: Frame | None = None,
+    rng: random.Random | None = None,
 ) -> tuple[str, str | None, dict[str, object]]:
     """Render the frame and, given a registry, leave its parts behind.
 
     Returns the verbatim, the template's address when one was registered, and the
     bindings that produced it.
+
+    Every declared shuffle is drawn here, from the match's own rng, exactly as
+    presentation order already is. Drawing it inside the definition would produce
+    a permutation the engine could neither reproduce nor record.
     """
+    operations = (
+        plan_operations(frame, rng or random.Random())
+        if frame is not None
+        else None
+    )
     template, components, bindings = build_template(
         question=question,
         criteria=criteria,
         presented_presentations=presented_presentations,
         ticket_id=ticket_id,
         depot_root=depot_root,
+        frame=frame,
+        frame_operations=operations,
     )
     verbatim = render_template(template, components, bindings)
     address = (
         None if registry is None else register_template(registry, template, components)
     )
     return verbatim, address, bindings
+
+
+def _prepared(
+    definition: TournamentDefinition, players: tuple[str, ...]
+) -> tuple[tuple[str, ...], Frame | None]:
+    """Build the cards and the frame, and check them against each other.
+
+    The two hooks are called separately but compose into one prompt, so this is
+    the only place a card's cite can be resolved against the frame's tables. It
+    runs before any ticket is minted: an unresolvable reference is a definition
+    bug and must not cost a spawn to discover.
+    """
+    cards = tuple(definition.present_card(player) for player in players)
+    presentations = tuple(text for text, _node in cards)
+    frame = definition.match_frame(players=players, presentations=presentations)
+    if frame is not None:
+        validate_cards(frame, [node for _text, node in cards if node is not None])
+    return presentations, frame
 
 
 def run_match(
@@ -177,7 +209,7 @@ def run_match(
         players=players,
         rng=rng,
     )
-    presentations = tuple(definition.present_player(player) for player in players)
+    presentations, frame = _prepared(definition, players)
 
     match_id = definition.match_identity(players=players, presentations=presentations)
     player_labels, match_label = _labels(definition, players, presentations)
@@ -190,6 +222,8 @@ def run_match(
             question=definition.question,
             criteria=definition.criteria,
             presented_presentations=presented_presentations,
+            frame=frame,
+            rng=rng,
         )
         return MatchResult(
             match_id=match_id,
@@ -222,6 +256,8 @@ def run_match(
         ticket_id=ticket.ticket_id,
         depot_root=store.root,
         registry=ComponentRegistry(store.root),
+        frame=frame,
+        rng=rng,
     )
     verbatim_hash = "sha256:" + hashlib.sha256(verbatim.encode("utf-8")).hexdigest()
     tickets.set_verbatim_hash(ticket.ticket_id, verbatim_hash)
@@ -300,7 +336,7 @@ def preview_match(
         players=players,
         rng=rng,
     )
-    presentations = tuple(definition.present_player(player) for player in players)
+    presentations, frame = _prepared(definition, players)
     match_id = definition.match_identity(players=players, presentations=presentations)
     player_labels, match_label = _labels(definition, players, presentations)
     presented, presented_presentations = _presented_order(players, presentations, rng)
@@ -325,6 +361,8 @@ def preview_match(
         ticket_id=ticket.ticket_id,
         depot_root=store.root,
         registry=ComponentRegistry(store.root),
+        frame=frame,
+        rng=rng,
     )
     verbatim_hash = "sha256:" + hashlib.sha256(verbatim.encode("utf-8")).hexdigest()
     tickets.set_verbatim_hash(ticket.ticket_id, verbatim_hash)

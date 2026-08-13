@@ -11,10 +11,7 @@ def test_turn_stop_refresh_is_registered_for_daemon_execution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     update_calls: list[dict[str, object]] = []
-    selected_rows: list[dict[str, object]] = []
-    warmed_rows: list[dict[str, object]] = []
-    captures: list[dict[str, object]] = []
-    session = {"identity_hash": "chatlas-identity"}
+    trust_tiers: list[str] = []
 
     monkeypatch.setattr(
         hook_consumers,
@@ -23,18 +20,8 @@ def test_turn_stop_refresh_is_registered_for_daemon_execution(
     )
     monkeypatch.setattr(
         hook_consumers,
-        "select_one_chatlas_index_row",
-        lambda **kwargs: selected_rows.append(kwargs) or session,
-    )
-    monkeypatch.setattr(
-        hook_consumers,
-        "load_chatlas_session_model",
-        lambda row: warmed_rows.append(row) or {},
-    )
-    monkeypatch.setattr(
-        hook_consumers,
-        "maintain_chat_index_with_agent",
-        lambda **kwargs: captures.append(kwargs) or {"status": "ok"},
+        "set_trust_tier",
+        trust_tiers.append,
     )
 
     registry = HookRegistry()
@@ -50,6 +37,7 @@ def test_turn_stop_refresh_is_registered_for_daemon_execution(
 
     registry.dispatch(invocation, execution="daemon")
 
+    assert trust_tiers == ["append"]
     assert update_calls == [
         {
             "providers": ("codex",),
@@ -58,15 +46,6 @@ def test_turn_stop_refresh_is_registered_for_daemon_execution(
             "progress": None,
         }
     ]
-    assert selected_rows == [
-        {
-            "command": "agent.turn.stop Chatlas refresh",
-            "providers": ("codex",),
-            "session_id": "session-123",
-        }
-    ]
-    assert warmed_rows == [session]
-    assert captures == [{"identity_hash": "chatlas-identity"}]
 
 
 def test_turn_stop_refresh_ignores_unsupported_context_type(
@@ -79,7 +58,7 @@ def test_turn_stop_refresh_ignores_unsupported_context_type(
         lambda **kwargs: update_calls.append(kwargs),
     )
 
-    hook_consumers.maintain_chat_index_from_turn_stop(
+    hook_consumers.update_chatlas_session_from_turn_stop(
         HookInvocation(
             name="agent.turn.stop",
             ctx={"session_id": "session-123"},
@@ -92,7 +71,7 @@ def test_turn_stop_refresh_ignores_unsupported_context_type(
 
 def test_turn_stop_refresh_requires_a_session_id() -> None:
     with pytest.raises(HookError, match="session_id"):
-        hook_consumers.maintain_chat_index_from_turn_stop(
+        hook_consumers.update_chatlas_session_from_turn_stop(
             HookInvocation(
                 name="agent.turn.stop",
                 ctx={},
