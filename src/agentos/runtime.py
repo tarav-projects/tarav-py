@@ -1,4 +1,4 @@
-# $kw: --from Deep.Modules --from Agentos.Hook --note [DC] the shared runtime composes built-in provider hook consumers for every process adapter --supp ^c20260811-5u ^c20260813-26u
+# $kw: --from Deep.Modules --from Agentos.Hook --from Agentos.Daemon --note [DC] the shared runtime composes one hook registry used for CLI submission and daemon-owned callback execution --supp ^c20260811-5u ^c20260813-26u ^c20260813-27u
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -96,8 +96,7 @@ class AgentosRuntime:
         register_agent_commands(subparsers)
         register_hook_commands(
             subparsers,
-            registry=self.hooks,
-            deferred_submitter=submit_hook_invocation,
+            submitter=submit_hook_invocation,
             delivery_failure_reporter=report_hook_delivery_failure,
         )
         register_daemon_commands(subparsers, registry=self.hooks)

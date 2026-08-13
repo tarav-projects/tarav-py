@@ -17,7 +17,7 @@ This provides `agentos`, `agentos-daemon`, `iterante`, and `iterante2`.
 
 Current baseline includes:
 - provider-neutral lifecycle ingress: `hook`
-- local deferred hook execution: `daemon run|start|status|stop|install|uninstall`
+- daemon-owned hook execution: `daemon run|start|status|stop|install|uninstall`
 - bounded private sampling of `agent.prompt.submit` provider contexts
 - Codex `agent.turn.stop` account-quota reporting into the usage registry
 - registry-first account monitoring that probes providers only when observations are stale

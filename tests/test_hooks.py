@@ -16,10 +16,18 @@ from agentos.hooks import (
 )
 
 
-def _hook_parser(registry: HookRegistry) -> argparse.ArgumentParser:
+def _discard_submission(
+    _invocation: HookInvocation,
+    *,
+    wait: bool = False,
+) -> None:
+    del wait
+
+
+def _hook_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
-    register_hook_commands(subparsers, registry=registry)
+    register_hook_commands(subparsers, submitter=_discard_submission)
     return parser
 
 
@@ -55,28 +63,25 @@ def test_exact_name_callbacks_run_sequentially_with_isolated_context() -> None:
     assert invocation.ctx == {"nested": {"value": 1}}
 
 
-def test_hook_registry_dispatches_only_the_selected_execution_lane() -> None:
+def test_hook_registry_has_one_callback_lane() -> None:
     registry = HookRegistry()
     seen: list[str] = []
     registry.register(
         "agent.turn.stop",
-        lambda invocation: seen.append("inline"),
-        callback_id="tests.inline",
+        lambda invocation: seen.append("first"),
+        callback_id="tests.first",
     )
     registry.register(
         "agent.turn.stop",
-        lambda invocation: seen.append("daemon"),
-        callback_id="tests.daemon",
-        execution="daemon",
+        lambda invocation: seen.append("second"),
+        callback_id="tests.second",
     )
     invocation = HookInvocation(name="agent.turn.stop", ctx={})
 
+    assert registry.has_callbacks("agent.turn.stop") is True
+    assert registry.has_callbacks("agent.session.start") is False
     registry.dispatch(invocation)
-    assert seen == ["inline"]
-    assert registry.has_callbacks("agent.turn.stop", execution="daemon") is True
-
-    registry.dispatch(invocation, execution="daemon")
-    assert seen == ["inline", "daemon"]
+    assert seen == ["first", "second"]
 
 
 def test_callback_failure_is_logged_without_context_and_dispatch_continues(
@@ -154,13 +159,17 @@ def test_present_context_type_must_be_nonempty(ctx_type: str) -> None:
         HookInvocation(name="agent.session.start", ctx={}, ctx_type=ctx_type)
 
 
-def test_inline_cli_context_and_type_reach_callbacks(
+def test_inline_cli_context_and_type_reach_submitter(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    registry = HookRegistry()
-    seen: list[HookInvocation] = []
-    registry.register("agent.session.start", seen.append)
-    parser = _hook_parser(registry)
+    seen: list[tuple[HookInvocation, bool]] = []
+
+    def submit(invocation: HookInvocation, *, wait: bool = False) -> None:
+        seen.append((invocation, wait))
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    register_hook_commands(subparsers, submitter=submit)
 
     assert (
         _run(
@@ -178,20 +187,27 @@ def test_inline_cli_context_and_type_reach_callbacks(
         == 0
     )
     assert seen == [
-        HookInvocation(
-            name="agent.session.start",
-            ctx={"session_id": "test-123"},
-            ctx_type="codex",
+        (
+            HookInvocation(
+                name="agent.session.start",
+                ctx={"session_id": "test-123"},
+                ctx_type="codex",
+            ),
+            False,
         )
     ]
     assert capsys.readouterr().out == ""
 
 
-def test_stdin_cli_context_reaches_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
-    registry = HookRegistry()
-    seen: list[HookInvocation] = []
-    registry.register("agent.prompt.submit", seen.append)
-    parser = _hook_parser(registry)
+def test_stdin_cli_context_reaches_submitter(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[tuple[HookInvocation, bool]] = []
+
+    def submit(invocation: HookInvocation, *, wait: bool = False) -> None:
+        seen.append((invocation, wait))
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    register_hook_commands(subparsers, submitter=submit)
     monkeypatch.setattr("sys.stdin", io.StringIO('{"prompt":"hello"}'))
 
     assert (
@@ -201,27 +217,20 @@ def test_stdin_cli_context_reaches_callbacks(monkeypatch: pytest.MonkeyPatch) ->
         )
         == 0
     )
-    assert seen[0].ctx == {"prompt": "hello"}
-    assert seen[0].ctx_type is None
+    assert seen[0][0].ctx == {"prompt": "hello"}
+    assert seen[0][0].ctx_type is None
+    assert seen[0][1] is False
 
 
-def test_hook_cli_submits_once_only_when_daemon_callbacks_exist() -> None:
-    registry = HookRegistry()
-    inline: list[HookInvocation] = []
-    submitted: list[HookInvocation] = []
-    registry.register("agent.turn.stop", inline.append)
-    registry.register(
-        "agent.turn.stop",
-        lambda invocation: None,
-        execution="daemon",
-    )
+def test_hook_cli_submits_every_valid_invocation_and_wait_flag() -> None:
+    submitted: list[tuple[HookInvocation, bool]] = []
+
+    def submit(invocation: HookInvocation, *, wait: bool = False) -> None:
+        submitted.append((invocation, wait))
+
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
-    register_hook_commands(
-        subparsers,
-        registry=registry,
-        deferred_submitter=submitted.append,
-    )
+    register_hook_commands(subparsers, submitter=submit)
 
     assert (
         _run(
@@ -238,28 +247,46 @@ def test_hook_cli_submits_once_only_when_daemon_callbacks_exist() -> None:
         )
         == 0
     )
-    assert inline == [
-        HookInvocation(
-            name="agent.turn.stop",
-            ctx={"session_id": "s1"},
-            ctx_type="codex",
+    assert submitted == [
+        (
+            HookInvocation(
+                name="agent.turn.stop",
+                ctx={"session_id": "s1"},
+                ctx_type="codex",
+            ),
+            False,
         )
     ]
-    assert submitted == inline
 
-    assert _run(parser, ["hook", "--name", "agent.session.start", "--ctx", "{}"]) == 0
-    assert submitted == inline
+    assert (
+        _run(
+            parser,
+            [
+                "hook",
+                "--name",
+                "future.unknown",
+                "--ctx",
+                "{}",
+                "--wait",
+            ],
+        )
+        == 0
+    )
+    assert submitted[-1] == (
+        HookInvocation(name="future.unknown", ctx={}),
+        True,
+    )
 
 
 @pytest.mark.parametrize("value", ["not-json", "[]", "null"])
 def test_cli_rejects_malformed_or_non_object_context(value: str) -> None:
-    parser = _hook_parser(HookRegistry())
+    parser = _hook_parser()
     with pytest.raises(CliError):
         _run(parser, ["hook", "--name", "agent.session.start", "--ctx", value])
 
 
 def test_cli_requires_exactly_one_context_source() -> None:
-    parser = _hook_parser(HookRegistry())
+    parser = _hook_parser()
     with pytest.raises(SystemExit):
         parser.parse_args(["hook", "--name", "agent.session.start"])
     with pytest.raises(SystemExit):

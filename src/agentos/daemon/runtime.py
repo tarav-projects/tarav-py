@@ -1,4 +1,4 @@
-# $kw: ^agentos-daemon-runtime --from Agentos.Daemon --from Agentos.Hook --note [DC] local socket acceptance feeds one in-memory serial worker lane for registered daemon callbacks --supp ^c20260725-101u ^c20260725-106u ^c20260811-50u
+# $kw: ^agentos-daemon-runtime --from Agentos.Daemon --from Agentos.Hook --note [DC] every validated hook feeds one in-memory serial worker lane; waiting clients observe completion on the submission socket --supp ^c20260725-101u ^c20260725-106u ^c20260811-50u ^c20260813-27u
 from __future__ import annotations
 
 import json
@@ -7,6 +7,7 @@ import queue
 import socketserver
 import stat
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 from agentos._core.project import agentos_home_dir
@@ -22,6 +23,12 @@ MAX_DAEMON_REQUEST_BYTES = 8 * 1024 * 1024
 
 class DaemonRuntimeError(RuntimeError):
     """The daemon runtime could not establish or maintain its local service."""
+
+
+@dataclass(frozen=True)
+class _QueuedHookEvent:
+    event: DaemonHookEvent
+    completed: threading.Event | None
 
 
 class _ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
@@ -64,7 +71,17 @@ class _DaemonRequestHandler(socketserver.StreamRequestHandler):
         except (DaemonProtocolError, ValueError):
             self._respond({"status": "error", "error": "invalid-hook-event"})
             return
-        runtime.accept(event)
+        wait = payload.get("wait", False)
+        if not isinstance(wait, bool):
+            self._respond({"status": "error", "error": "invalid-hook-wait"})
+            return
+        queued = runtime.accept(event, wait=wait)
+        if wait:
+            if queued.completed is None:
+                raise DaemonRuntimeError("waiting hook event lacks completion signal")
+            queued.completed.wait()
+            self._respond({"status": "completed", "event_id": event.event_id})
+            return
         self._respond({"status": "accepted", "event_id": event.event_id})
 
     def _respond(self, payload: dict[str, object]) -> None:
@@ -83,7 +100,7 @@ class DaemonRuntime:
     ) -> None:
         self.registry = registry
         self.socket_path = (socket_path or daemon_socket_path()).expanduser().resolve()
-        self._events: queue.Queue[DaemonHookEvent | None] = queue.Queue()
+        self._events: queue.Queue[_QueuedHookEvent | None] = queue.Queue()
         self._server: _ThreadingUnixServer | None = None
         self._worker: threading.Thread | None = None
 
@@ -117,13 +134,18 @@ class DaemonRuntime:
             self._remove_owned_socket()
             append_daemon_log("daemon_stopped")
 
-    def accept(self, event: DaemonHookEvent) -> None:
+    def accept(self, event: DaemonHookEvent, *, wait: bool = False) -> _QueuedHookEvent:
         append_daemon_log(
             "hook_accepted",
             event_id=event.event_id,
             invocation=event.invocation,
         )
-        self._events.put_nowait(event)
+        queued = _QueuedHookEvent(
+            event=event,
+            completed=threading.Event() if wait else None,
+        )
+        self._events.put_nowait(queued)
+        return queued
 
     def stop(self) -> None:
         server = self._server
@@ -132,10 +154,11 @@ class DaemonRuntime:
 
     def _worker_loop(self) -> None:
         while True:
-            event = self._events.get()
+            queued = self._events.get()
             try:
-                if event is None:
+                if queued is None:
                     return
+                event = queued.event
                 append_daemon_log(
                     "hook_dispatch_started",
                     event_id=event.event_id,
@@ -143,7 +166,6 @@ class DaemonRuntime:
                 )
                 self.registry.dispatch(
                     event.invocation,
-                    execution="daemon",
                     failure_reporter=lambda invocation, callback_id, error: (
                         append_daemon_log(
                             "hook_consumer_failed",
@@ -160,6 +182,8 @@ class DaemonRuntime:
                     invocation=event.invocation,
                 )
             finally:
+                if queued is not None and queued.completed is not None:
+                    queued.completed.set()
                 self._events.task_done()
 
     def _prepare_socket_path(self) -> None:

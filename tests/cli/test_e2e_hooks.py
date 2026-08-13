@@ -2,18 +2,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import threading
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
+import agentos.daemon.client as daemon_client
 import agentos.daemon.commands as daemon_commands
+from agentos.daemon import DaemonRuntime
 from agentos.hooks import HookInvocation, HookRegistry
 from agentos.testing import AgentosTestEnvironment
 from agentos.cli.cli import build_parser, main
-from agentos.runtime import AgentosRuntime
+from agentos.runtime import AgentosRuntime, create_runtime
 
 
-def test_top_level_hook_command_accepts_inline_json(capsys) -> None:
+def test_top_level_hook_command_accepts_inline_json(monkeypatch, capsys) -> None:
+    submitted: list[HookInvocation] = []
+    monkeypatch.setattr(
+        daemon_client,
+        "submit_hook_invocation",
+        lambda invocation, *, wait=False: submitted.append(invocation),
+    )
+
     assert main(["hook", "--name", "agent.session.start", "--ctx", "{}"]) == 0
+    assert submitted == [HookInvocation(name="agent.session.start", ctx={})]
     assert capsys.readouterr().out == ""
 
 
@@ -37,8 +49,14 @@ def test_top_level_daemon_status_reports_stopped(
     }
 
 
-def test_cli_composition_can_register_subsystem_callbacks() -> None:
+def test_cli_composition_does_not_run_subsystem_callbacks_locally(monkeypatch) -> None:
     seen: list[HookInvocation] = []
+    submitted: list[tuple[HookInvocation, bool]] = []
+
+    def submit(invocation: HookInvocation, *, wait: bool = False) -> None:
+        submitted.append((invocation, wait))
+
+    monkeypatch.setattr(daemon_client, "submit_hook_invocation", submit)
 
     def subsystem_hooks(registry: HookRegistry) -> None:
         registry.register(
@@ -60,11 +78,15 @@ def test_cli_composition_can_register_subsystem_callbacks() -> None:
 
     assert isinstance(args, argparse.Namespace)
     assert args.handler(args) == 0
-    assert seen == [
-        HookInvocation(
-            name="agent.session.start",
-            ctx={"session_id": "s1"},
-            ctx_type="codex",
+    assert seen == []
+    assert submitted == [
+        (
+            HookInvocation(
+                name="agent.session.start",
+                ctx={"session_id": "s1"},
+                ctx_type="codex",
+            ),
+            False,
         )
     ]
 
@@ -93,20 +115,36 @@ def test_top_level_cli_samples_codex_prompt_submission(
 ) -> None:
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
-    assert (
-        main(
-            [
-                "hook",
-                "--name",
-                "agent.prompt.submit",
-                "--ctx-type",
-                "codex",
-                "--ctx",
-                '{"session_id":"s1","prompt":"hello"}',
-            ]
-        )
-        == 0
+    socket_path = Path("/tmp") / f"agentos-e2e-{uuid4().hex}.sock"
+    monkeypatch.setenv("AGENTOS_DAEMON_SOCKET", str(socket_path))
+    ready = threading.Event()
+    runtime = DaemonRuntime(create_runtime().hooks, socket_path=socket_path)
+    thread = threading.Thread(
+        target=runtime.serve_forever,
+        kwargs={"ready_event": ready},
+        daemon=True,
     )
+    thread.start()
+    assert ready.wait(timeout=2)
+    try:
+        assert (
+            main(
+                [
+                    "hook",
+                    "--name",
+                    "agent.prompt.submit",
+                    "--ctx-type",
+                    "codex",
+                    "--ctx",
+                    '{"session_id":"s1","prompt":"hello"}',
+                    "--wait",
+                ]
+            )
+            == 0
+        )
+    finally:
+        runtime.stop()
+        thread.join(timeout=2)
 
     sample_path = environment.agentos_home / "hooks" / "context-samples.jsonl"
     record = json.loads(sample_path.read_text(encoding="utf-8"))

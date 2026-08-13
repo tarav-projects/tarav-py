@@ -5,7 +5,6 @@ from .commands import register_hook_commands
 from .model import HookError, HookInvocation, validate_hook_name
 from .registry import (
     HookCallback,
-    HookExecution,
     HookFailureReporter,
     HookRegistry,
 )
@@ -17,7 +16,6 @@ from .sampling import (
 
 __all__ = [
     "HookCallback",
-    "HookExecution",
     "HookFailureReporter",
     "HookError",
     "HookInvocation",

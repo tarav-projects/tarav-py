@@ -4,14 +4,13 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Literal, TypeAlias
+from typing import Callable, TypeAlias
 
 from .model import HookError, HookInvocation, validate_hook_name
 
 
 LOGGER = logging.getLogger("agentos.hooks")
 HookCallback: TypeAlias = Callable[[HookInvocation], object]
-HookExecution: TypeAlias = Literal["inline", "daemon"]
 HookFailureReporter: TypeAlias = Callable[[HookInvocation, str, BaseException], object]
 
 
@@ -19,7 +18,6 @@ HookFailureReporter: TypeAlias = Callable[[HookInvocation, str, BaseException], 
 class _RegisteredCallback:
     callback_id: str
     callback: HookCallback
-    execution: HookExecution
 
 
 class HookRegistry:
@@ -32,7 +30,6 @@ class HookRegistry:
         callback: HookCallback,
         *,
         callback_id: str | None = None,
-        execution: HookExecution = "inline",
     ) -> None:
         validate_hook_name(name)
         if not callable(callback):
@@ -40,37 +37,26 @@ class HookRegistry:
         resolved_id = callback_id or _callback_id(callback)
         if not resolved_id.strip():
             raise HookError("hook callback id must be a nonempty string")
-        if execution not in {"inline", "daemon"}:
-            raise HookError("hook callback execution must be inline or daemon")
         self._callbacks[name].append(
             _RegisteredCallback(
                 callback_id=resolved_id,
                 callback=callback,
-                execution=execution,
             )
         )
 
-    def has_callbacks(self, name: str, *, execution: HookExecution) -> bool:
+    def has_callbacks(self, name: str) -> bool:
         validate_hook_name(name)
-        return any(
-            registered.execution == execution
-            for registered in self._callbacks.get(name, ())
-        )
+        return bool(self._callbacks.get(name))
 
     def dispatch(
         self,
         invocation: HookInvocation,
         *,
-        execution: HookExecution = "inline",
         failure_reporter: HookFailureReporter | None = None,
     ) -> None:
         if not isinstance(invocation, HookInvocation):
             raise HookError("dispatch requires a HookInvocation")
-        if execution not in {"inline", "daemon"}:
-            raise HookError("hook dispatch execution must be inline or daemon")
         for registered in tuple(self._callbacks.get(invocation.name, ())):
-            if registered.execution != execution:
-                continue
             try:
                 registered.callback(invocation.isolated_copy())
             except Exception as exc:
@@ -105,7 +91,6 @@ def _callback_id(callback: HookCallback) -> str:
 
 __all__ = [
     "HookCallback",
-    "HookExecution",
     "HookFailureReporter",
     "HookRegistry",
 ]

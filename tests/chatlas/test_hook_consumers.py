@@ -7,7 +7,7 @@ from agentos.hooks import HookError, HookInvocation, HookRegistry
 import agentos.chatlas.hook_consumers as hook_consumers
 
 
-def test_turn_stop_refresh_is_registered_for_daemon_execution(
+def test_turn_stop_refresh_is_registered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     update_calls: list[dict[str, object]] = []
@@ -32,10 +32,7 @@ def test_turn_stop_refresh_is_registered_for_daemon_execution(
         ctx_type="codex",
     )
 
-    registry.dispatch(invocation, execution="inline")
-    assert update_calls == []
-
-    registry.dispatch(invocation, execution="daemon")
+    registry.dispatch(invocation)
 
     assert trust_tiers == ["append"]
     assert update_calls == [

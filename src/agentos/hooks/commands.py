@@ -1,4 +1,4 @@
-# $kw: ^agentos-hook-command --from Agentos.Hook.Invocation --note [DC] explicit stdin or inline JSON enters the general hook registry through the top-level agentos hook command --supp ^c20260811-16u ^c20260811-17u ^c20260811-18u ^c20260811-19u
+# $kw: ^agentos-hook-command --from Agentos.Hook.Invocation --from Agentos.Daemon --note [DC] explicit stdin or inline JSON enters the daemon-owned hook dispatcher; default observes acceptance and --wait observes completion --supp ^c20260811-16u ^c20260811-17u ^c20260811-18u ^c20260811-19u ^c20260813-27u
 from __future__ import annotations
 
 import argparse
@@ -6,20 +6,33 @@ import json
 import logging
 import sys
 from collections.abc import Callable
+from typing import Protocol
 
 from agentos._core.errors import CliError
 
 from .model import HookError, HookInvocation
-from .registry import HookRegistry
 
 
-HookInvocationSubmitter = Callable[[HookInvocation], object]
+class HookInvocationSubmitter(Protocol):
+    def __call__(
+        self,
+        invocation: HookInvocation,
+        *,
+        wait: bool = False,
+    ) -> object: ...
+
+
 HookDeliveryFailureReporter = Callable[[HookInvocation, BaseException], object]
 LOGGER = logging.getLogger("agentos.hooks")
 
 
-def _unavailable_submitter(_invocation: HookInvocation) -> object:
-    raise RuntimeError("no deferred hook submitter is configured")
+def _unavailable_submitter(
+    _invocation: HookInvocation,
+    *,
+    wait: bool = False,
+) -> object:
+    del wait
+    raise RuntimeError("no hook submitter is configured")
 
 
 def _log_delivery_failure(
@@ -27,7 +40,7 @@ def _log_delivery_failure(
     error: BaseException,
 ) -> None:
     LOGGER.error(
-        "deferred hook delivery failed: hook=%s error_type=%s",
+        "hook delivery failed: hook=%s error_type=%s",
         invocation.name,
         type(error).__name__,
     )
@@ -46,9 +59,8 @@ def _load_context(args: argparse.Namespace) -> dict[str, object]:
 
 def _cmd_hook(
     args: argparse.Namespace,
-    registry: HookRegistry,
     *,
-    deferred_submitter: HookInvocationSubmitter,
+    submitter: HookInvocationSubmitter,
     delivery_failure_reporter: HookDeliveryFailureReporter,
 ) -> int:
     try:
@@ -59,31 +71,35 @@ def _cmd_hook(
         )
     except HookError as exc:
         raise CliError(str(exc)) from exc
-    registry.dispatch(invocation)
-    if registry.has_callbacks(invocation.name, execution="daemon"):
-        try:
-            deferred_submitter(invocation.isolated_copy())
-        except Exception as exc:
-            delivery_failure_reporter(invocation.isolated_copy(), exc)
+    try:
+        submitter(invocation.isolated_copy(), wait=args.wait)
+    except Exception as exc:
+        delivery_failure_reporter(invocation.isolated_copy(), exc)
+        if args.wait:
+            raise CliError("Agentos daemon did not complete hook dispatch") from exc
     return 0
 
 
 def register_hook_commands(
     subparsers: argparse._SubParsersAction,
     *,
-    registry: HookRegistry,
-    deferred_submitter: HookInvocationSubmitter = _unavailable_submitter,
+    submitter: HookInvocationSubmitter = _unavailable_submitter,
     delivery_failure_reporter: HookDeliveryFailureReporter = _log_delivery_failure,
 ) -> None:
     parser = subparsers.add_parser(
         "hook",
-        help="Dispatch a namespaced event to registered Agentos subsystem callbacks.",
+        help="Submit a namespaced event to the Agentos daemon hook dispatcher.",
     )
     parser.add_argument("--name", required=True, help="Namespaced hook identifier.")
     parser.add_argument(
         "--ctx-type",
         default=None,
         help="Optional open-string label identifying the context producer or schema.",
+    )
+    parser.add_argument(
+        "--wait",
+        action="store_true",
+        help="Wait for daemon dispatch completion instead of acceptance only.",
     )
     context = parser.add_mutually_exclusive_group(required=True)
     context.add_argument(
@@ -98,8 +114,7 @@ def register_hook_commands(
     parser.set_defaults(
         handler=lambda args: _cmd_hook(
             args,
-            registry,
-            deferred_submitter=deferred_submitter,
+            submitter=submitter,
             delivery_failure_reporter=delivery_failure_reporter,
         )
     )

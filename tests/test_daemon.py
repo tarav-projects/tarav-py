@@ -85,7 +85,9 @@ def test_daemon_start_launches_detached_child_and_waits_for_readiness(
     )
     monkeypatch.setattr(daemon_commands.subprocess, "Popen", popen)
     monkeypatch.setattr(daemon_commands.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon")
+    monkeypatch.setattr(
+        daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon"
+    )
 
     args = _daemon_parser().parse_args(["daemon", "start", "--json"])
 
@@ -173,7 +175,9 @@ def test_daemon_install_and_uninstall_commands_are_exposed(
     monkeypatch.setattr(daemon_commands.sys, "platform", "darwin")
     statuses = iter([None, {"status": "running", "pid": 1357}, None])
     monkeypatch.setattr(daemon_commands, "daemon_status", lambda: next(statuses))
-    monkeypatch.setattr(daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon")
+    monkeypatch.setattr(
+        daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon"
+    )
     monkeypatch.setattr(
         daemon_commands,
         "install_launch_agent",
@@ -237,7 +241,9 @@ def test_daemon_start_fails_when_child_exits_before_readiness(
         "Popen",
         lambda *_args, **_kwargs: Process(),
     )
-    monkeypatch.setattr(daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon")
+    monkeypatch.setattr(
+        daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon"
+    )
 
     args = _daemon_parser().parse_args(["daemon", "start"])
 
@@ -276,7 +282,9 @@ def test_daemon_start_terminates_child_after_readiness_timeout(
         lambda *_args, **_kwargs: Process(),
     )
     monkeypatch.setattr(daemon_commands.time, "monotonic", lambda: next(times))
-    monkeypatch.setattr(daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon")
+    monkeypatch.setattr(
+        daemon_commands, "_daemon_executable", lambda: "/bin/agentos-daemon"
+    )
 
     args = _daemon_parser().parse_args(["daemon", "start"])
 
@@ -305,7 +313,7 @@ def test_daemon_accepts_while_worker_is_busy_and_runs_events_serially(
             assert release_first.wait(timeout=2)
         seen.append(f"end:{session_id}")
 
-    registry.register("agent.turn.stop", consume, execution="daemon")
+    registry.register("agent.turn.stop", consume)
     runtime, thread = _start_runtime(registry, socket_path=socket_path)
     try:
         first_event = submit_hook_invocation(
@@ -335,6 +343,49 @@ def test_daemon_accepts_while_worker_is_busy_and_runs_events_serially(
         thread.join(timeout=2)
 
 
+def test_waiting_submission_returns_after_dispatch_completion(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    socket_path = _short_socket_path()
+    registry = HookRegistry()
+    callback_started = threading.Event()
+    release_callback = threading.Event()
+    completed_events: list[str] = []
+
+    def consume(_invocation: HookInvocation) -> None:
+        callback_started.set()
+        assert release_callback.wait(timeout=2)
+
+    def submit_and_wait() -> None:
+        completed_events.append(
+            submit_hook_invocation(
+                HookInvocation(name="agent.turn.stop", ctx={}),
+                socket_path=socket_path,
+                wait=True,
+            )
+        )
+
+    registry.register("agent.turn.stop", consume)
+    runtime, thread = _start_runtime(registry, socket_path=socket_path)
+    waiter = threading.Thread(target=submit_and_wait)
+    try:
+        waiter.start()
+        assert callback_started.wait(timeout=2)
+        assert waiter.is_alive()
+        assert daemon_status(socket_path=socket_path) is not None
+        release_callback.set()
+        waiter.join(timeout=2)
+        assert not waiter.is_alive()
+        assert len(completed_events) == 1
+    finally:
+        release_callback.set()
+        runtime.stop()
+        thread.join(timeout=2)
+
+
 def test_daemon_consumer_failure_log_excludes_context_and_exception_text(
     monkeypatch,
     tmp_path: Path,
@@ -351,7 +402,6 @@ def test_daemon_consumer_failure_log_excludes_context_and_exception_text(
         "agent.turn.stop",
         broken,
         callback_id="tests.daemon-broken",
-        execution="daemon",
     )
     runtime, thread = _start_runtime(registry, socket_path=socket_path)
     try:
@@ -387,19 +437,11 @@ def test_hook_delivery_failure_is_logged_and_does_not_fail_command(
     environment = AgentosTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     monkeypatch.setenv("AGENTOS_DAEMON_SOCKET", str(tmp_path / "missing.sock"))
-    registry = HookRegistry()
-    registry.register(
-        "agent.turn.stop",
-        lambda invocation: None,
-        callback_id="tests.deferred",
-        execution="daemon",
-    )
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     register_hook_commands(
         subparsers,
-        registry=registry,
-        deferred_submitter=submit_hook_invocation,
+        submitter=submit_hook_invocation,
         delivery_failure_reporter=report_hook_delivery_failure,
     )
     args = parser.parse_args(
@@ -425,3 +467,16 @@ def test_hook_delivery_failure_is_logged_and_does_not_fail_command(
     assert failure["ctx_type"] == "codex"
     assert failure["error_type"] == "DaemonUnavailableError"
     assert "must-not-persist" not in json.dumps(failure)
+
+    waiting_args = parser.parse_args(
+        [
+            "hook",
+            "--name",
+            "agent.turn.stop",
+            "--ctx",
+            "{}",
+            "--wait",
+        ]
+    )
+    with pytest.raises(CliError, match="did not complete"):
+        waiting_args.handler(waiting_args)

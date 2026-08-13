@@ -19,7 +19,6 @@ def register_chatlas_hook_callbacks(registry: HookRegistry) -> None:
         TURN_STOP_HOOK,
         update_chatlas_session_from_turn_stop,
         callback_id=CHATLAS_TURN_STOP_CALLBACK_ID,
-        execution="daemon",
     )
 
 

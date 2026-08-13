@@ -1,4 +1,4 @@
-# $kw: ^agentos-daemon-client --from Agentos.Daemon --from Agentos.Hook.Invocation --note [DC] hook ingress waits only for local daemon acceptance and never for consumer completion --supp ^c20260811-50u
+# $kw: ^agentos-daemon-client --from Agentos.Daemon --from Agentos.Hook.Invocation --note [DC] hook ingress defaults to daemon acceptance while an explicit wait keeps the connection through dispatch completion --supp ^c20260811-50u ^c20260813-27u
 from __future__ import annotations
 
 import json
@@ -26,13 +26,15 @@ def submit_hook_invocation(
     *,
     socket_path: Path | None = None,
     timeout: float = DEFAULT_DAEMON_CLIENT_TIMEOUT_SEC,
+    wait: bool = False,
 ) -> str:
     event = DaemonHookEvent.create(invocation)
     try:
         response = _request(
-            event.to_request(),
+            event.to_request(wait=wait),
             socket_path=socket_path,
             timeout=timeout,
+            response_timeout=None if wait else timeout,
         )
     except Exception as exc:
         if isinstance(exc, DaemonUnavailableError):
@@ -41,8 +43,9 @@ def submit_hook_invocation(
             "Agentos daemon submission failed",
             event_id=event.event_id,
         ) from exc
+    expected_status = "completed" if wait else "accepted"
     if (
-        response.get("status") != "accepted"
+        response.get("status") != expected_status
         or response.get("event_id") != event.event_id
     ):
         raise DaemonUnavailableError(
@@ -89,6 +92,7 @@ def _request(
     *,
     socket_path: Path | None,
     timeout: float,
+    response_timeout: float | None = DEFAULT_DAEMON_CLIENT_TIMEOUT_SEC,
 ) -> dict[str, Any]:
     path = (socket_path or daemon_socket_path()).expanduser().resolve()
     request = (
@@ -99,6 +103,7 @@ def _request(
             client.settimeout(timeout)
             client.connect(str(path))
             client.sendall(request)
+            client.settimeout(response_timeout)
             response = _read_line(client)
     except (OSError, TimeoutError, socket.timeout) as exc:
         raise DaemonUnavailableError("Agentos daemon is unavailable") from exc

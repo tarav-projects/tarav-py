@@ -63,11 +63,11 @@
 - `src/agentos/hooks/` owns the provider-neutral `Agentos.Hook` model, exact-name callback registry, sequential dispatcher, and thin CLI registrar.
 - `HookInvocation` carries `name`, optional open-string `ctx_type`, and an opaque JSON-object `ctx`; dispatch never interprets provider fields or selects callbacks from `ctx_type`.
 - `HookRegistry.register(...)` preserves registration order. Dispatch gives each callback an isolated copy of the original context, ignores callback return values, and continues after ordinary callback exceptions.
-- Registrations default to the sequential `inline` execution lane; `execution="daemon"` marks deferred callbacks. The hook CLI submits one validated invocation to the daemon only when that exact hook name has deferred consumers.
+- `HookRegistry` has one sequential callback lane. The hook CLI never dispatches callbacks locally: every valid invocation is submitted once to the daemon, which owns callback discovery and execution.
 - Callback failures log only hook name, callback identity, and exception type through the `agentos.hooks` logger. Raw context and exception text are excluded because provider context may contain prompts or secrets.
-- The public ingress is `agentos hook --name <hook-name> [--ctx-type <ctx-type>]` with exactly one context source: canonical harness input `--ctx-from-stdin` or manual inline input `--ctx <json>`.
+- The public ingress is `agentos hook --name <hook-name> [--ctx-type <ctx-type>] [--wait]` with exactly one context source: canonical harness input `--ctx-from-stdin` or manual inline input `--ctx <json>`. Default success means daemon acceptance; `--wait` holds the socket through dispatch completion and fails when completion cannot be observed.
 - Provider-specific lifecycle mappings and subsystem callback registrations belong in subsystem registrars composed by `agentos.runtime`; the hook foundation has no provider mappings.
-- `agent.statusline.context` means an agent harness has published its current native status-line context. Claude Code maps its native `statusLine` callback here; the inline account-usage consumer stores only supported quota facts, writes changed snapshots immediately, and throttles identical account observations to one per 60 seconds.
+- `agent.statusline.context` means an agent harness has published its current native status-line context. Claude Code maps its native `statusLine` callback here; the daemon-owned account-usage consumer stores only supported quota facts, writes changed snapshots immediately, and throttles identical account observations to one per 60 seconds.
 - The built-in Chatlas `agent.turn.stop` daemon callback runs the canonical `chatlas_update(...)` pipeline narrowed to the hook's provider and active session id with incremental append trust. It does not warm a separate model, produce semantic `Chat.Index` surfaces, or spawn an agent.
 
 ## Chatlas Source Selection
@@ -78,6 +78,7 @@
 ## Daemon System
 
 - `src/agentos/daemon/` owns the local closed Unix-socket protocol, client, foreground runtime, serial worker lane, control-command registrar, and operational log.
+- Hook submission is acceptance-only by default. A waiting request keeps its connection open until the same serial worker completes dispatch; callback failures remain isolated and still produce a completed dispatch. There is no inline fallback or durable inbox: default delivery failure is logged and dropped, while `--wait` reports failure.
 - `agentos daemon run|start|status|stop|install|uninstall` controls the runtime and its user service. `run` stays in the foreground; without an installed service, `start` launches the dedicated `agentos-daemon` entrypoint detached. With the service installed, `start` delegates to launchd.
 - `src/agentos/daemon/launchd.py` owns the macOS user LaunchAgent at `~/Library/LaunchAgents/org.agentos.daemon.plist`. `install` atomically writes an Agentos-owned plist and bootstraps it; `uninstall` boots it out and removes only an ownership-validated plist.
 - The LaunchAgent invokes the absolute `agentos-daemon` executable, uses `RunAtLoad=true` for login startup, and uses `KeepAlive.SuccessfulExit=false` for abnormal-exit recovery. A clean socket-driven `daemon stop` exits successfully and therefore remains stopped until login or explicit `start`.

@@ -192,7 +192,4 @@ def test_claude_statusline_callback_ignores_other_context_types(
 def test_runtime_composes_claude_statusline_context_callback() -> None:
     runtime = create_runtime()
 
-    assert runtime.hooks.has_callbacks(
-        CLAUDE_STATUSLINE_CONTEXT_HOOK,
-        execution="inline",
-    )
+    assert runtime.hooks.has_callbacks(CLAUDE_STATUSLINE_CONTEXT_HOOK)

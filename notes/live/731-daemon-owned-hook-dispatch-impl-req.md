@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Scope:** make the Agentos daemon the universal execution owner for hook callbacks, submit every valid `agentos hook` invocation to it, and add `--wait` for callers that require dispatch completion.
-- **Status:** approved for autonomous execution. ^c20260813-27u
+- **Status:** implemented and verified. ^c20260813-27u
 - **Out of scope:** durable delivery, inline fallback, callback concurrency, callback result aggregation, protocol authentication beyond the private Unix socket, or CLI startup optimization.
 
 ## Impl.Index
@@ -30,28 +30,28 @@
 
 ### Vertical.Slice 1 — One registry lane
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** registry tests reject execution-lane assumptions and assert one exact-name sequential callback list.
 - **GREEN:** remove execution metadata and lane selection from callback registration and dispatch; update all subsystem registrars.
 - **Check:** focused hook and consumer tests.
 
 ### Vertical.Slice 2 — Universal daemon submission
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** CLI tests assert valid known and unknown hooks are submitted once, no callback runs locally, default delivery failure is isolated, and `--wait` delivery failure becomes a CLI error.
 - **GREEN:** make the hook command a validation/submission boundary and expose `--wait`.
 - **Check:** `tests/test_hooks.py` and hook CLI end-to-end tests.
 
 ### Vertical.Slice 3 — Completion protocol
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** daemon tests prove default submission returns after acceptance while `wait=True` blocks until serial dispatch completes.
 - **GREEN:** carry the wait request in the local protocol, queue an optional completion signal, and answer `completed` after worker dispatch.
 - **Check:** `tests/test_daemon.py`.
 
 ### Vertical.Slice 4 — Composition and live verification
 
-- **Status:** pending.
+- **Status:** complete.
 - Update runtime composition and project guidance, run focused and full validation, reinstall the monolith, restart the login daemon, and smoke-test both acceptance and completion paths.
 
 ## Acceptance.Signals
@@ -73,3 +73,11 @@
 
 - **Execution authorization:** autonomous implementation is authorized by ^c20260813-27u.
 - **Design basis:** `Agentos.Daemon` is already the sole background-work owner with one serialized lane, while `Agentos.Hook` already defines exact-name sequential failure-isolated dispatch. This change removes the accidental split execution model instead of adding another runtime.
+- **Pre-change latency baseline:** the installed CLI was measured for 10 runs after two warm-ups while the daemon was running. `benchmark.noop` had a 0.4001-second median (0.3865–0.4096); a no-op `agent.statusline.context` had a 0.4411-second median (0.3899–0.6008). The same commands will be repeated after installation.
+- **Checkpoint:** commit `b26c356` captured the completed Claude statusLine work and this approved implementation request before execution edits began.
+- **GREEN:** the registry now has one callback lane; the CLI submits every valid invocation exactly once; the daemon owns exact-name sequential dispatch for every consumer; and `--wait` holds the request connection until that event completes without creating an inline fallback.
+- **Failure behavior:** ordinary delivery failure remains secret-free, logged, dropped, and successful in default mode; waiting delivery failure is logged and returned as a CLI error. Callback failures remain isolated and do not prevent dispatch completion.
+- **Verification:** 42 focused hook/daemon/provider/Chatlas tests pass; the complete 1,894-test monolith suite passes; Ruff, formatting, `git diff --check`, and strict project Skw checks pass with no POIs on changed code surfaces.
+- **Live installation:** the working tree was installed, the launchd-owned daemon was force-restarted as PID 9819, a live `--wait` invocation completed, and operational logs show acceptance, dispatch start, and dispatch completion under the new process.
+- **Post-change latency:** the identical 10-run benchmark produced a 0.2349-second median for `benchmark.noop` (0.2249–0.2481) and 0.2290 seconds for the no-op `agent.statusline.context` (0.2239–0.2890), approximately 41% and 48% below their pre-change medians. The architecture removes consumer latency from the default path; the measured CLI-startup improvement is beneficial but not a protocol guarantee.
+- **Reconciliation POI:** the reviewed Agentos Index still says callbacks register during CLI composition. The implementation now composes the same registry for daemon execution while the CLI is submission-only; that index wording should be captured through its separate approval-gated workflow.

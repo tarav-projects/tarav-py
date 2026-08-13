@@ -1,4 +1,4 @@
-# $kw: ^agentos-cli --from Agentos.Bloberia --from Skw.Edition.History.Service --from Anchory.System --from Chatlas.Anchory --from Agentos.Hook --from Agentos.Daemon --note [DC] the umbrella CLI composes foundation command registrars with feature-owned integrations ^c20260724-31u --supp live Chatlas resolution injection authorized ^c20260725-15u --supp Anchory amendment validation authorized ^c20260730-33u --supp general hook composition authorized ^c20260811-35u --supp deferred hook dispatch authorized ^c20260811-50u
+# $kw: ^agentos-cli --from Agentos.Bloberia --from Skw.Edition.History.Service --from Anchory.System --from Chatlas.Anchory --from Agentos.Hook --from Agentos.Daemon --note [DC] the umbrella CLI composes foundation command registrars with feature-owned integrations ^c20260724-31u --supp live Chatlas resolution injection authorized ^c20260725-15u --supp Anchory amendment validation authorized ^c20260730-33u --supp general hook composition authorized ^c20260811-35u --supp daemon-owned hook dispatch authorized ^c20260813-27u
 from __future__ import annotations
 
 import argparse

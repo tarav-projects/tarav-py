@@ -36,11 +36,12 @@ class DaemonHookEvent:
             raise DaemonProtocolError("daemon hook event requires a HookInvocation")
         return cls(event_id=uuid4().hex, invocation=invocation.isolated_copy())
 
-    def to_request(self) -> dict[str, object]:
+    def to_request(self, *, wait: bool = False) -> dict[str, object]:
         return {
             "schema_version": DAEMON_PROTOCOL_SCHEMA_VERSION,
             "type": DAEMON_HOOK_REQUEST_TYPE,
             "event_id": self.event_id,
+            "wait": wait,
             "invocation": {
                 "name": self.invocation.name,
                 "ctx_type": self.invocation.ctx_type,
