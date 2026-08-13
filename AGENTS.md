@@ -69,6 +69,11 @@
 - Provider-specific lifecycle mappings and subsystem callback registrations belong in subsystem registrars composed by `agentos.runtime`; the hook foundation has no provider mappings.
 - The built-in Chatlas `agent.turn.stop` daemon callback runs the canonical `chatlas_update(...)` pipeline narrowed to the hook's provider and active session id with incremental append trust. It does not warm a separate model, produce semantic `Chat.Index` surfaces, or spawn an agent.
 
+## Chatlas Source Selection
+
+- `chatlas.sources` is the authority for native provider-home ingestion. Each source may set boolean `scannable` (default `true`); non-scannable sources remain configured inventory but never become live provider instances for update, provider query, or live GC scanning.
+- Source selection does not mutate or hide existing Chatlas-owned raw/index data. `ProviderHomeAdapter` retains its per-session symlinked-source rejection as a final ingestion defense.
+
 ## Daemon System
 
 - `src/agentos/daemon/` owns the local closed Unix-socket protocol, client, foreground runtime, serial worker lane, control-command registrar, and operational log.

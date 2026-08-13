@@ -66,6 +66,63 @@ def test_selected_provider_instances_filters_sources_by_provider(
     assert instances[0].agent.home == (tmp_path / "claude-home").resolve()
 
 
+def test_selected_provider_instances_skips_non_scannable_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment = _isolate_chatlas(monkeypatch, tmp_path)
+    canonical_home = tmp_path / "codex-home"
+    satellite_home = tmp_path / "codex-satellite"
+    environment.write_global_config(
+        chatlas={
+            "sources": [
+                {
+                    "provider": "codex",
+                    "home": str(canonical_home),
+                    "scannable": True,
+                },
+                {
+                    "provider": "codex",
+                    "home": str(satellite_home),
+                    "scannable": False,
+                },
+            ],
+        }
+    )
+
+    instances = selected_provider_instances(providers=None, start_path=tmp_path)
+
+    assert [instance.agent.home for instance in instances] == [
+        canonical_home.resolve()
+    ]
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false", [], {}])
+def test_selected_provider_instances_rejects_non_boolean_scannable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    value: object,
+) -> None:
+    environment = _isolate_chatlas(monkeypatch, tmp_path)
+    environment.write_global_config(
+        chatlas={
+            "sources": [
+                {
+                    "provider": "codex",
+                    "home": str(tmp_path / "codex-home"),
+                    "scannable": value,
+                },
+            ],
+        }
+    )
+
+    with pytest.raises(
+        CliError,
+        match="chatlas.sources\\[0\\].scannable must be a boolean",
+    ):
+        selected_provider_instances(providers=None, start_path=tmp_path)
+
+
 def test_selected_provider_instances_rejects_unknown_source_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

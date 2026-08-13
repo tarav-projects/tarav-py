@@ -27,6 +27,7 @@ class ChatlasSource:
     provider: str
     home: Path
     fingerprint: str
+    scannable: bool = True
 
 
 def selected_provider_instances(
@@ -34,7 +35,11 @@ def selected_provider_instances(
     providers: tuple[str, ...] | None,
     start_path: Path | str,
 ) -> tuple[ChatlasProviderInstance, ...]:
-    sources = _load_chatlas_sources(start_path=start_path)
+    sources = tuple(
+        source
+        for source in _load_chatlas_sources(start_path=start_path)
+        if source.scannable
+    )
     if providers is not None:
         provider_filter = set(providers)
         sources = tuple(source for source in sources if source.provider in provider_filter)
@@ -84,6 +89,9 @@ def _load_chatlas_sources_value(value: object) -> tuple[ChatlasSource, ...]:
         if provider not in supported:
             raise CliError(f"unsupported Chatlas source provider: {provider}")
         raw_home = Path(_required_source_string(item, "home", index=index)).expanduser()
+        scannable = item.get("scannable", True)
+        if type(scannable) is not bool:
+            raise CliError(f"chatlas.sources[{index}].scannable must be a boolean")
         _validate_source_home(raw_home, index=index)
         home = raw_home.resolve()
         key = (provider, str(home))
@@ -95,6 +103,7 @@ def _load_chatlas_sources_value(value: object) -> tuple[ChatlasSource, ...]:
                 provider=provider,
                 home=home,
                 fingerprint=_source_fingerprint(provider=provider, home=home),
+                scannable=scannable,
             )
         )
     return tuple(sources)
