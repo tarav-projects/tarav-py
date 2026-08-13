@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - **Scope:** add `agent.statusline.context` as a provider-neutral Agentos hook semantic, map Claude Code's native `statusLine` callback onto it, normalize Claude quota snapshots into the shared usage registry, and let account monitoring reuse fresh hook observations before probing the provider.
-- **Status:** execution pending.
+- **Status:** implemented and verified.
 - **Source:** autonomous `$agentos-hugentics --impl --dev --AUTO` authorization. ^c20260813-26u
 - **Out of scope:** changing `agent.turn.stop`, persisting complete statusLine contexts, daemon dispatch, registry retention redesign, or adding equivalent mappings for other providers.
 
@@ -44,28 +44,28 @@
 
 ### Vertical.Slice 1 — Claude hook consumer
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** provider tests assert valid Claude statusLine context writes one safe account-scoped usage record, unrelated context types no-op, and invalid/unregistered homes fail through ordinary hook isolation.
 - **GREEN:** add the Claude provider registrar, quota normalization, credential-identity account resolution, and 60-second changed-value-aware throttling.
 - **Check:** `uv run pytest tests/test_claude_usage_hooks.py`.
 
 ### Vertical.Slice 2 — Registry-first monitor integration
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** monitor tests assert a fresh Claude hook observation bypasses provider resolution even when observing and target homes differ.
 - **GREEN:** add the hook source to account-scoped candidate selection and reuse the existing Claude statusline parser.
 - **Check:** focused monitor limits-tracking tests.
 
 ### Vertical.Slice 3 — Runtime and native Claude mapping
 
-- **Status:** pending.
+- **Status:** complete.
 - **RED:** runtime composition test asserts the new exact hook has an inline consumer.
 - **GREEN:** compose the registrar, replace the obsolete Claude statusline `usage-report` call with `agentos hook`, and remove shell tracing from the configured statusLine command.
 - **Check:** installed CLI smoke invocation with a minimized fixture and local settings JSON validation.
 
 ### Vertical.Slice 4 — Documentation and verification
 
-- **Status:** pending.
+- **Status:** complete.
 - Update `AGENTS.md` logging/hook documentation and this artifact.
 - Run focused suites, relevant hook/account tests, Ruff, formatting checks, and `git diff --check`.
 
@@ -88,3 +88,10 @@
 - **Design evidence:** observed local Claude statusLine samples carry `session_id`, `transcript_path`, and `rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}`; Claude Stop context and transcript do not carry account quota snapshots.
 - **Existing-path finding:** `~/.claude/statusline` still calls the removed `agentos agent accounts usage-report` command, so live statusLine ingestion is currently ineffective.
 - **Execution authorization:** autonomous implementation is authorized by ^c20260813-26u.
+- **Checkpoint:** commit `b7da292` captured the pre-execution repository state, including the already-present Chatlas changes and this implementation request.
+- **GREEN:** `agent.statusline.context` is composed into the shared runtime; the Claude callback stores only supported `rate_limits` plus safe observation metadata, resolves the account through non-secret home identity, writes changed snapshots immediately, and throttles identical account observations for 60 seconds.
+- **Monitor integration:** limits tracking selects the newest compatible Claude observation across exact-home `statusline_rate_limits` and account-scoped `statusline_hook` sources before provider acquisition.
+- **Native mapping:** the shared `~/.claude/statusline` script now pipes the complete context to `agentos hook`; all configured Claude homes use that script, and shell tracing was removed from the statusLine command.
+- **Performance deviation:** the first implementation read secure storage on every callback; live timing exposed multi-second latency. Account binding needs only `<home>/.claude.json` `oauthAccount`, so the final consumer validates that non-secret identity without Keychain access. A live invocation completes in approximately 0.5 seconds.
+- **Verification:** the relevant hook/account suite passed 52 tests; post-format focused tests passed 19 tests; the complete monolith suite passed 1,893 tests. Touched files pass Ruff and format checks, `git diff --check`, and strict project Skw validation with no POIs on changed Python surfaces.
+- **Live verification:** real Claude statusLine callbacks wrote normalized hook records for the `br` and `jp` accounts; an explicit `om` smoke event wrote one record, and an immediate identical event was throttled without a second append.

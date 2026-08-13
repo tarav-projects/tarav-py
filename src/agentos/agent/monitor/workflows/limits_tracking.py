@@ -1,4 +1,4 @@
-# $kw: ^account-monitor-registry-first --from Normalization.Pipeline::Account.Usage.Model --note [DC] limits tracking consumes fresh compatible registry observations before performing provider acquisition --supp ^c20260811-47u
+# $kw: ^account-monitor-registry-first --from Normalization.Pipeline::Account.Usage.Model --note [DC] limits tracking consumes fresh compatible registry observations before performing provider acquisition --supp ^c20260811-47u ^c20260813-26u
 """Limits-tracking workflow: usage refresh, transition logging, and limit row rendering."""
 
 from __future__ import annotations
@@ -77,6 +77,9 @@ from agentos.agent.providers.claude_code.account_status import (
     CLAUDE_STATUSLINE_USAGE_SOURCE,
     claude_statusline_usage_record_limits,
 )
+from agentos.agent.providers.claude_code.usage_hooks import (
+    CLAUDE_STATUSLINE_HOOK_USAGE_SOURCE,
+)
 from agentos.agent.providers.codex.account_status import (
     CODEX_APP_SERVER_USAGE_SOURCE,
     codex_usage_record_limits,
@@ -86,8 +89,6 @@ from agentos.agent.providers.copilot_cli.account_status import (
     COPILOT_INTERNAL_USER_USAGE_SOURCE,
     copilot_usage_record_limits,
 )
-
-
 
 
 _DEFAULT_STALE_THRESHOLD_SEC = 600.0
@@ -181,9 +182,6 @@ class LimitsTrackingWorkflow:
         }
 
     def _staleness_class(self, account_status: object) -> str | None:
-
-
-
 
         if not isinstance(account_status, dict):
             return None
@@ -424,10 +422,6 @@ class LimitsTrackingWorkflow:
         workflow_state: LimitsWorkflowState,
     ) -> None:
 
-
-
-
-
         codex_targets = [
             target for target in self.config.targets if target.provider == "codex"
         ]
@@ -552,6 +546,14 @@ def _latest_usage_record_for_target(
         )
         if hook_record is not None:
             candidates.append((CODEX_SESSION_HOOK_USAGE_SOURCE, hook_record))
+    if target.provider == "claude-code":
+        hook_record = latest_account_usage_record(
+            provider=target.provider,
+            account=target.account,
+            source=CLAUDE_STATUSLINE_HOOK_USAGE_SOURCE,
+        )
+        if hook_record is not None:
+            candidates.append((CLAUDE_STATUSLINE_HOOK_USAGE_SOURCE, hook_record))
     return max(
         candidates,
         key=lambda item: _string_value(item[1].get("recorded_at")) or "",
@@ -577,6 +579,8 @@ def _usage_record_limit_parser(
     if source == CODEX_SESSION_HOOK_USAGE_SOURCE:
         return codex_usage_record_limits
     if source == CLAUDE_STATUSLINE_USAGE_SOURCE:
+        return claude_statusline_usage_record_limits
+    if source == CLAUDE_STATUSLINE_HOOK_USAGE_SOURCE:
         return claude_statusline_usage_record_limits
     if source == COPILOT_INTERNAL_USER_USAGE_SOURCE:
         return copilot_usage_record_limits
@@ -1089,8 +1093,6 @@ def _synthesize_estimated_burst_limit(
     else:
         weekly_delta = max(0, weekly_now - baseline["used_percent"])
 
-
-
         used_percent = max(0, round((weekly_delta / burst_weekly_percent) * 100))
     synthesized = AccountLimit(
         limit_class="usage_over_time",
@@ -1214,7 +1216,6 @@ def _usage_error_message(account_status: dict[str, Any]) -> str | None:
 
 def _limit_label(limit: dict[str, Any], usage_over_time: dict[str, object]) -> str:
 
-
     prefix = "~" if limit.get("estimated") is True else ""
     duration_mins = _int_value(usage_over_time.get("period_duration_mins"))
     if duration_mins == 300:
@@ -1276,7 +1277,6 @@ def _elapsed_percent(
 
 
 def _format_usage_percent_plain(value: int) -> str:
-
 
     return f"{max(0, value)}%".rjust(3)
 

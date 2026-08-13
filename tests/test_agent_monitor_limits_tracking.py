@@ -27,6 +27,9 @@ from agentos.agent.monitor.workflows import (
     LimitsTrackingWorkflow,
 )
 from agentos.agent.usage_registry import append_usage_record
+from agentos.agent.providers.claude_code.usage_hooks import (
+    CLAUDE_STATUSLINE_HOOK_USAGE_SOURCE,
+)
 from agentos.agent.providers.codex.usage_hooks import CODEX_SESSION_HOOK_USAGE_SOURCE
 from agentos.testing import AgentosTestEnvironment
 
@@ -118,6 +121,68 @@ def _codex_hook_quota_payload(*, resets_at: int) -> dict[str, object]:
             "observedAt": "2026-08-11T12:01:00Z",
         },
     }
+
+
+def test_limits_tracking_refresh_uses_fresh_claude_hook_observation_without_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = AgentosTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    append_usage_record(
+        provider="claude-code",
+        account="om",
+        home=tmp_path / "active-claude-home",
+        source=CLAUDE_STATUSLINE_HOOK_USAGE_SOURCE,
+        payload={
+            "rate_limits": {
+                "five_hour": {
+                    "used_percentage": 23,
+                    "resets_at": int(
+                        (
+                            datetime.datetime.now(tz=datetime.UTC)
+                            + datetime.timedelta(hours=1)
+                        ).timestamp()
+                    ),
+                }
+            },
+            "observation": {"sessionId": "session-123"},
+        },
+    )
+    monkeypatch.setattr(
+        limits_tracking,
+        "resolve_account_runtime_agent",
+        lambda **kwargs: pytest.fail(f"provider should not be resolved: {kwargs}"),
+    )
+    target = MonitorTarget(
+        provider="claude-code",
+        account="om",
+        home=tmp_path / "monitor-claude-home",
+    )
+    workflow = LimitsTrackingWorkflow(
+        MonitorWorkflowConfig(
+            name=LIMITS_TRACKING_WORKFLOW,
+            targets=(target,),
+            refresh_interval_sec=60,
+            raw_config={},
+        )
+    )
+    target_state = workflow._target_state(
+        LimitsWorkflowState(), target=target, target_key="target"
+    )
+
+    workflow._refresh_target(target_state, target=target, tick=1)
+
+    assert target_state.status == "ok"
+    assert target_state.account_status is not None
+    assert (
+        target_state.account_status["limits"][0]["usage_over_time"]["used_percent"]
+        == 23
+    )  # type: ignore[index]
+    assert (
+        target_state.account_status["raw"]["usage_record"]["source"]
+        == CLAUDE_STATUSLINE_HOOK_USAGE_SOURCE
+    )  # type: ignore[index]
 
 
 def test_limits_tracking_refresh_uses_fresh_account_hook_observation_without_provider(

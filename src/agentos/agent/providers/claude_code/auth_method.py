@@ -1,4 +1,4 @@
-# $kw: ^agentos-provider-claude-code-auth-method --from Account.Management --from Provider.Instance --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --supp ^c20260811-62u
+# $kw: ^agentos-provider-claude-code-auth-method --from Account.Management --from Provider.Instance --from Agent.Navigable.Codebase --note [DF] provider-specific behavior lives beneath the agent provider namespace --note [DC] non-secret home identity can bind provider observations without reading secure credential storage --supp ^c20260811-62u ^c20260813-26u
 """Claude-code `Auth.Method` subclass — the `ambient-browser-login` credential class.
 
 `Auth.Data` for claude spans two home locations: the secret lives in secure
@@ -100,7 +100,9 @@ def _read_home_secret(home: Path) -> dict[str, object] | None:
         try:
             payload = json.loads(credentials_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise CliError(f"invalid claude-code credentials file: {credentials_path}") from exc
+            raise CliError(
+                f"invalid claude-code credentials file: {credentials_path}"
+            ) from exc
         if isinstance(payload, dict):
             return payload
     return None
@@ -126,20 +128,9 @@ class ClaudeAuthMethod(AuthMethod):
         oauth_account = auth_data.payload.get("oauthAccount")
         if not isinstance(oauth_account, dict):
             return None
-        account_uuid = _str(oauth_account.get("accountUuid"))
-        if account_uuid is None:
-            return None
-        return AccountIdentity(
-            provider_account_id=account_uuid,
-            email=_str(oauth_account.get("emailAddress")),
-            label=_str(oauth_account.get("displayName")),
-            raw=oauth_account,
-        )
+        return _identity_from_oauth_account(oauth_account)
 
     def materialize(self, auth_data: AuthData, home: Path) -> None:
-
-
-
 
         home = home.expanduser()
         home.mkdir(parents=True, exist_ok=True)
@@ -163,4 +154,25 @@ def _str(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-__all__ = ["ClaudeAuthMethod"]
+def read_claude_home_identity(home: Path) -> AccountIdentity | None:
+    oauth_account = _read_oauth_account(home)
+    if oauth_account is None:
+        return None
+    return _identity_from_oauth_account(oauth_account)
+
+
+def _identity_from_oauth_account(
+    oauth_account: dict[str, object],
+) -> AccountIdentity | None:
+    account_uuid = _str(oauth_account.get("accountUuid"))
+    if account_uuid is None:
+        return None
+    return AccountIdentity(
+        provider_account_id=account_uuid,
+        email=_str(oauth_account.get("emailAddress")),
+        label=_str(oauth_account.get("displayName")),
+        raw=oauth_account,
+    )
+
+
+__all__ = ["ClaudeAuthMethod", "read_claude_home_identity"]

@@ -67,6 +67,7 @@
 - Callback failures log only hook name, callback identity, and exception type through the `agentos.hooks` logger. Raw context and exception text are excluded because provider context may contain prompts or secrets.
 - The public ingress is `agentos hook --name <hook-name> [--ctx-type <ctx-type>]` with exactly one context source: canonical harness input `--ctx-from-stdin` or manual inline input `--ctx <json>`.
 - Provider-specific lifecycle mappings and subsystem callback registrations belong in subsystem registrars composed by `agentos.runtime`; the hook foundation has no provider mappings.
+- `agent.statusline.context` means an agent harness has published its current native status-line context. Claude Code maps its native `statusLine` callback here; the inline account-usage consumer stores only supported quota facts, writes changed snapshots immediately, and throttles identical account observations to one per 60 seconds.
 - The built-in Chatlas `agent.turn.stop` daemon callback runs the canonical `chatlas_update(...)` pipeline narrowed to the hook's provider and active session id with incremental append trust. It does not warm a separate model, produce semantic `Chat.Index` surfaces, or spawn an agent.
 
 ## Chatlas Source Selection
@@ -253,13 +254,14 @@ Seven separate JSONL/account record mechanisms exist; they are not yet unified.
    - File: `~/.agentos/agent/usage-registry/YYYYMM-usage.jsonl` (monthly roll),
      schema v1:
      `{schema_version, class, recorded_at, provider, account, home, source, payload}`.
-   - Writers: provider account-status usage fetches and the Codex `agent.turn.stop`
-     quota consumer (`source=session_hook`).
+   - Writers: provider account-status usage fetches, the Codex `agent.turn.stop`
+     quota consumer (`source=session_hook`), and the Claude
+     `agent.statusline.context` consumer (`source=statusline_hook`).
    - Readers: account-status registry fallback and the monitor limits-tracking workflow.
-   - Codex hook observations are resolved to a registered account by credential
-     identity and may be read account-wide even when the observing home differs from
-     the monitor home. Purpose: normalized provider usage facts only. Do not persist
-     raw provider hook contexts here.
+   - Hook observations are resolved to a registered account by provider identity and
+     may be read account-wide even when the observing home differs from the monitor
+     home. Purpose: normalized provider usage facts only. Do not persist raw provider
+     hook contexts here.
 
 4. **Hook context sample log** — `src/agentos/hooks/sampling.py`.
    - File: `~/.agentos/hooks/context-samples.jsonl`,

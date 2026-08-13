@@ -1,4 +1,4 @@
-# $kw: --from Deep.Modules
+# $kw: --from Deep.Modules --from Agentos.Hook --note [DC] the shared runtime composes built-in provider hook consumers for every process adapter --supp ^c20260811-5u ^c20260813-26u
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -7,6 +7,9 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from agentos.chatlas.hook_consumers import register_chatlas_hook_callbacks
+from agentos.agent.providers.claude_code.usage_hooks import (
+    register_claude_usage_hook_callbacks,
+)
 from agentos.agent.providers.codex.usage_hooks import (
     register_codex_usage_hook_callbacks,
 )
@@ -212,6 +215,7 @@ def create_runtime(
 ) -> AgentosRuntime:
     registry = HookRegistry()
     register_hook_sampling_callbacks(registry)
+    register_claude_usage_hook_callbacks(registry)
     register_codex_usage_hook_callbacks(registry)
     register_chatlas_hook_callbacks(registry)
     for registrar in hook_registrars:
