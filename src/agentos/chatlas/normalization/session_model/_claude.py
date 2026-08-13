@@ -211,7 +211,7 @@ def _normalize_claude_session(
         tool_invocations=tool_invocations,
         events=events,
         usage=usage,
-        normalizer="claude-code.raw_session.experimental.v1",
+        normalizer="claude-code.raw_session.experimental.v2",
         source_mode="claude_code_raw_session",
         warnings=warnings,
         unsupported_concepts=_claude_unsupported_concepts(
@@ -935,6 +935,8 @@ def claude_turn_id(record: _ClaudeRawRecord, *, ordinal: int) -> str:
 
 
 def _claude_record_starts_interaction(record: _ClaudeRawRecord) -> bool:
+    if _claude_queued_user_input_attachment(record) is not None:
+        return True
     if _claude_message_role(record) != "user":
         return False
     if record.payload.get("isCompactSummary") is True:
@@ -944,6 +946,31 @@ def _claude_record_starts_interaction(record: _ClaudeRawRecord) -> bool:
     if _claude_record_has_tool_evidence(record):
         return False
     return _claude_record_has_visible_message(record)
+
+
+def _claude_queued_user_input_attachment(
+    record: _ClaudeRawRecord,
+) -> dict[str, Any] | None:
+    if record.record_type != "attachment":
+        return None
+    attachment = record.payload.get("attachment")
+    if not isinstance(attachment, dict):
+        return None
+    if string_or_none(attachment.get("type")) != "queued_command":
+        return None
+    if string_or_none(attachment.get("commandMode")) != "prompt":
+        return None
+    if attachment.get("isMeta") is True:
+        return None
+    if string_or_none(attachment.get("prompt")) is None:
+        return None
+    origin = attachment.get("origin")
+    if origin is not None and (
+        not isinstance(origin, dict)
+        or string_or_none(origin.get("kind")) != "human"
+    ):
+        return None
+    return attachment
 
 
 def _claude_record_tool_name(record: _ClaudeRawRecord) -> str | None:
@@ -2205,7 +2232,10 @@ def _claude_fork_analysis(records: list[_ClaudeRawRecord]) -> _ClaudeForkAnalysi
     def carries_conversation(root: _ClaudeRawRecord) -> bool:
         return any(
             _claude_message_role(record) == "assistant"
-            or _claude_record_starts_interaction(record)
+            or (
+                _claude_record_starts_interaction(record)
+                and _claude_queued_user_input_attachment(record) is None
+            )
             for record in subtree_records(root)
         )
 

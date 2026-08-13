@@ -27,7 +27,7 @@ from agentos.chatlas.paths import default_chatlas_root
 SESSION_MODELS_ROOT = "session-models"
 MANIFEST_FILENAME = "manifest.json"
 LOCKS_ROOT = "locks"
-SESSION_MODEL_MATERIALIZATION_REVISION = "stable-event-place-v1"
+SESSION_MODEL_MATERIALIZATION_REVISION = "stable-event-place-v2"
 
 
 def session_model_cache_path(

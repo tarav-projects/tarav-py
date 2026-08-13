@@ -54,7 +54,7 @@ from agentos.chatlas.normalization.session_model.source_refs import (
 )
 from agentos.chatlas.event_ref import event_ref
 
-DELTA_CHECKPOINT_SCHEMA = "chatlas.delta-checkpoint.v2"
+DELTA_CHECKPOINT_SCHEMA = "chatlas.delta-checkpoint.v3"
 DELTA_CHECKPOINTS_DIRNAME = Path("cache") / "delta-checkpoints"
 
 TRUST_APPEND = "append"
@@ -577,7 +577,7 @@ def claude_delta_normalization_result(
         tool_invocations=tool_invocations,
         events=events,
         usage=usage,
-        normalizer="claude-code.raw_session.experimental.v1",
+        normalizer="claude-code.raw_session.experimental.v2",
         source_mode="claude_code_raw_session",
         warnings=warnings,
         unsupported_concepts=_claude_unsupported_concepts(

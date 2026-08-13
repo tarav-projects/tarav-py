@@ -89,6 +89,67 @@ def test_delta_pass_equals_full_derivation(tmp_path):
     )
 
 
+def test_delta_pass_with_queued_user_input_equals_full_derivation(tmp_path):
+    jsonl = tmp_path / "raw" / "S1.jsonl"
+    jsonl.parent.mkdir()
+    root = tmp_path / "chatlas"
+    base = _closed_turn_records() + _second_closed_turn_records()
+    _write_jsonl(jsonl, base)
+    row = _row(jsonl)
+    _full_derive_and_publish(row, root)
+
+    queued = {
+        "type": "attachment",
+        "uuid": "q7",
+        "parentUuid": "a6",
+        "timestamp": "2026-07-26T10:00:07.000Z",
+        "sessionId": "S1",
+        "attachment": {
+            "type": "queued_command",
+            "prompt": "change the active plan",
+            "commandMode": "prompt",
+            "origin": {"kind": "human"},
+            "timestamp": "2026-07-26T10:00:07.000Z",
+        },
+    }
+    extension = [
+        queued,
+        _assistant_record(
+            "a8",
+            "following the change",
+            parent="q7",
+            message_id="msg4",
+            stop_reason=None,
+        ),
+    ]
+    _write_jsonl(jsonl, base + extension)
+
+    delta_result = claude_delta_normalization_result(
+        row,
+        chatlas_root=root,
+        artifact_dir=_session_model_artifact_dir(row, root),
+        trust="verify",
+    )
+    assert delta_result is not None
+    delta_model = assemble_session_model(row, delta_result)
+    full_model = assemble_session_model(row)
+    full_model["normalization"]["derivation"] = "delta"
+    assert json.dumps(delta_model, sort_keys=True) == json.dumps(
+        full_model, sort_keys=True
+    )
+
+    queued_event = next(
+        event
+        for event in delta_model["chat"]["events"]
+        if (event.get("payload") or {}).get("content")
+        == [{"type": "text", "text": "change the active plan"}]
+    )
+    assert queued_event["annotations"]["normal_turn"] == {
+        "id": "q7",
+        "kind": "user",
+    }
+
+
 def _tool_use_turn_records() -> list[dict]:
     """A closed tool turn with no progress records — normalizes fine but emits
     benign 'missing PreToolUse/PostToolUse progress' tool-pass warnings."""

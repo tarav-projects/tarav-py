@@ -35,6 +35,7 @@ from ..session_model._claude import (
     _claude_record_has_usage_payload,
     _claude_record_kind,
     _claude_record_starts_interaction,
+    _claude_queued_user_input_attachment,
     claude_turn_id,
     _claude_session_update_payload,
     _claude_system_event_payload,
@@ -168,6 +169,35 @@ def claude_session_update_normalizer(
             timestamp=record.timestamp,
             source_refs=record.source_refs,
             native=_claude_common_event_native(record),
+        )
+    ]
+
+
+def claude_queued_user_message_normalizer(
+    record: _ClaudeRawRecord, turn_id: str
+) -> list[dict[str, object]]:
+    attachment = _claude_queued_user_input_attachment(record)
+    if attachment is None:
+        return []
+    prompt = string_or_none(attachment.get("prompt"))
+    if prompt is None:
+        return []
+    return [
+        dict(
+            kind="message",
+            producer=semantic_event_producer("human"),
+            surfaces=semantic_event_surfaces(
+                transcript="visible",
+                model_input="visible",
+            ),
+            turn_id=turn_id,
+            payload={"role": "user", "content": [{"type": "text", "text": prompt}]},
+            timestamp=record.timestamp,
+            source_refs=record.source_refs,
+            native={
+                **_claude_common_event_native(record),
+                "attachment": attachment,
+            },
         )
     ]
 
@@ -320,6 +350,9 @@ def _dispatch_record(
         return
     if record.record_type == "system":
         _place(event_builder, claude_system_normalizer(record, turn_id))
+        return
+    if _claude_queued_user_input_attachment(record) is not None:
+        _place(event_builder, claude_queued_user_message_normalizer(record, turn_id))
         return
     role = _claude_message_role(record)
     if role in {"user", "assistant"}:
