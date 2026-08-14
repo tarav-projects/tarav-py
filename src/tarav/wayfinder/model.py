@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from urllib.parse import quote, unquote, urlsplit
 
 
-REFERENCE_SCHEMA = "agentos.wayfinder.reference.v1"
+REFERENCE_SCHEMA = "tarav.wayfinder.reference.v1"
 REFERENCE_KEYS = frozenset({"schema", "type", "root", "address"})
 ROOT_KEYS = frozenset({"type", "id"})
 INDEX_BLOCK_TYPE = "index.block"

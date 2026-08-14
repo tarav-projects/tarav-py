@@ -49,7 +49,7 @@ def test_reference_round_trips_canonical_json_and_index_sugar() -> None:
     reference = index_block_reference("demo-pkg", "POI.Example")
 
     assert reference.as_dict() == {
-        "schema": "agentos.wayfinder.reference.v1",
+        "schema": "tarav.wayfinder.reference.v1",
         "type": "index.block",
         "root": {"type": "package.skill", "id": "demo-pkg"},
         "address": "POI.Example",
@@ -75,13 +75,21 @@ def test_index_block_resolution_requires_package_skill_root() -> None:
     [
         {},
         {
-            "schema": "agentos.wayfinder.reference.v0",
+            "schema": "tarav.wayfinder.reference.v0",
             "type": "index.block",
             "root": {"type": "package.skill", "id": "demo-pkg"},
             "address": "POI.Example",
         },
         {
+            # the retired agentos-era schema, rejected rather than accepted:
+            # the registry carrying it was archived, not migrated in place
             "schema": "agentos.wayfinder.reference.v1",
+            "type": "index.block",
+            "root": {"type": "package.skill", "id": "demo-pkg"},
+            "address": "POI.Example",
+        },
+        {
+            "schema": "tarav.wayfinder.reference.v1",
             "type": "index.block",
             "root": {"type": "package.skill", "id": "demo-pkg"},
             "address": "POI.Example",
@@ -113,7 +121,7 @@ def test_registry_replaces_last_resolution_without_changing_identity(
     assert updated.relocation_hints == ({"moved": True},)
     assert registry.get(root) == updated
     payload = json.loads(registry.path.read_text(encoding="utf-8"))
-    assert payload["schema"] == "agentos.wayfinder.registry.v1"
+    assert payload["schema"] == "tarav.wayfinder.registry.v1"
     assert len(payload["entries"]) == 1
 
 

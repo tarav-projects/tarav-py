@@ -16,7 +16,7 @@ from tarav._core.project import tarav_home_dir
 from .model import WayfinderError, WayfinderReferenceRoot
 
 
-REGISTRY_SCHEMA = "agentos.wayfinder.registry.v1"
+REGISTRY_SCHEMA = "tarav.wayfinder.registry.v1"
 
 
 class CorruptWayfinderRegistry(WayfinderError):
