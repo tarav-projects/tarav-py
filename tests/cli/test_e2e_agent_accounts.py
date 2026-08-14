@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import main
-from agentos.agent.monitor.config import load_monitor_workflow_configs
-from agentos.testing import AgentosTestEnvironment, seed_codex_account
+from tarav.cli.cli import main
+from tarav.agent.monitor.config import load_monitor_workflow_configs
+from tarav.testing import TaravTestEnvironment, seed_codex_account
 from _helpers import write_text_file
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
@@ -31,7 +31,7 @@ def _codex_home_auth_json(uuid: str) -> str:
 
 
 def _write_monitor_config(
-    environment: AgentosTestEnvironment,
+    environment: TaravTestEnvironment,
     monitor: list[dict[str, object]],
 ) -> None:
     environment.write_global_config(agent={"accounts": {"monitor": monitor}})
@@ -42,7 +42,7 @@ def test_agent_accounts_capture_activate_status_lifecycle(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     seed_codex_account("br", account_id=UUID)
     codex_home = tmp_path / "codex-br"
@@ -64,7 +64,7 @@ def test_agent_accounts_capture_activate_status_lifecycle(
     )
     capsys.readouterr()
 
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
 
     capture = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
     assert capture["account"] == "br"
@@ -102,7 +102,7 @@ def test_agent_accounts_monitor_reports_configuration_errors(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
 
     _write_monitor_config(environment, [{"workflow": "limits-tracking", "targets": []}])
@@ -144,7 +144,7 @@ def test_agent_accounts_monitor_auto_prime_trigger_config(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     seed_codex_account("br")
 

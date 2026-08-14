@@ -1,23 +1,23 @@
 {
   "depots": [
-    "../agentos-md/skills/agentos-pkg",
-    "../agentos-chatlas-md/skills/agentos-chatlas-pkg",
-    "../agentos-canvas-md/skills/agentos-canvas-pkg",
-    "../agentos-iterante-md/skills/agentos-iterante-pkg"
+    "../tarav-md/skills/tarav-pkg",
+    "../tarav-chatlas-md/skills/tarav-chatlas-pkg",
+    "../tarav-canvas-md/skills/tarav-canvas-pkg",
+    "../tarav-iterante-md/skills/tarav-iterante-pkg"
   ],
   "code_surfaces": [
     {
       "language": "python",
       "include": [
-        "src/agentos/**/*.py"
+        "src/tarav/**/*.py"
       ],
       "exclude": []
     }
   ],
   "edition_history": {
     "targets": [
-      "src/agentos/skillware/commands.py",
-      "src/agentos/skillware/edition_history.py"
+      "src/tarav/skillware/commands.py",
+      "src/tarav/skillware/edition_history.py"
     ],
     "exclude": []
   }

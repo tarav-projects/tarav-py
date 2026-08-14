@@ -7,7 +7,7 @@
 - **source:** 2026-06-15 discussion after diagnosing `acodex` materializing `codex-main` from the first configured account and clarifying that `accounts[0]` is intentional profile default behavior
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/agent/commands.py`, `src/agentos/agent/config.py`, `src/agentos/agent/primitives.py`, `src/agentos/agent/profile_scope.py`, `src/agentos/agent/account_reconcile.py`, `src/agentos/codex/agent.py`, `src/agentos/codex/account_registry.py`, `src/agentos/codex/account_reconcile.py`, `src/agentos/claude/agent.py`, `src/agentos/claude/account_registry.py`, `src/agentos/claude/account_reconcile.py`, tests under `tests/`
-- **related surfaces:** `notes/live/627-codex-auth-reconciliation-impl-req.md`, `notes/live/628-agent-run-account-preflight-impl-req.md`, `notes/live/629-agent-profile-ssot-and-account-events-impl-req.md`, `notes/live/630-agent-profile-legacy-cleanout-impl-req.md`, `notes/live/637-profile-scope-helper-cleanup-impl-req.md`, `agentos-md/skills/agentos-agent-account-management/SKILL.md`
+- **related surfaces:** `notes/live/627-codex-auth-reconciliation-impl-req.md`, `notes/live/628-agent-run-account-preflight-impl-req.md`, `notes/live/629-agent-profile-ssot-and-account-events-impl-req.md`, `notes/live/630-agent-profile-legacy-cleanout-impl-req.md`, `notes/live/637-profile-scope-helper-cleanup-impl-req.md`, `agentos-md/skills/tarav-agent-account-management/SKILL.md`
 
 ## Impl.Index
 
@@ -88,7 +88,7 @@ Account.Event.Log
 
 Hard.Evidence:
 
-- `agentos-md/skills/agentos-agent-account-management/SKILL.md` distinguishes registered, active, verified, and freshest credential states.
+- `agentos-md/skills/tarav-agent-account-management/SKILL.md` distinguishes registered, active, verified, and freshest credential states.
 - `src/agentos/agent/account_registry.py` owns provider-scoped account records, artifact records, verification records, and account events.
 - `src/agentos/codex/account_reconcile.py` and `src/agentos/claude/account_reconcile.py` already expose provider-specific reconciliation flows behind the shared `AccountReconcileRequest` / `AccountReconcileResult` shape.
 
@@ -111,7 +111,7 @@ Hard.Evidence:
 - `src/agentos/codex/account_registry.py` reads, registers, inspects, and copies Codex `auth.json` artifacts.
 - `src/agentos/codex/account_reconcile.py` discovers configured/system Codex homes, registers fresh known-account auth, activates verified artifacts, and syncs known homes.
 - `src/agentos/codex/agent.py` currently runs preflight that may call `link_codex_account_to_home(...)` or `reconcile_codex_accounts(...)`.
-- `agentos-md/skills/agentos-agent-account-management/references/codex-auth-json.md` describes Codex `auth.json` diagnosis, registration, and live validation.
+- `agentos-md/skills/tarav-agent-account-management/references/codex-auth-json.md` describes Codex `auth.json` diagnosis, registration, and live validation.
 
 Target run behavior:
 
@@ -370,7 +370,7 @@ Expected active-code result depends on chosen compatibility posture; historical 
 ### Slice 6 - Command Help And Account Management Docs
 
 - Update command help for `agent accounts`.
-- Update `agentos-md/skills/agentos-agent-account-management/SKILL.md` and provider references so normal run guidance uses profile/run-driven account selection:
+- Update `agentos-md/skills/tarav-agent-account-management/SKILL.md` and provider references so normal run guidance uses profile/run-driven account selection:
 
 ```bash
 agentos agent run --profile codex-main --account mm -- ...
@@ -391,7 +391,7 @@ Validation:
 ```bash
 agentos agent accounts --help
 agentos agent accounts materialize --help
-rg -n "link the active artifact|accounts link|linked home" agentos-md/skills/agentos-agent-account-management README.md src/agentos tests
+rg -n "link the active artifact|accounts link|linked home" agentos-md/skills/tarav-agent-account-management README.md src/agentos tests
 ```
 
 ### Slice 7 - Focused And Full Verification

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import pytest
 
-from agentos.tournament.frame import Frame, Players, Shuffle, Table, Text
-from agentos.tournament.model import TournamentError
-from agentos.tournament.runner import compose_verbatim
-from agentos.tournament.template import build_template, render_template
+from tarav.tournament.frame import Frame, Players, Shuffle, Table, Text
+from tarav.tournament.model import TournamentError
+from tarav.tournament.runner import compose_verbatim
+from tarav.tournament.template import build_template, render_template
 
 CRITERIA = "Prefer the one that survives a hostile reading."
 
@@ -165,7 +165,7 @@ def _legacy_verbatim(
     depot_root: str | None,
 ) -> str:
     """The frame exactly as it stood before templates, pinned here as the oracle."""
-    from agentos.tournament.contract import position_labels
+    from tarav.tournament.contract import position_labels
 
     labels = position_labels(len(presented_presentations))
     parts = [question.strip()]
@@ -183,11 +183,11 @@ def _legacy_verbatim(
         parts.append(
             "Submit your answer by running this command. It validates your ranking "
             "and tells you what to fix if it is wrong:\n\n"
-            f"    agentos tournament submit{depot} --ticket {ticket_id} "
+            f"    tarav tournament submit{depot} --ticket {ticket_id} "
             f"--ranking {ranked}\n\n"
             "Replace the ranking with your own order, best first. If the comparison "
             "cannot honestly be made, submit instead:\n\n"
-            f"    agentos tournament submit{depot} --ticket {ticket_id} "
+            f"    tarav tournament submit{depot} --ticket {ticket_id} "
             '--no-contest --refusal-reason "why"\n\n'
             "Nothing you print is read; only the submitted command counts."
         )
@@ -290,7 +290,7 @@ def test_a_version_2_template_still_carries_the_submit_instruction() -> None:
         _typed_frame(), operations={"0": [0, 1]}, ticket_id="tk-9", depot="/d"
     )
     rendered = render_template(template, components, bindings)
-    assert "agentos tournament submit --depot /d --ticket tk-9" in rendered
+    assert "tarav tournament submit --depot /d --ticket tk-9" in rendered
 
 
 def test_an_unknown_template_version_names_both_renderable_ones() -> None:

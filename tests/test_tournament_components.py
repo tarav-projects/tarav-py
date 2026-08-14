@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from agentos.tournament.components import (
+from tarav.tournament.components import (
     ComponentMissingError,
     ComponentRegistry,
     address_of,
 )
-from agentos.tournament.model import TournamentError
+from tarav.tournament.model import TournamentError
 
 
 def test_a_component_round_trips_through_its_address(tmp_path: Path) -> None:

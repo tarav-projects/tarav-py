@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.index.issues import issue_inventory
-from agentos.index.linter import build_linter_config, run_linter
-from agentos.index.model import parse_depot
-from agentos.index.policy import surface_policy
+from tarav.index.issues import issue_inventory
+from tarav.index.linter import build_linter_config, run_linter
+from tarav.index.model import parse_depot
+from tarav.index.policy import surface_policy
 
 
 def _write(path: Path, text: str) -> None:

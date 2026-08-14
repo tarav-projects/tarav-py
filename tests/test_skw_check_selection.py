@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.poi import check_registry, check_selector
-from agentos.skillware.poi import skillware_poi as poi
-from agentos.skillware.commands import (
+from tarav._core.errors import CliError
+from tarav.poi import check_registry, check_selector
+from tarav.skillware.poi import skillware_poi as poi
+from tarav.skillware.commands import (
     _cmd_skillware_check,
     _enabled_poi_selectors,
     _filter_pois,
@@ -81,7 +81,7 @@ def test_list_checks_lists_kinds_and_exits(capsys) -> None:
 
 
 def test_render_check_registry_formats_rows() -> None:
-    from agentos.poi import render_check_registry
+    from tarav.poi import render_check_registry
 
     rows = [
         {"selector": "alpha", "title": "first", "default_on": True, "structural": True},
@@ -100,7 +100,7 @@ def test_render_check_registry_formats_rows() -> None:
 def test_add_check_selection_args_wires_all_three_flags() -> None:
     import argparse as _argparse
 
-    from agentos.poi import add_check_selection_args
+    from tarav.poi import add_check_selection_args
 
     parser = _argparse.ArgumentParser()
     add_check_selection_args(parser, unit="POI kind")

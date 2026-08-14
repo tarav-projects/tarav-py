@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.index.line_manifest import build_index_line_manifest
-from agentos.chatlas.anchory import (
+from tarav.index.line_manifest import build_index_line_manifest
+from tarav.chatlas.anchory import (
     CHATLAS_NAMESPACE,
     build_line_anchor_dossier,
     build_line_relationships,
     chatlas_anchory_depot,
 )
-from agentos.chatlas.normal_turn import normal_turn_ref
-from agentos.chatlas.normalization.session_model.events import compute_event_hash
+from tarav.chatlas.normal_turn import normal_turn_ref
+from tarav.chatlas.normalization.session_model.events import compute_event_hash
 
 
 def _event(sequence: int, *, role: str) -> dict[str, object]:
@@ -93,7 +93,7 @@ def _projector(
     sample_size: int = 2,
     detail: str = "reference",
 ):
-    from agentos.chatlas.line_manifest import (
+    from tarav.chatlas.line_manifest import (
         create_chatlas_line_relationship_projector,
     )
 
@@ -209,7 +209,7 @@ def test_manifest_preserves_selected_relationship_namespaces(tmp_path: Path) -> 
 
 
 def test_line_manifest_materialization_is_volatile_and_ignored(tmp_path: Path) -> None:
-    from agentos.chatlas.line_manifest import materialize_index_line_manifest
+    from tarav.chatlas.line_manifest import materialize_index_line_manifest
 
     manifest = {
         "schema": "agentos.index-line-manifest.v3",
@@ -230,8 +230,8 @@ def test_line_manifest_materialization_is_volatile_and_ignored(tmp_path: Path) -
 def test_line_manifest_materialization_rejects_old_schema(tmp_path: Path) -> None:
     import pytest
 
-    from agentos._core.errors import CliError
-    from agentos.chatlas.line_manifest import materialize_index_line_manifest
+    from tarav._core.errors import CliError
+    from tarav.chatlas.line_manifest import materialize_index_line_manifest
 
     with pytest.raises(CliError, match="agentos.index-line-manifest.v3"):
         materialize_index_line_manifest(

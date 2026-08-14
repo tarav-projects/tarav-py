@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.chatlas.normal_turn import normal_turn_ref, resolve_normal_turn_ref
-from agentos.chatlas.normalization.session_model._copilot import (
+from tarav._core.errors import CliError
+from tarav.chatlas.normal_turn import normal_turn_ref, resolve_normal_turn_ref
+from tarav.chatlas.normalization.session_model._copilot import (
     _CopilotRawEvent,
     _CopilotRawEvents,
     _copilot_append_run_event,
     _copilot_events_from_raw_events,
 )
-from agentos.chatlas.normalization.session_model.events import (
+from tarav.chatlas.normalization.session_model.events import (
     SemanticEventBuilder,
     compute_event_group_hash,
     compute_event_hash,

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.skillware.build import (
+from tarav._core.errors import CliError
+from tarav.skillware.build import (
     SkillwareError,
     bless_pois_by_kind,
     bless_skill,
@@ -15,8 +15,8 @@ from agentos.skillware.build import (
     check_skill,
     unlock_requirements,
 )
-from agentos.skillware.commands import _cmd_skillware_bless, _cmd_skillware_check
-from agentos.skillware.model import parse_skw_source
+from tarav.skillware.commands import _cmd_skillware_bless, _cmd_skillware_check
+from tarav.skillware.model import parse_skw_source
 
 
 def test_unlock_surface_annotation_parses_as_typed_dependency() -> None:

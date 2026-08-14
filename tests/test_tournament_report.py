@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.tournament import (
+from tarav.tournament import (
     TournamentStore,
     VerdictOutcome,
     tournament_report,
 )
-from agentos.tournament.poi import tournament_poi_instances
+from tarav.tournament.poi import tournament_poi_instances
 
 
 def _store(tmp_path: Path):

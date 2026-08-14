@@ -7,7 +7,7 @@
 - **source:** 2026-06-16 design alignment after adding `Harness.Injected.ENV` and `Config.Injected.ENV` to the Agentos index; user request: "profiles + args, no hidden config" and "any other non HARNESS_INJECTED_ENV_ALLOWLIST env variable currently hardcode, move them to profiles"
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/claude/agent.py`, `src/agentos/codex/agent.py`, `src/agentos/copilot/agent.py`, `src/agentos/claude/account_status.py`, `tests/test_agent_profiles.py`, `tests/test_agent_run_account_preflight.py`, optional local profiles under `~/.agentos/profiles`
-- **related surfaces:** `agentos-md/skills/agentos-pkg/index/104-index.md` (`Harness.Injected.ENV`, `Config.Injected.ENV`), `agentos-md/skills/agentos-pkg/appendix/Harness.Injected.ENV-appendix.md`, `agentos-md/skills/agentos-pkg/appendix/Config.Injected.ENV-appendix.md`
+- **related surfaces:** `agentos-md/skills/tarav-pkg/index/104-index.md` (`Harness.Injected.ENV`, `Config.Injected.ENV`), `agentos-md/skills/tarav-pkg/appendix/Harness.Injected.ENV-appendix.md`, `agentos-md/skills/tarav-pkg/appendix/Config.Injected.ENV-appendix.md`
 
 ## Impl.Index
 

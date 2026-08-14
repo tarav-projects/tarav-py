@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agentos.testing import AgentosTestEnvironment
+from tarav.testing import TaravTestEnvironment
 
 
 def write_text_file(path: Path, text: str) -> None:
@@ -13,7 +13,7 @@ def write_text_file(path: Path, text: str) -> None:
 
 
 def write_codex_work_profile(
-    environment: AgentosTestEnvironment,
+    environment: TaravTestEnvironment,
     codex_home: Path,
 ) -> None:
     environment.write_profile(
@@ -24,7 +24,7 @@ def write_codex_work_profile(
 
 
 def write_chatlas_codex_source(
-    environment: AgentosTestEnvironment,
+    environment: TaravTestEnvironment,
     codex_home: Path,
     *,
     chatlas_config: dict[str, object] | None = None,

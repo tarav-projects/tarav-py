@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.cli.cli import main
+from tarav.cli.cli import main
 
 
 def test_normalize_infers_python_and_prints_complete_json(
@@ -61,7 +61,7 @@ def test_normalize_errors_when_language_cannot_be_inferred(
 
 
 def test_normalize_has_no_positional_file_argument() -> None:
-    from agentos.cli.cli import build_parser
+    from tarav.cli.cli import build_parser
 
     parser = build_parser()
     try:

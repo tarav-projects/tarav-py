@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.commands.accounts import _cmd_agent_accounts_activate, _cmd_agent_accounts_capture
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.commands.accounts import _cmd_agent_accounts_activate, _cmd_agent_accounts_capture
+from tarav.testing import TaravTestEnvironment
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
 
@@ -26,10 +26,10 @@ def _auth_json(uuid: str) -> dict[str, object]:
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from agentos._core.project import agentos_home_dir
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from tarav._core.project import tarav_home_dir
 
-    prov = agentos_home_dir() / "accounts" / "codex"
+    prov = tarav_home_dir() / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
     (prov / "accounts.json").write_text(json.dumps({
         "provider": "codex",
@@ -52,7 +52,7 @@ def test_capture_files_by_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert _cmd_agent_accounts_capture(argparse.Namespace(
         provider="codex", home=str(home), global_sweep=False, json=False, _agentos_argv=[])) == 0
 
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
     rec = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
     assert rec["account"] == "br" and rec["method"] == "file"
     assert R.read_artifact("codex", rec["artifact_id"]) is not None
@@ -65,7 +65,7 @@ def test_capture_orphan_to_unknown_account(monkeypatch: pytest.MonkeyPatch, tmp_
     _cmd_agent_accounts_capture(argparse.Namespace(
         provider="codex", home=str(home), global_sweep=False, json=False, _agentos_argv=[]))
 
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
     rec = json.loads(R.captures_path("codex").read_text().splitlines()[-1])
     assert rec["account"] == R.UNKNOWN_ACCOUNT  # Unknown.Account bucket
     assert rec["method"] == "auth-json"  # orphan method axis is the auth_class
@@ -83,17 +83,17 @@ def test_capture_global_sweeps_provider_homes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.project import agentos_home_dir
+    from tarav._core.project import tarav_home_dir
 
     known = _home(tmp_path, "codex-br", UUID)
     orphan = _home(tmp_path, "stray", "ffffffff-0000-0000-0000-000000000000")
-    _profile(agentos_home_dir(), "codex-main", [known, orphan], ["br/file"])
+    _profile(tarav_home_dir(), "codex-main", [known, orphan], ["br/file"])
 
     rc = _cmd_agent_accounts_capture(argparse.Namespace(
         provider="codex", home=None, global_sweep=True, json=False, _agentos_argv=[]))
     assert rc == 0
 
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
     accounts = {json.loads(line)["account"]
                 for line in R.captures_path("codex").read_text().splitlines()}
     assert accounts == {"br", R.UNKNOWN_ACCOUNT}
@@ -103,16 +103,16 @@ def test_capture_global_dry_run_writes_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.project import agentos_home_dir
+    from tarav._core.project import tarav_home_dir
 
     known = _home(tmp_path, "codex-br", UUID)
-    _profile(agentos_home_dir(), "codex-main", [known], ["br/file"])
+    _profile(tarav_home_dir(), "codex-main", [known], ["br/file"])
 
     rc = _cmd_agent_accounts_capture(argparse.Namespace(
         provider="codex", home=None, global_sweep=True, dry_run=True, json=False, _agentos_argv=[]))
     assert rc == 0
 
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
     assert not R.captures_path("codex").exists()
     assert "dry-run" in capsys.readouterr().out
 
@@ -127,7 +127,7 @@ def test_capture_single_dry_run_writes_nothing(
         provider="codex", home=str(home), global_sweep=False, dry_run=True, json=False, _agentos_argv=[]))
     assert rc == 0
 
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
     assert not R.captures_path("codex").exists()
 
 
@@ -135,7 +135,7 @@ def test_capture_global_and_home_are_mutually_exclusive(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.errors import CliError
+    from tarav._core.errors import CliError
 
     with pytest.raises(CliError):
         _cmd_agent_accounts_capture(argparse.Namespace(
@@ -146,7 +146,7 @@ def test_capture_single_requires_provider_and_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.errors import CliError
+    from tarav._core.errors import CliError
 
     with pytest.raises(CliError):
         _cmd_agent_accounts_capture(argparse.Namespace(
@@ -155,9 +155,9 @@ def test_capture_single_requires_provider_and_home(
 
 def test_activate_sets_pointer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.account_status import AccountIdentity
-    from agentos.agent.auth_method import AuthData
+    from tarav.agent import auth_registry as R
+    from tarav.agent.account_status import AccountIdentity
+    from tarav.agent.auth_method import AuthData
 
     artifact_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID)))
     R.append_capture("codex", account="br", method="file", auth_class="auth-json",
@@ -170,7 +170,7 @@ def test_activate_sets_pointer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 def test_activate_rejects_missing_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.errors import CliError
+    from tarav._core.errors import CliError
 
     with pytest.raises(CliError):
         _cmd_agent_accounts_activate(argparse.Namespace(

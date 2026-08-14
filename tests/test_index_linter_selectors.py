@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from agentos.index.commands import _cmd_linter
-from agentos.index.linter import (
+from tarav.index.commands import _cmd_linter
+from tarav.index.linter import (
     GateResult,
     LinterCheck,
     LinterCheckBinding,
@@ -14,7 +14,7 @@ from _index_linter_helpers import _clean_depot, _run, _write
 
 
 def test_check_selector_derives_stable_kebab_slugs() -> None:
-    from agentos.index.linter import check_selector
+    from tarav.index.linter import check_selector
 
     assert (
         check_selector("Index.Linter/Check.DepotDependencies") == "depot-dependencies"
@@ -24,14 +24,14 @@ def test_check_selector_derives_stable_kebab_slugs() -> None:
 
 
 def test_all_check_selectors_are_unique() -> None:
-    from agentos.index.linter import CHECKS, check_selector
+    from tarav.index.linter import CHECKS, check_selector
 
     selectors = [check_selector(c.code) for c in CHECKS]
     assert len(selectors) == len(set(selectors)), "check selectors must be unique"
 
 
 def test_check_registry_reports_metadata() -> None:
-    from agentos.index.linter import check_registry
+    from tarav.index.linter import check_registry
 
     rows = {row["selector"]: row for row in check_registry()}
     assert "config-surfaces" in rows
@@ -41,13 +41,13 @@ def test_check_registry_reports_metadata() -> None:
 
 
 def _fake_checks():
-    from agentos.index.linter import LinterCheck
+    from tarav.index.linter import LinterCheck
 
     def _noop(state):
         return []
 
     def _ok(state):
-        from agentos.index.linter import allowed
+        from tarav.index.linter import allowed
 
         return allowed()
 
@@ -71,14 +71,14 @@ def _fake_checks():
 
 
 def test_resolver_default_runs_default_on_only():
-    from agentos.index.linter import check_selector, resolve_enabled_checks
+    from tarav.index.linter import check_selector, resolve_enabled_checks
 
     enabled = {check_selector(c.code) for c in resolve_enabled_checks(_fake_checks())}
     assert enabled == {"structural", "on-by-default"}
 
 
 def test_resolver_include_enables_a_default_off_check():
-    from agentos.index.linter import check_selector, resolve_enabled_checks
+    from tarav.index.linter import check_selector, resolve_enabled_checks
 
     enabled = {
         check_selector(c.code)
@@ -88,7 +88,7 @@ def test_resolver_include_enables_a_default_off_check():
 
 
 def test_resolver_exclude_removes_reportable_but_not_structural():
-    from agentos.index.linter import check_selector, resolve_enabled_checks
+    from tarav.index.linter import check_selector, resolve_enabled_checks
 
     enabled = {
         check_selector(c.code)
@@ -101,7 +101,7 @@ def test_resolver_exclude_removes_reportable_but_not_structural():
 
 
 def test_resolver_skip_wins_on_conflict():
-    from agentos.index.linter import check_selector, resolve_enabled_checks
+    from tarav.index.linter import check_selector, resolve_enabled_checks
 
     enabled = {
         check_selector(c.code)
@@ -115,8 +115,8 @@ def test_resolver_skip_wins_on_conflict():
 def test_resolver_unknown_selector_errors():
     import pytest
 
-    from agentos._core.errors import CliError
-    from agentos.index.linter import resolve_enabled_checks
+    from tarav._core.errors import CliError
+    from tarav.index.linter import resolve_enabled_checks
 
     with pytest.raises(CliError):
         resolve_enabled_checks(_fake_checks(), include=("nope",))
@@ -125,7 +125,7 @@ def test_resolver_unknown_selector_errors():
 def test_run_linter_exclude_skips_a_reportable_check(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from agentos.index.linter import CHECK_CONCEPT_DUPLICATES
+    from tarav.index.linter import CHECK_CONCEPT_DUPLICATES
 
     monkeypatch.chdir(tmp_path)
     depot = _clean_depot(tmp_path)
@@ -143,7 +143,7 @@ def test_run_linter_exclude_skips_a_reportable_check(
 def test_run_linter_exclude_cannot_disable_a_structural_check(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from agentos.index.linter import CHECK_CONFIG_SURFACES
+    from tarav.index.linter import CHECK_CONFIG_SURFACES
 
     monkeypatch.chdir(tmp_path)
     depot = _clean_depot(tmp_path)
@@ -159,14 +159,14 @@ def test_run_linter_exclude_cannot_disable_a_structural_check(
 def test_dangling_mention_check_is_default_off_and_opt_in(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from agentos.index.linter import DEPOT_DANGLING_MENTION
+    from tarav.index.linter import DEPOT_DANGLING_MENTION
 
     monkeypatch.chdir(tmp_path)
     # a depot mentioning a concept whose block does not exist -> a dangling mention
     depot = tmp_path / "depot"
     _write(
         depot / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Present.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Present.Concept\n",
     )
     _write(
         depot / "design" / "100-design.md",
@@ -229,13 +229,13 @@ def test_cli_list_checks_includes_composition_root_checks(capsys) -> None:
 def test_cli_check_flag_opts_into_dangling_mention(
     capsys, monkeypatch, tmp_path: Path
 ) -> None:
-    from agentos.index.linter import DEPOT_DANGLING_MENTION
+    from tarav.index.linter import DEPOT_DANGLING_MENTION
 
     monkeypatch.chdir(tmp_path)
     depot = tmp_path / "depot"
     _write(
         depot / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Present.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Present.Concept\n",
     )
     _write(
         depot / "design" / "100-design.md",
@@ -250,7 +250,7 @@ def test_cli_check_flag_opts_into_dangling_mention(
 def test_cli_unknown_selector_is_an_error(monkeypatch, tmp_path: Path) -> None:
     import pytest
 
-    from agentos._core.errors import CliError
+    from tarav._core.errors import CliError
 
     monkeypatch.chdir(tmp_path)
     _clean_depot(tmp_path)

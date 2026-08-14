@@ -1,6 +1,6 @@
 """Tests for call frame rendering."""
 
-from agentos.iterante2.render import render_frame
+from tarav.iterante2.render import render_frame
 
 
 class TestRenderFrame:
@@ -81,14 +81,14 @@ class TestRenderFrame:
                 "type": "task",
                 "id": "t1",
                 "title": "Work",
-                "body": "open /home/u/.agentos/missions/demo/runs/ab12cd/_mission-snap.py",
+                "body": "open /home/u/.tarav/missions/demo/runs/ab12cd/_mission-snap.py",
             },
             token="abcd123456",
             tick=1,
             mission_id="demo",
         )
         assert "‹run›" in frame
-        assert ".agentos" not in frame
+        assert ".tarav" not in frame
         # preserved surface survives redaction
         assert "## [demo] Turn 1" in frame
         assert "iterante2 submit --token abcd123456" in frame

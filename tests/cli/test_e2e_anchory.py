@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.anchory import AnchoryDepot
-import agentos.chatlas.anchory as chatlas_anchory
-from agentos.cli.cli import build_parser, main
+from tarav.anchory import AnchoryDepot
+import tarav.chatlas.anchory as chatlas_anchory
+from tarav.cli.cli import build_parser, main
 
 
 def _captured_json(capsys: object) -> dict[str, object]:
@@ -105,7 +105,7 @@ def test_anchory_amend_rejects_invalid_chatlas_replacement_without_mutation(
     capsys: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from agentos.chatlas.normalization.session_model.events import (
+    from tarav.chatlas.normalization.session_model.events import (
         compute_event_group_hash,
         compute_event_hash,
     )

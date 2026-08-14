@@ -4,7 +4,7 @@
 
 - **Scope:** make `agent.turn.stop` publish Codex quota observations into the normal Agentos usage registry, keep hook-context sampling independent, and let account monitoring use fresh registry observations before launching a provider usage probe.
 - **Status:** implemented and verified.
-- **Source:** autonomous `$agentos-hugentics --impl --dev --AUTO` execution gate. ^c20260811-47u
+- **Source:** autonomous `$tarav-hugentics --impl --dev --AUTO` execution gate. ^c20260811-47u
 - **Out of scope:** account-wide token accounting, non-Codex provider adapters, usage-registry retention redesign, daemon delivery, and new hook wildcard or priority mechanics.
 
 ## Impl.Index
@@ -35,9 +35,9 @@
 
 ## Impl.Agendix
 
-- **Touched:** `Agentos.Hook`, `Agentos.Hook.Invocation`, and `Agent.Hook` in `agentos-pkg/design/113-design.md`, especially exact callback registration, opaque context, and `agent.turn.stop`. ^c20260811-5u ^c20260811-13u ^c20260811-32u
-- **Touched:** `Normalization.Pipeline::Account.Usage.Model` in `agentos-pkg/design/104-design.md`: provider-native usage artifacts normalize into lists of `Usage.Limit`s.
-- **Touched:** `Account.Management` in `agentos-pkg/design/104-design.md`: account identity, not home aliases, binds provider state to the owning account.
+- **Touched:** `Agentos.Hook`, `Agentos.Hook.Invocation`, and `Agent.Hook` in `tarav-pkg/design/113-design.md`, especially exact callback registration, opaque context, and `agent.turn.stop`. ^c20260811-5u ^c20260811-13u ^c20260811-32u
+- **Touched:** `Normalization.Pipeline::Account.Usage.Model` in `tarav-pkg/design/104-design.md`: provider-native usage artifacts normalize into lists of `Usage.Limit`s.
+- **Touched:** `Account.Management` in `tarav-pkg/design/104-design.md`: account identity, not home aliases, binds provider state to the owning account.
 - **Execution gate:** implement the agreed quota callback and registry-first monitor behavior. ^c20260811-47u
 
 ## Execution.Plan

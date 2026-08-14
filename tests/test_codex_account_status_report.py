@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment
+from tarav.testing import TaravTestEnvironment
 
 
 def _jwt(payload: dict[str, object]) -> str:
@@ -23,10 +23,10 @@ def _auth_json(uuid: str, email: str) -> dict[str, object]:
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from agentos._core.project import agentos_home_dir
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from tarav._core.project import tarav_home_dir
 
-    return agentos_home_dir()
+    return tarav_home_dir()
 
 
 def _home(root: Path, name: str, *, uuid: str) -> Path:
@@ -64,14 +64,14 @@ def test_codex_status_aligned_and_unlisted(monkeypatch: pytest.MonkeyPatch, tmp_
     _profile(home_root, "codex-x", [foreign], ["br/file"])
 
     # capture + activate the aligned home's auth.json
-    from agentos.agent import auth_registry as R
-    from agentos.agent.providers.codex.auth_method import CodexAuthMethod
+    from tarav.agent import auth_registry as R
+    from tarav.agent.providers.codex.auth_method import CodexAuthMethod
 
     auth = CodexAuthMethod().read_auth_data(aligned)
     artifact_id = R.store_artifact("codex", auth)
     R.set_active("codex", "br", "file", artifact_id)
 
-    from agentos.agent.account_status_report import build_status_report
+    from tarav.agent.account_status_report import build_status_report
 
     by_home = {i["home"]: i for i in build_status_report("codex")["homes"]}
     assert by_home[str(aligned.resolve())]["status"] == "aligned"

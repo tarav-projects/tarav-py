@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment
+from tarav.testing import TaravTestEnvironment
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from agentos._core.project import agentos_home_dir
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from tarav._core.project import tarav_home_dir
 
-    prov = agentos_home_dir() / "accounts" / "codex"
+    prov = tarav_home_dir() / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
     (prov / "accounts.json").write_text(json.dumps({
         "provider": "codex",
@@ -22,7 +22,7 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 def _seed(ref: str, ts: str = "2026-06-01T00:00:00Z") -> None:
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
 
     path = R.captures_path("codex")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,10 +36,10 @@ def test_activate_sets_active_for_unique_prefix(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.account_status import AccountIdentity
-    from agentos.agent.activation import activate
-    from agentos.agent.auth_method import AuthData
+    from tarav.agent import auth_registry as R
+    from tarav.agent.account_status import AccountIdentity
+    from tarav.agent.activation import activate
+    from tarav.agent.auth_method import AuthData
 
     ref = R.store_artifact("codex", AuthData(payload={"tokens": {"account_id": "acc"}}))
     R.append_capture("codex", account="br", method="file", auth_class="auth-json",
@@ -54,8 +54,8 @@ def test_activate_ambiguous_and_missing_raise(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.errors import CliError
-    from agentos.agent.activation import activate
+    from tarav._core.errors import CliError
+    from tarav.agent.activation import activate
 
     _seed("abcd0001")
     _seed("abcd0002")

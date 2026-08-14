@@ -3,21 +3,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.tournament import TournamentStore, resolve_depot_root
+from tarav.tournament import TournamentStore, resolve_depot_root
 
 
 def test_depot_defaults_to_the_canonical_global_location(monkeypatch) -> None:
-    monkeypatch.delenv("AGENTOS_TOURNAMENT_DEPOT", raising=False)
-    assert resolve_depot_root(None) == (Path.home() / ".agentos" / "tournament")
+    monkeypatch.delenv("TARAV_TOURNAMENT_DEPOT", raising=False)
+    assert resolve_depot_root(None) == (Path.home() / ".tarav" / "tournament")
 
 
 def test_environment_overrides_the_default_root(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("AGENTOS_TOURNAMENT_DEPOT", str(tmp_path / "elsewhere"))
+    monkeypatch.setenv("TARAV_TOURNAMENT_DEPOT", str(tmp_path / "elsewhere"))
     assert resolve_depot_root(None) == (tmp_path / "elsewhere").resolve()
 
 
 def test_explicit_root_wins_over_the_environment(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("AGENTOS_TOURNAMENT_DEPOT", str(tmp_path / "elsewhere"))
+    monkeypatch.setenv("TARAV_TOURNAMENT_DEPOT", str(tmp_path / "elsewhere"))
     assert resolve_depot_root(tmp_path / "explicit") == (tmp_path / "explicit").resolve()
 
 

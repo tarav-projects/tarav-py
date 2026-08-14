@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.wayfinder import index_block_reference
-from agentos.cli.cli import build_parser, main
+from tarav.wayfinder import index_block_reference
+from tarav.cli.cli import build_parser, main
 
 
 def _captured_json(capsys: object) -> dict[str, object]:
@@ -32,7 +32,7 @@ def test_wayfinder_register_resolve_and_check_round_trip(
 ) -> None:
     home = tmp_path / "home"
     depot = _write_depot(tmp_path / "demo-pkg")
-    monkeypatch.setenv("AGENTOS_HOME", str(home))
+    monkeypatch.setenv("TARAV_HOME", str(home))
 
     assert "wayfinder" in build_parser().format_help()
     assert (
@@ -74,7 +74,7 @@ def test_wayfinder_resolve_returns_structured_poi(
     monkeypatch,
     capsys: object,
 ) -> None:
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "home"))
 
     assert main(["wayfinder", "resolve", "index://missing-pkg/POI.Example"]) == 1
     payload = _captured_json(capsys)

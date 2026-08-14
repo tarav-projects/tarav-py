@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.skillware.build import SkillwareError, build_skill
-from agentos.skillware.commands import _cmd_skillware_context
-from agentos.skillware.context import audit_context, project_context
+from tarav.skillware.build import SkillwareError, build_skill
+from tarav.skillware.commands import _cmd_skillware_context
+from tarav.skillware.context import audit_context, project_context
 
 
 def _write_context_skill(
@@ -234,7 +234,7 @@ def test_context_command_emits_machine_projection(
 
     assert _cmd_skillware_context(args) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["command"] == "agentos skw context"
+    assert payload["command"] == "tarav skw context"
     assert payload["target"] == "references/capture.md"
     assert payload["paths"][0]["steps"][1]["edge"]["kind"] == "routing-table"
     assert payload["paths"][0]["dependencies"] == []

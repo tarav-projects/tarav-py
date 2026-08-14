@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "agentos" / "chatlas"
+SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "tarav" / "chatlas"
 
 # Provider-native discovery entry points: calling these reads a provider-native
 # data home. Per the Provider.Home.Adapter [CT], only the adapter module may

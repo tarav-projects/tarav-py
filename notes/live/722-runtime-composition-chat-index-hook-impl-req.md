@@ -4,7 +4,7 @@
 
 - **Scope:** finish the Python monolith composition root and run the canonical targeted Chatlas update from the daemon-owned `agent.turn.stop` consumer.
 - **Status:** corrected and verified; the semantic `Chat.Index` producer described by the original edition was rejected and retired on 2026-08-12.
-- **Source:** persistent `$agentos-hugentics --impl --dev --AUTO` execution gate. ^c20260811-54u
+- **Source:** persistent `$tarav-hugentics --impl --dev --AUTO` execution gate. ^c20260811-54u
 - **Baseline:** the migrated monolith passes the complete 1,786-test parity suite, but its migration changes are not checkpointed; `agentos.cli` still owns subsystem wiring; the Chatlas hook only refreshes and warms the normalized session model.
 - **Out of scope:** redesigning Chat.Index semantics, making semantic capture synchronous with the harness, adding durable daemon retry, or retiring the preserved `_DEPRECATED` repositories.
 
@@ -75,7 +75,7 @@
 - **Checkpoint:** the complete Python monolith migration was committed as `597c6e5` before follow-up implementation edits.
 - **Implemented:** `AgentosRuntime.register_commands()` now lazily owns every command registrar and cross-subsystem callback injection; `agentos.cli` retains only parser/execution/error adapter mechanics.
 - **Implemented:** the daemon Chatlas turn-stop callback refreshes the exact provider session, resolves its neutral identity, and invokes an importable semantic Chat.Index producer using the shared `chatlas.run_produce` provider/profile/model selection.
-- **Implemented:** the producer records the source horizon before launch, suppresses Agentos hooks in the internal child process, invokes `$agentos-chatlas-pkg --capture` through the configured agent, and accepts success only when an audited landed HEAD reaches that horizon.
+- **Implemented:** the producer records the source horizon before launch, suppresses Agentos hooks in the internal child process, invokes `$tarav-chatlas-pkg --capture` through the configured agent, and accepts success only when an audited landed HEAD reaches that horizon.
 - **Implemented:** already-current audited surfaces are idempotent no-ops; agent, configuration, horizon, and audit failures propagate to ordinary daemon callback logging without blocking later events.
 - **Lifecycle repair:** daemon reinstall now uses `launchctl kickstart -k` when replacing a loaded service, closing the socket-disappearance/process-exit race discovered during installed verification. Its readiness timeout also exceeds the LaunchAgent throttle interval.
 - **Verification:** the complete monolith suite passes 1,792 tests; all touched Python files pass Ruff; `git diff --check` passes; source and wheel builds pass.

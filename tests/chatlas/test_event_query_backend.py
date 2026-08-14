@@ -5,10 +5,10 @@ import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
-from agentos.chatlas import event_query
-from agentos.chatlas.event_pattern import EventPattern
-from agentos.chatlas.event_ref import event_ref
-from agentos.chatlas.event_query import (
+from tarav.chatlas import event_query
+from tarav.chatlas.event_pattern import EventPattern
+from tarav.chatlas.event_ref import event_ref
+from tarav.chatlas.event_query import (
     NormalModelScanBackend,
     SQLiteCandidateBackend,
     corpus_fingerprint,
@@ -16,7 +16,7 @@ from agentos.chatlas.event_query import (
     query_turn_models,
     rebuild_sqlite_event_index,
 )
-from agentos.chatlas.normalization.session_model.events import compute_event_hash
+from tarav.chatlas.normalization.session_model.events import compute_event_hash
 
 
 def _event(sequence: int, role: str, text: str) -> dict[str, object]:

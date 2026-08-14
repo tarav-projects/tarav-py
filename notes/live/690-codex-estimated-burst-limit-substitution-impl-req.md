@@ -4,7 +4,7 @@
 
 - **scope:** replace the parallel estimated-burst rendering path in the monitor limits-tracking workflow with a data-layer substitution: a synthesized, flagged `AccountLimit` flowing through the unchanged limit-rendering pipeline. Codex recovers the full limit view (Burst + Weekly) mirroring claude, with the burst row marked `~Burst` as estimation guidance.
 - **status:** implemented
-- **source:** design session 2026-07-15; decisions captured in `agentos-md/skills/agentos-pkg/agendix/Normalization.Pipeline::Account.Usage.Model-agendix.md` (anchors `^20260715-0…3`).
+- **source:** design session 2026-07-15; decisions captured in `agentos-md/skills/tarav-pkg/agendix/Normalization.Pipeline::Account.Usage.Model-agendix.md` (anchors `^20260715-0…3`).
 - **current state:** OpenAI stopped publishing the codex 5h burst window (live registry confirms: `primary` = weekly 10080-min window, `secondary` null). The uncommitted estimation work in `src/agentos/agent/monitor/workflows/limits_tracking.py` (+523 lines over `e25c861`) added the weekly-history estimator plus a second, conditionally-gated rendering path (`_codex_estimated_burst_rows`, `codex_estimated_burst_targets`, ±30min baseline tolerance) — when its gate fails, codex silently shows Weekly only.
 - **out of scope:** registry/persistence changes (registry logs only real provider data — unchanged by construction); estimator math changes (kept as-is, iterated separately in `dev/burst-detection`); claude/copilot behavior; the committed weekly-baseline delta-marker feature (`e25c861`); monitor loop/clock/rotation code.
 

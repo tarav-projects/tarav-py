@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.index.wayfinder import create_index_wayfinder
-from agentos.poi.adapters.wayfinder import build_wayfinder_registry_linter_report
-from agentos.wayfinder import (
+from tarav.index.wayfinder import create_index_wayfinder
+from tarav.poi.adapters.wayfinder import build_wayfinder_registry_linter_report
+from tarav.wayfinder import (
     InvalidWayfinderReference,
     UnsupportedWayfinderReference,
     WayfinderReference,
@@ -98,7 +98,7 @@ def test_registry_replaces_last_resolution_without_changing_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
+        "TARAV_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
     )
     first = _write_depot(tmp_path / "first")
     second = _write_depot(tmp_path / "second")
@@ -121,7 +121,7 @@ def test_index_resolution_returns_authoritative_block_content(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
+        "TARAV_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
     )
     depot = _write_depot(tmp_path / "demo")
     registry = WayfinderRegistry()
@@ -150,7 +150,7 @@ def test_resolution_pois_preserve_reference_trace_and_hints(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
+        "TARAV_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
     )
     registry = WayfinderRegistry()
     reference = index_block_reference("demo-pkg", "POI.Missing")
@@ -162,7 +162,7 @@ def test_resolution_pois_preserve_reference_trace_and_hints(
     assert missing_registration.trace[0].stage == "registry.lookup"
     payload = missing_registration.as_dict()["poi"]
     assert payload["class"]["address"] == "Wayfinder.Resolution.POI"
-    assert payload["class_sugar"] == ("index://agentos-pkg/Wayfinder.Resolution.POI")
+    assert payload["class_sugar"] == ("index://tarav-pkg/Wayfinder.Resolution.POI")
     assert payload["target"]["reference"] == reference.as_dict()
     assert payload["evidence"]["kind"] == "missing"
 
@@ -194,7 +194,7 @@ def test_duplicate_index_blocks_produce_ambiguous_poi(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
+        "TARAV_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
     )
     depot = _write_depot(tmp_path / "demo")
     (depot / "design" / "101-design.md").write_text(
@@ -219,7 +219,7 @@ def test_registry_check_reports_stale_location(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
+        "TARAV_WAYFINDER_REGISTRY", str(tmp_path / "state" / "registry.json")
     )
     depot = _write_depot(tmp_path / "demo")
     registry = WayfinderRegistry()

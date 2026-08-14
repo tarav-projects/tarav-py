@@ -7,21 +7,21 @@ import sys
 
 import pytest
 
-from agentos._core.project import (
+from tarav._core.project import (
     find_agentos_project_root,
     load_global_config,
     load_project_config,
     load_project_marker,
 )
-from agentos.agent.config import load_agent_configs
-from agentos.testing import AgentosTestEnvironment, write_raw_json
+from tarav.agent.config import load_agent_configs
+from tarav.testing import TaravTestEnvironment, write_raw_json
 
 
 def test_environment_builds_loader_valid_agentos_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_global_config(
         agent={"providers": {"codex": {"cli_command": ["codex"]}}},
@@ -44,16 +44,16 @@ def test_environment_builds_loader_valid_agentos_state(
 
     assert environment.environment_variables() == {
         "HOME": str(environment.home),
-        "AGENTOS_HOME": str(environment.agentos_home),
-        "AGENTOS_ANCHORY_REGISTRY": str(
-            environment.agentos_home / "anchory" / "registry.json"
+        "TARAV_HOME": str(environment.tarav_home),
+        "TARAV_ANCHORY_REGISTRY": str(
+            environment.tarav_home / "anchory" / "registry.json"
         ),
-        "AGENTOS_ANCHORY_GLOBAL_DEPOT": str(
-            environment.agentos_home / "anchory" / "depot"
+        "TARAV_ANCHORY_GLOBAL_DEPOT": str(
+            environment.tarav_home / "anchory" / "depot"
         ),
     }
     assert (
-        load_global_config(environment.agentos_home / "config.json")["class"]
+        load_global_config(environment.tarav_home / "config.json")["class"]
         == "agentos.global.config"
     )
     assert load_agent_configs()[0].profile_id == "codex-work"
@@ -72,7 +72,7 @@ def test_raw_json_is_explicit_malformed_state_escape_hatch(tmp_path: Path) -> No
 def test_valid_builders_reject_reserved_fields_and_unsafe_profile_ids(
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
 
     with pytest.raises(ValueError, match="reserved"):
         environment.write_global_config(**{"class": "wrong"})
@@ -85,7 +85,7 @@ def test_agentos_testing_import_does_not_import_pytest() -> None:
         [
             sys.executable,
             "-c",
-            "import sys; import agentos.testing; assert 'pytest' not in sys.modules",
+            "import sys; import tarav.testing; assert 'pytest' not in sys.modules",
         ],
         check=False,
         capture_output=True,

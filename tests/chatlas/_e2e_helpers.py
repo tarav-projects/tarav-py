@@ -5,22 +5,22 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import main
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import main
 from ._helpers import captured_json, write_chatlas_codex_source, write_text_file
 
 
 def _isolate_chatlas(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> tuple[AgentosTestEnvironment, Path]:
-    environment = AgentosTestEnvironment.create(tmp_path)
+) -> tuple[TaravTestEnvironment, Path]:
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"
     return environment, codex_home
 
 
-def _configure_chatlas(environment: AgentosTestEnvironment, codex_home: Path) -> None:
+def _configure_chatlas(environment: TaravTestEnvironment, codex_home: Path) -> None:
     write_chatlas_codex_source(environment, codex_home)
 
 

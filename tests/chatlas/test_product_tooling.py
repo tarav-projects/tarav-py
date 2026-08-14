@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import main
+from tarav.cli.cli import main
 
 from ._e2e_helpers import _configure_chatlas, _isolate_chatlas, _write_codex_rollout
 from ._helpers import captured_json

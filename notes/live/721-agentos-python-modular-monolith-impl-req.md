@@ -4,7 +4,7 @@
 
 - **Scope:** consolidate the maintained Agentos Python runtime, feature packages, CLI, daemon entrypoints, and tests into the single `agentos-py` distribution while retaining subsystem namespaces and library-native composition.
 - **Status:** implemented and verified.
-- **Source:** autonomous `$agentos-hugentics --impl --dev --AUTO` execution gate. ^c20260811-53u
+- **Source:** autonomous `$tarav-hugentics --impl --dev --AUTO` execution gate. ^c20260811-53u
 - **Baseline:** six Python repositories, 1,786 passing tests: Agentos 973, CLI 76, Chatlas 483, Canvas 4, Iterante 148, Iterante v2 102.
 - **Out of scope:** merging Markdown or JavaScript projects, redesigning subsystem behavior, perfecting every public import on the first pass, removing preserved Git history, and adding cross-language distribution machinery.
 
@@ -44,7 +44,7 @@
 - **Touched:** `Chatlas.Update.Pipeline`: implementation moves under `agentos.chatlas` without changing targeted refresh behavior.
 - **Touched:** Iterante package identity: the canonical harness becomes `agentos.iterante`; the active v2 experiment is preserved as `agentos.iterante2` until a separate product decision retires or merges it.
 - **Design rule:** monolithic distribution, modular internals. Subsystems may collaborate through the runtime composition root while lower-level modules retain directional imports.
-- **Execution gate:** `$agentos-hugentics --impl --dev --AUTO` on 2026-08-11. ^c20260811-53u
+- **Execution gate:** `$tarav-hugentics --impl --dev --AUTO` on 2026-08-11. ^c20260811-53u
 
 ## Migration.Manifest
 

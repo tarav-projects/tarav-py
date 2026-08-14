@@ -5,7 +5,7 @@
 - **Scope:** add the `Non.Skw.Annotation` drift check — flag a comment on a skw-managed **code** surface that resolves to no `Skw.Annotation` — to `agentos skw check`.
 - **Reality:** this is **not** a check that plugs into the existing linter. The only skw backend today is **skw-skills**, which parses markdown `.skw.md` sources whose machinery rides `>` blockquote carrier lines (`src/agentos/skillware/model.py`, `_SkwSurfaceProvider` at `build.py:741`). `agentos skw check` has no concept of a code file, a code comment, or a skw annotation expressed in code. Delivering this check requires standing up a minimal **skw-code backend** first. This matches the index conclusion (107 `Skw.Backend` line 114 marks `skw-code` a *candidate*; `Non.Skw.Annotation` 107 defines the POI).
 - **Status:** READY. D1 resolved by the user: **carrier B** (`# $kw: …`, the comment is the carrier). Architecture directed by the user: **reuse one core across surfaces — split into a surface-agnostic `$kw` frame core plus per-surface carrier adapters** (Slice 1). Executing under `--dev --AUTO`.
-- **Source context:** session capture of `Non.Skw.Annotation` into `agentos-pkg/design/107` (anchors `^c20260722-20u`, `^c20260722-21u`); `/agentos-hugentics-impl --dev --AUTO develop Non.Skw.Comment check into the skw linter`.
+- **Source context:** session capture of `Non.Skw.Annotation` into `tarav-pkg/design/107` (anchors `^c20260722-20u`, `^c20260722-21u`); `/agentos-hugentics-impl --dev --AUTO develop Non.Skw.Comment check into the skw linter`.
 - **Out of scope:** multi-language comment hosts beyond Python for the first cut; directive-annotation vocabulary (`TODO`/`type: ignore` → skw forms) — a follow-up once the carrier exists; the `--from`/design-linking semantics for code annotations (reuse the existing model, do not extend).
 
 ## Impl.Index
@@ -15,7 +15,7 @@
   - `src/agentos/skillware/build.py:741` — `_SkwSurfaceProvider` is the sole `SurfaceProvider`; `check_skill` drives it. Surface discovery is `.skw/src/**/*.skw.md`.
   - `src/agentos/skillware/commands.py:25` — `POI_LEGEND` is the POI-kind registry (meaning + prescription) `agentos skw check` renders; kinds are markdown-surface kinds.
   - `src/agentos/skwlint.py` — surface-agnostic core: `Poi`, `SurfaceProvider` Protocol, `run_dependency_sync`, `dangling_mention_findings`, the check-selection core. A new backend implements `SurfaceProvider`; the core is already ready for it.
-  - `agentos-pkg/design/107` — `Non.Skw.Annotation` (POI def), `Skw.Backend` (`skw-code` candidate, "declarations ride the host language's comments"), `Annotation.Point` (file is the universal host; code adds functions/modules), `Annotation.Authority` (finer points user-gated), `Poi.Bless` (blessable).
+  - `tarav-pkg/design/107` — `Non.Skw.Annotation` (POI def), `Skw.Backend` (`skw-code` candidate, "declarations ride the host language's comments"), `Annotation.Point` (file is the universal host; code adds functions/modules), `Annotation.Authority` (finer points user-gated), `Poi.Bless` (blessable).
 
 - **D1 — code carrier grammar (RESOLVED → carrier B):**
   - the comment **is** the carrier: `# $kw: [address] [--flags]` opens, `# --flag …` belongs, `# $kw. end` closes. No doubled sigil (rejected: `# > $kw:`).

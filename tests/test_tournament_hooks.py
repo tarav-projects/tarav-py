@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.tournament import (
+from tarav.tournament import (
     HookLoadError,
     HookPurityError,
     HookReturnError,
@@ -366,7 +366,7 @@ def test_a_hook_cannot_mutate_the_parameters_it_was_handed(tmp_path: Path) -> No
 
 
 FRAMED = '''
-from agentos.tournament import Cite, Frame, Players, Section, Shuffle, Table, Text
+from tarav.tournament import Cite, Frame, Players, Section, Shuffle, Table, Text
 
 VOCABULARY = {"DC": "pins a choice", "CT": "bounds one"}
 
@@ -394,7 +394,7 @@ def test_a_definition_without_match_frame_supplies_none(tmp_path: Path) -> None:
 
 
 def test_match_frame_returns_a_frame(tmp_path: Path) -> None:
-    from agentos.tournament import Frame
+    from tarav.tournament import Frame
 
     definition = _load(tmp_path, FRAMED)
     frame = definition.match_frame(players=("a@DC",), presentations=("x",))
@@ -426,8 +426,8 @@ def test_a_card_citing_a_missing_key_is_refused_before_any_spawn(
     tmp_path: Path,
 ) -> None:
     """The check must fail at composition, not at render — a spawn costs money."""
-    from agentos.tournament import FrameError
-    from agentos.tournament.runner import _prepared
+    from tarav.tournament import FrameError
+    from tarav.tournament.runner import _prepared
 
     body = FRAMED.replace('VOCABULARY = {"DC": "pins a choice", "CT": "bounds one"}',
                           'VOCABULARY = {"DC": "pins a choice"}')
@@ -437,7 +437,7 @@ def test_a_card_citing_a_missing_key_is_refused_before_any_spawn(
 
 
 def test_a_valid_framed_definition_composes(tmp_path: Path) -> None:
-    from agentos.tournament.runner import _prepared
+    from tarav.tournament.runner import _prepared
 
     definition = _load(tmp_path, FRAMED)
     presentations, frame = _prepared(definition, ("a@DC", "b@CT"))

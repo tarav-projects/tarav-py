@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.index.linter import (
+from tarav.index.linter import (
     GateResult,
     LineSupportStanding,
     LinterCheck,
@@ -99,7 +99,7 @@ def test_index_linter_reports_legacy_type_statement_sigil(
     depot_dir = _clean_depot(tmp_path)
     _write(
         depot_dir / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n"
+        "# Tarav Index\n\n## design\n\n"
         "- `design/100-design.md` — Alignment.Mode:Autonomous\n",
     )
     _write(
@@ -201,7 +201,7 @@ def test_index_linter_block_ungrounded_meter(monkeypatch, tmp_path: Path) -> Non
     depot_dir = _clean_depot(tmp_path)
     _write(
         depot_dir / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n"
+        "# Tarav Index\n\n## design\n\n"
         "- `design/100-design.md` — Example.Grounded, Example.Ungrounded, "
         "Example.HeadOnly[+1], Example.Empty\n",
     )
@@ -306,7 +306,7 @@ def test_index_linter_scope_filters_findings_counts_and_meters(
     depot_dir = _clean_depot(tmp_path)
     _write(
         depot_dir / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n"
+        "# Tarav Index\n\n## design\n\n"
         "- `design/100-design.md` — Example.One[+1]\n"
         "- `other/100-other.md` — Example.Two[+1]\n",
     )
@@ -350,7 +350,7 @@ def test_index_linter_scope_rejects_unmatched_path(monkeypatch, tmp_path: Path) 
 
 
 def test_index_linter_runs_extra_checks(monkeypatch, tmp_path: Path) -> None:
-    from agentos.index.linter import GateResult, LinterCheck, LinterFinding
+    from tarav.index.linter import GateResult, LinterCheck, LinterFinding
 
     monkeypatch.chdir(tmp_path)
     depot_dir = _clean_depot(tmp_path)
@@ -477,7 +477,7 @@ def test_index_linter_flags_unprefixed_anchor_citations(
     depot_dir = _clean_depot(tmp_path)
     _write(
         depot_dir / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.One\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.One\n",
     )
     _write(
         depot_dir / "design" / "100-design.md",

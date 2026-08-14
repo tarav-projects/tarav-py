@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.monitor.models import (
+from tarav.agent.monitor.models import (
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     LIMITS_TRACKING_WORKFLOW,
     MonitorFrame,
@@ -14,24 +14,24 @@ from agentos.agent.monitor.models import (
     MonitorUsageTimeRow,
     MonitorWorkflowConfig,
 )
-from agentos.agent.monitor.render import format_monitor_frame, monitor_result_payload
-import agentos.agent.monitor.workflows.auto_prime as auto_prime
-import agentos.agent.monitor.workflows.limits_tracking as limits_tracking
-from agentos.agent.monitor.workflows.state import (
+from tarav.agent.monitor.render import format_monitor_frame, monitor_result_payload
+import tarav.agent.monitor.workflows.auto_prime as auto_prime
+import tarav.agent.monitor.workflows.limits_tracking as limits_tracking
+from tarav.agent.monitor.workflows.state import (
     AutoPrimeTargetState,
     AutoPrimeWorkflowState,
     LimitsTargetState,
     LimitsWorkflowState,
 )
-from agentos.agent.monitor.workflows import (
+from tarav.agent.monitor.workflows import (
     LimitsTrackingWorkflow,
 )
-from agentos.agent.usage_registry import append_usage_record
-from agentos.agent.providers.claude_code.usage_hooks import (
+from tarav.agent.usage_registry import append_usage_record
+from tarav.agent.providers.claude_code.usage_hooks import (
     CLAUDE_STATUSLINE_HOOK_USAGE_SOURCE,
 )
-from agentos.agent.providers.codex.usage_hooks import CODEX_SESSION_HOOK_USAGE_SOURCE
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.providers.codex.usage_hooks import CODEX_SESSION_HOOK_USAGE_SOURCE
+from tarav.testing import TaravTestEnvironment
 
 from _monitor_helpers import _limit
 
@@ -127,7 +127,7 @@ def test_limits_tracking_refresh_uses_fresh_claude_hook_observation_without_prov
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     append_usage_record(
         provider="claude-code",
@@ -189,7 +189,7 @@ def test_limits_tracking_refresh_uses_fresh_account_hook_observation_without_pro
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     observed_home = tmp_path / "active-codex-home"
     target_home = tmp_path / "monitor-codex-home"
@@ -244,7 +244,7 @@ def test_limits_tracking_refresh_probes_provider_when_hook_observation_is_stale(
     tmp_path: Path,
     stale_reason: str,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     target_home = tmp_path / "monitor-codex-home"
     reset_at = (
@@ -555,7 +555,7 @@ def test_limits_tracking_synthesizes_estimated_burst_limit_for_codex(
 ) -> None:
     now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
     _freeze_monitor_now(monkeypatch, now)
-    from agentos.agent.monitor.burst_estimation import fixed_local_5h_window
+    from tarav.agent.monitor.burst_estimation import fixed_local_5h_window
 
     window_start, _reset_at = fixed_local_5h_window(recorded_at=now)
     weekly = _limit(
@@ -616,7 +616,7 @@ def test_limits_tracking_estimated_burst_zero_without_baseline_before_window(
 ) -> None:
     now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
     _freeze_monitor_now(monkeypatch, now)
-    from agentos.agent.monitor.burst_estimation import fixed_local_5h_window
+    from tarav.agent.monitor.burst_estimation import fixed_local_5h_window
 
     window_start, _reset_at = fixed_local_5h_window(recorded_at=now)
     weekly = _limit(
@@ -664,7 +664,7 @@ def test_limits_tracking_estimated_burst_baseline_survives_rolling_reset(
     # the frozen-0% bug.
     now = datetime.datetime(2026, 5, 19, 18, 0, tzinfo=datetime.UTC)
     _freeze_monitor_now(monkeypatch, now)
-    from agentos.agent.monitor.burst_estimation import fixed_local_5h_window
+    from tarav.agent.monitor.burst_estimation import fixed_local_5h_window
 
     window_start, _reset_at = fixed_local_5h_window(recorded_at=now)
     weekly = _limit(

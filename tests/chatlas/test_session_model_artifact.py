@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from agentos.chatlas.normalization.session_model.artifact import (
+from tarav.chatlas.normalization.session_model.artifact import (
     SESSION_MODEL_HEAD_ARTIFACT,
     load_session_model_artifact,
     write_session_model_artifact,

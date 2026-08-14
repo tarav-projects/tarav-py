@@ -12,7 +12,7 @@
 - **Scope (out / keep):**
   - the **usage/status** system — `*/account_status.py` (agent/claude/codex/copilot) + `account_usage_fallback.py` — a *separate* live system (limits polling) the monitor and run path use. **Keep it.** `AccountIdentity`/`AccountStatus` (in `agent/account_status.py`) stay (shared types).
   - the **re-integration** of monitor auto-capture and run-path credential validation onto the new model — explicitly deferred ("redesign the integration back again"). This Impl.Req *disconnects*; a follow-up reconnects.
-- **Source context:** this session's teardown inventory; the new model lives in `auth_registry.py`, `auth_method*.py`, `account_status_report.py`, `codex/claude auth_method.py`. Conceptual home: `agentos-pkg` `Account.Management` (the three primitive operations).
+- **Source context:** this session's teardown inventory; the new model lives in `auth_registry.py`, `auth_method*.py`, `account_status_report.py`, `codex/claude auth_method.py`. Conceptual home: `tarav-pkg` `Account.Management` (the three primitive operations).
 
 ## Impl.Index
 

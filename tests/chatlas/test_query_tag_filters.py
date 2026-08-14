@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agentos.chatlas.annotations import add_session_tag
-from agentos.chatlas.query import row_matches_annotation_filters
+from tarav.chatlas.annotations import add_session_tag
+from tarav.chatlas.query import row_matches_annotation_filters
 
 
 def _row(identity_hash: str) -> dict[str, Any]:

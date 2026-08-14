@@ -1,7 +1,7 @@
 """Tests for Ctx construction (data-only). Call builders live in test_calls.py."""
 
-from agentos import iterante
-from agentos.iterante.ctx import Ctx
+from tarav import iterante
+from tarav.iterante.ctx import Ctx
 
 
 class TestCtxConstruction:

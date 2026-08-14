@@ -26,7 +26,7 @@
 - `agentos.bloberia.BloberiaDepot` already provides explicit-depot create, query, and structural checking over application-owned JSON values
 - `agentos.skillware.commands.register_skillware_commands` already owns the `skw` command namespace and its deprecated `skillware` alias
 - `.agentos/project.json` provides a stable `project_id`; `AgentosProjectHandler` exposes it with project-root discovery
-- the Skillware package skill is generated from `skills/agentos-skillware/.skw/src/`; its compiled files must not be edited directly
+- the Skillware package skill is generated from `skills/tarav-skillware/.skw/src/`; its compiled files must not be edited directly
 - `agentos-py` and `agentos-cli` begin clean; `agentos-md` contains approved edition-history index edits plus unrelated concurrent work that execution must preserve
 
 ### Edition.File.Identity
@@ -86,7 +86,7 @@
 ### Developer.Module
 
 - add `references/edition-history-developer.skw.md` under the Skillware package source
-- route edition-history recovery and maintenance situations from `agentos-skillware`
+- route edition-history recovery and maintenance situations from `tarav-skillware`
 - the module inspects full Git file history, queries Chatlas for candidate editing sessions, evaluates evidence, records accepted associations through the service CLI, and closes with list/check
 - the module never writes raw Bloberia records and never treats temporal overlap alone as proof
 - build and check the Skillware package after editing its source
@@ -131,11 +131,11 @@
 
 ### Slice 4 - Specialized developer module
 
-- author the new module in `agentos-skillware/.skw/src/references/`
+- author the new module in `tarav-skillware/.skw/src/references/`
 - extend the source router and `--dev` guidance without editing compiled targets
 - build and check the package
-- observable: an agent loading `agentos-skillware` is routed to a concrete Git/Chatlas/service maintenance workflow
-- checks: `agentos skw build --skill skills/agentos-skillware`; `agentos skw check --skill skills/agentos-skillware`
+- observable: an agent loading `tarav-skillware` is routed to a concrete Git/Chatlas/service maintenance workflow
+- checks: `agentos skw build --skill skills/tarav-skillware`; `agentos skw check --skill skills/tarav-skillware`
 - status: completed
 
 ### Slice 5 - Full verification and installed CLI
@@ -143,7 +143,7 @@
 - run full tests and Ruff in `agentos-py` and `agentos-cli`
 - reinstall the editable umbrella executable from `agentos-cli`
 - smoke record/list/check against a scratch initialized Git/Agentos project and explicit Bloberia depot
-- run the full `agentos-pkg` index linter to preserve the accepted ontology relocation
+- run the full `tarav-pkg` index linter to preserve the accepted ontology relocation
 - observable: library, CLI, developer module, and ontology operate together without regressions
 - status: completed
 
@@ -176,4 +176,4 @@
 - 2026-07-25: added and built the Skillware edition-history developer module; two initial dependency-graph POIs were corrected in source, leaving zero POIs
 - 2026-07-25: full verification passed - 521 `agentos-py` tests, 62 `agentos-cli` tests, and full Ruff checks in both projects
 - 2026-07-25: installed CLI smoke passed create-versus-existing idempotency, one-edition/one-session grouping, and a clean explicit-target check
-- 2026-07-25: full `agentos-pkg` index lint passed with 23 checks and no findings
+- 2026-07-25: full `tarav-pkg` index lint passed with 23 checks and no findings

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.chatlas.index_query import chatlas_index_query
-from agentos.chatlas.index_store import ChatlasSessionIndexCache
+from tarav.chatlas.index_query import chatlas_index_query
+from tarav.chatlas.index_store import ChatlasSessionIndexCache
 
 
 def _write_partition(

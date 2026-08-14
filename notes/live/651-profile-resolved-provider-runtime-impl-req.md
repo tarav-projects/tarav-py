@@ -7,7 +7,7 @@
 - **source:** 2026-06-18 incident: `agentos agent accounts monitor` ran Claude statusline refresh for `claude-code/browser-br` and `browser-jp` through an unprofiled registered-account agent, dropping profile-declared `DISABLE_AUTOUPDATER=1` and `DISABLE_UPDATES=1`; user directive: "every Agentos subsystem that runs a provider command must run through profile resolution"
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/agent/providers.py`, `src/agentos/agent/profile_scope.py`, `src/agentos/agent/monitor/config.py`, `src/agentos/agent/monitor/workflows.py`, `src/agentos/claude/account_reconcile.py`, `src/agentos/codex/account_reconcile.py`, `tests/test_agent_profiles.py`, `tests/test_agent_monitor_auto_prime.py`, `tests/test_claude_account_reconcile.py`, `tests/test_codex_account_reconcile.py`, `tests/test_claude_account_status.py`
-- **related surfaces:** `notes/live/613-provider-cli-command-authority-impl-req.md`, `notes/live/636-claude-reconcile-verification-impl-req.md`, `notes/live/648-agent-harness-injected-env-allowlist-impl-req.md`, `notes/live/649-agent-harness-env-contract-cleanup-impl-req.md`, `agentos-md/skills/agentos-agent-account-management/SKILL.md`
+- **related surfaces:** `notes/live/613-provider-cli-command-authority-impl-req.md`, `notes/live/636-claude-reconcile-verification-impl-req.md`, `notes/live/648-agent-harness-injected-env-allowlist-impl-req.md`, `notes/live/649-agent-harness-env-contract-cleanup-impl-req.md`, `agentos-md/skills/tarav-agent-account-management/SKILL.md`
 
 ## Impl.Index
 

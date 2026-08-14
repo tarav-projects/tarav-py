@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.testing import AgentosTestEnvironment, write_project_marker
-from agentos.cli.cli import main
+from tarav.testing import TaravTestEnvironment, write_project_marker
+from tarav.cli.cli import main
 from _helpers import captured_json, write_text_file as _write
 
 
@@ -24,7 +24,7 @@ def test_mission_templates_reads_selected_imported_skills(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     workspace = tmp_path / "workspace"
     write_project_marker(workspace)

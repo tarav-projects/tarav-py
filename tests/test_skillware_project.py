@@ -6,15 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.skillware.build import (
+from tarav._core.errors import CliError
+from tarav.skillware.build import (
     SkillwareError,
     build_skill,
     check_skill,
     expand_file,
     load_skillware,
 )
-from agentos.skillware.commands import (
+from tarav.skillware.commands import (
     _cmd_skillware_build,
     _cmd_skillware_check,
     _cmd_skillware_status,
@@ -28,8 +28,8 @@ from _skillware_helpers import (
 def _write_project(root: Path) -> Path:
     """A project with the marker, a shared depot, a project config pointing at
     it, and one package (pkgA) that declares a dependency on a shared block."""
-    (root / ".agentos").mkdir(parents=True)
-    (root / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    (root / ".tarav").mkdir(parents=True)
+    (root / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
     depot = root / "shared-depot"
     (depot / "design").mkdir(parents=True)
     (depot / "000-INDEX.md").write_text(
@@ -55,7 +55,7 @@ def _write_project(root: Path) -> Path:
 def test_project_check_catches_cross_package_dangling(tmp_path: Path) -> None:
     """The project-scope payoff: a rename in the shared depot breaks pkgA's
     declared dependency, caught by `check_project` without targeting pkgA."""
-    from agentos.skillware.build import check_project
+    from tarav.skillware.build import check_project
 
     proj = _write_project(tmp_path)
     depot_chapter = proj / "shared-depot" / "design" / "100-design.md"
@@ -85,7 +85,7 @@ def test_project_check_catches_cross_package_dangling(tmp_path: Path) -> None:
 
 
 def test_project_check_honors_exclude(tmp_path: Path) -> None:
-    from agentos.skillware.build import check_project, discover_packages
+    from tarav.skillware.build import check_project, discover_packages
 
     proj = _write_project(tmp_path)
     # a second package
@@ -107,13 +107,13 @@ def test_project_check_honors_exclude(tmp_path: Path) -> None:
 def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(
     tmp_path: Path,
 ) -> None:
-    from agentos.skillware.build import parse_skw_config
+    from tarav.skillware.build import parse_skw_config
 
     good = tmp_path / "skw.json"
     good.write_text(
         json.dumps(
             {
-                "id": "agentos-pkg",
+                "id": "tarav-pkg",
                 "depots": ["../pkg"],
                 "projects": ["../sib"],
                 "mystery": 1,
@@ -122,7 +122,7 @@ def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(
         encoding="utf-8",
     )
     config = parse_skw_config(good)
-    assert config.id == "agentos-pkg"
+    assert config.id == "tarav-pkg"
     assert config.depots == ("../pkg",)
     assert config.projects == ("../sib",)
     assert any("mystery" in w for w in config.warnings)
@@ -133,13 +133,13 @@ def test_skw_config_parse_warns_unknown_keys_and_rejects_bad_types(
         parse_skw_config(bad)
 
     invalid_id = tmp_path / "invalid-id.json"
-    invalid_id.write_text(json.dumps({"id": "Agentos Pkg"}), encoding="utf-8")
+    invalid_id.write_text(json.dumps({"id": "Tarav Pkg"}), encoding="utf-8")
     with pytest.raises(SkillwareError, match="package id"):
         parse_skw_config(invalid_id)
 
 
 def test_skw_config_parses_strict_edition_history_policy(tmp_path: Path) -> None:
-    from agentos.skillware.build import parse_skw_config
+    from tarav.skillware.build import parse_skw_config
 
     config_path = tmp_path / "skw.json"
     config_path.write_text(
@@ -163,7 +163,7 @@ def test_skw_config_parses_strict_edition_history_policy(tmp_path: Path) -> None
 
 
 def test_skw_config_parses_typed_code_surfaces(tmp_path: Path) -> None:
-    from agentos.skillware.build import CodeSurfaceConfig, parse_skw_config
+    from tarav.skillware.build import CodeSurfaceConfig, parse_skw_config
 
     config_path = tmp_path / "skw.json"
     config_path.write_text(
@@ -206,7 +206,7 @@ def test_skw_config_rejects_invalid_code_surface(
     tmp_path: Path,
     surface: object,
 ) -> None:
-    from agentos.skillware.build import parse_skw_config
+    from tarav.skillware.build import parse_skw_config
 
     config_path = tmp_path / "skw.json"
     config_path.write_text(
@@ -219,7 +219,7 @@ def test_skw_config_rejects_invalid_code_surface(
 
 
 def test_expand_code_surfaces_is_deterministic_and_strict(tmp_path: Path) -> None:
-    from agentos.skillware.build import CodeSurfaceConfig, expand_code_surfaces
+    from tarav.skillware.build import CodeSurfaceConfig, expand_code_surfaces
 
     (tmp_path / "src" / "nested").mkdir(parents=True)
     for relative in ("src/a.py", "src/nested/b.py", "src/nested/_generated.py"):
@@ -255,7 +255,7 @@ def test_expand_code_surfaces_is_deterministic_and_strict(tmp_path: Path) -> Non
 def test_expand_code_surfaces_deduplicates_one_selector_but_rejects_two_owners(
     tmp_path: Path,
 ) -> None:
-    from agentos.skillware.build import CodeSurfaceConfig, expand_code_surfaces
+    from tarav.skillware.build import CodeSurfaceConfig, expand_code_surfaces
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src/a.py").write_text("x = 1\n", encoding="utf-8")
@@ -302,7 +302,7 @@ def test_skw_config_rejects_invalid_edition_history_policy(
     tmp_path: Path,
     policy: object,
 ) -> None:
-    from agentos.skillware.build import parse_skw_config
+    from tarav.skillware.build import parse_skw_config
 
     config_path = tmp_path / "skw.json"
     config_path.write_text(
@@ -317,7 +317,7 @@ def test_skw_config_rejects_invalid_edition_history_policy(
 def test_expand_edition_history_targets_is_deterministic(
     tmp_path: Path,
 ) -> None:
-    from agentos.skillware.build import (
+    from tarav.skillware.build import (
         EditionHistoryConfig,
         expand_edition_history_targets,
     )
@@ -349,10 +349,10 @@ def test_expand_edition_history_targets_is_deterministic(
 
 
 def test_find_project_root_walks_to_marker(tmp_path: Path) -> None:
-    from agentos.skillware.build import find_project_root
+    from tarav.skillware.build import find_project_root
 
-    (tmp_path / ".agentos").mkdir()
-    (tmp_path / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".tarav").mkdir()
+    (tmp_path / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
     deep = tmp_path / "skills" / "pkg" / ".skw"
     deep.mkdir(parents=True)
     assert find_project_root(deep) == tmp_path.resolve()
@@ -362,7 +362,7 @@ def test_find_project_root_walks_to_marker(tmp_path: Path) -> None:
 def test_cascade_extends_package_depots_across_repos(tmp_path: Path) -> None:
     """A package's own depots are extended by project-scope depots, including
     a sibling project's depots reached via `projects`."""
-    from agentos.skillware.build import load_skillware, resolve_project_depots
+    from tarav.skillware.build import load_skillware, resolve_project_depots
 
     # sibling repo with its own project-level depot
     sib = tmp_path / "sib"
@@ -381,8 +381,8 @@ def test_cascade_extends_package_depots_across_repos(tmp_path: Path) -> None:
     # project with a package and a project-scope config pointing at the sibling
     proj = tmp_path / "proj"
     skill = _write_skill(proj)  # legacy .skillware/ package with its own ../depot
-    (proj / ".agentos").mkdir(parents=True)
-    (proj / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    (proj / ".tarav").mkdir(parents=True)
+    (proj / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
     (proj / ".skw").mkdir()
     (proj / ".skw" / "skw.json").write_text(
         json.dumps({"projects": ["../sib"]}), encoding="utf-8"
@@ -418,8 +418,8 @@ def test_build_dir_prefers_skw_with_skillware_fallback(tmp_path: Path) -> None:
 
 
 def test_skw_verb_with_skillware_alias() -> None:
-    """The verb is `agentos skw`; `skillware` stays as a deprecation alias."""
-    parser = argparse.ArgumentParser(prog="agentos")
+    """The verb is `tarav skw`; `skillware` stays as a deprecation alias."""
+    parser = argparse.ArgumentParser(prog="tarav")
     subparsers = parser.add_subparsers(dest="command")
     register_skillware_commands(subparsers)
 
@@ -430,7 +430,7 @@ def test_skw_verb_with_skillware_alias() -> None:
 
 
 def test_project_bless_accepts_exact_poi_without_skill() -> None:
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="tarav")
     subparsers = parser.add_subparsers(dest="command")
     register_skillware_commands(subparsers)
 
@@ -447,8 +447,8 @@ def test_project_check_reports_configured_code_surface_domain(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_path / ".agentos").mkdir()
-    (tmp_path / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".tarav").mkdir()
+    (tmp_path / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
     (tmp_path / ".skw").mkdir()
     (tmp_path / ".skw" / "skw.json").write_text(
         json.dumps(
@@ -465,7 +465,7 @@ def test_project_check_reports_configured_code_surface_domain(
         "# ordinary\nx = 1\n",
         encoding="utf-8",
     )
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="tarav")
     register_skillware_commands(parser.add_subparsers(dest="command"))
     monkeypatch.chdir(tmp_path)
 
@@ -503,7 +503,7 @@ def test_check_payload_uses_skw_command_name(
     capsys.readouterr()
     _cmd_skillware_check(argparse.Namespace(skill=str(skill), json=True))
     payload = json.loads(capsys.readouterr().out)
-    assert payload["domain"]["command"] == "agentos skw check"
+    assert payload["domain"]["command"] == "tarav skw check"
 
 
 def test_cli_build_check_status(
@@ -547,19 +547,19 @@ def test_cli_build_check_status(
 
 
 def test_build_stamps_agents_md(tmp_path: Path) -> None:
-    from agentos.skillware.build import AGENTS_MD_TEXT
+    from tarav.skillware.build import AGENTS_MD_TEXT
 
     skill = _write_skill(tmp_path)
     build_skill(skill)
     agents = skill / ".skillware" / "AGENTS.md"
     assert agents.is_file()
     assert agents.read_text(encoding="utf-8") == AGENTS_MD_TEXT
-    assert "agentos skw build" in AGENTS_MD_TEXT
-    assert "agentos-skillware" in AGENTS_MD_TEXT
+    assert "tarav skw build" in AGENTS_MD_TEXT
+    assert "tarav-skillware" in AGENTS_MD_TEXT
 
 
 def test_build_overwrites_hand_edited_agents_md(tmp_path: Path) -> None:
-    from agentos.skillware.build import AGENTS_MD_TEXT
+    from tarav.skillware.build import AGENTS_MD_TEXT
 
     skill = _write_skill(tmp_path)
     build_skill(skill)

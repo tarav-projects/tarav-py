@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from agentos.index.linter import build_linter_config, run_linter
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import main
-from agentos.chatlas.normal_turn import normal_turn_ref
-from agentos.chatlas.normalization.session_model.events import normal_turn_id
+from tarav.index.linter import build_linter_config, run_linter
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import main
+from tarav.chatlas.normal_turn import normal_turn_ref
+from tarav.chatlas.normalization.session_model.events import normal_turn_id
 
 from ._helpers import write_chatlas_codex_source, write_text_file
 
@@ -51,7 +51,7 @@ def _rollout(path: Path, *, session_id: str) -> None:
 @pytest.fixture()
 def provenance_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
     monkeypatch.chdir(tmp_path)
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675aa1"
@@ -82,15 +82,15 @@ def provenance_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
     )
     identity_hash = capsys.readouterr().out.strip().splitlines()[-1]
 
-    from agentos.chatlas.anchory import (
+    from tarav.chatlas.anchory import (
         bind_support_set_to_index_line,
         chatlas_anchory_depot,
     )
-    from agentos.chatlas.index_query import (
+    from tarav.chatlas.index_query import (
         select_materialization_row,
         select_one_chatlas_index_row,
     )
-    from agentos.chatlas.views import load_chatlas_session_model
+    from tarav.chatlas.views import load_chatlas_session_model
 
     depot = chatlas_anchory_depot()
     session = select_one_chatlas_index_row(
@@ -165,13 +165,13 @@ def provenance_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
     index_depot = tmp_path / "depot"
     _write(
         index_depot / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
     )
     return index_depot
 
 
 def _lint(index_depot: Path):
-    from agentos.chatlas.index_checks import chatlas_grounding_provenance_check
+    from tarav.chatlas.index_checks import chatlas_grounding_provenance_check
 
     config, raw_d, raw_i, raw_a = build_linter_config(
         depot_paths=(str(index_depot),), index_paths=(), appendix_paths=()
@@ -197,12 +197,12 @@ def test_provenance_user_anchor_passes(provenance_setup: Path) -> None:
 def test_line_drift_check_compares_v4_subject_to_current_content(
     provenance_setup: Path,
 ) -> None:
-    from agentos.chatlas.anchory import (
+    from tarav.chatlas.anchory import (
         CHATLAS_NAMESPACE,
         bind_support_set_to_index_line,
         chatlas_anchory_depot,
     )
-    from agentos.chatlas.index_checks import chatlas_anchor_line_drift_check
+    from tarav.chatlas.index_checks import chatlas_anchor_line_drift_check
 
     depot = chatlas_anchory_depot()
     source = depot.resolve("c20260308-0u")
@@ -266,7 +266,7 @@ def test_provenance_validates_repeated_anchor_once_per_lint(
     provenance_setup: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import agentos.chatlas.index_checks as checks
+    import tarav.chatlas.index_checks as checks
 
     _write(
         provenance_setup / "design" / "100-design.md",
@@ -370,14 +370,14 @@ def test_provenance_gates_blocked_without_depot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
-    from agentos.chatlas.index_checks import chatlas_grounding_provenance_check
+    from tarav.chatlas.index_checks import chatlas_grounding_provenance_check
 
     index_depot = tmp_path / "depot"
     _write(
         index_depot / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — X.Y\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — X.Y\n",
     )
     _write(
         index_depot / "design" / "100-design.md",

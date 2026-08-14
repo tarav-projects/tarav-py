@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.account_status import AccountIdentity
-from agentos.agent.auth_method import AuthData
-from agentos.agent.auth_registry import (
+from tarav.agent.account_status import AccountIdentity
+from tarav.agent.auth_method import AuthData
+from tarav.agent.auth_registry import (
     UNKNOWN_ACCOUNT,
     active_ref,
     append_capture,
@@ -19,11 +19,11 @@ from agentos.agent.auth_registry import (
     set_active,
     store_artifact,
 )
-from agentos.testing import AgentosTestEnvironment
+from tarav.testing import TaravTestEnvironment
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
 
 
 def _write_settings(provider_root: Path) -> None:
@@ -50,9 +50,9 @@ def test_resolve_account_by_identity_matches_claude_account_uuid(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.project import agentos_home_dir
+    from tarav._core.project import tarav_home_dir
 
-    _write_settings(agentos_home_dir() / "accounts" / "claude-code")
+    _write_settings(tarav_home_dir() / "accounts" / "claude-code")
 
     identity = AccountIdentity(provider_account_id="973c403b-615a-47da-bc34-32ddc13a2e65")
     assert resolve_account_by_identity("claude-code", identity) == "om"
@@ -66,9 +66,9 @@ def test_capture_target_known_identity_routes_to_account_method(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.project import agentos_home_dir
+    from tarav._core.project import tarav_home_dir
 
-    _write_settings(agentos_home_dir() / "accounts" / "claude-code")
+    _write_settings(tarav_home_dir() / "accounts" / "claude-code")
 
     known = AccountIdentity(provider_account_id="973c403b-615a-47da-bc34-32ddc13a2e65")
     assert capture_target("claude-code", known, "ambient-browser-login") == ("om", "browser")
@@ -137,7 +137,7 @@ def test_unknown_bucket_is_not_a_runnable_account(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent.auth_registry import account_exists
+    from tarav.agent.auth_registry import account_exists
 
     assert account_exists("claude-code", UNKNOWN_ACCOUNT) is False
 
@@ -146,7 +146,7 @@ def test_set_active_rejects_unknown_bucket(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.errors import CliError
+    from tarav._core.errors import CliError
 
     with pytest.raises(CliError):
         set_active("claude-code", UNKNOWN_ACCOUNT, "ambient-browser-login", "abc")
@@ -156,7 +156,7 @@ def test_append_capture_records_every_auth_data(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent.auth_registry import captures_path
+    from tarav.agent.auth_registry import captures_path
 
     ref = AccountIdentity(provider_account_id="u", email="e@example.com")
     append_capture(

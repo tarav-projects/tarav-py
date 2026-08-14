@@ -7,7 +7,7 @@
 - **source:** 2026-06-13 design discussion and code alignment report after removing legacy `agent.instances`.
 - **goal:** keep Agentos behavior at the same functional level while (1) removing the structural duplication and faked polymorphism in the agent primitive layer, (2) letting each provider adapter declare only the capabilities it actually implements, and (3) renaming the relevant objects and fields to express the `Agentos.Agent.Adapter` model directly in code.
 - **primary structural debt (the real reason for this refactor):** the agent primitive layer carries one broad shape three times — `AgentConfig`, `AgentBase`, and the `Agent` protocol each restate the same ~21-field surface — and fakes capability support by having `AgentBase.run`/`account_status`/`_build_command` raise "does not support". This contradicts the stated concept model (`102-Agentos.Agent.Model.md`), where providers need not share fields and only satisfy the tasks they support.
-- **canonical design home:** `/Users/pereiro/projects/agentos-project/agentos-md/skills/agentos-pkg/index/104-index.md#Agentos.Agent.Adapter` is the durable index where this model lives; `agentos-py/notes/index/102-Agentos.Agent.Model.md` is the downstream local note that must follow it.
+- **canonical design home:** `/Users/pereiro/projects/agentos-project/agentos-md/skills/tarav-pkg/index/104-index.md#Agentos.Agent.Adapter` is the durable index where this model lives; `agentos-py/notes/index/102-Agentos.Agent.Model.md` is the downstream local note that must follow it.
 - **target repository:** `/Users/pereiro/projects/agentos-project/agentos-py`
 
 ## Impl.Index
@@ -279,7 +279,7 @@ Status: done.
 
 Change:
 
-- Canonical first: in `agentos-md/skills/agentos-pkg/index/104-index.md`, make `Agentos.Agent.Adapter` the current truth and demote/remove the stale `Provider.Instance` block (it is currently only marked "candidate replacement"). This is the durable home and must lead.
+- Canonical first: in `agentos-md/skills/tarav-pkg/index/104-index.md`, make `Agentos.Agent.Adapter` the current truth and demote/remove the stale `Provider.Instance` block (it is currently only marked "candidate replacement"). This is the durable home and must lead.
 - Then align the downstream local notes to follow it: update `agentos-py/notes/index/102-Agentos.Agent.Model.md` (drop the `ProviderInstance` "transitional" framing) and `agentos-py/notes/index/001-ontology.md` and any note still presenting `ProviderInstance` or a broad `<Provider>.Agent` as the current root model.
 - Ensure docs still explain `<Provider>.SessionRef`, `<Provider>.Session`, and `Session.Model` normalization boundaries.
 
@@ -290,7 +290,7 @@ Observable result:
 
 Checks:
 
-- Run the agentos-pkg index linter for `agentos-md/skills/agentos-pkg/index` (canonical surface).
+- Run the tarav-pkg index linter for `agentos-md/skills/tarav-pkg/index` (canonical surface).
 - Run `agentos index linter --index /Users/pereiro/projects/agentos-project/agentos-py/notes/index --json` if the local index linter supports project-local indexes.
 
 ### Slice 9 - No Legacy Sweep And Full Validation
@@ -351,16 +351,16 @@ agentos agent sessions list --json
 - the contract objects are named to express the adapter model with one consistent suffix; nothing is named to imply a forced common root.
 - profile identity is named as profile identity in active code.
 - provider-instance vocabulary is removed from active current surfaces or recorded as a deliberate compatibility exception.
-- the canonical `agentos-pkg` index describes `Agentos.Agent.Adapter` as current and no longer presents `Provider.Instance` as a live model; local notes follow it.
+- the canonical `tarav-pkg` index describes `Agentos.Agent.Adapter` as current and no longer presents `Provider.Instance` as a live model; local notes follow it.
 - focused tests, lint, compile check, and manual smoke checks pass.
 
 ## Impl.Log
 
 - 2026-06-13: Created from in-chat implementation design after code alignment review. User explicitly allowed large refactors and requested the plan preserve existing Agentos functionality while reaching a cleaner and healthier model across runners, monitor, accounts, profiles, and Chatlas/session subsystems.
-- 2026-06-13: Revised after architecture review. Reframed the core problem as the three-way field duplication (`AgentConfig`/`AgentBase`/`Agent` protocol) plus raise-on-unsupported faked polymorphism. Added `Design.Considerations` and `Open.Decisions.Resolved` (capabilities = structural protocols; `<Something>` frozen to provider for this change). Made object renaming an explicit deliverable (`Rename targets`). Resequenced: collapse duplication + remove raising stubs (Slice 1) before introducing capability protocols (Slice 2); object/field renames in Slice 3. Flipped doc realignment to treat `agentos-pkg` index as canonical and local notes as downstream.
+- 2026-06-13: Revised after architecture review. Reframed the core problem as the three-way field duplication (`AgentConfig`/`AgentBase`/`Agent` protocol) plus raise-on-unsupported faked polymorphism. Added `Design.Considerations` and `Open.Decisions.Resolved` (capabilities = structural protocols; `<Something>` frozen to provider for this change). Made object renaming an explicit deliverable (`Rename targets`). Resequenced: collapse duplication + remove raising stubs (Slice 1) before introducing capability protocols (Slice 2); object/field renames in Slice 3. Flipped doc realignment to treat `tarav-pkg` index as canonical and local notes as downstream.
 - 2026-06-13: Resolved the two remaining open mechanics on user request. Naming decided: base contract `AgentAdapter`, capability facets `*Capable` (`RunCapable`/`AccountStatusCapable`/`SessionDiscoveryCapable`), concrete classes stay `<Provider>.Agent`. `AgentBase` decided removed (not kept as carrier or behavior base): `AgentConfig` is the single field surface, adapters compose it with read-through accessors, shared behavior moves to module-level helpers.
 - 2026-06-13 (exec): DEVIATION from the "composition + read-through accessors" mechanic. On contact with the code: `provider` must stay a class constant (tests build `ClaudeAgent(instance_id=…)` with no provider) and ~250 call sites read `agent.<field>` directly, so composition/accessors would either re-list the field surface as ~21 properties or churn ~250 sites. Executed instead: provider adapters **subclass `AgentConfig`** and override the `provider` field default; run behavior in a `RunnableMixin` mixed into runnable adapters only; identity/summary on `AgentConfig`; `AgentBase`, `agent_base_kwargs_*`, and the broad `Agent` protocol field-list deleted. Same acceptance signals (one field surface, no raising stubs, capability protocols), lower risk. Validated the dataclass default-override + mixin pattern before adopting.
-- 2026-06-13 (exec, completion): All slices implemented. Final state: agentos-py 115 tests pass, ruff clean, compileall ok, `git diff --check` clean; agentos-pkg index linter 14/14. Smoke: `agent list --json` (top key now `agents`, 14 entries), `agent accounts monitor --once --json`, dry-run all work. Execution notes / deviations beyond the composition one above:
+- 2026-06-13 (exec, completion): All slices implemented. Final state: agentos-py 115 tests pass, ruff clean, compileall ok, `git diff --check` clean; tarav-pkg index linter 14/14. Smoke: `agent list --json` (top key now `agents`, 14 entries), `agent accounts monitor --once --json`, dry-run all work. Execution notes / deviations beyond the composition one above:
   - **Slices 1+2 executed together.** Removing the broad `Agent` protocol requires its capability-protocol replacement to exist as the annotation type, so the protocols were introduced in the same change as the god-base removal. Slice-1 and slice-2 RED/GREEN tests both added (`test_session_only_provider_has_no_run_or_account_status_capability`, `test_capability_protocols_match_provider_capability_matrix`).
   - **General `Agent` annotations → `AgentConfig`**, not a capability protocol, in providers.py/sessions.py/commands.py/account_status impls. Every adapter is an `AgentConfig`, and these sites mostly read config fields; capability-protocol narrowing was applied only at the two reachable boundaries (runner→`RunCapable`, session discovery→`SessionDiscoveryCapable`). No mypy gate, so annotations are advisory.
   - **Slice 5 (monitor): no runtime capability guard added.** The only `account_status()` call site is the monitor, which builds agents solely via `build_registered_account_agent` (claude/codex/copilot — all `AccountStatusCapable`). An unsupported agent there is unreachable, so a guard would be error-handling for an impossible case (against general-practices). The runner guard (Slice 4) was added because a session-only provider IS reachable via `agentos agent run --profile <gemini>`. The account-status boundary is instead pinned by the 7-provider capability-matrix test.

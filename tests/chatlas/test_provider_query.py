@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentos.chatlas.provider_home_adapter import ChatlasProviderInstance
-from agentos.chatlas.provider_query import chatlas_provider_query
+from tarav.chatlas.provider_home_adapter import ChatlasProviderInstance
+from tarav.chatlas.provider_query import chatlas_provider_query
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ def test_provider_query_falls_back_to_discovery_when_direct_lookup_is_missing(
 ) -> None:
     instance = ChatlasProviderInstance(agent=_DiscoveryOnlyAgent(), fingerprint="fingerprint")
     monkeypatch.setattr(
-        "agentos.chatlas.provider_query.selected_provider_instances",
+        "tarav.chatlas.provider_query.selected_provider_instances",
         lambda *, providers, start_path: (instance,),
     )
 

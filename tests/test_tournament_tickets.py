@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.tournament.tickets import (
+from tarav.tournament.tickets import (
     DEFAULT_ATTEMPT_CAP,
     KIND_MATCH,
     KIND_PREVIEW,

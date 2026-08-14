@@ -3,26 +3,26 @@ from __future__ import annotations
 import datetime
 from pathlib import Path
 
-from agentos.agent.monitor.workflows import AutoPrimeZeroLimitsWorkflow
-from agentos.agent.monitor.workflows.state import (
+from tarav.agent.monitor.workflows import AutoPrimeZeroLimitsWorkflow
+from tarav.agent.monitor.workflows.state import (
     AutoPrimeTargetState,
     LimitsTargetState,
 )
-from agentos.agent.monitor_log import (
+from tarav.agent.monitor_log import (
     MONITOR_LOG_CLASS,
     MONITOR_LOG_SCHEMA_VERSION,
     append_monitor_log_event,
     monitor_log_dir,
 )
-from agentos.testing import AgentosTestEnvironment
+from tarav.testing import TaravTestEnvironment
 
 from _helpers import read_jsonl_file
 
 
 def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
-    environment = AgentosTestEnvironment.create(root)
+    environment = TaravTestEnvironment.create(root)
     environment.apply_environment(monkeypatch.setenv)
-    return environment.agentos_home
+    return environment.tarav_home
 
 
 def _events(path: Path, event: str) -> list[dict]:
@@ -127,8 +127,8 @@ def test_auto_prime_failed_and_retry_blocked_are_logged(monkeypatch, tmp_path):
 
 
 def test_workflow_error_is_logged_through_monitor_loop(monkeypatch, tmp_path):
-    from agentos.agent.monitor.loop import MonitorLoop
-    from agentos.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.agent.monitor.loop import MonitorLoop
+    from tarav.agent.monitor.models import MonitorFrame, MonitorState
 
     _set_fake_agentos_home(monkeypatch, tmp_path)
 
@@ -161,12 +161,12 @@ def test_workflow_error_is_logged_through_monitor_loop(monkeypatch, tmp_path):
 
 
 def _limits_workflow(refresh_interval_sec=60.0):
-    from agentos.agent.monitor.models import (
+    from tarav.agent.monitor.models import (
         LIMITS_TRACKING_WORKFLOW,
         MonitorTarget,
         MonitorWorkflowConfig,
     )
-    from agentos.agent.monitor.workflows import LimitsTrackingWorkflow
+    from tarav.agent.monitor.workflows import LimitsTrackingWorkflow
 
     config = MonitorWorkflowConfig(
         name=LIMITS_TRACKING_WORKFLOW,

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment, write_project_marker
-from agentos.cli.cli import build_parser, main
+from tarav.testing import TaravTestEnvironment, write_project_marker
+from tarav.cli.cli import build_parser, main
 from _helpers import captured_json, write_text_file
 
 
@@ -30,7 +30,7 @@ def test_skills_list_and_path_use_selected_profile(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     workspace = tmp_path / "workspace"
     source_root = tmp_path / "source"
@@ -72,7 +72,7 @@ def test_skills_import_and_status_materialize_default_depots(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     workspace = tmp_path / "workspace"
     source_skill = workspace / "skills" / "alpha-skill"
@@ -114,45 +114,12 @@ def test_skills_import_and_status_materialize_default_depots(
     )
 
 
-def test_skills_flat_import_and_force_rebuild_handle_project_depots(
-    tmp_path: Path,
-    monkeypatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
-    environment.apply_environment(monkeypatch.setenv)
-    workspace = tmp_path / "workspace"
-    source_skill = workspace / "skills" / "alpha-skill"
-    _make_project(workspace)
-    _create_skill(source_skill, description="Base alpha skill")
-    environment.write_global_config(
-        skills={
-            "routing": {
-                "sources": {"base": {"path": str(workspace / "skills")}},
-                "profiles": {"default": {"sources": [{"name": "base"}]}},
-            }
-        }
-    )
-    monkeypatch.chdir(workspace)
-
-    assert main(_skills(["skills", "import", "--mode", "flat-linking"])) == 0
-    capsys.readouterr()
-    agents_depot = workspace / ".agents" / "skills"
-    assert agents_depot.is_dir()
-    assert not agents_depot.is_symlink()
-    assert (agents_depot / "base-alpha-skill").resolve() == source_skill.resolve()
-
-    assert main(_skills(["skills", "import", "--force"])) == 0
-    assert "Skills import complete" in capsys.readouterr().out
-    assert agents_depot.is_symlink()
-
-
 def test_skills_project_source_and_config_errors(
     tmp_path: Path,
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     workspace = tmp_path / "workspace"
     source_project = tmp_path / "source-project"
@@ -170,8 +137,8 @@ def test_skills_project_source_and_config_errors(
 
     assert main(_skills(["skills", "list"])) == 1
     error = capsys.readouterr().err
-    assert "is not an agentos project" in error
-    assert ".agentos/project.json" in error
+    assert "is not a tarav project" in error
+    assert ".tarav/project.json" in error
 
     write_project_marker(source_project)
     _create_skill(
@@ -187,7 +154,7 @@ def test_skills_import_recursive_materializes_descendant_projects(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     workspace = tmp_path / "workspace"
     source_skill = tmp_path / "source" / "alpha-skill"
@@ -227,12 +194,12 @@ def test_skills_import_recursive_noops_on_non_project_root(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     source_skill = tmp_path / "source" / "alpha-skill"
     _create_skill(source_skill, description="Base alpha skill")
 
-    # workspace is a plain directory, not an agentos project
+    # workspace is a plain directory, not a tarav project
     workspace = tmp_path / "workspace"
     child_a = workspace / "child-a"
     child_b = workspace / "team" / "child-b"
@@ -261,14 +228,14 @@ def test_skills_import_non_recursive_still_requires_project(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.chdir(workspace)
 
     assert main(_skills(["skills", "import"])) == 1
-    assert "not inside an agentos project" in capsys.readouterr().err
+    assert "not inside a tarav project" in capsys.readouterr().err
 
 
 def test_skills_import_recursive_depth_zero_targets_only_root(
@@ -276,7 +243,7 @@ def test_skills_import_recursive_depth_zero_targets_only_root(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
     workspace = tmp_path / "workspace"
     source_skill = tmp_path / "source" / "alpha-skill"
@@ -312,3 +279,111 @@ def test_skills_surface_only_exposes_supported_commands(
         parser.parse_args(["skills", "query"])
     assert excinfo.value.code == 2
     assert "invalid choice: 'query'" in capsys.readouterr().err
+
+
+
+
+def _global_depot(capsys_out: str) -> Path:
+    for line in capsys_out.splitlines():
+        if line.startswith("- global depot: "):
+            return Path(line.split(": ", 1)[1])
+    raise AssertionError(f"no global depot in output:\n{capsys_out}")
+
+
+def _import_env(tmp_path: Path, monkeypatch, *, skills: list[str]) -> Path:
+    environment = TaravTestEnvironment.create(tmp_path / "home")
+    environment.apply_environment(monkeypatch.setenv)
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "source"
+    _make_project(workspace)
+    for name in skills:
+        _create_skill(source_root / name, description=f"{name} description")
+    environment.write_global_config(
+        skills={
+            "routing": {
+                "sources": {"base": {"path": str(source_root)}},
+                "profiles": {"default": {"sources": [{"name": "base"}]}},
+            }
+        }
+    )
+    monkeypatch.chdir(workspace)
+    return workspace
+
+
+def test_skills_import_rebuilds_the_depot_from_the_catalog(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The depot is derived, so an import restates it rather than patching it.
+
+    A link nobody selected - left by an earlier catalog, or written by hand - is
+    gone after the next import without any record of who put it there.
+    """
+
+    _import_env(tmp_path, monkeypatch, skills=["alpha-skill"])
+
+    assert main(_skills(["skills", "import"])) == 0
+    depot = _global_depot(capsys.readouterr().out)
+    assert {entry.name for entry in depot.iterdir()} == {"base-alpha-skill"}
+
+    (depot / "stowaway").symlink_to(tmp_path / "source" / "alpha-skill", target_is_directory=True)
+
+    assert main(_skills(["skills", "import"])) == 0
+    output = capsys.readouterr().out
+    assert {entry.name for entry in depot.iterdir()} == {"base-alpha-skill"}
+    global_section = output.split(f"Global depot: {depot}\n", 1)[1].split("\n\n", 1)[0]
+    assert "- removed: 1" in global_section
+
+
+def test_skills_import_reports_change_by_diffing_the_rebuild(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Rebuilding everything must not report everything as new.
+
+    created/removed/matching are computed from the listing taken before the
+    rebuild against the one written after, so a no-op import reports no change.
+    """
+
+    _import_env(tmp_path, monkeypatch, skills=["alpha-skill", "beta-skill"])
+
+    assert main(_skills(["skills", "import"])) == 0
+    capsys.readouterr()
+
+    assert main(_skills(["skills", "import"])) == 0
+    second = capsys.readouterr().out
+    global_section = second.split("Global depot: ", 1)[1].split("\n\n", 1)[0]
+    assert "- created: 0" in global_section
+    assert "- removed: 0" in global_section
+    assert "- matching: 2" in global_section
+
+
+def test_skills_import_refuses_a_project_depot_it_did_not_generate(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Replaceability is structural now, with no ownership ledger behind it.
+
+    A directory of nothing but symlinks is a depot from before the shared-depot
+    shape existed and is replaced. Anything holding real content belongs to a
+    person and is refused.
+    """
+
+    workspace = _import_env(tmp_path, monkeypatch, skills=["alpha-skill"])
+    handmade = workspace / ".agents" / "skills"
+    handmade.mkdir(parents=True)
+    (handmade / "my-own-skill").mkdir()
+
+    assert main(_skills(["skills", "import"])) == 1
+    assert "cannot be replaced safely" in capsys.readouterr().err
+
+    for child in handmade.iterdir():
+        child.rmdir()
+    (handmade / "generated").symlink_to(tmp_path / "source" / "alpha-skill", target_is_directory=True)
+
+    assert main(_skills(["skills", "import"])) == 0
+    capsys.readouterr()
+    assert handmade.is_symlink()

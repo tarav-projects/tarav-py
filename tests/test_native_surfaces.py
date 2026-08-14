@@ -1,8 +1,8 @@
 # $kw: ^native-surface-tests --from Floor.Model --from Normalization.Pipeline --note [TP] native models remain small and independent of Skillware syntax ^c20260812-0u
 from __future__ import annotations
 
-from agentos.surfaces.markdown import normalize_markdown
-from agentos.surfaces.python import normalize_python
+from tarav.surfaces.markdown import normalize_markdown
+from tarav.surfaces.python import normalize_python
 
 
 def test_python_normalizer_uses_tokens_and_classifies_external_directives() -> None:

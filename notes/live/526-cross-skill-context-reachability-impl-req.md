@@ -3,7 +3,7 @@
 ## Impl.Abstract
 
 - status: complete
-- scope: extend `Context.Loading.Model` across Skillware package boundaries, type cross-skill router loads as whole-file graph edges, add target-side `--reachable-from` assertions, expose graph-wide reachability auditing, and make every Skillware-managed public skill in `agentos-md/skills` reachable from `agentos-pkg/SKILL.md`
+- scope: extend `Context.Loading.Model` across Skillware package boundaries, type cross-skill router loads as whole-file graph edges, add target-side `--reachable-from` assertions, expose graph-wide reachability auditing, and make every Skillware-managed public skill in `agentos-md/skills` reachable from `tarav-pkg/SKILL.md`
 - source: the current autonomous Hugentics implementation request ^c20260802-12u
 - out of scope: Workspace.Context.Path composition, addressed-content dependency modes beyond the existing local model, converting unmanaged external skills to Skillware, and inferring load edges from free-form `--to` text
 
@@ -35,8 +35,8 @@
 
 ### Agentos.Root.Adoption
 
-- `agentos-pkg` registers its public Skillware-managed skill packages, gives every public target a semantic router row with a qualified `--load`, and types the existing unmanaged Chatlas destination as a load edge without claiming a target-side assertion.
-- Every managed public target declares `--reachable-from @<agentos-pkg>/SKILL.md` at the file point.
+- `tarav-pkg` registers its public Skillware-managed skill packages, gives every public target a semantic router row with a qualified `--load`, and types the existing unmanaged Chatlas destination as a load edge without claiming a target-side assertion.
+- Every managed public target declares `--reachable-from @<tarav-pkg>/SKILL.md` at the file point.
 - The graph audit is the acceptance check that the root remains a discoverability origin without requiring every route to be direct in future revisions.
 
 ## Execution.Plan
@@ -65,19 +65,19 @@
 ### Vertical.Slice::Agentos.Adoption
 
 - status: complete
-- change: register and route every managed public Agentos skill from `agentos-pkg`, annotate each target, rebuild managed surfaces, and update Skillware operator/developer documentation plus `agentos-py/AGENTS.md`
+- change: register and route every managed public Agentos skill from `tarav-pkg`, annotate each target, rebuild managed surfaces, and update Skillware operator/developer documentation plus `agentos-py/AGENTS.md`
 - check: run the real root graph audit, all affected Skillware builds/checks, focused and full `agentos-py` suites, Ruff, and `git diff --check`
-- observable result: every managed public Agentos skill has a verified path from `agentos-pkg/SKILL.md`; all existing root cross-skill rows carry typed load edges
+- observable result: every managed public Agentos skill has a verified path from `tarav-pkg/SKILL.md`; all existing root cross-skill rows carry typed load edges
 
 ## Impl.Agendix
 
 - touched: the current implementation gate authorizes cross-skill typed loading edges and root reachability enforcement ^c20260802-12u
 - structural: `notes/live/717-context-loading-model-impl-req.md` owns the local Context.Loading.Model slice this request extends
-- structural: `agentos-md/skills/agentos-pkg/.skw/src/SKILL.skw.md^package-driver-router` owns the root routing table being typed
+- structural: `agentos-md/skills/tarav-pkg/.skw/src/SKILL.skw.md^package-driver-router` owns the root routing table being typed
 
 ## Impl.Log
 
 - 2026-08-02: autonomous execution authorized by the current `--impl --dev --AUTO` turn ^c20260802-12u
 - 2026-08-02: the first real package build exposed a second local-only router-load validator in expansion; generalized it to the same registered package-qualified runtime locator contract rather than special-casing the Agentos root.
 - 2026-08-02: Agentos Project Doctor still depended on the retired Hugentics `^index-ground-entry`; reconciled it to `^driver-index-literacy` and re-derived the consumer wording before final checks.
-- 2026-08-02: completed with thirteen managed public Agentos skill witnesses from `agentos-pkg/SKILL.md`, typed loading to the unmanaged Chatlas skill, zero affected Skillware POIs, 102 focused tests, 632 full-suite tests, and Ruff/diff checks clean.
+- 2026-08-02: completed with thirteen managed public Agentos skill witnesses from `tarav-pkg/SKILL.md`, typed loading to the unmanaged Chatlas skill, zero affected Skillware POIs, 102 focused tests, 632 full-suite tests, and Ruff/diff checks clean.

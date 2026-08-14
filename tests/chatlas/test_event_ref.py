@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agentos.chatlas.event_ref import (
+from tarav.chatlas.event_ref import (
     EVENT_HASH_MIN_CHARS,
     EVENT_REF_SCHEMA,
     EventRefOutcome,

@@ -42,10 +42,10 @@
 ## Impl.Agendix
 
 - touched: ^c20260811-62u — autonomous authorization and requested outcome.
-- touched: `index://agentos-pkg/Deep.Modules` — prefer deep subsystems with small entry surfaces.
-- touched: `index://agentos-pkg/Agent.Navigable.Codebase` — make ownership and entrypoints discoverable without reading the monolith.
-- touched: `index://agentos-pkg/Dependency.Profile.Split` — cores do not import upward; runtime composition owns bridges.
-- touched: `index://agentos-pkg/No.Legacy.Allowed` — remove superseded paths and stale documentation rather than aliasing them.
+- touched: `index://tarav-pkg/Deep.Modules` — prefer deep subsystems with small entry surfaces.
+- touched: `index://tarav-pkg/Agent.Navigable.Codebase` — make ownership and entrypoints discoverable without reading the monolith.
+- touched: `index://tarav-pkg/Dependency.Profile.Split` — cores do not import upward; runtime composition owns bridges.
+- touched: `index://tarav-pkg/No.Legacy.Allowed` — remove superseded paths and stale documentation rather than aliasing them.
 
 ## Execution.Plan
 

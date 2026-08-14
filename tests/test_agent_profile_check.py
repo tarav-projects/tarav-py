@@ -3,12 +3,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from agentos.agent import auth_registry
-from agentos.agent.commands import run as commands
-from agentos.agent import profile_check as pc
-from agentos.agent.account_status import AgentAccountContext
-from agentos.agent.primitives import ProfileCheckCapable, RunnableMixin
-from agentos.agent.profile_check import CheckpointResult, ProfileCheck, _profile_check
+from tarav.agent import auth_registry
+from tarav.agent.commands import run as commands
+from tarav.agent import profile_check as pc
+from tarav.agent.account_status import AgentAccountContext
+from tarav.agent.primitives import ProfileCheckCapable, RunnableMixin
+from tarav.agent.profile_check import CheckpointResult, ProfileCheck, _profile_check
 
 
 class _Agent:

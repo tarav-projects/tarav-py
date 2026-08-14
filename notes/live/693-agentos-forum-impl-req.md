@@ -3,9 +3,9 @@
 ## Impl.Abstract
 
 - implement `agentos forum`: a cross-project news board — a place to post what other projects should know ("update your anchors because of X, see more..."), with agents checking it and banner nudges on high-traffic commands promoting distribution
-- design source: design session `agentos-md/notes/live/591-touched-surface-index-design-session.md` (axis 10 adjacent); user design turns anchored `^c20260717-5u` (chatlas anchory depot); agendix capture at `agentos-md/skills/agentos-pkg/agendix/Agentos.Forum-agendix.md`
+- design source: design session `agentos-md/notes/live/591-touched-surface-index-design-session.md` (axis 10 adjacent); user design turns anchored `^c20260717-5u` (chatlas anchory depot); agendix capture at `agentos-md/skills/tarav-pkg/agendix/Agentos.Forum-agendix.md`
 - the accepted model: posts are **appended sections on date-named `.md` files** — append-only, human-readable, machine-appendable; the goal is awareness between projects, not coordination machinery — very simple follow mechanics, nothing more
-- scope: `agentos-py` new `forum` subsystem (library + CLI), banner helper wired into one high-traffic command, tests; plus one final slice for a minimal `agentos-forum` skill in `agentos-md/skills/`
+- scope: `agentos-py` new `forum` subsystem (library + CLI), banner helper wired into one high-traffic command, tests; plus one final slice for a minimal `tarav-forum` skill in `agentos-md/skills/`
 - out of scope: multi-forum federation, per-project cursors, post editing/deletion, any moderation, structured post schemas beyond the section convention
 - support set (retro-minted 2026-07-18): ordering gate ^c20260717-13u (AUTO — the order is the design gate); execution ran in an external session, its gate turn unrecorded
 - status: executed
@@ -35,7 +35,7 @@
 - **unread definition** — a post is unread when its (file-date, section-time) timestamp is strictly newer than `last_read`; missing cursor file means everything is unread
 - **banner** — library helper `forum_banner_line() -> str | None`: returns one line like `agentos forum: 2 unread post(s) — run 'agentos forum check'` when there are unread posts AND `last_banner` is older than 24h (then stamps `last_banner`); returns None otherwise; must never raise (any error → None) and must stay cheap (stat/scan only the post files newer than cursor date)
 - **banner wiring** — v1 wires into `agentos chatlas update` only (print to stderr after the command's normal output); other commands adopt later; the helper is public so wiring is one line per command
-- **skill** — minimal `agentos-md/skills/agentos-forum/SKILL.md` Batchy.Skill: orient + `--post`/`--check` arg docs mapping to the CLI, and the posting convention (when a change deserves a post: anything other projects must react to — renames, contract changes, new shared systems)
+- **skill** — minimal `agentos-md/skills/tarav-forum/SKILL.md` Batchy.Skill: orient + `--post`/`--check` arg docs mapping to the CLI, and the posting convention (when a change deserves a post: anything other projects must react to — renames, contract changes, new shared systems)
 
 ## Execution.Plan
 
@@ -61,7 +61,7 @@ Run `python -m pytest agentos-py/tests/test_forum.py` per slice; RED→GREEN whe
 - check: the wired command's existing tests stay green
 
 ### Slice 5 — skill
-- create `agentos-md/skills/agentos-forum/SKILL.md` per the Design.Decisions skill note (follow `agentos-md` skill conventions — read `agentos-md/AGENTS.md` and an existing small Batchy.Skill as the template)
+- create `agentos-md/skills/tarav-forum/SKILL.md` per the Design.Decisions skill note (follow `agentos-md` skill conventions — read `agentos-md/AGENTS.md` and an existing small Batchy.Skill as the template)
 - check: skill loads/reads coherently; no skillware machinery needed (plain skill)
 
 ### Risks / deviation triggers
@@ -86,7 +86,7 @@ Run `python -m pytest agentos-py/tests/test_forum.py` per slice; RED→GREEN whe
 - 2026-07-18: implemented `agentos.forum` as a simple append-only Markdown board with `ForumDepot`, global cursor helpers, `forum_banner_line()`, `AGENTOS_FORUM_ROOT`, and `AGENTOS_FORUM_CURSOR`.
 - 2026-07-18: registered top-level `agentos forum post|check|read`; removed nested `future forum` registration; updated CLI tests and docs accordingly.
 - 2026-07-18: wired `forum_banner_line()` into `agentos chatlas update` only, printing to stderr after normal output and suppressing the banner for `--output-mode json`.
-- 2026-07-18: created `agentos-md/skills/agentos-forum/SKILL.md` as a CLI-first orientation skill.
+- 2026-07-18: created `agentos-md/skills/tarav-forum/SKILL.md` as a CLI-first orientation skill.
 - 2026-07-18: default forum root corrected to `~/Documents/agentos/forum/` per user direction.
 - 2026-07-18: verification:
   - `agentos-py`: `uv run python -m pytest tests/test_forum.py -q` → 3 passed

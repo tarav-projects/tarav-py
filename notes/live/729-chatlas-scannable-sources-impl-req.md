@@ -4,7 +4,7 @@
 
 - **Scope:** add explicit `chatlas.sources[].scannable` policy and configure only the canonical Codex home for native scanning.
 - **Status:** complete and verified.
-- **Source:** autonomous `$agentos-hugentics --dev --AUTO` request; accepted source-selection semantics are grounded by ^c20260813-0u.
+- **Source:** autonomous `$tarav-hugentics --dev --AUTO` request; accepted source-selection semantics are grounded by ^c20260813-0u.
 - **Out of scope:** deleting or rewriting existing Chatlas raw archives and indexes, ingesting satellite Codex archives, or removing the per-session symlink-source defense.
 
 ## Impl.Index

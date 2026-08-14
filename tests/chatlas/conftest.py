@@ -9,10 +9,10 @@ def isolate_anchory_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_ANCHORY_REGISTRY",
-        str(tmp_path / ".agentos" / "anchory" / "registry.json"),
+        "TARAV_ANCHORY_REGISTRY",
+        str(tmp_path / ".tarav" / "anchory" / "registry.json"),
     )
     monkeypatch.setenv(
-        "AGENTOS_ANCHORY_GLOBAL_DEPOT",
-        str(tmp_path / ".agentos" / "anchory" / "depot"),
+        "TARAV_ANCHORY_GLOBAL_DEPOT",
+        str(tmp_path / ".tarav" / "anchory" / "depot"),
     )

@@ -12,10 +12,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentos.chatlas.normalization.session_model._claude import (
+from tarav.chatlas.normalization.session_model._claude import (
     _normalize_claude_session,
 )
-from agentos.chatlas.normalization.session_model.events import normal_turn_id
+from tarav.chatlas.normalization.session_model.events import normal_turn_id
 
 
 @dataclass(frozen=True)

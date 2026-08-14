@@ -2,7 +2,7 @@
 
 import pytest
 
-from agentos.iterante.locking import LockViolation, record, verify
+from tarav.iterante.locking import LockViolation, record, verify
 
 
 def test_record_then_verify_is_clean(tmp_path):

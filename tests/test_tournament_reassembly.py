@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.agent.run_runtime import AgentRunResult
-from agentos.tournament import JudgeSpawn, TournamentStore, load_definition, run_match
-from agentos.tournament.commands import register_tournament_commands
-from agentos.tournament.components import ComponentMissingError, ComponentRegistry
-from agentos.tournament.template import TemplateMissingError, reassemble
+from tarav._core.errors import CliError
+from tarav.agent.run_runtime import AgentRunResult
+from tarav.tournament import JudgeSpawn, TournamentStore, load_definition, run_match
+from tarav.tournament.commands import register_tournament_commands
+from tarav.tournament.components import ComponentMissingError, ComponentRegistry
+from tarav.tournament.template import TemplateMissingError, reassemble
 
 DEFINITION = '''
 question = "Which line is better?"
@@ -168,7 +168,7 @@ def _component_addresses(registry: ComponentRegistry, verdict) -> tuple[str, ...
 
 
 FRAMED_DEFINITION = '''
-from agentos.tournament import Cite, Frame, Players, Section, Shuffle, Table, Text
+from tarav.tournament import Cite, Frame, Players, Section, Shuffle, Table, Text
 
 VOCABULARY = {
     "DF": "names a thing",

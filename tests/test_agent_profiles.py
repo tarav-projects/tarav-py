@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.agent.commands import register_agent_commands
-from agentos.agent.commands.accounts import _cmd_agent_accounts_materialize
-from agentos.agent.commands.run import _cmd_agent_run
-from agentos.agent.account_status import AgentAccountContext
-from agentos.agent.config import load_agent_configs, profile_path, write_agent_profile
-from agentos.agent.primitives import AgentConfig
-from agentos.agent.run_runtime import (
+from tarav._core.errors import CliError
+from tarav.agent.commands import register_agent_commands
+from tarav.agent.commands.accounts import _cmd_agent_accounts_materialize
+from tarav.agent.commands.run import _cmd_agent_run
+from tarav.agent.account_status import AgentAccountContext
+from tarav.agent.config import load_agent_configs, profile_path, write_agent_profile
+from tarav.agent.primitives import AgentConfig
+from tarav.agent.run_runtime import (
     CLAUDE_CONFIG_DIR_ENV_VAR,
     CODEX_HOME_ENV_VAR,
     COPILOT_HOME_ENV_VAR,
@@ -20,14 +20,14 @@ from agentos.agent.run_runtime import (
     AgentCommandConfig,
     AgentRunConfig,
 )
-from agentos.agent.providers.registry import resolve_account_runtime_agent, resolve_agent_config
-from agentos.agent.providers.claude_code.agent import ClaudeAgent
-from agentos.agent.providers.codex.agent import CodexAgent
-from agentos.agent.providers.copilot_cli.agent import CopilotAgent
-from agentos.agent.providers.pi.agent import PiAgent
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.providers.registry import resolve_account_runtime_agent, resolve_agent_config
+from tarav.agent.providers.claude_code.agent import ClaudeAgent
+from tarav.agent.providers.codex.agent import CodexAgent
+from tarav.agent.providers.copilot_cli.agent import CopilotAgent
+from tarav.agent.providers.pi.agent import PiAgent
+from tarav.testing import TaravTestEnvironment
 
-from agentos.testing import codex_auth_json, seed_claude_account, seed_codex_account
+from tarav.testing import codex_auth_json, seed_claude_account, seed_codex_account
 from _helpers import (
     read_json_file,
     read_jsonl_file,
@@ -39,7 +39,7 @@ def test_profile_file_loads_complete_agent_config(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "codex-mm"
     environment.write_global_config(agent={"providers": _provider_configs()})
@@ -51,7 +51,7 @@ def test_profile_file_loads_complete_agent_config(
             "accounts": ["mm"],
             "default_model": "gpt-5.4-mini",
             "run_args": ["--dangerously-bypass-approvals-and-sandbox"],
-            "env": {"AGENTOS_TEST": "1"},
+            "env": {"TARAV_TEST": "1"},
             "ping": {"model": "gpt-5.4-mini"},
         },
     )
@@ -75,7 +75,7 @@ def test_profile_file_loads_home_current_account_policy(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "codex-main"
     environment.write_global_config(agent={"providers": _provider_configs()})
@@ -101,7 +101,7 @@ def test_profile_file_without_default_model_uses_provider_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "codex-main"
     environment.write_global_config(agent={"providers": _provider_configs()})
@@ -123,7 +123,7 @@ def test_profile_file_rejects_unknown_account_policy(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_profile(
         "codex-main",
@@ -143,7 +143,7 @@ def test_profile_resolution_does_not_require_provider_and_asserts_provider(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_profile(
         "codex-mm",
@@ -173,7 +173,7 @@ def test_account_runtime_agent_uses_profile_env_and_account_scope(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "claude-br"
     seed_claude_account("browser-br", account_uuid="acc_browser-br")
@@ -215,7 +215,7 @@ def test_account_runtime_agent_rejects_profile_account_out_of_scope(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "claude-br"
     seed_claude_account("browser-br", account_uuid="acc_browser-br")
@@ -240,7 +240,7 @@ def test_account_runtime_agent_infers_unique_profile(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "codex-br"
     auth_file = tmp_path / "auth.json"
@@ -251,7 +251,7 @@ def test_account_runtime_agent_infers_unique_profile(
         provider="codex",
         homes=[str(home)],
         accounts=["br"],
-        env={"AGENTOS_RUNTIME_TEST": "1"},
+        env={"TARAV_RUNTIME_TEST": "1"},
     )
 
     agent = resolve_account_runtime_agent(
@@ -263,7 +263,7 @@ def test_account_runtime_agent_infers_unique_profile(
     )
 
     assert agent.profile_id == "codex-br"
-    assert dict(agent.env) == {"AGENTOS_RUNTIME_TEST": "1"}
+    assert dict(agent.env) == {"TARAV_RUNTIME_TEST": "1"}
     assert agent.account == AgentAccountContext(provider="codex", account="br")
 
 
@@ -271,7 +271,7 @@ def test_account_runtime_agent_requires_unique_profile(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "codex-br"
     auth_file = tmp_path / "auth.json"
@@ -313,7 +313,7 @@ def test_agent_run_rejects_provider_home_without_profile(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
 
     with pytest.raises(CliError, match="requires --profile"):
@@ -391,15 +391,15 @@ def test_profile_env_is_config_injected_not_harness_injected(tmp_path: Path) -> 
             profile_id="codex-config-env",
             home=tmp_path / "codex-home",
             cli_command=("/bin/echo",),
-            env=(("AGENTOS_TEST_CONFIG_ENV", "1"),),
+            env=(("TARAV_TEST_CONFIG_ENV", "1"),),
         )
     )
 
     command = agent._build_command(AgentCommandConfig(prompt="hello"))
 
-    assert command.env_overrides["AGENTOS_TEST_CONFIG_ENV"] == "1"
+    assert command.env_overrides["TARAV_TEST_CONFIG_ENV"] == "1"
     assert command.env_overrides[CODEX_HOME_ENV_VAR] == str(tmp_path / "codex-home")
-    harness_env = set(command.env_overrides) - {"AGENTOS_TEST_CONFIG_ENV"}
+    harness_env = set(command.env_overrides) - {"TARAV_TEST_CONFIG_ENV"}
     assert harness_env <= HARNESS_INJECTED_ENV_ALLOWLIST["codex"]
 
 
@@ -417,7 +417,7 @@ def test_profile_env_rejects_harness_injected_home_keys(
     provider: str,
     env_key: str,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_profile(
         "blocked-harness-env",
@@ -452,7 +452,7 @@ def test_profile_home_override_must_be_in_profile_homes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     default_home = tmp_path / "codex-default"
     allowed_home = tmp_path / "codex-allowed"
@@ -513,8 +513,8 @@ def _provider_configs() -> dict[str, dict[str, object]]:
     return {"codex": {"cli_command": ["/bin/echo"]}}
 
 
-def _account_events(agentos_home: Path) -> list[dict[str, object]]:
-    event_files = sorted((agentos_home / "accounts" / "events").glob("*.jsonl"))
+def _account_events(tarav_home: Path) -> list[dict[str, object]]:
+    event_files = sorted((tarav_home / "accounts" / "events").glob("*.jsonl"))
     events: list[dict[str, object]] = []
     for event_file in event_files:
         events.extend(read_jsonl_file(event_file))
@@ -548,7 +548,7 @@ def test_profile_accounts_and_homes_round_trip(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_global_config(agent={"providers": _provider_configs()})
 
@@ -580,7 +580,7 @@ def test_profile_rejects_removed_account_home_policy_fields(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_global_config(agent={"providers": _provider_configs()})
 
@@ -601,8 +601,8 @@ def test_provider_validate_profile_is_invoked(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from agentos.agent.config import validate_provider_profile
-    import agentos.agent.providers.claude_code.agent as claude_agent_module
+    from tarav.agent.config import validate_provider_profile
+    import tarav.agent.providers.claude_code.agent as claude_agent_module
 
     calls: list[dict[str, object]] = []
 
@@ -611,7 +611,7 @@ def test_provider_validate_profile_is_invoked(
 
     monkeypatch.setattr(claude_agent_module, "validate_profile", fake_validate)
 
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_profile(
         "claude-main",
@@ -633,8 +633,8 @@ def test_provider_validate_profile_is_invoked(
 
 
 def test_profile_account_scope_enforced_on_direct_agent_run_call() -> None:
-    from agentos.agent.providers.claude_code.agent import ClaudeAgent
-    from agentos.agent.account_status import AgentAccountContext
+    from tarav.agent.providers.claude_code.agent import ClaudeAgent
+    from tarav.agent.account_status import AgentAccountContext
 
     agent = ClaudeAgent.from_config(
         AgentConfig(
@@ -653,7 +653,7 @@ def test_profile_account_scope_enforced_on_direct_agent_run_call() -> None:
 
 
 def test_session_only_provider_has_no_run_or_account_status_capability() -> None:
-    from agentos.agent.providers.gemini_cli.agent import GeminiAgent
+    from tarav.agent.providers.gemini_cli.agent import GeminiAgent
 
     agent = GeminiAgent.from_config(
         AgentConfig(
@@ -670,13 +670,13 @@ def test_session_only_provider_has_no_run_or_account_status_capability() -> None
 @pytest.mark.parametrize(
     ("provider", "agent_import", "expect_run", "expect_account_status"),
     [
-        ("claude-code", "agentos.agent.providers.claude_code.agent:ClaudeAgent", True, True),
-        ("codex", "agentos.agent.providers.codex.agent:CodexAgent", True, True),
-        ("copilot-cli", "agentos.agent.providers.copilot_cli.agent:CopilotAgent", True, True),
-        ("pi", "agentos.agent.providers.pi.agent:PiAgent", True, False),
-        ("gemini-cli", "agentos.agent.providers.gemini_cli.agent:GeminiAgent", False, False),
-        ("opencode", "agentos.agent.providers.opencode.agent:OpencodeAgent", False, False),
-        ("openclaw", "agentos.agent.providers.openclaw.agent:OpenclawAgent", False, False),
+        ("claude-code", "tarav.agent.providers.claude_code.agent:ClaudeAgent", True, True),
+        ("codex", "tarav.agent.providers.codex.agent:CodexAgent", True, True),
+        ("copilot-cli", "tarav.agent.providers.copilot_cli.agent:CopilotAgent", True, True),
+        ("pi", "tarav.agent.providers.pi.agent:PiAgent", True, False),
+        ("gemini-cli", "tarav.agent.providers.gemini_cli.agent:GeminiAgent", False, False),
+        ("opencode", "tarav.agent.providers.opencode.agent:OpencodeAgent", False, False),
+        ("openclaw", "tarav.agent.providers.openclaw.agent:OpenclawAgent", False, False),
     ],
 )
 def test_capability_protocols_match_provider_capability_matrix(
@@ -687,7 +687,7 @@ def test_capability_protocols_match_provider_capability_matrix(
 ) -> None:
     import importlib
 
-    from agentos.agent.primitives import (
+    from tarav.agent.primitives import (
         AccountStatusCapable,
         AgentAdapter,
         RunCapable,
@@ -711,7 +711,7 @@ def test_run_on_session_only_provider_fails_with_capability_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_profile(
         "gemini-x",

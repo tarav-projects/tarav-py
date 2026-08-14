@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agentos.skillware.model import parse_skw_code
+from tarav.skillware.model import parse_skw_code
 
 
 def test_code_annotation_only_note_parses() -> None:

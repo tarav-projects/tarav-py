@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.agent.providers.codex.usage_hooks import (
+from tarav.agent.providers.codex.usage_hooks import (
     CODEX_SESSION_HOOK_USAGE_SOURCE,
     register_codex_usage_hook_callbacks,
 )
-from agentos.hooks import HookInvocation, HookRegistry
-from agentos.testing import AgentosTestEnvironment, codex_auth_json, seed_codex_account
+from tarav.hooks import HookInvocation, HookRegistry
+from tarav.testing import TaravTestEnvironment, codex_auth_json, seed_codex_account
 
 from _helpers import read_jsonl_file, write_text_file
 
@@ -48,8 +48,8 @@ def _rollout(path: Path, *, session_id: str = "session-123") -> Path:
 
 def _registry(
     monkeypatch, tmp_path: Path
-) -> tuple[AgentosTestEnvironment, Path, HookRegistry]:
-    environment = AgentosTestEnvironment.create(tmp_path)
+) -> tuple[TaravTestEnvironment, Path, HookRegistry]:
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"
     write_text_file(codex_home / "auth.json", codex_auth_json(account_id="account-1"))
@@ -77,7 +77,7 @@ def test_codex_turn_stop_records_normalized_account_quota(
     )
 
     record_path = next(
-        (environment.agentos_home / "agent" / "usage-registry").glob("*-usage.jsonl")
+        (environment.tarav_home / "agent" / "usage-registry").glob("*-usage.jsonl")
     )
     record = read_jsonl_file(record_path)[0]
     assert record["provider"] == "codex"
@@ -123,7 +123,7 @@ def test_codex_turn_stop_locates_session_from_home_when_transcript_path_is_absen
     )
 
     records = list(
-        (environment.agentos_home / "agent" / "usage-registry").glob("*-usage.jsonl")
+        (environment.tarav_home / "agent" / "usage-registry").glob("*-usage.jsonl")
     )
     assert len(records) == 1
 
@@ -142,4 +142,4 @@ def test_codex_quota_callback_ignores_other_context_types(
         )
     )
 
-    assert not (environment.agentos_home / "agent" / "usage-registry").exists()
+    assert not (environment.tarav_home / "agent" / "usage-registry").exists()

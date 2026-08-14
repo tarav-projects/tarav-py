@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from agentos.cli.cli import main
+from tarav.cli.cli import main
 from _helpers import captured_json
 
 
 def test_forum_post_check_read_round_trip(tmp_path, monkeypatch, capsys) -> None:
-    monkeypatch.setenv("AGENTOS_FORUM_ROOT", str(tmp_path / "forum"))
-    monkeypatch.setenv("AGENTOS_FORUM_CURSOR", str(tmp_path / "cursor.json"))
+    monkeypatch.setenv("TARAV_FORUM_ROOT", str(tmp_path / "forum"))
+    monkeypatch.setenv("TARAV_FORUM_CURSOR", str(tmp_path / "cursor.json"))
     monkeypatch.chdir(tmp_path)
 
     assert main(["forum", "post", "--title", "Hello", "--body", "world", "--from", "project-a", "--json"]) == 0
@@ -31,8 +31,8 @@ def test_forum_post_check_read_round_trip(tmp_path, monkeypatch, capsys) -> None
 
 
 def test_forum_read_date_does_not_advance_cursor(tmp_path, monkeypatch, capsys) -> None:
-    monkeypatch.setenv("AGENTOS_FORUM_ROOT", str(tmp_path / "forum"))
-    monkeypatch.setenv("AGENTOS_FORUM_CURSOR", str(tmp_path / "cursor.json"))
+    monkeypatch.setenv("TARAV_FORUM_ROOT", str(tmp_path / "forum"))
+    monkeypatch.setenv("TARAV_FORUM_CURSOR", str(tmp_path / "cursor.json"))
     posts = tmp_path / "forum" / "posts"
     posts.mkdir(parents=True)
     posts.joinpath("2026-07-18.md").write_text(

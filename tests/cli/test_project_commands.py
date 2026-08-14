@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import write_project_marker
-from agentos.cli.cli import main
+from tarav.testing import write_project_marker
+from tarav.cli.cli import main
 from _helpers import captured_json, write_text_file
 
 
@@ -26,7 +26,7 @@ def _expected_project_list_record(project_root: Path, project_name: str | None) 
         "project_root": str(resolved_root),
         "project_id": PROJECT_ID,
         "project_name": project_name,
-        "marker_path": str(resolved_root / ".agentos" / "project.json"),
+        "marker_path": str(resolved_root / ".tarav" / "project.json"),
     }
 
 
@@ -43,7 +43,7 @@ def test_projects_list_prints_agentos_projects_under_root(
     not_project.mkdir(parents=True)
     write_project_marker(project_b)
     write_project_marker(project_a)
-    write_text_file(not_project / ".agentos" / "config.json", "{}\n")
+    write_text_file(not_project / ".tarav" / "config.json", "{}\n")
 
     assert main(["projects", "list", "--root", str(workspace)]) == 0
 
@@ -63,13 +63,13 @@ def test_projects_list_json_prints_project_metadata(
     project_b.mkdir(parents=True)
     project_a.mkdir(parents=True)
     write_project_marker(project_b)
-    _write_named_project_marker(project_a, "Agentos A")
+    _write_named_project_marker(project_a, "Tarav A")
 
     assert main(["projects", "list", "--root", str(workspace), "--json"]) == 0
 
     assert captured_json(capsys) == [
         _expected_project_list_record(project_b, None),
-        _expected_project_list_record(project_a, "Agentos A"),
+        _expected_project_list_record(project_a, "Tarav A"),
     ]
 
 

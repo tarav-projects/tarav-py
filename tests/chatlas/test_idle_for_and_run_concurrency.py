@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from agentos.chatlas.index_query import chatlas_index_row_matches_logical
+from tarav.chatlas.index_query import chatlas_index_row_matches_logical
 
 
 def _row(days_idle: float) -> dict[str, object]:
@@ -59,12 +59,12 @@ def test_active_before_drops_rows_without_a_usable_timestamp() -> None:
 
 
 def test_idle_for_flag_becomes_an_active_before_cutoff() -> None:
-    from agentos.chatlas.commands import (
+    from tarav.chatlas.commands import (
         _chatlas_query_selector_kwargs,
         register_chatlas_commands,
     )
 
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="tarav")
     register_chatlas_commands(parser.add_subparsers(dest="cmd"))
     args = parser.parse_args(["chatlas", "query", "--idle-for", "2d"])
     kwargs = _chatlas_query_selector_kwargs(args)
@@ -79,13 +79,13 @@ def test_idle_for_flag_becomes_an_active_before_cutoff() -> None:
 
 
 def test_idle_for_rejects_a_bad_duration() -> None:
-    from agentos._core.errors import CliError
-    from agentos.chatlas.commands import (
+    from tarav._core.errors import CliError
+    from tarav.chatlas.commands import (
         _chatlas_query_selector_kwargs,
         register_chatlas_commands,
     )
 
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="tarav")
     register_chatlas_commands(parser.add_subparsers(dest="cmd"))
     args = parser.parse_args(["chatlas", "query", "--idle-for", "banana"])
     with pytest.raises(CliError):
@@ -95,7 +95,7 @@ def test_idle_for_rejects_a_bad_duration() -> None:
 def test_run_produce_runs_sessions_concurrently_and_keeps_input_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from agentos.chatlas import products
+    from tarav.chatlas import products
 
     started = threading.Barrier(3, timeout=5)
     order: list[str] = []
@@ -127,7 +127,7 @@ def test_run_produce_runs_sessions_concurrently_and_keeps_input_order(
 def test_run_produce_reports_failures_with_their_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from agentos.chatlas import products
+    from tarav.chatlas import products
 
     def fake_run_one(**kwargs: object) -> dict[str, object]:
         row = kwargs["row"]
@@ -156,7 +156,7 @@ def test_run_produce_reports_failures_with_their_session(
 
 
 def test_run_produce_is_serial_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    from agentos.chatlas import products
+    from tarav.chatlas import products
 
     live = 0
     peak = 0

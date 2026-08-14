@@ -5,12 +5,12 @@ import json
 
 import pytest
 
-from agentos.chatlas.output import (
+from tarav.chatlas.output import (
     add_chatlas_output_arguments,
     print_chatlas_output,
     render_payload_text,
 )
-from agentos.chatlas.time_interface import format_local_timestamp
+from tarav.chatlas.time_interface import format_local_timestamp
 
 
 def _parse(argv: list[str]) -> argparse.Namespace:
@@ -148,7 +148,7 @@ def test_generic_renderer_localizes_timestamp_fields_only() -> None:
 
 
 def test_view_renderer_reads_zip_transcript_turns_as_a_conversation() -> None:
-    from agentos.chatlas.inline import format_chatlas_view_text
+    from tarav.chatlas.inline import format_chatlas_view_text
 
     rendered = format_chatlas_view_text(
         {
@@ -170,7 +170,7 @@ def test_view_renderer_reads_zip_transcript_turns_as_a_conversation() -> None:
 
 
 def test_view_renderer_reads_message_shaped_views() -> None:
-    from agentos.chatlas.inline import format_chatlas_view_text
+    from tarav.chatlas.inline import format_chatlas_view_text
 
     rendered = format_chatlas_view_text(
         {
@@ -193,14 +193,14 @@ def test_view_renderer_reads_message_shaped_views() -> None:
 
 
 def test_view_renderer_falls_back_for_model_shaped_views() -> None:
-    from agentos.chatlas.inline import format_chatlas_view_text
+    from tarav.chatlas.inline import format_chatlas_view_text
 
     rendered = format_chatlas_view_text({"view": "events", "chat": {"events": []}})
     assert "view: events" in rendered
 
 
 def test_query_renderer_lists_rows_with_a_count_line() -> None:
-    from agentos.chatlas.query import format_chatlas_query_text
+    from tarav.chatlas.query import format_chatlas_query_text
 
     rendered = format_chatlas_query_text(
         {
@@ -227,7 +227,7 @@ def test_query_renderer_lists_rows_with_a_count_line() -> None:
 
 
 def test_query_renderer_reports_an_empty_result() -> None:
-    from agentos.chatlas.query import format_chatlas_query_text
+    from tarav.chatlas.query import format_chatlas_query_text
 
     rendered = format_chatlas_query_text(
         {"returned_row_count": 0, "query_matched_row_count": 0, "rows": []}
@@ -236,7 +236,7 @@ def test_query_renderer_reports_an_empty_result() -> None:
 
 
 def test_stats_renderer_localizes_the_activity_range() -> None:
-    from agentos.chatlas.index_stats import format_chatlas_index_stats_markdown
+    from tarav.chatlas.index_stats import format_chatlas_index_stats_markdown
 
     oldest = "2026-08-03T10:00:00Z"
     latest = "2026-08-04T10:00:00Z"
@@ -252,7 +252,7 @@ def test_stats_renderer_localizes_the_activity_range() -> None:
 
 
 def test_turns_query_renderer_shows_matched_turn_text() -> None:
-    from agentos.chatlas.event_query import format_chatlas_turns_query_text
+    from tarav.chatlas.event_query import format_chatlas_turns_query_text
 
     rendered = format_chatlas_turns_query_text(
         {
@@ -275,9 +275,9 @@ def test_turns_query_renderer_shows_matched_turn_text() -> None:
 def test_update_family_replaces_output_mode_with_explicit_flags() -> None:
     import argparse
 
-    from agentos.chatlas.commands import register_chatlas_commands
+    from tarav.chatlas.commands import register_chatlas_commands
 
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="tarav")
     register_chatlas_commands(parser.add_subparsers(dest="cmd"))
     update = parser.parse_args(["chatlas", "index", "update"])
     assert update.output == "text"
@@ -291,9 +291,9 @@ def test_update_family_replaces_output_mode_with_explicit_flags() -> None:
 def test_every_chatlas_leaf_command_offers_the_output_contract() -> None:
     import argparse
 
-    from agentos.chatlas.commands import register_chatlas_commands
+    from tarav.chatlas.commands import register_chatlas_commands
 
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="tarav")
     register_chatlas_commands(parser.add_subparsers(dest="cmd"))
 
     missing: list[str] = []
@@ -315,9 +315,9 @@ def test_every_chatlas_leaf_command_offers_the_output_contract() -> None:
 def test_turns_query_exposes_normalized_turn_kind_without_human_sugar() -> None:
     import argparse
 
-    from agentos.chatlas.commands import register_chatlas_commands
+    from tarav.chatlas.commands import register_chatlas_commands
 
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="tarav")
     register_chatlas_commands(parser.add_subparsers(dest="cmd"))
     parsed = parser.parse_args(
         ["chatlas", "turns", "query", "--turn-kind", "user"]

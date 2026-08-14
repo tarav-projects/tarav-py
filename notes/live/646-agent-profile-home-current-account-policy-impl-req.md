@@ -7,7 +7,7 @@
 - **source:** 2026-06-15 follow-up to `notes/live/645-agent-account-auth-interface-redesign-impl-req.md`; user wants the default `accounts[0]` behavior preserved globally, but wants an opt-in profile policy for shared homes such as `codex-main` where plain `acodex` should keep using the current `~/.codex/auth.json` if it is valid instead of overwriting it with the profile default
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/agent/config.py`, `src/agentos/agent/primitives.py`, `src/agentos/codex/agent.py`, `src/agentos/codex/account_registry.py`, `tests/test_agent_profiles.py`, `tests/test_agent_run_account_preflight.py`
-- **related surfaces:** `notes/live/645-agent-account-auth-interface-redesign-impl-req.md`, `notes/live/629-agent-profile-ssot-and-account-events-impl-req.md`, `notes/live/630-agent-profile-legacy-cleanout-impl-req.md`, `agentos-md/skills/agentos-agent-account-management/SKILL.md`
+- **related surfaces:** `notes/live/645-agent-account-auth-interface-redesign-impl-req.md`, `notes/live/629-agent-profile-ssot-and-account-events-impl-req.md`, `notes/live/630-agent-profile-legacy-cleanout-impl-req.md`, `agentos-md/skills/tarav-agent-account-management/SKILL.md`
 
 ## Impl.Index
 

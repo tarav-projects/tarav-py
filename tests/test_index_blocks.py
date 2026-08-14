@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.index.commands import _cmd_blocks
-from agentos.index.model import block_grounding_stats, parse_depot
+from tarav._core.errors import CliError
+from tarav.index.commands import _cmd_blocks
+from tarav.index.model import block_grounding_stats, parse_depot
 
 CHAPTER = """> router line
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agentos.chatlas.index_query import chatlas_index_row_matches
+from tarav.chatlas.index_query import chatlas_index_row_matches
 
 
 def _matches(row: dict[str, Any], identity_hash: str | None) -> bool:

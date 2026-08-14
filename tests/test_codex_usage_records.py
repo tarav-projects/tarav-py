@@ -5,11 +5,11 @@ from typing import Any
 
 import pytest
 
-from agentos.agent.account_status import AccountStatusError, AgentAccountContext
-from agentos.agent.usage_registry import append_usage_record
-from agentos.agent.providers.codex.agent import CodexAgent
-from agentos.testing import AgentosTestEnvironment
-from agentos.testing import codex_auth_json, seed_codex_account
+from tarav.agent.account_status import AccountStatusError, AgentAccountContext
+from tarav.agent.usage_registry import append_usage_record
+from tarav.agent.providers.codex.agent import CodexAgent
+from tarav.testing import TaravTestEnvironment
+from tarav.testing import codex_auth_json, seed_codex_account
 from _helpers import (
     read_jsonl_file,
     write_text_file,
@@ -79,13 +79,13 @@ def test_agent_usage_records_fresh_codex_app_server_limits(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "agentos")
+    environment = TaravTestEnvironment.create(tmp_path / "tarav")
     environment.apply_environment(monkeypatch.setenv)
-    agentos_home = environment.agentos_home
+    tarav_home = environment.tarav_home
     codex_home, agent = _seeded_codex_agent(tmp_path)
 
     monkeypatch.setattr(
-        "agentos.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
+        "tarav.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
         lambda agent: _codex_usage_payload(burst_percent=11, weekly_percent=22),
     )
 
@@ -96,7 +96,7 @@ def test_agent_usage_records_fresh_codex_app_server_limits(
     assert status.usage_summary == "Burst 11%, Weekly 22%"
     assert status.raw["usage_record"]["status"] == "fresh"
     records = read_jsonl_file(
-        next((agentos_home / "agent" / "usage-registry").glob("*-usage.jsonl"))
+        next((tarav_home / "agent" / "usage-registry").glob("*-usage.jsonl"))
     )
     assert len(records) == 1
     assert records[0]["provider"] == "codex"
@@ -111,9 +111,9 @@ def test_agent_usage_falls_back_to_cached_codex_limits(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "agentos")
+    environment = TaravTestEnvironment.create(tmp_path / "tarav")
     environment.apply_environment(monkeypatch.setenv)
-    agentos_home = environment.agentos_home
+    tarav_home = environment.tarav_home
     codex_home, agent = _seeded_codex_agent(tmp_path)
     append_usage_record(
         provider="codex",
@@ -123,7 +123,7 @@ def test_agent_usage_falls_back_to_cached_codex_limits(
         payload=_codex_usage_payload(burst_percent=12, weekly_percent=34),
     )
     monkeypatch.setattr(
-        "agentos.agent.providers.codex.account_status._account_usage_app_server",
+        "tarav.agent.providers.codex.account_status._account_usage_app_server",
         _failed_app_server_result,
     )
 
@@ -144,7 +144,7 @@ def test_agent_usage_falls_back_to_cached_codex_limits(
     assert usage_record["live_error"]["type"] == "command_failed"
     assert usage_record["live_error"]["message"] == "forced app-server failure"
     usage_record_paths = list(
-        (agentos_home / "agent" / "usage-registry").glob("*-usage.jsonl")
+        (tarav_home / "agent" / "usage-registry").glob("*-usage.jsonl")
     )
     assert len(usage_record_paths) == 1
     assert len(read_jsonl_file(usage_record_paths[0])) == 1
@@ -154,12 +154,12 @@ def test_agent_usage_classifies_codex_primary_weekly_by_duration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "agentos")
+    environment = TaravTestEnvironment.create(tmp_path / "tarav")
     environment.apply_environment(monkeypatch.setenv)
     codex_home, agent = _seeded_codex_agent(tmp_path)
 
     monkeypatch.setattr(
-        "agentos.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
+        "tarav.agent.providers.codex.account_status._fetch_account_usage_app_server_payload",
         lambda agent: _codex_weekly_primary_usage_payload(weekly_percent=5),
     )
 
@@ -177,7 +177,7 @@ def test_agent_usage_classifies_codex_primary_weekly_by_duration(
     }
     records = read_jsonl_file(
         next(
-            (environment.agentos_home / "agent" / "usage-registry").glob(
+            (environment.tarav_home / "agent" / "usage-registry").glob(
                 "*-usage.jsonl"
             )
         )
@@ -189,11 +189,11 @@ def test_agent_usage_without_cached_codex_limits_stays_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "agentos")
+    environment = TaravTestEnvironment.create(tmp_path / "tarav")
     environment.apply_environment(monkeypatch.setenv)
     _codex_home, agent = _seeded_codex_agent(tmp_path)
     monkeypatch.setattr(
-        "agentos.agent.providers.codex.account_status._account_usage_app_server",
+        "tarav.agent.providers.codex.account_status._account_usage_app_server",
         _failed_app_server_result,
     )
 

@@ -4,8 +4,8 @@
 
 - **Scope:** implement the directed `Index.Depot.Dependency` system in `agentos-py` and integrate it into `agentos index linter`, including collision `Drift.POI`s.
 - **What:** a depot resolves cross-depot `Dotted.Name` mentions only against depots it *declares* as dependencies (directed, non-transitive). Declaration is two-tier: local depot declares dep depots **by name**; a global `~/.agentos` registry resolves each name → path. Wire the (currently dormant) dangling-mention machinery into the live linter, add collision detection, and surface both as findings.
-- **Status:** IMPLEMENTED (`--develop --AUTO`). All 5 slices done; full `agentos-py` suite 431 passed; live `agentos index linter` on the real `agentos-pkg` depot stays clean (0/0, 22 passed checks). Slice-5 scope deviation recorded below.
-- **Source context:** design + grounding discussion this session; concept `Index.Depot.Dependency` promoted into `agentos-pkg/design/104-design.md` (routed). Grounding anchors: `^c20260722-15u` (two-tier config design), `^c20260722-16u` (non-transitive + collision decisions).
+- **Status:** IMPLEMENTED (`--develop --AUTO`). All 5 slices done; full `agentos-py` suite 431 passed; live `agentos index linter` on the real `tarav-pkg` depot stays clean (0/0, 22 passed checks). Slice-5 scope deviation recorded below.
+- **Source context:** design + grounding discussion this session; concept `Index.Depot.Dependency` promoted into `tarav-pkg/design/104-design.md` (routed). Grounding anchors: `^c20260722-15u` (two-tier config design), `^c20260722-16u` (non-transitive + collision decisions).
 - **Out of scope:** canonical/plural short-forms, `::`-scoped names, example placeholders, non-index skill-surface concepts (the pre-existing dormant-resolver backlog on 700, unchanged here); config-layering / project-local registry override; a separate authoritative deps config *file* with router-as-mirror — see Impl.Log deviation on the declaration surface.
 
 ## Impl.Index
@@ -20,7 +20,7 @@
   - two-tier declaration: local names + global `~/.agentos` registry name→path; no absolute paths in local declaration. `^c20260722-15u`
   - collision (a mention resolving against a name defined in ≥2 *visible* depots) is an advisory `Drift.POI`; the linter reports, never repairs. `^c20260722-16u`
   - registry reuses the `skills.routing.sources` shape as a sibling global-config key; no config-layering machinery is introduced (start simple). `^c20260722-16u`
-- **Concept authority:** `Index.Depot.Dependency` (`agentos-pkg/design/104-design.md`) — this implementation is its `Current.Implementation`.
+- **Concept authority:** `Index.Depot.Dependency` (`tarav-pkg/design/104-design.md`) — this implementation is its `Current.Implementation`.
 
 ## Execution.Plan
 
@@ -49,7 +49,7 @@ Ordered vertical slices. Test-first (`RED.GREEN.Test.Suite`) at module boundarie
 ### Slice 5 — Linter integration
 - **Do:** wire into `agentos index linter`: for each linted depot, run directed dangling-mention (Slice 3) + collision (Slice 4), plus a package-level finding when a declared dep name does not resolve in the registry (unresolved dependency). Add `LinterCheck`(s) with new `Index.Linter/…` codes, mapped to `LinterFinding`s (advisory/warning severity — collisions and dangling mentions are advisory `Drift.POI`s, not gate errors). Register in `CHECKS` behind a gate that requires a discovered index surface.
 - **Observable:** `agentos index linter --depot <fixture>` surfaces dangling-mention, collision, and unresolved-dependency findings; a clean fixture stays at 0.
-- **RED/GREEN:** end-to-end linter run over a temp depot pair exercising each finding; a self-consistent depot with no deps → no new findings (guards the real `agentos-pkg` depot from regressing to noise).
+- **RED/GREEN:** end-to-end linter run over a temp depot pair exercising each finding; a self-consistent depot with no deps → no new findings (guards the real `tarav-pkg` depot from regressing to noise).
 
 ## Slice Status
 
@@ -61,6 +61,6 @@ Ordered vertical slices. Test-first (`RED.GREEN.Test.Suite`) at module boundarie
 
 ## Impl.Log
 
-- **Deviation (Slice 5 — dangling-mention not wired live) — resolved autonomously:** the plan called for wiring directed dangling-mention into the live linter too. Doing so regresses the real `agentos-pkg` depot to ~99 false positives — the documented resolver gap (canonical/plural short-forms, `::`-scoped names, example placeholders, non-index skill-surface concepts) carried over from Impl.Req 700, which is why that path was DORMANT. Most faithful action: wire only the **precise** pieces live — collision `Drift.POI`s (explicitly requested) and unresolved-dependency findings — both adoption-gated (a depot declaring no deps emits nothing). Directed dangling-mention stays available via `drift.index_dangling_mentions` (now fed by directed resolution) but not CLI-wired, pending the resolver-gap design work. Verified: the real `agentos-pkg` depot stays at 0/0 (22 passed) after integration.
+- **Deviation (Slice 5 — dangling-mention not wired live) — resolved autonomously:** the plan called for wiring directed dangling-mention into the live linter too. Doing so regresses the real `tarav-pkg` depot to ~99 false positives — the documented resolver gap (canonical/plural short-forms, `::`-scoped names, example placeholders, non-index skill-surface concepts) carried over from Impl.Req 700, which is why that path was DORMANT. Most faithful action: wire only the **precise** pieces live — collision `Drift.POI`s (explicitly requested) and unresolved-dependency findings — both adoption-gated (a depot declaring no deps emits nothing). Directed dangling-mention stays available via `drift.index_dangling_mentions` (now fed by directed resolution) but not CLI-wired, pending the resolver-gap design work. Verified: the real `tarav-pkg` depot stays at 0/0 (22 passed) after integration.
 - **Deviation (declaration surface) — resolved autonomously:** the promoted concept says a *local config* is the machine source the linter reads, with the router as a *mirror*. To avoid inventing a second config-file location for standalone skill-dir depots (a depot is not always an agentos project), this cut makes the depot's `000-INDEX.md` router the single authoritative local declaration (`router-as-config`, an option raised in the design discussion). The separate authoritative deps *file* with router-mirror is deferred; recorded here as the doctrinal end-state. `^c20260722-15u`
 - Registry key shape (`index.depots`) is chosen to sit beside `skills.routing.sources`; if a canonical key is later fixed, it is a one-line change in `depot_deps.py`.

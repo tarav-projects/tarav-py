@@ -4,21 +4,21 @@ from pathlib import Path
 
 import pytest
 
-import agentos.agent.providers.copilot_cli.account_status as copilot_account_status
-from agentos.agent.account_status import AgentAccountContext, fresh_usage_record_metadata
-from agentos.testing import seed_copilot_account
-from agentos.agent.providers.copilot_cli.agent import CopilotAgent
-from agentos.testing import AgentosTestEnvironment
+import tarav.agent.providers.copilot_cli.account_status as copilot_account_status
+from tarav.agent.account_status import AgentAccountContext, fresh_usage_record_metadata
+from tarav.testing import seed_copilot_account
+from tarav.agent.providers.copilot_cli.agent import CopilotAgent
+from tarav.testing import TaravTestEnvironment
 
 from _helpers import read_json_file
 
 
-def _accounts_file(environment: AgentosTestEnvironment) -> Path:
-    return environment.agentos_home / "accounts" / "copilot-cli" / "accounts.json"
+def _accounts_file(environment: TaravTestEnvironment) -> Path:
+    return environment.tarav_home / "accounts" / "copilot-cli" / "accounts.json"
 
 
-def _provider_root(environment: AgentosTestEnvironment) -> Path:
-    return environment.agentos_home / "accounts" / "copilot-cli"
+def _provider_root(environment: TaravTestEnvironment) -> Path:
+    return environment.tarav_home / "accounts" / "copilot-cli"
 
 
 def _register(environment, monkeypatch, tmp_path) -> Path:
@@ -51,9 +51,9 @@ def _stub_usage(monkeypatch, *, payload, errors=()):
 def test_failed_status_does_not_stamp_freshness_trail(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     home = _register(environment, monkeypatch, tmp_path)
-    from agentos.agent.account_status import AccountStatusError
+    from tarav.agent.account_status import AccountStatusError
 
     _stub_usage(
         monkeypatch,

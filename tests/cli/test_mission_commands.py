@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.cli.cli import main as _agentos_main
+from tarav.cli.cli import main as _agentos_main
 from _helpers import captured_json
 
 
@@ -21,11 +21,11 @@ def _init_project(tmp_path: Path, monkeypatch, capsys) -> None:
 
 def _patch_mission_times(monkeypatch, values: list[str]) -> None:
     iterator = iter(values)
-    monkeypatch.setattr("agentos.mission.core.utc_now_iso", lambda: next(iterator))
+    monkeypatch.setattr("tarav.mission.core.utc_now_iso", lambda: next(iterator))
 
 
 def _load_mission(tmp_path: Path, name: str) -> dict:
-    mission_path = tmp_path / ".agentos" / "missions" / f"{name}.mission.json"
+    mission_path = tmp_path / ".tarav" / "missions" / f"{name}.mission.json"
     return json.loads(mission_path.read_text(encoding="utf-8"))
 
 
@@ -57,7 +57,7 @@ def test_mission_defaults_to_most_recent_active_and_no_active_file_is_created(
     assert beta["todos"] == [{"text": "default todo", "done": False}]
     assert beta["last_activity"] == "2026-04-14T00:00:03Z"
 
-    active_path = tmp_path / ".agentos" / "missions" / "_active.json"
+    active_path = tmp_path / ".tarav" / "missions" / "_active.json"
     assert not active_path.exists()
 
     assert main(["mission", "list", "--json"]) == 0
@@ -74,7 +74,7 @@ def test_mission_requires_explicit_project(
     _init_project(tmp_path, monkeypatch, capsys)
 
     assert _agentos_main(["mission", "list"]) == 1
-    assert "agentos mission requires --project or --project-base" in capsys.readouterr().err
+    assert "tarav mission requires --project or --project-base" in capsys.readouterr().err
 
 
 def test_mission_accepts_project_base(

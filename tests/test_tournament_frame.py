@@ -6,7 +6,7 @@ import random
 
 import pytest
 
-from agentos.tournament.frame import (
+from tarav.tournament.frame import (
     Cite,
     Frame,
     FrameError,

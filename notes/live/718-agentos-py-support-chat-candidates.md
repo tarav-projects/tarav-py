@@ -62,7 +62,7 @@ Tests were intentionally excluded because fixture anchors can collide with live-
 
 ## Follow-up Candidates
 
-- Add project-local Index support to `agentos-support-chats` if project indexes should materialize the same registry contract as package indexes.
+- Add project-local Index support to `tarav-support-chats` if project indexes should materialize the same registry contract as package indexes.
 - Decide whether production-code annotation anchors are an accepted candidate heuristic or only a diagnostic hint.
 - Agent-review the eight chats before accepting any into a future `Project.Support.Chats` registry.
 - Capturing the seven missing Chat.Index surfaces would make later review cheaper; this is not automatic authorization to capture them.

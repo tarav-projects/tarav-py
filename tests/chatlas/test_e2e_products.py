@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import main
+from tarav.cli.cli import main
 
 from ._e2e_helpers import _configure_chatlas, _isolate_chatlas, _write_codex_rollout
 from ._helpers import captured_json
@@ -66,7 +66,7 @@ def test_product_missing_stage_commit_and_fresh_read(
             "name": "zip-transcript-summary",
             "producer": "agentic",
             "producer_reference": (
-                "agentos-chatlas-md/skills/agentos-chatlas-pkg/references/"
+                "tarav-chatlas-md/skills/tarav-chatlas-pkg/references/"
                 "producer-zip-transcript-summary.md"
             ),
         }
@@ -200,7 +200,7 @@ def test_product_definition_prompt_is_a_freshness_input(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _setup_session(tmp_path, monkeypatch, capsys)
-    from agentos.chatlas import products
+    from tarav.chatlas import products
 
     reference = tmp_path / "producer.md"
     reference.write_text("first prompt", encoding="utf-8")

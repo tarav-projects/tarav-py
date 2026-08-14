@@ -4,7 +4,7 @@
 
 - **Scope:** add `agent.statusline.context` as a provider-neutral Agentos hook semantic, map Claude Code's native `statusLine` callback onto it, normalize Claude quota snapshots into the shared usage registry, and let account monitoring reuse fresh hook observations before probing the provider.
 - **Status:** implemented and verified.
-- **Source:** autonomous `$agentos-hugentics --impl --dev --AUTO` authorization. ^c20260813-26u
+- **Source:** autonomous `$tarav-hugentics --impl --dev --AUTO` authorization. ^c20260813-26u
 - **Out of scope:** changing `agent.turn.stop`, persisting complete statusLine contexts, daemon dispatch, registry retention redesign, or adding equivalent mappings for other providers.
 
 ## Impl.Index

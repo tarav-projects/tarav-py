@@ -3,15 +3,15 @@ to drive any iterante workflow via `import iterante` alone, never the CLI."""
 
 import pytest
 
-from agentos.iterante import runtime
+from tarav.iterante import runtime
 
 
 @pytest.fixture
 def project_dir(tmp_path):
-    missions = tmp_path / ".agentos" / "missions" / "demo"
+    missions = tmp_path / ".tarav" / "missions" / "demo"
     missions.mkdir(parents=True)
     (missions / "mission.py").write_text("""
-from agentos import iterante
+from tarav import iterante
 
 def setup(ctx):
     ctx.state["step_count"] = 0

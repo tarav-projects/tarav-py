@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import main
-from agentos.chatlas.local import chatlas_local_sync
+from tarav.cli.cli import main
+from tarav.chatlas.local import chatlas_local_sync
 from ._e2e_helpers import (
     _configure_chatlas,
     _index_rows,

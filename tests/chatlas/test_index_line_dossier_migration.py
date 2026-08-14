@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
+from tarav._core.errors import CliError
 
 
 SCRIPT = Path(__file__).parents[2] / "dev/live/522-migrate-agentos-pkg-line-anchors.py"

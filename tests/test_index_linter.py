@@ -4,19 +4,19 @@ import argparse
 import json
 from pathlib import Path
 
-from agentos.index.commands import _cmd_linter
-from agentos.index.linter import (
+from tarav.index.commands import _cmd_linter
+from tarav.index.linter import (
     render_linter_json,
     render_linter_text,
 )
-from agentos.index.poi import finding_to_poi
-from agentos.poi import POICatalog, POIClassRegistration
-from agentos.wayfinder import poi_class_reference
+from tarav.index.poi import finding_to_poi
+from tarav.poi import POICatalog, POIClassRegistration
+from tarav.wayfinder import poi_class_reference
 from _index_linter_helpers import _clean_depot, _clean_index, _run, _write
 
 
 def _write_registry(home: Path, depots: dict[str, Path]) -> None:
-    from agentos.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
+    from tarav.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
 
     registry = WayfinderRegistry(home=home)
     for name, path in depots.items():
@@ -30,7 +30,7 @@ def _depot_defining(root: Path, concept: str, *, depends: str | None = None) -> 
     directive = f"> `Index.Depot.Dependency`: {depends}\n\n" if depends else ""
     _write(
         root / "000-INDEX.md",
-        f"# Agentos Index\n\n{directive}## design\n\n- `design/100-design.md` — {concept}\n",
+        f"# Tarav Index\n\n{directive}## design\n\n- `design/100-design.md` — {concept}\n",
     )
     _write(
         root / "design" / "100-design.md",
@@ -42,13 +42,13 @@ def _depot_defining(root: Path, concept: str, *, depends: str | None = None) -> 
 def test_depot_dependency_collision_surfaces_in_linter(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from agentos.index.linter import DEPOT_COLLISION
+    from tarav.index.linter import DEPOT_COLLISION
 
     monkeypatch.chdir(tmp_path)
     home = _depot_defining(tmp_path / "home", "Shared.Concept", depends="other-depot")
     other = _depot_defining(tmp_path / "other", "Shared.Concept")
     _write_registry(tmp_path / "agentos-home", {"other-depot": other})
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "agentos-home"))
 
     state = _run(depot_paths=(str(home),))
     codes = {f.code: f for f in state.findings}
@@ -59,12 +59,12 @@ def test_depot_dependency_collision_surfaces_in_linter(
 def test_depot_dependency_unresolved_name_surfaces_in_linter(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from agentos.index.linter import DEPOT_DEP_UNRESOLVED
+    from tarav.index.linter import DEPOT_DEP_UNRESOLVED
 
     monkeypatch.chdir(tmp_path)
     home = _depot_defining(tmp_path / "home", "Home.Concept", depends="ghost-depot")
     _write_registry(tmp_path / "agentos-home", {})
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "agentos-home"))
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "agentos-home"))
 
     state = _run(depot_paths=(str(home),))
     unresolved = [f for f in state.findings if f.code == DEPOT_DEP_UNRESOLVED]
@@ -74,10 +74,10 @@ def test_depot_dependency_unresolved_name_surfaces_in_linter(
 def test_depot_without_declared_dependencies_stays_quiet(
     monkeypatch, tmp_path: Path
 ) -> None:
-    from agentos.index.linter import DEPOT_COLLISION, DEPOT_DEP_UNRESOLVED
+    from tarav.index.linter import DEPOT_COLLISION, DEPOT_DEP_UNRESOLVED
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "empty-home"))
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "empty-home"))
     depot = _clean_depot(tmp_path)
     state = _run(depot_paths=(str(depot),))
     assert not [
@@ -188,7 +188,7 @@ def test_index_linter_clean_surface_renders_text_and_json(
 
 
 def test_index_finding_adapter_preserves_occurrence_evidence() -> None:
-    from agentos.index.linter import LinterFinding
+    from tarav.index.linter import LinterFinding
 
     finding = LinterFinding(
         severity="warning",
@@ -201,7 +201,7 @@ def test_index_finding_adapter_preserves_occurrence_evidence() -> None:
 
     poi = finding_to_poi(finding, POICatalog())
 
-    assert poi.class_reference.root.id == "agentos-pkg"
+    assert poi.class_reference.root.id == "tarav-pkg"
     assert poi.class_reference.address == finding.code
     assert poi.target.display == "design/100-design.md:18"
     assert poi.situation == finding.message
@@ -209,7 +209,7 @@ def test_index_finding_adapter_preserves_occurrence_evidence() -> None:
 
 
 def test_index_finding_adapter_preserves_external_check_ownership() -> None:
-    from agentos.index.linter import LinterFinding
+    from tarav.index.linter import LinterFinding
 
     finding = LinterFinding(
         severity="warning",
@@ -222,7 +222,7 @@ def test_index_finding_adapter_preserves_external_check_ownership() -> None:
         (
             POIClassRegistration(
                 finding_code=finding.code,
-                reference=poi_class_reference("agentos-chatlas-pkg", finding.code),
+                reference=poi_class_reference("tarav-chatlas-pkg", finding.code),
             ),
         )
     )
@@ -230,10 +230,10 @@ def test_index_finding_adapter_preserves_external_check_ownership() -> None:
     poi = finding_to_poi(
         finding,
         catalog,
-        package_id="agentos-chatlas-pkg",
+        package_id="tarav-chatlas-pkg",
     )
 
-    assert poi.class_reference.root.id == "agentos-chatlas-pkg"
+    assert poi.class_reference.root.id == "tarav-chatlas-pkg"
 
 
 def test_index_linter_missing_surface_blocks_dependent_checks(
@@ -301,7 +301,7 @@ def test_index_linter_maps_mdblocks_errors_and_blocks_inventory(
     index_dir = tmp_path / "design"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
     )
     _write(index_dir / "100-design.md", "****\nnot a heading\n")
 
@@ -328,7 +328,7 @@ def test_index_linter_maps_block_too_long_to_first_class_code(
     body = "\n".join(f"- line {line}" for line in range(30))
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
     )
     _write(index_dir / "100-design.md", f"****\n## Example.Concept\n\n{body}\n****\n")
 
@@ -355,7 +355,7 @@ def test_index_linter_ignores_starting_text_but_reports_unanchored_section(
     index_dir = tmp_path / "design"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
     )
     _write(
         index_dir / "100-design.md",
@@ -395,7 +395,7 @@ def test_index_linter_reports_duplicate_concepts(monkeypatch, tmp_path: Path) ->
     index_dir = tmp_path / "design"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
     )
     _write(
         index_dir / "100-design.md",
@@ -430,7 +430,7 @@ def test_index_linter_reports_index_filename_and_missing_router_file(
     index_dir = tmp_path / "design"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/999-missing.md` — Example.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/999-missing.md` — Example.Concept\n",
     )
     _write(
         index_dir / "concepts.md",
@@ -474,7 +474,7 @@ def test_index_linter_accepts_chained_colon_concept_parameters(
     index_dir = tmp_path / "design"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend:InChat:What\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend:InChat:What\n",
     )
     _write(
         index_dir / "100-design.md",
@@ -501,7 +501,7 @@ def test_index_linter_accepts_chained_double_colon_concept_parameters(
     index_dir = tmp_path / "design"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend::InChat::What\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend::InChat::What\n",
     )
     _write(
         index_dir / "100-design.md",
@@ -529,7 +529,7 @@ def test_index_linter_accepts_router_appendix_annotation(
     appendix_dir = tmp_path / "appendix"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend:InChat:What[+1]\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend:InChat:What[+1]\n",
     )
     _write(
         index_dir / "100-design.md",
@@ -567,7 +567,7 @@ def test_index_linter_accepts_double_colon_router_appendix_annotation(
     appendix_dir = tmp_path / "appendix"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend::InChat::What[+1]\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Alignment.Backend::InChat::What[+1]\n",
     )
     _write(
         index_dir / "100-design.md",
@@ -604,7 +604,7 @@ def test_index_linter_records_appendix_page_inventory(
     appendix_dir = tmp_path / "appendix"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+2]\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+2]\n",
     )
     _write(
         index_dir / "100-design.md",
@@ -641,7 +641,7 @@ def test_index_linter_reports_missing_appendix_route_annotation(
     index_dir, appendix_dir = _clean_index(tmp_path)
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
     )
 
     state = _run(index_paths=(index_dir.name,), appendix_paths=(appendix_dir.name,))
@@ -661,7 +661,7 @@ def test_index_linter_reports_stale_appendix_route_annotation(
     index_dir, appendix_dir = _clean_index(tmp_path)
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+2]\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+2]\n",
     )
 
     state = _run(index_paths=(index_dir.name,), appendix_paths=(appendix_dir.name,))
@@ -683,7 +683,7 @@ def test_index_linter_reports_appendix_page_gap(
     appendix_dir = tmp_path / "appendix"
     _write(
         tmp_path / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+3]\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+3]\n",
     )
     _write(
         index_dir / "100-design.md",

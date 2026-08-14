@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.canvas.commands import _cmd_canvas_render
-from agentos.canvas.core import RenderAction, RenderError
-from agentos.canvas.poi import (
+from tarav.canvas.commands import _cmd_canvas_render
+from tarav.canvas.core import RenderAction, RenderError
+from tarav.canvas.poi import (
     CANVAS_RENDER_POI_CLASSES,
     build_canvas_linter_report,
 )

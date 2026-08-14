@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.hooks import HookError, HookInvocation, HookRegistry
+from tarav.hooks import HookError, HookInvocation, HookRegistry
 
-import agentos.chatlas.hook_consumers as hook_consumers
+import tarav.chatlas.hook_consumers as hook_consumers
 
 
 def test_turn_stop_refresh_is_registered(

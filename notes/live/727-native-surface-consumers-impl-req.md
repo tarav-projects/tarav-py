@@ -32,9 +32,9 @@
 ## Impl.Agendix
 
 - touched: ^c20260812-7u — autonomous design and execution authority for the ordered migration.
-- touched: `index://agentos-pkg/Floor.Model` — downstream tools consume a dependable model rather than the mechanism that produced it.
-- touched: `index://agentos-pkg/Normalization.Pipeline` — raw Markdown is normalized once before subsystem interpretation.
-- touched: `index://agentos-pkg/Skw.Backend` — Skillware remains an adapter-backed consumer rather than leaking its syntax into the native model.
+- touched: `index://tarav-pkg/Floor.Model` — downstream tools consume a dependable model rather than the mechanism that produced it.
+- touched: `index://tarav-pkg/Normalization.Pipeline` — raw Markdown is normalized once before subsystem interpretation.
+- touched: `index://tarav-pkg/Skw.Backend` — Skillware remains an adapter-backed consumer rather than leaking its syntax into the native model.
 
 ## Execution.Plan
 

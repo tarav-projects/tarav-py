@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agentos.canvas.core import CanvasModel, ModelCard, ModelRelationship, model_to_canvas, render_canvas
+from tarav.canvas.core import CanvasModel, ModelCard, ModelRelationship, model_to_canvas, render_canvas
 
 
 def test_render_reports_missing_model() -> None:

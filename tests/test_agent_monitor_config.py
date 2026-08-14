@@ -4,21 +4,21 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.agent.monitor.config import (
+from tarav._core.errors import CliError
+from tarav.agent.monitor.config import (
     _auto_prime_triggers,
     _target_limit_ids,
     load_monitor_workflow_configs,
 )
-from agentos.agent.monitor.models import (
+from tarav.agent.monitor.models import (
     AUTO_PRIME_ZERO_LIMITS_WORKFLOW,
     MonitorTarget,
     MonitorWorkflowConfig,
 )
-import agentos.agent.monitor.workflows as monitor_workflows
-from agentos.testing import AgentosTestEnvironment
+import tarav.agent.monitor.workflows as monitor_workflows
+from tarav.testing import TaravTestEnvironment
 
-from agentos.testing import codex_auth_json, seed_codex_account
+from tarav.testing import codex_auth_json, seed_codex_account
 from _helpers import write_text_file
 
 
@@ -26,7 +26,7 @@ def test_monitor_profile_target_accepts_explicit_scoped_home(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "codex-jp"
     auth_file = tmp_path / "auth.json"
@@ -67,7 +67,7 @@ def test_monitor_profile_target_rejects_unscoped_home(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     allowed_home = tmp_path / "codex-jp"
     blocked_home = tmp_path / "codex-blocked"

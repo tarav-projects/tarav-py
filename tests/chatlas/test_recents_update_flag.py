@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import main
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import main
 from ._helpers import captured_json, write_chatlas_codex_source
 from .test_recent_window_update import _write_codex_session
 
@@ -14,7 +14,7 @@ SESSION_ID = "019ccafa-cccc-7000-aaaa-00000000000c"
 
 
 def _isolate_one_fresh(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"
     _write_codex_session(codex_home, session_id=SESSION_ID, timestamp=time.time(), text="recents update turn")

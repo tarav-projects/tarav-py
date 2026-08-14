@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.anchory import AnchoryDepot
-from agentos.anchory.poi import ANCHORY_POI_CODES, build_anchory_linter_report
-from agentos.bloberia import BloberiaDepot
-from agentos.index.wayfinder import create_index_wayfinder
-from agentos.poi.adapters.bloberia import (
+from tarav.anchory import AnchoryDepot
+from tarav.anchory.poi import ANCHORY_POI_CODES, build_anchory_linter_report
+from tarav.bloberia import BloberiaDepot
+from tarav.index.wayfinder import create_index_wayfinder
+from tarav.poi.adapters.bloberia import (
     BLOBERIA_POI_CODES,
     build_bloberia_linter_report,
 )
-from agentos.poi.adapters.mdblocks import (
+from tarav.poi.adapters.mdblocks import (
     MDBLOCKS_POI_CODES,
     build_mdblocks_linter_report,
 )
@@ -20,7 +20,7 @@ def test_anchory_check_adapts_existing_findings_to_common_pois(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("AGENTOS_WAYFINDER_REGISTRY", str(tmp_path / "wayfinder.json"))
+    monkeypatch.setenv("TARAV_WAYFINDER_REGISTRY", str(tmp_path / "wayfinder.json"))
     depot = AnchoryDepot(tmp_path / "anchory")
     shard = depot.root / "global" / "00.json"
     shard.parent.mkdir(parents=True)
@@ -40,7 +40,7 @@ def test_bloberia_check_adapts_existing_findings_to_common_pois(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("AGENTOS_WAYFINDER_REGISTRY", str(tmp_path / "wayfinder.json"))
+    monkeypatch.setenv("TARAV_WAYFINDER_REGISTRY", str(tmp_path / "wayfinder.json"))
     depot = BloberiaDepot(tmp_path / "bloberia")
     record = depot.root / "records" / "invalid.json"
     record.parent.mkdir(parents=True)
@@ -64,7 +64,7 @@ def test_mdblocks_report_preserves_counts_without_duplicate_issue_records(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("AGENTOS_WAYFINDER_REGISTRY", str(tmp_path / "wayfinder.json"))
+    monkeypatch.setenv("TARAV_WAYFINDER_REGISTRY", str(tmp_path / "wayfinder.json"))
     payload = {
         "root": str(tmp_path),
         "file_count": 1,

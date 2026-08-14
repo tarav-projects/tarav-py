@@ -5,13 +5,13 @@ from typing import Any
 
 import pytest
 
-from agentos.chatlas.file_edition_pois import (
+from tarav.chatlas.file_edition_pois import (
     FileEditionDetector,
     FileEditionPoi,
     file_edition_pois_from_session_model,
 )
-from agentos.chatlas.event_ref import event_ref
-from agentos.chatlas.normalization.session_model.events import compute_event_hash
+from tarav.chatlas.event_ref import event_ref
+from tarav.chatlas.normalization.session_model.events import compute_event_hash
 
 
 def _session_model(

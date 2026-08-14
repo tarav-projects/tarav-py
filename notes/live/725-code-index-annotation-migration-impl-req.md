@@ -33,11 +33,11 @@
 ## Impl.Agendix
 
 - touched: ^c20260811-73u — execution authority and whole-inventory acceptance target.
-- touched: `index://agentos-pkg/Agentos.Skillware` — code is a managed Skillware product surface.
-- touched: `index://agentos-pkg/Skw.Ann.Dependency` — `--from` expresses the code surface's declared dependency.
-- touched: `index://agentos-pkg/Skw.Network` — dependency edges must resolve through engaged depots.
-- touched: `index://agentos-pkg/Annotation.Point` — the file point is the universal and currently sole legal code attachment.
-- touched: `index://agentos-pkg/Non.Skw.Annotation` — unannotated comments are review POIs, with exact blessing for justified foreign-tool directives.
+- touched: `index://tarav-pkg/Agentos.Skillware` — code is a managed Skillware product surface.
+- touched: `index://tarav-pkg/Skw.Ann.Dependency` — `--from` expresses the code surface's declared dependency.
+- touched: `index://tarav-pkg/Skw.Network` — dependency edges must resolve through engaged depots.
+- touched: `index://tarav-pkg/Annotation.Point` — the file point is the universal and currently sole legal code attachment.
+- touched: `index://tarav-pkg/Non.Skw.Annotation` — unannotated comments are review POIs, with exact blessing for justified foreign-tool directives.
 
 ## Execution.Plan
 

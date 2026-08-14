@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.skillware.build import check_project
+from tarav.skillware.build import check_project
 
 HEADER = (
     "# $kw: ^mod --from Design.Thing "
@@ -14,8 +14,8 @@ HEADER = (
 
 
 def _project(root: Path, files: dict[str, str]) -> Path:
-    (root / ".agentos").mkdir()
-    (root / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    (root / ".tarav").mkdir()
+    (root / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
     (root / ".skw").mkdir()
     (root / ".skw" / "skw.json").write_text(
         json.dumps(

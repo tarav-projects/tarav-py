@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-import agentos.chatlas.anchory as anchory_module
-from agentos.chatlas import chatlas_anchory_depot
-from agentos.chatlas.normal_turn import normal_turn_ref
-from agentos.chatlas.normalization.session_model.events import compute_event_hash
+import tarav.chatlas.anchory as anchory_module
+from tarav.chatlas import chatlas_anchory_depot
+from tarav.chatlas.normal_turn import normal_turn_ref
+from tarav.chatlas.normalization.session_model.events import compute_event_hash
 
 
 def test_chatlas_anchory_depot_uses_explicit_chatlas_root(tmp_path: Path) -> None:
@@ -26,7 +26,7 @@ def test_chatlas_anchory_depot_uses_default_chatlas_root(
 
 
 def test_ensure_chatlas_namespace_writes_meta_once(tmp_path: Path) -> None:
-    from agentos.chatlas.anchory import CHATLAS_NAMESPACE, ensure_chatlas_namespace
+    from tarav.chatlas.anchory import CHATLAS_NAMESPACE, ensure_chatlas_namespace
 
     depot = chatlas_anchory_depot(tmp_path)
     ensure_chatlas_namespace(depot)
@@ -57,7 +57,7 @@ def _support_record(member_count: int) -> dict[str, object]:
 def test_chatlas_anchory_stats_summarizes_support_member_cardinality(
     tmp_path: Path,
 ) -> None:
-    from agentos.chatlas.anchory import (
+    from tarav.chatlas.anchory import (
         CHATLAS_NAMESPACE,
         build_line_anchor_dossier,
         build_line_relationships,
@@ -96,7 +96,7 @@ def test_chatlas_anchory_stats_summarizes_support_member_cardinality(
 
 
 def test_chatlas_anchory_stats_has_explicit_empty_values(tmp_path: Path) -> None:
-    from agentos.chatlas.anchory import chatlas_anchory_stats
+    from tarav.chatlas.anchory import chatlas_anchory_stats
 
     assert chatlas_anchory_stats(chatlas_root=tmp_path) == {
         "anchor_count": 0,
@@ -110,7 +110,7 @@ def test_chatlas_anchory_stats_has_explicit_empty_values(tmp_path: Path) -> None
 
 
 def test_chatlas_anchory_stats_does_not_resolve_member_metadata(tmp_path: Path) -> None:
-    from agentos.chatlas.anchory import CHATLAS_NAMESPACE, chatlas_anchory_stats
+    from tarav.chatlas.anchory import CHATLAS_NAMESPACE, chatlas_anchory_stats
 
     chatlas_anchory_depot(tmp_path).register(
         {
@@ -129,7 +129,7 @@ def test_chatlas_anchory_stats_does_not_resolve_member_metadata(tmp_path: Path) 
 def test_chatlas_anchory_sessions_reports_invalid_records_and_unindexed_members(
     tmp_path: Path,
 ) -> None:
-    from agentos.chatlas.anchory import (
+    from tarav.chatlas.anchory import (
         CHATLAS_NAMESPACE,
         chatlas_anchory_sessions,
     )
@@ -224,8 +224,8 @@ def _member(identity: str, event: dict[str, object]) -> dict[str, str]:
 
 
 def test_parse_support_set_record_requires_supported_shape() -> None:
-    from agentos._core.errors import CliError
-    from agentos.chatlas.anchory import parse_support_set_record
+    from tarav._core.errors import CliError
+    from tarav.chatlas.anchory import parse_support_set_record
 
     valid = {
         "app": "chatlas",
@@ -255,8 +255,8 @@ def test_parse_support_set_record_requires_supported_shape() -> None:
 
 
 def test_line_anchor_dossier_binds_triplet_and_predecessors() -> None:
-    from agentos.index.model import index_line_anchor_triplet_hash
-    from agentos.chatlas.anchory import (
+    from tarav.index.model import index_line_anchor_triplet_hash
+    from tarav.chatlas.anchory import (
         CHATLAS_LINE_ANCHOR_DOSSIER_SCHEMA,
         bind_support_set_to_index_line,
         parse_line_attachment,
@@ -284,8 +284,8 @@ def test_line_anchor_dossier_binds_triplet_and_predecessors() -> None:
 
 
 def test_line_anchor_dossier_rejects_invalid_attachment_and_predecessors() -> None:
-    from agentos._core.errors import CliError
-    from agentos.chatlas.anchory import (
+    from tarav._core.errors import CliError
+    from tarav.chatlas.anchory import (
         bind_support_set_to_index_line,
         parse_support_set_record,
     )
@@ -316,8 +316,8 @@ def test_line_anchor_dossier_rejects_invalid_attachment_and_predecessors() -> No
 
 
 def test_line_content_authoring_supports_an_untyped_index_line() -> None:
-    from agentos.index.model import index_line_anchor_triplet_hash
-    from agentos.chatlas.anchory import build_line_anchor_dossier, build_line_relationships
+    from tarav.index.model import index_line_anchor_triplet_hash
+    from tarav.chatlas.anchory import build_line_anchor_dossier, build_line_relationships
 
     line_content = "- untyped line"
     anchor = "c20260802-3u"
@@ -334,8 +334,8 @@ def test_line_content_authoring_supports_an_untyped_index_line() -> None:
 
 
 def test_parse_support_set_record_accepts_member_turn_types() -> None:
-    from agentos._core.errors import CliError
-    from agentos.chatlas.anchory import parse_support_set_record
+    from tarav._core.errors import CliError
+    from tarav.chatlas.anchory import parse_support_set_record
 
     base_member = {
         "session": "a" * 64,
@@ -377,8 +377,8 @@ def test_parse_support_set_record_accepts_member_turn_types() -> None:
 
 
 def test_resolve_support_set_record_uses_exact_visible_user_event() -> None:
-    from agentos._core.errors import CliError
-    from agentos.chatlas.anchory import resolve_support_set_record
+    from tarav._core.errors import CliError
+    from tarav.chatlas.anchory import resolve_support_set_record
 
     identity = "a" * 64
     model = _session_model(
@@ -431,7 +431,7 @@ def test_resolve_support_set_record_uses_exact_visible_user_event() -> None:
 def test_validate_support_set_amendment_repairs_metadata_without_changing_meaning() -> (
     None
 ):
-    from agentos.chatlas.anchory import validate_support_set_amendment
+    from tarav.chatlas.anchory import validate_support_set_amendment
 
     identity = "a" * 64
     model = _session_model(
@@ -459,8 +459,8 @@ def test_validate_support_set_amendment_repairs_metadata_without_changing_meanin
 
 
 def test_validate_dossier_amendment_allows_maintainer_owned_relationship_change() -> None:
-    from agentos._core.errors import CliError
-    from agentos.chatlas.anchory import (
+    from tarav._core.errors import CliError
+    from tarav.chatlas.anchory import (
         bind_support_set_to_index_line,
         validate_support_set_amendment,
     )
@@ -533,8 +533,8 @@ def test_validate_support_set_amendment_rejects_unresolvable_replacement(
     members: list[dict[str, object]],
     error: str,
 ) -> None:
-    from agentos._core.errors import CliError
-    from agentos.chatlas.anchory import validate_support_set_amendment
+    from tarav._core.errors import CliError
+    from tarav.chatlas.anchory import validate_support_set_amendment
 
     identity = "a" * 64
     model = _session_model(
@@ -604,8 +604,8 @@ def test_validate_support_set_amendment_rejects_unresolvable_replacement(
 def test_validate_support_set_amendment_rejects_changed_support_meaning(
     members: list[dict[str, object]],
 ) -> None:
-    from agentos._core.errors import CliError
-    from agentos.chatlas.anchory import validate_support_set_amendment
+    from tarav._core.errors import CliError
+    from tarav.chatlas.anchory import validate_support_set_amendment
 
     identity = "a" * 64
     model = _session_model(
@@ -646,7 +646,7 @@ def test_validate_support_set_amendment_rejects_changed_support_meaning(
 def test_chatlas_anchory_amend_validator_ignores_other_applications(
     tmp_path: Path,
 ) -> None:
-    from agentos.chatlas.anchory import validate_chatlas_anchory_amendment
+    from tarav.chatlas.anchory import validate_chatlas_anchory_amendment
 
     validate_chatlas_anchory_amendment(
         tmp_path / "anchory",
@@ -658,8 +658,8 @@ def test_chatlas_anchory_amend_validator_ignores_other_applications(
 def test_support_runtime_cache_indexes_each_session_tape_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import agentos.chatlas.anchory as anchory
-    from agentos.chatlas.anchory import (
+    import tarav.chatlas.anchory as anchory
+    from tarav.chatlas.anchory import (
         ChatlasSupportRuntimeCache,
         resolve_support_set_record,
     )
@@ -696,8 +696,8 @@ def test_support_runtime_cache_indexes_each_session_tape_once(
 
 
 def test_resolve_event_support_set_record_accepts_exact_tool_event() -> None:
-    from agentos._core.errors import CliError
-    from agentos.chatlas.anchory import resolve_event_support_set_record
+    from tarav._core.errors import CliError
+    from tarav.chatlas.anchory import resolve_event_support_set_record
 
     identity = "a" * 64
     timestamp = "2026-07-18T08:51:04.561Z"
@@ -726,7 +726,7 @@ def test_resolve_event_support_set_record_accepts_exact_tool_event() -> None:
 
 
 def test_event_neighborhood_selects_by_turn_id_and_tape_order() -> None:
-    from agentos.chatlas.anchory import event_neighborhood
+    from tarav.chatlas.anchory import event_neighborhood
 
     model = _session_model(
         _event(1, role="assistant", timestamp="2026-07-18T08:51:04.561Z"),

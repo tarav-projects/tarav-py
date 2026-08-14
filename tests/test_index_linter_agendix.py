@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.index.linter import (
+from tarav.index.linter import (
     REVIEWED_CITE_CLOSURE,
 )
 from _index_linter_helpers import _run, _write
@@ -15,7 +15,7 @@ def _depot_with_agendix(root: Path, *, cite: str) -> Path:
     depot = root / "depot"
     _write(
         depot / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
     )
     _write(
         depot / "design" / "100-design.md",
@@ -35,7 +35,7 @@ def test_reviewed_surface_citing_real_agendix_block_raises_closure(
     monkeypatch, tmp_path: Path
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "home"))
     depot = _depot_with_agendix(
         tmp_path, cite="the lead is `Example.Concept/Agendix/Real.Lead`"
     )
@@ -53,7 +53,7 @@ def test_reviewed_surface_naming_agendix_file_stays_quiet(
     # not a content cite -> no violation; only a Block.Path into a real agendix
     # block is the forbidden edge
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "home"))
     depot = _depot_with_agendix(
         tmp_path, cite="see `agendix/Example.Concept-agendix.md`"
     )
@@ -67,7 +67,7 @@ def test_agendix_format_placeholders_do_not_raise_closure(
     # a reviewed block that DESCRIBES the agendix format with placeholder paths
     # resolves to no real target -> no violation
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "home"))
     depot = _depot_with_agendix(
         tmp_path,
         cite="candidates land at `Concept.X/Agendix/Candidate.Name` under `agendix/`",
@@ -80,7 +80,7 @@ def test_reviewed_surface_citing_appendix_or_concept_stays_quiet(
     monkeypatch, tmp_path: Path
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "home"))
     depot = _depot_with_agendix(
         tmp_path,
         cite="`Example.Concept` relates to `appendix/Example.Concept-appendix.md`",

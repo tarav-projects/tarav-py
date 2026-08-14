@@ -4,7 +4,7 @@
 
 - **Scope:** add a provider-neutral Agentos daemon POC with a Unix-socket acceptance boundary, explicit inline/daemon hook callback lanes, a control namespace spanning foreground, manual detached, and macOS login-managed launch, persistent secret-free operational logging, and a Chatlas-owned deferred `agent.turn.stop` session refresh consumer.
 - **Status:** login-start extension implemented and verified.
-- **Source:** autonomous `$agentos-hugentics --impl --dev --AUTO` execution gate. ^c20260811-50u
+- **Source:** autonomous `$tarav-hugentics --impl --dev --AUTO` execution gate. ^c20260811-50u
 - **Out of scope:** scheduler frequencies, durable inbox/retry delivery, exactly-once guarantees, non-macOS service managers, system-wide service installation, arbitrary remote commands, wildcard hook subscriptions, cross-lane completion ordering, and automatic semantic `Chat.Index.Delta` capture.
 
 ## Impl.Index
@@ -44,9 +44,9 @@
 
 ## Impl.Agendix
 
-- **Touched:** `Agentos.Hook`, `Agentos.Hook.Invocation`, and `Agent.Hook` in `agentos-pkg/design/113-design.md`: exact-name registration, opaque context, sequential failure-isolated dispatch, and `agent.turn.stop` semantics.
-- **Touched:** `Agentos.Daemon`, `Background.Job`, and `Daemon.Trigger` in `agentos-pkg/design/104-design.md`: one local OS-managed process, registered work only, one serialized work lane, shared core-library work bodies, and no inline daemon fallback.
-- **Touched:** `Chatlas.Update.Pipeline`, `Scan.Scope`, and `Delta.Normalization::Chatlas` in `agentos-chatlas-pkg/design/100-design.md`: targeted refresh is the ordinary pipeline at one-session scope and remains incremental.
+- **Touched:** `Agentos.Hook`, `Agentos.Hook.Invocation`, and `Agent.Hook` in `tarav-pkg/design/113-design.md`: exact-name registration, opaque context, sequential failure-isolated dispatch, and `agent.turn.stop` semantics.
+- **Touched:** `Agentos.Daemon`, `Background.Job`, and `Daemon.Trigger` in `tarav-pkg/design/104-design.md`: one local OS-managed process, registered work only, one serialized work lane, shared core-library work bodies, and no inline daemon fallback.
+- **Touched:** `Chatlas.Update.Pipeline`, `Scan.Scope`, and `Delta.Normalization::Chatlas` in `tarav-chatlas-pkg/design/100-design.md`: targeted refresh is the ordinary pipeline at one-session scope and remains incremental.
 - **Current design deviation:** the existing daemon block says serialization needs no queue; non-blocking hook acceptance requires one bounded implementation separation between socket acceptance and the serial worker. This POC uses only an in-memory queue and records the design mismatch for later Index reconciliation.
 - **Execution gate:** implement the daemon and deferred Chatlas turn-stop POC. ^c20260811-50u
 - **Extension gate:** add a non-terminal-occupying `agentos daemon start` command. ^c20260811-51u

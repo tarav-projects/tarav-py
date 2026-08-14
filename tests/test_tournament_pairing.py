@@ -4,7 +4,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from agentos.tournament.pairing import (
+from tarav.tournament.pairing import (
     least_played,
     played_counts,
     random_pair,
@@ -69,7 +69,7 @@ def test_played_counts_skips_malformed_envelopes() -> None:
 
 def test_the_engine_never_imports_the_pairing_library() -> None:
     """Pairing is consumer territory; packaging it here must not create a dependency."""
-    engine_dir = Path(__file__).resolve().parents[1] / "src" / "agentos" / "tournament"
+    engine_dir = Path(__file__).resolve().parents[1] / "src" / "tarav" / "tournament"
     importers = [
         path.name
         for path in sorted(engine_dir.glob("*.py"))

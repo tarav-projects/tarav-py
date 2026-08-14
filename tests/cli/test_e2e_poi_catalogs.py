@@ -4,28 +4,28 @@ from pathlib import Path
 
 import pytest
 
-from agentos.anchory.poi import ANCHORY_POI_CLASSES
-from agentos.poi.adapters.bloberia import BLOBERIA_POI_CLASSES
-from agentos.index import _linter_parser_checks, _linter_structure
-from agentos.index.poi_catalog import discover_poi_catalog
-from agentos.poi.adapters.mdblocks import MDBLOCKS_POI_CLASSES
-from agentos.skillware.poi import SKILLWARE_POI_CLASSES
-from agentos.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
-from agentos.poi.adapters.wayfinder import WAYFINDER_REGISTRY_POI_CLASSES
-from agentos.canvas.poi import CANVAS_RENDER_POI_CLASSES
-from agentos.chatlas import index_checks
-from agentos.chatlas.poi import CHATLAS_COMMIT_POI_CODES
-from agentos.cli.cli import main
+from tarav.anchory.poi import ANCHORY_POI_CLASSES
+from tarav.poi.adapters.bloberia import BLOBERIA_POI_CLASSES
+from tarav.index import _linter_parser_checks, _linter_structure
+from tarav.index.poi_catalog import discover_poi_catalog
+from tarav.poi.adapters.mdblocks import MDBLOCKS_POI_CLASSES
+from tarav.skillware.poi import SKILLWARE_POI_CLASSES
+from tarav.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
+from tarav.poi.adapters.wayfinder import WAYFINDER_REGISTRY_POI_CLASSES
+from tarav.canvas.poi import CANVAS_RENDER_POI_CLASSES
+from tarav.chatlas import index_checks
+from tarav.chatlas.poi import CHATLAS_COMMIT_POI_CODES
+from tarav.cli.cli import main
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PACKAGE_ROOTS = {
-    "agentos-pkg": PROJECT_ROOT / "agentos-md" / "skills" / "agentos-pkg",
-    "agentos-chatlas-pkg": (
-        PROJECT_ROOT / "agentos-chatlas-md" / "skills" / "agentos-chatlas-pkg"
+    "tarav-pkg": PROJECT_ROOT / "tarav-md" / "skills" / "tarav-pkg",
+    "tarav-chatlas-pkg": (
+        PROJECT_ROOT / "tarav-chatlas-md" / "skills" / "tarav-chatlas-pkg"
     ),
-    "agentos-canvas-pkg": (
-        PROJECT_ROOT / "agentos-canvas-md" / "skills" / "agentos-canvas-pkg"
+    "tarav-canvas-pkg": (
+        PROJECT_ROOT / "tarav-canvas-md" / "skills" / "tarav-canvas-pkg"
     ),
 }
 
@@ -60,7 +60,7 @@ def _runtime_classes() -> tuple[str, ...]:
 @pytest.fixture
 def poi_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> WayfinderRegistry:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY",
+        "TARAV_WAYFINDER_REGISTRY",
         str(tmp_path / "wayfinder" / "registry.json"),
     )
     registry = WayfinderRegistry()

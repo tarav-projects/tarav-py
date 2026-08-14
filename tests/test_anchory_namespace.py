@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.anchory import (
+from tarav.anchory import (
     AnchoryDepot,
     InvalidAnchoryInputError,
 )

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.anchory import (
+from tarav.anchory import (
     AnchorExistsError,
     AnchorNotFoundError,
     AnchoryDepot,
@@ -18,7 +18,7 @@ from agentos.anchory import (
     InvalidAnchoryInputError,
     scan_anchory_source,
 )
-from agentos.anchory.commands import register_anchory_commands
+from tarav.anchory.commands import register_anchory_commands
 
 
 def _register_after_signal(root: str, anchor: str, value: int, start: object) -> None:
@@ -95,7 +95,7 @@ def test_runtime_cache_reuses_resolution_and_mutation_invalidates_it(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import agentos.anchory.core as core
+    import tarav.anchory.core as core
 
     cache = AnchoryRuntimeCache(capacity=8)
     depot = AnchoryDepot(tmp_path / "anchory", runtime_cache=cache)
@@ -301,7 +301,7 @@ def test_failed_atomic_replace_preserves_shard_and_cleans_temporary_file(
     def fail_replace(_source: object, _target: object) -> None:
         raise OSError("replace failed")
 
-    monkeypatch.setattr("agentos._core.persistence.os.replace", fail_replace)
+    monkeypatch.setattr("tarav._core.persistence.os.replace", fail_replace)
     with pytest.raises(OSError, match="replace failed"):
         depot.amend("stable", {"value": 2})
 

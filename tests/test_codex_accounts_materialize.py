@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.commands.accounts import _cmd_agent_accounts_materialize
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.commands.accounts import _cmd_agent_accounts_materialize
+from tarav.testing import TaravTestEnvironment
 
 
 def _jwt(payload: dict[str, object]) -> str:
@@ -28,13 +28,13 @@ UUID = "3b74c6d3-b4a8-45ea-9d5b-852bdbd92899"
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
 
 
 def _settings() -> None:
-    from agentos._core.project import agentos_home_dir
+    from tarav._core.project import tarav_home_dir
 
-    prov = agentos_home_dir() / "accounts" / "codex"
+    prov = tarav_home_dir() / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
     (prov / "accounts.json").write_text(json.dumps({
         "provider": "codex",
@@ -53,9 +53,9 @@ def _args(**kw: object) -> argparse.Namespace:
 def test_codex_materialize_writes_auth_json_and_aligns(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
     _settings()
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method import AuthData
-    from agentos.agent.providers.codex.auth_method import CodexAuthMethod
+    from tarav.agent import auth_registry as R
+    from tarav.agent.auth_method import AuthData
+    from tarav.agent.providers.codex.auth_method import CodexAuthMethod
 
     active = AuthData(payload=_auth_json(UUID, token="ACTIVE"))
     active_id = R.store_artifact("codex", active)
@@ -72,9 +72,9 @@ def test_codex_materialize_writes_auth_json_and_aligns(monkeypatch: pytest.Monke
 def test_codex_materialize_captures_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
     _settings()
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method import AuthData
-    from agentos.agent.providers.codex.auth_method import CodexAuthMethod
+    from tarav.agent import auth_registry as R
+    from tarav.agent.auth_method import AuthData
+    from tarav.agent.providers.codex.auth_method import CodexAuthMethod
 
     active_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, token="ACTIVE")))
     R.set_active("codex", "jp", "file", active_id)
@@ -93,8 +93,8 @@ def test_codex_materialize_captures_first(monkeypatch: pytest.MonkeyPatch, tmp_p
 def test_codex_materialize_check_is_read_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
     _settings()
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method import AuthData
+    from tarav.agent import auth_registry as R
+    from tarav.agent.auth_method import AuthData
 
     active_id = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, token="ACTIVE")))
     R.set_active("codex", "jp", "file", active_id)

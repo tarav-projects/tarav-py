@@ -12,10 +12,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentos.chatlas.normalization.session_model._claude import (
+from tarav.chatlas.normalization.session_model._claude import (
     _normalize_claude_session,
 )
-from agentos.chatlas.normalization.session_model.events import normal_turn_kind
+from tarav.chatlas.normalization.session_model.events import normal_turn_kind
 
 
 @dataclass(frozen=True)
@@ -90,7 +90,7 @@ COMMAND_WRAPPER = (
 )
 SKILL_BODY = (
     "Base directory for this skill: /repo/.claude/skills/agentos-hugentics-impl\n\n"
-    "# Agentos Hugentics Impl\n\nUnified workflow skill."
+    "# Tarav Hugentics Impl\n\nUnified workflow skill."
 )
 SYSTEM_REMINDER = "<system-reminder>\nDirectory-scoped variants exist.\n</system-reminder>"
 BARE_COMMAND = (

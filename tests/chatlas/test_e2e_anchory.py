@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import main
-from agentos.chatlas.anchory import CHATLAS_NAMESPACE, chatlas_anchory_depot
-from agentos.chatlas.normalization.session_model.events import (
+from tarav.cli.cli import main
+from tarav.chatlas.anchory import CHATLAS_NAMESPACE, chatlas_anchory_depot
+from tarav.chatlas.normalization.session_model.events import (
     compute_event_group_hash,
     normal_turn_id,
 )
@@ -97,7 +97,7 @@ def _mint_fixture_anchor(
     turn_ref: dict[str, str],
     anchor: str = "c20260308-0u",
 ) -> str:
-    from agentos.chatlas.anchory import chatlas_anchory_depot
+    from tarav.chatlas.anchory import chatlas_anchory_depot
 
     chatlas_anchory_depot().register(
         {
@@ -161,7 +161,7 @@ def test_chatlas_anchory_stats_pretty_and_json_output(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from agentos.chatlas.anchory import chatlas_anchory_depot
+    from tarav.chatlas.anchory import chatlas_anchory_depot
 
     session_id = _selection_fixture(tmp_path, monkeypatch, capsys)
     identity_hash = _fixture_identity_hash(capsys, session_id)
@@ -415,7 +415,7 @@ def test_chatlas_anchory_register_binds_index_line_content(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from agentos.index.model import index_line_anchor_triplet_hash
+    from tarav.index.model import index_line_anchor_triplet_hash
 
     session_id = _selection_fixture(tmp_path, monkeypatch, capsys)
     identity_hash = _fixture_identity_hash(capsys, session_id)
@@ -454,7 +454,7 @@ def test_chatlas_anchory_reattach_preserves_anchor_and_relationships(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from agentos.index.model import index_line_anchor_triplet_hash
+    from tarav.index.model import index_line_anchor_triplet_hash
 
     session_id = _selection_fixture(tmp_path, monkeypatch, capsys)
     identity_hash = _fixture_identity_hash(capsys, session_id)

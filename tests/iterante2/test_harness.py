@@ -3,13 +3,13 @@
 
 import pytest
 
-from agentos.iterante2.harness import (
+from tarav.iterante2.harness import (
     HarnessError,
     execute_turn,
     find_run_by_runtime_id,
     find_run_by_token,
 )
-from agentos.iterante2.state import create_run, load_run
+from tarav.iterante2.state import create_run, load_run
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def mission_dir(tmp_path):
 
 def write_mission(mission_dir, code):
     # every mission reaches capabilities via `import iterante2`
-    (mission_dir / "mission.py").write_text("from agentos import iterante2\n" + code)
+    (mission_dir / "mission.py").write_text("from tarav import iterante2\n" + code)
 
 
 class TestExecuteTurn:
@@ -151,7 +151,7 @@ def step(ctx):
             execute_turn(rd=rd, mission_dir=mission_dir)
 
     def test_normal_turn_advances_authorized_version(self, mission_dir):
-        from agentos.iterante2.locking import verify
+        from tarav.iterante2.locking import verify
         write_mission(mission_dir, """
 def step(ctx):
     ctx.state["n"] = ctx.state.get("n", 0) + 1

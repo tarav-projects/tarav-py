@@ -9,9 +9,9 @@ assertion disagree, which the validator surfaces.
 
 from __future__ import annotations
 
-from agentos.chatlas.event_ref import event_ref
-from agentos.chatlas.normalization.session_model.events import compute_event_hash
-from agentos.chatlas.normalization.session_model.traceability import (
+from tarav.chatlas.event_ref import event_ref
+from tarav.chatlas.normalization.session_model.events import compute_event_hash
+from tarav.chatlas.normalization.session_model.traceability import (
     standard_model_traceability_errors,
 )
 

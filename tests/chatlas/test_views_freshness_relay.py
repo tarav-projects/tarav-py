@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import main
-from agentos.chatlas.query import chatlas_query
-from agentos.chatlas.session_cache import (
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import main
+from tarav.chatlas.query import chatlas_query
+from tarav.chatlas.session_cache import (
     load_chatlas_session_model,
     session_model_cache_path,
 )
@@ -38,7 +38,7 @@ def _write_claude_session(claude_home: Path, records: list[dict]) -> Path:
 
 
 def _isolate_claude(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     claude_home = tmp_path / "claude-home"
     environment.write_global_config(

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.auth_method import AuthData
-from agentos.agent.commands.accounts import _cmd_agent_accounts_materialize
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.auth_method import AuthData
+from tarav.agent.commands.accounts import _cmd_agent_accounts_materialize
+from tarav.testing import TaravTestEnvironment
 
 
 @pytest.fixture(autouse=True)
@@ -18,10 +18,10 @@ def _no_keychain(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from agentos._core.project import agentos_home_dir
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from tarav._core.project import tarav_home_dir
 
-    prov = agentos_home_dir() / "accounts" / "claude-code"
+    prov = tarav_home_dir() / "accounts" / "claude-code"
     prov.mkdir(parents=True, exist_ok=True)
     (prov / "accounts.json").write_text(json.dumps({
         "provider": "claude-code",
@@ -52,8 +52,8 @@ def _home_with(home: Path, *, token: str, uuid: str) -> None:
 
 def test_materialize_writes_active_and_aligns(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+    from tarav.agent import auth_registry as R
+    from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     active = _active_artifact()
     active_id = R.store_artifact("claude-code", active)
@@ -70,8 +70,8 @@ def test_materialize_writes_active_and_aligns(monkeypatch: pytest.MonkeyPatch, t
 
 def test_materialize_captures_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+    from tarav.agent import auth_registry as R
+    from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     active_id = R.store_artifact("claude-code", _active_artifact())
     R.set_active("claude-code", "om", "browser", active_id)
@@ -90,8 +90,8 @@ def test_materialize_captures_first(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
 def test_materialize_check_is_read_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+    from tarav.agent import auth_registry as R
+    from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     active_id = R.store_artifact("claude-code", _active_artifact())
     R.set_active("claude-code", "om", "browser", active_id)
@@ -108,7 +108,7 @@ def test_materialize_check_is_read_only(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
 def test_materialize_errors_without_active(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.errors import CliError
+    from tarav._core.errors import CliError
 
     home = tmp_path / "h"
     _home_with(home, token="X", uuid="u-om")

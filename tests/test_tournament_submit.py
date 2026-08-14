@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.tournament import TournamentStore
-from agentos.tournament.commands import register_tournament_commands
-from agentos.tournament.tickets import TicketStore
+from tarav._core.errors import CliError
+from tarav.tournament import TournamentStore
+from tarav.tournament.commands import register_tournament_commands
+from tarav.tournament.tickets import TicketStore
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -165,7 +165,7 @@ def test_gc_reports_what_it_removed(tmp_path: Path, capsys) -> None:
 
 
 def _preview_setup(tmp_path: Path):
-    from agentos.tournament import load_definition
+    from tarav.tournament import load_definition
 
     body = (
         "question = 'q'\n"
@@ -203,7 +203,7 @@ def test_preview_prints_a_prompt_a_judge_could_actually_answer(
     assert _preview(store, tournament) == 0
     printed = capsys.readouterr().out
     assert "alpha" in printed
-    assert "agentos tournament submit" in printed
+    assert "tarav tournament submit" in printed
     assert "--ticket" in printed
 
 
@@ -240,7 +240,7 @@ def test_preview_is_stable_under_a_seed(tmp_path: Path, capsys) -> None:
 
 
 def test_preview_mints_a_preview_kind_ticket(tmp_path: Path, capsys) -> None:
-    from agentos.tournament.tickets import KIND_PREVIEW, TicketStore
+    from tarav.tournament.tickets import KIND_PREVIEW, TicketStore
 
     store, tournament = _preview_setup(tmp_path)
     _preview(store, tournament, "--json")
@@ -251,7 +251,7 @@ def test_preview_mints_a_preview_kind_ticket(tmp_path: Path, capsys) -> None:
 
 def test_a_run_mints_match_kind_tickets(tmp_path: Path) -> None:
     """Only previews are marked; a real match keeps the default."""
-    from agentos.tournament.tickets import KIND_MATCH, TicketStore
+    from tarav.tournament.tickets import KIND_MATCH, TicketStore
 
     store, _tournament, ticket = _setup(tmp_path)
     assert TicketStore(store.root).load(ticket.ticket_id).kind == KIND_MATCH
@@ -277,7 +277,7 @@ def test_gc_reports_the_split_between_judge_failure_and_tuning(
     import os
     import time
 
-    from agentos.tournament.tickets import (
+    from tarav.tournament.tickets import (
         KIND_MATCH,
         KIND_PREVIEW,
         SWEEP_HORIZON_SECONDS,

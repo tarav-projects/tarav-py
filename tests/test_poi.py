@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from agentos.index.poi_catalog import discover_poi_catalog
-from agentos.index.wayfinder import (
+from tarav.index.poi_catalog import discover_poi_catalog
+from tarav.index.wayfinder import (
     create_index_wayfinder,
     resolve_index_block_reference,
 )
-from agentos.poi import (
+from tarav.poi import (
     DuplicatePOIClass,
     POICatalog,
     POIClassRegistration,
@@ -22,8 +22,8 @@ from agentos.poi import (
     UnknownPOIClass,
     build_poi_report,
 )
-from agentos.poi.commands import register_poi_commands
-from agentos.wayfinder import (
+from tarav.poi.commands import register_poi_commands
+from tarav.wayfinder import (
     Wayfinder,
     WayfinderReferenceRoot,
     WayfinderRegistry,
@@ -100,7 +100,7 @@ def test_catalog_discovers_classes_from_registered_poi_chapters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY",
+        "TARAV_WAYFINDER_REGISTRY",
         str(tmp_path / "state" / "registry.json"),
     )
     depot = _write_depot(tmp_path / "depot")
@@ -120,7 +120,7 @@ def test_catalog_ignores_blocks_outside_poi_chapters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY",
+        "TARAV_WAYFINDER_REGISTRY",
         str(tmp_path / "state" / "registry.json"),
     )
     depot = _write_depot(tmp_path / "depot")
@@ -214,7 +214,7 @@ def test_renderer_groups_instances_and_resolves_class_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY",
+        "TARAV_WAYFINDER_REGISTRY",
         str(tmp_path / "state" / "registry.json"),
     )
     depot = _write_depot(tmp_path / "depot")
@@ -263,7 +263,7 @@ def test_renderer_retains_instances_when_class_resolution_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY",
+        "TARAV_WAYFINDER_REGISTRY",
         str(tmp_path / "state" / "registry.json"),
     )
 
@@ -287,7 +287,7 @@ def test_poi_explain_resolves_registered_code_and_reference_sugar(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY",
+        "TARAV_WAYFINDER_REGISTRY",
         str(tmp_path / "state" / "registry.json"),
     )
     depot = _write_depot(tmp_path / "depot")
@@ -328,7 +328,7 @@ def test_poi_explain_surfaces_resolution_poi(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv(
-        "AGENTOS_WAYFINDER_REGISTRY",
+        "TARAV_WAYFINDER_REGISTRY",
         str(tmp_path / "state" / "registry.json"),
     )
     parser = argparse.ArgumentParser()

@@ -1,6 +1,7 @@
 ## CUSTOM
 
 .agentos/state/
+.tarav/state/
 .agents/skills/
 .claude/skills/
 /skw-testground/

@@ -2,21 +2,21 @@
 
 import re
 
-from agentos.iterante import redact as redact_mod
-from agentos.iterante.redact import Sensor, redact
+from tarav.iterante import redact as redact_mod
+from tarav.iterante.redact import Sensor, redact
 
 
 class TestSeedSensors:
     def test_run_path(self):
-        out = redact("opened /home/u/.agentos/missions/demo/runs/ab12cd/_mission-snap.py ok")
+        out = redact("opened /home/u/.tarav/missions/demo/runs/ab12cd/_mission-snap.py ok")
         assert "‹run›" in out
-        assert ".agentos" not in out
+        assert ".tarav" not in out
         assert "_mission-snap.py" not in out
 
     def test_mission_path(self):
-        out = redact("see /home/u/.agentos/missions/demo/mission.py")
+        out = redact("see /home/u/.tarav/missions/demo/mission.py")
         assert "‹mission›" in out
-        assert ".agentos" not in out
+        assert ".tarav" not in out
 
     def test_install_path(self):
         out = redact("/home/u/.local/share/uv/tools/iterante/lib/site-packages/iterante/cli.py")
@@ -44,7 +44,7 @@ class TestPipelineBehaviour:
 
     def test_bypass_returns_verbatim(self, monkeypatch):
         monkeypatch.setenv("ITERANTE_NO_REDACT", "1")
-        leaky = "/home/u/.agentos/missions/demo/runs/ab12cd/_mission-snap.py"
+        leaky = "/home/u/.tarav/missions/demo/runs/ab12cd/_mission-snap.py"
         assert redact(leaky) == leaky
 
     def test_fail_open_skips_raising_sensor(self, monkeypatch):
@@ -53,6 +53,6 @@ class TestPipelineBehaviour:
 
         bad = Sensor(name="bad", pattern=re.compile(r"X"), replacement=boom)
         monkeypatch.setattr(redact_mod, "SENSORS", (bad, *redact_mod.SENSORS))
-        out = redact("X marks /home/u/.agentos/missions/demo/runs/ab12cd/_mission-snap.py")
+        out = redact("X marks /home/u/.tarav/missions/demo/runs/ab12cd/_mission-snap.py")
         # did not crash, and the good sensors still ran
         assert "‹run›" in out

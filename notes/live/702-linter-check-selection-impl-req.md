@@ -4,7 +4,7 @@
 
 - **Scope:** a system to control which checks a linter run performs, with **both include and exclude** semantics, wired to the `agentos index linter` command surface.
 - **What:** each `LinterCheck` gains a default enablement and an addressable short selector; a resolver computes the enabled set from a default-on baseline plus caller include/exclude; `run_linter` runs only the enabled set; the CLI grows `--check` (enable, incl. default-off), `--skip` (disable), and `--list-checks`. As the first concrete customer, the correct-but-noisy `dangling-mention` check is registered **default-off**, retiring its DORMANT/uncallable state.
-- **Status:** IMPLEMENTED (`--develop --AUTO`). All 5 slices done; full `agentos-py` suite 445 passed; `agentos index linter --list-checks` renders; default run on real `agentos-pkg` unchanged (0/0, 22 passed), `--check dangling-mention` opts into the ~106 advisory dangling findings, `--skip <reportable>` drops it cleanly, structural checks resist `--skip`, unknown selectors error.
+- **Status:** IMPLEMENTED (`--develop --AUTO`). All 5 slices done; full `agentos-py` suite 445 passed; `agentos index linter --list-checks` renders; default run on real `tarav-pkg` unchanged (0/0, 22 passed), `--check dangling-mention` opts into the ~106 advisory dangling findings, `--skip <reportable>` drops it cleanly, structural checks resist `--skip`, unknown selectors error.
 - **Source context:** design discussion this session. Grounding: `^c20260722-17u` (the feature — control which checks run or ignore), `^c20260722-18` (ordering — include+exclude semantics, connect to the command surface).
 - **Out of scope:** a ruff-style "select replaces defaults" allowlist mode (`--only`); porting selection into the shared `skwlint` core for the skw linter too (noted as the natural follow-up — this cut lands it in the index linter's run machinery, kept as a small reusable helper); closing the `dangling-mention` resolver gap (Impl.Req 700/701, unchanged).
 
@@ -22,7 +22,7 @@
 
 ## Execution.Plan
 
-Ordered vertical slices. Test-first at boundaries; new tests in `tests/test_index_linter.py` (selection is a linter-run behavior). Loop: `pytest tests/test_index_linter.py`; completion runs full `pytest` + a live `agentos index linter --depot skills/agentos-pkg` from `agentos-md`.
+Ordered vertical slices. Test-first at boundaries; new tests in `tests/test_index_linter.py` (selection is a linter-run behavior). Loop: `pytest tests/test_index_linter.py`; completion runs full `pytest` + a live `agentos index linter --depot skills/tarav-pkg` from `agentos-md`.
 
 ### Slice 1 — Check metadata + selector derivation
 - **Do:** add `default_on: bool = True` and `structural: bool = False` to `LinterCheck`. Add `check_selector(code) -> str` deriving a short kebab slug (e.g. `Index.Linter/Check.DepotDependencies` → `depot-dependencies`, `Index.Linter/Line.Unlinked` → `line-unlinked`). Add a registry helper exposing `(selector, title, default_on, structural)` for every check, asserting selector uniqueness.
@@ -42,7 +42,7 @@ Ordered vertical slices. Test-first at boundaries; new tests in `tests/test_inde
 ### Slice 4 — Register dangling-mention as a default-off check
 - **Do:** add `_check_index_dangling_mentions(state)` iterating `state.config.depot_paths` and mapping `drift.index_dangling_mentions(depot)` Pois → advisory `LinterFinding`s (`DEPOT_DANGLING_MENTION` code). Register in `CHECKS` with `default_on=False`. Retires the DORMANT note in `drift.py`.
 - **Observable:** clean linter run omits it; `include=("dangling-mention",)` surfaces dangling findings on a drifted fixture.
-- **RED/GREEN:** drifted temp depot: default run → no dangling findings; included → dangling finding present. Guard: the real `agentos-pkg` depot stays clean under the **default** run (regression floor).
+- **RED/GREEN:** drifted temp depot: default run → no dangling findings; included → dangling finding present. Guard: the real `tarav-pkg` depot stays clean under the **default** run (regression floor).
 
 ### Slice 5 — Command surface
 - **Do:** add `--check` and `--skip` (repeatable `append`) and `--list-checks` (print each selector + title + default state, then exit 0) to `linter_parser`; thread `include`/`exclude` into `_cmd_linter` → `run_linter`. Validate selectors (unknown → `CliError`).

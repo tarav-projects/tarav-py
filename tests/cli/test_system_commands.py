@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import main
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import main
 from _helpers import captured_json
 
 
@@ -15,7 +15,7 @@ def test_init_project_storage_dirs_exclude_legacy_tapes(
     payload = captured_json(capsys)
 
     assert sorted(payload["dirs"]) == ["indexes", "state", "tmp"]
-    assert not (tmp_path / ".agentos" / "tapes").exists()
+    assert not (tmp_path / ".tarav" / "tapes").exists()
 
 
 def test_init_global_storage_dirs_exclude_legacy_tapes(
@@ -23,9 +23,9 @@ def test_init_global_storage_dirs_exclude_legacy_tapes(
     monkeypatch,
     capsys,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
-    home_dir = environment.agentos_home
+    home_dir = environment.tarav_home
 
     assert main(["init", "--scope", "global"]) == 0
     payload = captured_json(capsys)

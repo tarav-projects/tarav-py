@@ -7,7 +7,7 @@
 - **source:** cleanup run after fixing profile-resolved provider runtime; user clarified that `CODEX_HOME` must be injected by runtime from selected `home`, not stored beside `homes` in profile `env`
 - **owning project:** `agentos-py`
 - **primary paths:** `src/agentos/agent/config.py`, `src/agentos/agent/run_runtime.py`, `tests/test_agent_profiles.py`, `notes/live/651-profile-resolved-provider-runtime-impl-req.md`
-- **related surfaces:** `agentos-md/skills/agentos-pkg/appendix/Harness.Injected.ENV-appendix.md`, `agentos-md/skills/agentos-pkg/appendix/Config.Injected.ENV-appendix.md`, `notes/live/648-agent-harness-injected-env-allowlist-impl-req.md`
+- **related surfaces:** `agentos-md/skills/tarav-pkg/appendix/Harness.Injected.ENV-appendix.md`, `agentos-md/skills/tarav-pkg/appendix/Config.Injected.ENV-appendix.md`, `notes/live/648-agent-harness-injected-env-allowlist-impl-req.md`
 
 ## Impl.Index
 
@@ -17,8 +17,8 @@ Profile `env` is config injection, not provider-home selection.
 
 Hard.Evidence:
 
-- `agentos-md/skills/agentos-pkg/appendix/Config.Injected.ENV-appendix.md` says selected home mapped to `CODEX_HOME` is not config env.
-- `agentos-md/skills/agentos-pkg/appendix/Harness.Injected.ENV-appendix.md` classifies `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `COPILOT_HOME` as harness-injected home env bindings.
+- `agentos-md/skills/tarav-pkg/appendix/Config.Injected.ENV-appendix.md` says selected home mapped to `CODEX_HOME` is not config env.
+- `agentos-md/skills/tarav-pkg/appendix/Harness.Injected.ENV-appendix.md` classifies `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `COPILOT_HOME` as harness-injected home env bindings.
 - `src/agentos/agent/run_runtime.py` defines `HARNESS_INJECTED_ENV_ALLOWLIST` with provider-scoped harness env keys.
 - `src/agentos/codex/agent.py`, `src/agentos/claude/agent.py`, and `src/agentos/copilot/agent.py` derive home env keys from `agent.home` at command construction time.
 

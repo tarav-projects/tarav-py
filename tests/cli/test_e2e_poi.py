@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.cli.cli import build_parser, main
+from tarav.cli.cli import build_parser, main
 
 
 def _write_depot(
@@ -35,8 +35,8 @@ def test_poi_explain_resolves_registered_index_class(
     monkeypatch,
     capsys: object,
 ) -> None:
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
-    depot = _write_depot(tmp_path / "agentos-pkg")
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "home"))
+    depot = _write_depot(tmp_path / "tarav-pkg")
 
     assert "poi" in build_parser().format_help()
     assert (
@@ -45,7 +45,7 @@ def test_poi_explain_resolves_registered_index_class(
                 "wayfinder",
                 "register",
                 "--package",
-                "agentos-pkg",
+                "tarav-pkg",
                 "--path",
                 str(depot),
             ]
@@ -56,7 +56,7 @@ def test_poi_explain_resolves_registered_index_class(
 
     assert main(["poi", "explain", "Index.Linter/Block.TooLong"]) == 0
     text = capsys.readouterr().out
-    assert "index://agentos-pkg/Index.Linter/Block.TooLong" in text
+    assert "index://tarav-pkg/Index.Linter/Block.TooLong" in text
     assert "exceeds the hard line limit" in text
 
     assert (
@@ -64,7 +64,7 @@ def test_poi_explain_resolves_registered_index_class(
             [
                 "poi",
                 "explain",
-                "index://agentos-pkg/Index.Linter/Block.TooLong",
+                "index://tarav-pkg/Index.Linter/Block.TooLong",
                 "--json",
             ]
         )
@@ -78,9 +78,9 @@ def test_poi_explain_resolves_chatlas_owned_class_from_its_package(
     monkeypatch,
     capsys: object,
 ) -> None:
-    monkeypatch.setenv("AGENTOS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TARAV_HOME", str(tmp_path / "home"))
     depot = _write_depot(
-        tmp_path / "agentos-chatlas-pkg",
+        tmp_path / "tarav-chatlas-pkg",
         block="Index.Linter/Anchor.Chatlas.Tag",
         description="a Chatlas citation key lacks its user-evidence tag",
     )
@@ -91,7 +91,7 @@ def test_poi_explain_resolves_chatlas_owned_class_from_its_package(
                 "wayfinder",
                 "register",
                 "--package",
-                "agentos-chatlas-pkg",
+                "tarav-chatlas-pkg",
                 "--path",
                 str(depot),
             ]
@@ -114,7 +114,7 @@ def test_poi_explain_resolves_chatlas_owned_class_from_its_package(
     payload = _payload(capsys)
 
     assert payload["status"] == "resolved"
-    assert payload["reference"]["root"]["id"] == "agentos-chatlas-pkg"  # type: ignore[index]
+    assert payload["reference"]["root"]["id"] == "tarav-chatlas-pkg"  # type: ignore[index]
     assert payload["reference"]["address"] == (  # type: ignore[index]
         "Index.Linter/Anchor.Chatlas.Tag"
     )

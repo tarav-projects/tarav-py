@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.index.linter import build_linter_config, run_linter
+from tarav.index.linter import build_linter_config, run_linter
 
 
 def _write(path: Path, text: str) -> None:
@@ -15,7 +15,7 @@ def _clean_index(root: Path) -> tuple[Path, Path]:
     appendix_dir = root / "appendix"
     _write(
         root / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+1]\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+1]\n",
     )
     _write(
         index_dir / "100-design.md",
@@ -33,7 +33,7 @@ def _clean_depot(root: Path, *, include_appendix: bool = True) -> Path:
     design_dir = depot_dir / "design"
     _write(
         depot_dir / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+1]\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept[+1]\n",
     )
     _write(
         design_dir / "100-design.md",

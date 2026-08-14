@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.chatlas.ping import chatlas_ping, ping_state_path
-from agentos.chatlas.time_interface import format_local_timestamp
+from tarav.chatlas.ping import chatlas_ping, ping_state_path
+from tarav.chatlas.time_interface import format_local_timestamp
 
 
 def _run_ping(tmp_path: Path, *, query_fn, lines=2, rounds=2, **kwargs):

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from agentos.tournament import (
+from tarav.tournament import (
     ContractError,
     parse_judge_answer,
     validate,
@@ -37,7 +37,7 @@ def test_a_refusal_requires_a_stated_reason() -> None:
 
 def test_the_contract_asks_the_judge_for_no_attribution() -> None:
     """Which player or question a refusal indicts is read from the records."""
-    import agentos.tournament.contract as contract
+    import tarav.tournament.contract as contract
 
     assert not hasattr(contract, "ATTRIBUTIONS")
     assert "attribution" not in contract.validate_verdict_answer.__doc__
@@ -180,7 +180,7 @@ def test_the_error_names_the_labels_the_judge_should_have_ordered() -> None:
 
 
 def test_position_labels_cover_the_supported_arity() -> None:
-    from agentos.tournament.contract import MAX_ARITY, POSITION_LABELS
+    from tarav.tournament.contract import MAX_ARITY, POSITION_LABELS
 
     assert POSITION_LABELS[:4] == ("A", "B", "C", "D")
     assert len(POSITION_LABELS) == MAX_ARITY == 26

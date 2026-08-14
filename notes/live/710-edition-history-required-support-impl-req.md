@@ -89,7 +89,7 @@
 - update `AGENTS.md` and the Skillware source maintainer module for the new contract and heuristic discovery workflow
 - build and check the Skillware package
 - observable: the CLI refuses support-less records and the developer module produces the supported command shape
-- checks: `uv run pytest tests/test_edition_history.py tests/test_skillware.py`; `cd ../agentos-cli && uv run pytest tests/test_e2e_edition_history.py`; `agentos skw build --skill ../agentos-md/skills/agentos-skillware`; `agentos skw check --skill ../agentos-md/skills/agentos-skillware`
+- checks: `uv run pytest tests/test_edition_history.py tests/test_skillware.py`; `cd ../agentos-cli && uv run pytest tests/test_e2e_edition_history.py`; `agentos skw build --skill ../agentos-md/skills/tarav-skillware`; `agentos skw check --skill ../agentos-md/skills/tarav-skillware`
 - status: completed
 
 ### Slice 3 - Full regression

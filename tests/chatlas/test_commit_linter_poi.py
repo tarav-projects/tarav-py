@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from agentos.chatlas.poi import (
+from tarav.chatlas.poi import (
     CHATLAS_COMMIT_POI_CODES,
     ChatlasCommitLintError,
 )
-from agentos.chatlas.products import _lint_zip_transcript_summary_commit
+from tarav.chatlas.products import _lint_zip_transcript_summary_commit
 
 
 SOURCE = {
@@ -97,7 +97,7 @@ def test_commit_linter_refusals_carry_canonical_pois(
         )
 
     error = exc_info.value
-    assert error.poi.class_reference.root.id == "agentos-chatlas-pkg"
+    assert error.poi.class_reference.root.id == "tarav-chatlas-pkg"
     assert error.poi.class_reference.address == f"Chatlas.Commit.Linter/{code}"
     assert error.poi.instance_id in str(error)
     assert "Commit.Linter failed" in str(error)

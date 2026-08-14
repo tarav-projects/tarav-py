@@ -1,29 +1,29 @@
 from __future__ import annotations
 
-from agentos.cli.cli import main
+from tarav.cli.cli import main
 
 
 def test_chatlas_update_prints_forum_banner_on_non_json(monkeypatch, capsys) -> None:
-    monkeypatch.setattr("agentos.chatlas._command_support.set_trust_tier", lambda _tier: None)
-    monkeypatch.setattr("agentos.chatlas._command_support.chatlas_update", lambda **_kwargs: {"status": "ok"})
+    monkeypatch.setattr("tarav.chatlas._command_support.set_trust_tier", lambda _tier: None)
+    monkeypatch.setattr("tarav.chatlas._command_support.chatlas_update", lambda **_kwargs: {"status": "ok"})
     monkeypatch.setattr(
-        "agentos.chatlas._command_support.forum_banner_line",
-        lambda: "agentos forum: 1 unread post(s) — run 'agentos forum check'",
+        "tarav.chatlas._command_support.forum_banner_line",
+        lambda: "tarav forum: 1 unread post(s) — run 'tarav forum check'",
     )
 
     assert main(["chatlas", "update", "--quiet", "--verbose-mode", "quiet"]) == 0
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == "agentos forum: 1 unread post(s) — run 'agentos forum check'\n"
+    assert captured.err == "tarav forum: 1 unread post(s) — run 'tarav forum check'\n"
 
 
 def test_chatlas_update_suppresses_forum_banner_on_json(monkeypatch, capsys) -> None:
-    monkeypatch.setattr("agentos.chatlas._command_support.set_trust_tier", lambda _tier: None)
-    monkeypatch.setattr("agentos.chatlas._command_support.chatlas_update", lambda **_kwargs: {"status": "ok"})
+    monkeypatch.setattr("tarav.chatlas._command_support.set_trust_tier", lambda _tier: None)
+    monkeypatch.setattr("tarav.chatlas._command_support.chatlas_update", lambda **_kwargs: {"status": "ok"})
     monkeypatch.setattr(
-        "agentos.chatlas._command_support.forum_banner_line",
-        lambda: "agentos forum: 1 unread post(s) — run 'agentos forum check'",
+        "tarav.chatlas._command_support.forum_banner_line",
+        lambda: "tarav forum: 1 unread post(s) — run 'tarav forum check'",
     )
 
     assert main(["chatlas", "update", "--json", "--verbose-mode", "quiet"]) == 0

@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from agentos.bloberia import BloberiaDepot
-from agentos.skillware.edition_history import (
+from tarav.bloberia import BloberiaDepot
+from tarav.skillware.edition_history import (
     DEFAULT_EDITION_HISTORY_DEPOT,
     EditionFile,
     EditionHistoryError,
     EditionHistoryService,
     default_edition_history_depot,
 )
-from agentos.skillware.commands import register_skillware_commands
+from tarav.skillware.commands import register_skillware_commands
 
 
 PROJECT_ID = "b49973ef-a0d1-47d2-b2dc-f12bbbf424a4"
@@ -67,8 +67,8 @@ def _git(repo: Path, *args: str) -> str:
 
 def _project(tmp_path: Path) -> tuple[Path, Path, str]:
     root = tmp_path / "project"
-    (root / ".agentos").mkdir(parents=True)
-    (root / ".agentos" / "project.json").write_text(
+    (root / ".tarav").mkdir(parents=True)
+    (root / ".tarav" / "project.json").write_text(
         json.dumps(
             {
                 "class": "agentos.project",
@@ -477,7 +477,7 @@ def test_check_surfaces_bloberia_corruption(tmp_path: Path) -> None:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="agentos")
+    parser = argparse.ArgumentParser(prog="tarav")
     register_skillware_commands(
         parser.add_subparsers(dest="command"),
         edition_history_support_resolver=_accept_support,

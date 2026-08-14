@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.agent.account_status import AccountIdentity
-from agentos.agent.auth_method import AuthData, AuthMethod
+from tarav.agent.account_status import AccountIdentity
+from tarav.agent.auth_method import AuthData, AuthMethod
 
 
 class _FakeAuthMethod(AuthMethod):

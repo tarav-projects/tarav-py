@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.auth_method import AuthData
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.auth_method import AuthData
+from tarav.testing import TaravTestEnvironment
 
 
 @pytest.fixture(autouse=True)
@@ -16,10 +16,10 @@ def _no_keychain(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from agentos._core.project import agentos_home_dir
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from tarav._core.project import tarav_home_dir
 
-    return agentos_home_dir()
+    return tarav_home_dir()
 
 
 def _claude_home(root: Path, name: str, *, uuid: str, logged_in: bool) -> Path:
@@ -71,14 +71,14 @@ def test_status_reports_aligned_drift_undeterminable_and_unlisted(
     _profile(home_root, "claude-foreign", [foreign], ["om/browser"])
 
     # make the aligned home's live Auth.Data the active artifact
-    from agentos.agent import auth_registry as R
-    from agentos.agent.providers.claude_code.auth_method import ClaudeAuthMethod
+    from tarav.agent import auth_registry as R
+    from tarav.agent.providers.claude_code.auth_method import ClaudeAuthMethod
 
     auth = ClaudeAuthMethod().read_auth_data(aligned)
     artifact_id = R.store_artifact("claude-code", auth)
     R.set_active("claude-code", "om", "browser", artifact_id)
 
-    from agentos.agent.account_status_report import build_status_report
+    from tarav.agent.account_status_report import build_status_report
 
     report = build_status_report("claude-code")
     by_home = {item["home"]: item for item in report["homes"]}
@@ -99,12 +99,12 @@ def test_status_drift_when_active_differs(
     _profile(home_root, "claude-om", [home], ["om/browser"])
 
     # active points at a DIFFERENT artifact than what's live in the home
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
 
     R.store_artifact("claude-code", AuthData(payload={"claudeAiOauth": {"accessToken": "OLD"}, "oauthAccount": {"accountUuid": UUID}}))
     R.set_active("claude-code", "om", "browser", "deadbeef")
 
-    from agentos.agent.account_status_report import build_status_report
+    from tarav.agent.account_status_report import build_status_report
 
     item = build_status_report("claude-code")["homes"][0]
     assert item["status"] == "drift"
@@ -125,7 +125,7 @@ def _claude_home_exp(root: Path, name: str, *, uuid: str, expires_at: int) -> Pa
 
 
 def _activate_claude(*, uuid: str, expires_at: int) -> None:
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
     artifact = R.store_artifact(
         "claude-code",
         AuthData(payload={"claudeAiOauth": {"accessToken": "active", "expiresAt": expires_at},
@@ -148,7 +148,7 @@ def test_status_drift_is_qualified_by_freshness(
     _profile(home_root, "claude-om", [home], ["om/browser"])
     _activate_claude(uuid=UUID, expires_at=1_000_000_000_000)
 
-    from agentos.agent.account_status_report import build_status_report
+    from tarav.agent.account_status_report import build_status_report
 
     assert build_status_report("claude-code")["homes"][0]["status"] == expected
 
@@ -163,13 +163,13 @@ def test_status_drift_no_active_when_nothing_registered(
     _profile(home_root, "claude-om", [home], ["om/browser"])
     # no set_active → nothing registered for om/browser
 
-    from agentos.agent.account_status_report import build_status_report
+    from tarav.agent.account_status_report import build_status_report
 
     assert build_status_report("claude-code")["homes"][0]["status"] == "drift:no-active"
 
 
 def test_account_limit_summary_estimated_flag() -> None:
-    from agentos.agent.account_status import AccountLimit, UsageOverTimeLimitData
+    from tarav.agent.account_status import AccountLimit, UsageOverTimeLimitData
 
     usage = UsageOverTimeLimitData(
         used_percent=40,

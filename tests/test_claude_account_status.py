@@ -4,17 +4,17 @@ from pathlib import Path
 
 import pytest
 
-import agentos.agent.providers.claude_code.keychain as claude_keychain
-import agentos.agent.providers.claude_code.account_status as claude_account_status
-from agentos.agent.account_status import (
+import tarav.agent.providers.claude_code.keychain as claude_keychain
+import tarav.agent.providers.claude_code.account_status as claude_account_status
+from tarav.agent.account_status import (
     AccountLimit,
     AgentAccountContext,
     fresh_usage_record_metadata,
 )
-from agentos.agent.providers.claude_code.agent import ClaudeAgent
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.providers.claude_code.agent import ClaudeAgent
+from tarav.testing import TaravTestEnvironment
 
-from agentos.testing import seed_claude_account, write_claude_home
+from tarav.testing import seed_claude_account, write_claude_home
 from _helpers import read_jsonl_file
 
 
@@ -46,7 +46,7 @@ def test_claude_account_status_is_read_only(
     tmp_path: Path,
 ) -> None:
     # account_status must not mutate: no active-promote, no verification write.
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     monkeypatch.setattr(claude_keychain.sys, "platform", "linux")
     home = tmp_path / "claude-br"
@@ -84,7 +84,7 @@ def test_claude_account_status_is_read_only(
     assert status.raw["auth_artifact_record"] is None
     # status wrote no verification evidence
     verifications_path = (
-        environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
+        environment.tarav_home / "accounts" / "claude-code" / "verifications.jsonl"
     )
     status_verifications = (
         [v for v in read_jsonl_file(verifications_path) if v.get("source") == "account.status"]

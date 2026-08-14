@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.agent.run_runtime import AgentRunResult
-from agentos.tournament import JudgeSpawn, TournamentStore, load_definition, run_match
-from agentos.tournament.commands import register_tournament_commands
+from tarav._core.errors import CliError
+from tarav.agent.run_runtime import AgentRunResult
+from tarav.tournament import JudgeSpawn, TournamentStore, load_definition, run_match
+from tarav.tournament.commands import register_tournament_commands
 
 DEFINITION = '''
 question = "Which line is better?"

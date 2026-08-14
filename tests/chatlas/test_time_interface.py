@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.chatlas.time_interface import (
+from tarav._core.errors import CliError
+from tarav.chatlas.time_interface import (
     format_local_timestamp,
     is_timestamp_field,
     normalize_cli_event_pattern_timestamps,
@@ -42,7 +42,7 @@ def test_explicit_cli_timestamp_keeps_its_declared_timezone_meaning() -> None:
 
 
 def test_recents_since_date_uses_the_shared_cli_time_boundary() -> None:
-    from agentos.chatlas.recents import parse_since_date
+    from tarav.chatlas.recents import parse_since_date
 
     assert parse_since_date("2026-08-07T12:00:00+02:00").isoformat() == (
         "2026-08-07T10:00:00+00:00"
@@ -114,7 +114,7 @@ def test_timestamp_field_detection_does_not_convert_arbitrary_text() -> None:
 
 
 def test_query_selector_normalizes_explicit_offset_at_cli_boundary() -> None:
-    from agentos.chatlas.commands import _chatlas_query_selector_kwargs
+    from tarav.chatlas.commands import _chatlas_query_selector_kwargs
 
     args = argparse.Namespace(
         uri=None,
@@ -152,7 +152,7 @@ def test_query_selector_normalizes_explicit_offset_at_cli_boundary() -> None:
 def test_event_pattern_timestamp_is_normalized_at_cli_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from agentos.chatlas import _command_support
+    from tarav.chatlas import _command_support
 
     captured: dict[str, object] = {}
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agentos.agent.monitor.workflows.state import AutoPrimeTargetState
+from tarav.agent.monitor.workflows.state import AutoPrimeTargetState
 
 import datetime
 

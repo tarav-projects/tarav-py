@@ -3,17 +3,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.chatlas.normalization.session_assembler import assemble_session_model
-from agentos.chatlas.normalization.session_model._model import (
+from tarav.chatlas.normalization.session_assembler import assemble_session_model
+from tarav.chatlas.normalization.session_model._model import (
     _session_model_artifact_dir,
     build_chatlas_session_model_from_index_row,
     build_session_model_with_delta_state,
     record_delta_checkpoint,
 )
-from agentos.chatlas.normalization.session_model.artifact import (
+from tarav.chatlas.normalization.session_model.artifact import (
     write_session_model_artifact,
 )
-from agentos.chatlas.normalization.session_model.delta import (
+from tarav.chatlas.normalization.session_model.delta import (
     claude_delta_normalization_result,
     delta_checkpoint_path,
     load_delta_checkpoint,

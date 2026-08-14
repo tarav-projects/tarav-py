@@ -2,7 +2,7 @@
 
 import pytest
 
-from agentos.iterante.contract import ContractError, validate
+from tarav.iterante.contract import ContractError, validate
 
 
 class TestNoPayload:

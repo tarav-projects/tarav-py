@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import main
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import main
 from _helpers import captured_json
 
 
 def test_agent_run_executes_configured_provider_command(tmp_path: Path, monkeypatch) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = environment.home
     work_home = tmp_path / "codex-home"
@@ -29,7 +29,7 @@ def test_agent_run_executes_configured_provider_command(tmp_path: Path, monkeypa
         observed.update(command=command, cwd=cwd, home=env["HOME"], check=check)
         return subprocess.CompletedProcess(command, 0)
 
-    import agentos._core.process as process_runner
+    import tarav._core.process as process_runner
 
     monkeypatch.setattr(process_runner.subprocess, "run", fake_run)
 
@@ -53,7 +53,7 @@ def test_agent_run_dry_run_covers_env_prefix_and_raw_argv(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"
     pi_home = tmp_path / ".pi" / "profiles" / "codex-mm"
@@ -77,9 +77,9 @@ def test_agent_run_dry_run_covers_env_prefix_and_raw_argv(
         f"CODEX_HOME={codex_home} codex --dangerously-bypass-approvals-and-sandbox exec hello"
     )
 
-    assert main(["agent", "run", "--provider", "pi", "--profile", "pi-mm", "--dry-run", "--prompt", "hello from agentos"]) == 0
+    assert main(["agent", "run", "--provider", "pi", "--profile", "pi-mm", "--dry-run", "--prompt", "hello from tarav"]) == 0
     assert capsys.readouterr().out.strip() == (
-        f"PI_CODING_AGENT_DIR={pi_home} pi --model gpt-5.4-mini -p 'hello from agentos'"
+        f"PI_CODING_AGENT_DIR={pi_home} pi --model gpt-5.4-mini -p 'hello from tarav'"
     )
 
     assert main(["agent", "run", "--provider", "copilot-cli", "--profile", "copilot-main", "--dry-run", "--", "auth", "status"]) == 0
@@ -91,7 +91,7 @@ def test_agent_profile_account_policy_invalid_value_rejected(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_profile(
         "claude-bad",
@@ -112,7 +112,7 @@ def test_agent_run_reports_user_facing_validation_errors(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_profile(
         "work",
@@ -137,7 +137,7 @@ def test_agent_list_reports_configured_instances(
     monkeypatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     work_home = tmp_path / "codex-home"
     environment.write_profile(

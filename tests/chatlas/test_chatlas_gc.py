@@ -7,26 +7,26 @@ import time
 
 import pytest
 
-from agentos.agent.primitives import AgentConfig, SessionSource
-from agentos.agent.providers.registry import agent_from_config
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import main
-from agentos.chatlas.provider_home_adapter import ChatlasProviderInstance
-from agentos.chatlas.gc import _candidates_for_session
+from tarav.agent.primitives import AgentConfig, SessionSource
+from tarav.agent.providers.registry import agent_from_config
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import main
+from tarav.chatlas.provider_home_adapter import ChatlasProviderInstance
+from tarav.chatlas.gc import _candidates_for_session
 from ._helpers import captured_json, write_chatlas_codex_source, write_text_file
 
 
 def _isolate_chatlas(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> tuple[AgentosTestEnvironment, Path]:
-    environment = AgentosTestEnvironment.create(tmp_path)
+) -> tuple[TaravTestEnvironment, Path]:
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"
     return environment, codex_home
 
 
-def _configure_chatlas(environment: AgentosTestEnvironment, codex_home: Path) -> None:
+def _configure_chatlas(environment: TaravTestEnvironment, codex_home: Path) -> None:
     write_chatlas_codex_source(environment, codex_home)
 
 

@@ -3,9 +3,9 @@ requires = ["hatchling>=1.24.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentos"
+name = "tarav"
 version = "0.1.0"
-description = "Agentos modular-monolith runtime, subsystems, and command surfaces."
+description = "Tarav modular-monolith runtime, subsystems, and command surfaces."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "pereiro" }]
@@ -17,13 +17,13 @@ dependencies = [
 ]
 
 [project.scripts]
-agentos = "agentos.cli:main"
-agentos-daemon = "agentos.daemon.entrypoint:main"
-iterante = "agentos.iterante.cli:main"
-iterante2 = "agentos.iterante2.cli:main"
+tarav = "tarav.cli:main"
+tarav-daemon = "tarav.daemon.entrypoint:main"
+iterante = "tarav.iterante.cli:main"
+iterante2 = "tarav.iterante2.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agentos"]
+packages = ["src/tarav"]
 
 [dependency-groups]
 dev = [

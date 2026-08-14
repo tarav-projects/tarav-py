@@ -5,20 +5,20 @@ import json
 import stat
 from pathlib import Path
 
-from agentos.hooks import (
+from tarav.hooks import (
     HookInvocation,
     HookRegistry,
     append_hook_context_sample,
     hook_context_sample_log_path,
     register_hook_sampling_callbacks,
 )
-from agentos.testing import AgentosTestEnvironment
+from tarav.testing import TaravTestEnvironment
 
 
 def test_prompt_submission_sampling_preserves_opaque_context(
     monkeypatch, tmp_path: Path
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     registry = HookRegistry()
     register_hook_sampling_callbacks(registry)
@@ -38,7 +38,7 @@ def test_prompt_submission_sampling_preserves_opaque_context(
     )
 
     sample_path = hook_context_sample_log_path()
-    assert sample_path == environment.agentos_home / "hooks" / "context-samples.jsonl"
+    assert sample_path == environment.tarav_home / "hooks" / "context-samples.jsonl"
     assert stat.S_IMODE(sample_path.stat().st_mode) == 0o600
     record = json.loads(sample_path.read_text(encoding="utf-8"))
     assert record["hook_name"] == "agent.prompt.submit"
@@ -51,7 +51,7 @@ def test_prompt_submission_sampling_preserves_opaque_context(
 def test_hook_context_sampling_retention_is_bounded_across_time(
     monkeypatch, tmp_path: Path
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
 
     for number in range(5):

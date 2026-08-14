@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.agent.run_runtime import AgentRunResult
-from agentos.tournament.commands import register_tournament_commands
-from agentos.tournament import (
+from tarav._core.errors import CliError
+from tarav.agent.run_runtime import AgentRunResult
+from tarav.tournament.commands import register_tournament_commands
+from tarav.tournament import (
     JudgeSpawn,
     TournamentStore,
     load_definition,
@@ -549,7 +549,7 @@ def test_the_same_seed_reproduces_the_same_substitution(tmp_path: Path) -> None:
 
 def test_a_previewed_match_carries_controls_like_a_run_one(tmp_path: Path) -> None:
     """Preview renders a *valid* match, and a valid match may carry a control."""
-    from agentos.tournament.runner import preview_match
+    from tarav.tournament.runner import preview_match
 
     store, definition, tournament = _setup(tmp_path, CONTROLLED)
     result = preview_match(
@@ -567,7 +567,7 @@ def test_a_previewed_match_carries_controls_like_a_run_one(tmp_path: Path) -> No
 
 def test_the_example_ranking_is_never_the_presentation_order(tmp_path: Path) -> None:
     """Copying the template must be distinguishable from choosing that order."""
-    from agentos.tournament.runner import compose_verbatim
+    from tarav.tournament.runner import compose_verbatim
 
     for arity in (2, 3, 4, 7):
         labels = tuple("ABCDEFG"[:arity])

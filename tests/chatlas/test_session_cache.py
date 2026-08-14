@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from agentos.chatlas import session_cache
+from tarav.chatlas import session_cache
 
 
 SESSION = {"identity_hash": "a" * 64, "backing_artifacts": []}

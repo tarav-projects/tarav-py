@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from agentos.skillware.build import (
+from tarav.skillware.build import (
     build_skill,
     check_skill,
     content_hash,
     expand_file,
     load_skillware,
 )
-from agentos.skillware.model import parse_skw_source
+from tarav.skillware.model import parse_skw_source
 from _skillware_helpers import (
     SRC,
     _entry,
@@ -287,7 +287,7 @@ def test_loading_dependency_requires_a_locator() -> None:
 def test_parse_context_reachability_at_file_point() -> None:
     source = parse_skw_source(
         "> $kw: ^root-reachability\n"
-        "> --reachable-from @<agentos-pkg>/SKILL.md\n"
+        "> --reachable-from @<tarav-pkg>/SKILL.md\n"
         "> --reachable-from SKILL.md\n\n"
         "# Skill\n"
     )
@@ -297,7 +297,7 @@ def test_parse_context_reachability_at_file_point() -> None:
         (requirement.locator, requirement.line, requirement.address)
         for requirement in source.context_reachabilities
     ] == [
-        ("@<agentos-pkg>/SKILL.md", 1, "^root-reachability"),
+        ("@<tarav-pkg>/SKILL.md", 1, "^root-reachability"),
         ("SKILL.md", 1, "^root-reachability"),
     ]
 
@@ -311,7 +311,7 @@ def test_parse_context_reachability_at_file_point() -> None:
             "must be declared at the file point",
         ),
         (
-            "> $kw: ^reachability --reachable-from @<agentos-pkg>\n",
+            "> $kw: ^reachability --reachable-from @<tarav-pkg>\n",
             "must name a runtime file",
         ),
         (

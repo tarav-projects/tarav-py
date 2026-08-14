@@ -34,10 +34,10 @@
 ## Impl.Agendix
 
 - touched: ^c20260812-0u — execution authority and architecture acceptance.
-- touched: `index://agentos-pkg/Floor.Model` — consumers operate on normalized models.
-- touched: `index://agentos-pkg/Normalization.Pipeline` — raw surfaces become native normal models before subsystem adaptation.
-- touched: `index://agentos-pkg/Skw.Backend` — host-specific adapters produce the common Skillware carrier representation.
-- touched: `index://agentos-pkg/Non.Skw.Annotation` — only unclassified host comments become leak-policy POIs.
+- touched: `index://tarav-pkg/Floor.Model` — consumers operate on normalized models.
+- touched: `index://tarav-pkg/Normalization.Pipeline` — raw surfaces become native normal models before subsystem adaptation.
+- touched: `index://tarav-pkg/Skw.Backend` — host-specific adapters produce the common Skillware carrier representation.
+- touched: `index://tarav-pkg/Non.Skw.Annotation` — only unclassified host comments become leak-policy POIs.
 
 ## Execution.Plan
 

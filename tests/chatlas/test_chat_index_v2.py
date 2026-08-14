@@ -4,12 +4,12 @@ import json
 from pathlib import Path
 
 
-from agentos.chatlas.chat_index import (
+from tarav.chatlas.chat_index import (
     _canonical_v2_source,
     _compare_v2_source_tail,
     _load_capture,
 )
-from agentos.chatlas.normalization.session_model.messages import (
+from tarav.chatlas.normalization.session_model.messages import (
     transcript_visible_messages,
 )
 

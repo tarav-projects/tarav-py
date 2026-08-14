@@ -9,11 +9,11 @@ def _write(path: Path, text: str) -> None:
 
 
 def test_locator_loads_only_fingerprinted_anchor_sources(tmp_path: Path) -> None:
-    from agentos.index.anchor_locator import (
+    from tarav.index.anchor_locator import (
         load_index_anchor_locator_selection,
         materialize_index_anchor_locator,
     )
-    from agentos.index.model import parse_depot
+    from tarav.index.model import parse_depot
 
     depot = tmp_path / "depot"
     workspace = tmp_path / "workspace"
@@ -48,11 +48,11 @@ def test_locator_loads_only_fingerprinted_anchor_sources(tmp_path: Path) -> None
 
 
 def test_locator_rejects_changed_source(tmp_path: Path) -> None:
-    from agentos.index.anchor_locator import (
+    from tarav.index.anchor_locator import (
         load_index_anchor_locator_selection,
         materialize_index_anchor_locator,
     )
-    from agentos.index.model import parse_depot
+    from tarav.index.model import parse_depot
 
     depot = tmp_path / "depot"
     workspace = tmp_path / "workspace"
@@ -76,11 +76,11 @@ def test_locator_rejects_changed_source(tmp_path: Path) -> None:
 
 
 def test_locator_preserves_ambiguous_occurrence_standing(tmp_path: Path) -> None:
-    from agentos.index.anchor_locator import (
+    from tarav.index.anchor_locator import (
         index_anchor_locator_path,
         materialize_index_anchor_locator,
     )
-    from agentos.index.model import parse_depot
+    from tarav.index.model import parse_depot
     import json
 
     depot = tmp_path / "depot"

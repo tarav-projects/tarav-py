@@ -9,15 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.agent.run_runtime import AgentRunDryResult, AgentRunResult
-from agentos.tournament import (
+from tarav._core.errors import CliError
+from tarav.agent.run_runtime import AgentRunDryResult, AgentRunResult
+from tarav.tournament import (
     JudgeSpawn,
     TournamentStore,
     load_definition,
     run_pool,
 )
-from agentos.tournament.commands import register_tournament_commands
+from tarav.tournament.commands import register_tournament_commands
 
 DEFINITION = '''
 import itertools
@@ -238,7 +238,7 @@ def test_depot_is_optional_on_every_subcommand() -> None:
 def test_create_without_a_depot_uses_the_global_default(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setenv("AGENTOS_TOURNAMENT_DEPOT", str(tmp_path / "global"))
+    monkeypatch.setenv("TARAV_TOURNAMENT_DEPOT", str(tmp_path / "global"))
     path = tmp_path / "definition.py"
     path.write_text(DEFINITION, encoding="utf-8")
 
@@ -250,7 +250,7 @@ def test_create_without_a_depot_uses_the_global_default(
 def test_creating_from_a_definition_missing_a_required_hook_fails(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setenv("AGENTOS_TOURNAMENT_DEPOT", str(tmp_path / "global"))
+    monkeypatch.setenv("TARAV_TOURNAMENT_DEPOT", str(tmp_path / "global"))
     path = tmp_path / "definition.py"
     path.write_text("question = 'x'\n", encoding="utf-8")
 

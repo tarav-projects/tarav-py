@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from agentos.forum import core
-from agentos.forum.core import ForumDepot, forum_banner_line, read_cursor
+from tarav.forum import core
+from tarav.forum.core import ForumDepot, forum_banner_line, read_cursor
 
 
 def _set_now(monkeypatch, value: str) -> None:
@@ -12,7 +12,7 @@ def _set_now(monkeypatch, value: str) -> None:
 
 
 def test_forum_post_appends_date_sections(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("AGENTOS_FORUM_ROOT", str(tmp_path / "forum"))
+    monkeypatch.setenv("TARAV_FORUM_ROOT", str(tmp_path / "forum"))
     depot = ForumDepot()
     _set_now(monkeypatch, "2026-07-18T10:00:00Z")
     first = depot.post("First", "hello", "project-a")
@@ -27,7 +27,7 @@ def test_forum_post_appends_date_sections(tmp_path, monkeypatch) -> None:
 
 
 def test_forum_posts_since_filters_and_skips_malformed(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("AGENTOS_FORUM_ROOT", str(tmp_path / "forum"))
+    monkeypatch.setenv("TARAV_FORUM_ROOT", str(tmp_path / "forum"))
     depot = ForumDepot()
     _set_now(monkeypatch, "2026-07-17T23:59:59Z")
     depot.post("Old", "old body", "project")
@@ -44,13 +44,13 @@ def test_forum_posts_since_filters_and_skips_malformed(tmp_path, monkeypatch) ->
 
 
 def test_forum_banner_throttles_and_never_raises(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("AGENTOS_FORUM_ROOT", str(tmp_path / "forum"))
-    monkeypatch.setenv("AGENTOS_FORUM_CURSOR", str(tmp_path / "cursor.json"))
+    monkeypatch.setenv("TARAV_FORUM_ROOT", str(tmp_path / "forum"))
+    monkeypatch.setenv("TARAV_FORUM_CURSOR", str(tmp_path / "cursor.json"))
     depot = ForumDepot()
     _set_now(monkeypatch, "2026-07-18T10:00:00Z")
     depot.post("Unread", "body", "project")
 
-    assert forum_banner_line() == "agentos forum: 1 unread post(s) — run 'agentos forum check'"
+    assert forum_banner_line() == "tarav forum: 1 unread post(s) — run 'tarav forum check'"
     assert read_cursor()["last_banner"] == "2026-07-18T10:00:00Z"
     assert forum_banner_line() is None
 

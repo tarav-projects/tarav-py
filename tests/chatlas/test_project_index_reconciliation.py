@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from agentos.index.model import (
+from tarav.index.model import (
     canonical_index_line_statement,
     index_line_anchor_triplet_hash,
 )
 
-import agentos.chatlas.project_index_reconciliation as reconciliation
-from agentos.chatlas.anchory import CHATLAS_LINE_ANCHOR_DOSSIER_SCHEMA
-from agentos.chatlas.chat_index_audit import index_lines_of
+import tarav.chatlas.project_index_reconciliation as reconciliation
+from tarav.chatlas.anchory import CHATLAS_LINE_ANCHOR_DOSSIER_SCHEMA
+from tarav.chatlas.chat_index_audit import index_lines_of
 
 
 IDENTITY = "a" * 64

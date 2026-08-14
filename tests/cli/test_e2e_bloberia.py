@@ -1,4 +1,4 @@
-# $kw: ^test-e2e-bloberia --from Agentos.Bloberia --note [DF] end-to-end coverage for the thin agentos bloberia command consumer ^c20260724-31u
+# $kw: ^test-e2e-bloberia --from Agentos.Bloberia --note [DF] end-to-end coverage for the thin tarav bloberia command consumer ^c20260724-31u
 from __future__ import annotations
 
 import json
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import build_parser, main
+from tarav.cli.cli import build_parser, main
 
 
 def _captured_json(capsys: object) -> dict[str, object]:

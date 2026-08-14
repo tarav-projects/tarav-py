@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import pytest
 
-from agentos.chatlas.event_pattern import (
+from tarav.chatlas.event_pattern import (
     EventPattern,
     EventPatternError,
     alphanumeric_material,
     evaluate_event_pattern,
 )
-from agentos.chatlas.event_ref import event_ref
-from agentos.chatlas.normalization.session_model.events import compute_event_hash
+from tarav.chatlas.event_ref import event_ref
+from tarav.chatlas.normalization.session_model.events import compute_event_hash
 
 
 def _event(

@@ -45,11 +45,11 @@
 ## Impl.Agendix
 
 - touched: ^c20260811-66u — autonomous implementation authorization and strict project-surface requirements.
-- touched: `index://agentos-pkg/Agentos.Skillware` — codebases are product surfaces within the general Skillware system.
-- touched: `index://agentos-pkg/Skw.Backend` — the backend owns carrier and host syntax while the Skw frame and policy engine remain shared.
-- touched: `index://agentos-pkg/Annotation.Point` — skw-code begins with one required file point at line 1.
-- touched: `index://agentos-pkg/Non.Skw.Annotation` — non-Skw comments are reviewable leak-prevention POIs.
-- touched: `index://agentos-pkg/POI.Linter` — the tokenizer/parser model is produced before policy checks emit POI instances.
+- touched: `index://tarav-pkg/Agentos.Skillware` — codebases are product surfaces within the general Skillware system.
+- touched: `index://tarav-pkg/Skw.Backend` — the backend owns carrier and host syntax while the Skw frame and policy engine remain shared.
+- touched: `index://tarav-pkg/Annotation.Point` — skw-code begins with one required file point at line 1.
+- touched: `index://tarav-pkg/Non.Skw.Annotation` — non-Skw comments are reviewable leak-prevention POIs.
+- touched: `index://tarav-pkg/POI.Linter` — the tokenizer/parser model is produced before policy checks emit POI instances.
 
 ## Execution.Plan
 

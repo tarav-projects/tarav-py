@@ -3,16 +3,16 @@
 ## Impl.Abstract
 
 - **Scope:** implement the first general `Poi.Unlock.Token` gate for `agentos skw bless`, including registry-backed requirements, machine-checkable `--unlock-surface` annotations, multiple required tokens, clear missing-token failures, CLI receipts, and a disposable `skw-testground/` E2E.
-- **Status:** IMPLEMENTED. The design is settled in `agentos-pkg/design/107-design.md` under `Poi.Unlock.Token`; the smallest end-to-end level is now live.
+- **Status:** IMPLEMENTED. The design is settled in `tarav-pkg/design/107-design.md` under `Poi.Unlock.Token`; the smallest end-to-end level is now live.
 - **Authority:** the user authorized autonomous development with `$agentos-hugentics-impl --dev --auto`. ^c20260723-17u
 - **Out of scope:** `Poi.Bless.Question`; claims that a token proves understanding; token secrecy or adversarial protection; production adoption by real Agentos skills; automatic registry discovery across arbitrary depots; changing which POI kinds are blessable.
 
 ## Impl.Index
 
 - **Existing boundary:** `src/agentos/skillware/build.py` owns `check_skill`, `bless_skill`, `bless_pois_by_kind`, package config, locator resolution, and lock mutations.
-- **Existing language:** `src/agentos/skillware/model.py` parses a closed additive-flag vocabulary into typed AST nodes. `Skw.Annotation` is the machine-checkable unit and its identity is an explicit `Skw.Address.Schema` address (`agentos-pkg/design/107-design.md::Skw.Annotation`).
+- **Existing language:** `src/agentos/skillware/model.py` parses a closed additive-flag vocabulary into typed AST nodes. `Skw.Annotation` is the machine-checkable unit and its identity is an explicit `Skw.Address.Schema` address (`tarav-pkg/design/107-design.md::Skw.Annotation`).
 - **Existing CLI:** `src/agentos/skillware/commands.py` exposes single and bulk bless; receipts are not currently accepted.
-- **Design authority:** `Poi.Unlock.Token` requires a context-read receipt before blessing, permits multiple required tokens, refuses any missing token, and remains a robustness gate rather than proof of understanding (`agentos-pkg/design/107-design.md::Poi.Unlock.Token`, anchor `^c20260723-11u`).
+- **Design authority:** `Poi.Unlock.Token` requires a context-read receipt before blessing, permits multiple required tokens, refuses any missing token, and remains a robustness gate rather than proof of understanding (`tarav-pkg/design/107-design.md::Poi.Unlock.Token`, anchor `^c20260723-11u`).
 - **Registry ownership:** the package that owns the represented context surface owns `.skw/unlock-tokens.json`. A target package explicitly lists provider registries through `unlock_registries` in its `.skw/skw.json`; the linter does not scan arbitrary folders.
 - **Registry schema:** schema v1 contains `tokens`; each entry has exactly `token`, `surface`, and `unlocks`. `surface` is one source `Skw.Address.Schema`; `unlocks` contains POI-kind names. There is no description field.
 - **Single source of token truth:** the opaque token appears only in the registry. The represented source annotation carries an explicit address, `--unlock-surface`, and `--from <registry-path>`; rotation changes only the registry.
@@ -75,5 +75,5 @@
 - Checkpoint `90b95d5` preserved the clean `agentos-py` implementation floor and this request.
 - Checkpoint `d4f7c69` preserved the pre-existing `agentos-md` Skillware lock state before operational documentation edits.
 - The live testground emitted `derived-stale` POI `2a887f307e` with two required context surfaces. Zero receipts named both missing surfaces; one receipt named only the remaining surface; both receipts blessed; the following check returned zero POIs.
-- Operational language and bless guidance were updated in the `agentos-skillware` src and rebuilt. Its own check is clean for the touched surfaces; one unrelated pre-existing `references/doctrine.md :: The Model` `derived-stale` POI remains untouched.
+- Operational language and bless guidance were updated in the `tarav-skillware` src and rebuilt. Its own check is clean for the touched surfaces; one unrelated pre-existing `references/doctrine.md :: The Model` `derived-stale` POI remains untouched.
 - Verification: `uv run ruff check src/agentos/skillware tests/test_skw_unlock_tokens.py`; full suite `485 passed`.

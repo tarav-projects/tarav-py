@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from agentos.cli.cli import build_parser
+from tarav.cli.cli import build_parser
 
 
 def test_index_line_manifest_is_the_canonical_command_surface() -> None:
@@ -14,7 +14,7 @@ def test_index_line_manifest_is_the_canonical_command_surface() -> None:
             "manifest",
             "show",
             "--depot",
-            "skills/agentos-pkg",
+            "skills/tarav-pkg",
             "--anchor",
             "c20260809-171u",
             "--verification",

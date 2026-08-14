@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.monitor.auto_prime_registry import (
+from tarav.agent.monitor.auto_prime_registry import (
     AUTO_PRIME_EVENT_ATTEMPT_STARTED,
     AUTO_PRIME_EVENT_ATTEMPT_SUCCEEDED,
     AUTO_PRIME_EVENT_ELIGIBLE,
@@ -15,7 +15,7 @@ from agentos.agent.monitor.auto_prime_registry import (
     AUTO_PRIME_EVENT_VERIFICATION_INEFFECTIVE,
     auto_prime_event_registry_path,
 )
-from agentos.agent.monitor.models import (
+from tarav.agent.monitor.models import (
     AUTO_PRIME_PING_SUCCEEDED_STATUS,
     AUTO_PRIME_VERIFICATION_EFFECTIVE,
     AUTO_PRIME_VERIFICATION_INEFFECTIVE,
@@ -26,20 +26,20 @@ from agentos.agent.monitor.models import (
     MonitorTarget,
     MonitorWorkflowConfig,
 )
-import agentos.agent.monitor.workflows.auto_prime as auto_prime
-from agentos.agent.monitor.workflows import (
+import tarav.agent.monitor.workflows.auto_prime as auto_prime
+from tarav.agent.monitor.workflows import (
     AutoPrimeZeroLimitsWorkflow,
 )
-from agentos.agent.account_status import AgentAccountContext
-from agentos.agent.ping import AgentPingResult
-from agentos.agent.primitives import AgentPingConfig, RunnableMixin
-from agentos.agent.run_runtime import AgentRunResult
-import agentos.agent.providers.claude_code.keychain as claude_keychain
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.account_status import AgentAccountContext
+from tarav.agent.ping import AgentPingResult
+from tarav.agent.primitives import AgentPingConfig, RunnableMixin
+from tarav.agent.run_runtime import AgentRunResult
+import tarav.agent.providers.claude_code.keychain as claude_keychain
+from tarav.testing import TaravTestEnvironment
 
-from agentos.testing import codex_auth_json, seed_claude_account, seed_codex_account, write_claude_home
+from tarav.testing import codex_auth_json, seed_claude_account, seed_codex_account, write_claude_home
 from _helpers import write_text_file
-from agentos.agent.monitor.workflows.state import (
+from tarav.agent.monitor.workflows.state import (
     AutoPrimeTargetState,
     LimitsTargetState,
     LimitsWorkflowState,
@@ -48,9 +48,9 @@ from _monitor_helpers import _limit, _target_state
 
 
 def _set_fake_agentos_home(monkeypatch, root: Path) -> Path:
-    environment = AgentosTestEnvironment.create(root)
+    environment = TaravTestEnvironment.create(root)
     environment.apply_environment(monkeypatch.setenv)
-    return environment.agentos_home
+    return environment.tarav_home
 
 def _workflow(*, triggers: tuple[str, ...]) -> AutoPrimeZeroLimitsWorkflow:
     return AutoPrimeZeroLimitsWorkflow(
@@ -495,7 +495,7 @@ def test_auto_prime_ping_records_claude_verified_auth_source(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     monkeypatch.setattr(claude_keychain.sys, "platform", "linux")
     home = tmp_path / "claude-br"
@@ -518,7 +518,7 @@ def test_auto_prime_ping_records_claude_verified_auth_source(
     # Auto-prime no longer auto-promotes credentials into the old registry
     # (disconnected in 658; new-model capture workflow is a deferred re-integration).
     assert not (
-        environment.agentos_home / "accounts" / "claude-code" / "verifications.jsonl"
+        environment.tarav_home / "accounts" / "claude-code" / "verifications.jsonl"
     ).exists()
 
 def test_auto_prime_ping_uses_profile_resolved_runtime_agent(
@@ -562,7 +562,7 @@ def test_auto_prime_ping_records_codex_verified_auth_source(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     home = tmp_path / "codex-br"
     write_text_file(home / "auth.json", codex_auth_json(account_id="acc_br", email="br@example.com"))
@@ -583,7 +583,7 @@ def test_auto_prime_ping_records_codex_verified_auth_source(
 
     # Auto-prime no longer auto-promotes credentials into the old registry (658).
     assert not (
-        environment.agentos_home / "accounts" / "codex" / "verifications.jsonl"
+        environment.tarav_home / "accounts" / "codex" / "verifications.jsonl"
     ).exists()
 
 def test_auto_prime_decisions_only_include_configured_limits() -> None:

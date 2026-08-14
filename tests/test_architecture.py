@@ -6,7 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "agentos"
+PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tarav"
 
 
 def _top_level_import_graph() -> dict[str, set[str]]:
@@ -23,7 +23,7 @@ def _top_level_import_graph() -> dict[str, set[str]]:
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported = (node.module,)
             for name in imported:
-                if not name.startswith("agentos."):
+                if not name.startswith("tarav."):
                     continue
                 target = name.split(".", 2)[1]
                 if target != source:

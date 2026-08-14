@@ -6,16 +6,16 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentos.chatlas.event_ref import resolve_event_ref
-from agentos.chatlas.normalization.session_model._claude import (
+from tarav.chatlas.event_ref import resolve_event_ref
+from tarav.chatlas.normalization.session_model._claude import (
     _claude_tail_has_compaction,
     _load_claude_raw_session_records,
     _normalize_claude_session,
 )
-from agentos.chatlas.normalization.session_model._codex import (
+from tarav.chatlas.normalization.session_model._codex import (
     _normalize_codex_session,
 )
-from agentos.chatlas.normalization.session_model.events import normal_turn_id, normal_turn_kind
+from tarav.chatlas.normalization.session_model.events import normal_turn_id, normal_turn_kind
 
 
 @dataclass(frozen=True)

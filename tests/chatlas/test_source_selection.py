@@ -4,16 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.testing import AgentosTestEnvironment
-from agentos.chatlas.instance_selection import selected_provider_instances
+from tarav._core.errors import CliError
+from tarav.testing import TaravTestEnvironment
+from tarav.chatlas.instance_selection import selected_provider_instances
 
 
 def _isolate_chatlas(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> AgentosTestEnvironment:
-    environment = AgentosTestEnvironment.create(tmp_path)
+) -> TaravTestEnvironment:
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     return environment
 
@@ -162,7 +162,7 @@ def test_selected_provider_instances_rejects_agentos_system_homes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     environment = _isolate_chatlas(monkeypatch, tmp_path)
-    system_home = environment.agentos_home / "agent" / "homes" / "codex" / "browser-br"
+    system_home = environment.tarav_home / "agent" / "homes" / "codex" / "browser-br"
     environment.write_global_config(
         chatlas={
             "sources": [

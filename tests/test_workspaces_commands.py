@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.workspaces import guide_token
-from agentos.workspaces.commands import register_workspace_commands
+from tarav._core.errors import CliError
+from tarav.workspaces import guide_token
+from tarav.workspaces.commands import register_workspace_commands
 
 
 def _parser() -> argparse.ArgumentParser:

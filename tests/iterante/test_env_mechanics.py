@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.iterante.runtime import _run_turn
-from agentos.iterante.state import create_run
+from tarav.iterante.runtime import _run_turn
+from tarav.iterante.state import create_run
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -30,7 +30,7 @@ def secondary_venv(tmp_path_factory):
 
 PID_MISSION = """
     import os, sys
-    from agentos import iterante
+    from tarav import iterante
     def step(ctx):
         ctx.state["pid"] = os.getpid()
         ctx.state["executable"] = sys.executable
@@ -90,10 +90,10 @@ def test_uv_project_env_runs_in_project_venv(tmp_path):
         name = "mission-env"
         version = "0.0.0"
         requires-python = ">=3.12"
-        dependencies = ["agentos"]
+        dependencies = ["tarav"]
 
         [tool.uv.sources]
-        agentos = {{ path = "{PROJECT_ROOT}", editable = true }}
+        tarav = {{ path = "{PROJECT_ROOT}", editable = true }}
     """))
     mission_dir = tmp_path / "demo"
     _write_mission(mission_dir, PID_MISSION)
@@ -115,7 +115,7 @@ def test_env_without_iterante_fails_fast(tmp_path):
     _write_mission(mission_dir, PID_MISSION)
     (mission_dir / "mission.json").write_text(json.dumps({"env": str(py)}))
 
-    from agentos.iterante.env import ensure_iterante_importable
+    from tarav.iterante.env import ensure_iterante_importable
 
     with pytest.raises(SystemExit) as ei:
         ensure_iterante_importable(mission_dir)

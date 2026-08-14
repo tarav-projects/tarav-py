@@ -5,17 +5,17 @@ from typing import Any
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.testing import AgentosTestEnvironment
-from agentos.chatlas.tagger import auto_match, load_tagger_profile, render_session
-from agentos.chatlas.time_interface import format_local_timestamp
+from tarav._core.errors import CliError
+from tarav.testing import TaravTestEnvironment
+from tarav.chatlas.tagger import auto_match, load_tagger_profile, render_session
+from tarav.chatlas.time_interface import format_local_timestamp
 
 
 def _test_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> AgentosTestEnvironment:
-    environment = AgentosTestEnvironment.create(tmp_path)
+) -> TaravTestEnvironment:
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     return environment
 
@@ -40,7 +40,7 @@ def test_load_profile_missing_config_raises(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _test_environment(monkeypatch, tmp_path)
-    with pytest.raises(CliError, match="agentos config not found"):
+    with pytest.raises(CliError, match="tarav config not found"):
         load_tagger_profile("session-type")
 
 
@@ -324,7 +324,7 @@ def test_auto_match_turn2_loads_session_model(monkeypatch: pytest.MonkeyPatch) -
     row = {"identity_hash": "ab12", "summary": {"first_user_text_excerpt": "hello"}}
     load_calls: list[dict[str, Any]] = []
 
-    import agentos.chatlas.tagger as tagger_module
+    import tarav.chatlas.tagger as tagger_module
 
     def fake_load(r: dict[str, Any]) -> dict[str, Any]:
         load_calls.append(r)
@@ -353,7 +353,7 @@ def test_auto_match_caches_session_model_across_patterns(
     row = {"identity_hash": "ab12", "summary": {"first_user_text_excerpt": "hi"}}
     load_calls: list[dict[str, Any]] = []
 
-    import agentos.chatlas.tagger as tagger_module
+    import tarav.chatlas.tagger as tagger_module
 
     def fake_load(r: dict[str, Any]) -> dict[str, Any]:
         load_calls.append(r)
@@ -407,7 +407,7 @@ def test_disagreement_record_shape() -> None:
 
 def test_auto_match_load_failure_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
     row = {"identity_hash": "ab12"}
-    import agentos.chatlas.tagger as tagger_module
+    import tarav.chatlas.tagger as tagger_module
 
     def fake_load(r: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("boom")

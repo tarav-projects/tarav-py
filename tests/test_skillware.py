@@ -7,15 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.skillware.build import (
+from tarav._core.errors import CliError
+from tarav.skillware.build import (
     SkillwareError,
     build_skill,
     check_skill,
     expand_file,
     load_skillware,
 )
-from agentos.skillware.commands import (
+from tarav.skillware.commands import (
     _cmd_skillware_check,
     _cmd_skillware_status,
 )
@@ -89,7 +89,7 @@ def test_load_skillware_requires_src(tmp_path: Path) -> None:
 
 
 def test_extract_mentions_from_backticked_dotted_names() -> None:
-    from agentos.skillware.build import extract_mentions
+    from tarav.skillware.build import extract_mentions
 
     text = (
         "Uses `Index.Ontology`, `Turn.Type::Project.Index.Gate`, "
@@ -102,7 +102,7 @@ def test_extract_mentions_from_backticked_dotted_names() -> None:
 
 
 def test_resolve_mentions_keeps_only_depot_resolving_names(tmp_path: Path) -> None:
-    from agentos.skillware.build import resolve_mentions
+    from tarav.skillware.build import resolve_mentions
 
     skill = _write_skill(tmp_path)
     skillware = load_skillware(skill)
@@ -121,15 +121,15 @@ def test_dotted_name_locator_resolves_meta_aliases(tmp_path: Path) -> None:
     assert not canonical.findings
 
     alias_lines, alias_detail = __import__(
-        "agentos.skillware.build", fromlist=["_resolve_locator"]
+        "tarav.skillware.build", fromlist=["_resolve_locator"]
     )._resolve_locator(
         skillware, "Concept.Alias", stack=(Path("references/mod.skw.md"),)
     )
     canonical_lines, canonical_detail = __import__(
-        "agentos.skillware.build", fromlist=["_resolve_locator"]
+        "tarav.skillware.build", fromlist=["_resolve_locator"]
     )._resolve_locator(skillware, "Concept.One", stack=(Path("references/mod.skw.md"),))
     collision_lines, collision_detail = __import__(
-        "agentos.skillware.build", fromlist=["_resolve_locator"]
+        "tarav.skillware.build", fromlist=["_resolve_locator"]
     )._resolve_locator(
         skillware, "Concept.Taken", stack=(Path("references/mod.skw.md"),)
     )
@@ -380,7 +380,7 @@ def test_context_assembly_bypass_requires_companion_dev_from(
     assert "claimed by" not in bypass[0].detail
     assert "references/context.skw.md" in bypass[0].detail
 
-    from agentos.skillware.build import bless_skill
+    from tarav.skillware.build import bless_skill
 
     bless_skill(skill, bypass[0].poi_hash)
     assert not any(
@@ -440,7 +440,7 @@ def test_alias_mentions_remain_literal_dependency_sync_pois(tmp_path: Path) -> N
     )
     assert first.poi_hash == second.poi_hash
 
-    from agentos.skillware.build import bless_skill
+    from tarav.skillware.build import bless_skill
 
     bless_skill(skill, first.poi_hash)
     assert not any(
@@ -510,7 +510,7 @@ def test_dangling_dependency_is_blessable(tmp_path: Path) -> None:
         "# mod\n\n> $kw: --from Gone.Block\n\nMentions `Gone.Block`.\n",
         encoding="utf-8",
     )
-    from agentos.skillware.build import bless_skill
+    from tarav.skillware.build import bless_skill
 
     poi = next(p for p in check_skill(skill).pois if p.kind == "dangling-dependency")
     assert poi.key == "Gone.Block"
@@ -718,14 +718,14 @@ def test_cli_check_uses_common_grouped_renderer(
     assert (
         sum(line == "Skillware.Linter/Derived.Stale" for line in out.splitlines()) == 1
     )
-    assert out.count("Documentation: index://agentos-pkg/") == 1
+    assert out.count("Documentation: index://tarav-pkg/") == 1
     row = next(line for line in out.splitlines() if "[ADVISORY]" in line)
     assert "references/mod.md" in row
     assert any(len(token.strip("[]")) == 10 for token in row.split())
 
 
 def test_bless_clears_derived_stale_without_touching_the_body(tmp_path: Path) -> None:
-    from agentos.skillware.build import bless_skill
+    from tarav.skillware.build import bless_skill
 
     skill = _write_skill(tmp_path)
     build_skill(skill)
@@ -767,7 +767,7 @@ def test_bless_clears_derived_stale_without_touching_the_body(tmp_path: Path) ->
 
 
 def test_bless_refuses_unblessable_and_unknown_pois(tmp_path: Path) -> None:
-    from agentos.skillware.build import bless_skill
+    from tarav.skillware.build import bless_skill
 
     skill = _write_skill(tmp_path)
     build_skill(skill)
@@ -788,7 +788,7 @@ def test_bless_refuses_unblessable_and_unknown_pois(tmp_path: Path) -> None:
 def test_cli_bless_round_trip(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from agentos.skillware.commands import _cmd_skillware_bless
+    from tarav.skillware.commands import _cmd_skillware_bless
 
     skill = _write_skill(tmp_path)
     build_skill(skill)
@@ -815,7 +815,7 @@ def test_cli_bless_round_trip(
 def test_cli_bulk_bless_clears_kind_only_for_current_situations(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from agentos.skillware.commands import _cmd_skillware_bless
+    from tarav.skillware.commands import _cmd_skillware_bless
 
     skill = _write_skill(tmp_path)
     src = skill / ".skillware" / "src" / "references" / "mod.skw.md"
@@ -862,8 +862,8 @@ def test_crlf_target_reads_ok(tmp_path: Path) -> None:
 def test_skw_backend_satisfies_surface_provider_protocol() -> None:
     # The skw-skills backend binds into the shared dependency-sync engine
     # through the SurfaceProvider protocol (Impl.Req 700, slice 2).
-    from agentos.skillware.build import _SkwSurfaceProvider
-    from agentos.skw import SurfaceProvider
+    from tarav.skillware.build import _SkwSurfaceProvider
+    from tarav.skw import SurfaceProvider
 
     assert issubclass(_SkwSurfaceProvider, SurfaceProvider)
 
@@ -871,7 +871,7 @@ def test_skw_backend_satisfies_surface_provider_protocol() -> None:
 def test_dependency_sync_findings_are_advisory() -> None:
     # The surface-agnostic engine raises the three drift kinds and marks every
     # one advisory — drift is never a gated error in any backend.
-    from agentos.skw import dependency_sync_findings
+    from tarav.skw import dependency_sync_findings
 
     ADVISORY = "advisory"
 

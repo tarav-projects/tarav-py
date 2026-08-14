@@ -1,8 +1,8 @@
 """Tests for the controlled error surface (Mechanism 1)."""
 
-from agentos.iterante.errors import ERROR_LOG_NAME, FATAL_MESSAGE, record_fatal
+from tarav.iterante.errors import ERROR_LOG_NAME, FATAL_MESSAGE, record_fatal
 
-LEAKY = "No mission-snapshot.py in /secret/.agentos/missions/demo/runs/abc123"
+LEAKY = "No mission-snapshot.py in /secret/.tarav/missions/demo/runs/abc123"
 
 
 def _boom(msg):
@@ -16,14 +16,14 @@ class TestRecordFatal:
     def test_returns_generic_message_with_no_mechanics(self, tmp_path):
         msg = record_fatal(_boom(LEAKY), log_dir=tmp_path)
         assert msg == FATAL_MESSAGE
-        for leak in ("mission-snapshot.py", "/secret", ".agentos", "runs", "abc123"):
+        for leak in ("mission-snapshot.py", "/secret", ".tarav", "runs", "abc123"):
             assert leak not in msg
 
     def test_logs_full_detail(self, tmp_path):
         record_fatal(_boom(LEAKY), log_dir=tmp_path)
         log = (tmp_path / ERROR_LOG_NAME).read_text()
         assert "mission-snapshot.py" in log
-        assert "/secret/.agentos" in log
+        assert "/secret/.tarav" in log
         assert "RuntimeError" in log
 
     def test_verbose_returns_full_traceback(self, tmp_path):

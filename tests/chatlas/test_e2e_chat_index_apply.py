@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import main
-from agentos.chatlas.chat_index import chatlas_chat_index_source
+from tarav.cli.cli import main
+from tarav.chatlas.chat_index import chatlas_chat_index_source
 
 from ._e2e_helpers import (
     _configure_chatlas,
@@ -371,8 +371,8 @@ def test_failure_before_the_swap_leaves_the_prior_surface_untouched(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from agentos._core.errors import CliError
-    import agentos.chatlas.chat_index_apply as apply_module
+    from tarav._core.errors import CliError
+    import tarav.chatlas.chat_index_apply as apply_module
 
     chatlas_root, row, plan_path, _horizons = _prepare(tmp_path, monkeypatch, capsys)
     surface = chatlas_root / "session-index" / str(row["identity_hash"])
@@ -483,7 +483,7 @@ def test_apply_refuses_a_draft_plan_and_a_held_lock(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from agentos.chatlas.chat_index_apply import LOCKS_ROOT
+    from tarav.chatlas.chat_index_apply import LOCKS_ROOT
 
     chatlas_root, row, plan_path, _horizons = _prepare(tmp_path, monkeypatch, capsys)
     draft = json.loads(plan_path.read_text(encoding="utf-8"))

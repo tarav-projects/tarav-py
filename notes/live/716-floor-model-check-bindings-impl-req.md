@@ -50,7 +50,7 @@
 - status: complete
 - change: derive agendix paths from depots and include them in configured surfaces, discovered files, parser loading, JSON inventory, and scoped reporting
 - observable result: depot-wide JSON lists `files.agendix` and an agendix-only scope is recognized without a new flag
-- check: run the existing Index linter suite and a direct CLI JSON probe against `agentos-pkg/agendix`
+- check: run the existing Index linter suite and a direct CLI JSON probe against `tarav-pkg/agendix`
 - risk: appendix-specific structural checks accidentally consuming agendix; keep their bindings and inventories distinct
 
 ### Vertical.Slice::Reviewed.Bindings
@@ -86,9 +86,9 @@
 ## Impl.Agendix
 
 - [CT] The user explicitly invoked end-to-end implementation development for this design. ^c20260801-8u
-- [CT] `Floor.Model` is the producer-independent structured input consumed by downstream interpretation: `agentos-pkg/design/107-design.md#Floor.Model`.
-- [CT] `POI.Linter` evaluates a `Floor.Model` through `POI.Check`s: `agentos-pkg/design/107-design.md#POI.Linter`.
-- [CT] detection mechanics belong to `POI.Check`, while meaning and resolution policy belong to `POI.Class`: `agentos-pkg/design/107-design.md#POI.Check`, `agentos-pkg/design/107-design.md#POI.Class`.
+- [CT] `Floor.Model` is the producer-independent structured input consumed by downstream interpretation: `tarav-pkg/design/107-design.md#Floor.Model`.
+- [CT] `POI.Linter` evaluates a `Floor.Model` through `POI.Check`s: `tarav-pkg/design/107-design.md#POI.Linter`.
+- [CT] detection mechanics belong to `POI.Check`, while meaning and resolution policy belong to `POI.Class`: `tarav-pkg/design/107-design.md#POI.Check`, `tarav-pkg/design/107-design.md#POI.Class`.
 
 ## Impl.Log
 
@@ -96,4 +96,4 @@
 - 2026-08-01: Implemented `LinterCheckBinding` and `bind_floor_check`; parser-backed checks now receive explicit projections selected by `IndexSurfaceKind` while retaining complete-state access for cross-surface evidence.
 - 2026-08-01: Added depot-derived agendix surfaces to structural discovery, markdown scanning, public file inventory, parser loading, and ordinary `--scope` resolution without adding a CLI input flag.
 - 2026-08-01: Bound Chatlas grounding provenance to chapter/appendix/agendix and approval/verbatim checks to chapter/appendix only.
-- 2026-08-01: Verification passed: `agentos-py` 600 tests, `agentos-chatlas-py` 298 tests, Ruff on changed Python surfaces, and a real `agentos-pkg/agendix` scoped probe with 21 inventoried files and zero findings.
+- 2026-08-01: Verification passed: `agentos-py` 600 tests, `agentos-chatlas-py` 298 tests, Ruff on changed Python surfaces, and a real `tarav-pkg/agendix` scoped probe with 21 inventoried files and zero findings.

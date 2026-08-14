@@ -13,7 +13,7 @@
   - **codex materialize / any home write** — read-only on homes throughout (capture reads homes; activate writes only the registry).
   - re-logging mislabeled homes into their named accounts (that is a login/materialize task; this Impl.Req only makes status *report* the mismatch).
   - claude, copilot, monitor, and the legacy codex reconcile/promote cluster (deferred codex teardown).
-- **Source context:** this session's claude migration (the template) + `654`/`655`. Conceptual home: `agentos-pkg` `Account.Management` (`Auth.Data.Capture`, `Auth.Data.Activation`, `Account.Identity`, `Unknown.Account`, `Auth.Data.Aligned`/`Drift`).
+- **Source context:** this session's claude migration (the template) + `654`/`655`. Conceptual home: `tarav-pkg` `Account.Management` (`Auth.Data.Capture`, `Auth.Data.Activation`, `Account.Identity`, `Unknown.Account`, `Auth.Data.Aligned`/`Drift`).
 
 ## Impl.Index
 

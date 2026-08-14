@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.bloberia import BloberiaDepot, InvalidBloberiaInputError
+from tarav.bloberia import BloberiaDepot, InvalidBloberiaInputError
 
 
 def _depot(tmp_path: Path) -> BloberiaDepot:

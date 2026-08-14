@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.tournament import (
+from tarav.tournament import (
     EnvelopeShadowedError,
     MatchIdentityRequiredError,
     TournamentStore,
@@ -189,7 +189,7 @@ def test_a_four_player_ordering_round_trips(tmp_path: Path) -> None:
 
 
 def test_an_ordering_that_is_not_a_permutation_is_rejected(tmp_path: Path) -> None:
-    from agentos.tournament import TournamentError
+    from tarav.tournament import TournamentError
 
     store = _store(tmp_path)
     tournament_id = _tournament(store)

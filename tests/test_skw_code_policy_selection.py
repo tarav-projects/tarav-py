@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agentos.skillware.commands import _skw_check_kinds
+from tarav.skillware.commands import _skw_check_kinds
 
 
 def _kind(code):
@@ -17,7 +17,7 @@ def test_policy_kinds_are_default_on_reportable() -> None:
 
 
 def test_policy_kinds_are_skippable() -> None:
-    from agentos.poi import check_selector, resolve_enabled_checks
+    from tarav.poi import check_selector, resolve_enabled_checks
 
     kinds = _skw_check_kinds()
     enabled = resolve_enabled_checks(kinds, include=(), exclude=("illegal-attachment",))

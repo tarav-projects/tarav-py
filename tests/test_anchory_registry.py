@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.anchory import AnchoryDepot
-from agentos.anchory.registry import (
+from tarav.anchory import AnchoryDepot
+from tarav.anchory.registry import (
     discover_resolve,
     read_registry,
     record_depot_touch,
@@ -17,8 +17,8 @@ from agentos.anchory.registry import (
 @pytest.fixture()
 def registry_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     registry = tmp_path / "registry" / "registry.json"
-    monkeypatch.setenv("AGENTOS_ANCHORY_REGISTRY", str(registry))
-    monkeypatch.setenv("AGENTOS_ANCHORY_GLOBAL_DEPOT", str(tmp_path / "global-depot"))
+    monkeypatch.setenv("TARAV_ANCHORY_REGISTRY", str(registry))
+    monkeypatch.setenv("TARAV_ANCHORY_GLOBAL_DEPOT", str(tmp_path / "global-depot"))
     return registry
 
 
@@ -91,7 +91,7 @@ def test_equivalent_touch_does_not_rewrite_recent_registry_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import agentos.anchory.registry as registry_module
+    import tarav.anchory.registry as registry_module
 
     depot = _project_depot(tmp_path)
     depot.register({"v": 1}, anchor="stable")

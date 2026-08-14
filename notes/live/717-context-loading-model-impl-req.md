@@ -61,7 +61,7 @@
 ### Vertical.Slice::Documentation.And.Adoption
 
 - status: complete
-- change: document the syntax and command in the managed `agentos-skillware` surfaces, update `agentos-py/AGENTS.md`, declare the direct `SKILL.md -> references/capture.md` path in `agentos-hugentics`, and rebuild both managed skills
+- change: document the syntax and command in the managed `tarav-skillware` surfaces, update `agentos-py/AGENTS.md`, declare the direct `SKILL.md -> references/capture.md` path in `tarav-hugentics`, and rebuild both managed skills
 - observable result: the real Hugentics capture module projects successfully through the installed CLI and no Skillware drift remains
 - check: run the real projection, both affected Skillware builds/checks, focused Skillware tests, Ruff, and `git diff --check`
 
@@ -76,7 +76,7 @@
 
 - status: complete
 - change: author one addressed runner-facing Batchy runtime contract, materialize it into Batchy and Hugentics `SKILL.md` files, consolidate duplicated Hugentics Batchy contracts, and remove the reverse Batchy-to-Hugentics build dependency
-- observable result: Hugentics children depend on one local materialized Batchy contract whose exact source resolves to `agentos-batchy-skills`, while Hugentics-specific command and authority contracts remain locally owned
+- observable result: Hugentics children depend on one local materialized Batchy contract whose exact source resolves to `tarav-batchy-skills`, while Hugentics-specific command and authority contracts remain locally owned
 - check: build/check both managed skills, resolve every real Hugentics projection, verify copy equality and the directional package registry, and run `git diff --check`
 
 ## Parked.Extensions
@@ -105,7 +105,7 @@ These extensions are intentionally remembered but are outside this implementatio
 - Hugentics `references/capture.md` produces a real `Projected.Context`
 - repeatable `--loading-dep` locators resolve to addressed content materially present in an earlier provider on every path
 - all routed Hugentics children declare their fundamental root-contract dependencies without duplicating those contracts locally
-- universal Batchy runtime behavior is copied exactly from one addressed `agentos-batchy-skills` provider into consuming root skills; concrete arguments, commands, and domain authority remain local extensions
+- universal Batchy runtime behavior is copied exactly from one addressed `tarav-batchy-skills` provider into consuming root skills; concrete arguments, commands, and domain authority remain local extensions
 - affected tests, static checks, builds, and Skillware checks pass
 - parked extensions remain explicit and unimplemented
 
@@ -113,7 +113,7 @@ These extensions are intentionally remembered but are outside this implementatio
 
 - [CT] The user accepted the first local path slice, required skill-local `AGENTS.md` files to be representable, and requested the later subsystem work remain parked in this artifact. ^c20260802-1u
 - [CT] The user explicitly invoked the end-to-end implementation workflow for this slice. ^c20260802-1u
-- [CT] The provisional conceptual source is `agentos-md/skills/agentos-pkg/agendix/Context.Loading.Path-agendix.md#Context.Loading.Path/Agendix/Context.Loading.Model`.
+- [CT] The provisional conceptual source is `agentos-md/skills/tarav-pkg/agendix/Context.Loading.Path-agendix.md#Context.Loading.Path/Agendix/Context.Loading.Model`.
 
 ## Impl.Log
 

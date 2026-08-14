@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.index.model import index_line_anchor_triplet_hash
-from agentos.chatlas.anchory import (
+from tarav._core.errors import CliError
+from tarav.index.model import index_line_anchor_triplet_hash
+from tarav.chatlas.anchory import (
     CHATLAS_LINE_ANCHOR_DOSSIER_SCHEMA,
     bind_support_set_to_index_line,
     parse_line_anchor_dossier,

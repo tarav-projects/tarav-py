@@ -13,10 +13,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentos.chatlas.normalization.session_model._claude import (
+from tarav.chatlas.normalization.session_model._claude import (
     _normalize_claude_session,
 )
-from agentos.chatlas.normalization.session_model.events import (
+from tarav.chatlas.normalization.session_model.events import (
     SEMANTIC_EVENT_ENVELOPE_KEYS,
 )
 

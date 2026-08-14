@@ -32,9 +32,9 @@
 ## Impl.Agendix
 
 - touched: ^c20260812-8u — cleanup scope and autonomous execution authority.
-- touched: `index://agentos-pkg/Floor.Model` — decomposition must preserve the dependable domain models consumed downstream.
-- touched: `index://agentos-pkg/Normalization.Pipeline` — native Markdown remains the input boundary; cleanup changes organization, not topology.
-- touched: `index://agentos-pkg/Agent.Navigable.Codebase` — private phases and ownership should remain legible to later agents.
+- touched: `index://tarav-pkg/Floor.Model` — decomposition must preserve the dependable domain models consumed downstream.
+- touched: `index://tarav-pkg/Normalization.Pipeline` — native Markdown remains the input boundary; cleanup changes organization, not topology.
+- touched: `index://tarav-pkg/Agent.Navigable.Codebase` — private phases and ownership should remain legible to later agents.
 
 ## Execution.Plan
 

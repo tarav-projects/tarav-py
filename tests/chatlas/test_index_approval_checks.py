@@ -7,18 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from agentos.index.linter import (
+from tarav.index.linter import (
     build_linter_config,
     render_linter_json,
     render_linter_text,
     run_linter,
 )
-from agentos.index.poi_catalog import discover_poi_catalog
-from agentos.testing import AgentosTestEnvironment
-from agentos.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
-from agentos.cli.cli import main
-from agentos.chatlas.normal_turn import normal_turn_ref
-from agentos.chatlas.normalization.session_model.events import normal_turn_id
+from tarav.index.poi_catalog import discover_poi_catalog
+from tarav.testing import TaravTestEnvironment
+from tarav.wayfinder import WayfinderReferenceRoot, WayfinderRegistry
+from tarav.cli.cli import main
+from tarav.chatlas.normal_turn import normal_turn_ref
+from tarav.chatlas.normalization.session_model.events import normal_turn_id
 
 from ._helpers import write_chatlas_codex_source, write_text_file
 
@@ -99,7 +99,7 @@ def _rollout(path: Path, *, session_id: str) -> None:
 @pytest.fixture()
 def approval_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
     monkeypatch.chdir(tmp_path)
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"
     session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675aa1"
@@ -130,12 +130,12 @@ def approval_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
     )
     identity_hash = capsys.readouterr().out.strip().splitlines()[-1]
 
-    from agentos.chatlas.anchory import chatlas_anchory_depot
-    from agentos.chatlas.index_query import (
+    from tarav.chatlas.anchory import chatlas_anchory_depot
+    from tarav.chatlas.index_query import (
         select_materialization_row,
         select_one_chatlas_index_row,
     )
-    from agentos.chatlas.views import load_chatlas_session_model
+    from tarav.chatlas.views import load_chatlas_session_model
 
     depot = chatlas_anchory_depot()
     session = select_one_chatlas_index_row(
@@ -176,7 +176,7 @@ def approval_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
     index_depot = tmp_path / "depot"
     _write(
         index_depot / "000-INDEX.md",
-        "# Agentos Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
+        "# Tarav Index\n\n## design\n\n- `design/100-design.md` — Example.Concept\n",
     )
     ctx["index_depot"] = index_depot
     return ctx
@@ -200,13 +200,13 @@ def _lint(index_depot: Path, *check_factories, coverage=()):
 
 
 def _selector(factory) -> str:
-    from agentos.poi import check_selector
+    from tarav.poi import check_selector
 
     return check_selector(factory().code)
 
 
 def _register(ctx, anchor: str, *, gates=None, member_event=None) -> None:
-    from agentos.chatlas.anchory import bind_support_set_to_index_line
+    from tarav.chatlas.anchory import bind_support_set_to_index_line
 
     member_event = member_event or ctx["approval_event"]
     member = ctx["ref_for"](member_event)
@@ -242,7 +242,7 @@ def _line(anchor: str) -> str:
 
 
 def test_hidden_by_default_no_findings(approval_setup) -> None:
-    from agentos.chatlas.index_checks import (
+    from tarav.chatlas.index_checks import (
         chatlas_line_approval_check,
         chatlas_line_verbatim_gate_check,
     )
@@ -274,7 +274,7 @@ def test_hidden_by_default_no_findings(approval_setup) -> None:
 
 
 def test_line_approval_missing_when_only_base_support(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_approval_check
+    from tarav.chatlas.index_checks import chatlas_line_approval_check
 
     ctx = approval_setup
     _register(ctx, "c20260308-0u")  # no approval type
@@ -285,7 +285,7 @@ def test_line_approval_missing_when_only_base_support(approval_setup) -> None:
 
 
 def test_line_approval_present_with_approval_turn(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_approval_check
+    from tarav.chatlas.index_checks import chatlas_line_approval_check
 
     ctx = approval_setup
     _register(ctx, "c20260308-0u", gates=_tokenized_gates(ctx))
@@ -297,7 +297,7 @@ def test_line_approval_present_with_approval_turn(approval_setup) -> None:
 
 
 def test_verbatim_gate_unreviewed_without_token(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_verbatim_gate_check
+    from tarav.chatlas.index_checks import chatlas_line_verbatim_gate_check
 
     ctx = approval_setup
     _register(
@@ -322,7 +322,7 @@ def test_verbatim_gate_unreviewed_without_token(approval_setup) -> None:
 
 
 def test_verbatim_gate_passes_with_verifying_token(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_verbatim_gate_check
+    from tarav.chatlas.index_checks import chatlas_line_verbatim_gate_check
 
     ctx = approval_setup
     _register(ctx, "c20260308-0u", gates=_tokenized_gates(ctx))
@@ -336,7 +336,7 @@ def test_verbatim_gate_passes_with_verifying_token(approval_setup) -> None:
 
 
 def test_verbatim_gate_ignores_case_and_whitespace(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_verbatim_gate_check
+    from tarav.chatlas.index_checks import chatlas_line_verbatim_gate_check
 
     ctx = approval_setup
     _register(ctx, "c20260308-0u", gates=_tokenized_gates(ctx))
@@ -355,7 +355,7 @@ def test_verbatim_gate_ignores_case_and_whitespace(approval_setup) -> None:
 def test_verbatim_gate_keeps_non_whitespace_characters_significant(
     approval_setup,
 ) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_verbatim_gate_check
+    from tarav.chatlas.index_checks import chatlas_line_verbatim_gate_check
 
     ctx = approval_setup
     _register(ctx, "c20260308-0u", gates=_tokenized_gates(ctx))
@@ -373,7 +373,7 @@ def test_verbatim_gate_keeps_non_whitespace_characters_significant(
 
 
 def test_verbatim_gate_errors_on_wrong_token(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_verbatim_gate_check
+    from tarav.chatlas.index_checks import chatlas_line_verbatim_gate_check
 
     ctx = approval_setup
     _register(
@@ -390,7 +390,7 @@ def test_verbatim_gate_errors_on_wrong_token(approval_setup) -> None:
 
 
 def test_verbatim_gate_requires_explicit_approve_command(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_verbatim_gate_check
+    from tarav.chatlas.index_checks import chatlas_line_verbatim_gate_check
 
     ctx = approval_setup
     _register(
@@ -411,7 +411,7 @@ def test_verbatim_gate_requires_explicit_approve_command(approval_setup) -> None
 
 
 def test_verbatim_gate_requires_assistant_proposal_role(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_verbatim_gate_check
+    from tarav.chatlas.index_checks import chatlas_line_verbatim_gate_check
 
     ctx = approval_setup
     _register(
@@ -429,7 +429,7 @@ def test_verbatim_gate_requires_assistant_proposal_role(approval_setup) -> None:
 
 
 def test_verbatim_gate_requires_proposal_before_approval(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_verbatim_gate_check
+    from tarav.chatlas.index_checks import chatlas_line_verbatim_gate_check
 
     ctx = approval_setup
     _register(
@@ -447,7 +447,7 @@ def test_verbatim_gate_requires_proposal_before_approval(approval_setup) -> None
 
 
 def test_gate_approval_turn_is_independent_from_support_membership(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_line_verbatim_gate_check
+    from tarav.chatlas.index_checks import chatlas_line_verbatim_gate_check
 
     ctx = approval_setup
     _register(
@@ -467,7 +467,7 @@ def test_gate_approval_turn_is_independent_from_support_membership(approval_setu
 
 
 def test_approval_is_line_local_across_multiple_references(approval_setup) -> None:
-    from agentos.chatlas.index_checks import (
+    from tarav.chatlas.index_checks import (
         chatlas_line_approval_check,
         chatlas_line_verbatim_gate_check,
     )
@@ -497,7 +497,7 @@ def test_approval_is_line_local_across_multiple_references(approval_setup) -> No
 
 
 def test_block_grounding_requires_resolved_nonempty_support(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_grounding_provenance_check
+    from tarav.chatlas.index_checks import chatlas_grounding_provenance_check
 
     ctx = approval_setup
     _register(ctx, "c20260308-0u")
@@ -527,7 +527,7 @@ def test_block_grounding_requires_resolved_nonempty_support(approval_setup) -> N
 
 
 def test_chatlas_tag_poi_renders_its_index_backed_class(approval_setup) -> None:
-    from agentos.chatlas.index_checks import chatlas_grounding_provenance_check
+    from tarav.chatlas.index_checks import chatlas_grounding_provenance_check
 
     ctx = approval_setup
     _register(ctx, "c20260308-0u")
@@ -535,7 +535,7 @@ def test_chatlas_tag_poi_renders_its_index_backed_class(approval_setup) -> None:
         ctx["index_depot"] / "design" / "100-design.md",
         _line("c20260308-0a"),
     )
-    package = ctx["index_depot"].parent / "agentos-chatlas-pkg"
+    package = ctx["index_depot"].parent / "tarav-chatlas-pkg"
     _write(
         package / "000-INDEX.md",
         "# Chatlas Index\n\n## poi\n\n"
@@ -547,7 +547,7 @@ def test_chatlas_tag_poi_renders_its_index_backed_class(approval_setup) -> None:
         "- [DF] a Chatlas citation key lacks its user-evidence tag\n",
     )
     WayfinderRegistry().register(
-        WayfinderReferenceRoot(type="package.skill", id="agentos-chatlas-pkg"),
+        WayfinderReferenceRoot(type="package.skill", id="tarav-chatlas-pkg"),
         package,
     )
 
@@ -564,7 +564,7 @@ def test_chatlas_tag_poi_renders_its_index_backed_class(approval_setup) -> None:
         for item in payload["poi_classes"]
         if item["reference"]["address"] == "Index.Linter/Anchor.Chatlas.Tag"
     )
-    assert group["reference"]["root"]["id"] == "agentos-chatlas-pkg"
+    assert group["reference"]["root"]["id"] == "tarav-chatlas-pkg"
     assert group["description"] == (
         "a Chatlas citation key lacks its user-evidence tag"
     )

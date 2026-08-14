@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.chatlas.annotations import (
+from tarav.chatlas.annotations import (
     ANNOTATIONS_ROOT,
     _read_shard,
     _shard_path,

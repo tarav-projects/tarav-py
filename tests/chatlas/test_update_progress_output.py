@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agentos.chatlas.delta_scan import _emit_update_summary
+from tarav.chatlas.delta_scan import _emit_update_summary
 
 
 def test_update_progress_summary_places_total_last_and_formats_blocks() -> None:

@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentos.skillware.build import check_project
+from tarav.skillware.build import check_project
 
 
 def _project(root: Path, code: str) -> Path:
-    (root / ".agentos").mkdir()
-    (root / ".agentos" / "project.json").write_text("{}", encoding="utf-8")
+    (root / ".tarav").mkdir()
+    (root / ".tarav" / "project.json").write_text("{}", encoding="utf-8")
     (root / ".skw").mkdir()
     (root / ".skw" / "skw.json").write_text(
         json.dumps(
@@ -87,7 +87,7 @@ def test_python_scanner_failure_gates_code_policy_checks(tmp_path: Path) -> None
 
 
 def test_non_skw_annotation_is_default_on(tmp_path: Path) -> None:
-    from agentos.skillware.commands import (
+    from tarav.skillware.commands import (
         _enabled_poi_selectors,
         _filter_pois,
         _skw_check_kinds,
@@ -129,7 +129,7 @@ def test_comment_poi_identity_changes_when_comment_moves(tmp_path: Path) -> None
 
 
 def test_exact_project_blessing_suppresses_only_current_comment(tmp_path: Path) -> None:
-    from agentos.skillware.build import bless_code_poi
+    from tarav.skillware.build import bless_code_poi
 
     project = _project(tmp_path, CODE)
     before = _non_skw(project)

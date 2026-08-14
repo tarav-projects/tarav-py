@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import build_parser, main
+from tarav.cli.cli import build_parser, main
 
 
 PROJECT_ID = "344da31c-376e-4141-a9cb-853590db8cc1"
@@ -43,8 +43,8 @@ def _git(repo: Path, *args: str) -> str:
 
 def _project(tmp_path: Path) -> tuple[Path, Path, str]:
     root = tmp_path / "project"
-    (root / ".agentos").mkdir(parents=True)
-    (root / ".agentos" / "project.json").write_text(
+    (root / ".tarav").mkdir(parents=True)
+    (root / ".tarav" / "project.json").write_text(
         json.dumps(
             {
                 "class": "agentos.project",
@@ -83,7 +83,7 @@ def test_edition_history_cli_round_trip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "agentos.chatlas.anchory.resolve_event_support_set_record",
+        "tarav.chatlas.anchory.resolve_event_support_set_record",
         lambda _support: (),
     )
     root, source, commit = _project(tmp_path)
@@ -152,7 +152,7 @@ def test_project_check_enforces_edition_history_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "agentos.chatlas.anchory.resolve_event_support_set_record",
+        "tarav.chatlas.anchory.resolve_event_support_set_record",
         lambda _support: (),
     )
     root, source, commit = _project(tmp_path)

@@ -12,7 +12,7 @@
   - **all non-claude providers — ignore them entirely.** Do not touch codex/copilot materialize code, their CLI branches, or their tests. This Impl.Req is claude-only; other providers are a separate concern handled at their own cutover.
   - bulk/multi-home materialize, profile-driven home selection — the primitive writes **one** `--home`. Bulk is a later workflow on top.
   - run-path auto-materialize / auto-promote (already removed / separately deferred). Materialize stays **explicit, user-invoked only**.
-- **Source context:** this session's hand-materialize demo; predecessor `654-claude-status-new-model-impl-req.md`. Conceptual home: `agentos-pkg` `Account.Management` (`Auth.Data.Materialization`, `Capture.Over.Materialization`, `Active.Auth.Data`).
+- **Source context:** this session's hand-materialize demo; predecessor `654-claude-status-new-model-impl-req.md`. Conceptual home: `tarav-pkg` `Account.Management` (`Auth.Data.Materialization`, `Capture.Over.Materialization`, `Active.Auth.Data`).
 
 ## Impl.Index
 

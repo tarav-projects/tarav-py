@@ -4,17 +4,17 @@
 
 - **symptom:** `agentos index linter --depot <depot> --scope <depot>/agendix[/file.md]` fails with `Index.Linter/Surface.Invalid — Configured --scope path matches no configured linter file`, even though the depot-wide run does lint agendix files.
 - **status:** open
-- **found:** 2026-07-15, during an agendix capture verification pass on the `agentos-pkg` depot (`agendix/Normalization.Pipeline::Account.Usage.Model-agendix.md`).
+- **found:** 2026-07-15, during an agendix capture verification pass on the `tarav-pkg` depot (`agendix/Normalization.Pipeline::Account.Usage.Model-agendix.md`).
 
 ## Repro
 
 ```
 cd agentos-md
-agentos index linter --depot skills/agentos-pkg
+agentos index linter --depot skills/tarav-pkg
 # → 0 errors, 20 checks passed (agendix typed-line/anchor checks included)
 
-agentos index linter --depot skills/agentos-pkg --scope skills/agentos-pkg/agendix
-# → [ERROR] Index.Linter/Surface.Invalid @ skills/agentos-pkg/agendix
+agentos index linter --depot skills/tarav-pkg --scope skills/tarav-pkg/agendix
+# → [ERROR] Index.Linter/Surface.Invalid @ skills/tarav-pkg/agendix
 ```
 
 Same error when scoping to an individual agendix file. Scoping to `design/` or `appendix/` paths works.

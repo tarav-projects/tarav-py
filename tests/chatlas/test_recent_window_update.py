@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import main
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import main
 from ._helpers import captured_json, write_chatlas_codex_source, write_text_file
 
 FRESH_ID = "019ccafa-1111-7000-aaaa-000000000001"
@@ -62,7 +62,7 @@ def _write_codex_session(
 
 
 def _isolate_codex(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"
     now = time.time()

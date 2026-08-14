@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentos.index.model import (
+from tarav.index.model import (
     BlockHeading,
     CodeFence,
     Diagnostic,
@@ -191,7 +191,7 @@ def test_index_model_parses_router_dialects_depot_and_anchor_queries(
 
 
 def test_anchor_spans_accept_namespace_prefix_and_tag(tmp_path: Path) -> None:
-    from agentos.index.model import parse_index_file
+    from tarav.index.model import parse_index_file
 
     path = tmp_path / "100-design.md"
     _write(

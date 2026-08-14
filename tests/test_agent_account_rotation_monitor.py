@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.auth_method import AuthData
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.auth_method import AuthData
+from tarav.testing import TaravTestEnvironment
 
 ACC = "acc"
 
@@ -25,10 +25,10 @@ def _codex_payload(exp: int) -> dict[str, object]:
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from agentos._core.project import agentos_home_dir
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from tarav._core.project import tarav_home_dir
 
-    home_root = agentos_home_dir()
+    home_root = tarav_home_dir()
     prov = home_root / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
     (prov / "accounts.json").write_text(json.dumps({
@@ -40,8 +40,8 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def _seed_capture(payload: dict[str, object]) -> str:
-    from agentos.agent import auth_registry as R
-    from agentos.agent.account_status import AccountIdentity
+    from tarav.agent import auth_registry as R
+    from tarav.agent.account_status import AccountIdentity
 
     ref = R.store_artifact("codex", AuthData(payload=payload))
     R.append_capture("codex", account="br", method="file", auth_class="auth-json",
@@ -73,9 +73,9 @@ def test_sweep_rotate_only_moves_active_not_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.accounts_log import read_recent_events
-    from agentos.agent.monitor.account_rotation import sweep_rotations
+    from tarav.agent import auth_registry as R
+    from tarav.agent.accounts_log import read_recent_events
+    from tarav.agent.monitor.account_rotation import sweep_rotations
 
     stale_payload = _codex_payload(exp=1_000_000_000)
     home = _home(tmp_path, stale_payload)
@@ -99,8 +99,8 @@ def test_sweep_materialize_writes_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.monitor.account_rotation import sweep_rotations
+    from tarav.agent import auth_registry as R
+    from tarav.agent.monitor.account_rotation import sweep_rotations
 
     stale_payload = _codex_payload(exp=1_000_000_000)
     fresher_payload = _codex_payload(exp=2_000_000_000)
@@ -119,10 +119,10 @@ def test_workflow_loop_rotates_on_alarm_and_writes_block(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.monitor.clock import ACCOUNT_ROTATION_PERIODIC_ALARM, MonitorClockSnapshot
-    from agentos.agent.monitor.models import MonitorFrame, MonitorState
-    from agentos.agent.monitor.workflows import AccountRotationWorkflow
+    from tarav.agent import auth_registry as R
+    from tarav.agent.monitor.clock import ACCOUNT_ROTATION_PERIODIC_ALARM, MonitorClockSnapshot
+    from tarav.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.agent.monitor.workflows import AccountRotationWorkflow
 
     stale_payload = _codex_payload(exp=1_000_000_000)
     home = _home(tmp_path, stale_payload)
@@ -150,9 +150,9 @@ def test_materialize_sweep_writes_home_and_records(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.accounts_log import read_recent_events
-    from agentos.agent.monitor.account_rotation import materialize_sweep
+    from tarav.agent import auth_registry as R
+    from tarav.agent.accounts_log import read_recent_events
+    from tarav.agent.monitor.account_rotation import materialize_sweep
 
     stale_payload = _codex_payload(exp=1_000_000_000)
     fresher_payload = _codex_payload(exp=2_000_000_000)
@@ -175,7 +175,7 @@ def test_materialize_sweep_returns_skipped_results(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from agentos.agent.monitor.account_rotation import materialize_sweep
+    from tarav.agent.monitor.account_rotation import materialize_sweep
 
     home = _empty_home(tmp_path)
     _profile(home_root, [home])
@@ -194,7 +194,7 @@ def test_materialize_sweep_returns_provider_error_results(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    import agentos.agent.monitor.account_rotation as account_rotation
+    import tarav.agent.monitor.account_rotation as account_rotation
 
     monkeypatch.setattr(account_rotation, "providers_with_auth_methods", lambda: ("codex",))
 
@@ -216,10 +216,10 @@ def test_workflow_materialize_alarm_writes_home_and_refreshes_block(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.monitor.clock import MONITOR_MATERIALIZE_ALARM, MonitorClockSnapshot
-    from agentos.agent.monitor.models import MonitorFrame, MonitorState
-    from agentos.agent.monitor.workflows import AccountRotationWorkflow
+    from tarav.agent import auth_registry as R
+    from tarav.agent.monitor.clock import MONITOR_MATERIALIZE_ALARM, MonitorClockSnapshot
+    from tarav.agent.monitor.models import MonitorFrame, MonitorState
+    from tarav.agent.monitor.workflows import AccountRotationWorkflow
 
     stale_payload = _codex_payload(exp=1_000_000_000)
     fresher_payload = _codex_payload(exp=2_000_000_000)
@@ -252,7 +252,7 @@ def test_workflow_materialize_alarm_writes_home_and_refreshes_block(
 
 
 def test_materialize_status_block_omits_aligned_results() -> None:
-    from agentos.agent.monitor.account_rotation import materialize_status_block_rows
+    from tarav.agent.monitor.account_rotation import materialize_status_block_rows
 
     rows = materialize_status_block_rows(
         {
@@ -280,9 +280,9 @@ def test_sweep_writes_no_monitor_log_rotation_line(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     home_root = _env(monkeypatch, tmp_path)
-    from agentos.agent import auth_registry as R
-    from agentos.agent.monitor.account_rotation import sweep_rotations
-    from agentos.agent.monitor_log import monitor_log_dir
+    from tarav.agent import auth_registry as R
+    from tarav.agent.monitor.account_rotation import sweep_rotations
+    from tarav.agent.monitor_log import monitor_log_dir
 
     stale = _seed_capture(_codex_payload(exp=1_000_000_000))
     _seed_capture(_codex_payload(exp=2_000_000_000))
@@ -298,7 +298,7 @@ def test_sweep_writes_no_monitor_log_rotation_line(
 
 
 def test_rotation_block_rows_empty_and_populated() -> None:
-    from agentos.agent.monitor.account_rotation import rotation_block_rows
+    from tarav.agent.monitor.account_rotation import rotation_block_rows
 
     empty = rotation_block_rows([])
     assert len(empty) == 1 and "no rotations" in empty[0].text.lower()

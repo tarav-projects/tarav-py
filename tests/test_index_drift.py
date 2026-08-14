@@ -1,7 +1,7 @@
 """Index backend on the shared linter core (Impl.Req 700, slice 3).
 
 Proves the extensibility point: the index depot plugs into the surface-agnostic
-`agentos.skw.network` engine through `IndexSurfaceProvider`, and the edge-free
+`tarav.skw.network` engine through `IndexSurfaceProvider`, and the edge-free
 `dangling_mention_findings` fires exactly on a mention whose concept was
 removed. Runs over a controlled fixture where every concept is a heading, so
 the headings-only resolver is complete — the real-index resolver gap is
@@ -10,12 +10,12 @@ deliberately out of scope (see the Impl.Req Impl.Log).
 
 from pathlib import Path
 
-from agentos.index.drift import (
+from tarav.index.drift import (
     IndexSurfaceProvider,
     index_dangling_mentions,
     index_depot_collisions,
 )
-from agentos.skw import SurfaceProvider, dangling_mention_findings
+from tarav.skw import SurfaceProvider, dangling_mention_findings
 
 ADVISORY = "advisory"
 

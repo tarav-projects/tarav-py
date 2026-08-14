@@ -35,7 +35,7 @@ MUTED = "#6e665e"
 RAW_SCRIPT_PATH = Path(sys.argv[0]) if sys.argv and sys.argv[0] else Path(__file__)
 SCRIPT_PATH = RAW_SCRIPT_PATH.absolute()
 REPO_ROOT = SCRIPT_PATH.parents[1]
-DEFAULT_TAPE_ROOT = Path.home() / ".agentos" / "chat-account-stats" / "history"
+DEFAULT_TAPE_ROOT = Path.home() / ".tarav" / "chat-account-stats" / "history"
 DEFAULT_OUTPUT_DIR = SCRIPT_PATH.parent / "plots"
 
 

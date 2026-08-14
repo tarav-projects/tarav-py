@@ -11,9 +11,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agentos._core.errors import CliError
-from agentos.index.model import KernelLine, index_line_statement_parts, parse_depot
-from agentos.chatlas.anchory import (
+from tarav._core.errors import CliError
+from tarav.index.model import KernelLine, index_line_statement_parts, parse_depot
+from tarav.chatlas.anchory import (
     CHATLAS_LINE_ANCHOR_DOSSIER_SCHEMA,
     CHATLAS_NAMESPACE,
     CHATLAS_SUPPORT_SET_SCHEMA,
@@ -22,7 +22,7 @@ from agentos.chatlas.anchory import (
     chatlas_anchory_depot,
     parse_line_anchor_dossier,
 )
-from agentos.chatlas.normal_turn import parse_normal_turn_ref
+from tarav.chatlas.normal_turn import parse_normal_turn_ref
 
 
 LEGACY_LINE_SCHEMAS = {
@@ -45,7 +45,7 @@ LEGACY_RECORD_FIELDS = {
         "issue_context",
     },
 }
-OLD_CONTENT_SCHEMA = "agentos.index-line-content.v1"
+OLD_CONTENT_SCHEMA = "tarav.index-line-content.v1"
 
 
 def _old_content_hash(source: str) -> str:

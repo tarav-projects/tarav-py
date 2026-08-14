@@ -14,7 +14,7 @@
   - `capture` / `activate` CLI commands (next Impl.Req).
   - codex & copilot cutover — they still use the shared old machinery; do **not** delete shared pieces or their provider paths here.
   - profile-expectation drift semantics beyond the candidate gate (deferred — see Index block `Status.Home.Centric`).
-- **Source context:** design session (this chat). Companion/predecessor: `653-account-management-rebuild-impl-req.md`. Conceptual home: `agentos-pkg` `Account.Management` appendix (`Home.State`, `Auth.Data`, `Auth.Ref`, `Auth.Data.Aligned`, `Auth.Data.Drift`, `Auth.Registry`, `Account.Model:Auth.Method`).
+- **Source context:** design session (this chat). Companion/predecessor: `653-account-management-rebuild-impl-req.md`. Conceptual home: `tarav-pkg` `Account.Management` appendix (`Home.State`, `Auth.Data`, `Auth.Ref`, `Auth.Data.Aligned`, `Auth.Data.Drift`, `Auth.Registry`, `Account.Model:Auth.Method`).
 - **Already done in this session (do not redo):**
   - `accounts.json` migrated to settings-only shape for all 3 providers (state stripped; backup at `~/.agentos/accounts/_migration-backup-20260625T160418/`).
   - claude profiles re-pointed to `account-id/method` addressing (`browser-om → om/browser`, etc.).

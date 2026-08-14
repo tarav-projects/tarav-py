@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from agentos.workspaces.manifest import (
+from tarav.workspaces.manifest import (
     ManifestError,
     Status,
     read_manifest,
     render_agents_md,
 )
-from agentos.workspaces.root import WORKSPACES_ENV_VAR, resolve_workspaces_root
+from tarav.workspaces.root import WORKSPACES_ENV_VAR, resolve_workspaces_root
 
 FULL = """# 20260809-my-run
 
@@ -28,7 +28,7 @@ FULL = """# 20260809-my-run
 
 def test_the_root_defaults_under_the_agentos_home(monkeypatch) -> None:
     monkeypatch.delenv(WORKSPACES_ENV_VAR, raising=False)
-    assert resolve_workspaces_root(None).parts[-2:] == (".agentos", "workspaces")
+    assert resolve_workspaces_root(None).parts[-2:] == (".tarav", "workspaces")
 
 
 def test_an_explicit_root_wins_over_the_environment(

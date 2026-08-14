@@ -6,15 +6,15 @@ from uuid import UUID
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment, write_project_marker
-from agentos.cli.cli import build_parser, main
+from tarav.testing import TaravTestEnvironment, write_project_marker
+from tarav.cli.cli import build_parser, main
 from _helpers import captured_json, read_jsonl_file, write_text_file
 
 
 def _init_project(
     root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> Path:
-    environment = AgentosTestEnvironment.create(root / "agentos-home")
+    environment = TaravTestEnvironment.create(root / "agentos-home")
     environment.apply_environment(monkeypatch.setenv)
     assert main(["init", "--scope", "project", "--project", str(root)]) == 0
     capsys.readouterr()
@@ -121,9 +121,9 @@ def test_tmp_folder_new_allocates_project_tmp_and_logs_command(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
-    agentos_home = environment.agentos_home
+    tarav_home = environment.tarav_home
     assert main(["init", "--scope", "project", "--project", str(tmp_path)]) == 0
     capsys.readouterr()
     monkeypatch.chdir(tmp_path)
@@ -131,9 +131,9 @@ def test_tmp_folder_new_allocates_project_tmp_and_logs_command(
     assert main(["stdlib", "utils", "tmp-folder", "new", "--project", "--create"]) == 0
     generated = Path(capsys.readouterr().out.strip())
     assert generated.is_dir()
-    assert generated.parent == (tmp_path / ".agentos" / "tmp").resolve()
+    assert generated.parent == (tmp_path / ".tarav" / "tmp").resolve()
 
-    log_paths = sorted((agentos_home / "activity").glob("*.jsonl"))
+    log_paths = sorted((tarav_home / "activity").glob("*.jsonl"))
     assert len(log_paths) == 1
     event = read_jsonl_file(log_paths[0])[0]
     assert event["event_type"] == "project.command"
@@ -259,13 +259,13 @@ def test_cmd_logger_path_tail_and_query_filter_activity(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path / "home")
+    environment = TaravTestEnvironment.create(tmp_path / "home")
     environment.apply_environment(monkeypatch.setenv)
-    agentos_home = environment.agentos_home
+    tarav_home = environment.tarav_home
     project = tmp_path / "project"
     project.mkdir()
     write_project_marker(project)
-    log_path = agentos_home / "activity" / "202605.jsonl"
+    log_path = tarav_home / "activity" / "202605.jsonl"
     write_text_file(
         log_path,
         "\n".join(
@@ -349,7 +349,7 @@ def test_stdlib_validation_errors_are_reported(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     assert main(["stdlib", "utils", "tmp-folder", "new", "--project"]) == 1
-    assert "not inside an agentos project" in capsys.readouterr().err
+    assert "not inside a tarav project" in capsys.readouterr().err
 
     assert main(["stdlib", "utils", "cmd-logger", "path", "--month", "2026-05"]) == 1
     assert "--month must use YYYYMM format" in capsys.readouterr().err

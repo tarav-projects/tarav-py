@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos._core.persistence import atomic_write_json, atomic_write_text
+from tarav._core.persistence import atomic_write_json, atomic_write_text
 
 
 def test_atomic_write_text_creates_parent_and_replaces_content(tmp_path: Path) -> None:
@@ -28,7 +28,7 @@ def test_atomic_write_text_preserves_existing_file_when_replace_fails(
     def fail_replace(source: Path, destination: Path) -> None:
         raise OSError("replace failed")
 
-    monkeypatch.setattr("agentos._core.persistence.os.replace", fail_replace)
+    monkeypatch.setattr("tarav._core.persistence.os.replace", fail_replace)
 
     with pytest.raises(OSError, match="replace failed"):
         atomic_write_text(target, "new\n")

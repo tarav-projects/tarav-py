@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-import agentos.daemon.client as daemon_client
-import agentos.daemon.commands as daemon_commands
-from agentos.daemon import DaemonRuntime
-from agentos.hooks import HookInvocation, HookRegistry
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import build_parser, main
-from agentos.runtime import AgentosRuntime, create_runtime
+import tarav.daemon.client as daemon_client
+import tarav.daemon.commands as daemon_commands
+from tarav.daemon import DaemonRuntime
+from tarav.hooks import HookInvocation, HookRegistry
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import build_parser, main
+from tarav.runtime import TaravRuntime, create_runtime
 
 
 def test_top_level_hook_command_accepts_inline_json(monkeypatch, capsys) -> None:
@@ -32,7 +32,7 @@ def test_top_level_hook_command_accepts_inline_json(monkeypatch, capsys) -> None
 def test_top_level_daemon_status_reports_stopped(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
-    monkeypatch.setenv("AGENTOS_DAEMON_SOCKET", str(tmp_path / "daemon.sock"))
+    monkeypatch.setenv("TARAV_DAEMON_SOCKET", str(tmp_path / "daemon.sock"))
     monkeypatch.setattr(
         daemon_commands,
         "_service_status",
@@ -102,7 +102,7 @@ def test_cli_adapter_delegates_command_composition_to_runtime() -> None:
             parser = subparsers.add_parser("runtime-owned")
             parser.set_defaults(handler=lambda _args: registered.append("called") or 0)
 
-    parser = build_parser(runtime=cast(AgentosRuntime, StubRuntime()))
+    parser = build_parser(runtime=cast(TaravRuntime, StubRuntime()))
     args = parser.parse_args(["runtime-owned"])
 
     assert args.handler(args) == 0
@@ -113,10 +113,10 @@ def test_top_level_cli_samples_codex_prompt_submission(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     socket_path = Path("/tmp") / f"agentos-e2e-{uuid4().hex}.sock"
-    monkeypatch.setenv("AGENTOS_DAEMON_SOCKET", str(socket_path))
+    monkeypatch.setenv("TARAV_DAEMON_SOCKET", str(socket_path))
     ready = threading.Event()
     runtime = DaemonRuntime(create_runtime().hooks, socket_path=socket_path)
     thread = threading.Thread(
@@ -146,7 +146,7 @@ def test_top_level_cli_samples_codex_prompt_submission(
         runtime.stop()
         thread.join(timeout=2)
 
-    sample_path = environment.agentos_home / "hooks" / "context-samples.jsonl"
+    sample_path = environment.tarav_home / "hooks" / "context-samples.jsonl"
     record = json.loads(sample_path.read_text(encoding="utf-8"))
     assert record["hook_name"] == "agent.prompt.submit"
     assert record["ctx_type"] == "codex"

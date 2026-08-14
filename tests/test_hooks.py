@@ -7,8 +7,8 @@ import logging
 
 import pytest
 
-from agentos._core.errors import CliError
-from agentos.hooks import (
+from tarav._core.errors import CliError
+from tarav.hooks import (
     HookError,
     HookInvocation,
     HookRegistry,

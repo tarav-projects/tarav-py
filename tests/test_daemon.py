@@ -9,9 +9,9 @@ from uuid import uuid4
 
 import pytest
 
-import agentos.daemon.commands as daemon_commands
-from agentos._core.errors import CliError
-from agentos.daemon import (
+import tarav.daemon.commands as daemon_commands
+from tarav._core.errors import CliError
+from tarav.daemon import (
     DaemonRuntime,
     daemon_log_path,
     daemon_status,
@@ -19,9 +19,9 @@ from agentos.daemon import (
     request_daemon_stop,
     submit_hook_invocation,
 )
-from agentos.daemon.log import report_hook_delivery_failure
-from agentos.hooks import HookInvocation, HookRegistry, register_hook_commands
-from agentos.testing import AgentosTestEnvironment
+from tarav.daemon.log import report_hook_delivery_failure
+from tarav.hooks import HookInvocation, HookRegistry, register_hook_commands
+from tarav.testing import TaravTestEnvironment
 
 
 def _wait_for(predicate, *, timeout: float = 2.0) -> None:
@@ -185,9 +185,9 @@ def test_daemon_install_and_uninstall_commands_are_exposed(
             "bootstrapped": False,
             "changed": True,
             "installed": True,
-            "label": "org.agentos.daemon",
+            "label": "org.tarav.daemon",
             "loaded": True,
-            "path": "/tmp/org.agentos.daemon.plist",
+            "path": "/tmp/org.tarav.daemon.plist",
         },
     )
     kickstarts: list[bool] = []
@@ -203,9 +203,9 @@ def test_daemon_install_and_uninstall_commands_are_exposed(
             "bootstrapped": False,
             "changed": True,
             "installed": False,
-            "label": "org.agentos.daemon",
+            "label": "org.tarav.daemon",
             "loaded": False,
-            "path": "/tmp/org.agentos.daemon.plist",
+            "path": "/tmp/org.tarav.daemon.plist",
         },
     )
 
@@ -297,7 +297,7 @@ def test_daemon_accepts_while_worker_is_busy_and_runs_events_serially(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     socket_path = _short_socket_path()
     registry = HookRegistry()
@@ -347,7 +347,7 @@ def test_waiting_submission_returns_after_dispatch_completion(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     socket_path = _short_socket_path()
     registry = HookRegistry()
@@ -390,7 +390,7 @@ def test_daemon_consumer_failure_log_excludes_context_and_exception_text(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     socket_path = _short_socket_path()
     registry = HookRegistry()
@@ -434,9 +434,9 @@ def test_hook_delivery_failure_is_logged_and_does_not_fail_command(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
-    monkeypatch.setenv("AGENTOS_DAEMON_SOCKET", str(tmp_path / "missing.sock"))
+    monkeypatch.setenv("TARAV_DAEMON_SOCKET", str(tmp_path / "missing.sock"))
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     register_hook_commands(

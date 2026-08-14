@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import main
-from agentos.chatlas.chat_index import chatlas_chat_index_source
+from tarav.cli.cli import main
+from tarav.chatlas.chat_index import chatlas_chat_index_source
 
 from ._e2e_helpers import (
     _configure_chatlas,

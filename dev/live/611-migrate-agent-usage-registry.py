@@ -17,8 +17,8 @@ from typing import Any
 
 USAGE_RECORD_CLASS = "agentos.agent.usage-record"
 USAGE_RECORD_SCHEMA_VERSION = 1
-ARCHIVE_ROOT = Path.home() / ".agentos" / "archive"
-ACTIVE_REGISTRY_DIR = Path.home() / ".agentos" / "agent" / "usage-registry"
+ARCHIVE_ROOT = Path.home() / ".tarav" / "archive"
+ACTIVE_REGISTRY_DIR = Path.home() / ".tarav" / "agent" / "usage-registry"
 
 LEGACY_ARCHIVES = (
     ARCHIVE_ROOT / "20260516T011731Z" / "raw",
@@ -29,14 +29,14 @@ BASELINE_REGISTRY_DIR = (
 )
 
 ACCOUNT_MAP = {
-    ("codex", "codex-jp"): ("codex", "jp", "~/.agentos/agent/homes/codex/jp"),
-    ("codex", "codex-mm"): ("codex", "mm", "~/.agentos/agent/homes/codex/mm"),
-    ("codex", "codex-tk"): ("codex", "tk", "~/.agentos/agent/homes/codex/tk"),
-    ("codex", "codex-br"): ("codex", "br", "~/.agentos/agent/homes/codex/br"),
+    ("codex", "codex-jp"): ("codex", "jp", "~/.tarav/agent/homes/codex/jp"),
+    ("codex", "codex-mm"): ("codex", "mm", "~/.tarav/agent/homes/codex/mm"),
+    ("codex", "codex-tk"): ("codex", "tk", "~/.tarav/agent/homes/codex/tk"),
+    ("codex", "codex-br"): ("codex", "br", "~/.tarav/agent/homes/codex/br"),
     ("claude-code", "claude-main"): (
         "claude-code",
         "browser-jp",
-        "~/.agentos/agent/homes/claude-code/browser-jp",
+        "~/.tarav/agent/homes/claude-code/browser-jp",
     ),
 }
 

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.commands.accounts import _cmd_agent_accounts_rotate
-from agentos.testing import AgentosTestEnvironment
+from tarav.agent.commands.accounts import _cmd_agent_accounts_rotate
+from tarav.testing import TaravTestEnvironment
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
 
@@ -26,10 +26,10 @@ def _auth_json(uuid: str, exp: int) -> dict[str, object]:
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from agentos._core.project import agentos_home_dir
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from tarav._core.project import tarav_home_dir
 
-    home_root = agentos_home_dir()
+    home_root = tarav_home_dir()
     prov = home_root / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
     (prov / "accounts.json").write_text(json.dumps({
@@ -69,8 +69,8 @@ def test_rotate_captures_first_then_flips_active(
     _profile(home_root, "codex-main", [fresh_home])
 
     # active points at an older artifact that is NOT in any home
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method import AuthData
+    from tarav.agent import auth_registry as R
+    from tarav.agent.auth_method import AuthData
     stale = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))
     R.set_active("codex", "br", "file", stale)
 
@@ -87,8 +87,8 @@ def test_rotate_dry_run_writes_nothing(
     fresh_home = _home(tmp_path, "codex-br", exp=2_000_000_000)
     _profile(home_root, "codex-main", [fresh_home])
 
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method import AuthData
+    from tarav.agent import auth_registry as R
+    from tarav.agent.auth_method import AuthData
     stale = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))
     R.set_active("codex", "br", "file", stale)
 
@@ -104,7 +104,7 @@ def test_rotate_no_capture_skips_home_read(
     fresh_home = _home(tmp_path, "codex-br", exp=2_000_000_000)
     _profile(home_root, "codex-main", [fresh_home])
 
-    from agentos.agent import auth_registry as R
+    from tarav.agent import auth_registry as R
 
     assert _cmd_agent_accounts_rotate(_ns(no_capture=True)) == 0
     # no capture happened → empty pool → nothing written
@@ -113,9 +113,9 @@ def test_rotate_no_capture_skips_home_read(
 
 def _seed_fresher_capture() -> tuple[str, dict[str, object]]:
     """Seed a fresher captured ref (not present in any home) + return its ref/payload."""
-    from agentos.agent import auth_registry as R
-    from agentos.agent.account_status import AccountIdentity
-    from agentos.agent.auth_method import AuthData
+    from tarav.agent import auth_registry as R
+    from tarav.agent.account_status import AccountIdentity
+    from tarav.agent.auth_method import AuthData
 
     payload = _auth_json(UUID, exp=2_000_000_000)
     ref = R.store_artifact("codex", AuthData(payload=payload))
@@ -131,8 +131,8 @@ def test_rotate_materialize_writes_new_active_into_stale_home(
     home = _home(tmp_path, "codex-br", exp=1_000_000_000)  # holds the OLD ref
     _profile(home_root, "codex-main", [home])
 
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method import AuthData
+    from tarav.agent import auth_registry as R
+    from tarav.agent.auth_method import AuthData
 
     fresher_ref, fresher_payload = _seed_fresher_capture()
     old_ref = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))
@@ -151,8 +151,8 @@ def test_rotate_materialize_dry_run_writes_neither_pointer_nor_home(
     home = _home(tmp_path, "codex-br", exp=1_000_000_000)
     _profile(home_root, "codex-main", [home])
 
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method import AuthData
+    from tarav.agent import auth_registry as R
+    from tarav.agent.auth_method import AuthData
 
     _seed_fresher_capture()
     old_ref = R.store_artifact("codex", AuthData(payload=_auth_json(UUID, exp=1_000_000_000)))
@@ -168,7 +168,7 @@ def test_rotate_account_requires_provider(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.errors import CliError
+    from tarav._core.errors import CliError
 
     with pytest.raises(CliError):
         _cmd_agent_accounts_rotate(_ns(provider=None, account="br/file"))

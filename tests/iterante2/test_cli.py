@@ -7,16 +7,16 @@ import subprocess
 
 import pytest
 
-from agentos.iterante2.state import SNAPSHOT_FILE
+from tarav.iterante2.state import SNAPSHOT_FILE
 
 
 @pytest.fixture
 def project_dir(tmp_path):
     """Create a project dir with a mission."""
-    missions = tmp_path / ".agentos" / "missions" / "demo"
+    missions = tmp_path / ".tarav" / "missions" / "demo"
     missions.mkdir(parents=True)
     (missions / "mission.py").write_text("""
-from agentos import iterante2
+from tarav import iterante2
 
 def setup(ctx):
     ctx.state["step_count"] = 0
@@ -111,10 +111,10 @@ class TestInitRequestSubmit:
         assert "Token:" in r.stdout
 
     def test_init_args_are_persisted_and_available_on_env(self, tmp_path):
-        missions = tmp_path / ".agentos" / "missions" / "args-demo"
+        missions = tmp_path / ".tarav" / "missions" / "args-demo"
         missions.mkdir(parents=True)
         (missions / "mission.py").write_text("""
-from agentos import iterante2
+from tarav import iterante2
 
 def setup(ctx):
     ctx.state["project"] = ctx.env.args["project"]
@@ -156,7 +156,7 @@ class TestErrorBoundary:
     errors are surfaced; no path/filename/traceback ever reaches the agent."""
 
     def _leak_free(self, text):
-        for leak in (".agentos", SNAPSHOT_FILE, "run.json", "Traceback", "/private/", "looked in"):
+        for leak in (".tarav", SNAPSHOT_FILE, "run.json", "Traceback", "/private/", "looked in"):
             assert leak not in text, f"leak {leak!r} in:\n{text}"
 
     def test_machinery_error_is_generic_and_logged(self, project_dir):
@@ -165,7 +165,7 @@ class TestErrorBoundary:
         token = extract_token(r.stdout)
 
         # Corrupt machinery: remove the run's snapshot → HarnessError in the runner.
-        run_dir = project_dir / ".agentos" / "missions" / "demo" / "runs" / runtime_id
+        run_dir = project_dir / ".tarav" / "missions" / "demo" / "runs" / runtime_id
         (run_dir / SNAPSHOT_FILE).unlink()
 
         r = run_cli("submit", "--token", token, "--answer", "x", cwd=project_dir)
@@ -200,10 +200,10 @@ class TestOutputSensors:
     """Mechanism 2 — the mission's own output is scrubbed before the agent sees it."""
 
     def test_forwarded_mission_print_is_redacted(self, tmp_path):
-        missions = tmp_path / ".agentos" / "missions" / "printer"
+        missions = tmp_path / ".tarav" / "missions" / "printer"
         missions.mkdir(parents=True)
         (missions / "mission.py").write_text("""
-from agentos import iterante2
+from tarav import iterante2
 
 def step(ctx):
     print("mission says: /etc/secret/data.txt")
@@ -220,10 +220,10 @@ class TestBypass:
     propagating to the `_runner` subprocess."""
 
     def test_raw_flag_disables_sensors(self, tmp_path):
-        missions = tmp_path / ".agentos" / "missions" / "printer"
+        missions = tmp_path / ".tarav" / "missions" / "printer"
         missions.mkdir(parents=True)
         (missions / "mission.py").write_text("""
-from agentos import iterante2
+from tarav import iterante2
 
 def step(ctx):
     print("mission says: /etc/secret/data.txt")
@@ -238,7 +238,7 @@ def step(ctx):
         r = run_cli("init", "--mission", "demo", cwd=project_dir)
         runtime_id = extract_runtime_id(r.stdout)
         token = extract_token(r.stdout)
-        run_dir = project_dir / ".agentos" / "missions" / "demo" / "runs" / runtime_id
+        run_dir = project_dir / ".tarav" / "missions" / "demo" / "runs" / runtime_id
         (run_dir / SNAPSHOT_FILE).unlink()
 
         r = run_cli(

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from agentos.cli.cli import main
-from agentos.chatlas.chat_index import chat_index_source_model
-from agentos.chatlas.recents import chatlas_recents, format_chatlas_recents_text
+from tarav.cli.cli import main
+from tarav.chatlas.chat_index import chat_index_source_model
+from tarav.chatlas.recents import chatlas_recents, format_chatlas_recents_text
 
 from ._e2e_helpers import (
     _configure_chatlas,

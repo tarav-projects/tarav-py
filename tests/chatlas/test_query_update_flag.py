@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment
-from agentos.cli.cli import main
+from tarav.testing import TaravTestEnvironment
+from tarav.cli.cli import main
 from ._helpers import captured_json, write_chatlas_codex_source
 from .test_recent_window_update import _write_codex_session
 
@@ -15,7 +15,7 @@ BETA_ID = "019ccafa-bbbb-7000-aaaa-00000000000b"
 
 
 def _isolate_codex_two_fresh(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     codex_home = tmp_path / "codex-home"
     now = time.time()

@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from agentos.agent.providers.registry import resolve_agent_config
-from agentos.agent.run_runtime import (
+from tarav.agent.providers.registry import resolve_agent_config
+from tarav.agent.run_runtime import (
     AgentCommandConfig,
     build_agent_command_argv,
     provider_model_flag,
     provider_prompt_flag,
 )
-from agentos.testing import AgentosTestEnvironment
+from tarav.testing import TaravTestEnvironment
 
 
 def _argv(provider: str) -> tuple[str, ...]:
@@ -44,7 +44,7 @@ def test_profile_cannot_override_provider_flags(
 ) -> None:
     # A profile that still carries the old flag fields must be harmlessly
     # ignored — never parsed onto the config, never overriding the provider.
-    environment = AgentosTestEnvironment.create(tmp_path)
+    environment = TaravTestEnvironment.create(tmp_path)
     environment.apply_environment(monkeypatch.setenv)
     environment.write_profile(
         "copilot-jp",

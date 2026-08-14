@@ -6,9 +6,9 @@ import shutil
 
 import pytest
 
-from agentos.cli.cli import main
-from agentos.chatlas.anchory import chatlas_anchory_register
-from agentos.chatlas.chat_index import chatlas_chat_index_source
+from tarav.cli.cli import main
+from tarav.chatlas.anchory import chatlas_anchory_register
+from tarav.chatlas.chat_index import chatlas_chat_index_source
 
 from ._e2e_helpers import (
     _configure_chatlas,
@@ -461,7 +461,7 @@ def test_line_home_is_the_oldest_evidenced_materialization(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Home is chosen by where the chat put it, and the anchor agrees."""
-    from agentos.index.model import canonical_index_line_statement
+    from tarav.index.model import canonical_index_line_statement
 
     chatlas_root, row = _medium_session(tmp_path, monkeypatch, capsys)
     surface, fixture = _grounded_surface(chatlas_root, row)

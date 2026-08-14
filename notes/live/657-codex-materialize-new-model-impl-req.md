@@ -13,7 +13,7 @@
   - claude/copilot behavior changes — claude shares the generalized handler with identical behavior (its `655` tests guard it); nothing else claude/copilot.
   - run-path **reads** that are not legacy-write: `inspect_codex_account_home` stays unless it becomes orphaned by the teardown.
   - the mislabeled-homes data situation and any re-login of jp/mm/tk (data/ops, separate). This Impl.Req delivers the *capability*; a follow-up may use it to materialize jp/mm/tk live.
-- **Source context:** `655` (claude materialize, the template), `656` (codex migration), this session. Conceptual home: `agentos-pkg` `Account.Management` (`Auth.Data.Materialization`, `Capture.Over.Materialization`).
+- **Source context:** `655` (claude materialize, the template), `656` (codex migration), this session. Conceptual home: `tarav-pkg` `Account.Management` (`Auth.Data.Materialization`, `Capture.Over.Materialization`).
 
 ## Impl.Index
 

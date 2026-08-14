@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.testing import AgentosTestEnvironment
+from tarav.testing import TaravTestEnvironment
 
 UUID = "07de2ad9-c2c5-4c05-8a09-3aa235a30650"
 
@@ -27,10 +27,10 @@ def _auth_json(uuid: str, marker: str = "") -> dict[str, object]:
 
 
 def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    AgentosTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
-    from agentos._core.project import agentos_home_dir
+    TaravTestEnvironment.create(tmp_path).apply_environment(monkeypatch.setenv)
+    from tarav._core.project import tarav_home_dir
 
-    prov = agentos_home_dir() / "accounts" / "codex"
+    prov = tarav_home_dir() / "accounts" / "codex"
     prov.mkdir(parents=True, exist_ok=True)
     (prov / "accounts.json").write_text(json.dumps({
         "provider": "codex",
@@ -47,8 +47,8 @@ def _home(tmp_path: Path, name: str, payload: dict[str, object]) -> Path:
 
 
 def _set_active(payload: dict[str, object]) -> str:
-    from agentos.agent import auth_registry as R
-    from agentos.agent.auth_method import AuthData
+    from tarav.agent import auth_registry as R
+    from tarav.agent.auth_method import AuthData
 
     ref = R.store_artifact("codex", AuthData(payload=payload))
     R.set_active("codex", "br", "file", ref)
@@ -59,7 +59,7 @@ def test_materialize_account_writes_stale_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent.materialization import materialize_account
+    from tarav.agent.materialization import materialize_account
 
     active_payload = _auth_json(UUID, marker="ACTIVE")
     active_ref = _set_active(active_payload)
@@ -76,7 +76,7 @@ def test_materialize_account_aligned_home_is_not_rewritten(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos.agent.materialization import materialize_account
+    from tarav.agent.materialization import materialize_account
 
     active_payload = _auth_json(UUID, marker="ACTIVE")
     _set_active(active_payload)
@@ -99,8 +99,8 @@ def test_materialize_all_reconciles_stale_skips_aligned_and_orphan(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _env(monkeypatch, tmp_path)
-    from agentos._core.project import agentos_home_dir
-    from agentos.agent.materialization import materialize_all
+    from tarav._core.project import tarav_home_dir
+    from tarav.agent.materialization import materialize_all
 
     active_payload = _auth_json(UUID, marker="ACTIVE")
     _set_active(active_payload)
@@ -109,7 +109,7 @@ def test_materialize_all_reconciles_stale_skips_aligned_and_orphan(
     aligned = _home(tmp_path, "aligned", active_payload)
     orphan = _home(tmp_path, "orphan", _auth_json("ffffffff-0000-0000-0000-000000000000"))
     orphan_before = (orphan / "auth.json").read_text()
-    _profile(agentos_home_dir(), "codex-main", [stale, aligned, orphan], ["br/file"])
+    _profile(tarav_home_dir(), "codex-main", [stale, aligned, orphan], ["br/file"])
 
     results = {r.home: r.status for r in materialize_all("codex", check=False)}
 

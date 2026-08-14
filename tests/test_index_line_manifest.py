@@ -9,7 +9,7 @@ def _write(path: Path, text: str) -> None:
 
 
 def test_manifest_projects_block_bounded_line_context(tmp_path: Path) -> None:
-    from agentos.index.line_manifest import build_index_line_manifest
+    from tarav.index.line_manifest import build_index_line_manifest
 
     depot = tmp_path / "depot"
     _write(
@@ -52,7 +52,7 @@ def test_manifest_projects_block_bounded_line_context(tmp_path: Path) -> None:
 def test_manifest_reports_context_omissions_and_supports_unanchored_scope(
     tmp_path: Path,
 ) -> None:
-    from agentos.index.line_manifest import build_index_line_manifest
+    from tarav.index.line_manifest import build_index_line_manifest
 
     depot = tmp_path / "depot"
     _write(
@@ -90,7 +90,7 @@ def test_manifest_reports_context_omissions_and_supports_unanchored_scope(
 
 
 def test_manifest_merges_injected_relationship_projection(tmp_path: Path) -> None:
-    from agentos.index.line_manifest import (
+    from tarav.index.line_manifest import (
         build_index_line_manifest,
         format_index_line_manifest_text,
     )
@@ -151,9 +151,9 @@ def test_manifest_merges_injected_relationship_projection(tmp_path: Path) -> Non
 def test_manifest_uses_verified_locator_without_full_depot_parse(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from agentos.index.anchor_locator import materialize_index_anchor_locator
-    from agentos.index.line_manifest import build_index_line_manifest
-    from agentos.index.model import parse_depot
+    from tarav.index.anchor_locator import materialize_index_anchor_locator
+    from tarav.index.line_manifest import build_index_line_manifest
+    from tarav.index.model import parse_depot
 
     depot = tmp_path / "depot"
     workspace = tmp_path / "workspace"
@@ -170,7 +170,7 @@ def test_manifest_uses_verified_locator_without_full_depot_parse(
     def forbidden(_root: Path):
         raise AssertionError("verified locator should avoid a full depot parse")
 
-    monkeypatch.setattr("agentos.index.line_manifest.parse_depot", forbidden)
+    monkeypatch.setattr("tarav.index.line_manifest.parse_depot", forbidden)
     manifest = build_index_line_manifest(
         depot_root=depot,
         anchors=("c20260811-2u",),
@@ -184,7 +184,7 @@ def test_manifest_uses_verified_locator_without_full_depot_parse(
 def test_manifest_marks_conflicting_anchor_occurrences_ambiguous(
     tmp_path: Path,
 ) -> None:
-    from agentos.index.line_manifest import (
+    from tarav.index.line_manifest import (
         build_index_line_manifest,
         format_index_line_manifest_text,
     )
@@ -210,9 +210,9 @@ def test_manifest_marks_conflicting_anchor_occurrences_ambiguous(
 
 
 def test_manifest_falls_back_when_locator_source_changed(tmp_path: Path) -> None:
-    from agentos.index.anchor_locator import materialize_index_anchor_locator
-    from agentos.index.line_manifest import build_index_line_manifest
-    from agentos.index.model import parse_depot
+    from tarav.index.anchor_locator import materialize_index_anchor_locator
+    from tarav.index.line_manifest import build_index_line_manifest
+    from tarav.index.model import parse_depot
 
     depot = tmp_path / "depot"
     workspace = tmp_path / "workspace"
