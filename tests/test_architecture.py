@@ -128,6 +128,12 @@ def test_subsystem_import_graph_is_acyclic() -> None:
     assert _strongly_connected_components(graph) == ()
 
 
+def test_chatlas2_dependency_points_only_toward_chatlas() -> None:
+    imports = _top_level_import_graph()
+    assert "chatlas" in imports["chatlas2"]
+    assert "chatlas2" not in imports["chatlas"]
+
+
 def test_hooks_foundation_does_not_import_daemon_adapters() -> None:
     imports = _top_level_import_graph()
     assert "daemon" not in imports["hooks"]

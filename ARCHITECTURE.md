@@ -33,6 +33,9 @@ entrypoints (agentos.cli, agentos.daemon)
   and concrete adapters under one package per provider.
 - `agentos.chatlas`, `canvas`, `index`, `poi`, `wayfinder`, `skillware`,
   `anchory`, `bloberia`, `hooks`, `daemon`, and `tournament`: cohesive domains.
+- `tarav.chatlas2`: isolated experimental normalization. It may reuse the
+  current Chatlas archive and index mechanics; current Chatlas must never
+  import Chatlas2.
 - `agentos.stdlib.mdblocks|prefix|refs|utils`: reusable CLI/library primitives.
 - `agentos.iterante` and `agentos.iterante2`: distinct runtimes sharing only
   mechanics whose behavior is identical under `agentos.iterante._shared`.
@@ -67,6 +70,9 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   surface models directly.
 - Chatlas command behavior lives in `_command_support.py`; `commands.py` owns the
   public parser composition and registrar.
+- Chatlas2 owns its raw-model recognition, normalization, event tape, and
+  annotations. Runtime is the only command-composition boundary between it and
+  the maintained CLI.
 
 ## Shared infrastructure rule
 

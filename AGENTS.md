@@ -75,6 +75,11 @@
 - `chatlas.sources` is the authority for native provider-home ingestion. Each source may set boolean `scannable` (default `true`); non-scannable sources remain configured inventory but never become live provider instances for update, provider query, or live GC scanning.
 - Source selection does not mutate or hide existing Chatlas-owned raw/index data. `ProviderHomeAdapter` retains its per-session symlinked-source rejection as a final ingestion defense.
 
+## Chatlas2 Experiment
+
+- `src/tarav/chatlas2/` owns the isolated Chatlas2 Normal Model experiment. It may import current Chatlas archive and index mechanics, but `src/tarav/chatlas/` must not import Chatlas2.
+- Chatlas2 reviews every relevant retained artifact, versions each independently, and assembles a retention-biased chronological event tape. Keep semantic annotations shallow and conservative; raw artifacts remain the fallback authority.
+
 ## Chatlas Touch Heuristics
 
 - `tarav chatlas touch-heuristics quotes --session <selector>` is the read-only quotation detector over one authoritative Normal Model. It accepts a native session id, canonical URI, or identity-hash prefix and defaults to `--min-length 40 --threshold 0.75 --lookback 5`.
