@@ -1,4 +1,4 @@
-# $kw: ^chatlas-command-composition --from Agent.Navigable.Codebase --note [CT] the public Chatlas registrar owns parser composition while command behavior lives in a separate cohesive surface --supp ^c20260811-62u
+# $kw: ^chatlas-command-composition --from Agent.Navigable.Codebase --from Chat.Touched.Index --note [CT] the public Chatlas registrar owns parser composition while command behavior lives in a separate cohesive surface --supp ^c20260811-62u
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,11 @@ from tarav.chatlas.anchory_batch import ANCHOR_BATCH_SCHEMA
 from tarav.chatlas.chat_index_plan import MODES
 from tarav.chatlas.gc import DEFAULT_OLDER_THAN
 from tarav.chatlas.output import add_chatlas_output_arguments_to_leaves
+from tarav.chatlas.touch_heuristics import (
+    DEFAULT_QUOTE_LOOKBACK,
+    DEFAULT_QUOTE_MIN_LENGTH,
+    DEFAULT_QUOTE_THRESHOLD,
+)
 
 from ._command_support import (
     _CHATLAS_PROVIDER_CHOICES,
@@ -22,6 +27,7 @@ from ._command_support import (
     _cmd_chatlas_events_index,
     _cmd_chatlas_events_query,
     _cmd_chatlas_turns_query,
+    _cmd_chatlas_touch_heuristics_quotes,
     _cmd_chatlas_file_edition_pois,
     _cmd_chatlas_index_doctor,
     _cmd_chatlas_stats,
@@ -311,6 +317,52 @@ def register_chatlas_commands(subparsers: argparse._SubParsersAction) -> None:
         include_sort_limit=False,
     )
     turns_query_parser.set_defaults(handler=_cmd_chatlas_turns_query)
+
+    touch_heuristics_parser = chatlas_subparsers.add_parser(
+        "touch-heuristics",
+        help="Find heuristic Touch.Evidence in one Chatlas session model.",
+    )
+    touch_heuristics_subparsers = touch_heuristics_parser.add_subparsers(
+        dest="chatlas_touch_heuristics_command",
+        required=True,
+    )
+    quotes_parser = touch_heuristics_subparsers.add_parser(
+        "quotes",
+        help="Find user quotations of preceding visible assistant turns.",
+    )
+    quotes_parser.add_argument(
+        "--session",
+        required=True,
+        help="Provider session id, canonical session URI, or identity-hash prefix.",
+    )
+    quotes_parser.add_argument(
+        "--min-length",
+        type=_positive_int,
+        default=DEFAULT_QUOTE_MIN_LENGTH,
+        help=(
+            "Minimum normalized characters on both aligned sides "
+            f"(default: {DEFAULT_QUOTE_MIN_LENGTH})."
+        ),
+    )
+    quotes_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=DEFAULT_QUOTE_THRESHOLD,
+        help=(
+            "Minimum aligned-token similarity from 0 to 1 "
+            f"(default: {DEFAULT_QUOTE_THRESHOLD})."
+        ),
+    )
+    quotes_parser.add_argument(
+        "--lookback",
+        type=_positive_int,
+        default=DEFAULT_QUOTE_LOOKBACK,
+        help=(
+            "Preceding visible assistant turns searched per user turn "
+            f"(default: {DEFAULT_QUOTE_LOOKBACK})."
+        ),
+    )
+    quotes_parser.set_defaults(handler=_cmd_chatlas_touch_heuristics_quotes)
 
     file_edition_pois_parser = chatlas_subparsers.add_parser(
         "file-edition-pois",

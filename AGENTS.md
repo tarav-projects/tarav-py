@@ -75,6 +75,11 @@
 - `chatlas.sources` is the authority for native provider-home ingestion. Each source may set boolean `scannable` (default `true`); non-scannable sources remain configured inventory but never become live provider instances for update, provider query, or live GC scanning.
 - Source selection does not mutate or hide existing Chatlas-owned raw/index data. `ProviderHomeAdapter` retains its per-session symlinked-source rejection as a final ingestion defense.
 
+## Chatlas Touch Heuristics
+
+- `tarav chatlas touch-heuristics quotes --session <selector>` is the read-only quotation detector over one authoritative Normal Model. It accepts a native session id, canonical URI, or identity-hash prefix and defaults to `--min-length 40 --threshold 0.75 --lookback 5`.
+- Each qualifying user/predecessor-assistant turn pair emits `Touch.Evidence` with both `Normal.Turn.Ref`s, original and normalized aligned spans, score, match kind, and assistant-turn distance. Findings are returned only; the tool never annotates or persists them.
+
 ## Daemon System
 
 - `src/agentos/daemon/` owns the local closed Unix-socket protocol, client, foreground runtime, serial worker lane, control-command registrar, and operational log.

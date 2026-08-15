@@ -1,4 +1,4 @@
-# $kw: ^event-pattern-commands --from Chatlas.Query.Surface --from Chat.Index --note [CT] public Event.Pattern commands expose structured patterns and backend choice, never raw SQL ^c20260725-38u --note [IMPL] expose pending source evidence without giving the CLI semantic Delta or HEAD authorship --supp ^c20260726-3u --supp ergonomic turn query ^c20260731-12u --supp implementation authorized ^c20260731-14u --supp ^c20260804-50u
+# $kw: ^event-pattern-commands --from Chatlas.Query.Surface --from Chat.Index --from Chat.Touched.Index --note [CT] public Event.Pattern commands expose structured patterns and backend choice, never raw SQL ^c20260725-38u --note [IMPL] expose pending source evidence without giving the CLI semantic Delta or HEAD authorship --supp ^c20260726-3u --supp ergonomic turn query ^c20260731-12u --supp implementation authorized ^c20260731-14u --supp ^c20260804-50u
 from __future__ import annotations
 
 import argparse
@@ -66,6 +66,10 @@ from tarav.chatlas.annotations import (
 )
 from tarav.chatlas._duration import parse_duration_seconds
 from tarav.chatlas.tagger import run_tagger
+from tarav.chatlas.touch_heuristics import (
+    chatlas_touch_heuristics_quotes,
+    format_quote_touch_evidence_text,
+)
 from tarav.chatlas.recents import format_chatlas_recents_text
 from tarav.chatlas.recents import since_window_seconds
 from tarav.chatlas.time_interface import normalize_cli_event_pattern_timestamps
@@ -254,6 +258,24 @@ def _cmd_chatlas_turns_query(args: argparse.Namespace) -> int:
         raise CliError(f"invalid turn query: {exc}") from exc
     print_chatlas_output(
         payload, output=args.output, text_renderer=format_chatlas_turns_query_text
+    )
+    return 0
+
+
+def _cmd_chatlas_touch_heuristics_quotes(args: argparse.Namespace) -> int:
+    try:
+        payload = chatlas_touch_heuristics_quotes(
+            session=args.session,
+            min_length=args.min_length,
+            threshold=args.threshold,
+            lookback=args.lookback,
+        )
+    except ValueError as exc:
+        raise CliError(f"invalid quote touch heuristic: {exc}") from exc
+    print_chatlas_output(
+        payload,
+        output=args.output,
+        text_renderer=format_quote_touch_evidence_text,
     )
     return 0
 
@@ -900,7 +922,6 @@ def _cmd_chatlas_chat_index_audit(args: argparse.Namespace) -> int:
         ),
     )
     print_chatlas_output(payload, output=args.output)
-
 
     return 1 if payload["blocking_finding_count"] else 0
 
