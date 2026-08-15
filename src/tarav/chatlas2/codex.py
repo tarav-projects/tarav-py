@@ -1,14 +1,14 @@
-# $kw: ^chatlas2-codex-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --note [CT] Codex structural recognition dispatches only its declared raw-model version and resolves origin and loaded context conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-21u
+# $kw: ^chatlas2-codex-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Codex structural recognition dispatches only its declared raw-model version, addresses raw places independently from content, and resolves origin and loaded context conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-21u ^c20260815-37u ^c20260815-38u ^c20260815-39u
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 import json
 from pathlib import Path
 from typing import Any
 
 from tarav._core.errors import CliError
 
+from .event_ref import compute_event_address, compute_event_hash
 from .model import JsonObject, NormalFragment
 
 
@@ -96,6 +96,7 @@ class CodexRawNormalizer:
                 f"cannot normalize Chatlas2 Codex artifact {path}: {exc}"
             ) from exc
 
+        session_scope = _session_scope(records)
         response_message_keys = _response_message_keys(records)
         events: list[JsonObject] = []
         chat_messages: list[JsonObject] = []
@@ -105,10 +106,15 @@ class CodexRawNormalizer:
         previous_generated = False
 
         for record in records:
-            event_id = _event_id(record)
+            event_address = compute_event_address(
+                provider="codex",
+                raw_model_version=raw_model_version,
+                scope=session_scope,
+                place={"record_index": record.record_index},
+            )
             event = {
                 "class": _event_class(record.value),
-                "event_id": event_id,
+                "event_address": event_address,
                 "started_at": record.observed_at,
                 "origin": _event_origin(record.value),
                 "record": record.value,
@@ -123,6 +129,7 @@ class CodexRawNormalizer:
                     }
                 ],
             }
+            event["event_hash"] = compute_event_hash(event)
             events.append(event)
 
             message_side = _chat_message_side(
@@ -133,14 +140,14 @@ class CodexRawNormalizer:
                 chat_messages.append(
                     {
                         "class": "Chat.Message",
-                        "message_id": f"chat-message-{event_id.removeprefix('event-')}",
+                        "message_id": f"chat-message-{event_address}",
                         "side": message_side,
-                        "event_ids": [event_id],
+                        "event_addresses": [event_address],
                     }
                 )
 
             if _is_context_input(record.value):
-                pending_context.append(event_id)
+                pending_context.append(event_address)
                 active_context = ()
                 previous_generated = False
                 continue
@@ -155,8 +162,8 @@ class CodexRawNormalizer:
                     loaded_contexts.append(
                         {
                             "class": "Agent.Loaded.Context",
-                            "agent_event_id": event_id,
-                            "event_ids": list(active_context),
+                            "agent_event_address": event_address,
+                            "event_addresses": list(active_context),
                         }
                     )
                 previous_generated = True
@@ -200,14 +207,20 @@ def _read_records(path: Path) -> list[_RawRecord]:
     return records
 
 
-def _event_id(record: _RawRecord) -> str:
-    identity = json.dumps(
-        {"record_index": record.record_index, "record": record.value},
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode("utf-8")
-    return f"event-{sha256(identity).hexdigest()}"
+def _session_scope(records: list[_RawRecord]) -> str:
+    session_ids = {
+        payload["id"]
+        for record in records
+        if record.value.get("type") == "session_meta"
+        and isinstance((payload := record.value.get("payload")), dict)
+        and isinstance(payload.get("id"), str)
+        and payload["id"]
+    }
+    if len(session_ids) != 1:
+        raise CliError(
+            "Chatlas2 Codex artifact must contain exactly one native session scope"
+        )
+    return next(iter(session_ids))
 
 
 def _event_origin(record: JsonObject) -> str:

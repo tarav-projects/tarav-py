@@ -122,15 +122,21 @@ def test_text_anonymizer_is_deterministic_and_raw_model_agnostic() -> None:
 
 def test_specimen_signature_ignores_identity_order_between_equal_event_shapes() -> None:
     def model(first_id: str, second_id: str) -> dict[str, object]:
+        first_address = first_id * 64
+        second_address = second_id * 64
+        first_ref = {"event_address": first_address, "event_hash": "1" * 64}
+        second_ref = {"event_address": second_address, "event_hash": "2" * 64}
         events = [
             {
-                "event_id": first_id,
+                "event_address": first_address,
+                "event_hash": first_ref["event_hash"],
                 "started_at": "2026-08-15T00:00:00Z",
                 "class": "Record.Event",
                 "origin": "Agent.Event",
             },
             {
-                "event_id": second_id,
+                "event_address": second_address,
+                "event_hash": second_ref["event_hash"],
                 "started_at": "2026-08-15T00:00:00Z",
                 "class": "Record.Event",
                 "origin": "Agent.Event",
@@ -139,9 +145,12 @@ def test_specimen_signature_ignores_identity_order_between_equal_event_shapes() 
         return {
             "events": events,
             "annotations": {
-                "chat_messages": [{"side": "agent", "event_ids": [second_id]}],
+                "chat_messages": [{"side": "agent", "event_refs": [second_ref]}],
                 "agent_loaded_contexts": [
-                    {"agent_event_id": first_id, "event_ids": [second_id, first_id]}
+                    {
+                        "agent_event_ref": first_ref,
+                        "event_refs": [second_ref, first_ref],
+                    }
                 ],
             },
         }
