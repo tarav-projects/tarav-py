@@ -44,7 +44,7 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
     contexts_by_agent_event: dict[str, JsonObject] = {}
     recognized_source_count = 0
 
-    for path in _transcript_paths(row):
+    for path in transcript_paths(row):
         source_id = _source_id(path)
         raw_model_version = versioner.version(path)
         source: JsonObject = {
@@ -112,7 +112,7 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
     }
 
 
-def _transcript_paths(row: dict[str, Any]) -> tuple[Path, ...]:
+def transcript_paths(row: dict[str, Any]) -> tuple[Path, ...]:
     paths: dict[str, Path] = {}
     versions = [row, *archive_versions_for(row)]
     for version in versions:
@@ -178,4 +178,4 @@ def _repository_commit() -> str | None:
     return commit or None
 
 
-__all__ = ["build_normal_model", "build_normal_model_from_row"]
+__all__ = ["build_normal_model", "build_normal_model_from_row", "transcript_paths"]

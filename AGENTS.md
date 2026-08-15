@@ -79,6 +79,8 @@
 
 - `src/tarav/chatlas2/` owns the isolated Chatlas2 Normal Model experiment. It may import current Chatlas archive and index mechanics, but `src/tarav/chatlas/` must not import Chatlas2.
 - Chatlas2 reviews every relevant retained artifact, versions each independently, and assembles a retention-biased chronological event tape. Keep semantic annotations shallow and conservative; raw artifacts remain the fallback authority.
+- `tests/chatlas2/conformance/` is the hermetic, content-addressed conformance corpus. Artifact ingress is always the documented interactive `prepare` then `register` route; tests use included anonymous artifacts and never depend on a live Chatlas archive.
+- `tarav chatlas2 corpus verify|check|list` reads the corpus; `corpus ingest prepare|register` grows it explicitly. Preparation uses an opaque-text anonymizer and rechecks recognized specimens before registration.
 
 ## Chatlas Touch Heuristics
 

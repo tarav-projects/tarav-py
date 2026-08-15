@@ -134,6 +134,23 @@ def test_chatlas2_dependency_points_only_toward_chatlas() -> None:
     assert "chatlas2" not in imports["chatlas"]
 
 
+def test_chatlas2_text_anonymizer_has_no_model_or_provider_dependency() -> None:
+    path = PACKAGE_ROOT / "chatlas2" / "anonymizer.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imported = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    imported.update(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    assert not any(name.startswith("tarav") for name in imported)
+
+
 def test_hooks_foundation_does_not_import_daemon_adapters() -> None:
     imports = _top_level_import_graph()
     assert "daemon" not in imports["hooks"]

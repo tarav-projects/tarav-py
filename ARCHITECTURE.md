@@ -70,9 +70,13 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   surface models directly.
 - Chatlas command behavior lives in `_command_support.py`; `commands.py` owns the
   public parser composition and registrar.
-- Chatlas2 owns its raw-model recognition, normalization, event tape, and
-  annotations. Runtime is the only command-composition boundary between it and
-  the maintained CLI.
+- Chatlas2 owns its raw-model recognition, normalization, event tape,
+  annotations, and hermetic conformance corpus. The corpus stores best-effort
+  anonymous provider artifacts by content digest; its anonymizer is an opaque
+  text transform with no provider or Raw.Model dependency. Current Chatlas is
+  used only by explicit corpus preparation, while committed checks reconstruct
+  specimens locally. Runtime is the only command-composition boundary between
+  Chatlas2 and the maintained CLI.
 
 ## Shared infrastructure rule
 

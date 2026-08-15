@@ -1,0 +1,21 @@
+{
+  "schema": "tarav.chatlas2.conformance.script.v1",
+  "script_id": "legacy-imaginary-calendar-compact",
+  "revision": 1,
+  "title": "Legacy imaginary calendar compaction script",
+  "user_messages": [
+    "Let’s reason about an imaginary calendar. Do not use tools or write code. Keep track of the invented names and explain each answer in plain language.",
+    "The calendar’s exact reference name is `ORCHID-CLOCK-482`. It has three seasons in this order: Luma, Neri, and Varo. Preserve every invented name exactly.",
+    "Each season has a symbol: Luma uses a silver circle, Neri uses a violet triangle, and Varo uses a golden square. Restate the associations as complete sentences.",
+    "The calendar holds one celebration in each season. Luma has Lantern Day, Neri has Quiet Day, and Varo has River Day. Describe the full calendar from first season to last.",
+    "Without listing everything again, which symbol and celebration belong to the second season? Explain how you identified them.",
+    "What was the calendar’s exact reference name? Return it exactly, followed by one sentence explaining what it names.",
+    "Add a fourth season named Sora after Varo. Its symbol is a white star and its celebration is Echo Day. Explain how this changes the calendar’s ordering.",
+    "Summarize the final imaginary calendar as a numbered list with one season per item."
+  ],
+  "operator_actions": [
+    "After user message 4 is answered, manually compact the session."
+  ],
+  "features": ["messages", "compaction"],
+  "capture_requirements": ["closed-session", "verbatim-user-messages", "native-compaction-evidence"]
+}

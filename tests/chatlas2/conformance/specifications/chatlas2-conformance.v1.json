@@ -1,0 +1,39 @@
+{
+  "schema": "tarav.chatlas2.conformance.script.v1",
+  "script_id": "chatlas2-conformance",
+  "revision": 1,
+  "title": "Chatlas2 consolidated conformance script",
+  "user_messages": [
+    "Remember the exact audit token `EMBER-VAULT-731`. We will need it after several context changes. Reply with the token and a short acknowledgement.",
+    "Create a folder named `chatlas2-conformance-lab` in the current directory. Inside it, create `evidence.txt` with exactly two lines: `alpha: cedar` and `beta: quartz`. Then report what you created.",
+    "Read `chatlas2-conformance-lab/evidence.txt` using a tool and quote its two lines exactly.",
+    "Append a third line, `gamma: lantern`, then read the file again and report all three lines in order.",
+    "Explain twelve distinct ways an event archive can lose information, using one numbered paragraph per way and taking time to explain each one.",
+    "The previous response was interrupted. Do not restart it. Briefly state that it was interrupted and continue with the next task.",
+    "Replace the contents of `chatlas2-conformance-lab/evidence.txt` with the single line `abandoned: branch`, then show me the result.",
+    "Keep the evidence file unchanged from before the abandoned branch. Read it with a tool and report its exact current contents.",
+    "Without reading any files, return the exact audit token from the first message and name the three evidence keys in their original order.",
+    "Summarize the session as a numbered list that mentions the tool work, interruption, abandoned branch, compaction, and final recall."
+  ],
+  "operator_actions": [
+    "Interrupt the response to user message 5 after at least two numbered paragraphs are visible.",
+    "After user message 7 is answered, restore to immediately after user message 6.",
+    "After user message 8 is answered, manually compact the session and verify a native boundary exists."
+  ],
+  "features": [
+    "messages",
+    "tools",
+    "interrupt",
+    "rollback",
+    "compaction",
+    "loaded-context"
+  ],
+  "capture_requirements": [
+    "closed-session",
+    "verbatim-user-messages",
+    "native-tool-evidence",
+    "native-interrupt-evidence",
+    "native-rollback-evidence",
+    "native-compaction-evidence"
+  ]
+}
