@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import gzip
 import json
 from pathlib import Path
@@ -10,12 +11,15 @@ from tarav._core.errors import CliError
 from tarav.chatlas2.anonymizer import anonymize_text
 from tarav.chatlas2.corpus import (
     _model_signature,
+    _validate_checked_model,
     load_capture_records,
     load_script_spec,
     prepare_capture,
     register_candidate,
     verify_corpus,
 )
+from tarav.chatlas2.message_ref import compute_chat_message_hash
+from tarav.chatlas2.pipeline import build_normal_model_from_row
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
@@ -156,6 +160,40 @@ def test_specimen_signature_ignores_identity_order_between_equal_event_shapes() 
         }
 
     assert _model_signature(model("a", "b")) == _model_signature(model("b", "a"))
+
+
+def test_checked_model_requires_unique_self_verifying_message_addresses(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.jsonl"
+    _rollout(source, session_id="019ccafa-7835-7fc3-ac17-0e0a0f675c22")
+    model = build_normal_model_from_row(_row(source))
+
+    _validate_checked_model(model)
+
+    duplicate = deepcopy(model)
+    duplicate["annotations"]["chat_messages"].append(
+        deepcopy(duplicate["annotations"]["chat_messages"][0])
+    )
+    with pytest.raises(CliError, match="message addresses are not unique"):
+        _validate_checked_model(duplicate)
+
+    invalid_hash = deepcopy(model)
+    invalid_hash["annotations"]["chat_messages"][0]["message_hash"] = "0" * 64
+    with pytest.raises(CliError, match="Chat.Message.Hash"):
+        _validate_checked_model(invalid_hash)
+
+
+def test_checked_model_rejects_message_side_origin_disagreement(tmp_path: Path) -> None:
+    source = tmp_path / "source.jsonl"
+    _rollout(source, session_id="019ccafa-7835-7fc3-ac17-0e0a0f675c22")
+    model = build_normal_model_from_row(_row(source))
+    message = model["annotations"]["chat_messages"][0]
+    message["side"] = "agent"
+    message["message_hash"] = compute_chat_message_hash(message)
+
+    with pytest.raises(CliError, match="side does not agree with member origins"):
+        _validate_checked_model(model)
 
 
 def test_prepare_and_register_capture_preserve_specimen_and_archive_every_artifact(

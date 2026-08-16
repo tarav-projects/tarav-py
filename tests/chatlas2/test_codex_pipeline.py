@@ -9,6 +9,7 @@ from tarav.chatlas2.codex import (
     CodexRawNormalizer,
 )
 from tarav.chatlas2.event_ref import event_ref, resolve_event_ref
+from tarav.chatlas2.message_ref import resolve_chat_message_ref
 from tarav.chatlas2.pipeline import build_normal_model_from_row
 
 
@@ -157,8 +158,20 @@ def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
     assert len(contexts) == 2
     assert contexts[0]["event_refs"] == contexts[1]["event_refs"]
     assert len(contexts[0]["event_refs"]) == 3
-    assert model["schema_version"] == 2
+    assert model["schema_version"] == 3
     assert all("event_id" not in event for event in model["events"])
+    assert all(
+        "message_id" not in message
+        and resolve_chat_message_ref(
+            model["annotations"]["chat_messages"],
+            {
+                "message_address": message["message_address"],
+                "message_hash": message["message_hash"],
+            },
+        )["standing"]
+        == "MATCHED"
+        for message in model["annotations"]["chat_messages"]
+    )
     annotation_refs = [
         ref
         for message in model["annotations"]["chat_messages"]

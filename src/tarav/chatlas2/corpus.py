@@ -12,8 +12,14 @@ from typing import Any, Iterable
 from tarav._core.errors import CliError
 
 from .anonymizer import ANONYMIZER_VERSION, anonymize_text
+from .claude import ClaudeRawModelVersioner, ClaudeRawNormalizer
 from .codex import CodexRawModelVersioner, CodexRawNormalizer
 from .event_ref import event_ref, resolve_event_ref
+from .message_ref import (
+    chat_message_ref,
+    compute_chat_message_hash,
+    resolve_chat_message_ref,
+)
 from .model import JsonObject
 from .pipeline import build_normal_model_from_row, transcript_paths
 
@@ -157,7 +163,7 @@ def prepare_capture(
             }
         )
     anonymous_row = _row_for_paths(row, anonymous_paths)
-    if provider == "codex" and any(
+    if any(
         artifact["raw_model_version"] is not None for artifact in artifacts
     ):
         source_model = build_normal_model_from_row(row)
@@ -357,9 +363,13 @@ def check_corpus(corpus_root: Path) -> JsonObject:
 
 
 def _capture_is_supported(record: JsonObject) -> bool:
-    if record.get("provider") != "codex":
+    provider = record.get("provider")
+    if provider == "codex":
+        supported = CodexRawNormalizer.supported_raw_model_versions
+    elif provider == "claude-code":
+        supported = ClaudeRawNormalizer.supported_raw_model_versions
+    else:
         return False
-    supported = CodexRawNormalizer.supported_raw_model_versions
     return all(
         artifact.get("raw_model_version") in supported
         for artifact in record["artifacts"]
@@ -420,8 +430,8 @@ def _validate_checked_model(model: JsonObject) -> None:
         raise CliError("normalized corpus capture has no event tape")
     if not isinstance(sources, list) or not isinstance(annotations, dict):
         raise CliError("normalized corpus capture has an invalid model envelope")
-    if model.get("schema_version") != 2:
-        raise CliError("normalized corpus capture is not Chatlas2 Normal Model v2")
+    if model.get("schema_version") != 3:
+        raise CliError("normalized corpus capture is not Chatlas2 Normal Model v3")
     timestamps = [event.get("started_at") for event in events]
     if not all(isinstance(timestamp, str) for timestamp in timestamps):
         raise CliError("normalized corpus event has no start timestamp")
@@ -455,12 +465,52 @@ def _validate_checked_model(model: JsonObject) -> None:
                 raise CliError("normalized corpus observation has no source reference")
             if source_ref.get("source_id") not in source_ids:
                 raise CliError("normalized corpus source reference does not resolve")
-    for message in annotations.get("chat_messages", []):
+    messages = annotations.get("chat_messages")
+    if not isinstance(messages, list):
+        raise CliError("normalized corpus capture has no Chat.Message projection")
+    try:
+        message_refs = [chat_message_ref(message) for message in messages]
+    except (AttributeError, ValueError) as exc:
+        raise CliError(f"normalized corpus Chat.Message.Ref is invalid: {exc}") from exc
+    message_addresses = {ref["message_address"] for ref in message_refs}
+    if len(message_addresses) != len(messages):
+        raise CliError("normalized corpus message addresses are not unique")
+    event_by_address = {event["event_address"]: event for event in events}
+    event_order = {
+        event["event_address"]: index for index, event in enumerate(events)
+    }
+    message_order: list[int] = []
+    for message in messages:
+        if message.get("class") != "Chat.Message":
+            raise CliError("normalized corpus message has an unsupported class")
+        side = message.get("side")
+        if side not in {"user", "agent"}:
+            raise CliError("normalized corpus Chat.Message has an unsupported side")
         _require_matched_refs(
             events,
             message.get("event_refs"),
             subject="Chat.Message",
         )
+        try:
+            expected_hash = compute_chat_message_hash(message)
+            resolution = resolve_chat_message_ref(messages, chat_message_ref(message))
+        except ValueError as exc:
+            raise CliError(f"normalized corpus Chat.Message.Ref is invalid: {exc}") from exc
+        if message.get("message_hash") != expected_hash:
+            raise CliError("normalized corpus Chat.Message.Hash does not match its state")
+        if resolution["standing"] != "MATCHED":
+            raise CliError(
+                f"normalized corpus Chat.Message.Ref is {resolution['standing']}"
+            )
+        refs = message["event_refs"]
+        member_events = [event_by_address[ref["event_address"]] for ref in refs]
+        if any(event.get("origin") != side for event in member_events):
+            raise CliError(
+                "normalized corpus Chat.Message side does not agree with member origins"
+            )
+        message_order.append(event_order[refs[0]["event_address"]])
+    if message_order != sorted(message_order):
+        raise CliError("normalized corpus Chat.Message projection is not chronological")
     for context in annotations.get("agent_loaded_contexts", []):
         _require_matched_refs(
             events,
@@ -531,6 +581,8 @@ def _verify_artifact_bytes(artifact: JsonObject, data: bytes) -> None:
 def _raw_model_version(provider: str, path: Path) -> str | None:
     if provider == "codex":
         return CodexRawModelVersioner().version(path)
+    if provider == "claude-code":
+        return ClaudeRawModelVersioner().version(path)
     return None
 
 
@@ -590,22 +642,36 @@ def _user_messages(model: JsonObject) -> list[str]:
     for annotation in model["annotations"]["chat_messages"]:
         if annotation["side"] != "user":
             continue
-        event = events[annotation["event_refs"][0]["event_address"]]
-        payload = event["record"].get("payload")
-        if not isinstance(payload, dict):
-            continue
-        content = payload.get("content")
-        if isinstance(content, list):
-            messages.append(
-                "".join(
-                    item.get("text", "")
-                    for item in content
-                    if isinstance(item, dict) and isinstance(item.get("text"), str)
-                )
+        messages.append(
+            "".join(
+                _event_message_text(events[ref["event_address"]])
+                for ref in annotation["event_refs"]
             )
-        elif isinstance(payload.get("message"), str):
-            messages.append(payload["message"])
+        )
     return messages
+
+
+def _event_message_text(event: JsonObject) -> str:
+    record = event.get("record")
+    if not isinstance(record, dict):
+        return ""
+    payload = record.get("payload")
+    if not isinstance(payload, dict):
+        payload = record.get("message")
+    if not isinstance(payload, dict):
+        return ""
+    content = payload.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            item.get("text", "")
+            for item in content
+            if isinstance(item, dict)
+            and isinstance(item.get("text"), str)
+        )
+    message = payload.get("message")
+    return message if isinstance(message, str) else ""
 
 
 def _require_matched_refs(

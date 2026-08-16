@@ -21,6 +21,6 @@ def test_committed_corpus_is_complete_and_hermetic() -> None:
 
     assert result["status"] == "ok"
     assert result["capture_count"] == 21
-    assert result["passed_count"] == 10
-    assert result["unsupported_count"] == 11
+    assert result["passed_count"] == 21
+    assert result["unsupported_count"] == 0
     assert result["failed_count"] == 0

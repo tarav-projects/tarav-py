@@ -122,12 +122,12 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     commands = parser.add_subparsers(dest="chatlas2_command", required=True)
     normalize = commands.add_parser(
         "normalize",
-        help="Normalize one archived Codex session into the Chatlas2 model.",
+        help="Normalize one archived supported session into the Chatlas2 model.",
     )
     selector = normalize.add_mutually_exclusive_group(required=True)
     selector.add_argument(
         "--session-id",
-        help="Exact native Codex session id.",
+        help="Exact native provider session id.",
     )
     selector.add_argument(
         "--identity-hash",

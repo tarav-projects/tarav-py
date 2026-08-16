@@ -75,11 +75,14 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   anonymous provider artifacts by content digest; its anonymizer is an opaque
   text transform with no provider or Raw.Model dependency. Current Chatlas is
   used only by explicit corpus preparation, while committed checks reconstruct
-  specimens locally. Normal Model v2 separates each provider-derived stable
-  event address from its current content hash; annotation membership carries
-  full Event.Ref values whose current resolution is MATCHED, AMENDED, or
-  MISSING. Normalization is stateless, so superseded normalized states remain a
-  concern of the raw archive and its Git history. Runtime is the only
+  specimens locally. Codex `codex.rollout.v1` and Claude Code
+  `claude.transcript.v1` are independent recognized vertical slices dispatched
+  into the same Normal Model. Normal Model v3 separates provider-derived stable places
+  from current state for both events and Chat.Message annotations. Membership
+  carries full Event.Ref values, and stored Event.Ref or Chat.Message.Ref
+  assertions resolve as MATCHED, AMENDED, or MISSING against only the supplied
+  current model. Normalization is stateless, so superseded normalized states
+  remain a concern of the raw archive and its Git history. Runtime is the only
   command-composition boundary between Chatlas2 and the maintained CLI.
 
 ## Shared infrastructure rule

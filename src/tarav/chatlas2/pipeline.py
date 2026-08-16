@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly reviews every archived Codex transcript, folds same logical places into current event state, finalizes self-verifying annotation refs, and sorts the retained union chronologically --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u
+# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly reviews every recognized provider transcript, folds same logical places into current event state, finalizes self-verifying annotation refs, and sorts the retained union chronologically --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u
 from __future__ import annotations
 
 from copy import deepcopy
@@ -13,8 +13,10 @@ from tarav._core.errors import CliError
 from tarav.chatlas.index_query import select_one_chatlas_index_row
 from tarav.chatlas.index_writer import archive_versions_for
 
+from .claude import ClaudeRawModelVersioner, ClaudeRawNormalizer
 from .codex import CodexRawModelVersioner, CodexRawNormalizer
 from .event_ref import event_ref
+from .message_ref import compute_chat_message_hash
 from .model import JsonObject
 
 
@@ -33,7 +35,7 @@ def build_normal_model(
     row = select_one_chatlas_index_row(
         command="chatlas2 normalize",
         identity_hash=identity_hash,
-        providers=("codex",),
+        providers=("codex", "claude-code"),
         session_id=session_id,
         chatlas_root=chatlas_root,
     )
@@ -41,14 +43,20 @@ def build_normal_model(
 
 
 def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
-    if row.get("provider") != "codex":
-        raise CliError("Chatlas2 first-pass normalization supports only Codex sessions")
-
-    versioner = CodexRawModelVersioner()
-    normalizer = CodexRawNormalizer()
+    provider = row.get("provider")
+    if provider == "codex":
+        versioner = CodexRawModelVersioner()
+        normalizer = CodexRawNormalizer()
+    elif provider == "claude-code":
+        versioner = ClaudeRawModelVersioner()
+        normalizer = ClaudeRawNormalizer()
+    else:
+        raise CliError(
+            "Chatlas2 normalization supports only Codex and Claude Code sessions"
+        )
     sources: list[JsonObject] = []
     events_by_address: dict[str, JsonObject] = {}
-    chat_messages_by_id: dict[str, JsonObject] = {}
+    chat_messages_by_address: dict[str, JsonObject] = {}
     contexts_by_agent_address: dict[str, JsonObject] = {}
     recognized_source_count = 0
 
@@ -77,12 +85,12 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
             for event in fragment.events
         }
         if transcript_source.current:
-            for message_id, message in list(chat_messages_by_id.items()):
+            for message_address, message in list(chat_messages_by_address.items()):
                 addresses = message.get("event_addresses")
                 if isinstance(addresses, list) and current_addresses.intersection(
                     str(address) for address in addresses
                 ):
-                    del chat_messages_by_id[message_id]
+                    del chat_messages_by_address[message_address]
             for address in current_addresses:
                 contexts_by_agent_address.pop(address, None)
         for event in fragment.events:
@@ -99,7 +107,9 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
             else:
                 existing["observations"] = observations
         for message in fragment.chat_messages:
-            chat_messages_by_id[str(message["message_id"])] = deepcopy(message)
+            chat_messages_by_address[str(message["message_address"])] = deepcopy(
+                message
+            )
         for context in fragment.agent_loaded_contexts:
             contexts_by_agent_address[str(context["agent_event_address"])] = deepcopy(
                 context
@@ -107,7 +117,7 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
 
     if recognized_source_count == 0:
         raise CliError(
-            "Chatlas2 found no recognized Codex transcript artifact for the selected session"
+            f"Chatlas2 found no recognized {provider} transcript artifact for the selected session"
         )
 
     events = sorted(events_by_address.values(), key=_event_sort_key)
@@ -118,7 +128,7 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
     chat_messages = sorted(
         (
             _finalize_chat_message(message, event_by_address=event_by_address)
-            for message in chat_messages_by_id.values()
+            for message in chat_messages_by_address.values()
         ),
         key=lambda message: _annotation_sort_key(message, event_order=event_order),
     )
@@ -131,10 +141,10 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
     )
     return {
         "class": "tarav.chatlas2.normal_model",
-        "schema_version": 2,
+        "schema_version": 3,
         "metadata": {"commit": _repository_commit()},
         "session": {
-            "provider": "codex",
+            "provider": provider,
             "session_id": row.get("session_id"),
             "identity_hash": row.get("identity_hash"),
         },
@@ -251,6 +261,7 @@ def _finalize_chat_message(
         addresses,
         event_by_address=event_by_address,
     )
+    result["message_hash"] = compute_chat_message_hash(result)
     return result
 
 

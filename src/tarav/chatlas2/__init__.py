@@ -2,20 +2,38 @@
 from __future__ import annotations
 
 from .commands import register_chatlas2_commands
+from .claude import (
+    CLAUDE_RAW_MODEL_VERSION,
+    ClaudeRawModelVersioner,
+    ClaudeRawNormalizer,
+)
 from .event_ref import (
     compute_event_address,
     compute_event_hash,
     event_ref,
     resolve_event_ref,
 )
+from .message_ref import (
+    chat_message_ref,
+    compute_chat_message_address,
+    compute_chat_message_hash,
+    resolve_chat_message_ref,
+)
 from .pipeline import build_normal_model, build_normal_model_from_row
 
 __all__ = [
     "build_normal_model",
     "build_normal_model_from_row",
+    "CLAUDE_RAW_MODEL_VERSION",
+    "ClaudeRawModelVersioner",
+    "ClaudeRawNormalizer",
+    "chat_message_ref",
+    "compute_chat_message_address",
+    "compute_chat_message_hash",
     "compute_event_address",
     "compute_event_hash",
     "event_ref",
     "register_chatlas2_commands",
+    "resolve_chat_message_ref",
     "resolve_event_ref",
 ]

@@ -9,6 +9,7 @@ from typing import Any
 from tarav._core.errors import CliError
 
 from .event_ref import compute_event_address, compute_event_hash
+from .message_ref import compute_chat_message_address
 from .model import JsonObject, NormalFragment
 
 
@@ -140,7 +141,12 @@ class CodexRawNormalizer:
                 chat_messages.append(
                     {
                         "class": "Chat.Message",
-                        "message_id": f"chat-message-{event_address}",
+                        "message_address": compute_chat_message_address(
+                            provider="codex",
+                            raw_model_version=raw_model_version,
+                            scope=session_scope,
+                            place={"record_index": record.record_index},
+                        ),
                         "side": message_side,
                         "event_addresses": [event_address],
                     }

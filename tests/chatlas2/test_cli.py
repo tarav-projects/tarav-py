@@ -114,7 +114,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["class"] == "tarav.chatlas2.normal_model"
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["session"]["session_id"] == session_id
     assert len(payload["sources"]) == 2
     assert len(payload["events"]) == 6

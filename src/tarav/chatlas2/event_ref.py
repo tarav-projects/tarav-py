@@ -82,8 +82,15 @@ def _without_native_identifiers(value: object) -> object:
 
 
 def _native_identifier_key(key: object) -> bool:
-    return isinstance(key, str) and (
-        key == "id" or key.endswith("_id") or key.endswith("_ids")
+    if not isinstance(key, str):
+        return False
+    return (
+        key == "id"
+        or key.endswith("_id")
+        or key.endswith("_ids")
+        or key == "uuid"
+        or key.endswith(("Uuid", "Uuids", "UUID", "UUIDs"))
+        or key.endswith(("Id", "Ids", "ID", "IDs"))
     )
 
 
