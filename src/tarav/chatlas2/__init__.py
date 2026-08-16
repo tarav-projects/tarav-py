@@ -49,6 +49,7 @@ from .normal_model import (
     provide_normal_model,
     provide_normal_model_reader,
 )
+from .query import SUPPORTED_QUERY_PROVIDERS, query_chat_messages, query_sessions
 from .turn_ref import (
     chat_turn_ref,
     compute_chat_turn_address,
@@ -77,6 +78,7 @@ __all__ = [
     "ClaudePromptSourceRawNormalizer",
     "ClaudeRawModelVersioner",
     "NormalModelCacheReader",
+    "SUPPORTED_QUERY_PROVIDERS",
     "CapturePlan",
     "CapturePlanLine",
     "apply_chat_index_capture_plan",
@@ -110,6 +112,8 @@ __all__ = [
     "provide_normal_model",
     "provide_normal_model_reader",
     "project_view",
+    "query_chat_messages",
+    "query_sessions",
     "register_chatlas2_commands",
     "scaffold_chat_index_capture_plan",
     "resolve_chat_message_ref",

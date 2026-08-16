@@ -8,6 +8,7 @@ from pathlib import Path
 from tarav._core.errors import CliError
 from tarav.chatlas.index_query import select_one_chatlas_index_row
 from tarav.chatlas.providers import supported_chatlas_provider_families
+from tarav.chatlas.time_interface import normalize_cli_timestamp
 
 from .cache import (
     materialize_normal_model_cache,
@@ -44,6 +45,7 @@ from .normal_model import (
     provide_normal_model,
     provide_normal_model_reader,
 )
+from .query import SUPPORTED_QUERY_PROVIDERS, query_chat_messages, query_sessions
 from .views import list_views, project_view, view_names
 
 
@@ -160,6 +162,52 @@ def _cmd_turns_get(args: argparse.Namespace) -> int:
         raise CliError("Chatlas2 Chat.Turn not found")
     payload = reader.hydrate_chat_turn(turn) if args.hydrate else {"turn": turn}
     _print_payload({"session": session, **payload}, pretty=args.json)
+    return 0
+
+
+def _cmd_sessions_query(args: argparse.Namespace) -> int:
+    payload = query_sessions(
+        identity_hash=args.identity_hash,
+        project=Path(args.project) if args.project else None,
+        project_base=args.project_base,
+        providers=tuple(args.providers) if args.providers else None,
+        session_id=args.session_id,
+        active_after=normalize_cli_timestamp(
+            args.active_after, field="--active-after"
+        ),
+        sort=args.sort,
+        limit=args.limit,
+        chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
+    )
+    _print_payload(payload, pretty=args.json)
+    return 0
+
+
+def _cmd_chat_query(args: argparse.Namespace) -> int:
+    payload = query_chat_messages(
+        identity_hash=args.identity_hash,
+        project=Path(args.project) if args.project else None,
+        project_base=args.project_base,
+        providers=tuple(args.providers) if args.providers else None,
+        session_id=args.session_id,
+        active_after=normalize_cli_timestamp(
+            args.active_after, field="--active-after"
+        ),
+        side=args.side,
+        text_exact=args.text_exact,
+        text_contains=args.text_contains,
+        text_regex=args.text_regex,
+        text_verbatim=args.text_verbatim,
+        after=normalize_cli_timestamp(args.after, field="--after"),
+        before=normalize_cli_timestamp(args.before, field="--before"),
+        message_address=args.message_address,
+        include_turn_ref=args.include_turn_ref,
+        sort=args.sort,
+        session_limit=args.session_limit,
+        limit=args.limit,
+        chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
+    )
+    _print_payload(payload, pretty=args.json)
     return 0
 
 
@@ -467,6 +515,73 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         help="Print the complete Chatlas2 Normal Model as JSON.",
     )
     normalize.set_defaults(handler=_cmd_normalize)
+
+    sessions = commands.add_parser(
+        "sessions",
+        help="Select Chatlas2-capable sessions through the existing Session.Index.",
+    )
+    session_commands = sessions.add_subparsers(
+        dest="chatlas2_sessions_command", required=True
+    )
+    session_query = session_commands.add_parser(
+        "query", help="Find chats by provider-neutral session metadata."
+    )
+    session_query.add_argument("--session-id")
+    session_query.add_argument("--identity-hash")
+    session_query.add_argument(
+        "--provider",
+        dest="providers",
+        action="append",
+        choices=SUPPORTED_QUERY_PROVIDERS,
+    )
+    session_query.add_argument("--project")
+    session_query.add_argument("--project-base")
+    session_query.add_argument("--active-after")
+    session_query.add_argument(
+        "--sort", choices=("lexical", "newest", "oldest"), default="newest"
+    )
+    session_query.add_argument("--limit", type=_non_negative_int, default=50)
+    session_query.add_argument("--chatlas-root")
+    session_query.add_argument("--json", action="store_true")
+    session_query.set_defaults(handler=_cmd_sessions_query)
+
+    chat = commands.add_parser(
+        "chat",
+        help="Query provider-neutral content inside a Session.Query result set.",
+    )
+    chat_commands = chat.add_subparsers(dest="chatlas2_chat_command", required=True)
+    chat_query = chat_commands.add_parser(
+        "query", help="Find authoritative Chat.Message records."
+    )
+    chat_query.add_argument("--session-id")
+    chat_query.add_argument("--identity-hash")
+    chat_query.add_argument(
+        "--provider",
+        dest="providers",
+        action="append",
+        choices=SUPPORTED_QUERY_PROVIDERS,
+    )
+    chat_query.add_argument("--project")
+    chat_query.add_argument("--project-base")
+    chat_query.add_argument("--active-after")
+    chat_query.add_argument("--side", choices=("user", "agent"))
+    text_query = chat_query.add_mutually_exclusive_group()
+    text_query.add_argument("--exact", dest="text_exact")
+    text_query.add_argument("--contains", dest="text_contains")
+    text_query.add_argument("--regex", dest="text_regex")
+    text_query.add_argument("--verbatim", dest="text_verbatim")
+    chat_query.add_argument("--after")
+    chat_query.add_argument("--before")
+    chat_query.add_argument("--message-address")
+    chat_query.add_argument("--include-turn-ref", action="store_true")
+    chat_query.add_argument(
+        "--sort", choices=("oldest", "newest"), default="oldest"
+    )
+    chat_query.add_argument("--session-limit", type=_non_negative_int, default=50)
+    chat_query.add_argument("--limit", type=_non_negative_int, default=50)
+    chat_query.add_argument("--chatlas-root")
+    chat_query.add_argument("--json", action="store_true")
+    chat_query.set_defaults(handler=_cmd_chat_query)
 
     cache = commands.add_parser(
         "cache",

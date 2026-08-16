@@ -111,7 +111,12 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   `events` read projections without introducing a second model or cache policy;
   collection bounds stop their JSONL iteration, while `full` returns the
   complete canonical model unchanged. Replay and zip-transcript behavior remain
-  outside this first migration slice. The first Anchory consumer requests
+  outside this first migration slice. Query keeps session discovery separate
+  from content reads: `chatlas2 sessions query` reuses Session.Index metadata,
+  while `chatlas2 chat query` verifies one Chat.Message predicate against the
+  current cache of every bounded selected session and returns only Normal Model
+  records and stable refs. Candidate scans and future indexes are never result
+  authority. The first Anchory consumer requests
   complete models through the same provider and
   stores exact user message refs and diagnostic `at` values in a separate
   `chatlas2` namespace while reusing the generic depot and Index-line attachment
