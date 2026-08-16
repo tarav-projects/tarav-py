@@ -278,6 +278,71 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     assert repeated_batch["minted_count"] == 0
     assert repeated_batch["reused_count"] == 2
 
+    stage = tmp_path / "chat-index-stage"
+    scaffolded = _run_json_command(
+        [
+            "chatlas2",
+            "chat-index",
+            "scaffold",
+            "--session-id",
+            session_id,
+            "--stage",
+            str(stage),
+            "--json",
+        ]
+    )
+    plan_path = Path(scaffolded["plan_path"])
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan["landed_lines"] = [
+        {
+            "client_id": "landed-line",
+            "concept": "Grounded.Line",
+            "line_content": line,
+            "anchor": first["anchor"],
+        }
+    ]
+    plan["status"] = "ready"
+    plan_path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+
+    validated = _run_json_command(
+        [
+            "chatlas2",
+            "chat-index",
+            "validate",
+            "--plan",
+            str(plan_path),
+            "--json",
+        ]
+    )
+    assert validated["horizon"]["turn_ref"]["turn_address"]
+    applied = _run_json_command(
+        [
+            "chatlas2",
+            "chat-index",
+            "apply",
+            "--plan",
+            str(plan_path),
+            "--json",
+        ]
+    )
+    assert applied["changed"] is True
+    surface = Path(applied["surface_path"])
+    assert f"{line} ^{first['anchor']}" in (surface / "HEAD.md").read_text(
+        encoding="utf-8"
+    )
+    repeated = _run_json_command(
+        [
+            "chatlas2",
+            "chat-index",
+            "apply",
+            "--plan",
+            str(plan_path),
+            "--json",
+        ]
+    )
+    assert repeated["already_applied"] is True
+    assert repeated["changed"] is False
+
 
 def test_chatlas2_cache_cli_and_bounded_message_reads_reuse_materialization(
     monkeypatch: pytest.MonkeyPatch,

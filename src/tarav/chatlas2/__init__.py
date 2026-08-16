@@ -25,6 +25,13 @@ from .cache import (
     materialize_normal_model_cache,
     normal_model_cache_status,
 )
+from .chat_index import (
+    apply_chat_index_capture_plan,
+    chat_index_surface_path,
+    scaffold_chat_index_capture_plan,
+    validate_chat_index_capture_plan,
+)
+from .chat_index_plan import CAPTURE_PLAN_SCHEMA, CapturePlan, CapturePlanLine
 from .event_ref import (
     compute_event_address,
     compute_event_hash,
@@ -63,17 +70,22 @@ __all__ = [
     "CHATLAS2_ANCHOR_BATCH_SCHEMA",
     "CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA",
     "CHATLAS2_NAMESPACE",
+    "CAPTURE_PLAN_SCHEMA",
     "CLAUDE_LEGACY_RAW_MODEL_VERSION",
     "CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION",
     "ClaudeLegacyRawNormalizer",
     "ClaudePromptSourceRawNormalizer",
     "ClaudeRawModelVersioner",
     "NormalModelCacheReader",
+    "CapturePlan",
+    "CapturePlanLine",
+    "apply_chat_index_capture_plan",
     "chat_message_ref",
     "chat_turn_ref",
     "chat_message_at",
     "chat_message_neighborhood",
     "chat_message_support_member",
+    "chat_index_surface_path",
     "chatlas2_anchory_batch_preview",
     "chatlas2_anchory_batch_register",
     "chatlas2_anchory_preview",
@@ -99,8 +111,10 @@ __all__ = [
     "provide_normal_model_reader",
     "project_view",
     "register_chatlas2_commands",
+    "scaffold_chat_index_capture_plan",
     "resolve_chat_message_ref",
     "resolve_chat_turn_ref",
     "resolve_event_ref",
     "view_names",
+    "validate_chat_index_capture_plan",
 ]
