@@ -5,6 +5,7 @@ import gc
 from pathlib import Path
 import weakref
 
+from tarav.chatlas2 import anchory
 from tarav.chatlas2.anchory import (
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
     CHATLAS2_NAMESPACE,
@@ -124,6 +125,32 @@ def test_support_at_is_diagnostic_not_reference_identity(tmp_path: Path) -> None
     assert resolved["members"][0]["standing"] == "MATCHED"
     assert resolved["members"][0]["at_matches"] is False
     assert resolved["members"][0]["current_at"] == "2026-08-16T00:00:09Z"
+
+
+def test_default_model_source_is_the_canonical_provider(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    model = _model()
+    calls: list[dict[str, object]] = []
+
+    def provide(**kwargs) -> dict[str, object]:
+        calls.append(kwargs)
+        return model
+
+    monkeypatch.setattr(anchory, "provide_normal_model", provide)
+
+    preview = chatlas2_anchory_preview(
+        members=(_member_ref(model),),
+        line_content="- [DF] Anchory requests Normal Model content.",
+        chatlas_root=tmp_path,
+    )
+
+    assert preview["action"] == "mint"
+    assert calls == [
+        {"identity_hash": "d" * 64, "chatlas_root": tmp_path},
+        {"identity_hash": "d" * 64, "chatlas_root": tmp_path},
+    ]
 
 
 def test_batch_preview_and_register_reuse_duplicate_meaning(tmp_path: Path) -> None:

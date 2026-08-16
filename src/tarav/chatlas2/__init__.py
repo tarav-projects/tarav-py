@@ -24,7 +24,6 @@ from .cache import (
     NormalModelCacheReader,
     materialize_normal_model_cache,
     normal_model_cache_status,
-    open_or_materialize_normal_model_cache,
 )
 from .event_ref import (
     compute_event_address,
@@ -38,7 +37,11 @@ from .message_ref import (
     compute_chat_message_hash,
     resolve_chat_message_ref,
 )
-from .pipeline import build_normal_model, build_normal_model_from_row
+from .normal_model import (
+    compute_normal_model,
+    provide_normal_model,
+    provide_normal_model_reader,
+)
 from .messages import (
     chat_message_at,
     chat_message_neighborhood,
@@ -48,8 +51,6 @@ from .messages import (
 )
 
 __all__ = [
-    "build_normal_model",
-    "build_normal_model_from_row",
     "CHATLAS2_ANCHOR_BATCH_SCHEMA",
     "CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA",
     "CHATLAS2_NAMESPACE",
@@ -78,7 +79,9 @@ __all__ = [
     "list_chat_messages",
     "materialize_normal_model_cache",
     "normal_model_cache_status",
-    "open_or_materialize_normal_model_cache",
+    "compute_normal_model",
+    "provide_normal_model",
+    "provide_normal_model_reader",
     "register_chatlas2_commands",
     "resolve_chat_message_ref",
     "resolve_event_ref",

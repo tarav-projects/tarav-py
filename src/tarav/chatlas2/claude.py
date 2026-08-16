@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude structural recognition partitions direct user-message mappings while shared mechanics preserve timed transcript records and loaded request input conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u
+# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude structural recognition partitions direct user-message mappings while shared mechanics preserve timed transcript records, human queued-command attachments, and loaded request input conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -173,16 +173,22 @@ def _normalize(
             if message_side is not None
             else None
         )
+        started_at = _event_started_at(record)
         event_address = compute_event_address(
             provider="claude-code",
             scope=session_scope,
             place=place,
         )
-        origin = "user" if is_primary_user_message(record.value) else "agent"
+        origin = (
+            "user"
+            if is_primary_user_message(record.value)
+            or _is_human_queued_command(record.value)
+            else "agent"
+        )
         event: JsonObject = {
             "class": "User.Event" if origin == "user" else "Agent.Event",
             "event_address": event_address,
-            "started_at": record.observed_at,
+            "started_at": started_at,
             "origin": origin,
             "observations": [
                 {
@@ -342,6 +348,38 @@ def _is_legacy_primary_user_message(value: JsonObject) -> bool:
     )
 
 
+def _human_queued_command(value: JsonObject) -> JsonObject | None:
+    attachment = value.get("attachment")
+    if value.get("type") != "attachment" or not isinstance(attachment, dict):
+        return None
+    origin = attachment.get("origin")
+    prompt = attachment.get("prompt")
+    if (
+        attachment.get("type") != "queued_command"
+        or not isinstance(origin, dict)
+        or origin.get("kind") != "human"
+        or not isinstance(prompt, str)
+        or not prompt
+    ):
+        return None
+    return attachment
+
+
+def _is_human_queued_command(value: JsonObject) -> bool:
+    return _human_queued_command(value) is not None
+
+
+def _event_started_at(record: _RawRecord) -> str:
+    queued = _human_queued_command(record.value)
+    if queued is not None:
+        queued_at = queued.get("timestamp")
+        if isinstance(queued_at, str) and queued_at:
+            return queued_at
+    if record.observed_at is None:
+        raise CliError("Chatlas2 Claude timed event has no observed timestamp")
+    return record.observed_at
+
+
 def _command_args_text(content: str) -> str:
     match = _COMMAND_ARGS_PATTERN.search(content)
     return match.group(1).strip() if match is not None else ""
@@ -353,6 +391,8 @@ def _chat_message_side(
     is_primary_user_message: Callable[[JsonObject], bool],
 ) -> str | None:
     if is_primary_user_message(value):
+        return "user"
+    if _is_human_queued_command(value):
         return "user"
     if value.get("type") != "assistant":
         return None
@@ -371,6 +411,10 @@ def _chat_message_text(
             return ""
         command_args = _command_args_text(content)
         return command_args or content
+    queued = _human_queued_command(value)
+    if queued is not None:
+        prompt = queued.get("prompt")
+        return prompt if isinstance(prompt, str) else ""
     return _assistant_text(value)
 
 
@@ -401,9 +445,10 @@ def _nearest_user_input_address(
         ancestor = raw_by_uuid.get(parent)
         if ancestor is None:
             return None
-        if ancestor.value.get("type") == "user" and isinstance(
-            ancestor.value.get("message"), dict
-        ):
+        if (
+            ancestor.value.get("type") == "user"
+            and isinstance(ancestor.value.get("message"), dict)
+        ) or _is_human_queued_command(ancestor.value):
             return event_address_by_uuid.get(parent)
         parent = ancestor.value.get("parentUuid")
     return None

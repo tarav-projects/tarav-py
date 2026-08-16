@@ -78,6 +78,9 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   specimens locally. Codex `codex.rollout.5f98` and Claude Code
   `claude.transcript.1ecc` / `claude.transcript.b17b` are opaque recognized raw-model
   identities dispatched through compatible normalizers into the same Normal Model.
+  Both Claude normalizers map human-origin `queued_command` attachments to
+  user events/messages at their nested queue timestamp and may use them as the
+  nearest evidenced loaded context for a following assistant request.
   Raw-model identity remains provenance and does not enter stable place derivation.
   Normal Model v5 separates provider-derived stable places
   from current normalized state for both events and Chat.Message annotations.
@@ -93,13 +96,17 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   cache: one metadata file plus independently readable event, message, and
   loaded-context JSONL collections. Cache freshness couples the session,
   ordered transcript fingerprints, Normal Model schema, and producer commit;
-  raw-attached diagnostic models are never cached. Chat.Message adds a
+  raw-attached diagnostic models are never cached. A canonical provider hides
+  this cache policy from consumers: default requests validate and transparently
+  rebuild, refresh requests force replacement, and raw diagnostics compute
+  directly. Chat.Message adds a
   provider-neutral primary-text projection plus pure discovery, derived-time,
   and bounded-neighborhood operations. Exact-session message reads stream the
-  cache and apply optional limits during iteration. Its first Anchory consumer
+  provider's cached collections and apply optional limits during iteration. Its
+  first Anchory consumer requests complete models through the same provider and
   stores exact user message refs and diagnostic `at` values in a separate
   `chatlas2` namespace while reusing the generic depot and Index-line attachment
-  identity and retaining at most one reconstructed model per operation.
+  identity; it owns no cache-specific loader or model slot.
   Runtime is the only command-composition boundary between Chatlas2 and the
   maintained CLI.
 

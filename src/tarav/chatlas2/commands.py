@@ -11,7 +11,6 @@ from tarav.chatlas.providers import supported_chatlas_provider_families
 from .cache import (
     materialize_normal_model_cache,
     normal_model_cache_status,
-    open_or_materialize_normal_model_cache,
 )
 from .corpus import (
     check_corpus,
@@ -32,14 +31,23 @@ from .anchory import (
     load_anchor_batch,
 )
 from .message_ref import chat_message_ref
-from .pipeline import build_normal_model
+from .normal_model import (
+    compute_normal_model,
+    provide_normal_model,
+    provide_normal_model_reader,
+)
 
 
 def _cmd_normalize(args: argparse.Namespace) -> int:
-    model = build_normal_model(
-        session_id=args.session_id,
-        identity_hash=args.identity_hash,
-        include_raw=args.include_raw,
+    selector = {
+        "session_id": args.session_id,
+        "identity_hash": args.identity_hash,
+        "chatlas_root": Path(args.chatlas_root) if args.chatlas_root else None,
+    }
+    model = (
+        compute_normal_model(**selector, include_raw=True)
+        if args.include_raw
+        else provide_normal_model(**selector, refresh=args.refresh)
     )
     if args.json:
         print(json.dumps(model, indent=2, ensure_ascii=False))
@@ -57,8 +65,8 @@ def _print_payload(payload: object, *, pretty: bool) -> None:
     print(json.dumps(payload, indent=2 if pretty else None, ensure_ascii=False))
 
 
-def _cache_for_selector(args: argparse.Namespace):
-    return open_or_materialize_normal_model_cache(
+def _model_reader_for_selector(args: argparse.Namespace):
+    return provide_normal_model_reader(
         session_id=args.session_id,
         identity_hash=args.identity_hash,
         chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
@@ -84,10 +92,10 @@ def _message_payload(session, record):
 
 
 def _cmd_messages_list(args: argparse.Namespace) -> int:
-    cache = _cache_for_selector(args)
-    session = cache.metadata["model"]["session"]
+    reader = _model_reader_for_selector(args)
+    session = reader.metadata["model"]["session"]
     records = list(
-        cache.iter_chat_message_records(side=args.side, limit=args.limit)
+        reader.iter_chat_message_records(side=args.side, limit=args.limit)
     )
     _print_payload(
         {
@@ -101,10 +109,10 @@ def _cmd_messages_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_messages_find(args: argparse.Namespace) -> int:
-    cache = _cache_for_selector(args)
-    session = cache.metadata["model"]["session"]
+    reader = _model_reader_for_selector(args)
+    session = reader.metadata["model"]["session"]
     records = list(
-        cache.iter_chat_message_records(
+        reader.iter_chat_message_records(
             side=args.side,
             text=args.text,
             exact=args.exact,
@@ -327,11 +335,18 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         "--identity-hash",
         help="Exact or prefix Chatlas identity hash.",
     )
-    normalize.add_argument(
+    normalize_mode = normalize.add_mutually_exclusive_group()
+    normalize_mode.add_argument(
         "--include-raw",
         action="store_true",
-        help="Attach optional normalizer-owned raw evidence.",
+        help="Compute directly and attach optional normalizer-owned raw evidence.",
     )
+    normalize_mode.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Force normalization and replace the compact cache.",
+    )
+    normalize.add_argument("--chatlas-root")
     normalize.add_argument(
         "--json",
         action="store_true",

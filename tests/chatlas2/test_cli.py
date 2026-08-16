@@ -137,6 +137,35 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     assert all("event_id" not in event for event in payload["events"])
     assert payload["metadata"]["commit"]
 
+    cached = _run_json_command(
+        ["chatlas2", "cache", "status", "--session-id", session_id, "--json"]
+    )
+    assert cached["standing"] == "FRESH"
+
+    refreshed = _run_json_command(
+        [
+            "chatlas2",
+            "normalize",
+            "--session-id",
+            session_id,
+            "--refresh",
+            "--json",
+        ]
+    )
+    assert refreshed == payload
+
+    def refuse_cached_normalization(*_args, **_kwargs):
+        raise AssertionError("default Normal Model access must reuse a fresh cache")
+
+    monkeypatch.setattr(
+        "tarav.chatlas2.cache.build_normal_model_from_row",
+        refuse_cached_normalization,
+    )
+    reused = _run_json_command(
+        ["chatlas2", "normalize", "--session-id", session_id, "--json"]
+    )
+    assert reused == payload
+
     assert (
         main(
             [

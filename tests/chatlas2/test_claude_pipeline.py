@@ -84,6 +84,28 @@ def _assistant(
     )
 
 
+def _queued_command(
+    text: str,
+    *,
+    uuid: str,
+    timestamp: str,
+    queued_at: str,
+    parent_uuid: str,
+) -> dict[str, object]:
+    return _record(
+        "attachment",
+        uuid=uuid,
+        timestamp=timestamp,
+        parent_uuid=parent_uuid,
+        attachment={
+            "type": "queued_command",
+            "prompt": text,
+            "origin": {"kind": "human"},
+            "timestamp": queued_at,
+        },
+    )
+
+
 def _artifact(path: Path) -> dict[str, object]:
     return {"path": str(path), "role": "transcript", "extractable": True}
 
@@ -403,6 +425,80 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
         ["2026-08-15T00:00:06Z"],
         ["2026-08-15T00:00:06Z"],
     ]
+
+
+def test_claude_human_queued_command_is_a_user_message_at_queue_time(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "queued-command.jsonl"
+    records = [
+        {"type": "mode", "sessionId": "claude-session", "mode": "default"},
+        _user(
+            "opening",
+            uuid="user-1",
+            timestamp="2026-08-15T00:00:01Z",
+            parent_uuid=None,
+        ),
+        _assistant(
+            {"type": "text", "text": "working"},
+            uuid="assistant-1",
+            timestamp="2026-08-15T00:00:02Z",
+            parent_uuid="user-1",
+            request_id="request-1",
+        ),
+        {
+            "type": "queue-operation",
+            "operation": "enqueue",
+            "timestamp": "2026-08-15T00:00:03Z",
+            "sessionId": "claude-session",
+            "content": "do this too",
+        },
+        _queued_command(
+            "do this too",
+            uuid="queued-1",
+            timestamp="2026-08-15T00:00:06Z",
+            queued_at="2026-08-15T00:00:03Z",
+            parent_uuid="assistant-1",
+        ),
+        _assistant(
+            {"type": "text", "text": "done"},
+            uuid="assistant-2",
+            timestamp="2026-08-15T00:00:07Z",
+            parent_uuid="queued-1",
+            request_id="request-2",
+        ),
+    ]
+    _write_jsonl(path, records)
+
+    model = build_normal_model_from_row(_row(path))
+    messages = model["annotations"]["chat_messages"]
+    assert [(message["side"], message["text"]) for message in messages] == [
+        ("user", "opening"),
+        ("agent", "working"),
+        ("user", "do this too"),
+        ("agent", "done"),
+    ]
+
+    queued_message = messages[2]
+    queued_ref = queued_message["event_refs"][0]
+    queued_event = resolve_event_ref(model["events"], queued_ref)["event"]
+    assert queued_event["class"] == "User.Event"
+    assert queued_event["origin"] == "user"
+    assert queued_event["started_at"] == "2026-08-15T00:00:03Z"
+    assert queued_event["content"] == {"text": "do this too"}
+    assert queued_event["observations"] == [
+        {
+            "observed_at": "2026-08-15T00:00:06Z",
+            "source_ref": {
+                "source_id": model["sources"][0]["source_id"],
+                "record_index": 5,
+                "line": 5,
+            },
+        }
+    ]
+
+    final_context = model["annotations"]["agent_loaded_contexts"][-1]
+    assert final_context["event_refs"] == [queued_ref]
 
 
 def test_claude_normalization_unions_every_artifact_without_losing_continuation(

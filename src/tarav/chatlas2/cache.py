@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-normal-model-cache --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --note [CT] completed compact Normal Models are disposable session caches whose collections stream independently after creation --supp ^d20260816-5u ^d20260816-6u ^d20260816-8u ^d20260816-9u ^d20260816-10u ^d20260816-11u ^d20260816-12u ^d20260816-13u ^d20260816-14u ^d20260816-15u
+# $kw: ^chatlas2-normal-model-cache --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --note [CT] completed compact Normal Models are disposable session caches whose collections stream independently after creation and whose policy is hidden behind the Normal Model provider --supp ^d20260816-5u ^d20260816-6u ^d20260816-8u ^d20260816-9u ^d20260816-10u ^d20260816-11u ^d20260816-12u ^d20260816-13u ^d20260816-14u ^d20260816-15u ^d20260816-17u
 from __future__ import annotations
 
 from copy import deepcopy
@@ -257,17 +257,6 @@ def open_or_materialize_normal_model_cache(
     )
 
 
-def load_or_build_normal_model(
-    identity_hash: str,
-    *,
-    chatlas_root: Path | None = None,
-) -> JsonObject:
-    return open_or_materialize_normal_model_cache(
-        identity_hash=identity_hash,
-        chatlas_root=chatlas_root,
-    ).load_normal_model()
-
-
 def _cache_identity(row: JsonObject) -> JsonObject:
     payload: JsonObject = {
         "session_identity": _identity_hash(row),
@@ -448,7 +437,6 @@ __all__ = [
     "CACHE_CLASS",
     "CACHE_SCHEMA_VERSION",
     "NormalModelCacheReader",
-    "load_or_build_normal_model",
     "materialize_normal_model_cache",
     "materialize_normal_model_cache_from_row",
     "normal_model_cache_path",
