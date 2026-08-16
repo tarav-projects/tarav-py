@@ -1,10 +1,11 @@
-# $kw: ^chatlas2-cli --from Chatlas.Query.Surface --from Usage.Surface --from Raw.Archive --note [CT] Chatlas2 exposes one-session normalization, disposable Normal Model views, explicit prepare/register, and hermetic corpus inspection without mutating current Chatlas --supp ^c20260814-13u ^c20260814-15u ^c20260815-16u ^c20260815-31u ^c20260816-23u ^d20260816-1u
+# $kw: ^chatlas2-cli --from Chatlas.Query.Surface --from Usage.Surface --from Raw.Archive --note [CT] Chatlas2 exposes one-session normalization, compact turn lookup and hydration, disposable views, explicit grounding, and hermetic corpus inspection without mutating current Chatlas --supp ^c20260814-13u ^c20260814-15u ^c20260815-16u ^c20260815-31u ^c20260816-23u ^d20260816-1u ^d20260816-28u ^d20260816-31u
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
 
+from tarav._core.errors import CliError
 from tarav.chatlas.index_query import select_one_chatlas_index_row
 from tarav.chatlas.providers import supported_chatlas_provider_families
 
@@ -60,6 +61,7 @@ def _cmd_normalize(args: argparse.Namespace) -> int:
     print(f"sources: {len(model['sources'])}")
     print(f"events: {len(model['events'])}")
     print(f"chat_messages: {len(annotations['chat_messages'])}")
+    print(f"chat_turns: {len(annotations['chat_turns'])}")
     print(f"agent_loaded_contexts: {len(annotations['agent_loaded_contexts'])}")
     return 0
 
@@ -128,6 +130,31 @@ def _cmd_messages_find(args: argparse.Namespace) -> int:
         },
         pretty=args.json,
     )
+    return 0
+
+
+def _cmd_turns_list(args: argparse.Namespace) -> int:
+    reader = _model_reader_for_selector(args)
+    session = reader.metadata["model"]["session"]
+    turns = list(reader.iter_chat_turns(side=args.side, limit=args.limit))
+    _print_payload(
+        {"session": session, "count": len(turns), "turns": turns},
+        pretty=args.json,
+    )
+    return 0
+
+
+def _cmd_turns_get(args: argparse.Namespace) -> int:
+    reader = _model_reader_for_selector(args)
+    session = reader.metadata["model"]["session"]
+    turn = reader.find_chat_turn(
+        turn_address=args.turn_address,
+        message_address=args.message_address,
+    )
+    if turn is None:
+        raise CliError("Chatlas2 Chat.Turn not found")
+    payload = reader.hydrate_chat_turn(turn) if args.hydrate else {"turn": turn}
+    _print_payload({"session": session, **payload}, pretty=args.json)
     return 0
 
 
@@ -445,6 +472,30 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     message_find.set_defaults(handler=_cmd_messages_find)
 
+    turns = commands.add_parser(
+        "turns",
+        help="Inspect compact Chat.Turn groupings and hydrate them on demand.",
+    )
+    turn_commands = turns.add_subparsers(dest="chatlas2_turns_command", required=True)
+    turn_list = turn_commands.add_parser(
+        "list", help="List compact turns in chronological order."
+    )
+    _add_message_selector(turn_list)
+    turn_list.set_defaults(handler=_cmd_turns_list)
+    turn_get = turn_commands.add_parser(
+        "get", help="Get one turn by turn address or containing message address."
+    )
+    turn_session_selector = turn_get.add_mutually_exclusive_group(required=True)
+    turn_session_selector.add_argument("--session-id")
+    turn_session_selector.add_argument("--identity-hash")
+    turn_target_selector = turn_get.add_mutually_exclusive_group(required=True)
+    turn_target_selector.add_argument("--turn-address")
+    turn_target_selector.add_argument("--message-address")
+    turn_get.add_argument("--hydrate", action="store_true")
+    turn_get.add_argument("--chatlas-root")
+    turn_get.add_argument("--json", action="store_true")
+    turn_get.set_defaults(handler=_cmd_turns_get)
+
     views = commands.add_parser(
         "views",
         help="Read disposable projections of canonical Normal Model content.",
@@ -495,9 +546,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         command.add_argument(
             "--predecessor", dest="predecessors", action="append", default=[]
         )
-        command.add_argument(
-            "--issue", dest="issues", action="append", default=[]
-        )
+        command.add_argument("--issue", dest="issues", action="append", default=[])
         command.add_argument("--radius", type=int, default=4)
         command.add_argument("--chatlas-root")
         command.set_defaults(handler=handler)

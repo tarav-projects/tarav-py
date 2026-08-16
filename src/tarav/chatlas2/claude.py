@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude structural recognition recovers direct human prompt variants and mixed legacy-shaped records while preserving ambiguous timed records as unresolved and loaded request input conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u ^c20260816-20u
+# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude direct normalization preserves a compact digest of each opaque native record for whole-turn drift while retaining conservative origin and loaded-context mapping --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u ^c20260816-20u ^d20260816-25u ^d20260816-27u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,6 +12,7 @@ from tarav._core.errors import CliError
 from .event_ref import compute_event_address, compute_event_hash
 from .message_ref import compute_chat_message_address
 from .model import JsonObject, NormalFragment
+from .turn_ref import compute_opaque_payload_hash
 
 
 CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION = "claude.transcript.1ecc"
@@ -84,9 +85,7 @@ class ClaudeRawModelVersioner:
 
 
 class ClaudePromptSourceRawNormalizer:
-    supported_raw_model_versions = frozenset(
-        {CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION}
-    )
+    supported_raw_model_versions = frozenset({CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION})
 
     def normalize(
         self,
@@ -206,6 +205,7 @@ def _normalize(
                     },
                 }
             ],
+            "opaque_payload_hash": compute_opaque_payload_hash(record.value),
         }
         if message_text is not None:
             event["content"] = {"text": message_text}
@@ -263,9 +263,7 @@ def _normalize(
         events=tuple(events),
         chat_messages=tuple(chat_messages),
         agent_loaded_contexts=tuple(loaded_contexts),
-        raw={"records": [record.value for record in records]}
-        if include_raw
-        else None,
+        raw={"records": [record.value for record in records]} if include_raw else None,
     )
 
 
@@ -284,7 +282,9 @@ def _read_records(path: Path) -> list[_RawRecord]:
             if not isinstance(value, dict):
                 raise ValueError(f"line {line_number} is not a JSON object")
             timestamp = value.get("timestamp")
-            observed_at = timestamp if isinstance(timestamp, str) and timestamp else None
+            observed_at = (
+                timestamp if isinstance(timestamp, str) and timestamp else None
+            )
             records.append(
                 _RawRecord(
                     record_index=len(records) + 1,
@@ -350,9 +350,8 @@ def _is_legacy_primary_user_message(value: JsonObject) -> bool:
         return False
     if not content.startswith(_LEGACY_HARNESS_PREFIXES):
         return True
-    return (
-        content.startswith(("<command-message>", "<command-name>"))
-        and bool(_command_args_text(content))
+    return content.startswith(("<command-message>", "<command-name>")) and bool(
+        _command_args_text(content)
     )
 
 
@@ -386,8 +385,7 @@ def _has_human_origin(value: JsonObject) -> bool:
         attachment.get("origin") if isinstance(attachment, dict) else None
     )
     return (
-        isinstance(attachment_origin, dict)
-        and attachment_origin.get("kind") == "human"
+        isinstance(attachment_origin, dict) and attachment_origin.get("kind") == "human"
     )
 
 

@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-package --from Normalization.Pipeline::Chatlas.Session.Model --from Dependency.Profile.Split --from Event.Ref --note [CT] Chatlas2 is an isolated experimental namespace that may reuse current Chatlas without creating a reverse dependency --supp ^c20260814-12u ^c20260814-13u ^c20260814-14u ^c20260815-39u
+# $kw: ^chatlas2-package --from Normalization.Pipeline::Chatlas.Session.Model --from Dependency.Profile.Split --from Event.Ref --note [CT] Chatlas2 is an isolated experimental namespace that may reuse current Chatlas without creating a reverse dependency --supp ^c20260814-12u ^c20260814-13u ^c20260814-14u ^c20260815-39u ^d20260816-22u
 from __future__ import annotations
 
 from .commands import register_chatlas2_commands
@@ -42,6 +42,14 @@ from .normal_model import (
     provide_normal_model,
     provide_normal_model_reader,
 )
+from .turn_ref import (
+    chat_turn_ref,
+    compute_chat_turn_address,
+    compute_chat_turn_hash,
+    compute_opaque_payload_hash,
+    resolve_chat_turn_ref,
+)
+from .turns import list_chat_turns
 from .messages import (
     chat_message_at,
     chat_message_neighborhood,
@@ -62,6 +70,7 @@ __all__ = [
     "ClaudeRawModelVersioner",
     "NormalModelCacheReader",
     "chat_message_ref",
+    "chat_turn_ref",
     "chat_message_at",
     "chat_message_neighborhood",
     "chat_message_support_member",
@@ -72,12 +81,16 @@ __all__ = [
     "chatlas2_anchory_resolve",
     "compute_chat_message_address",
     "compute_chat_message_hash",
+    "compute_chat_turn_address",
+    "compute_chat_turn_hash",
+    "compute_opaque_payload_hash",
     "compute_event_address",
     "compute_event_hash",
     "event_ref",
     "find_chat_messages",
     "format_support_member_ref",
     "list_chat_messages",
+    "list_chat_turns",
     "list_views",
     "materialize_normal_model_cache",
     "normal_model_cache_status",
@@ -87,6 +100,7 @@ __all__ = [
     "project_view",
     "register_chatlas2_commands",
     "resolve_chat_message_ref",
+    "resolve_chat_turn_ref",
     "resolve_event_ref",
     "view_names",
 ]

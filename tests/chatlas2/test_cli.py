@@ -127,7 +127,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["class"] == "tarav.chatlas2.normal_model"
-    assert payload["schema_version"] == 5
+    assert payload["schema_version"] == 6
     assert "raw" not in payload
     assert all("record" not in event for event in payload["events"])
     assert payload["session"]["session_id"] == session_id
@@ -477,6 +477,77 @@ def test_chatlas2_views_list_and_get_initial_cache_backed_projections(
             == 1
         )
     assert "--limit is unavailable for the full view" in diagnostics.getvalue()
+
+
+def test_chatlas2_turns_list_lookup_and_hydrate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = TaravTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-home"
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675c22"
+    rollout = home / "sessions/2026/08/15" / f"rollout-{session_id}.jsonl"
+    _write_codex_rollout(
+        rollout,
+        session_id=session_id,
+        messages=[("user", "first question"), ("assistant", "first answer")],
+    )
+    environment.write_global_config(
+        chatlas={"sources": [{"provider": "codex", "home": str(home)}]}
+    )
+    _run_json_command(["chatlas", "index", "update", "--provider", "codex", "--json"])
+
+    listed = _run_json_command(
+        [
+            "chatlas2",
+            "turns",
+            "list",
+            "--session-id",
+            session_id,
+            "--side",
+            "user",
+            "--limit",
+            "1",
+            "--json",
+        ]
+    )
+    assert listed["count"] == 1
+    assert listed["turns"][0]["side"] == "user"
+    message_address = listed["turns"][0]["message_refs"][0]["message_address"]
+
+    compact = _run_json_command(
+        [
+            "chatlas2",
+            "turns",
+            "get",
+            "--session-id",
+            session_id,
+            "--message-address",
+            message_address,
+            "--json",
+        ]
+    )
+    assert compact["turn"] == listed["turns"][0]
+
+    hydrated = _run_json_command(
+        [
+            "chatlas2",
+            "turns",
+            "get",
+            "--session-id",
+            session_id,
+            "--turn-address",
+            compact["turn"]["turn_address"],
+            "--hydrate",
+            "--json",
+        ]
+    )
+    assert hydrated["class"] == "Chat.Turn.Hydration"
+    assert hydrated["messages"][0]["message"]["text"] == "first question"
+    assert hydrated["events"][0]["raw_observations"][0]["value"]["type"] == (
+        "response_item"
+    )
 
 
 def test_direct_raw_normalization_does_not_create_an_ordinary_cache(

@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-codex-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Codex structural recognition dispatches only its declared opaque raw-model identity, addresses raw places independently from content and version labels, and resolves origin and loaded context conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-21u ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u
+# $kw: ^chatlas2-codex-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Codex direct normalization preserves a compact digest of each opaque native record for whole-turn drift while keeping event and message semantics narrow --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-21u ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u ^d20260816-25u ^d20260816-27u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +11,7 @@ from tarav._core.errors import CliError
 from .event_ref import compute_event_address, compute_event_hash
 from .message_ref import compute_chat_message_address
 from .model import JsonObject, NormalFragment
+from .turn_ref import compute_opaque_payload_hash
 
 
 CODEX_RAW_MODEL_VERSION = "codex.rollout.5f98"
@@ -113,9 +114,7 @@ class CodexRawNormalizer:
                 response_message_keys=response_message_keys,
             )
             message_text = (
-                _chat_message_text(record.value)
-                if message_side is not None
-                else None
+                _chat_message_text(record.value) if message_side is not None else None
             )
             event_address = compute_event_address(
                 provider="codex",
@@ -137,6 +136,7 @@ class CodexRawNormalizer:
                         },
                     }
                 ],
+                "opaque_payload_hash": compute_opaque_payload_hash(record.value),
             }
             if message_text is not None:
                 event["content"] = {"text": message_text}

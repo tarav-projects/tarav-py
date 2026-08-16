@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-conformance-corpus --from Raw.Archive --from Chatlas.Session.Index --from Session.Event.Tape --from Event.Ref --note [CT] explicit corpus ingress prepares model-agnostic anonymized artifacts, preserves recognized specimens, validates self-verifying annotation refs, and registers immutable content-addressed captures --supp ^c20260815-29u ^c20260815-30u ^c20260815-31u ^c20260815-39u ^c20260815-42u ^d20260816-0u
+# $kw: ^chatlas2-conformance-corpus --from Raw.Archive --from Chatlas.Session.Index --from Session.Event.Tape --from Event.Ref --note [CT] explicit corpus ingress preserves recognized anonymized specimens and validates chronological events, messages, turns, contexts, and their self-verifying refs --supp ^c20260815-29u ^c20260815-30u ^c20260815-31u ^c20260815-39u ^c20260815-42u ^d20260816-0u ^d20260816-22u ^d20260816-23u ^d20260816-26u ^d20260816-27u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,6 +23,11 @@ from .message_ref import (
     chat_message_ref,
     compute_chat_message_hash,
     resolve_chat_message_ref,
+)
+from .turn_ref import (
+    chat_turn_ref,
+    compute_chat_turn_hash,
+    resolve_chat_turn_ref,
 )
 from .model import JsonObject
 from .pipeline import build_normal_model_from_row, transcript_paths
@@ -167,9 +172,7 @@ def prepare_capture(
             }
         )
     anonymous_row = _row_for_paths(row, anonymous_paths)
-    if any(
-        artifact["raw_model_version"] is not None for artifact in artifacts
-    ):
+    if any(artifact["raw_model_version"] is not None for artifact in artifacts):
         source_model = build_normal_model_from_row(row)
         corpus_model = build_normal_model_from_row(anonymous_row)
         if _model_signature(source_model) != _model_signature(corpus_model):
@@ -437,8 +440,8 @@ def _validate_checked_model(model: JsonObject) -> None:
         raise CliError("normalized corpus capture has no event tape")
     if not isinstance(sources, list) or not isinstance(annotations, dict):
         raise CliError("normalized corpus capture has an invalid model envelope")
-    if model.get("schema_version") != 5:
-        raise CliError("normalized corpus capture is not Chatlas2 Normal Model v5")
+    if model.get("schema_version") != 6:
+        raise CliError("normalized corpus capture is not Chatlas2 Normal Model v6")
     timestamps = [event.get("started_at") for event in events]
     if not all(isinstance(timestamp, str) for timestamp in timestamps):
         raise CliError("normalized corpus event has no start timestamp")
@@ -447,7 +450,9 @@ def _validate_checked_model(model: JsonObject) -> None:
     try:
         event_refs = [event_ref(event) for event in events]
     except ValueError as exc:
-        raise CliError(f"normalized corpus event has an invalid Event.Ref: {exc}") from exc
+        raise CliError(
+            f"normalized corpus event has an invalid Event.Ref: {exc}"
+        ) from exc
     event_addresses = {ref["event_address"] for ref in event_refs}
     if len(event_addresses) != len(events):
         raise CliError("normalized corpus event addresses are not unique")
@@ -483,9 +488,7 @@ def _validate_checked_model(model: JsonObject) -> None:
     if len(message_addresses) != len(messages):
         raise CliError("normalized corpus message addresses are not unique")
     event_by_address = {event["event_address"]: event for event in events}
-    event_order = {
-        event["event_address"]: index for index, event in enumerate(events)
-    }
+    event_order = {event["event_address"]: index for index, event in enumerate(events)}
     message_order: list[int] = []
     for message in messages:
         if message.get("class") != "Chat.Message":
@@ -502,9 +505,13 @@ def _validate_checked_model(model: JsonObject) -> None:
             expected_hash = compute_chat_message_hash(message)
             resolution = resolve_chat_message_ref(messages, chat_message_ref(message))
         except ValueError as exc:
-            raise CliError(f"normalized corpus Chat.Message.Ref is invalid: {exc}") from exc
+            raise CliError(
+                f"normalized corpus Chat.Message.Ref is invalid: {exc}"
+            ) from exc
         if message.get("message_hash") != expected_hash:
-            raise CliError("normalized corpus Chat.Message.Hash does not match its state")
+            raise CliError(
+                "normalized corpus Chat.Message.Hash does not match its state"
+            )
         if resolution["standing"] != "MATCHED":
             raise CliError(
                 f"normalized corpus Chat.Message.Ref is {resolution['standing']}"
@@ -518,6 +525,67 @@ def _validate_checked_model(model: JsonObject) -> None:
         message_order.append(event_order[refs[0]["event_address"]])
     if message_order != sorted(message_order):
         raise CliError("normalized corpus Chat.Message projection is not chronological")
+    turns = annotations.get("chat_turns")
+    if not isinstance(turns, list):
+        raise CliError("normalized corpus capture has no Chat.Turn projection")
+    message_turn_membership: dict[str, int] = {}
+    turn_order: list[int] = []
+    for turn in turns:
+        if turn.get("class") != "Chat.Turn" or turn.get("side") not in {
+            "user",
+            "agent",
+        }:
+            raise CliError("normalized corpus Chat.Turn has an invalid class or side")
+        _require_matched_refs(events, turn.get("event_refs"), subject="Chat.Turn")
+        refs = turn["event_refs"]
+        member_events = [event_by_address[ref["event_address"]] for ref in refs]
+        if any(event.get("origin") != turn.get("side") for event in member_events):
+            raise CliError("normalized corpus Chat.Turn side disagrees with members")
+        message_members = turn.get("message_refs")
+        if not isinstance(message_members, list):
+            raise CliError("normalized corpus Chat.Turn has invalid message membership")
+        for ref in message_members:
+            if not isinstance(ref, dict):
+                raise CliError(
+                    "normalized corpus Chat.Turn has invalid Chat.Message.Ref"
+                )
+            try:
+                resolution = resolve_chat_message_ref(messages, ref)
+            except ValueError as exc:
+                raise CliError(
+                    "normalized corpus Chat.Turn message ref is invalid"
+                ) from exc
+            if resolution["standing"] != "MATCHED":
+                raise CliError("normalized corpus Chat.Turn message ref does not match")
+            address = str(ref.get("message_address"))
+            message_turn_membership[address] = (
+                message_turn_membership.get(address, 0) + 1
+            )
+        try:
+            expected_hash = compute_chat_turn_hash(
+                turn,
+                opaque_payload_hashes=[
+                    event.get("opaque_payload_hash") for event in member_events
+                ],
+            )
+            resolution = resolve_chat_turn_ref(turns, chat_turn_ref(turn))
+        except ValueError as exc:
+            raise CliError(
+                f"normalized corpus Chat.Turn.Ref is invalid: {exc}"
+            ) from exc
+        if (
+            turn.get("turn_hash") != expected_hash
+            or resolution["standing"] != "MATCHED"
+        ):
+            raise CliError("normalized corpus Chat.Turn.Hash does not match its state")
+        turn_order.append(event_order[refs[0]["event_address"]])
+    if turn_order != sorted(turn_order):
+        raise CliError("normalized corpus Chat.Turn projection is not chronological")
+    if any(
+        message_turn_membership.get(str(message["message_address"])) != 1
+        for message in messages
+    ):
+        raise CliError("normalized corpus Chat.Message lacks one containing Chat.Turn")
     for context in annotations.get("agent_loaded_contexts", []):
         _require_matched_refs(
             events,
@@ -612,15 +680,20 @@ def _model_signature(model: JsonObject) -> JsonObject:
         for event in events
     }
     annotations = model["annotations"]
+    message_shapes = {
+        message["message_address"]: [
+            message["side"],
+            [event_shapes[ref["event_address"]] for ref in message["event_refs"]],
+        ]
+        for message in annotations["chat_messages"]
+        if "message_address" in message
+    }
     return {
         "events": list(event_shapes.values()),
         "messages": [
             [
                 message["side"],
-                [
-                    event_shapes[ref["event_address"]]
-                    for ref in message["event_refs"]
-                ],
+                [event_shapes[ref["event_address"]] for ref in message["event_refs"]],
             ]
             for message in annotations["chat_messages"]
         ],
@@ -637,6 +710,17 @@ def _model_signature(model: JsonObject) -> JsonObject:
             ),
             key=_canonical_json,
         ),
+        "turns": [
+            [
+                turn["side"],
+                [event_shapes[ref["event_address"]] for ref in turn["event_refs"]],
+                [
+                    message_shapes.get(ref["message_address"], ["message"])
+                    for ref in turn["message_refs"]
+                ],
+            ]
+            for turn in annotations.get("chat_turns", [])
+        ],
     }
 
 
@@ -654,19 +738,22 @@ def _require_matched_refs(
     *,
     subject: str,
 ) -> None:
-    if not isinstance(value, list) or not value or not all(
-        isinstance(ref, dict) for ref in value
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(ref, dict) for ref in value)
     ):
         raise CliError(f"normalized corpus {subject} has no Event.Ref membership")
     for ref in value:
         try:
             resolution = resolve_event_ref(events, ref)
         except ValueError as exc:
-            raise CliError(f"normalized corpus {subject} has an invalid Event.Ref") from exc
+            raise CliError(
+                f"normalized corpus {subject} has an invalid Event.Ref"
+            ) from exc
         if resolution["standing"] != "MATCHED":
             raise CliError(
-                f"normalized corpus {subject} Event.Ref is "
-                f"{resolution['standing']}"
+                f"normalized corpus {subject} Event.Ref is {resolution['standing']}"
             )
 
 

@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly versions every provider transcript, dispatches a compatible direct normalizer, folds same logical places into current event state, and sorts the retained union chronologically --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u ^c20260815-59u ^c20260815-64u ^d20260816-0u ^d20260816-1u
+# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly derives conservative same-origin turns only after every recognized fragment has joined the lossless chronological event union --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u ^c20260815-59u ^c20260815-64u ^d20260816-0u ^d20260816-1u ^d20260816-22u ^d20260816-23u ^d20260816-24u ^d20260816-25u ^d20260816-26u ^d20260816-27u
 from __future__ import annotations
 
 from copy import deepcopy
@@ -28,9 +28,12 @@ from .codex import (
 from .event_ref import event_ref
 from .message_ref import compute_chat_message_hash
 from .model import JsonObject
+from .message_ref import chat_message_ref
+from .turn_ref import compute_chat_turn_hash
+from .turns import build_chat_turn_candidates
 
 
-NORMAL_MODEL_SCHEMA_VERSION = 5
+NORMAL_MODEL_SCHEMA_VERSION = 6
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,9 +71,7 @@ def build_normal_model_from_row(
     elif provider == "claude-code":
         versioner = ClaudeRawModelVersioner()
         normalizers = {
-            CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION: (
-                ClaudePromptSourceRawNormalizer()
-            ),
+            CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION: (ClaudePromptSourceRawNormalizer()),
             CLAUDE_LEGACY_RAW_MODEL_VERSION: ClaudeLegacyRawNormalizer(),
         }
     else:
@@ -119,10 +120,7 @@ def build_normal_model_from_row(
                     "value": fragment.raw,
                 }
             )
-        current_addresses = {
-            str(event["event_address"])
-            for event in fragment.events
-        }
+        current_addresses = {str(event["event_address"]) for event in fragment.events}
         if transcript_source.current:
             for message_address, message in list(chat_messages_by_address.items()):
                 addresses = message.get("event_addresses")
@@ -171,6 +169,27 @@ def build_normal_model_from_row(
         ),
         key=lambda message: _annotation_sort_key(message, event_order=event_order),
     )
+    message_by_address = {
+        str(message["message_address"]): message for message in chat_messages
+    }
+    turn_candidates = build_chat_turn_candidates(
+        provider=str(provider),
+        scope=str(row.get("session_id") or row.get("identity_hash")),
+        events=events,
+        chat_messages=list(chat_messages_by_address.values()),
+    )
+    chat_turns = sorted(
+        (
+            _finalize_chat_turn(
+                turn,
+                event_by_address=event_by_address,
+                message_by_address=message_by_address,
+            )
+            for turn in turn_candidates
+        ),
+        key=lambda turn: _annotation_sort_key(turn, event_order=event_order),
+    )
+    _validate_message_turn_containment(chat_messages, chat_turns)
     contexts = sorted(
         (
             _finalize_loaded_context(context, event_by_address=event_by_address)
@@ -191,6 +210,7 @@ def build_normal_model_from_row(
         "events": events,
         "annotations": {
             "chat_messages": chat_messages,
+            "chat_turns": chat_turns,
             "agent_loaded_contexts": contexts,
         },
     }
@@ -322,6 +342,68 @@ def _finalize_loaded_context(
         event_by_address=event_by_address,
     )
     return result
+
+
+def _finalize_chat_turn(
+    turn: JsonObject,
+    *,
+    event_by_address: dict[str, JsonObject],
+    message_by_address: dict[str, JsonObject],
+) -> JsonObject:
+    result = deepcopy(turn)
+    addresses = result.pop("event_addresses", None)
+    result["event_refs"] = _refs_for_addresses(
+        addresses,
+        event_by_address=event_by_address,
+    )
+    message_addresses = result.pop("message_addresses", None)
+    if not isinstance(message_addresses, list):
+        raise CliError("Chatlas2 Chat.Turn has no message-address membership")
+    try:
+        result["message_refs"] = [
+            chat_message_ref(message_by_address[str(address)])
+            for address in message_addresses
+        ]
+    except KeyError as exc:
+        raise CliError("Chatlas2 Chat.Turn message place does not resolve") from exc
+    if not isinstance(addresses, list):
+        raise CliError("Chatlas2 Chat.Turn has no event-address membership")
+    opaque_payload_hashes = [
+        event_by_address[str(address)].get("opaque_payload_hash")
+        for address in addresses
+    ]
+    try:
+        result["turn_hash"] = compute_chat_turn_hash(
+            result,
+            opaque_payload_hashes=opaque_payload_hashes,
+        )
+    except ValueError as exc:
+        raise CliError(f"Chatlas2 cannot hash Chat.Turn: {exc}") from exc
+    return result
+
+
+def _validate_message_turn_containment(
+    messages: list[JsonObject],
+    turns: list[JsonObject],
+) -> None:
+    membership: dict[str, list[JsonObject]] = {}
+    for turn in turns:
+        refs = turn.get("message_refs")
+        if not isinstance(refs, list):
+            raise CliError("Chatlas2 Chat.Turn has invalid Chat.Message.Ref membership")
+        for ref in refs:
+            if not isinstance(ref, dict):
+                raise CliError("Chatlas2 Chat.Turn has an invalid Chat.Message.Ref")
+            address = ref.get("message_address")
+            if isinstance(address, str):
+                membership.setdefault(address, []).append(turn)
+    for message in messages:
+        address = str(message.get("message_address"))
+        containing = membership.get(address, [])
+        if len(containing) != 1:
+            raise CliError("Chatlas2 Chat.Message must belong to exactly one Chat.Turn")
+        if containing[0].get("side") != message.get("side"):
+            raise CliError("Chatlas2 Chat.Message side disagrees with containing turn")
 
 
 def _refs_for_addresses(

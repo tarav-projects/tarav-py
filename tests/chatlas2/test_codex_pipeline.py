@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from tarav.chatlas2.codex import (
 from tarav.chatlas2.event_ref import event_ref, resolve_event_ref
 from tarav.chatlas2.message_ref import resolve_chat_message_ref
 from tarav.chatlas2.pipeline import build_normal_model_from_row
+from tarav.chatlas2.turn_ref import chat_turn_ref, resolve_chat_turn_ref
 
 
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
@@ -154,6 +156,14 @@ def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
         "hello",
         "hi",
     ]
+    turns = model["annotations"]["chat_turns"]
+    assert [turn["side"] for turn in turns] == ["agent", "user", "agent"]
+    assert [len(turn["event_refs"]) for turn in turns] == [3, 1, 2]
+    assert [len(turn["message_refs"]) for turn in turns] == [0, 1, 1]
+    assert all(
+        resolve_chat_turn_ref(turns, chat_turn_ref(turn))["standing"] == "MATCHED"
+        for turn in turns
+    )
     contexts = model["annotations"]["agent_loaded_contexts"]
     assert all(
         message["class"] == "Chat.Message"
@@ -163,12 +173,12 @@ def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
     assert len(contexts) == 2
     assert contexts[0]["event_refs"] == contexts[1]["event_refs"]
     assert len(contexts[0]["event_refs"]) == 3
-    assert model["schema_version"] == 5
+    assert model["schema_version"] == 6
     assert "raw" not in model
-    assert all("record" not in event and "raw" not in event for event in model["events"])
-    event_by_address = {
-        event["event_address"]: event for event in model["events"]
-    }
+    assert all(
+        "record" not in event and "raw" not in event for event in model["events"]
+    )
+    event_by_address = {event["event_address"]: event for event in model["events"]}
     assert [
         event_by_address[message["event_refs"][0]["event_address"]]["content"]
         for message in model["annotations"]["chat_messages"]
@@ -267,7 +277,54 @@ def test_multi_artifact_union_collapses_only_same_position_observations(
         1,
     ]
     assert len(model["annotations"]["chat_messages"]) == 4
+    assert [turn["side"] for turn in model["annotations"]["chat_turns"]] == [
+        "agent",
+        "user",
+        "agent",
+        "user",
+        "agent",
+    ]
     assert len(model["annotations"]["agent_loaded_contexts"]) == 2
+
+
+def test_codex_opaque_payload_drift_amends_only_the_containing_turn(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first.jsonl"
+    second = tmp_path / "second.jsonl"
+    base = [
+        _record(
+            "2026-08-15T00:00:00.000Z",
+            "session_meta",
+            {"id": "codex-session", "originator": "codex_cli_rs"},
+        ),
+        _message(
+            "2026-08-15T00:00:01.000Z",
+            "user",
+            "same question",
+            message_id="user-1",
+        ),
+    ]
+    amended = [dict(base[0]), deepcopy(base[1])]
+    amended[1]["payload"]["provider_extra"] = {"changed": True}
+    _write_jsonl(first, base)
+    _write_jsonl(second, amended)
+
+    first_model = build_normal_model_from_row(_row(first))
+    second_model = build_normal_model_from_row(_row(second))
+
+    assert (
+        first_model["events"][1]["event_hash"]
+        == second_model["events"][1]["event_hash"]
+    )
+    assert (
+        first_model["annotations"]["chat_messages"][0]["message_hash"]
+        == second_model["annotations"]["chat_messages"][0]["message_hash"]
+    )
+    assert (
+        first_model["annotations"]["chat_turns"][1]["turn_hash"]
+        != second_model["annotations"]["chat_turns"][1]["turn_hash"]
+    )
 
 
 def test_codex_content_amendment_preserves_address_and_changes_hash(
@@ -283,7 +340,10 @@ def test_codex_content_amendment_preserves_address_and_changes_hash(
     )
     _write_jsonl(
         old,
-        [meta, _message("2026-08-15T00:00:01.000Z", "user", "old", message_id="user-1")],
+        [
+            meta,
+            _message("2026-08-15T00:00:01.000Z", "user", "old", message_id="user-1"),
+        ],
     )
     _write_jsonl(
         current,
@@ -299,7 +359,10 @@ def test_codex_content_amendment_preserves_address_and_changes_hash(
     )
     _write_jsonl(
         native_id_drift,
-        [meta, _message("2026-08-15T00:00:01.000Z", "user", "old", message_id="user-3")],
+        [
+            meta,
+            _message("2026-08-15T00:00:01.000Z", "user", "old", message_id="user-3"),
+        ],
     )
     normalizer = CodexRawNormalizer()
 
@@ -322,7 +385,10 @@ def test_codex_content_amendment_preserves_address_and_changes_hash(
     assert old_event["event_address"] == current_event["event_address"]
     assert old_event["event_hash"] != current_event["event_hash"]
     assert old_event["event_hash"] == native_id_event["event_hash"]
-    assert resolve_event_ref([current_event], event_ref(old_event))["standing"] == "AMENDED"
+    assert (
+        resolve_event_ref([current_event], event_ref(old_event))["standing"]
+        == "AMENDED"
+    )
     assert "event_id" not in old_event
 
 
@@ -369,7 +435,10 @@ def test_current_artifact_presents_amended_state_and_retains_input_observations(
     )
     _write_jsonl(
         old,
-        [meta, _message("2026-08-15T00:00:01.000Z", "user", "old", message_id="user-1")],
+        [
+            meta,
+            _message("2026-08-15T00:00:01.000Z", "user", "old", message_id="user-1"),
+        ],
     )
     _write_jsonl(
         current,
@@ -383,18 +452,25 @@ def test_current_artifact_presents_amended_state_and_retains_input_observations(
             ),
         ],
     )
-    old_event = CodexRawNormalizer().normalize(
-        old,
-        source_id="old",
-        raw_model_version=CODEX_RAW_MODEL_VERSION,
-    ).events[1]
+    old_event = (
+        CodexRawNormalizer()
+        .normalize(
+            old,
+            source_id="old",
+            raw_model_version=CODEX_RAW_MODEL_VERSION,
+        )
+        .events[1]
+    )
 
     model = build_normal_model_from_row(_row(current, old))
     presented = model["events"][1]
 
     assert presented["content"] == {"text": "amended"}
     assert len(presented["observations"]) == 2
-    assert resolve_event_ref(model["events"], event_ref(old_event))["standing"] == "AMENDED"
+    assert (
+        resolve_event_ref(model["events"], event_ref(old_event))["standing"]
+        == "AMENDED"
+    )
     current_ref = model["annotations"]["chat_messages"][0]["event_refs"][0]
     assert resolve_event_ref(model["events"], current_ref)["standing"] == "MATCHED"
 
@@ -411,7 +487,10 @@ def test_current_artifact_removes_annotation_from_superseded_message_state(
     )
     _write_jsonl(
         old,
-        [meta, _message("2026-08-15T00:00:01.000Z", "user", "old", message_id="user-1")],
+        [
+            meta,
+            _message("2026-08-15T00:00:01.000Z", "user", "old", message_id="user-1"),
+        ],
     )
     _write_jsonl(
         current,

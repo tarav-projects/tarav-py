@@ -313,15 +313,31 @@ def test_claude_versioner_and_pipeline_recognize_legacy_mapping_family(
         "agent",
         "agent",
     ]
+    assert [message["side"] for message in model["annotations"]["chat_messages"]] == [
+        "user",
+        "agent",
+        "user",
+    ]
+    assert [message["text"] for message in model["annotations"]["chat_messages"]] == [
+        "legacy hello",
+        "legacy answer",
+        "target",
+    ]
+    assert [turn["side"] for turn in model["annotations"]["chat_turns"]] == [
+        "user",
+        "agent",
+        "user",
+        "agent",
+    ]
     assert [
-        message["side"] for message in model["annotations"]["chat_messages"]
-    ] == ["user", "agent", "user"]
-    assert [
-        message["text"] for message in model["annotations"]["chat_messages"]
-    ] == ["legacy hello", "legacy answer", "target"]
-    assert model["sources"][0]["raw_model_version"] == (
-        CLAUDE_LEGACY_RAW_MODEL_VERSION
-    )
+        len(turn["message_refs"]) for turn in model["annotations"]["chat_turns"]
+    ] == [
+        1,
+        1,
+        1,
+        0,
+    ]
+    assert model["sources"][0]["raw_model_version"] == (CLAUDE_LEGACY_RAW_MODEL_VERSION)
 
 
 def test_claude_versioner_allows_auxiliary_records_without_session_id(
@@ -375,9 +391,11 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
     model = build_normal_model_from_row(_row(path))
 
     assert model["session"]["provider"] == "claude-code"
-    assert model["schema_version"] == 5
+    assert model["schema_version"] == 6
     assert "raw" not in model
-    assert all("record" not in event and "raw" not in event for event in model["events"])
+    assert all(
+        "record" not in event and "raw" not in event for event in model["events"]
+    )
     assert len(model["events"]) == 9
     assert [event["started_at"] for event in model["events"]] == sorted(
         event["started_at"] for event in model["events"]
@@ -398,9 +416,7 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
     messages = model["annotations"]["chat_messages"]
     assert [message["side"] for message in messages] == ["user", "agent", "agent"]
     assert [message["text"] for message in messages] == ["hello", "hi", "done"]
-    event_by_address = {
-        event["event_address"]: event for event in model["events"]
-    }
+    event_by_address = {event["event_address"]: event for event in model["events"]}
     assert [
         event_by_address[message["event_refs"][0]["event_address"]]["content"]
         for message in messages
@@ -421,9 +437,10 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
     assert len(contexts) == 4
     context_members = []
     for context in contexts:
-        assert resolve_event_ref(
-            model["events"], context["agent_event_ref"]
-        )["standing"] == "MATCHED"
+        assert (
+            resolve_event_ref(model["events"], context["agent_event_ref"])["standing"]
+            == "MATCHED"
+        )
         resolved = [
             resolve_event_ref(model["events"], ref)["event"]["started_at"]
             for ref in context["event_refs"]
@@ -603,9 +620,10 @@ def test_claude_prompt_source_artifact_recovers_legacy_shaped_user_message(
         "user",
         "agent",
     ]
-    assert [
-        message["text"] for message in model["annotations"]["chat_messages"]
-    ] == ["new mapping", "legacy mapping"]
+    assert [message["text"] for message in model["annotations"]["chat_messages"]] == [
+        "new mapping",
+        "legacy mapping",
+    ]
 
 
 def test_claude_unknown_timed_origins_remain_unresolved(
@@ -675,8 +693,7 @@ def test_claude_normalization_unions_every_artifact_without_losing_continuation(
     assert len(model["events"]) == 9
     assert model["events"][-1]["started_at"] == "2026-08-15T00:00:09Z"
     observations_by_time = {
-        event["started_at"]: len(event["observations"])
-        for event in model["events"]
+        event["started_at"]: len(event["observations"]) for event in model["events"]
     }
     assert observations_by_time["2026-08-15T00:00:01Z"] == 2
     assert observations_by_time["2026-08-15T00:00:04Z"] == 2

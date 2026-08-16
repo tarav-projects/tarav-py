@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-normal-model-cache --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --note [CT] completed compact Normal Models are disposable session caches whose collections stream independently after creation and whose policy is hidden behind the Normal Model provider --supp ^d20260816-5u ^d20260816-6u ^d20260816-8u ^d20260816-9u ^d20260816-10u ^d20260816-11u ^d20260816-12u ^d20260816-13u ^d20260816-14u ^d20260816-15u ^d20260816-17u
+# $kw: ^chatlas2-normal-model-cache --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --note [CT] completed compact Normal Models expose independent event, message, turn, and loaded-context streams with verified candidate reads and on-demand turn hydration --supp ^d20260816-5u ^d20260816-6u ^d20260816-8u ^d20260816-9u ^d20260816-10u ^d20260816-11u ^d20260816-12u ^d20260816-13u ^d20260816-14u ^d20260816-15u ^d20260816-17u ^d20260816-29u ^d20260816-30u ^d20260816-31u ^d20260816-32u ^d20260816-33u ^d20260816-34u ^d20260816-35u ^d20260816-36u
 from __future__ import annotations
 
 from copy import deepcopy
@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
-from typing import Iterator, Literal
+from typing import Iterable, Iterator, Literal
 from uuid import uuid4
 
 from filelock import FileLock
@@ -19,6 +19,13 @@ from tarav.chatlas.index_query import select_one_chatlas_index_row
 from tarav.chatlas.paths import default_chatlas_root
 
 from .messages import chat_message_at
+from .jsonl import (
+    JsonlCandidateScan,
+    address_pattern,
+    iter_jsonl_objects,
+    read_jsonl_object_lines,
+    serialized_json_string,
+)
 from .model import JsonObject
 from .pipeline import (
     NORMAL_MODEL_SCHEMA_VERSION,
@@ -29,17 +36,19 @@ from .pipeline import (
 
 
 CACHE_CLASS = "tarav.chatlas2.normal_model_cache"
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2
 CACHE_ROOT = Path("chatlas2") / "model-cache"
 LOCK_ROOT = Path("chatlas2") / "locks" / "model-cache"
 METADATA_FILENAME = "metadata.json"
 EVENTS_FILENAME = "events.jsonl"
 CHAT_MESSAGES_FILENAME = "chat-messages.jsonl"
+CHAT_TURNS_FILENAME = "chat-turns.jsonl"
 AGENT_LOADED_CONTEXTS_FILENAME = "agent-loaded-contexts.jsonl"
 _CACHE_FILES = (
     METADATA_FILENAME,
     EVENTS_FILENAME,
     CHAT_MESSAGES_FILENAME,
+    CHAT_TURNS_FILENAME,
     AGENT_LOADED_CONTEXTS_FILENAME,
 )
 CacheStanding = Literal["FRESH", "STALE", "MISSING"]
@@ -50,8 +59,21 @@ class NormalModelCacheReader:
     path: Path
     metadata: JsonObject
 
-    def iter_events(self) -> Iterator[JsonObject]:
-        yield from _iter_jsonl(self.path / EVENTS_FILENAME)
+    def iter_events(
+        self,
+        *,
+        addresses: Iterable[str] | None = None,
+    ) -> Iterator[JsonObject]:
+        selected = set(addresses) if addresses is not None else None
+        scan = (
+            JsonlCandidateScan(pattern=address_pattern("event_address", selected))
+            if selected
+            else None
+        )
+        for event in iter_jsonl_objects(self.path / EVENTS_FILENAME, scan=scan):
+            if selected is not None and event.get("event_address") not in selected:
+                continue
+            yield event
 
     def iter_chat_message_records(
         self,
@@ -60,6 +82,7 @@ class NormalModelCacheReader:
         text: str | None = None,
         exact: bool = False,
         limit: int | None = None,
+        message_addresses: Iterable[str] | None = None,
     ) -> Iterator[JsonObject]:
         if side not in {None, "user", "agent"}:
             raise ValueError("Chat.Message side must be 'user' or 'agent'")
@@ -69,12 +92,36 @@ class NormalModelCacheReader:
             raise ValueError("Chat.Message limit must be non-negative")
         if limit == 0:
             return
+        selected_addresses = (
+            set(message_addresses) if message_addresses is not None else None
+        )
+        literals: list[str] = []
+        if side is not None:
+            literals.append(f'"side":"{side}"')
+        if text is not None:
+            encoded = serialized_json_string(text)
+            if encoded is not None:
+                literals.append(f'"text":{encoded}' if exact else encoded[1:-1])
+        pattern = (
+            address_pattern("message_address", selected_addresses)
+            if selected_addresses
+            else None
+        )
+        scan = JsonlCandidateScan(literals=tuple(literals), pattern=pattern)
         yielded = 0
-        for record in _iter_jsonl(self.path / CHAT_MESSAGES_FILENAME):
+        for record in iter_jsonl_objects(
+            self.path / CHAT_MESSAGES_FILENAME,
+            scan=scan if literals or pattern is not None else None,
+        ):
             message = record.get("message")
             if not isinstance(message, dict):
                 raise CliError("Chatlas2 cache has an invalid Chat.Message record")
             if side is not None and message.get("side") != side:
+                continue
+            if (
+                selected_addresses is not None
+                and message.get("message_address") not in selected_addresses
+            ):
                 continue
             if text is not None:
                 candidate = message.get("text")
@@ -88,8 +135,172 @@ class NormalModelCacheReader:
             if limit is not None and yielded >= limit:
                 return
 
+    def iter_chat_turns(
+        self,
+        *,
+        side: Literal["user", "agent"] | None = None,
+        turn_address: str | None = None,
+        message_address: str | None = None,
+        limit: int | None = None,
+    ) -> Iterator[JsonObject]:
+        if side not in {None, "user", "agent"}:
+            raise ValueError("Chat.Turn side must be 'user' or 'agent'")
+        if limit is not None and limit < 0:
+            raise ValueError("Chat.Turn limit must be non-negative")
+        if limit == 0:
+            return
+        literals = tuple(
+            value
+            for value in (
+                f'"side":"{side}"' if side is not None else None,
+                f'"turn_address":"{turn_address}"'
+                if turn_address is not None
+                else None,
+                f'"message_address":"{message_address}"'
+                if message_address is not None
+                else None,
+            )
+            if value is not None
+        )
+        yielded = 0
+        for turn in iter_jsonl_objects(
+            self.path / CHAT_TURNS_FILENAME,
+            scan=JsonlCandidateScan(literals=literals) if literals else None,
+        ):
+            if side is not None and turn.get("side") != side:
+                continue
+            if turn_address is not None and turn.get("turn_address") != turn_address:
+                continue
+            if message_address is not None and not _turn_contains_message(
+                turn, message_address
+            ):
+                continue
+            yield turn
+            yielded += 1
+            if limit is not None and yielded >= limit:
+                return
+
+    def find_chat_turn(
+        self,
+        *,
+        turn_address: str | None = None,
+        message_address: str | None = None,
+    ) -> JsonObject | None:
+        if (turn_address is None) == (message_address is None):
+            raise ValueError(
+                "Chat.Turn lookup requires exactly one turn or message address"
+            )
+        matches = list(
+            self.iter_chat_turns(
+                turn_address=turn_address,
+                message_address=message_address,
+                limit=2,
+            )
+        )
+        if len(matches) > 1:
+            raise CliError("Chatlas2 cache contains ambiguous Chat.Turn membership")
+        return matches[0] if matches else None
+
+    def hydrate_chat_turn(self, turn: JsonObject) -> JsonObject:
+        event_addresses = _ref_addresses(turn.get("event_refs"), "event_address")
+        message_addresses = _ref_addresses(
+            turn.get("message_refs"), "message_address", allow_empty=True
+        )
+        events_by_address = {
+            str(event["event_address"]): event
+            for event in self.iter_events(addresses=event_addresses)
+        }
+        if set(events_by_address) != set(event_addresses):
+            raise CliError("Chatlas2 Chat.Turn event membership does not resolve")
+        message_records = list(
+            self.iter_chat_message_records(message_addresses=message_addresses)
+        )
+        if {
+            str(record["message"]["message_address"]) for record in message_records
+        } != set(message_addresses):
+            raise CliError("Chatlas2 Chat.Turn message membership does not resolve")
+        raw_values = self._raw_observation_values(
+            [events_by_address[address] for address in event_addresses]
+        )
+        hydrated_events: list[JsonObject] = []
+        for event_address in event_addresses:
+            event = events_by_address[event_address]
+            observations = event.get("observations")
+            raw_observations: list[JsonObject] = []
+            if isinstance(observations, list):
+                for observation in observations:
+                    if not isinstance(observation, dict):
+                        continue
+                    source_ref = observation.get("source_ref")
+                    key = _source_line_key(source_ref)
+                    if key is None or key not in raw_values:
+                        continue
+                    raw_observations.append(
+                        {
+                            "observed_at": observation.get("observed_at"),
+                            "source_ref": deepcopy(source_ref),
+                            "value": deepcopy(raw_values[key]),
+                        }
+                    )
+            hydrated_events.append(
+                {
+                    "event": deepcopy(event),
+                    "raw_observations": raw_observations,
+                }
+            )
+        message_by_address = {
+            str(record["message"]["message_address"]): record
+            for record in message_records
+        }
+        return {
+            "class": "Chat.Turn.Hydration",
+            "turn": deepcopy(turn),
+            "messages": [
+                deepcopy(message_by_address[address]) for address in message_addresses
+            ],
+            "events": hydrated_events,
+        }
+
+    def _raw_observation_values(
+        self,
+        events: list[JsonObject],
+    ) -> dict[tuple[str, int], JsonObject]:
+        envelope = self.metadata.get("model")
+        sources = envelope.get("sources") if isinstance(envelope, dict) else None
+        source_paths = {
+            str(source["source_id"]): Path(str(source["path"]))
+            for source in sources or []
+            if isinstance(source, dict)
+            and isinstance(source.get("source_id"), str)
+            and isinstance(source.get("path"), str)
+        }
+        lines_by_source: dict[str, set[int]] = {}
+        for event in events:
+            observations = event.get("observations")
+            if not isinstance(observations, list):
+                continue
+            for observation in observations:
+                source_ref = (
+                    observation.get("source_ref")
+                    if isinstance(observation, dict)
+                    else None
+                )
+                key = _source_line_key(source_ref)
+                if key is not None:
+                    lines_by_source.setdefault(key[0], set()).add(key[1])
+        values: dict[tuple[str, int], JsonObject] = {}
+        for source_id, line_numbers in lines_by_source.items():
+            path = source_paths.get(source_id)
+            if path is None:
+                raise CliError(f"Chatlas2 cache source does not resolve: {source_id}")
+            for line_number, value in read_jsonl_object_lines(
+                path, line_numbers
+            ).items():
+                values[(source_id, line_number)] = value
+        return values
+
     def iter_agent_loaded_contexts(self) -> Iterator[JsonObject]:
-        yield from _iter_jsonl(self.path / AGENT_LOADED_CONTEXTS_FILENAME)
+        yield from iter_jsonl_objects(self.path / AGENT_LOADED_CONTEXTS_FILENAME)
 
     def load_normal_model(self) -> JsonObject:
         envelope = self.metadata.get("model")
@@ -102,6 +313,7 @@ class NormalModelCacheReader:
                 deepcopy(record["message"])
                 for record in self.iter_chat_message_records()
             ],
+            "chat_turns": list(self.iter_chat_turns()),
             "agent_loaded_contexts": list(self.iter_agent_loaded_contexts()),
         }
         return model
@@ -305,7 +517,7 @@ def _validate_model_for_cache(model: JsonObject, *, identity: str) -> None:
     annotations = model.get("annotations")
     if not isinstance(annotations, dict):
         raise CliError("Chatlas2 cache model has no annotations")
-    for key in ("chat_messages", "agent_loaded_contexts"):
+    for key in ("chat_messages", "chat_turns", "agent_loaded_contexts"):
         if not isinstance(annotations.get(key), list):
             raise CliError(f"Chatlas2 cache model has no {key} collection")
 
@@ -332,6 +544,7 @@ def _replace_cache_directory(
             "counts": {
                 "events": len(model["events"]),
                 "chat_messages": len(annotations["chat_messages"]),
+                "chat_turns": len(annotations["chat_turns"]),
                 "agent_loaded_contexts": len(annotations["agent_loaded_contexts"]),
             },
         }
@@ -348,6 +561,7 @@ def _replace_cache_directory(
                 for message in annotations["chat_messages"]
             ),
         )
+        _write_jsonl(temporary / CHAT_TURNS_FILENAME, annotations["chat_turns"])
         _write_jsonl(
             temporary / AGENT_LOADED_CONTEXTS_FILENAME,
             annotations["agent_loaded_contexts"],
@@ -381,26 +595,6 @@ def _write_jsonl(path: Path, values: Iterator[object] | list[object]) -> None:
         os.fsync(handle.fileno())
 
 
-def _iter_jsonl(path: Path) -> Iterator[JsonObject]:
-    try:
-        handle = path.open("r", encoding="utf-8")
-    except OSError as exc:
-        raise CliError(f"Chatlas2 cannot read cache collection {path}") from exc
-    with handle:
-        for line_number, line in enumerate(handle, start=1):
-            try:
-                value = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise CliError(
-                    f"Chatlas2 cache collection {path} has invalid JSON at line {line_number}"
-                ) from exc
-            if not isinstance(value, dict):
-                raise CliError(
-                    f"Chatlas2 cache collection {path} line {line_number} is not an object"
-                )
-            yield value
-
-
 def _read_metadata(path: Path) -> JsonObject:
     metadata = _try_read_metadata(path)
     if metadata is None:
@@ -431,6 +625,37 @@ def _identity_hash(row: JsonObject) -> str:
 
 def _root(chatlas_root: Path | None) -> Path:
     return (chatlas_root or default_chatlas_root()).expanduser().resolve()
+
+
+def _turn_contains_message(turn: JsonObject, address: str) -> bool:
+    refs = turn.get("message_refs")
+    return isinstance(refs, list) and any(
+        isinstance(ref, dict) and ref.get("message_address") == address for ref in refs
+    )
+
+
+def _ref_addresses(
+    value: object,
+    field: str,
+    *,
+    allow_empty: bool = False,
+) -> list[str]:
+    if not isinstance(value, list) or (not allow_empty and not value):
+        raise CliError(f"Chatlas2 Chat.Turn has no {field} membership")
+    addresses = [ref.get(field) if isinstance(ref, dict) else None for ref in value]
+    if not all(isinstance(address, str) and address for address in addresses):
+        raise CliError(f"Chatlas2 Chat.Turn has invalid {field} membership")
+    return [str(address) for address in addresses]
+
+
+def _source_line_key(value: object) -> tuple[str, int] | None:
+    if not isinstance(value, dict):
+        return None
+    source_id = value.get("source_id")
+    line = value.get("line")
+    if not isinstance(source_id, str) or not isinstance(line, int) or line < 1:
+        return None
+    return source_id, line
 
 
 __all__ = [

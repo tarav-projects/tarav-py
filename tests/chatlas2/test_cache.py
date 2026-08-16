@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from tarav._core.errors import CliError
 from tarav.chatlas2 import cache
 from tarav.chatlas2.message_ref import compute_chat_message_hash
+from tarav.chatlas2.turn_ref import compute_chat_turn_hash
 
 
 def _row(source: Path) -> dict[str, object]:
@@ -21,14 +23,24 @@ def _row(source: Path) -> dict[str, object]:
     }
 
 
-def _model() -> dict[str, object]:
+def _model(source: Path | None = None) -> dict[str, object]:
     event = {
         "class": "User.Event",
         "origin": "user",
         "event_address": "a" * 64,
         "event_hash": "b" * 64,
         "started_at": "2026-08-16T00:00:01Z",
-        "observations": [{"source_id": "source-one", "record_index": 1}],
+        "observations": [
+            {
+                "observed_at": "2026-08-16T00:00:01Z",
+                "source_ref": {
+                    "source_id": "source-one",
+                    "record_index": 1,
+                    "line": 1,
+                },
+            }
+        ],
+        "opaque_payload_hash": "e" * 64,
         "content": {"text": "first question"},
     }
     message = {
@@ -44,9 +56,25 @@ def _model() -> dict[str, object]:
         ],
     }
     message["message_hash"] = compute_chat_message_hash(message)
+    turn = {
+        "class": "Chat.Turn",
+        "turn_address": "f" * 64,
+        "side": "user",
+        "event_refs": deepcopy(message["event_refs"]),
+        "message_refs": [
+            {
+                "message_address": message["message_address"],
+                "message_hash": message["message_hash"],
+            }
+        ],
+    }
+    turn["turn_hash"] = compute_chat_turn_hash(
+        turn,
+        opaque_payload_hashes=[event["opaque_payload_hash"]],
+    )
     return {
         "class": "tarav.chatlas2.normal_model",
-        "schema_version": 5,
+        "schema_version": 6,
         "metadata": {"commit": "1" * 40},
         "session": {
             "provider": "codex",
@@ -56,7 +84,7 @@ def _model() -> dict[str, object]:
         "sources": [
             {
                 "source_id": "source-one",
-                "path": "/tmp/source.jsonl",
+                "path": str(source or Path("/tmp/source.jsonl")),
                 "role": "transcript",
                 "raw_model_version": "codex.rollout.5f98",
                 "status": "recognized",
@@ -65,6 +93,7 @@ def _model() -> dict[str, object]:
         "events": [event],
         "annotations": {
             "chat_messages": [message],
+            "chat_turns": [turn],
             "agent_loaded_contexts": [],
         },
     }
@@ -95,14 +124,16 @@ def test_cache_materializes_compact_model_as_independent_streams(
         "metadata.json",
         "events.jsonl",
         "chat-messages.jsonl",
+        "chat-turns.jsonl",
         "agent-loaded-contexts.jsonl",
     }
     assert reader.metadata["class"] == "tarav.chatlas2.normal_model_cache"
-    assert reader.metadata["schema_version"] == 1
-    assert reader.metadata["model"]["schema_version"] == 5
+    assert reader.metadata["schema_version"] == 2
+    assert reader.metadata["model"]["schema_version"] == 6
     assert reader.metadata["counts"] == {
         "events": 1,
         "chat_messages": 1,
+        "chat_turns": 1,
         "agent_loaded_contexts": 0,
     }
     assert list(reader.iter_events()) == model["events"]
@@ -113,6 +144,7 @@ def test_cache_materializes_compact_model_as_independent_streams(
         }
     ]
     assert list(reader.iter_agent_loaded_contexts()) == []
+    assert list(reader.iter_chat_turns()) == model["annotations"]["chat_turns"]
     assert reader.load_normal_model() == model
     assert (
         cache.normal_model_cache_status_from_row(
@@ -190,6 +222,97 @@ def test_cached_message_iteration_filters_and_stops_at_limit(
     ] == ["first answer"]
     with pytest.raises(ValueError, match="non-negative"):
         list(reader.iter_chat_message_records(limit=-1))
+
+
+def test_cached_message_scan_verifies_candidates_before_counting_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.jsonl"
+    source.write_text("one\n", encoding="utf-8")
+    monkeypatch.setattr(
+        cache,
+        "build_normal_model_from_row",
+        lambda _row, *, include_raw=False: deepcopy(_model()),
+    )
+    reader = cache.materialize_normal_model_cache_from_row(
+        _row(source), chatlas_root=tmp_path / "chatlas"
+    )
+    target = reader.path / "chat-messages.jsonl"
+    target.write_text(
+        '{"noise":"needle","message":{"side":"user","text":"miss"}}\n'
+        "not-json\n"
+        + target.read_text(encoding="utf-8").replace(
+            '"first question"', '"needle first question"'
+        ),
+        encoding="utf-8",
+    )
+
+    records = list(
+        reader.iter_chat_message_records(text="needle", exact=False, limit=1)
+    )
+    assert [record["message"]["text"] for record in records] == [
+        "needle first question"
+    ]
+
+
+def test_cached_message_scan_handles_json_escaped_text(tmp_path: Path) -> None:
+    path = tmp_path / "cache"
+    path.mkdir()
+    reader = cache.NormalModelCacheReader(path=path, metadata={})
+    (path / "chat-messages.jsonl").write_text(
+        '{"message":{"side":"user","text":"line\\n\\"quoted\\" \\\\ café"}}\n',
+        encoding="utf-8",
+    )
+
+    records = list(
+        reader.iter_chat_message_records(text='line\n"quoted" \\ café', exact=True)
+    )
+    assert records[0]["message"]["text"] == 'line\n"quoted" \\ café'
+
+
+def test_cached_message_scan_falls_back_when_text_has_no_safe_literal(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "cache"
+    path.mkdir()
+    reader = cache.NormalModelCacheReader(path=path, metadata={})
+    (path / "chat-messages.jsonl").write_text(
+        '{"message":{"side":"user","text":"\\ud800"}}\n',
+        encoding="utf-8",
+    )
+
+    records = list(reader.iter_chat_message_records(text="\ud800", exact=True))
+    assert records[0]["message"]["text"] == "\ud800"
+
+
+def test_turn_lookup_and_hydration_load_only_selected_members(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.jsonl"
+    native = {"type": "response_item", "payload": {"opaque": [1, 2, 3]}}
+    source.write_text(json.dumps(native) + "\n", encoding="utf-8")
+    model = _model(source)
+    monkeypatch.setattr(
+        cache,
+        "build_normal_model_from_row",
+        lambda _row, *, include_raw=False: deepcopy(model),
+    )
+    reader = cache.materialize_normal_model_cache_from_row(
+        _row(source), chatlas_root=tmp_path / "chatlas"
+    )
+
+    turn = reader.find_chat_turn(
+        message_address=model["annotations"]["chat_messages"][0]["message_address"]
+    )
+    assert turn == model["annotations"]["chat_turns"][0]
+    hydrated = reader.hydrate_chat_turn(turn)
+
+    assert hydrated["turn"] == turn
+    assert hydrated["messages"][0]["message"]["text"] == "first question"
+    assert hydrated["events"][0]["event"] == model["events"][0]
+    assert hydrated["events"][0]["raw_observations"][0]["value"] == native
 
 
 def test_cache_rejects_raw_attached_model(
