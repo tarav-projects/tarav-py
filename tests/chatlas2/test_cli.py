@@ -250,7 +250,7 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     batch.write_text(
         json.dumps(
             {
-                "schema": "tarav.chatlas2.anchor-batch.v1",
+                "schema": "tarav.chatlas2.anchor-batch.v2",
                 "items": [
                     {
                         "client_id": "alpha",

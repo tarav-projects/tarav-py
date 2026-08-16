@@ -27,6 +27,8 @@ from .anchory import (
     chatlas2_anchory_preview,
     chatlas2_anchory_register,
     chatlas2_anchory_resolve,
+    chatlas2_message_support_preview,
+    chatlas2_message_support_register,
     format_support_member_ref,
     load_anchor_batch,
 )
@@ -181,6 +183,16 @@ def _non_negative_int(value: str) -> int:
     return parsed
 
 
+def _json_object(value: str) -> dict[str, object]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError("must be a JSON object") from exc
+    if not isinstance(parsed, dict):
+        raise argparse.ArgumentTypeError("must be a JSON object")
+    return parsed
+
+
 def _add_cache_selector(parser: argparse.ArgumentParser) -> None:
     selector = parser.add_mutually_exclusive_group(required=True)
     selector.add_argument("--session-id")
@@ -198,6 +210,9 @@ def _cmd_anchory_preview(args: argparse.Namespace) -> int:
         chatlas2_anchory_preview(
             members=tuple(args.members),
             line_content=args.line_content,
+            gates=args.gates,
+            predecessors=tuple(args.predecessors),
+            issue_context=tuple(args.issues),
             radius=args.radius,
             chatlas_root=_anchory_root(args),
         ),
@@ -211,6 +226,33 @@ def _cmd_anchory_register(args: argparse.Namespace) -> int:
         chatlas2_anchory_register(
             members=tuple(args.members),
             line_content=args.line_content,
+            gates=args.gates,
+            predecessors=tuple(args.predecessors),
+            issue_context=tuple(args.issues),
+            radius=args.radius,
+            chatlas_root=_anchory_root(args),
+        ),
+        pretty=True,
+    )
+    return 0
+
+
+def _cmd_message_support_preview(args: argparse.Namespace) -> int:
+    _print_payload(
+        chatlas2_message_support_preview(
+            members=tuple(args.members),
+            radius=args.radius,
+            chatlas_root=_anchory_root(args),
+        ),
+        pretty=True,
+    )
+    return 0
+
+
+def _cmd_message_support_register(args: argparse.Namespace) -> int:
+    _print_payload(
+        chatlas2_message_support_register(
+            members=tuple(args.members),
             radius=args.radius,
             chatlas_root=_anchory_root(args),
         ),
@@ -427,7 +469,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
 
     anchory = commands.add_parser(
         "anchory",
-        help="Ground Index lines in Chatlas2 user messages.",
+        help="Ground Hugentic records in Chatlas2 messages.",
     )
     anchory_commands = anchory.add_subparsers(
         dest="chatlas2_anchory_command", required=True
@@ -445,6 +487,32 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
             help=("Support as <session>:<message-address>:<message-hash>; repeatable."),
         )
         command.add_argument("--line-content", required=True)
+        command.add_argument(
+            "--gates",
+            type=_json_object,
+            help="Independent semantic or tokenized approval message refs as JSON.",
+        )
+        command.add_argument(
+            "--predecessor", dest="predecessors", action="append", default=[]
+        )
+        command.add_argument(
+            "--issue", dest="issues", action="append", default=[]
+        )
+        command.add_argument("--radius", type=int, default=4)
+        command.add_argument("--chatlas-root")
+        command.set_defaults(handler=handler)
+    message_support = anchory_commands.add_parser(
+        "support", help="Mint a generic user-message support anchor."
+    )
+    message_support_commands = message_support.add_subparsers(
+        dest="chatlas2_message_support_command", required=True
+    )
+    for name, handler in (
+        ("preview", _cmd_message_support_preview),
+        ("register", _cmd_message_support_register),
+    ):
+        command = message_support_commands.add_parser(name)
+        command.add_argument("--member", dest="members", action="append", required=True)
         command.add_argument("--radius", type=int, default=4)
         command.add_argument("--chatlas-root")
         command.set_defaults(handler=handler)

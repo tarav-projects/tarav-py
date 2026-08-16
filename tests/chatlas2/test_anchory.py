@@ -5,16 +5,27 @@ import gc
 from pathlib import Path
 import weakref
 
+import pytest
+
+from tarav._core.errors import CliError
 from tarav.chatlas2 import anchory
 from tarav.chatlas2.anchory import (
+    CHATLAS2_MESSAGE_SUPPORT_SCHEMA,
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
+    CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1,
     CHATLAS2_NAMESPACE,
+    chatlas2_anchory_depot,
+    chatlas2_message_support_register,
     chatlas2_anchory_batch_preview,
     chatlas2_anchory_batch_register,
     chatlas2_anchory_preview,
     chatlas2_anchory_register,
     chatlas2_anchory_resolve,
     format_support_member_ref,
+)
+from tarav.index.model import (
+    INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
+    index_line_anchor_triplet_hash,
 )
 from tarav.chatlas2.message_ref import compute_chat_message_hash
 from tarav.chatlas2.messages import chat_message_support_member
@@ -49,6 +60,53 @@ def _model() -> dict[str, object]:
 
 def _member_ref(model: dict[str, object]) -> str:
     message = model["annotations"]["chat_messages"][0]
+    return format_support_member_ref(chat_message_support_member(model, message))
+
+
+def _review_model() -> dict[str, object]:
+    model = _model()
+    events = model["events"]
+    messages = model["annotations"]["chat_messages"]
+    events[0]["started_at"] = "2026-08-16T00:00:01Z"
+    messages[0]["text"] = "The line should describe the grounding boundary."
+    messages[0]["message_hash"] = compute_chat_message_hash(messages[0])
+    for index, (side, text) in enumerate(
+        (
+            (
+                "agent",
+                "After · Verbatim:\n- [DC] Grounding remains a consumer concern.\n"
+                "Approval: ::approve idx-edition:test",
+            ),
+            ("user", "::approve idx-edition:test"),
+        ),
+        start=2,
+    ):
+        event = {
+            "class": "Agent.Event" if side == "agent" else "User.Event",
+            "event_address": f"{index}" * 64,
+            "event_hash": f"{index + 3}" * 64,
+            "started_at": f"2026-08-16T00:00:0{index}Z",
+        }
+        message = {
+            "class": "Chat.Message",
+            "message_address": f"{index + 5}" * 64,
+            "side": side,
+            "text": text,
+            "event_refs": [
+                {
+                    "event_address": event["event_address"],
+                    "event_hash": event["event_hash"],
+                }
+            ],
+        }
+        message["message_hash"] = compute_chat_message_hash(message)
+        events.append(event)
+        messages.append(message)
+    return model
+
+
+def _message_ref(model: dict[str, object], index: int) -> str:
+    message = model["annotations"]["chat_messages"][index]
     return format_support_member_ref(chat_message_support_member(model, message))
 
 
@@ -102,6 +160,126 @@ def test_preview_register_resolve_and_repeat_are_idempotent(tmp_path: Path) -> N
         "Raw.Model.Version names should be arbitrary"
     )
     assert resolved["members"][0]["at_matches"] is True
+
+
+def test_v2_preview_can_scan_existing_v1_line_dossiers(tmp_path: Path) -> None:
+    model = _model()
+    old_anchor = "d20260816-1u"
+    old_line = "- [DF] Existing v1 line."
+    chatlas2_anchory_depot(tmp_path).register(
+        {
+            "app": "chatlas2",
+            "schema": CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1,
+            "attachment": {
+                "canonical_schema": INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
+                "triplet_hash": index_line_anchor_triplet_hash(old_line, old_anchor),
+            },
+            "relationships": {
+                "support": {
+                    "members": [
+                        chat_message_support_member(
+                            model, model["annotations"]["chat_messages"][0]
+                        )
+                    ]
+                }
+            },
+        },
+        anchor=old_anchor,
+        namespace=CHATLAS2_NAMESPACE,
+    )
+
+    preview = chatlas2_anchory_preview(
+        members=(_member_ref(model),),
+        line_content="- [DF] New v2 line.",
+        chatlas_root=tmp_path,
+        model_loader=lambda _identity: model,
+    )
+
+    assert preview["action"] == "mint"
+    assert preview["support_equivalent_anchors"] == [old_anchor]
+
+
+def test_generic_message_support_anchor_has_no_line_attachment(tmp_path: Path) -> None:
+    model = _model()
+    result = chatlas2_message_support_register(
+        members=(_member_ref(model),),
+        chatlas_root=tmp_path,
+        model_loader=lambda _identity: model,
+    )
+
+    assert result["action"] == "minted"
+    assert result["record"] == {
+        "app": "chatlas2",
+        "schema": CHATLAS2_MESSAGE_SUPPORT_SCHEMA,
+        "relationships": {
+            "support": {
+                "members": [
+                    chat_message_support_member(
+                        model, model["annotations"]["chat_messages"][0]
+                    )
+                ]
+            }
+        },
+    }
+    assert "attachment" not in result["record"]
+
+
+def test_rich_line_dossier_keeps_support_gates_and_provenance_independent(
+    tmp_path: Path,
+) -> None:
+    model = _review_model()
+    result = chatlas2_anchory_register(
+        members=(_message_ref(model, 0),),
+        line_content="- [DC] Grounding remains a consumer concern.",
+        gates={
+            "tokenized_verbatim_approval": [
+                {
+                    "token": "idx-edition:test",
+                    "proposal": _message_ref(model, 1),
+                    "approval": _message_ref(model, 2),
+                }
+            ]
+        },
+        predecessors=("d20260816-1u",),
+        issue_context=("Issue.I0001",),
+        chatlas_root=tmp_path,
+        model_loader=lambda _identity: model,
+    )
+
+    relationships = result["record"]["relationships"]
+    assert set(relationships) == {"support", "gates", "provenance"}
+    gate = relationships["gates"]["tokenized_verbatim_approval"][0]
+    assert gate["token"] == "idx-edition:test"
+    assert gate["proposal"]["message_address"] == (
+        model["annotations"]["chat_messages"][1]["message_address"]
+    )
+    assert gate["approval"]["message_address"] == (
+        model["annotations"]["chat_messages"][2]["message_address"]
+    )
+    assert relationships["provenance"] == {
+        "predecessor_anchors": ["d20260816-1u"],
+        "issue_context": ["Issue.I0001"],
+    }
+
+
+def test_gate_requires_agent_proposal_and_user_approval(tmp_path: Path) -> None:
+    model = _review_model()
+    with pytest.raises(CliError, match="proposal.*agent"):
+        chatlas2_anchory_register(
+            members=(_message_ref(model, 0),),
+            line_content="- [DC] Grounding remains a consumer concern.",
+            gates={
+                "tokenized_verbatim_approval": [
+                    {
+                        "token": "idx-edition:test",
+                        "proposal": _message_ref(model, 2),
+                        "approval": _message_ref(model, 2),
+                    }
+                ]
+            },
+            chatlas_root=tmp_path,
+            model_loader=lambda _identity: model,
+        )
 
 
 def test_support_at_is_diagnostic_not_reference_identity(tmp_path: Path) -> None:

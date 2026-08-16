@@ -30,10 +30,14 @@ from .normal_model import provide_normal_model
 
 CHATLAS2_NAMESPACE = "chatlas2"
 CHATLAS2_NAMESPACE_PREFIX = "d"
-CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA = "tarav.chatlas2.line-anchor-dossier.v1"
-CHATLAS2_ANCHOR_BATCH_SCHEMA = "tarav.chatlas2.anchor-batch.v1"
+CHATLAS2_MESSAGE_SUPPORT_SCHEMA = "tarav.chatlas2.message-support.v1"
+CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1 = "tarav.chatlas2.line-anchor-dossier.v1"
+CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA = "tarav.chatlas2.line-anchor-dossier.v2"
+CHATLAS2_ANCHOR_BATCH_SCHEMA = "tarav.chatlas2.anchor-batch.v2"
 _FULL_SHA256 = re.compile(r"[0-9a-f]{64}")
 _CONTENT_HASH = re.compile(r"sha256:[0-9a-f]{64}")
+_ANCHOR_KEY = re.compile(r"[a-z][0-9]{8}-[0-9]+[a-z]")
+_ISSUE_ID = re.compile(r"Issue\.I[0-9]{4}")
 ModelLoader = Callable[[str], JsonObject]
 
 
@@ -49,8 +53,8 @@ def ensure_chatlas2_namespace(depot: AnchoryDepot) -> None:
             CHATLAS2_NAMESPACE,
             prefix=CHATLAS2_NAMESPACE_PREFIX,
             intention=(
-                "Index-line support dossiers whose members are exact Chatlas2 "
-                "user Chat.Message.Ref assertions"
+                "Hugentic grounding records whose chat members are exact "
+                "Chatlas2 Chat.Message.Ref assertions"
             ),
             semantics="tarav-chatlas-md/notes/live/527-chatlas2-normal-model-redesign-design-session.md",
         )
@@ -84,7 +88,7 @@ def parse_support_member_ref(value: str) -> JsonObject:
     return {"session": session, "message_address": address, "message_hash": digest}
 
 
-def _parse_support_member(value: object) -> JsonObject:
+def _parse_message_member(value: object) -> JsonObject:
     if not isinstance(value, dict) or set(value) != {
         "session",
         "message_address",
@@ -92,21 +96,173 @@ def _parse_support_member(value: object) -> JsonObject:
         "at",
     }:
         raise CliError(
-            "Chatlas2 support member must contain exactly session, "
+            "Chatlas2 message member must contain exactly session, "
             "message_address, message_hash, and at"
         )
     session = value.get("session")
     at = value.get("at")
     if not isinstance(session, str) or not session:
-        raise CliError("Chatlas2 support member session must be non-empty")
+        raise CliError("Chatlas2 message member session must be non-empty")
     if not isinstance(at, str) or not at:
-        raise CliError("Chatlas2 support member at must be non-empty")
+        raise CliError("Chatlas2 message member at must be non-empty")
     return {
         "session": session,
         "message_address": _digest(value.get("message_address"), field="message_address"),
         "message_hash": _digest(value.get("message_hash"), field="message_hash"),
         "at": at,
     }
+
+
+def _parse_support_member(value: object) -> JsonObject:
+    return _parse_message_member(value)
+
+
+def _member_identity(member: JsonObject) -> tuple[str, str, str]:
+    return (
+        str(member["session"]),
+        str(member["message_address"]),
+        str(member["message_hash"]),
+    )
+
+
+def _parse_member_list(raw: object, *, field: str) -> list[JsonObject]:
+    if not isinstance(raw, list) or not raw:
+        raise CliError(f"{field} must be a non-empty list")
+    members = [_parse_message_member(member) for member in raw]
+    identities = [_member_identity(member) for member in members]
+    if len(identities) != len(set(identities)):
+        raise CliError(f"{field} repeats a message member")
+    return members
+
+
+def _parse_support_relationship(value: object) -> JsonObject:
+    if not isinstance(value, dict) or set(value) != {"members"}:
+        raise CliError("Chatlas2 support relationship must contain only members")
+    return {
+        "members": _parse_member_list(
+            value.get("members"), field="relationships.support.members"
+        )
+    }
+
+
+def _parse_gate_list(raw: object, *, kind: str) -> list[JsonObject]:
+    if not isinstance(raw, list):
+        raise CliError(f"Chatlas2 line gate {kind} must be a list")
+    parsed: list[JsonObject] = []
+    seen: set[str] = set()
+    required = {"approval"}
+    allowed = {"proposal", "approval"}
+    if kind == "tokenized_verbatim_approval":
+        required |= {"token", "proposal"}
+        allowed |= {"token"}
+    for index, value in enumerate(raw):
+        if not isinstance(value, dict) or not required.issubset(value) or not set(
+            value
+        ).issubset(allowed):
+            raise CliError(f"Chatlas2 line gate {kind} item {index} has an invalid shape")
+        item: JsonObject = {}
+        if kind == "tokenized_verbatim_approval":
+            token = value.get("token")
+            if not isinstance(token, str) or not token:
+                raise CliError(f"Chatlas2 line gate {kind} item {index} has no token")
+            item["token"] = token
+        for position in ("proposal", "approval"):
+            if position in value:
+                item[position] = _parse_message_member(value[position])
+        key = json.dumps(item, sort_keys=True, separators=(",", ":"))
+        if key in seen:
+            raise CliError(f"Chatlas2 line gate {kind} repeats item {index}")
+        seen.add(key)
+        parsed.append(item)
+    return parsed
+
+
+def _parse_gates(value: object) -> JsonObject:
+    if not isinstance(value, dict) or set(value) != {
+        "semantic_approval",
+        "tokenized_verbatim_approval",
+    }:
+        raise CliError(
+            "Chatlas2 line dossier gates must contain semantic_approval and "
+            "tokenized_verbatim_approval"
+        )
+    return {
+        "semantic_approval": _parse_gate_list(
+            value["semantic_approval"], kind="semantic_approval"
+        ),
+        "tokenized_verbatim_approval": _parse_gate_list(
+            value["tokenized_verbatim_approval"],
+            kind="tokenized_verbatim_approval",
+        ),
+    }
+
+
+def _parse_provenance(value: object) -> JsonObject:
+    if not isinstance(value, dict) or set(value) != {
+        "predecessor_anchors",
+        "issue_context",
+    }:
+        raise CliError(
+            "Chatlas2 line dossier provenance must contain predecessor_anchors "
+            "and issue_context"
+        )
+    predecessors = value["predecessor_anchors"]
+    issues = value["issue_context"]
+    if not isinstance(predecessors, list) or not all(
+        isinstance(item, str) and _ANCHOR_KEY.fullmatch(item) for item in predecessors
+    ):
+        raise CliError("Chatlas2 predecessor_anchors contains an invalid anchor")
+    if len(predecessors) != len(set(predecessors)):
+        raise CliError("Chatlas2 predecessor_anchors contains a duplicate")
+    if not isinstance(issues, list) or not all(
+        isinstance(item, str) and _ISSUE_ID.fullmatch(item) for item in issues
+    ):
+        raise CliError("Chatlas2 issue_context contains an invalid Issue identity")
+    if len(issues) != len(set(issues)):
+        raise CliError("Chatlas2 issue_context contains a duplicate")
+    return {
+        "predecessor_anchors": list(predecessors),
+        "issue_context": list(issues),
+    }
+
+
+def _empty_gates() -> JsonObject:
+    return {"semantic_approval": [], "tokenized_verbatim_approval": []}
+
+
+def _empty_provenance() -> JsonObject:
+    return {"predecessor_anchors": [], "issue_context": []}
+
+
+def parse_message_support_record(record: object) -> JsonObject:
+    if not isinstance(record, dict) or set(record) != {
+        "app",
+        "schema",
+        "relationships",
+    }:
+        raise CliError("Chatlas2 message-support record has an invalid top-level shape")
+    if record.get("app") != "chatlas2" or record.get("schema") != CHATLAS2_MESSAGE_SUPPORT_SCHEMA:
+        raise CliError("Chatlas2 message-support record has an invalid app or schema")
+    relationships = record.get("relationships")
+    if not isinstance(relationships, dict) or set(relationships) != {"support"}:
+        raise CliError("Chatlas2 message-support relationships must contain only support")
+    return {
+        "app": "chatlas2",
+        "schema": CHATLAS2_MESSAGE_SUPPORT_SCHEMA,
+        "relationships": {
+            "support": _parse_support_relationship(relationships["support"])
+        },
+    }
+
+
+def build_message_support_record(*, members: list[JsonObject]) -> JsonObject:
+    return parse_message_support_record(
+        {
+            "app": "chatlas2",
+            "schema": CHATLAS2_MESSAGE_SUPPORT_SCHEMA,
+            "relationships": {"support": {"members": deepcopy(members)}},
+        }
+    )
 
 
 def parse_line_anchor_dossier(record: object) -> JsonObject:
@@ -119,9 +275,13 @@ def parse_line_anchor_dossier(record: object) -> JsonObject:
         raise CliError("Chatlas2 line dossier has an invalid top-level shape")
     if record.get("app") != "chatlas2":
         raise CliError("Chatlas2 line dossier must have app='chatlas2'")
-    if record.get("schema") != CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA:
+    schema = record.get("schema")
+    if schema not in {
+        CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1,
+        CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
+    }:
         raise CliError(
-            f"Chatlas2 line dossier requires schema {CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA!r}"
+            "Chatlas2 line dossier has an unsupported schema"
         )
     attachment = record.get("attachment")
     if not isinstance(attachment, dict) or set(attachment) != {
@@ -135,26 +295,34 @@ def parse_line_anchor_dossier(record: object) -> JsonObject:
     if not isinstance(triplet_hash, str) or _CONTENT_HASH.fullmatch(triplet_hash) is None:
         raise CliError("Chatlas2 line dossier has an invalid triplet_hash")
     relationships = record.get("relationships")
-    if not isinstance(relationships, dict) or set(relationships) != {"support"}:
-        raise CliError("Chatlas2 line dossier relationships must contain only support")
-    support = relationships.get("support")
-    if not isinstance(support, dict) or set(support) != {"members"}:
-        raise CliError("Chatlas2 line dossier support must contain only members")
-    raw_members = support.get("members")
-    if not isinstance(raw_members, list) or not raw_members:
-        raise CliError("Chatlas2 line dossier requires support members")
-    members = [_parse_support_member(member) for member in raw_members]
-    identities = [_support_identity(member) for member in members]
-    if len(identities) != len(set(identities)):
-        raise CliError("Chatlas2 line dossier repeats a support member")
+    if not isinstance(relationships, dict):
+        raise CliError("Chatlas2 line dossier relationships must be an object")
+    if schema == CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1:
+        if set(relationships) != {"support"}:
+            raise CliError("Chatlas2 v1 line dossier relationships are invalid")
+        gates = _empty_gates()
+        provenance = _empty_provenance()
+    else:
+        if set(relationships) != {"support", "gates", "provenance"}:
+            raise CliError(
+                "Chatlas2 line dossier relationships must contain support, gates, "
+                "and provenance"
+            )
+        gates = _parse_gates(relationships["gates"])
+        provenance = _parse_provenance(relationships["provenance"])
+    support = _parse_support_relationship(relationships.get("support"))
     return {
         "app": "chatlas2",
-        "schema": CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
+        "schema": schema,
         "attachment": {
             "canonical_schema": INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
             "triplet_hash": triplet_hash,
         },
-        "relationships": {"support": {"members": members}},
+        "relationships": {
+            "support": support,
+            "gates": gates,
+            "provenance": provenance,
+        },
     }
 
 
@@ -163,6 +331,9 @@ def build_line_anchor_dossier(
     anchor: str,
     line_content: str,
     members: list[JsonObject],
+    gates: JsonObject | None = None,
+    predecessors: tuple[str, ...] = (),
+    issue_context: tuple[str, ...] = (),
 ) -> JsonObject:
     return parse_line_anchor_dossier(
         {
@@ -172,72 +343,192 @@ def build_line_anchor_dossier(
                 "canonical_schema": INDEX_LINE_ANCHOR_TRIPLET_SCHEMA,
                 "triplet_hash": index_line_anchor_triplet_hash(line_content, anchor),
             },
-            "relationships": {"support": {"members": deepcopy(members)}},
+            "relationships": {
+                "support": {"members": deepcopy(members)},
+                "gates": deepcopy(gates or _empty_gates()),
+                "provenance": {
+                    "predecessor_anchors": list(predecessors),
+                    "issue_context": list(issue_context),
+                },
+            },
         }
     )
 
 
+def _model_loader(
+    *, chatlas_root: Path | None, model_loader: ModelLoader | None
+) -> ModelLoader:
+    return model_loader or (
+        lambda identity: provide_normal_model(
+            identity_hash=identity,
+            chatlas_root=chatlas_root,
+        )
+    )
+
+
+def _prepare_member_ref(
+    value: str,
+    *,
+    index: int,
+    relationship: str,
+    expected_side: str | None,
+    loader: ModelLoader,
+) -> tuple[JsonObject, int]:
+    asserted = parse_support_member_ref(value)
+    session_ref = str(asserted["session"])
+    try:
+        model = loader(session_ref)
+    except Exception as exc:
+        raise CliError(
+            f"Chatlas2 {relationship} member {index} session is unavailable: "
+            f"{session_ref}"
+        ) from exc
+    messages = list_chat_messages(model)
+    resolution = resolve_chat_message_ref(
+        messages,
+        {
+            "message_address": asserted["message_address"],
+            "message_hash": asserted["message_hash"],
+        },
+    )
+    if resolution["standing"] != "MATCHED":
+        raise CliError(
+            f"Chatlas2 {relationship} member {index} is "
+            f"{resolution['standing']}: {value}"
+        )
+    message = resolution["message"]
+    if not isinstance(message, dict):
+        raise CliError(f"Chatlas2 {relationship} member {index} has no message")
+    side = message.get("side")
+    if expected_side is not None and side != expected_side:
+        raise CliError(
+            f"Chatlas2 {relationship} member {index} must be {expected_side}-side; "
+            f"got {side!r}"
+        )
+    position = next(
+        (candidate for candidate, current in enumerate(messages) if current is message),
+        -1,
+    )
+    return chat_message_support_member(model, message), position
+
+
 def _prepare_members(
-    member_refs: tuple[str, ...],
+    member_refs: tuple[str, ...] | list[str],
     *,
     chatlas_root: Path | None,
     model_loader: ModelLoader | None,
 ) -> list[JsonObject]:
     if not member_refs:
         raise CliError("Chatlas2 Anchory requires at least one support member")
-    loader = model_loader or (
-        lambda identity: provide_normal_model(
-            identity_hash=identity,
-            chatlas_root=chatlas_root,
-        )
-    )
+    loader = _model_loader(chatlas_root=chatlas_root, model_loader=model_loader)
     members: list[JsonObject] = []
     for index, value in enumerate(member_refs):
-        asserted = parse_support_member_ref(value)
-        session_ref = str(asserted["session"])
-        try:
-            model = loader(session_ref)
-        except Exception as exc:
-            raise CliError(
-                f"Chatlas2 support member {index} session is unavailable: {session_ref}"
-            ) from exc
-        resolution = resolve_chat_message_ref(
-            list_chat_messages(model),
-            {
-                "message_address": asserted["message_address"],
-                "message_hash": asserted["message_hash"],
-            },
+        member, _position = _prepare_member_ref(
+            value,
+            index=index,
+            relationship="support",
+            expected_side="user",
+            loader=loader,
         )
-        if resolution["standing"] != "MATCHED":
-            raise CliError(
-                f"Chatlas2 support member {index} is {resolution['standing']}: {value}"
-            )
-        message = resolution["message"]
-        if not isinstance(message, dict) or message.get("side") != "user":
-            raise CliError(f"Chatlas2 support member {index} is not a user message")
-        member = chat_message_support_member(model, message)
         members.append(member)
-        model = None
     identities = [_support_identity(member) for member in members]
     if len(identities) != len(set(identities)):
         raise CliError("Chatlas2 Anchory support members must be unique")
     return members
 
 
+def _prepare_gates(
+    gates: object,
+    *,
+    chatlas_root: Path | None,
+    model_loader: ModelLoader | None,
+) -> JsonObject:
+    if gates is None:
+        return _empty_gates()
+    if not isinstance(gates, dict) or not set(gates).issubset(
+        {"semantic_approval", "tokenized_verbatim_approval"}
+    ):
+        raise CliError("Chatlas2 line gates have an invalid shape")
+    loader = _model_loader(chatlas_root=chatlas_root, model_loader=model_loader)
+    prepared = _empty_gates()
+    for kind in ("semantic_approval", "tokenized_verbatim_approval"):
+        raw_items = gates.get(kind, [])
+        if not isinstance(raw_items, list):
+            raise CliError(f"Chatlas2 line gate {kind} must be a list")
+        for index, raw in enumerate(raw_items):
+            required = {"approval"}
+            allowed = {"proposal", "approval"}
+            if kind == "tokenized_verbatim_approval":
+                required |= {"token", "proposal"}
+                allowed |= {"token"}
+            if (
+                not isinstance(raw, dict)
+                or not required.issubset(raw)
+                or not set(raw).issubset(allowed)
+            ):
+                raise CliError(
+                    f"Chatlas2 line gate {kind} item {index} has an invalid shape"
+                )
+            item: JsonObject = {}
+            if kind == "tokenized_verbatim_approval":
+                token = raw.get("token")
+                if not isinstance(token, str) or not token:
+                    raise CliError(f"Chatlas2 line gate {kind} item {index} has no token")
+                item["token"] = token
+            proposal_position: int | None = None
+            if "proposal" in raw:
+                proposal, proposal_position = _prepare_member_ref(
+                    raw["proposal"],
+                    index=index,
+                    relationship=f"{kind} proposal",
+                    expected_side="agent",
+                    loader=loader,
+                )
+                item["proposal"] = proposal
+            approval, approval_position = _prepare_member_ref(
+                raw["approval"],
+                index=index,
+                relationship=f"{kind} approval",
+                expected_side="user",
+                loader=loader,
+            )
+            item["approval"] = approval
+            if proposal_position is not None:
+                if proposal["session"] != approval["session"]:
+                    raise CliError(
+                        f"Chatlas2 line gate {kind} item {index} spans sessions"
+                    )
+                if proposal_position >= approval_position:
+                    raise CliError(
+                        f"Chatlas2 line gate {kind} item {index} approval must follow proposal"
+                    )
+            prepared[kind].append(item)
+    return _parse_gates(prepared)
+
+
 def _support_identity(member: JsonObject) -> tuple[str, str, str]:
-    return (
-        str(member["session"]),
-        str(member["message_address"]),
-        str(member["message_hash"]),
-    )
+    return _member_identity(member)
 
 
 def _support_key(record: JsonObject) -> tuple[tuple[str, str, str], ...]:
-    dossier = parse_line_anchor_dossier(record)
+    dossier = _parse_grounding_record(record)
     return tuple(
         _support_identity(member)
         for member in dossier["relationships"]["support"]["members"]
     )
+
+
+def _relationship_key(record: JsonObject) -> str:
+    dossier = parse_line_anchor_dossier(record)
+    return json.dumps(
+        dossier["relationships"], sort_keys=True, separators=(",", ":")
+    )
+
+
+def _parse_grounding_record(record: object) -> JsonObject:
+    if isinstance(record, dict) and record.get("schema") == CHATLAS2_MESSAGE_SUPPORT_SCHEMA:
+        return parse_message_support_record(record)
+    return parse_line_anchor_dossier(record)
 
 
 def _equivalent_anchors(
@@ -247,6 +538,7 @@ def _equivalent_anchors(
     chatlas_root: Path | None,
 ) -> tuple[list[str], list[str]]:
     support_key = _support_key(record)
+    relationship_key = _relationship_key(record)
     support_matches: list[str] = []
     exact_matches: list[str] = []
     depot = chatlas2_anchory_depot(chatlas_root)
@@ -255,11 +547,14 @@ def _equivalent_anchors(
             stored = parse_line_anchor_dossier(entry.record)
         except CliError:
             continue
-        if _support_key(stored) != support_key:
+        if _support_key(entry.record) != support_key:
             continue
         support_matches.append(entry.anchor)
         expected = index_line_anchor_triplet_hash(line_content, entry.anchor)
-        if stored["attachment"]["triplet_hash"] == expected:
+        if (
+            stored["attachment"]["triplet_hash"] == expected
+            and _relationship_key(entry.record) == relationship_key
+        ):
             exact_matches.append(entry.anchor)
     return sorted(support_matches), sorted(exact_matches)
 
@@ -299,7 +594,7 @@ def _project_record(
     model_loader: ModelLoader | None,
     radius: int,
 ) -> JsonObject:
-    dossier = parse_line_anchor_dossier(record)
+    dossier = _parse_grounding_record(record)
     projected: list[JsonObject] = []
     loader = model_loader or (
         lambda identity: provide_normal_model(
@@ -312,6 +607,28 @@ def _project_record(
         model = loader(identity)
         projected.append(_project_member(member, model=model, radius=radius))
         model = None
+    projected_gates: JsonObject = {}
+    gates = dossier["relationships"].get("gates")
+    if isinstance(gates, dict):
+        for kind, items in gates.items():
+            projected_items: list[JsonObject] = []
+            for item in items:
+                projected_item: JsonObject = {
+                    key: value
+                    for key, value in item.items()
+                    if key not in {"proposal", "approval"}
+                }
+                for position in ("proposal", "approval"):
+                    member = item.get(position)
+                    if not isinstance(member, dict):
+                        continue
+                    model = loader(str(member["session"]))
+                    projected_item[position] = _project_member(
+                        member, model=model, radius=radius
+                    )
+                    model = None
+                projected_items.append(projected_item)
+            projected_gates[kind] = projected_items
     return {
         "status": "ok",
         "namespace": CHATLAS2_NAMESPACE,
@@ -319,13 +636,100 @@ def _project_record(
         "anchor": anchor,
         "record": dossier,
         "members": projected,
+        "gates": projected_gates,
     }
+
+
+def _message_support_equivalents(
+    record: JsonObject, *, chatlas_root: Path | None
+) -> list[str]:
+    key = _support_key(record)
+    matches: list[str] = []
+    for entry in chatlas2_anchory_depot(chatlas_root).query(
+        namespace=CHATLAS2_NAMESPACE
+    ):
+        try:
+            stored = parse_message_support_record(entry.record)
+        except CliError:
+            continue
+        if _support_key(stored) == key:
+            matches.append(entry.anchor)
+    return sorted(matches)
+
+
+def chatlas2_message_support_preview(
+    *,
+    members: tuple[str, ...],
+    chatlas_root: Path | None = None,
+    model_loader: ModelLoader | None = None,
+    radius: int = 4,
+) -> JsonObject:
+    prepared = _prepare_members(
+        members, chatlas_root=chatlas_root, model_loader=model_loader
+    )
+    record = build_message_support_record(members=prepared)
+    equivalents = _message_support_equivalents(record, chatlas_root=chatlas_root)
+    payload = _project_record(
+        record,
+        anchor=min(equivalents) if equivalents else None,
+        action="reuse" if equivalents else "mint",
+        chatlas_root=chatlas_root,
+        model_loader=model_loader,
+        radius=radius,
+    )
+    payload["equivalent_anchors"] = equivalents
+    return payload
+
+
+def chatlas2_message_support_register(
+    *,
+    members: tuple[str, ...],
+    chatlas_root: Path | None = None,
+    model_loader: ModelLoader | None = None,
+    radius: int = 4,
+) -> JsonObject:
+    prepared = _prepare_members(
+        members, chatlas_root=chatlas_root, model_loader=model_loader
+    )
+    record = build_message_support_record(members=prepared)
+    equivalents = _message_support_equivalents(record, chatlas_root=chatlas_root)
+    depot = chatlas2_anchory_depot(chatlas_root)
+    ensure_chatlas2_namespace(depot)
+    if equivalents:
+        anchor = min(equivalents)
+        resolution = depot.resolve(anchor, namespace=CHATLAS2_NAMESPACE)
+        if resolution is None:
+            raise CliError(f"Chatlas2 anchor disappeared during registration: {anchor}")
+        record = dict(resolution.record)
+        action = "reused"
+    else:
+        at = _parse_timestamp(str(prepared[0]["at"]))
+        entry = depot.register(
+            record,
+            alloc_prefix=f"{at.year:04d}{at.month:02d}{at.day:02d}",
+            tag="u",
+            namespace=CHATLAS2_NAMESPACE,
+        )
+        anchor = entry.anchor
+        record = dict(entry.record)
+        action = "minted"
+    return _project_record(
+        record,
+        anchor=anchor,
+        action=action,
+        chatlas_root=chatlas_root,
+        model_loader=model_loader,
+        radius=radius,
+    )
 
 
 def chatlas2_anchory_preview(
     *,
     members: tuple[str, ...],
     line_content: str,
+    gates: object = None,
+    predecessors: tuple[str, ...] = (),
+    issue_context: tuple[str, ...] = (),
     chatlas_root: Path | None = None,
     model_loader: ModelLoader | None = None,
     radius: int = 4,
@@ -335,8 +739,16 @@ def chatlas2_anchory_preview(
         chatlas_root=chatlas_root,
         model_loader=model_loader,
     )
+    prepared_gates = _prepare_gates(
+        gates, chatlas_root=chatlas_root, model_loader=model_loader
+    )
     placeholder = build_line_anchor_dossier(
-        anchor="d00000000-0u", line_content=line_content, members=prepared
+        anchor="d00000000-0u",
+        line_content=line_content,
+        members=prepared,
+        gates=prepared_gates,
+        predecessors=predecessors,
+        issue_context=issue_context,
     )
     support, exact = _equivalent_anchors(
         record=placeholder,
@@ -360,6 +772,9 @@ def chatlas2_anchory_register(
     *,
     members: tuple[str, ...],
     line_content: str,
+    gates: object = None,
+    predecessors: tuple[str, ...] = (),
+    issue_context: tuple[str, ...] = (),
     chatlas_root: Path | None = None,
     model_loader: ModelLoader | None = None,
     radius: int = 4,
@@ -369,8 +784,16 @@ def chatlas2_anchory_register(
         chatlas_root=chatlas_root,
         model_loader=model_loader,
     )
+    prepared_gates = _prepare_gates(
+        gates, chatlas_root=chatlas_root, model_loader=model_loader
+    )
     placeholder = build_line_anchor_dossier(
-        anchor="d00000000-0u", line_content=line_content, members=prepared
+        anchor="d00000000-0u",
+        line_content=line_content,
+        members=prepared,
+        gates=prepared_gates,
+        predecessors=predecessors,
+        issue_context=issue_context,
     )
     _support, exact = _equivalent_anchors(
         record=placeholder,
@@ -394,6 +817,9 @@ def chatlas2_anchory_register(
                 anchor=anchor,
                 line_content=line_content,
                 members=prepared,
+                gates=prepared_gates,
+                predecessors=predecessors,
+                issue_context=issue_context,
             ),
             alloc_prefix=alloc_prefix,
             tag="u",
@@ -439,11 +865,11 @@ def _parse_batch_items(items: object) -> list[JsonObject]:
     parsed: list[JsonObject] = []
     seen: set[str] = set()
     for index, item in enumerate(items):
-        if not isinstance(item, dict) or set(item) != {
-            "client_id",
-            "line_content",
-            "members",
-        }:
+        if not isinstance(item, dict) or not {"client_id", "line_content", "members"}.issubset(
+            item
+        ) or not set(item).issubset(
+            {"client_id", "line_content", "members", "gates", "predecessors", "issue_context"}
+        ):
             raise CliError(f"Chatlas2 Anchory batch item {index} has an invalid shape")
         client_id = item.get("client_id")
         line_content = item.get("line_content")
@@ -456,21 +882,38 @@ def _parse_batch_items(items: object) -> list[JsonObject]:
             isinstance(member, str) and member for member in members
         ):
             raise CliError(f"Chatlas2 Anchory batch item {client_id!r} has invalid members")
+        predecessors = item.get("predecessors", [])
+        issue_context = item.get("issue_context", [])
+        if not isinstance(predecessors, list) or not all(
+            isinstance(value, str) for value in predecessors
+        ):
+            raise CliError(
+                f"Chatlas2 Anchory batch item {client_id!r} has invalid predecessors"
+            )
+        if not isinstance(issue_context, list) or not all(
+            isinstance(value, str) for value in issue_context
+        ):
+            raise CliError(
+                f"Chatlas2 Anchory batch item {client_id!r} has invalid issue_context"
+            )
         seen.add(client_id)
         parsed.append(
             {
                 "client_id": client_id,
                 "line_content": line_content,
                 "members": list(members),
+                "gates": deepcopy(item.get("gates")),
+                "predecessors": list(predecessors),
+                "issue_context": list(issue_context),
             }
         )
     return parsed
 
 
-def _batch_plan_key(item: JsonObject, members: list[JsonObject]) -> tuple[object, ...]:
+def _batch_plan_key(item: JsonObject, record: JsonObject) -> tuple[object, ...]:
     return (
         *index_line_statement_parts(str(item["line_content"])),
-        tuple(_support_identity(member) for member in members),
+        _relationship_key(record),
     )
 
 
@@ -489,17 +932,23 @@ def chatlas2_anchory_batch_preview(
             chatlas_root=chatlas_root,
             model_loader=model_loader,
         )
+        gates = _prepare_gates(
+            item["gates"], chatlas_root=chatlas_root, model_loader=model_loader
+        )
         placeholder = build_line_anchor_dossier(
             anchor="d00000000-0u",
             line_content=str(item["line_content"]),
             members=prepared,
+            gates=gates,
+            predecessors=tuple(item["predecessors"]),
+            issue_context=tuple(item["issue_context"]),
         )
         _support, exact = _equivalent_anchors(
             record=placeholder,
             line_content=str(item["line_content"]),
             chatlas_root=chatlas_root,
         )
-        key = _batch_plan_key(item, prepared)
+        key = _batch_plan_key(item, placeholder)
         if exact or key in planned:
             action = "reuse"
             reuse_count += 1
@@ -535,6 +984,9 @@ def chatlas2_anchory_batch_register(
         result = chatlas2_anchory_register(
             members=item["members"],
             line_content=str(item["line_content"]),
+            gates=item["gates"],
+            predecessors=tuple(item["predecessors"]),
+            issue_context=tuple(item["issue_context"]),
             chatlas_root=chatlas_root,
             model_loader=model_loader,
         )
@@ -590,17 +1042,23 @@ def _digest(value: object, *, field: str) -> str:
 __all__ = [
     "CHATLAS2_ANCHOR_BATCH_SCHEMA",
     "CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA",
+    "CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA_V1",
+    "CHATLAS2_MESSAGE_SUPPORT_SCHEMA",
     "CHATLAS2_NAMESPACE",
     "build_line_anchor_dossier",
+    "build_message_support_record",
     "chatlas2_anchory_batch_preview",
     "chatlas2_anchory_batch_register",
     "chatlas2_anchory_depot",
     "chatlas2_anchory_preview",
     "chatlas2_anchory_register",
     "chatlas2_anchory_resolve",
+    "chatlas2_message_support_preview",
+    "chatlas2_message_support_register",
     "ensure_chatlas2_namespace",
     "format_support_member_ref",
     "load_anchor_batch",
     "parse_line_anchor_dossier",
+    "parse_message_support_record",
     "parse_support_member_ref",
 ]

@@ -48,17 +48,19 @@ class TaravRuntime:
             resolve_event_support_set_record,
             validate_chatlas_anchory_amendment,
         )
-        from tarav.chatlas.index_checks import (
-            chatlas_anchor_line_drift_check,
-            chatlas_grounding_provenance_check,
-            chatlas_line_approval_check,
-            chatlas_line_verbatim_gate_check,
-            chatlas_review_reference_resolver,
-            chatlas_support_reference_resolver,
+        from tarav.chatlas.line_manifest import materialize_index_line_manifest
+        from tarav.chatlas2.grounding import (
+            grounding_review_reference_resolver,
+            grounding_support_reference_resolver,
         )
-        from tarav.chatlas.line_manifest import (
-            create_chatlas_line_relationship_projector,
-            materialize_index_line_manifest,
+        from tarav.chatlas2.index_checks import (
+            grounding_line_approval_check,
+            grounding_line_drift_check,
+            grounding_line_verbatim_gate_check,
+            grounding_provenance_check,
+        )
+        from tarav.chatlas2.line_manifest import (
+            create_grounding_line_relationship_projector,
         )
         from tarav.chatlas.project_index_reconciliation import (
             project_index_coverage_check,
@@ -162,16 +164,16 @@ class TaravRuntime:
         register_index_commands(
             subparsers,
             extra_linter_checks=(
-                chatlas_grounding_provenance_check(),
-                chatlas_anchor_line_drift_check(),
-                chatlas_line_approval_check(),
-                chatlas_line_verbatim_gate_check(),
+                grounding_provenance_check(),
+                grounding_line_drift_check(),
+                grounding_line_approval_check(),
+                grounding_line_verbatim_gate_check(),
                 project_index_coverage_check(),
             ),
-            support_reference_resolver=chatlas_support_reference_resolver(),
-            review_reference_resolver=chatlas_review_reference_resolver(),
+            support_reference_resolver=grounding_support_reference_resolver(),
+            review_reference_resolver=grounding_review_reference_resolver(),
             line_manifest_relationship_projector_factory=(
-                create_chatlas_line_relationship_projector
+                create_grounding_line_relationship_projector
             ),
             line_manifest_materializer=materialize_index_line_manifest,
             poi_catalog=poi_catalog,
