@@ -106,6 +106,7 @@ def query_chat_messages(
     include_turn_ref: bool = False,
     sort: MessageSort = "oldest",
     session_limit: int = 50,
+    offset: int = 0,
     limit: int = 50,
     chatlas_root: Path | None = None,
 ) -> JsonObject:
@@ -121,7 +122,7 @@ def query_chat_messages(
     )
     if sort not in {"oldest", "newest"}:
         raise ValueError("Chat.Query sort must be 'oldest' or 'newest'")
-    if session_limit < 0 or limit < 0:
+    if session_limit < 0 or offset < 0 or limit < 0:
         raise ValueError("Chat.Query limits must be non-negative")
     session_result = query_sessions(
         uri=uri,
@@ -186,7 +187,10 @@ def query_chat_messages(
                 }
             )
     matches.sort(key=lambda result: _message_sort_key(result, sort=sort))
-    selected_matches = matches[:limit]
+    selected_matches = matches[offset : offset + limit]
+    next_offset = offset + len(selected_matches)
+    if next_offset >= len(matches):
+        next_offset = None
     return {
         "class": "tarav.chatlas2.chat-query",
         "status": "partial" if failures else "ok",
@@ -194,6 +198,7 @@ def query_chat_messages(
         "filters": predicate.as_dict(),
         "sort": sort,
         "session_limit": session_limit,
+        "offset": offset,
         "limit": limit,
         "selected_session_count": len(selected_sessions),
         "queried_session_count": queried_session_count,
@@ -201,6 +206,7 @@ def query_chat_messages(
         "failures": failures,
         "query_matched_message_count": len(matches),
         "returned_message_count": len(selected_matches),
+        "next_offset": next_offset,
         "messages": selected_matches,
     }
 

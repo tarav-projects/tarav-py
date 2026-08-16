@@ -315,6 +315,61 @@ def test_single_session_chat_query_sorts_then_limits_verified_matches(
     assert result["messages"][0]["message"]["message_address"] == _address("two")
 
 
+def test_chat_query_pages_verified_matches_after_sorting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tarav.chatlas2 import query
+
+    identity = "a" * 64
+    monkeypatch.setattr(
+        query,
+        "query_sessions",
+        lambda **_kwargs: {
+            "sessions": [{"provider": "codex", "identity_hash": identity}]
+        },
+    )
+    monkeypatch.setattr(
+        query,
+        "provide_normal_model_reader",
+        lambda **_kwargs: _Reader(
+            [
+                _message_record(
+                    str(index),
+                    side="user",
+                    text=f"message {index}",
+                    at=f"2026-08-16T10:0{index}:00Z",
+                )
+                for index in range(4)
+            ]
+        ),
+    )
+
+    first = query.query_chat_messages(
+        identity_hash=identity,
+        sort="oldest",
+        offset=0,
+        limit=2,
+    )
+    second = query.query_chat_messages(
+        identity_hash=identity,
+        sort="oldest",
+        offset=first["next_offset"],
+        limit=2,
+    )
+
+    assert [item["message"]["text"] for item in first["messages"]] == [
+        "message 0",
+        "message 1",
+    ]
+    assert first["offset"] == 0
+    assert first["next_offset"] == 2
+    assert [item["message"]["text"] for item in second["messages"]] == [
+        "message 2",
+        "message 3",
+    ]
+    assert second["next_offset"] is None
+
+
 def test_chat_query_cli_exposes_single_session_message_query(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -334,6 +389,8 @@ def test_chat_query_cli_exposes_single_session_message_query(
                 "chatlas2",
                 "chat",
                 "query",
+                "--uri",
+                "agentos://chat-session/codex/one/session-one",
                 "--identity-hash",
                 "a" * 64,
                 "--side",
@@ -347,12 +404,15 @@ def test_chat_query_cli_exposes_single_session_message_query(
                 "newest",
                 "--limit",
                 "2",
+                "--offset",
+                "3",
                 "--json",
             ]
         )
         == 0
     )
     assert json.loads(capsys.readouterr().out)["messages"] == []
+    assert captured["uri"] == "agentos://chat-session/codex/one/session-one"
     assert captured["identity_hash"] == "a" * 64
     assert captured["side"] == "user"
     assert captured["text_contains"] == "query world"
@@ -360,6 +420,7 @@ def test_chat_query_cli_exposes_single_session_message_query(
     assert captured["include_turn_ref"] is True
     assert captured["sort"] == "newest"
     assert captured["limit"] == 2
+    assert captured["offset"] == 3
 
 
 def test_chat_query_composes_session_set_and_reports_incomplete_coverage(

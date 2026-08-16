@@ -115,8 +115,15 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   from content reads: `chatlas2 sessions query` reuses Session.Index metadata,
   while `chatlas2 chat query` verifies one Chat.Message predicate against the
   current cache of every bounded selected session and returns only Normal Model
-  records and stable refs. Candidate scans and future indexes are never result
-  authority. The first Anchory consumer requests
+  records and stable refs. URI selection is direct; offset/limit pages provide
+  bounded transcript traversal and return the next verified-message offset.
+  Candidate scans and future indexes are never result
+  authority. An explicit top-level `chatlas2 --update` brackets any leaf command
+  with one structural delta pass through the maintained Provider.Home adapter,
+  Raw.Archive copier, and Session.Index writer. It does not copy Chatlas1's
+  result-driven escalation ladder and does not materialize Normal Models;
+  ordinary cache validation observes changed archived sources afterward. The
+  first Anchory consumer requests
   complete models through the same provider and
   stores exact user message refs and diagnostic `at` values in a separate
   `chatlas2` namespace while reusing the generic depot and Index-line attachment
