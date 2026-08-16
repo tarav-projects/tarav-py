@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude structural recognition partitions direct user-message mappings while shared mechanics preserve timed transcript records and loaded request input conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u
+# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude structural recognition partitions direct user-message mappings while shared mechanics preserve timed transcript records and loaded request input conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -90,6 +90,7 @@ class ClaudePromptSourceRawNormalizer:
         *,
         source_id: str,
         raw_model_version: str,
+        include_raw: bool = False,
     ) -> NormalFragment:
         return _normalize(
             path,
@@ -97,6 +98,7 @@ class ClaudePromptSourceRawNormalizer:
             raw_model_version=raw_model_version,
             supported_raw_model_versions=self.supported_raw_model_versions,
             is_primary_user_message=_is_prompt_source_primary_user_message,
+            include_raw=include_raw,
         )
 
 
@@ -109,6 +111,7 @@ class ClaudeLegacyRawNormalizer:
         *,
         source_id: str,
         raw_model_version: str,
+        include_raw: bool = False,
     ) -> NormalFragment:
         return _normalize(
             path,
@@ -116,6 +119,7 @@ class ClaudeLegacyRawNormalizer:
             raw_model_version=raw_model_version,
             supported_raw_model_versions=self.supported_raw_model_versions,
             is_primary_user_message=_is_legacy_primary_user_message,
+            include_raw=include_raw,
         )
 
 
@@ -126,6 +130,7 @@ def _normalize(
     raw_model_version: str,
     supported_raw_model_versions: frozenset[str],
     is_primary_user_message: Callable[[JsonObject], bool],
+    include_raw: bool,
 ) -> NormalFragment:
     if raw_model_version not in supported_raw_model_versions:
         raise CliError(
@@ -156,6 +161,18 @@ def _normalize(
             if isinstance(native_uuid, str) and native_uuid
             else {"record_index": record.record_index}
         )
+        message_side = _chat_message_side(
+            record.value,
+            is_primary_user_message=is_primary_user_message,
+        )
+        message_text = (
+            _chat_message_text(
+                record.value,
+                is_primary_user_message=is_primary_user_message,
+            )
+            if message_side is not None
+            else None
+        )
         event_address = compute_event_address(
             provider="claude-code",
             scope=session_scope,
@@ -167,7 +184,6 @@ def _normalize(
             "event_address": event_address,
             "started_at": record.observed_at,
             "origin": origin,
-            "record": record.value,
             "observations": [
                 {
                     "observed_at": record.observed_at,
@@ -179,15 +195,13 @@ def _normalize(
                 }
             ],
         }
+        if message_text is not None:
+            event["content"] = {"text": message_text}
         event["event_hash"] = compute_event_hash(event)
         events.append(event)
         if isinstance(native_uuid, str) and native_uuid:
             event_address_by_uuid[native_uuid] = event_address
 
-        message_side = _chat_message_side(
-            record.value,
-            is_primary_user_message=is_primary_user_message,
-        )
         if message_side is not None:
             chat_messages.append(
                 {
@@ -198,10 +212,7 @@ def _normalize(
                         place=place,
                     ),
                     "side": message_side,
-                    "text": _chat_message_text(
-                        record.value,
-                        is_primary_user_message=is_primary_user_message,
-                    ),
+                    "text": message_text,
                     "event_addresses": [event_address],
                 }
             )
@@ -240,6 +251,9 @@ def _normalize(
         events=tuple(events),
         chat_messages=tuple(chat_messages),
         agent_loaded_contexts=tuple(loaded_contexts),
+        raw={"records": [record.value for record in records]}
+        if include_raw
+        else None,
     )
 
 

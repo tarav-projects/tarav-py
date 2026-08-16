@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly versions every provider transcript, dispatches a compatible direct normalizer, folds same logical places into current event state, and sorts the retained union chronologically --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u ^c20260815-59u ^c20260815-64u
+# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly versions every provider transcript, dispatches a compatible direct normalizer, folds same logical places into current event state, and sorts the retained union chronologically --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u ^c20260815-59u ^c20260815-64u ^d20260816-0u ^d20260816-1u
 from __future__ import annotations
 
 from copy import deepcopy
@@ -41,6 +41,7 @@ def build_normal_model(
     session_id: str | None = None,
     identity_hash: str | None = None,
     chatlas_root: Path | None = None,
+    include_raw: bool = False,
 ) -> JsonObject:
     row = select_one_chatlas_index_row(
         command="chatlas2 normalize",
@@ -49,10 +50,14 @@ def build_normal_model(
         session_id=session_id,
         chatlas_root=chatlas_root,
     )
-    return build_normal_model_from_row(row)
+    return build_normal_model_from_row(row, include_raw=include_raw)
 
 
-def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
+def build_normal_model_from_row(
+    row: dict[str, Any],
+    *,
+    include_raw: bool = False,
+) -> JsonObject:
     provider = row.get("provider")
     if provider == "codex":
         versioner = CodexRawModelVersioner()
@@ -73,6 +78,7 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
     events_by_address: dict[str, JsonObject] = {}
     chat_messages_by_address: dict[str, JsonObject] = {}
     contexts_by_agent_address: dict[str, JsonObject] = {}
+    raw_fragments: list[JsonObject] = []
     recognized_source_count = 0
 
     for transcript_source in _transcript_sources(row):
@@ -100,7 +106,16 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
             path,
             source_id=source_id,
             raw_model_version=raw_model_version,
+            include_raw=include_raw,
         )
+        if include_raw and fragment.raw is not None:
+            raw_fragments.append(
+                {
+                    "source_id": source_id,
+                    "raw_model_version": raw_model_version,
+                    "value": fragment.raw,
+                }
+            )
         current_addresses = {
             str(event["event_address"])
             for event in fragment.events
@@ -160,9 +175,9 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
         ),
         key=lambda context: _context_sort_key(context, event_order=event_order),
     )
-    return {
+    model: JsonObject = {
         "class": "tarav.chatlas2.normal_model",
-        "schema_version": 4,
+        "schema_version": 5,
         "metadata": {"commit": _repository_commit()},
         "session": {
             "provider": provider,
@@ -176,6 +191,9 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
             "agent_loaded_contexts": contexts,
         },
     }
+    if include_raw:
+        model["raw"] = raw_fragments
+    return model
 
 
 def transcript_paths(row: dict[str, Any]) -> tuple[Path, ...]:

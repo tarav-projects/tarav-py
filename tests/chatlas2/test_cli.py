@@ -127,13 +127,34 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["class"] == "tarav.chatlas2.normal_model"
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == 5
+    assert "raw" not in payload
+    assert all("record" not in event for event in payload["events"])
     assert payload["session"]["session_id"] == session_id
     assert len(payload["sources"]) == 2
     assert len(payload["events"]) == 6
     assert len(payload["annotations"]["chat_messages"]) == 4
     assert all("event_id" not in event for event in payload["events"])
     assert payload["metadata"]["commit"]
+
+    assert (
+        main(
+            [
+                "chatlas2",
+                "normalize",
+                "--session-id",
+                session_id,
+                "--include-raw",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    enriched = json.loads(capsys.readouterr().out)
+    raw = enriched.pop("raw")
+    assert enriched == payload
+    assert len(raw) == 2
+    assert all(fragment["value"]["records"] for fragment in raw)
 
     assert (
         main(

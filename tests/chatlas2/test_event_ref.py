@@ -11,7 +11,7 @@ from tarav.chatlas2.event_ref import (
 )
 
 
-def _event(*, text: str = "hello", native_id: str = "message-1") -> dict[str, object]:
+def _event(*, text: str = "hello", raw_marker: str = "first") -> dict[str, object]:
     event: dict[str, object] = {
         "class": "User.Event",
         "event_address": compute_event_address(
@@ -21,16 +21,8 @@ def _event(*, text: str = "hello", native_id: str = "message-1") -> dict[str, ob
         ),
         "started_at": "2026-08-15T00:00:03Z",
         "origin": "user",
-        "record": {
-            "timestamp": "2026-08-15T00:00:03Z",
-            "type": "response_item",
-            "payload": {
-                "type": "message",
-                "id": native_id,
-                "role": "user",
-                "content": [{"type": "input_text", "text": text}],
-            },
-        },
+        "content": {"text": text},
+        "raw": {"provider_marker": raw_marker},
         "observations": [],
     }
     event["event_hash"] = compute_event_hash(event)
@@ -40,11 +32,11 @@ def _event(*, text: str = "hello", native_id: str = "message-1") -> dict[str, ob
 def test_event_address_is_place_only_and_event_hash_is_current_content() -> None:
     original = _event()
     amended = _event(text="amended")
-    native_id_drift = _event(native_id="message-2")
+    raw_drift = _event(raw_marker="second")
 
     assert original["event_address"] == amended["event_address"]
     assert original["event_hash"] != amended["event_hash"]
-    assert original["event_hash"] == native_id_drift["event_hash"]
+    assert original["event_hash"] == raw_drift["event_hash"]
 
     moved = deepcopy(original)
     moved["event_address"] = compute_event_address(

@@ -79,8 +79,12 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   `claude.transcript.1ecc` / `claude.transcript.b17b` are opaque recognized raw-model
   identities dispatched through compatible normalizers into the same Normal Model.
   Raw-model identity remains provenance and does not enter stable place derivation.
-  Normal Model v4 separates provider-derived stable places
-  from current state for both events and Chat.Message annotations. Membership
+  Normal Model v5 separates provider-derived stable places
+  from current normalized state for both events and Chat.Message annotations.
+  Event hashes cover only class, origin, start time, and deliberately projected
+  provider-neutral content. Native records are absent by default; an explicit
+  raw option adds source-associated, normalizer-owned diagnostic evidence at the
+  model root without affecting identity or annotations. Membership
   carries full Event.Ref values, and stored Event.Ref or Chat.Message.Ref
   assertions resolve as MATCHED, AMENDED, or MISSING against only the supplied
   current model. Normalization is stateless, so superseded normalized states

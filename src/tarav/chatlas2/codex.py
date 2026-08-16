@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-codex-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Codex structural recognition dispatches only its declared opaque raw-model identity, addresses raw places independently from content and version labels, and resolves origin and loaded context conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-21u ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-64u ^c20260815-65u
+# $kw: ^chatlas2-codex-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Codex structural recognition dispatches only its declared opaque raw-model identity, addresses raw places independently from content and version labels, and resolves origin and loaded context conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-21u ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -84,6 +84,7 @@ class CodexRawNormalizer:
         *,
         source_id: str,
         raw_model_version: str,
+        include_raw: bool = False,
     ) -> NormalFragment:
         if raw_model_version not in self.supported_raw_model_versions:
             raise CliError(
@@ -107,6 +108,15 @@ class CodexRawNormalizer:
         previous_generated = False
 
         for record in records:
+            message_side = _chat_message_side(
+                record.value,
+                response_message_keys=response_message_keys,
+            )
+            message_text = (
+                _chat_message_text(record.value)
+                if message_side is not None
+                else None
+            )
             event_address = compute_event_address(
                 provider="codex",
                 scope=session_scope,
@@ -117,7 +127,6 @@ class CodexRawNormalizer:
                 "event_address": event_address,
                 "started_at": record.observed_at,
                 "origin": _event_origin(record.value),
-                "record": record.value,
                 "observations": [
                     {
                         "observed_at": record.observed_at,
@@ -129,13 +138,11 @@ class CodexRawNormalizer:
                     }
                 ],
             }
+            if message_text is not None:
+                event["content"] = {"text": message_text}
             event["event_hash"] = compute_event_hash(event)
             events.append(event)
 
-            message_side = _chat_message_side(
-                record.value,
-                response_message_keys=response_message_keys,
-            )
             if message_side is not None:
                 chat_messages.append(
                     {
@@ -146,7 +153,7 @@ class CodexRawNormalizer:
                             place={"record_index": record.record_index},
                         ),
                         "side": message_side,
-                        "text": _chat_message_text(record.value),
+                        "text": message_text,
                         "event_addresses": [event_address],
                     }
                 )
@@ -181,6 +188,9 @@ class CodexRawNormalizer:
             events=tuple(events),
             chat_messages=tuple(chat_messages),
             agent_loaded_contexts=tuple(loaded_contexts),
+            raw={"records": [record.value for record in records]}
+            if include_raw
+            else None,
         )
 
 

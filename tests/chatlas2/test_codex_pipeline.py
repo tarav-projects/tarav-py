@@ -163,7 +163,16 @@ def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
     assert len(contexts) == 2
     assert contexts[0]["event_refs"] == contexts[1]["event_refs"]
     assert len(contexts[0]["event_refs"]) == 3
-    assert model["schema_version"] == 4
+    assert model["schema_version"] == 5
+    assert "raw" not in model
+    assert all("record" not in event and "raw" not in event for event in model["events"])
+    event_by_address = {
+        event["event_address"]: event for event in model["events"]
+    }
+    assert [
+        event_by_address[message["event_refs"][0]["event_address"]]["content"]
+        for message in model["annotations"]["chat_messages"]
+    ] == [{"text": "hello"}, {"text": "hi"}]
     assert all("event_id" not in event for event in model["events"])
     assert all(
         "message_id" not in message
@@ -317,6 +326,37 @@ def test_codex_content_amendment_preserves_address_and_changes_hash(
     assert "event_id" not in old_event
 
 
+def test_codex_raw_evidence_is_optional_and_identity_inert(tmp_path: Path) -> None:
+    path = tmp_path / "rollout.jsonl"
+    records = [
+        _record(
+            "2026-08-15T00:00:00.000Z",
+            "session_meta",
+            {"id": "codex-session", "originator": "codex_cli_rs"},
+        ),
+        _message(
+            "2026-08-15T00:00:01.000Z",
+            "user",
+            "hello",
+            message_id="user-1",
+        ),
+    ]
+    _write_jsonl(path, records)
+
+    compact = build_normal_model_from_row(_row(path))
+    enriched = build_normal_model_from_row(_row(path), include_raw=True)
+
+    raw = enriched.pop("raw")
+    assert enriched == compact
+    assert raw == [
+        {
+            "source_id": compact["sources"][0]["source_id"],
+            "raw_model_version": CODEX_RAW_MODEL_VERSION,
+            "value": {"records": records},
+        }
+    ]
+
+
 def test_current_artifact_presents_amended_state_and_retains_input_observations(
     tmp_path: Path,
 ) -> None:
@@ -352,7 +392,7 @@ def test_current_artifact_presents_amended_state_and_retains_input_observations(
     model = build_normal_model_from_row(_row(current, old))
     presented = model["events"][1]
 
-    assert presented["record"]["payload"]["content"][0]["text"] == "amended"
+    assert presented["content"] == {"text": "amended"}
     assert len(presented["observations"]) == 2
     assert resolve_event_ref(model["events"], event_ref(old_event))["standing"] == "AMENDED"
     current_ref = model["annotations"]["chat_messages"][0]["event_refs"][0]
@@ -387,7 +427,7 @@ def test_current_artifact_removes_annotation_from_superseded_message_state(
 
     model = build_normal_model_from_row(_row(current, old))
 
-    assert model["events"][1]["record"]["payload"]["type"] == "reasoning"
+    assert "content" not in model["events"][1]
     assert model["annotations"]["chat_messages"] == []
 
 

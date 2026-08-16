@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-cli --from Chatlas.Query.Surface --from Usage.Surface --from Raw.Archive --note [CT] Chatlas2 exposes one-session normalization plus explicit prepare/register and hermetic corpus inspection surfaces without mutating current Chatlas --supp ^c20260814-13u ^c20260814-15u ^c20260815-16u ^c20260815-31u
+# $kw: ^chatlas2-cli --from Chatlas.Query.Surface --from Usage.Surface --from Raw.Archive --note [CT] Chatlas2 exposes one-session normalization plus explicit prepare/register and hermetic corpus inspection surfaces without mutating current Chatlas --supp ^c20260814-13u ^c20260814-15u ^c20260815-16u ^c20260815-31u ^d20260816-1u
 from __future__ import annotations
 
 import argparse
@@ -39,6 +39,7 @@ def _cmd_normalize(args: argparse.Namespace) -> int:
     model = build_normal_model(
         session_id=args.session_id,
         identity_hash=args.identity_hash,
+        include_raw=args.include_raw,
     )
     if args.json:
         print(json.dumps(model, indent=2, ensure_ascii=False))
@@ -263,6 +264,11 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     selector.add_argument(
         "--identity-hash",
         help="Exact or prefix Chatlas identity hash.",
+    )
+    normalize.add_argument(
+        "--include-raw",
+        action="store_true",
+        help="Attach optional normalizer-owned raw evidence.",
     )
     normalize.add_argument(
         "--json",

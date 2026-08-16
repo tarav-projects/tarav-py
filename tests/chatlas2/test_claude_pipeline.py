@@ -282,18 +282,15 @@ def test_claude_versioner_and_pipeline_recognize_legacy_mapping_family(
     )
 
     model = build_normal_model_from_row(_row(path))
-    events_by_uuid = {
-        event["record"].get("uuid"): event for event in model["events"]
-    }
-    assert events_by_uuid["legacy-user-1"]["origin"] == "user"
-    assert events_by_uuid["legacy-command"]["origin"] == "user"
-    for uuid in (
-        "legacy-tool-result",
-        "legacy-system-reminder",
-        "legacy-compact",
-        "legacy-local-command",
-    ):
-        assert events_by_uuid[uuid]["origin"] == "agent"
+    assert [event["origin"] for event in model["events"]] == [
+        "user",
+        "agent",
+        "agent",
+        "agent",
+        "user",
+        "agent",
+        "agent",
+    ]
     assert [
         message["side"] for message in model["annotations"]["chat_messages"]
     ] == ["user", "agent", "user"]
@@ -325,6 +322,28 @@ def test_claude_versioner_allows_auxiliary_records_without_session_id(
     assert len(build_normal_model_from_row(_row(path))["events"]) == 9
 
 
+@pytest.mark.parametrize("records", [_rollout(), _legacy_rollout()])
+def test_claude_raw_evidence_is_optional_and_identity_inert(
+    tmp_path: Path,
+    records: list[dict[str, object]],
+) -> None:
+    path = tmp_path / "transcript.jsonl"
+    _write_jsonl(path, records)
+
+    compact = build_normal_model_from_row(_row(path))
+    enriched = build_normal_model_from_row(_row(path), include_raw=True)
+
+    raw = enriched.pop("raw")
+    assert enriched == compact
+    assert raw == [
+        {
+            "source_id": compact["sources"][0]["source_id"],
+            "raw_model_version": compact["sources"][0]["raw_model_version"],
+            "value": {"records": records},
+        }
+    ]
+
+
 def test_claude_normalization_preserves_origin_messages_refs_and_context(
     tmp_path: Path,
 ) -> None:
@@ -334,24 +353,26 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
     model = build_normal_model_from_row(_row(path))
 
     assert model["session"]["provider"] == "claude-code"
-    assert model["schema_version"] == 4
+    assert model["schema_version"] == 5
+    assert "raw" not in model
+    assert all("record" not in event and "raw" not in event for event in model["events"])
     assert len(model["events"]) == 9
     assert [event["started_at"] for event in model["events"]] == sorted(
         event["started_at"] for event in model["events"]
     )
-    events_by_uuid = {
-        event["record"].get("uuid"): event for event in model["events"]
-    }
-    assert events_by_uuid["user-1"]["origin"] == "user"
-    assert all(
-        event["origin"] == "agent"
-        for uuid, event in events_by_uuid.items()
-        if uuid != "user-1"
-    )
+    assert model["events"][0]["origin"] == "user"
+    assert all(event["origin"] == "agent" for event in model["events"][1:])
 
     messages = model["annotations"]["chat_messages"]
     assert [message["side"] for message in messages] == ["user", "agent", "agent"]
     assert [message["text"] for message in messages] == ["hello", "hi", "done"]
+    event_by_address = {
+        event["event_address"]: event for event in model["events"]
+    }
+    assert [
+        event_by_address[message["event_refs"][0]["event_address"]]["content"]
+        for message in messages
+    ] == [{"text": "hello"}, {"text": "hi"}, {"text": "done"}]
     assert all(
         resolve_chat_message_ref(
             messages,
@@ -372,15 +393,15 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
             model["events"], context["agent_event_ref"]
         )["standing"] == "MATCHED"
         resolved = [
-            resolve_event_ref(model["events"], ref)["event"]["record"]["uuid"]
+            resolve_event_ref(model["events"], ref)["event"]["started_at"]
             for ref in context["event_refs"]
         ]
         context_members.append(resolved)
     assert context_members == [
-        ["user-1"],
-        ["user-1"],
-        ["tool-result-1"],
-        ["tool-result-1"],
+        ["2026-08-15T00:00:01Z"],
+        ["2026-08-15T00:00:01Z"],
+        ["2026-08-15T00:00:06Z"],
+        ["2026-08-15T00:00:06Z"],
     ]
 
 
@@ -397,16 +418,14 @@ def test_claude_normalization_unions_every_artifact_without_losing_continuation(
 
     assert len(model["sources"]) == 2
     assert len(model["events"]) == 9
-    assert [event["record"].get("uuid") for event in model["events"]][-1] == (
-        "local-command-1"
-    )
-    observations_by_uuid = {
-        event["record"].get("uuid"): len(event["observations"])
+    assert model["events"][-1]["started_at"] == "2026-08-15T00:00:09Z"
+    observations_by_time = {
+        event["started_at"]: len(event["observations"])
         for event in model["events"]
     }
-    assert observations_by_uuid["user-1"] == 2
-    assert observations_by_uuid["assistant-2"] == 2
-    assert observations_by_uuid["assistant-4"] == 1
+    assert observations_by_time["2026-08-15T00:00:01Z"] == 2
+    assert observations_by_time["2026-08-15T00:00:04Z"] == 2
+    assert observations_by_time["2026-08-15T00:00:08Z"] == 1
     assert len(model["annotations"]["chat_messages"]) == 3
 
 

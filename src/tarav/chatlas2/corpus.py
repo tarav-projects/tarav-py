@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-conformance-corpus --from Raw.Archive --from Chatlas.Session.Index --from Session.Event.Tape --from Event.Ref --note [CT] explicit corpus ingress prepares model-agnostic anonymized artifacts, preserves recognized specimens, validates self-verifying annotation refs, and registers immutable content-addressed captures --supp ^c20260815-29u ^c20260815-30u ^c20260815-31u ^c20260815-39u ^c20260815-42u
+# $kw: ^chatlas2-conformance-corpus --from Raw.Archive --from Chatlas.Session.Index --from Session.Event.Tape --from Event.Ref --note [CT] explicit corpus ingress prepares model-agnostic anonymized artifacts, preserves recognized specimens, validates self-verifying annotation refs, and registers immutable content-addressed captures --supp ^c20260815-29u ^c20260815-30u ^c20260815-31u ^c20260815-39u ^c20260815-42u ^d20260816-0u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -437,8 +437,8 @@ def _validate_checked_model(model: JsonObject) -> None:
         raise CliError("normalized corpus capture has no event tape")
     if not isinstance(sources, list) or not isinstance(annotations, dict):
         raise CliError("normalized corpus capture has an invalid model envelope")
-    if model.get("schema_version") != 4:
-        raise CliError("normalized corpus capture is not Chatlas2 Normal Model v4")
+    if model.get("schema_version") != 5:
+        raise CliError("normalized corpus capture is not Chatlas2 Normal Model v5")
     timestamps = [event.get("started_at") for event in events]
     if not all(isinstance(timestamp, str) for timestamp in timestamps):
         raise CliError("normalized corpus event has no start timestamp")
@@ -641,44 +641,11 @@ def _model_signature(model: JsonObject) -> JsonObject:
 
 
 def _user_messages(model: JsonObject) -> list[str]:
-    events = {
-        event["event_address"]: event
-        for event in model["events"]
-    }
-    messages: list[str] = []
-    for annotation in model["annotations"]["chat_messages"]:
-        if annotation["side"] != "user":
-            continue
-        messages.append(
-            "".join(
-                _event_message_text(events[ref["event_address"]])
-                for ref in annotation["event_refs"]
-            )
-        )
-    return messages
-
-
-def _event_message_text(event: JsonObject) -> str:
-    record = event.get("record")
-    if not isinstance(record, dict):
-        return ""
-    payload = record.get("payload")
-    if not isinstance(payload, dict):
-        payload = record.get("message")
-    if not isinstance(payload, dict):
-        return ""
-    content = payload.get("content")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(
-            item.get("text", "")
-            for item in content
-            if isinstance(item, dict)
-            and isinstance(item.get("text"), str)
-        )
-    message = payload.get("message")
-    return message if isinstance(message, str) else ""
+    return [
+        annotation["text"]
+        for annotation in model["annotations"]["chat_messages"]
+        if annotation["side"] == "user"
+    ]
 
 
 def _require_matched_refs(
