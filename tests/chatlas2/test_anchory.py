@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import gc
 from pathlib import Path
+import weakref
 
 from tarav.chatlas2.anchory import (
     CHATLAS2_LINE_ANCHOR_DOSSIER_SCHEMA,
@@ -160,3 +162,47 @@ def test_batch_preview_and_register_reuse_duplicate_meaning(tmp_path: Path) -> N
     )
     assert repeated["minted_count"] == 0
     assert repeated["reused_count"] == 2
+
+
+def test_multi_session_projection_releases_each_model_before_loading_next(
+    tmp_path: Path,
+) -> None:
+    first = _model()
+    second = deepcopy(first)
+    second["session"]["identity_hash"] = "e" * 64
+    second_event = second["events"][0]
+    second_event["event_address"] = "1" * 64
+    second_message = second["annotations"]["chat_messages"][0]
+    second_message["message_address"] = "2" * 64
+    second_message["event_refs"] = [
+        {
+            "event_address": second_event["event_address"],
+            "event_hash": second_event["event_hash"],
+        }
+    ]
+    second_message["message_hash"] = compute_chat_message_hash(second_message)
+    templates = {
+        first["session"]["identity_hash"]: first,
+        second["session"]["identity_hash"]: second,
+    }
+    alive: list[weakref.ReferenceType[dict[str, object]]] = []
+
+    class WeakModel(dict[str, object]):
+        pass
+
+    def load(identity: str) -> dict[str, object]:
+        gc.collect()
+        assert not any(reference() is not None for reference in alive)
+        model = WeakModel(deepcopy(templates[identity]))
+        alive.append(weakref.ref(model))
+        return model
+
+    preview = chatlas2_anchory_preview(
+        members=(_member_ref(first), _member_ref(second)),
+        line_content="- [DF] Two sessions can support one line.",
+        chatlas_root=tmp_path,
+        model_loader=load,
+    )
+
+    assert preview["action"] == "mint"
+    assert len(preview["members"]) == 2

@@ -8,6 +8,11 @@ from pathlib import Path
 from tarav.chatlas.index_query import select_one_chatlas_index_row
 from tarav.chatlas.providers import supported_chatlas_provider_families
 
+from .cache import (
+    materialize_normal_model_cache,
+    normal_model_cache_status,
+    open_or_materialize_normal_model_cache,
+)
 from .corpus import (
     check_corpus,
     load_capture_records,
@@ -26,12 +31,7 @@ from .anchory import (
     format_support_member_ref,
     load_anchor_batch,
 )
-from .messages import (
-    chat_message_at,
-    chat_message_support_member,
-    find_chat_messages,
-    list_chat_messages,
-)
+from .message_ref import chat_message_ref
 from .pipeline import build_normal_model
 
 
@@ -57,32 +57,43 @@ def _print_payload(payload: object, *, pretty: bool) -> None:
     print(json.dumps(payload, indent=2 if pretty else None, ensure_ascii=False))
 
 
-def _model_for_selector(args: argparse.Namespace):
-    return build_normal_model(
+def _cache_for_selector(args: argparse.Namespace):
+    return open_or_materialize_normal_model_cache(
         session_id=args.session_id,
         identity_hash=args.identity_hash,
         chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
     )
 
 
-def _message_payload(model, message):
-    member = chat_message_support_member(model, message)
+def _message_payload(session, record):
+    message = record["message"]
+    at = record["at"]
+    ref = chat_message_ref(message)
+    member = {
+        "session": session["identity_hash"],
+        "message_address": ref["message_address"],
+        "message_hash": ref["message_hash"],
+        "at": at,
+    }
     return {
         "member_ref": format_support_member_ref(member),
         "member": member,
-        "at": chat_message_at(model, message),
+        "at": at,
         "message": message,
     }
 
 
 def _cmd_messages_list(args: argparse.Namespace) -> int:
-    model = _model_for_selector(args)
-    messages = list_chat_messages(model, side=args.side)
+    cache = _cache_for_selector(args)
+    session = cache.metadata["model"]["session"]
+    records = list(
+        cache.iter_chat_message_records(side=args.side, limit=args.limit)
+    )
     _print_payload(
         {
-            "session": model["session"],
-            "count": len(messages),
-            "messages": [_message_payload(model, message) for message in messages],
+            "session": session,
+            "count": len(records),
+            "messages": [_message_payload(session, record) for record in records],
         },
         pretty=args.json,
     )
@@ -90,22 +101,73 @@ def _cmd_messages_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_messages_find(args: argparse.Namespace) -> int:
-    model = _model_for_selector(args)
-    messages = find_chat_messages(
-        model,
-        text=args.text,
-        side=args.side,
-        exact=args.exact,
+    cache = _cache_for_selector(args)
+    session = cache.metadata["model"]["session"]
+    records = list(
+        cache.iter_chat_message_records(
+            side=args.side,
+            text=args.text,
+            exact=args.exact,
+            limit=args.limit,
+        )
     )
     _print_payload(
         {
-            "session": model["session"],
-            "count": len(messages),
-            "messages": [_message_payload(model, message) for message in messages],
+            "session": session,
+            "count": len(records),
+            "messages": [_message_payload(session, record) for record in records],
         },
         pretty=args.json,
     )
     return 0
+
+
+def _cmd_cache_status(args: argparse.Namespace) -> int:
+    payload = normal_model_cache_status(
+        session_id=args.session_id,
+        identity_hash=args.identity_hash,
+        chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
+    )
+    if args.json:
+        _print_payload(payload, pretty=True)
+    else:
+        print(f"{payload['standing']}: {payload['path']}")
+    return 0
+
+
+def _cmd_cache_build(args: argparse.Namespace) -> int:
+    reader = materialize_normal_model_cache(
+        session_id=args.session_id,
+        identity_hash=args.identity_hash,
+        chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
+    )
+    payload = {
+        "standing": "FRESH",
+        "path": str(reader.path),
+        "cache_key": reader.metadata["cache_key"],
+        "session": reader.metadata["model"]["session"],
+        "counts": reader.metadata["counts"],
+    }
+    if args.json:
+        _print_payload(payload, pretty=True)
+    else:
+        print(f"FRESH: {reader.path}")
+    return 0
+
+
+def _non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
+def _add_cache_selector(parser: argparse.ArgumentParser) -> None:
+    selector = parser.add_mutually_exclusive_group(required=True)
+    selector.add_argument("--session-id")
+    selector.add_argument("--identity-hash")
+    parser.add_argument("--chatlas-root")
+    parser.add_argument("--json", action="store_true")
 
 
 def _anchory_root(args: argparse.Namespace) -> Path | None:
@@ -277,6 +339,24 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     normalize.set_defaults(handler=_cmd_normalize)
 
+    cache = commands.add_parser(
+        "cache",
+        help="Build or inspect disposable compact Normal Model caches.",
+    )
+    cache_commands = cache.add_subparsers(
+        dest="chatlas2_cache_command", required=True
+    )
+    cache_status = cache_commands.add_parser(
+        "status", help="Inspect cache freshness without normalizing."
+    )
+    _add_cache_selector(cache_status)
+    cache_status.set_defaults(handler=_cmd_cache_status)
+    cache_build = cache_commands.add_parser(
+        "build", help="Explicitly normalize and replace one session cache."
+    )
+    _add_cache_selector(cache_build)
+    cache_build.set_defaults(handler=_cmd_cache_build)
+
     messages = commands.add_parser(
         "messages",
         help="Inspect provider-neutral Chat.Message projections.",
@@ -428,6 +508,7 @@ def _add_message_selector(parser: argparse.ArgumentParser) -> None:
     selector.add_argument("--identity-hash")
     parser.add_argument("--side", choices=("user", "agent"))
     parser.add_argument("--chatlas-root")
+    parser.add_argument("--limit", type=_non_negative_int)
     parser.add_argument("--json", action="store_true")
 
 

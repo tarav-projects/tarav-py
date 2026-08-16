@@ -1,7 +1,8 @@
-# $kw: ^chatlas2-design-support --from Event.Annotation --from Index.Line.Anchor --from Anchory.System --note [IMPL] the first Chatlas2 consumer route grounds line dossiers in user Chat.Message.Ref assertions inside an isolated namespace --supp ^c20260815-7u ^c20260815-40u ^c20260815-42u ^c20260815-46u
+# $kw: ^chatlas2-design-support --from Event.Annotation --from Index.Line.Anchor --from Anchory.System --note [IMPL] the first Chatlas2 consumer route grounds line dossiers in user Chat.Message.Ref assertions inside an isolated namespace and retains at most one reconstructed model per operation --supp ^c20260815-7u ^c20260815-40u ^c20260815-42u ^c20260815-46u ^d20260816-13u
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
@@ -17,6 +18,7 @@ from tarav.index.model import (
     index_line_statement_parts,
 )
 
+from .cache import load_or_build_normal_model
 from .message_ref import resolve_chat_message_ref
 from .messages import (
     chat_message_at,
@@ -25,7 +27,6 @@ from .messages import (
     list_chat_messages,
 )
 from .model import JsonObject
-from .pipeline import build_normal_model
 
 
 CHATLAS2_NAMESPACE = "chatlas2"
@@ -35,6 +36,22 @@ CHATLAS2_ANCHOR_BATCH_SCHEMA = "tarav.chatlas2.anchor-batch.v1"
 _FULL_SHA256 = re.compile(r"[0-9a-f]{64}")
 _CONTENT_HASH = re.compile(r"sha256:[0-9a-f]{64}")
 ModelLoader = Callable[[str], JsonObject]
+
+
+@dataclass(slots=True)
+class _ModelSlot:
+    identity: str | None = None
+    model: JsonObject | None = None
+
+    def load(self, identity: str, loader: ModelLoader) -> JsonObject:
+        if self.identity == identity and self.model is not None:
+            return self.model
+        self.identity = None
+        self.model = None
+        model = loader(identity)
+        self.identity = identity
+        self.model = model
+        return model
 
 
 def chatlas2_anchory_depot(chatlas_root: Path | None = None) -> AnchoryDepot:
@@ -178,7 +195,7 @@ def build_line_anchor_dossier(
 
 
 def _load_model(identity: str, *, chatlas_root: Path | None) -> JsonObject:
-    return build_normal_model(identity_hash=identity, chatlas_root=chatlas_root)
+    return load_or_build_normal_model(identity, chatlas_root=chatlas_root)
 
 
 def _prepare_members(
@@ -186,28 +203,24 @@ def _prepare_members(
     *,
     chatlas_root: Path | None,
     model_loader: ModelLoader | None,
-    models: dict[str, JsonObject] | None = None,
-) -> tuple[list[JsonObject], dict[str, JsonObject]]:
+    model_slot: _ModelSlot | None = None,
+) -> tuple[list[JsonObject], _ModelSlot]:
     if not member_refs:
         raise CliError("Chatlas2 Anchory requires at least one support member")
-    loaded = models if models is not None else {}
+    slot = model_slot or _ModelSlot()
+    loader = model_loader or (
+        lambda identity: _load_model(identity, chatlas_root=chatlas_root)
+    )
     members: list[JsonObject] = []
     for index, value in enumerate(member_refs):
         asserted = parse_support_member_ref(value)
         session_ref = str(asserted["session"])
-        model = loaded.get(session_ref)
-        if model is None:
-            try:
-                model = (
-                    model_loader(session_ref)
-                    if model_loader is not None
-                    else _load_model(session_ref, chatlas_root=chatlas_root)
-                )
-            except Exception as exc:
-                raise CliError(
-                    f"Chatlas2 support member {index} session is unavailable: {session_ref}"
-                ) from exc
-            loaded[session_ref] = model
+        try:
+            model = slot.load(session_ref, loader)
+        except Exception as exc:
+            raise CliError(
+                f"Chatlas2 support member {index} session is unavailable: {session_ref}"
+            ) from exc
         resolution = resolve_chat_message_ref(
             list_chat_messages(model),
             {
@@ -224,11 +237,11 @@ def _prepare_members(
             raise CliError(f"Chatlas2 support member {index} is not a user message")
         member = chat_message_support_member(model, message)
         members.append(member)
-        loaded[str(member["session"])] = model
+        model = None
     identities = [_support_identity(member) for member in members]
     if len(identities) != len(set(identities)):
         raise CliError("Chatlas2 Anchory support members must be unique")
-    return members, loaded
+    return members, slot
 
 
 def _support_identity(member: JsonObject) -> tuple[str, str, str]:
@@ -304,22 +317,19 @@ def _project_record(
     action: str,
     chatlas_root: Path | None,
     model_loader: ModelLoader | None,
-    models: dict[str, JsonObject],
+    model_slot: _ModelSlot,
     radius: int,
 ) -> JsonObject:
     dossier = parse_line_anchor_dossier(record)
     projected: list[JsonObject] = []
     for member in dossier["relationships"]["support"]["members"]:
         identity = str(member["session"])
-        model = models.get(identity)
-        if model is None:
-            model = (
-                model_loader(identity)
-                if model_loader is not None
-                else _load_model(identity, chatlas_root=chatlas_root)
-            )
-            models[identity] = model
+        loader = model_loader or (
+            lambda value: _load_model(value, chatlas_root=chatlas_root)
+        )
+        model = model_slot.load(identity, loader)
         projected.append(_project_member(member, model=model, radius=radius))
+        model = None
     return {
         "status": "ok",
         "namespace": CHATLAS2_NAMESPACE,
@@ -338,7 +348,7 @@ def chatlas2_anchory_preview(
     model_loader: ModelLoader | None = None,
     radius: int = 4,
 ) -> JsonObject:
-    prepared, models = _prepare_members(
+    prepared, model_slot = _prepare_members(
         members,
         chatlas_root=chatlas_root,
         model_loader=model_loader,
@@ -357,7 +367,7 @@ def chatlas2_anchory_preview(
         action="reuse" if exact else "mint",
         chatlas_root=chatlas_root,
         model_loader=model_loader,
-        models=models,
+        model_slot=model_slot,
         radius=radius,
     )
     payload["support_equivalent_anchors"] = support
@@ -373,7 +383,7 @@ def chatlas2_anchory_register(
     model_loader: ModelLoader | None = None,
     radius: int = 4,
 ) -> JsonObject:
-    prepared, models = _prepare_members(
+    prepared, model_slot = _prepare_members(
         members,
         chatlas_root=chatlas_root,
         model_loader=model_loader,
@@ -417,7 +427,7 @@ def chatlas2_anchory_register(
         action=action,
         chatlas_root=chatlas_root,
         model_loader=model_loader,
-        models=models,
+        model_slot=model_slot,
         radius=radius,
     )
 
@@ -439,7 +449,7 @@ def chatlas2_anchory_resolve(
         action="resolved",
         chatlas_root=chatlas_root,
         model_loader=model_loader,
-        models={},
+        model_slot=_ModelSlot(),
         radius=radius,
     )
 
@@ -494,22 +504,26 @@ def chatlas2_anchory_batch_preview(
     results: list[JsonObject] = []
     planned: set[tuple[object, ...]] = set()
     mint_count = reuse_count = 0
-    models: dict[str, JsonObject] = {}
+    model_slot = _ModelSlot()
     for item in _parse_batch_items(items):
-        prepared, models = _prepare_members(
+        prepared, model_slot = _prepare_members(
             item["members"],
             chatlas_root=chatlas_root,
             model_loader=model_loader,
-            models=models,
+            model_slot=model_slot,
         )
-        preview = chatlas2_anchory_preview(
-            members=item["members"],
+        placeholder = build_line_anchor_dossier(
+            anchor="d00000000-0u",
+            line_content=str(item["line_content"]),
+            members=prepared,
+        )
+        _support, exact = _equivalent_anchors(
+            record=placeholder,
             line_content=str(item["line_content"]),
             chatlas_root=chatlas_root,
-            model_loader=model_loader,
         )
         key = _batch_plan_key(item, prepared)
-        if preview["action"] == "reuse" or key in planned:
+        if exact or key in planned:
             action = "reuse"
             reuse_count += 1
         else:
@@ -520,7 +534,7 @@ def chatlas2_anchory_batch_preview(
             {
                 "client_id": item["client_id"],
                 "action": action,
-                "anchor": preview["anchor"],
+                "anchor": min(exact) if exact else None,
             }
         )
     return {

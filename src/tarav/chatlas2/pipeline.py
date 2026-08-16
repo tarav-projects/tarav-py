@@ -30,6 +30,9 @@ from .message_ref import compute_chat_message_hash
 from .model import JsonObject
 
 
+NORMAL_MODEL_SCHEMA_VERSION = 5
+
+
 @dataclass(frozen=True, slots=True)
 class _TranscriptSource:
     path: Path
@@ -177,8 +180,8 @@ def build_normal_model_from_row(
     )
     model: JsonObject = {
         "class": "tarav.chatlas2.normal_model",
-        "schema_version": 5,
-        "metadata": {"commit": _repository_commit()},
+        "schema_version": NORMAL_MODEL_SCHEMA_VERSION,
+        "metadata": {"commit": normal_model_producer_commit()},
         "session": {
             "provider": provider,
             "session_id": row.get("session_id"),
@@ -336,7 +339,7 @@ def _refs_for_addresses(
     return refs
 
 
-def _repository_commit() -> str | None:
+def normal_model_producer_commit() -> str | None:
     repository = Path(__file__).resolve().parents[3]
     try:
         result = subprocess.run(
@@ -353,4 +356,10 @@ def _repository_commit() -> str | None:
     return commit or None
 
 
-__all__ = ["build_normal_model", "build_normal_model_from_row", "transcript_paths"]
+__all__ = [
+    "NORMAL_MODEL_SCHEMA_VERSION",
+    "build_normal_model",
+    "build_normal_model_from_row",
+    "normal_model_producer_commit",
+    "transcript_paths",
+]

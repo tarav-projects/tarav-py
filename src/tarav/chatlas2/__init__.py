@@ -20,6 +20,12 @@ from .claude import (
     ClaudePromptSourceRawNormalizer,
     ClaudeRawModelVersioner,
 )
+from .cache import (
+    NormalModelCacheReader,
+    materialize_normal_model_cache,
+    normal_model_cache_status,
+    open_or_materialize_normal_model_cache,
+)
 from .event_ref import (
     compute_event_address,
     compute_event_hash,
@@ -52,6 +58,7 @@ __all__ = [
     "ClaudeLegacyRawNormalizer",
     "ClaudePromptSourceRawNormalizer",
     "ClaudeRawModelVersioner",
+    "NormalModelCacheReader",
     "chat_message_ref",
     "chat_message_at",
     "chat_message_neighborhood",
@@ -69,6 +76,9 @@ __all__ = [
     "find_chat_messages",
     "format_support_member_ref",
     "list_chat_messages",
+    "materialize_normal_model_cache",
+    "normal_model_cache_status",
+    "open_or_materialize_normal_model_cache",
     "register_chatlas2_commands",
     "resolve_chat_message_ref",
     "resolve_event_ref",

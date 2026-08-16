@@ -88,11 +88,18 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   carries full Event.Ref values, and stored Event.Ref or Chat.Message.Ref
   assertions resolve as MATCHED, AMENDED, or MISSING against only the supplied
   current model. Normalization is stateless, so superseded normalized states
-  remain a concern of the raw archive and its Git history. Chat.Message adds a
+  remain a concern of the raw archive and its Git history. Completed compact
+  models may be atomically materialized into a disposable session-addressed
+  cache: one metadata file plus independently readable event, message, and
+  loaded-context JSONL collections. Cache freshness couples the session,
+  ordered transcript fingerprints, Normal Model schema, and producer commit;
+  raw-attached diagnostic models are never cached. Chat.Message adds a
   provider-neutral primary-text projection plus pure discovery, derived-time,
-  and bounded-neighborhood operations. Its first Anchory consumer stores exact
-  user message refs and diagnostic `at` values in a separate `chatlas2`
-  namespace while reusing the generic depot and Index-line attachment identity.
+  and bounded-neighborhood operations. Exact-session message reads stream the
+  cache and apply optional limits during iteration. Its first Anchory consumer
+  stores exact user message refs and diagnostic `at` values in a separate
+  `chatlas2` namespace while reusing the generic depot and Index-line attachment
+  identity and retaining at most one reconstructed model per operation.
   Runtime is the only command-composition boundary between Chatlas2 and the
   maintained CLI.
 
