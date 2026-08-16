@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude structural recognition partitions direct user-message mappings while shared mechanics preserve timed transcript records, human queued-command attachments, and loaded request input conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u
+# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude structural recognition recovers direct human prompt variants and mixed legacy-shaped records while preserving ambiguous timed records as unresolved and loaded request input conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u ^d20260816-0u ^d20260816-1u ^c20260816-20u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,6 +17,10 @@ from .model import JsonObject, NormalFragment
 CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION = "claude.transcript.1ecc"
 CLAUDE_LEGACY_RAW_MODEL_VERSION = "claude.transcript.b17b"
 _PRIMARY_PROMPT_SOURCES = frozenset({"typed", "queued"})
+_AGENT_RECORD_TYPES = frozenset({"assistant", "progress", "system"})
+_AGENT_ORIGIN_KINDS = frozenset(
+    {"agent", "assistant", "auto-continuation", "system", "task-notification", "tool"}
+)
 _LEGACY_HARNESS_PREFIXES = (
     "<bash-input>",
     "<bash-stdout>",
@@ -179,14 +183,16 @@ def _normalize(
             scope=session_scope,
             place=place,
         )
-        origin = (
-            "user"
-            if is_primary_user_message(record.value)
-            or _is_human_queued_command(record.value)
-            else "agent"
+        origin = _event_origin(
+            record.value,
+            is_primary_user_message=is_primary_user_message,
         )
         event: JsonObject = {
-            "class": "User.Event" if origin == "user" else "Agent.Event",
+            "class": {
+                "user": "User.Event",
+                "agent": "Agent.Event",
+                "unresolved": "Unresolved.Event",
+            }[origin],
             "event_address": event_address,
             "started_at": started_at,
             "origin": origin,
@@ -316,14 +322,16 @@ def _session_scope(records: list[_RawRecord]) -> str:
 
 
 def _is_prompt_source_primary_user_message(value: JsonObject) -> bool:
-    message = value.get("message")
-    return (
-        value.get("type") == "user"
-        and value.get("promptSource") in _PRIMARY_PROMPT_SOURCES
-        and isinstance(message, dict)
-        and message.get("role") == "user"
-        and isinstance(message.get("content"), str)
-    )
+    if "promptSource" not in value:
+        return value.get("isMeta") is not True and _is_legacy_primary_user_message(
+            value
+        )
+    prompt_source = value.get("promptSource")
+    if prompt_source not in _PRIMARY_PROMPT_SOURCES and not (
+        prompt_source == "suggestion_accepted" and _has_human_origin(value)
+    ):
+        return False
+    return _user_message_text(value) is not None
 
 
 def _is_legacy_primary_user_message(value: JsonObject) -> bool:
@@ -369,6 +377,77 @@ def _is_human_queued_command(value: JsonObject) -> bool:
     return _human_queued_command(value) is not None
 
 
+def _has_human_origin(value: JsonObject) -> bool:
+    origin = value.get("origin")
+    if isinstance(origin, dict) and origin.get("kind") == "human":
+        return True
+    attachment = value.get("attachment")
+    attachment_origin = (
+        attachment.get("origin") if isinstance(attachment, dict) else None
+    )
+    return (
+        isinstance(attachment_origin, dict)
+        and attachment_origin.get("kind") == "human"
+    )
+
+
+def _origin_kind(value: JsonObject) -> str | None:
+    origin = value.get("origin")
+    if isinstance(origin, dict) and isinstance(origin.get("kind"), str):
+        return origin["kind"]
+    attachment = value.get("attachment")
+    attachment_origin = (
+        attachment.get("origin") if isinstance(attachment, dict) else None
+    )
+    if isinstance(attachment_origin, dict) and isinstance(
+        attachment_origin.get("kind"), str
+    ):
+        return attachment_origin["kind"]
+    return None
+
+
+def _event_origin(
+    value: JsonObject,
+    *,
+    is_primary_user_message: Callable[[JsonObject], bool],
+) -> str:
+    if (
+        is_primary_user_message(value)
+        or _is_human_queued_command(value)
+        or _has_human_origin(value)
+    ):
+        return "user"
+    if _is_agent_origin(value):
+        return "agent"
+    return "unresolved"
+
+
+def _is_agent_origin(value: JsonObject) -> bool:
+    record_type = value.get("type")
+    if record_type in _AGENT_RECORD_TYPES:
+        return True
+    if _origin_kind(value) in _AGENT_ORIGIN_KINDS:
+        return True
+    if record_type != "user":
+        return False
+    if value.get("sourceToolAssistantUUID") is not None:
+        return True
+    if value.get("isCompactSummary") is True or value.get("isMeta") is True:
+        return True
+    if value.get("promptSource") in {"sdk", "system"}:
+        return True
+    message = value.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return content == "/compact" or content.startswith(_LEGACY_HARNESS_PREFIXES)
+    if not isinstance(content, list):
+        return False
+    return any(
+        isinstance(block, dict) and block.get("type") == "tool_result"
+        for block in content
+    )
+
+
 def _event_started_at(record: _RawRecord) -> str:
     queued = _human_queued_command(record.value)
     if queued is not None:
@@ -405,17 +484,35 @@ def _chat_message_text(
     is_primary_user_message: Callable[[JsonObject], bool],
 ) -> str:
     if is_primary_user_message(value):
-        message = value.get("message")
-        content = message.get("content") if isinstance(message, dict) else None
-        if not isinstance(content, str):
-            return ""
-        command_args = _command_args_text(content)
-        return command_args or content
+        text = _user_message_text(value) or ""
+        command_args = _command_args_text(text)
+        return command_args or text
     queued = _human_queued_command(value)
     if queued is not None:
         prompt = queued.get("prompt")
         return prompt if isinstance(prompt, str) else ""
     return _assistant_text(value)
+
+
+def _user_message_text(value: JsonObject) -> str | None:
+    if value.get("type") != "user":
+        return None
+    message = value.get("message")
+    if not isinstance(message, dict) or message.get("role") != "user":
+        return None
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return None
+    texts = [
+        block.get("text")
+        for block in content
+        if isinstance(block, dict)
+        and block.get("type") == "text"
+        and isinstance(block.get("text"), str)
+    ]
+    return "".join(texts) if texts else None
 
 
 def _assistant_text(value: JsonObject) -> str:

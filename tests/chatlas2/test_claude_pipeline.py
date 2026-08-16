@@ -383,7 +383,17 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
         event["started_at"] for event in model["events"]
     )
     assert model["events"][0]["origin"] == "user"
-    assert all(event["origin"] == "agent" for event in model["events"][1:])
+    assert [event["origin"] for event in model["events"]] == [
+        "user",
+        "unresolved",
+        "agent",
+        "agent",
+        "agent",
+        "agent",
+        "agent",
+        "agent",
+        "agent",
+    ]
 
     messages = model["annotations"]["chat_messages"]
     assert [message["side"] for message in messages] == ["user", "agent", "agent"]
@@ -499,6 +509,155 @@ def test_claude_human_queued_command_is_a_user_message_at_queue_time(
 
     final_context = model["annotations"]["agent_loaded_contexts"][-1]
     assert final_context["event_refs"] == [queued_ref]
+
+
+def test_claude_prompt_source_human_variants_are_user_messages(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "human-prompt-variants.jsonl"
+    records = [
+        _record(
+            "user",
+            uuid="suggestion-1",
+            timestamp="2026-08-15T00:00:01Z",
+            parent_uuid=None,
+            promptSource="suggestion_accepted",
+            origin={"kind": "human"},
+            message={"role": "user", "content": "apply this suggestion"},
+        ),
+        _record(
+            "user",
+            uuid="typed-image-1",
+            timestamp="2026-08-15T00:00:02Z",
+            parent_uuid="suggestion-1",
+            promptSource="typed",
+            origin={"kind": "human"},
+            message={
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "inspect this image"},
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": "opaque",
+                        },
+                    },
+                ],
+            },
+        ),
+    ]
+    _write_jsonl(path, records)
+
+    model = build_normal_model_from_row(_row(path))
+
+    assert [event["origin"] for event in model["events"]] == ["user", "user"]
+    assert [
+        (message["side"], message["text"])
+        for message in model["annotations"]["chat_messages"]
+    ] == [
+        ("user", "apply this suggestion"),
+        ("user", "inspect this image"),
+    ]
+
+
+def test_claude_prompt_source_artifact_recovers_legacy_shaped_user_message(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "mixed-user-mappings.jsonl"
+    records = [
+        _user(
+            "new mapping",
+            uuid="prompt-source-user",
+            timestamp="2026-08-15T00:00:01Z",
+            parent_uuid=None,
+        ),
+        _user(
+            "<command-name>/review</command-name>"
+            "<command-args>legacy mapping</command-args>",
+            uuid="legacy-shaped-user",
+            timestamp="2026-08-15T00:00:02Z",
+            parent_uuid="prompt-source-user",
+            prompt_source=None,
+        ),
+        _record(
+            "user",
+            uuid="legacy-shaped-meta",
+            timestamp="2026-08-15T00:00:03Z",
+            parent_uuid="legacy-shaped-user",
+            isMeta=True,
+            message={"role": "user", "content": "harness reinvocation"},
+        ),
+    ]
+    _write_jsonl(path, records)
+
+    assert (
+        ClaudeRawModelVersioner().version(path)
+        == CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION
+    )
+    model = build_normal_model_from_row(_row(path))
+
+    assert [event["origin"] for event in model["events"]] == [
+        "user",
+        "user",
+        "agent",
+    ]
+    assert [
+        message["text"] for message in model["annotations"]["chat_messages"]
+    ] == ["new mapping", "legacy mapping"]
+
+
+def test_claude_unknown_timed_origins_remain_unresolved(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "origin-boundary.jsonl"
+    records = [
+        _record(
+            "attachment",
+            uuid="ambiguous-attachment",
+            timestamp="2026-08-15T00:00:01Z",
+            parent_uuid=None,
+            attachment={"kind": "context"},
+        ),
+        {
+            "type": "queue-operation",
+            "operation": "enqueue",
+            "timestamp": "2026-08-15T00:00:02Z",
+            "sessionId": "claude-session",
+            "content": "origin is not asserted",
+        },
+        _record(
+            "system",
+            uuid="system-1",
+            timestamp="2026-08-15T00:00:03Z",
+            parent_uuid="ambiguous-attachment",
+            subtype="turn_duration",
+        ),
+        _assistant(
+            {"type": "text", "text": "known agent output"},
+            uuid="assistant-1",
+            timestamp="2026-08-15T00:00:04Z",
+            parent_uuid="system-1",
+            request_id="request-1",
+        ),
+    ]
+    _write_jsonl(path, records)
+
+    model = build_normal_model_from_row(_row(path))
+
+    assert [event["origin"] for event in model["events"]] == [
+        "unresolved",
+        "unresolved",
+        "agent",
+        "agent",
+    ]
+    assert [event["class"] for event in model["events"]] == [
+        "Unresolved.Event",
+        "Unresolved.Event",
+        "Agent.Event",
+        "Agent.Event",
+    ]
 
 
 def test_claude_normalization_unions_every_artifact_without_losing_continuation(

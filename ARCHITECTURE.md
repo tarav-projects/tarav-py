@@ -78,9 +78,13 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   specimens locally. Codex `codex.rollout.5f98` and Claude Code
   `claude.transcript.1ecc` / `claude.transcript.b17b` are opaque recognized raw-model
   identities dispatched through compatible normalizers into the same Normal Model.
-  Both Claude normalizers map human-origin `queued_command` attachments to
-  user events/messages at their nested queue timestamp and may use them as the
-  nearest evidenced loaded context for a following assistant request.
+  The prompt-source-capable Claude normalizer also recognizes accepted human
+  suggestions, typed text-block lists, and non-meta legacy-shaped direct
+  messages retained inside mixed artifacts. Both Claude normalizers map
+  human-origin `queued_command` attachments to user events/messages at their
+  nested queue timestamp and may use them as the nearest evidenced loaded
+  context for a following assistant request. Timed Claude records whose side
+  is not structurally established remain `Unresolved.Event`.
   Raw-model identity remains provenance and does not enter stable place derivation.
   Normal Model v5 separates provider-derived stable places
   from current normalized state for both events and Chat.Message annotations.
