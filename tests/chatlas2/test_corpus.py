@@ -220,7 +220,7 @@ def test_prepare_and_register_capture_preserve_specimen_and_archive_every_artifa
     prepared = json.loads(candidate.read_text(encoding="utf-8"))
     assert len(prepared["record"]["artifacts"]) == 2
     assert all(
-        artifact["raw_model_version"] == "codex.rollout.v1"
+        artifact["raw_model_version"] == "codex.rollout.5f98"
         for artifact in prepared["record"]["artifacts"]
     )
     assert register_candidate(candidate, corpus_root=corpus) is True

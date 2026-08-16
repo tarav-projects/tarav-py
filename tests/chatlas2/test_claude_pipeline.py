@@ -7,9 +7,11 @@ from pathlib import Path
 import pytest
 
 from tarav.chatlas2.claude import (
-    CLAUDE_RAW_MODEL_VERSION,
+    CLAUDE_LEGACY_RAW_MODEL_VERSION,
+    CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION,
+    ClaudeLegacyRawNormalizer,
+    ClaudePromptSourceRawNormalizer,
     ClaudeRawModelVersioner,
-    ClaudeRawNormalizer,
 )
 from tarav.chatlas2.event_ref import resolve_event_ref
 from tarav.chatlas2.message_ref import resolve_chat_message_ref
@@ -179,8 +181,74 @@ def _rollout() -> list[dict[str, object]]:
     ]
 
 
+def _legacy_rollout() -> list[dict[str, object]]:
+    return [
+        {"type": "mode", "sessionId": "claude-session", "mode": "default"},
+        _user(
+            "legacy hello",
+            uuid="legacy-user-1",
+            timestamp="2026-08-15T00:00:01Z",
+            parent_uuid=None,
+            prompt_source=None,
+        ),
+        _assistant(
+            {"type": "text", "text": "legacy answer"},
+            uuid="legacy-assistant-1",
+            timestamp="2026-08-15T00:00:02Z",
+            parent_uuid="legacy-user-1",
+            request_id="legacy-request-1",
+        ),
+        _record(
+            "user",
+            uuid="legacy-tool-result",
+            timestamp="2026-08-15T00:00:03Z",
+            parent_uuid="legacy-assistant-1",
+            sourceToolAssistantUUID="legacy-assistant-1",
+            message={
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "legacy-tool-1",
+                        "content": "result",
+                    }
+                ],
+            },
+        ),
+        _user(
+            "<system-reminder>injected</system-reminder>",
+            uuid="legacy-system-reminder",
+            timestamp="2026-08-15T00:00:04Z",
+            parent_uuid="legacy-tool-result",
+            prompt_source=None,
+        ),
+        _user(
+            "<command-name>/review</command-name><command-args>target</command-args>",
+            uuid="legacy-command",
+            timestamp="2026-08-15T00:00:05Z",
+            parent_uuid="legacy-system-reminder",
+            prompt_source=None,
+        ),
+        _record(
+            "user",
+            uuid="legacy-compact",
+            timestamp="2026-08-15T00:00:06Z",
+            parent_uuid="legacy-command",
+            isCompactSummary=True,
+            message={"role": "user", "content": "summary"},
+        ),
+        _user(
+            "<command-name>/exit</command-name>",
+            uuid="legacy-local-command",
+            timestamp="2026-08-15T00:00:07Z",
+            parent_uuid="legacy-compact",
+            prompt_source=None,
+        ),
+    ]
+
+
 @pytest.mark.parametrize("producer_version", ["2.1.170", "2.1.196", "2.1.223"])
-def test_claude_versioner_recognizes_one_structural_raw_model(
+def test_claude_versioner_recognizes_prompt_source_mapping_family(
     tmp_path: Path,
     producer_version: str,
 ) -> None:
@@ -191,9 +259,46 @@ def test_claude_versioner_recognizes_one_structural_raw_model(
             record["version"] = producer_version
     _write_jsonl(path, records)
 
-    assert ClaudeRawModelVersioner().version(path) == CLAUDE_RAW_MODEL_VERSION
-    assert ClaudeRawNormalizer.supported_raw_model_versions == frozenset(
-        {CLAUDE_RAW_MODEL_VERSION}
+    assert (
+        ClaudeRawModelVersioner().version(path)
+        == CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION
+    )
+    assert CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION == "claude.transcript.1ecc"
+    assert ClaudePromptSourceRawNormalizer.supported_raw_model_versions == frozenset(
+        {CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION}
+    )
+
+
+def test_claude_versioner_and_pipeline_recognize_legacy_mapping_family(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "legacy-transcript.jsonl"
+    _write_jsonl(path, _legacy_rollout())
+
+    assert ClaudeRawModelVersioner().version(path) == CLAUDE_LEGACY_RAW_MODEL_VERSION
+    assert CLAUDE_LEGACY_RAW_MODEL_VERSION == "claude.transcript.b17b"
+    assert ClaudeLegacyRawNormalizer.supported_raw_model_versions == frozenset(
+        {CLAUDE_LEGACY_RAW_MODEL_VERSION}
+    )
+
+    model = build_normal_model_from_row(_row(path))
+    events_by_uuid = {
+        event["record"].get("uuid"): event for event in model["events"]
+    }
+    assert events_by_uuid["legacy-user-1"]["origin"] == "user"
+    assert events_by_uuid["legacy-command"]["origin"] == "user"
+    for uuid in (
+        "legacy-tool-result",
+        "legacy-system-reminder",
+        "legacy-compact",
+        "legacy-local-command",
+    ):
+        assert events_by_uuid[uuid]["origin"] == "agent"
+    assert [
+        message["side"] for message in model["annotations"]["chat_messages"]
+    ] == ["user", "agent", "user"]
+    assert model["sources"][0]["raw_model_version"] == (
+        CLAUDE_LEGACY_RAW_MODEL_VERSION
     )
 
 
@@ -210,7 +315,10 @@ def test_claude_versioner_allows_auxiliary_records_without_session_id(
     ]
     _write_jsonl(path, records)
 
-    assert ClaudeRawModelVersioner().version(path) == CLAUDE_RAW_MODEL_VERSION
+    assert (
+        ClaudeRawModelVersioner().version(path)
+        == CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION
+    )
     assert len(build_normal_model_from_row(_row(path))["events"]) == 9
 
 
@@ -306,17 +414,17 @@ def test_claude_event_hash_excludes_native_identifier_drift(tmp_path: Path) -> N
     changed = deepcopy(records)
     changed[1]["uuid"] = "user-reidentified"
     _write_jsonl(drifted, changed)
-    normalizer = ClaudeRawNormalizer()
+    normalizer = ClaudePromptSourceRawNormalizer()
 
     original_event = normalizer.normalize(
         original,
         source_id="original",
-        raw_model_version=CLAUDE_RAW_MODEL_VERSION,
+        raw_model_version=CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION,
     ).events[0]
     changed_event = normalizer.normalize(
         drifted,
         source_id="drifted",
-        raw_model_version=CLAUDE_RAW_MODEL_VERSION,
+        raw_model_version=CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION,
     ).events[0]
 
     assert original_event["event_address"] != changed_event["event_address"]

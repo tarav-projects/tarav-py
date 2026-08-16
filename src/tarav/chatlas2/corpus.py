@@ -12,7 +12,11 @@ from typing import Any, Iterable
 from tarav._core.errors import CliError
 
 from .anonymizer import ANONYMIZER_VERSION, anonymize_text
-from .claude import ClaudeRawModelVersioner, ClaudeRawNormalizer
+from .claude import (
+    ClaudeLegacyRawNormalizer,
+    ClaudePromptSourceRawNormalizer,
+    ClaudeRawModelVersioner,
+)
 from .codex import CodexRawModelVersioner, CodexRawNormalizer
 from .event_ref import event_ref, resolve_event_ref
 from .message_ref import (
@@ -367,7 +371,10 @@ def _capture_is_supported(record: JsonObject) -> bool:
     if provider == "codex":
         supported = CodexRawNormalizer.supported_raw_model_versions
     elif provider == "claude-code":
-        supported = ClaudeRawNormalizer.supported_raw_model_versions
+        supported = (
+            ClaudePromptSourceRawNormalizer.supported_raw_model_versions
+            | ClaudeLegacyRawNormalizer.supported_raw_model_versions
+        )
     else:
         return False
     return all(

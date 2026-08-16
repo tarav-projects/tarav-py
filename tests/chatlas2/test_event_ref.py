@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from inspect import signature
 
 from tarav.chatlas2.event_ref import (
     compute_event_address,
@@ -15,7 +16,6 @@ def _event(*, text: str = "hello", native_id: str = "message-1") -> dict[str, ob
         "class": "User.Event",
         "event_address": compute_event_address(
             provider="codex",
-            raw_model_version="codex.rollout.v1",
             scope="session-1",
             place={"record_index": 3},
         ),
@@ -49,11 +49,14 @@ def test_event_address_is_place_only_and_event_hash_is_current_content() -> None
     moved = deepcopy(original)
     moved["event_address"] = compute_event_address(
         provider="codex",
-        raw_model_version="codex.rollout.v1",
         scope="session-1",
         place={"record_index": 4},
     )
     assert moved["event_address"] != original["event_address"]
+
+
+def test_event_address_has_no_raw_model_version_axis() -> None:
+    assert "raw_model_version" not in signature(compute_event_address).parameters
 
 
 def test_event_ref_resolution_is_stateless_and_consumer_neutral() -> None:

@@ -75,9 +75,11 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   anonymous provider artifacts by content digest; its anonymizer is an opaque
   text transform with no provider or Raw.Model dependency. Current Chatlas is
   used only by explicit corpus preparation, while committed checks reconstruct
-  specimens locally. Codex `codex.rollout.v1` and Claude Code
-  `claude.transcript.v1` are independent recognized vertical slices dispatched
-  into the same Normal Model. Normal Model v3 separates provider-derived stable places
+  specimens locally. Codex `codex.rollout.5f98` and Claude Code
+  `claude.transcript.1ecc` / `claude.transcript.b17b` are opaque recognized raw-model
+  identities dispatched through compatible normalizers into the same Normal Model.
+  Raw-model identity remains provenance and does not enter stable place derivation.
+  Normal Model v3 separates provider-derived stable places
   from current state for both events and Chat.Message annotations. Membership
   carries full Event.Ref values, and stored Event.Ref or Chat.Message.Ref
   assertions resolve as MATCHED, AMENDED, or MISSING against only the supplied

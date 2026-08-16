@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-message-ref --from Event.Ref --note [DC] Chatlas2 separates provider-derived message place from the current ordered Event.Hash assertion and resolves stored message refs only against the supplied current model --supp ^c20260815-4u ^c20260815-5u ^c20260815-6u ^c20260815-7u ^c20260815-8u ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-46u
+# $kw: ^chatlas2-message-ref --from Event.Ref --note [DC] Chatlas2 separates provider-derived message place from the current ordered Event.Hash assertion and resolves stored message refs only against the supplied current model --supp ^c20260815-4u ^c20260815-5u ^c20260815-6u ^c20260815-7u ^c20260815-8u ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-46u ^c20260815-64u
 from __future__ import annotations
 
 from hashlib import sha256
@@ -15,14 +15,12 @@ _FULL_SHA256 = re.compile(r"[0-9a-f]{64}")
 def compute_chat_message_address(
     *,
     provider: str,
-    raw_model_version: str,
     scope: str,
     place: object,
 ) -> str:
     body = {
         "schema": "tarav.chatlas2.chat-message-address.v1",
         "provider": provider,
-        "raw_model_version": raw_model_version,
         "scope": scope,
         "place": place,
     }

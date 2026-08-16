@@ -1,9 +1,11 @@
-# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude structural recognition unifies compatible producer versions, preserves timed transcript records, and recognizes primary messages and loaded request input conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u
+# $kw: ^chatlas2-claude-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Claude structural recognition partitions direct user-message mappings while shared mechanics preserve timed transcript records and loaded request input conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-7u ^c20260815-21u ^c20260815-39u ^c20260815-55u ^c20260815-56u ^c20260815-59u ^c20260815-64u ^c20260815-65u
 from __future__ import annotations
 
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import re
+from typing import Callable
 
 from tarav._core.errors import CliError
 
@@ -12,8 +14,21 @@ from .message_ref import compute_chat_message_address
 from .model import JsonObject, NormalFragment
 
 
-CLAUDE_RAW_MODEL_VERSION = "claude.transcript.v1"
+CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION = "claude.transcript.1ecc"
+CLAUDE_LEGACY_RAW_MODEL_VERSION = "claude.transcript.b17b"
 _PRIMARY_PROMPT_SOURCES = frozenset({"typed", "queued"})
+_LEGACY_HARNESS_PREFIXES = (
+    "<bash-input>",
+    "<bash-stdout>",
+    "<command-message>",
+    "<command-name>",
+    "<local-command-",
+    "<skill-context",
+    "<system-reminder>",
+    "<task-notification>",
+    "Base directory for this skill:",
+)
+_COMMAND_ARGS_PATTERN = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +49,7 @@ class ClaudeRawModelVersioner:
             return None
         session_ids: set[str] = set()
         transcript_count = 0
+        has_prompt_source = False
         for record in records:
             value = record.value
             record_type = value.get("type")
@@ -54,13 +70,19 @@ class ClaudeRawModelVersioner:
             if not _is_transcript_record(value):
                 return None
             transcript_count += 1
+            if record_type == "user" and "promptSource" in value:
+                has_prompt_source = True
         if len(session_ids) != 1 or transcript_count == 0:
             return None
-        return CLAUDE_RAW_MODEL_VERSION
+        if has_prompt_source:
+            return CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION
+        return CLAUDE_LEGACY_RAW_MODEL_VERSION
 
 
-class ClaudeRawNormalizer:
-    supported_raw_model_versions = frozenset({CLAUDE_RAW_MODEL_VERSION})
+class ClaudePromptSourceRawNormalizer:
+    supported_raw_model_versions = frozenset(
+        {CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION}
+    )
 
     def normalize(
         self,
@@ -69,115 +91,152 @@ class ClaudeRawNormalizer:
         source_id: str,
         raw_model_version: str,
     ) -> NormalFragment:
-        if raw_model_version not in self.supported_raw_model_versions:
-            raise CliError(
-                "Chatlas2 Claude normalizer does not support raw model version "
-                f"{raw_model_version!r}"
-            )
-        try:
-            records = _read_records(path)
-        except (OSError, ValueError) as exc:
-            raise CliError(
-                f"cannot normalize Chatlas2 Claude artifact {path}: {exc}"
-            ) from exc
-
-        session_scope = _session_scope(records)
-        events: list[JsonObject] = []
-        chat_messages: list[JsonObject] = []
-        event_address_by_uuid: dict[str, str] = {}
-        raw_by_uuid: dict[str, _RawRecord] = {}
-
-        for record in records:
-            native_uuid = record.value.get("uuid")
-            if isinstance(native_uuid, str) and native_uuid:
-                raw_by_uuid[native_uuid] = record
-            if record.observed_at is None:
-                continue
-            place = (
-                {"uuid": native_uuid}
-                if isinstance(native_uuid, str) and native_uuid
-                else {"record_index": record.record_index}
-            )
-            event_address = compute_event_address(
-                provider="claude-code",
-                raw_model_version=raw_model_version,
-                scope=session_scope,
-                place=place,
-            )
-            origin = "user" if _is_primary_user_message(record.value) else "agent"
-            event: JsonObject = {
-                "class": "User.Event" if origin == "user" else "Agent.Event",
-                "event_address": event_address,
-                "started_at": record.observed_at,
-                "origin": origin,
-                "record": record.value,
-                "observations": [
-                    {
-                        "observed_at": record.observed_at,
-                        "source_ref": {
-                            "source_id": source_id,
-                            "record_index": record.record_index,
-                            "line": record.line,
-                        },
-                    }
-                ],
-            }
-            event["event_hash"] = compute_event_hash(event)
-            events.append(event)
-            if isinstance(native_uuid, str) and native_uuid:
-                event_address_by_uuid[native_uuid] = event_address
-
-            message_side = _chat_message_side(record.value)
-            if message_side is not None:
-                chat_messages.append(
-                    {
-                        "class": "Chat.Message",
-                        "message_address": compute_chat_message_address(
-                            provider="claude-code",
-                            raw_model_version=raw_model_version,
-                            scope=session_scope,
-                            place=place,
-                        ),
-                        "side": message_side,
-                        "event_addresses": [event_address],
-                    }
-                )
-
-        loaded_contexts: list[JsonObject] = []
-        context_by_request: dict[str, tuple[str, ...]] = {}
-        for record in records:
-            if record.observed_at is None or record.value.get("type") != "assistant":
-                continue
-            native_uuid = record.value.get("uuid")
-            request_id = record.value.get("requestId")
-            if not isinstance(native_uuid, str) or native_uuid not in event_address_by_uuid:
-                continue
-            if not isinstance(request_id, str) or not request_id:
-                continue
-            if request_id not in context_by_request:
-                context_address = _nearest_user_input_address(
-                    record,
-                    raw_by_uuid=raw_by_uuid,
-                    event_address_by_uuid=event_address_by_uuid,
-                )
-                context_by_request[request_id] = (
-                    (context_address,) if context_address is not None else ()
-                )
-            context = context_by_request[request_id]
-            if context:
-                loaded_contexts.append(
-                    {
-                        "class": "Agent.Loaded.Context",
-                        "agent_event_address": event_address_by_uuid[native_uuid],
-                        "event_addresses": list(context),
-                    }
-                )
-
-        return NormalFragment(
-            events=tuple(events),
-            chat_messages=tuple(chat_messages),
-            agent_loaded_contexts=tuple(loaded_contexts),
+        return _normalize(
+            path,
+            source_id=source_id,
+            raw_model_version=raw_model_version,
+            supported_raw_model_versions=self.supported_raw_model_versions,
+            is_primary_user_message=_is_prompt_source_primary_user_message,
         )
+
+
+class ClaudeLegacyRawNormalizer:
+    supported_raw_model_versions = frozenset({CLAUDE_LEGACY_RAW_MODEL_VERSION})
+
+    def normalize(
+        self,
+        path: Path,
+        *,
+        source_id: str,
+        raw_model_version: str,
+    ) -> NormalFragment:
+        return _normalize(
+            path,
+            source_id=source_id,
+            raw_model_version=raw_model_version,
+            supported_raw_model_versions=self.supported_raw_model_versions,
+            is_primary_user_message=_is_legacy_primary_user_message,
+        )
+
+
+def _normalize(
+    path: Path,
+    *,
+    source_id: str,
+    raw_model_version: str,
+    supported_raw_model_versions: frozenset[str],
+    is_primary_user_message: Callable[[JsonObject], bool],
+) -> NormalFragment:
+    if raw_model_version not in supported_raw_model_versions:
+        raise CliError(
+            "Chatlas2 Claude normalizer does not support raw model version "
+            f"{raw_model_version!r}"
+        )
+    try:
+        records = _read_records(path)
+    except (OSError, ValueError) as exc:
+        raise CliError(
+            f"cannot normalize Chatlas2 Claude artifact {path}: {exc}"
+        ) from exc
+
+    session_scope = _session_scope(records)
+    events: list[JsonObject] = []
+    chat_messages: list[JsonObject] = []
+    event_address_by_uuid: dict[str, str] = {}
+    raw_by_uuid: dict[str, _RawRecord] = {}
+
+    for record in records:
+        native_uuid = record.value.get("uuid")
+        if isinstance(native_uuid, str) and native_uuid:
+            raw_by_uuid[native_uuid] = record
+        if record.observed_at is None:
+            continue
+        place = (
+            {"uuid": native_uuid}
+            if isinstance(native_uuid, str) and native_uuid
+            else {"record_index": record.record_index}
+        )
+        event_address = compute_event_address(
+            provider="claude-code",
+            scope=session_scope,
+            place=place,
+        )
+        origin = "user" if is_primary_user_message(record.value) else "agent"
+        event: JsonObject = {
+            "class": "User.Event" if origin == "user" else "Agent.Event",
+            "event_address": event_address,
+            "started_at": record.observed_at,
+            "origin": origin,
+            "record": record.value,
+            "observations": [
+                {
+                    "observed_at": record.observed_at,
+                    "source_ref": {
+                        "source_id": source_id,
+                        "record_index": record.record_index,
+                        "line": record.line,
+                    },
+                }
+            ],
+        }
+        event["event_hash"] = compute_event_hash(event)
+        events.append(event)
+        if isinstance(native_uuid, str) and native_uuid:
+            event_address_by_uuid[native_uuid] = event_address
+
+        message_side = _chat_message_side(
+            record.value,
+            is_primary_user_message=is_primary_user_message,
+        )
+        if message_side is not None:
+            chat_messages.append(
+                {
+                    "class": "Chat.Message",
+                    "message_address": compute_chat_message_address(
+                        provider="claude-code",
+                        scope=session_scope,
+                        place=place,
+                    ),
+                    "side": message_side,
+                    "event_addresses": [event_address],
+                }
+            )
+
+    loaded_contexts: list[JsonObject] = []
+    context_by_request: dict[str, tuple[str, ...]] = {}
+    for record in records:
+        if record.observed_at is None or record.value.get("type") != "assistant":
+            continue
+        native_uuid = record.value.get("uuid")
+        request_id = record.value.get("requestId")
+        if not isinstance(native_uuid, str) or native_uuid not in event_address_by_uuid:
+            continue
+        if not isinstance(request_id, str) or not request_id:
+            continue
+        if request_id not in context_by_request:
+            context_address = _nearest_user_input_address(
+                record,
+                raw_by_uuid=raw_by_uuid,
+                event_address_by_uuid=event_address_by_uuid,
+            )
+            context_by_request[request_id] = (
+                (context_address,) if context_address is not None else ()
+            )
+        context = context_by_request[request_id]
+        if context:
+            loaded_contexts.append(
+                {
+                    "class": "Agent.Loaded.Context",
+                    "agent_event_address": event_address_by_uuid[native_uuid],
+                    "event_addresses": list(context),
+                }
+            )
+
+    return NormalFragment(
+        events=tuple(events),
+        chat_messages=tuple(chat_messages),
+        agent_loaded_contexts=tuple(loaded_contexts),
+    )
 
 
 def _read_records(path: Path) -> list[_RawRecord]:
@@ -232,7 +291,7 @@ def _session_scope(records: list[_RawRecord]) -> str:
     return next(iter(session_ids))
 
 
-def _is_primary_user_message(value: JsonObject) -> bool:
+def _is_prompt_source_primary_user_message(value: JsonObject) -> bool:
     message = value.get("message")
     return (
         value.get("type") == "user"
@@ -243,8 +302,39 @@ def _is_primary_user_message(value: JsonObject) -> bool:
     )
 
 
-def _chat_message_side(value: JsonObject) -> str | None:
-    if _is_primary_user_message(value):
+def _is_legacy_primary_user_message(value: JsonObject) -> bool:
+    message = value.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if (
+        value.get("type") != "user"
+        or not isinstance(message, dict)
+        or message.get("role") != "user"
+        or not isinstance(content, str)
+        or not content
+        or value.get("sourceToolAssistantUUID") is not None
+        or value.get("isCompactSummary") is True
+        or content == "/compact"
+    ):
+        return False
+    if not content.startswith(_LEGACY_HARNESS_PREFIXES):
+        return True
+    return (
+        content.startswith(("<command-message>", "<command-name>"))
+        and bool(_command_args_text(content))
+    )
+
+
+def _command_args_text(content: str) -> str:
+    match = _COMMAND_ARGS_PATTERN.search(content)
+    return match.group(1).strip() if match is not None else ""
+
+
+def _chat_message_side(
+    value: JsonObject,
+    *,
+    is_primary_user_message: Callable[[JsonObject], bool],
+) -> str | None:
+    if is_primary_user_message(value):
         return "user"
     if value.get("type") != "assistant":
         return None
@@ -287,7 +377,9 @@ def _nearest_user_input_address(
 
 
 __all__ = [
-    "CLAUDE_RAW_MODEL_VERSION",
+    "CLAUDE_LEGACY_RAW_MODEL_VERSION",
+    "CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION",
+    "ClaudeLegacyRawNormalizer",
+    "ClaudePromptSourceRawNormalizer",
     "ClaudeRawModelVersioner",
-    "ClaudeRawNormalizer",
 ]

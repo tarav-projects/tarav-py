@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly reviews every recognized provider transcript, folds same logical places into current event state, finalizes self-verifying annotation refs, and sorts the retained union chronologically --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u
+# $kw: ^chatlas2-pipeline --from Normalization.Pipeline::Chatlas.Session.Model --from Raw.Archive --from Chatlas.Session.Index --from Event.Ref --note [CT] assembly versions every provider transcript, dispatches a compatible direct normalizer, folds same logical places into current event state, and sorts the retained union chronologically --supp ^c20260814-17u ^c20260814-18u ^c20260814-19u ^c20260815-39u ^c20260815-40u ^c20260815-42u ^c20260815-59u ^c20260815-64u
 from __future__ import annotations
 
 from copy import deepcopy
@@ -13,8 +13,18 @@ from tarav._core.errors import CliError
 from tarav.chatlas.index_query import select_one_chatlas_index_row
 from tarav.chatlas.index_writer import archive_versions_for
 
-from .claude import ClaudeRawModelVersioner, ClaudeRawNormalizer
-from .codex import CodexRawModelVersioner, CodexRawNormalizer
+from .claude import (
+    CLAUDE_LEGACY_RAW_MODEL_VERSION,
+    CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION,
+    ClaudeLegacyRawNormalizer,
+    ClaudePromptSourceRawNormalizer,
+    ClaudeRawModelVersioner,
+)
+from .codex import (
+    CODEX_RAW_MODEL_VERSION,
+    CodexRawModelVersioner,
+    CodexRawNormalizer,
+)
 from .event_ref import event_ref
 from .message_ref import compute_chat_message_hash
 from .model import JsonObject
@@ -46,10 +56,15 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
     provider = row.get("provider")
     if provider == "codex":
         versioner = CodexRawModelVersioner()
-        normalizer = CodexRawNormalizer()
+        normalizers = {CODEX_RAW_MODEL_VERSION: CodexRawNormalizer()}
     elif provider == "claude-code":
         versioner = ClaudeRawModelVersioner()
-        normalizer = ClaudeRawNormalizer()
+        normalizers = {
+            CLAUDE_PROMPT_SOURCE_RAW_MODEL_VERSION: (
+                ClaudePromptSourceRawNormalizer()
+            ),
+            CLAUDE_LEGACY_RAW_MODEL_VERSION: ClaudeLegacyRawNormalizer(),
+        }
     else:
         raise CliError(
             "Chatlas2 normalization supports only Codex and Claude Code sessions"
@@ -75,6 +90,12 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
         if raw_model_version is None:
             continue
         recognized_source_count += 1
+        normalizer = normalizers.get(raw_model_version)
+        if normalizer is None:
+            raise CliError(
+                "Chatlas2 has no compatible normalizer for recognized raw model "
+                f"{raw_model_version!r}"
+            )
         fragment = normalizer.normalize(
             path,
             source_id=source_id,

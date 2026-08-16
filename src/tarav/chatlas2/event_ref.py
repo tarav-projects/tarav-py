@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-event-ref --from Event.Ref --note [DC] Chatlas2 separates provider-derived event place from current normalized state and resolves stored assertions only against the supplied current tape --supp ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-40u ^c20260815-41u ^c20260815-42u ^c20260815-43u ^c20260815-44u
+# $kw: ^chatlas2-event-ref --from Event.Ref --note [DC] Chatlas2 separates provider-derived event place from current normalized state and resolves stored assertions only against the supplied current tape --supp ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-40u ^c20260815-41u ^c20260815-42u ^c20260815-43u ^c20260815-44u ^c20260815-64u
 from __future__ import annotations
 
 from hashlib import sha256
@@ -15,14 +15,12 @@ _FULL_SHA256 = re.compile(r"[0-9a-f]{64}")
 def compute_event_address(
     *,
     provider: str,
-    raw_model_version: str,
     scope: str,
     place: object,
 ) -> str:
     body = {
         "schema": "tarav.chatlas2.event-address.v1",
         "provider": provider,
-        "raw_model_version": raw_model_version,
         "scope": scope,
         "place": place,
     }

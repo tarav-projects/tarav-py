@@ -75,6 +75,7 @@ def _row(*artifacts: Path) -> dict[str, object]:
 def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
     tmp_path: Path,
 ) -> None:
+    assert CODEX_RAW_MODEL_VERSION == "codex.rollout.5f98"
     path = tmp_path / "rollout.jsonl"
     records = [
         _record(

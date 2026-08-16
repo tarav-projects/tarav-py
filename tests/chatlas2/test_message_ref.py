@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from inspect import signature
 
 from tarav.chatlas2.message_ref import (
     chat_message_ref,
@@ -20,7 +21,6 @@ def _message(
         "class": "Chat.Message",
         "message_address": compute_chat_message_address(
             provider="codex",
-            raw_model_version="codex.rollout.v1",
             scope="session-1",
             place={"record_index": 3},
         ),
@@ -48,6 +48,12 @@ def test_message_address_is_place_only_and_hash_covers_side_and_ordered_event_ha
     provenance_drift = deepcopy(original)
     provenance_drift["diagnostic"] = "ignored"
     assert compute_chat_message_hash(provenance_drift) == original["message_hash"]
+
+
+def test_message_address_has_no_raw_model_version_axis() -> None:
+    assert "raw_model_version" not in signature(
+        compute_chat_message_address
+    ).parameters
 
 
 def test_chat_message_ref_resolution_is_stateless_and_consumer_neutral() -> None:

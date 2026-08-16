@@ -5,8 +5,10 @@ One rich script may have many accepted captures for each provider and
 `Raw.Model.Version`; every compatible normalizer is tested against those fixed specimens.
 
 The corpus currently contains 21 accepted historical captures: 10 Codex
-`codex.rollout.v1` specimens and 11 Claude `claude.transcript.v1` specimens. Both raw
-models have compatible Versioners and Normalizers. The four historical scripts are preserved under `scripts/legacy/`.
+`codex.rollout.5f98` specimens and 11 Claude `claude.transcript.1ecc` specimens. The
+supported but not yet corpus-registered Claude legacy family is
+`claude.transcript.b17b`. These opaque suffixes identify compatible mapping partitions;
+they do not express succession. The four historical scripts are preserved under `scripts/legacy/`.
 `scripts/chatlas2-conformance.v1.md` is the consolidated script for new captures.
 
 ## Layout

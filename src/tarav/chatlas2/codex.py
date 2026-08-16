@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-codex-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Codex structural recognition dispatches only its declared raw-model version, addresses raw places independently from content, and resolves origin and loaded context conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-21u ^c20260815-37u ^c20260815-38u ^c20260815-39u
+# $kw: ^chatlas2-codex-v1 --from Normalization.Pipeline::Chatlas.Session.Model --from Session.Event.Tape --from Event.Ref --note [CT] Codex structural recognition dispatches only its declared opaque raw-model identity, addresses raw places independently from content and version labels, and resolves origin and loaded context conservatively --supp ^c20260814-21u ^c20260814-23u ^c20260815-2u ^c20260815-21u ^c20260815-37u ^c20260815-38u ^c20260815-39u ^c20260815-64u ^c20260815-65u
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +13,7 @@ from .message_ref import compute_chat_message_address
 from .model import JsonObject, NormalFragment
 
 
-CODEX_RAW_MODEL_VERSION = "codex.rollout.v1"
+CODEX_RAW_MODEL_VERSION = "codex.rollout.5f98"
 
 _AGENT_TOP_LEVEL_TYPES = {
     "compacted",
@@ -109,7 +109,6 @@ class CodexRawNormalizer:
         for record in records:
             event_address = compute_event_address(
                 provider="codex",
-                raw_model_version=raw_model_version,
                 scope=session_scope,
                 place={"record_index": record.record_index},
             )
@@ -143,7 +142,6 @@ class CodexRawNormalizer:
                         "class": "Chat.Message",
                         "message_address": compute_chat_message_address(
                             provider="codex",
-                            raw_model_version=raw_model_version,
                             scope=session_scope,
                             place={"record_index": record.record_index},
                         ),
