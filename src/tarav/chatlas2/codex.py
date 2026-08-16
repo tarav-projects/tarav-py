@@ -146,6 +146,7 @@ class CodexRawNormalizer:
                             place={"record_index": record.record_index},
                         ),
                         "side": message_side,
+                        "text": _chat_message_text(record.value),
                         "event_addresses": [event_address],
                     }
                 )
@@ -310,6 +311,16 @@ def _chat_message_side(
             return None
         return "agent"
     return None
+
+
+def _chat_message_text(record: JsonObject) -> str:
+    payload = record.get("payload")
+    if not isinstance(payload, dict):
+        return ""
+    if record.get("type") == "response_item" and payload.get("type") == "message":
+        return _message_text(payload) or ""
+    text = payload.get("message")
+    return text if isinstance(text, str) else ""
 
 
 def _is_context_input(record: JsonObject) -> bool:

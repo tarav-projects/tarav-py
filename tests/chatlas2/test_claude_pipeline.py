@@ -297,6 +297,9 @@ def test_claude_versioner_and_pipeline_recognize_legacy_mapping_family(
     assert [
         message["side"] for message in model["annotations"]["chat_messages"]
     ] == ["user", "agent", "user"]
+    assert [
+        message["text"] for message in model["annotations"]["chat_messages"]
+    ] == ["legacy hello", "legacy answer", "target"]
     assert model["sources"][0]["raw_model_version"] == (
         CLAUDE_LEGACY_RAW_MODEL_VERSION
     )
@@ -331,7 +334,7 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
     model = build_normal_model_from_row(_row(path))
 
     assert model["session"]["provider"] == "claude-code"
-    assert model["schema_version"] == 3
+    assert model["schema_version"] == 4
     assert len(model["events"]) == 9
     assert [event["started_at"] for event in model["events"]] == sorted(
         event["started_at"] for event in model["events"]
@@ -348,6 +351,7 @@ def test_claude_normalization_preserves_origin_messages_refs_and_context(
 
     messages = model["annotations"]["chat_messages"]
     assert [message["side"] for message in messages] == ["user", "agent", "agent"]
+    assert [message["text"] for message in messages] == ["hello", "hi", "done"]
     assert all(
         resolve_chat_message_ref(
             messages,

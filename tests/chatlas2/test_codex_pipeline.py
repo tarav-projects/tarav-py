@@ -150,6 +150,10 @@ def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
         "user",
         "agent",
     ]
+    assert [message["text"] for message in model["annotations"]["chat_messages"]] == [
+        "hello",
+        "hi",
+    ]
     contexts = model["annotations"]["agent_loaded_contexts"]
     assert all(
         message["class"] == "Chat.Message"
@@ -159,7 +163,7 @@ def test_codex_versioner_and_normalizer_keep_the_minimal_semantic_floor(
     assert len(contexts) == 2
     assert contexts[0]["event_refs"] == contexts[1]["event_refs"]
     assert len(contexts[0]["event_refs"]) == 3
-    assert model["schema_version"] == 3
+    assert model["schema_version"] == 4
     assert all("event_id" not in event for event in model["events"])
     assert all(
         "message_id" not in message

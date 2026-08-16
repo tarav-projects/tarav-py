@@ -79,13 +79,18 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   `claude.transcript.1ecc` / `claude.transcript.b17b` are opaque recognized raw-model
   identities dispatched through compatible normalizers into the same Normal Model.
   Raw-model identity remains provenance and does not enter stable place derivation.
-  Normal Model v3 separates provider-derived stable places
+  Normal Model v4 separates provider-derived stable places
   from current state for both events and Chat.Message annotations. Membership
   carries full Event.Ref values, and stored Event.Ref or Chat.Message.Ref
   assertions resolve as MATCHED, AMENDED, or MISSING against only the supplied
   current model. Normalization is stateless, so superseded normalized states
-  remain a concern of the raw archive and its Git history. Runtime is the only
-  command-composition boundary between Chatlas2 and the maintained CLI.
+  remain a concern of the raw archive and its Git history. Chat.Message adds a
+  provider-neutral primary-text projection plus pure discovery, derived-time,
+  and bounded-neighborhood operations. Its first Anchory consumer stores exact
+  user message refs and diagnostic `at` values in a separate `chatlas2`
+  namespace while reusing the generic depot and Index-line attachment identity.
+  Runtime is the only command-composition boundary between Chatlas2 and the
+  maintained CLI.
 
 ## Shared infrastructure rule
 

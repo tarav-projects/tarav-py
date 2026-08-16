@@ -16,6 +16,22 @@ from .corpus import (
     register_candidate,
     verify_corpus,
 )
+from .anchory import (
+    CHATLAS2_ANCHOR_BATCH_SCHEMA,
+    chatlas2_anchory_batch_preview,
+    chatlas2_anchory_batch_register,
+    chatlas2_anchory_preview,
+    chatlas2_anchory_register,
+    chatlas2_anchory_resolve,
+    format_support_member_ref,
+    load_anchor_batch,
+)
+from .messages import (
+    chat_message_at,
+    chat_message_support_member,
+    find_chat_messages,
+    list_chat_messages,
+)
 from .pipeline import build_normal_model
 
 
@@ -38,6 +54,121 @@ def _cmd_normalize(args: argparse.Namespace) -> int:
 
 def _print_payload(payload: object, *, pretty: bool) -> None:
     print(json.dumps(payload, indent=2 if pretty else None, ensure_ascii=False))
+
+
+def _model_for_selector(args: argparse.Namespace):
+    return build_normal_model(
+        session_id=args.session_id,
+        identity_hash=args.identity_hash,
+        chatlas_root=Path(args.chatlas_root) if args.chatlas_root else None,
+    )
+
+
+def _message_payload(model, message):
+    member = chat_message_support_member(model, message)
+    return {
+        "member_ref": format_support_member_ref(member),
+        "member": member,
+        "at": chat_message_at(model, message),
+        "message": message,
+    }
+
+
+def _cmd_messages_list(args: argparse.Namespace) -> int:
+    model = _model_for_selector(args)
+    messages = list_chat_messages(model, side=args.side)
+    _print_payload(
+        {
+            "session": model["session"],
+            "count": len(messages),
+            "messages": [_message_payload(model, message) for message in messages],
+        },
+        pretty=args.json,
+    )
+    return 0
+
+
+def _cmd_messages_find(args: argparse.Namespace) -> int:
+    model = _model_for_selector(args)
+    messages = find_chat_messages(
+        model,
+        text=args.text,
+        side=args.side,
+        exact=args.exact,
+    )
+    _print_payload(
+        {
+            "session": model["session"],
+            "count": len(messages),
+            "messages": [_message_payload(model, message) for message in messages],
+        },
+        pretty=args.json,
+    )
+    return 0
+
+
+def _anchory_root(args: argparse.Namespace) -> Path | None:
+    return Path(args.chatlas_root) if args.chatlas_root else None
+
+
+def _cmd_anchory_preview(args: argparse.Namespace) -> int:
+    _print_payload(
+        chatlas2_anchory_preview(
+            members=tuple(args.members),
+            line_content=args.line_content,
+            radius=args.radius,
+            chatlas_root=_anchory_root(args),
+        ),
+        pretty=True,
+    )
+    return 0
+
+
+def _cmd_anchory_register(args: argparse.Namespace) -> int:
+    _print_payload(
+        chatlas2_anchory_register(
+            members=tuple(args.members),
+            line_content=args.line_content,
+            radius=args.radius,
+            chatlas_root=_anchory_root(args),
+        ),
+        pretty=True,
+    )
+    return 0
+
+
+def _cmd_anchory_resolve(args: argparse.Namespace) -> int:
+    _print_payload(
+        chatlas2_anchory_resolve(
+            args.anchor,
+            radius=args.radius,
+            chatlas_root=_anchory_root(args),
+        ),
+        pretty=True,
+    )
+    return 0
+
+
+def _cmd_anchory_batch_preview(args: argparse.Namespace) -> int:
+    _print_payload(
+        chatlas2_anchory_batch_preview(
+            items=load_anchor_batch(Path(args.input)),
+            chatlas_root=_anchory_root(args),
+        ),
+        pretty=True,
+    )
+    return 0
+
+
+def _cmd_anchory_batch_register(args: argparse.Namespace) -> int:
+    _print_payload(
+        chatlas2_anchory_batch_register(
+            items=load_anchor_batch(Path(args.input)),
+            chatlas_root=_anchory_root(args),
+        ),
+        pretty=True,
+    )
+    return 0
 
 
 def _cmd_corpus_prepare(args: argparse.Namespace) -> int:
@@ -140,6 +271,79 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     normalize.set_defaults(handler=_cmd_normalize)
 
+    messages = commands.add_parser(
+        "messages",
+        help="Inspect provider-neutral Chat.Message projections.",
+    )
+    message_commands = messages.add_subparsers(
+        dest="chatlas2_messages_command", required=True
+    )
+    message_list = message_commands.add_parser(
+        "list", help="List projected messages in chronological order."
+    )
+    _add_message_selector(message_list)
+    message_list.set_defaults(handler=_cmd_messages_list)
+    message_find = message_commands.add_parser(
+        "find", help="Find projected messages by provider-neutral primary text."
+    )
+    _add_message_selector(message_find)
+    message_find.add_argument("--text", required=True, help="Text to locate.")
+    message_find.add_argument(
+        "--exact", action="store_true", help="Require complete text equality."
+    )
+    message_find.set_defaults(handler=_cmd_messages_find)
+
+    anchory = commands.add_parser(
+        "anchory",
+        help="Ground Index lines in Chatlas2 user messages.",
+    )
+    anchory_commands = anchory.add_subparsers(
+        dest="chatlas2_anchory_command", required=True
+    )
+    for name, handler, help_text in (
+        ("preview", _cmd_anchory_preview, "Preview a line support dossier."),
+        ("register", _cmd_anchory_register, "Idempotently register a line dossier."),
+    ):
+        command = anchory_commands.add_parser(name, help=help_text)
+        command.add_argument(
+            "--member",
+            dest="members",
+            action="append",
+            required=True,
+            help=(
+                "Support as <session>:<message-address>:<message-hash>; repeatable."
+            ),
+        )
+        command.add_argument("--line-content", required=True)
+        command.add_argument("--radius", type=int, default=4)
+        command.add_argument("--chatlas-root")
+        command.set_defaults(handler=handler)
+    anchory_resolve = anchory_commands.add_parser(
+        "resolve", help="Resolve a Chatlas2 line dossier."
+    )
+    anchory_resolve.add_argument("anchor")
+    anchory_resolve.add_argument("--radius", type=int, default=4)
+    anchory_resolve.add_argument("--chatlas-root")
+    anchory_resolve.set_defaults(handler=_cmd_anchory_resolve)
+    anchory_batch = anchory_commands.add_parser(
+        "batch", help="Preview or register a Chatlas2 line-dossier batch."
+    )
+    anchory_batch_commands = anchory_batch.add_subparsers(
+        dest="chatlas2_anchory_batch_command", required=True
+    )
+    for name, handler in (
+        ("preview", _cmd_anchory_batch_preview),
+        ("register", _cmd_anchory_batch_register),
+    ):
+        command = anchory_batch_commands.add_parser(name)
+        command.add_argument(
+            "--input",
+            required=True,
+            help=f"Path to a {CHATLAS2_ANCHOR_BATCH_SCHEMA} JSON document.",
+        )
+        command.add_argument("--chatlas-root")
+        command.set_defaults(handler=handler)
+
     corpus = commands.add_parser(
         "corpus",
         help="Manage the hermetic Chatlas2 conformance corpus.",
@@ -210,6 +414,15 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     check.add_argument("--corpus", required=True, help="Corpus directory.")
     check.add_argument("--json", action="store_true", help="Print JSON output.")
     check.set_defaults(handler=_cmd_corpus_check)
+
+
+def _add_message_selector(parser: argparse.ArgumentParser) -> None:
+    selector = parser.add_mutually_exclusive_group(required=True)
+    selector.add_argument("--session-id")
+    selector.add_argument("--identity-hash")
+    parser.add_argument("--side", choices=("user", "agent"))
+    parser.add_argument("--chatlas-root")
+    parser.add_argument("--json", action="store_true")
 
 
 __all__ = ["register_chatlas2_commands"]

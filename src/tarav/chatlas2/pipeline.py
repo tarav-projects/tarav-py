@@ -162,7 +162,7 @@ def build_normal_model_from_row(row: dict[str, Any]) -> JsonObject:
     )
     return {
         "class": "tarav.chatlas2.normal_model",
-        "schema_version": 3,
+        "schema_version": 4,
         "metadata": {"commit": _repository_commit()},
         "session": {
             "provider": provider,

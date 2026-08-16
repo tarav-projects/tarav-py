@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import json
 from pathlib import Path
 
 import pytest
 
 from tarav.cli.cli import main
+from tarav.index.model import index_line_anchor_triplet_hash
 from tarav.testing import TaravTestEnvironment
 
 
@@ -73,6 +76,16 @@ def _write_script_spec(path: Path) -> None:
     )
 
 
+def _run_json_command(argv: list[str]) -> dict[str, object]:
+    output = StringIO()
+    diagnostics = StringIO()
+    with redirect_stdout(output), redirect_stderr(diagnostics):
+        assert main(argv) == 0
+    payload = json.loads(output.getvalue())
+    assert isinstance(payload, dict)
+    return payload
+
+
 def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -114,13 +127,176 @@ def test_chatlas2_cli_normalizes_every_archived_codex_transcript(
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["class"] == "tarav.chatlas2.normal_model"
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["session"]["session_id"] == session_id
     assert len(payload["sources"]) == 2
     assert len(payload["events"]) == 6
     assert len(payload["annotations"]["chat_messages"]) == 4
     assert all("event_id" not in event for event in payload["events"])
     assert payload["metadata"]["commit"]
+
+    assert (
+        main(
+            [
+                "chatlas2",
+                "messages",
+                "find",
+                "--session-id",
+                session_id,
+                "--side",
+                "user",
+                "--text",
+                "second question",
+                "--exact",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    found = json.loads(capsys.readouterr().out)
+    assert found["count"] == 1
+    member_ref = found["messages"][0]["member_ref"]
+    line = "- [DF] The second question is retained."
+
+    assert (
+        main(
+            [
+                "chatlas2",
+                "anchory",
+                "preview",
+                "--member",
+                member_ref,
+                "--line-content",
+                line,
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["action"] == "mint"
+
+    register_args = [
+        "chatlas2",
+        "anchory",
+        "register",
+        "--member",
+        member_ref,
+        "--line-content",
+        line,
+    ]
+    assert main(register_args) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first["action"] == "minted"
+    assert main(register_args) == 0
+    repeated = json.loads(capsys.readouterr().out)
+    assert repeated["action"] == "reused"
+    assert repeated["anchor"] == first["anchor"]
+
+    assert main(["chatlas2", "anchory", "resolve", first["anchor"]]) == 0
+    resolved = json.loads(capsys.readouterr().out)
+    assert resolved["members"][0]["standing"] == "MATCHED"
+    assert resolved["members"][0]["text"] == "second question"
+
+    batch = tmp_path / "chatlas2-anchor-batch.json"
+    batch.write_text(
+        json.dumps(
+            {
+                "schema": "tarav.chatlas2.anchor-batch.v1",
+                "items": [
+                    {
+                        "client_id": "alpha",
+                        "line_content": "- [DF] First batch line.",
+                        "members": [member_ref],
+                    },
+                    {
+                        "client_id": "beta",
+                        "line_content": "- [DF] Second batch line.",
+                        "members": [member_ref],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    batch_prefix = ["chatlas2", "anchory", "batch"]
+    assert main([*batch_prefix, "preview", "--input", str(batch)]) == 0
+    assert json.loads(capsys.readouterr().out)["mint_count"] == 2
+    assert main([*batch_prefix, "register", "--input", str(batch)]) == 0
+    first_batch = json.loads(capsys.readouterr().out)
+    assert first_batch["minted_count"] == 2
+    assert main([*batch_prefix, "register", "--input", str(batch)]) == 0
+    repeated_batch = json.loads(capsys.readouterr().out)
+    assert repeated_batch["minted_count"] == 0
+    assert repeated_batch["reused_count"] == 2
+
+
+def test_chatlas2_e2e_prints_one_index_line_grounded_on_a_user_message(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = TaravTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-home"
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675c22"
+    rollout = home / "sessions/2026/08/15" / f"rollout-{session_id}.jsonl"
+    _write_codex_rollout(
+        rollout,
+        session_id=session_id,
+        messages=[
+            ("user", "Ground one design statement on this user message."),
+            ("assistant", "Ready."),
+        ],
+    )
+    environment.write_global_config(
+        chatlas={"sources": [{"provider": "codex", "home": str(home)}]}
+    )
+    _run_json_command(["chatlas", "index", "update", "--provider", "codex", "--json"])
+
+    found = _run_json_command(
+        [
+            "chatlas2",
+            "messages",
+            "find",
+            "--session-id",
+            session_id,
+            "--side",
+            "user",
+            "--text",
+            "Ground one design statement on this user message.",
+            "--exact",
+            "--json",
+        ]
+    )
+    assert found["count"] == 1
+    member_ref = found["messages"][0]["member_ref"]
+    line = "- [DF] One design statement is grounded on user evidence."
+    registered = _run_json_command(
+        [
+            "chatlas2",
+            "anchory",
+            "register",
+            "--member",
+            member_ref,
+            "--line-content",
+            line,
+        ]
+    )
+    anchor = registered["anchor"]
+    assert registered["action"] == "minted"
+    assert anchor == "d20260815-0u"
+
+    resolved = _run_json_command(
+        ["chatlas2", "anchory", "resolve", anchor, "--radius", "0"]
+    )
+    assert resolved["members"][0]["standing"] == "MATCHED"
+    assert resolved["members"][0]["side"] == "user"
+
+    hypothetical_index_line = f"{line} ^{anchor}"
+    attachment = registered["record"]["attachment"]
+    assert attachment["triplet_hash"] == index_line_anchor_triplet_hash(
+        hypothetical_index_line,
+        anchor,
+    )
+    print(f"hypothetical Index.Line: {hypothetical_index_line}")
 
 
 def test_chatlas2_corpus_cli_prepares_registers_lists_and_verifies(

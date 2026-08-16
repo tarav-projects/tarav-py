@@ -198,6 +198,10 @@ def _normalize(
                         place=place,
                     ),
                     "side": message_side,
+                    "text": _chat_message_text(
+                        record.value,
+                        is_primary_user_message=is_primary_user_message,
+                    ),
                     "event_addresses": [event_address],
                 }
             )
@@ -339,6 +343,21 @@ def _chat_message_side(
     if value.get("type") != "assistant":
         return None
     return "agent" if _assistant_text(value) else None
+
+
+def _chat_message_text(
+    value: JsonObject,
+    *,
+    is_primary_user_message: Callable[[JsonObject], bool],
+) -> str:
+    if is_primary_user_message(value):
+        message = value.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str):
+            return ""
+        command_args = _command_args_text(content)
+        return command_args or content
+    return _assistant_text(value)
 
 
 def _assistant_text(value: JsonObject) -> str:

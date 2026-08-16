@@ -437,8 +437,8 @@ def _validate_checked_model(model: JsonObject) -> None:
         raise CliError("normalized corpus capture has no event tape")
     if not isinstance(sources, list) or not isinstance(annotations, dict):
         raise CliError("normalized corpus capture has an invalid model envelope")
-    if model.get("schema_version") != 3:
-        raise CliError("normalized corpus capture is not Chatlas2 Normal Model v3")
+    if model.get("schema_version") != 4:
+        raise CliError("normalized corpus capture is not Chatlas2 Normal Model v4")
     timestamps = [event.get("started_at") for event in events]
     if not all(isinstance(timestamp, str) for timestamp in timestamps):
         raise CliError("normalized corpus event has no start timestamp")
