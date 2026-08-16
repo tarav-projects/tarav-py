@@ -361,6 +361,124 @@ def test_chatlas2_cache_cli_and_bounded_message_reads_reuse_materialization(
     assert found["messages"][0]["at"] == "2026-08-15T00:00:02.000Z"
 
 
+def test_chatlas2_views_list_and_get_initial_cache_backed_projections(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    environment = TaravTestEnvironment.create(tmp_path)
+    environment.apply_environment(monkeypatch.setenv)
+    home = tmp_path / "codex-home"
+    session_id = "019ccafa-7835-7fc3-ac17-0e0a0f675c22"
+    rollout = home / "sessions/2026/08/15" / f"rollout-{session_id}.jsonl"
+    _write_codex_rollout(
+        rollout,
+        session_id=session_id,
+        messages=[
+            ("user", "first question"),
+            ("assistant", "first answer"),
+            ("user", "second question"),
+        ],
+    )
+    environment.write_global_config(
+        chatlas={"sources": [{"provider": "codex", "home": str(home)}]}
+    )
+    _run_json_command(["chatlas", "index", "update", "--provider", "codex", "--json"])
+
+    listed = _run_json_command(["chatlas2", "views", "list", "--json"])
+    assert [(view["name"], view["collection"]) for view in listed["views"]] == [
+        ("full", "normal_model"),
+        ("transcript", "chat_messages"),
+        ("user", "chat_messages"),
+        ("events", "events"),
+    ]
+
+    full = _run_json_command(
+        ["chatlas2", "views", "get", "--session-id", session_id, "--json"]
+    )
+    assert full["class"] == "tarav.chatlas2.normal_model"
+    assert full["session"]["session_id"] == session_id
+    assert len(full["events"]) == 5
+
+    transcript = _run_json_command(
+        [
+            "chatlas2",
+            "views",
+            "get",
+            "--session-id",
+            session_id,
+            "--view",
+            "transcript",
+            "--limit",
+            "2",
+            "--json",
+        ]
+    )
+    assert transcript["class"] == "tarav.chatlas2.view"
+    assert transcript["view"] == "transcript"
+    assert transcript["count"] == 2
+    assert [record["message"]["text"] for record in transcript["messages"]] == [
+        "first question",
+        "first answer",
+    ]
+    assert transcript["messages"][0]["at"] == "2026-08-15T00:00:02.000Z"
+
+    user = _run_json_command(
+        [
+            "chatlas2",
+            "views",
+            "get",
+            "--session-id",
+            session_id,
+            "--view",
+            "user",
+            "--json",
+        ]
+    )
+    assert user["count"] == 2
+    assert [record["message"]["text"] for record in user["messages"]] == [
+        "first question",
+        "second question",
+    ]
+    assert all(record["message"]["side"] == "user" for record in user["messages"])
+
+    events = _run_json_command(
+        [
+            "chatlas2",
+            "views",
+            "get",
+            "--session-id",
+            session_id,
+            "--view",
+            "events",
+            "--limit",
+            "1",
+            "--json",
+        ]
+    )
+    assert events["count"] == 1
+    assert events["events"][0]["started_at"] == "2026-08-15T00:00:00.000Z"
+
+    diagnostics = StringIO()
+    with redirect_stderr(diagnostics):
+        assert (
+            main(
+                [
+                    "chatlas2",
+                    "views",
+                    "get",
+                    "--session-id",
+                    session_id,
+                    "--view",
+                    "full",
+                    "--limit",
+                    "1",
+                ]
+            )
+            == 1
+        )
+    assert "--limit is unavailable for the full view" in diagnostics.getvalue()
+
+
 def test_direct_raw_normalization_does_not_create_an_ordinary_cache(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

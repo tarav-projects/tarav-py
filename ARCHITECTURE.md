@@ -106,8 +106,13 @@ models live under `agentos.agent.providers.codex`; they do not occupy a top-leve
   directly. Chat.Message adds a
   provider-neutral primary-text projection plus pure discovery, derived-time,
   and bounded-neighborhood operations. Exact-session message reads stream the
-  provider's cached collections and apply optional limits during iteration. Its
-  first Anchory consumer requests complete models through the same provider and
+  provider's cached collections and apply optional limits during iteration.
+  `tarav chatlas2 views` provides disposable `full`, `transcript`, `user`, and
+  `events` read projections without introducing a second model or cache policy;
+  collection bounds stop their JSONL iteration, while `full` returns the
+  complete canonical model unchanged. Replay and zip-transcript behavior remain
+  outside this first migration slice. The first Anchory consumer requests
+  complete models through the same provider and
   stores exact user message refs and diagnostic `at` values in a separate
   `chatlas2` namespace while reusing the generic depot and Index-line attachment
   identity; it owns no cache-specific loader or model slot.

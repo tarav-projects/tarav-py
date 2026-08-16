@@ -1,4 +1,4 @@
-# $kw: ^chatlas2-cli --from Chatlas.Query.Surface --from Usage.Surface --from Raw.Archive --note [CT] Chatlas2 exposes one-session normalization plus explicit prepare/register and hermetic corpus inspection surfaces without mutating current Chatlas --supp ^c20260814-13u ^c20260814-15u ^c20260815-16u ^c20260815-31u ^d20260816-1u
+# $kw: ^chatlas2-cli --from Chatlas.Query.Surface --from Usage.Surface --from Raw.Archive --note [CT] Chatlas2 exposes one-session normalization, disposable Normal Model views, explicit prepare/register, and hermetic corpus inspection without mutating current Chatlas --supp ^c20260814-13u ^c20260814-15u ^c20260815-16u ^c20260815-31u ^c20260816-23u ^d20260816-1u
 from __future__ import annotations
 
 import argparse
@@ -36,6 +36,7 @@ from .normal_model import (
     provide_normal_model,
     provide_normal_model_reader,
 )
+from .views import list_views, project_view, view_names
 
 
 def _cmd_normalize(args: argparse.Namespace) -> int:
@@ -94,9 +95,7 @@ def _message_payload(session, record):
 def _cmd_messages_list(args: argparse.Namespace) -> int:
     reader = _model_reader_for_selector(args)
     session = reader.metadata["model"]["session"]
-    records = list(
-        reader.iter_chat_message_records(side=args.side, limit=args.limit)
-    )
+    records = list(reader.iter_chat_message_records(side=args.side, limit=args.limit))
     _print_payload(
         {
             "session": session,
@@ -127,6 +126,18 @@ def _cmd_messages_find(args: argparse.Namespace) -> int:
         },
         pretty=args.json,
     )
+    return 0
+
+
+def _cmd_views_list(args: argparse.Namespace) -> int:
+    _print_payload(list_views(), pretty=args.json)
+    return 0
+
+
+def _cmd_views_get(args: argparse.Namespace) -> int:
+    reader = _model_reader_for_selector(args)
+    payload = project_view(reader, view=args.view, limit=args.limit)
+    _print_payload(payload, pretty=args.json)
     return 0
 
 
@@ -358,9 +369,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
         "cache",
         help="Build or inspect disposable compact Normal Model caches.",
     )
-    cache_commands = cache.add_subparsers(
-        dest="chatlas2_cache_command", required=True
-    )
+    cache_commands = cache.add_subparsers(dest="chatlas2_cache_command", required=True)
     cache_status = cache_commands.add_parser(
         "status", help="Inspect cache freshness without normalizing."
     )
@@ -394,6 +403,28 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
     )
     message_find.set_defaults(handler=_cmd_messages_find)
 
+    views = commands.add_parser(
+        "views",
+        help="Read disposable projections of canonical Normal Model content.",
+    )
+    view_commands = views.add_subparsers(dest="chatlas2_views_command", required=True)
+    view_list = view_commands.add_parser(
+        "list", help="List the implemented Chatlas2 views."
+    )
+    view_list.add_argument("--json", action="store_true")
+    view_list.set_defaults(handler=_cmd_views_list)
+    view_get = view_commands.add_parser(
+        "get", help="Read one view for one exact session."
+    )
+    view_selector = view_get.add_mutually_exclusive_group(required=True)
+    view_selector.add_argument("--session-id")
+    view_selector.add_argument("--identity-hash")
+    view_get.add_argument("--view", choices=view_names(), default="full")
+    view_get.add_argument("--limit", type=_non_negative_int)
+    view_get.add_argument("--chatlas-root")
+    view_get.add_argument("--json", action="store_true")
+    view_get.set_defaults(handler=_cmd_views_get)
+
     anchory = commands.add_parser(
         "anchory",
         help="Ground Index lines in Chatlas2 user messages.",
@@ -411,9 +442,7 @@ def register_chatlas2_commands(subparsers: argparse._SubParsersAction) -> None:
             dest="members",
             action="append",
             required=True,
-            help=(
-                "Support as <session>:<message-address>:<message-hash>; repeatable."
-            ),
+            help=("Support as <session>:<message-address>:<message-hash>; repeatable."),
         )
         command.add_argument("--line-content", required=True)
         command.add_argument("--radius", type=int, default=4)

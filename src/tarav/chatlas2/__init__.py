@@ -49,6 +49,7 @@ from .messages import (
     find_chat_messages,
     list_chat_messages,
 )
+from .views import list_views, project_view, view_names
 
 __all__ = [
     "CHATLAS2_ANCHOR_BATCH_SCHEMA",
@@ -77,12 +78,15 @@ __all__ = [
     "find_chat_messages",
     "format_support_member_ref",
     "list_chat_messages",
+    "list_views",
     "materialize_normal_model_cache",
     "normal_model_cache_status",
     "compute_normal_model",
     "provide_normal_model",
     "provide_normal_model_reader",
+    "project_view",
     "register_chatlas2_commands",
     "resolve_chat_message_ref",
     "resolve_event_ref",
+    "view_names",
 ]
